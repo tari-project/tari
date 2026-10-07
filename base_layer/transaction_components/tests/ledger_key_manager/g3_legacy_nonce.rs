@@ -39,9 +39,10 @@ use tari_utilities::hex::Hex;
 use crate::harness::{Device, ledger_error, with_device};
 
 fn ledger_key(branch: LedgerKeyBranch) -> TariKeyId {
+    // At or above 2^32, so a `Random` key is a nonce the device will sign with (see `check_legacy_nonce_index`).
     TariKeyId::LedgerKey {
         branch,
-        index: fixtures::random_u64(),
+        index: fixtures::random_u64() | (1 << 32),
     }
 }
 
@@ -104,13 +105,9 @@ fn assert_verifies(
 /// The whitelisted pair signs through the legacy arm, after the user approves the device's review, and the nonce it
 /// signs with is the `Random` branch key at the index the host named - the same one, every time it is asked.
 ///
-/// `PreMine` keys sign both the pre-mine script signature and its metadata signature (with the `PreMine` sender
-/// offset key `get_script_offset` issued in pre-mine mode). The second signature is over a different challenge with
-/// the same pair, and its public nonce is identical: that equality *is* the cost the canonical module describes,
-/// pinned so that nobody mistakes this arm for the handle based one.
-///
-/// Both signatures went out as `GetRawSchnorrSignatureLegacyNonce`, and nothing was reserved, which is what makes
-/// this arm distinguishable from the other one on the wire as well as in the arithmetic.
+/// The second request is the identical one, which the device's used-nonce record allows and which reproduces the
+/// same signature. A third under the same nonce index over a different challenge is refused with
+/// `LegacyNonceReused` before any review - that pair of signatures is what would give up the key.
 #[test]
 fn the_whitelisted_pair_signs_with_the_indexed_random_key_as_its_nonce() {
     with_device(|device| {
@@ -122,15 +119,13 @@ fn the_whitelisted_pair_signs_with_the_indexed_random_key_as_its_nonce() {
             .get_public_key_at_key_id(&nonce_id)
             .expect("the Random branch key the nonce is derived as");
 
-        let challenges = [fixtures::random_challenge(), fixtures::random_challenge()];
-        let (signatures, wire) = device.watch(|| {
-            challenges
-                .iter()
-                .map(|challenge| {
-                    reviewed_legacy_signature(device, &key_manager, &key_id, &nonce_id, challenge)
-                        .unwrap_or_else(|e| panic!("a legacy signature by a PreMine key: {e}"))
-                })
-                .collect::<Vec<_>>()
+        let challenge = fixtures::random_challenge();
+        let ((first, second), wire) = device.watch(|| {
+            let sign = || {
+                reviewed_legacy_signature(device, &key_manager, &key_id, &nonce_id, &challenge)
+                    .unwrap_or_else(|e| panic!("a legacy signature by a PreMine key: {e}"))
+            };
+            (sign(), sign())
         });
         assert_eq!(
             (
@@ -141,15 +136,55 @@ fn the_whitelisted_pair_signs_with_the_indexed_random_key_as_its_nonce() {
             (2, 0, 0),
             "a (LedgerKey, LedgerKey) pair must take the legacy instruction and only it: {wire:?}"
         );
+        assert_eq!(first, second, "an identical retry must reproduce the signature");
+        assert_eq!(
+            first.get_compressed_public_nonce().to_hex(),
+            expected_nonce.to_hex(),
+            "the legacy nonce for a PreMine key should be the Random branch key at the named index"
+        );
+        assert_verifies(&key_manager, &first, &key_id, &challenge);
 
-        for (signature, challenge) in signatures.iter().zip(&challenges) {
-            assert_eq!(
-                signature.get_compressed_public_nonce().to_hex(),
-                expected_nonce.to_hex(),
-                "the legacy nonce for a PreMine key should be the Random branch key at the named index"
-            );
-            assert_verifies(&key_manager, signature, &key_id, challenge);
-        }
+        // Refused before the review, so no approver: nothing is drawn.
+        let error = ledger_error(
+            key_manager
+                .sign_with_nonce_and_challenge(&key_id, &nonce_id, &fixtures::random_challenge())
+                .expect_err("a second challenge under a used nonce index must be refused"),
+        );
+        assert!(error.contains("LegacyNonceReused"), "{error}");
+    });
+}
+
+/// The same nonce index under the script key and then the sender offset key of one pre-mine output - the
+/// same-nonce, two-keys extraction - is refused with `LegacyNonceReused` on the second request, before any review.
+#[test]
+fn one_nonce_index_will_not_sign_for_two_keys() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let script_index = fixtures::random_u64() % 100_000;
+        let script_key = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: script_index,
+        };
+        let sender_offset_key = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: (1 << 63) | script_index,
+        };
+        let nonce_id = ledger_key(LedgerKeyBranch::Random);
+
+        reviewed_legacy_signature(
+            device,
+            &key_manager,
+            &script_key,
+            &nonce_id,
+            &fixtures::random_challenge(),
+        )
+        .expect("the script signature");
+        let error = ledger_error(
+            key_manager
+                .sign_with_nonce_and_challenge(&sender_offset_key, &nonce_id, &fixtures::random_challenge())
+                .expect_err("the sender offset key under the script key's nonce index must be refused"),
+        );
+        assert!(error.contains("LegacyNonceReused"), "{error}");
     });
 }
 

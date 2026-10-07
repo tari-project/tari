@@ -89,6 +89,18 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
     Ok(raw_key_hashed)
 }
 
+/// The 32 byte hash of a legacy nonce challenge that the used-nonce record keeps, so that a slot holds 32 bytes rather
+/// than 64. The first half of the ledger domain's 64 byte hash under its own label.
+pub fn legacy_challenge_hash(challenge: &[u8; 64]) -> [u8; 32] {
+    let mut hashed = Zeroizing::new([0u8; 64]);
+    DomainSeparatedHasher::<Blake2b<U64>, LedgerHashDomain>::new_with_label("legacy_challenge")
+        .chain(challenge)
+        .finalize_into(hashed.as_mut().into());
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&hashed[..32]);
+    out
+}
+
 /// Derive a secret key from a BIP32 path. In case of an error, display an interactive message on the device.
 ///
 /// The path is `m/44'/{coin}'/{account}'/{index_hi}/{index_lo}'/{key_type}`, where `index_hi` and `index_lo` are the

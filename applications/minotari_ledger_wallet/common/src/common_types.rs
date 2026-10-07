@@ -32,6 +32,10 @@ pub enum AppSW {
     ScriptOffsetNoDeviceScriptKeys = 0xB010,
     NonceStoreFull = 0xB011,
     NonceHandleInvalid = 0xB012,
+    /// A legacy nonce index was asked for again with a different key or challenge. See `legacy_nonce`.
+    LegacyNonceReused = 0xB013,
+    /// The legacy used-nonce record is full; restart the application. See `legacy_nonce`.
+    LegacyNonceStoreFull = 0xB014,
     // The two below are not this application's to choose: the device returns `ledger_device_sdk`'s own
     // `StatusWords` values for them (see `AppSW` in `wallet/src/main.rs`, which defines these two from
     // `StatusWords` rather than from here). A value written here that the SDK disagrees with is not a cosmetic
@@ -68,6 +72,8 @@ impl TryFrom<u16> for AppSW {
             0xB010 => Ok(AppSW::ScriptOffsetNoDeviceScriptKeys),
             0xB011 => Ok(AppSW::NonceStoreFull),
             0xB012 => Ok(AppSW::NonceHandleInvalid),
+            0xB013 => Ok(AppSW::LegacyNonceReused),
+            0xB014 => Ok(AppSW::LegacyNonceStoreFull),
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6985 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
@@ -211,6 +217,8 @@ mod test {
             (0xB010, AppSW::ScriptOffsetNoDeviceScriptKeys),
             (0xB011, AppSW::NonceStoreFull),
             (0xB012, AppSW::NonceHandleInvalid),
+            (0xB013, AppSW::LegacyNonceReused),
+            (0xB014, AppSW::LegacyNonceStoreFull),
             (0x6e03, AppSW::WrongApduLength),
             (0x6985, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
@@ -267,6 +275,12 @@ mod test {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::NonceHandleInvalid => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::LegacyNonceReused => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
+                AppSW::LegacyNonceStoreFull => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
                 AppSW::WrongApduLength => {

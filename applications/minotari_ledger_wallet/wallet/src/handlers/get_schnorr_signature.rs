@@ -22,7 +22,16 @@ use minotari_ledger_wallet_common::{
         GetScriptSchnorrSignatureRequest,
         SchnorrReply,
     },
-    legacy_nonce::{check_legacy_nonce_branches, legacy_signature_purpose},
+    legacy_nonce::{
+        check_legacy_nonce_branches,
+        check_legacy_nonce_index,
+        check_legacy_nonce_use,
+        legacy_signature_purpose,
+        record_legacy_nonce_use,
+        LegacyNonceRecordError,
+        LegacyNonceUse,
+        LEGACY_NONCE_RECORD_SIZE,
+    },
     u64_to_string,
 };
 
@@ -32,7 +41,7 @@ use crate::{
     crypto::schnorr::SchnorrSignature,
     hash_domain,
     handlers::get_ephemeral_nonce::{nonce_store_error_to_app_sw, EphemeralNonceCtx},
-    utils::{derive_from_bip32_key, get_random_nonce},
+    utils::{derive_from_bip32_key, get_random_nonce, legacy_challenge_hash},
     wire::{invalid_data_length, reply, with_screen},
     AppSW,
     KeyType,
@@ -44,6 +53,20 @@ hash_domain!(SchnorrSigChallenge, "com.tari.schnorr_signature", 1);
 /// The type used for `CheckSig`, `CheckMultiSig`, and related opcodes' signatures
 pub type CheckSigSchnorrSignature = SchnorrSignature<CheckSigHashDomain>;
 pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
+
+/// The legacy nonce instruction's used-nonce record: which nonce indexes it has signed with, for which key and
+/// challenge. See `minotari_ledger_wallet_common::legacy_nonce::LegacyNonceUse`.
+///
+/// RAM-backed and owned by the event loop for the whole application run; it is never reset by another instruction or
+/// by an error, and is cleared only by an application restart. Persisting it in NVM is a follow-up decision.
+pub type LegacyNonceCtx = [Option<LegacyNonceUse>; LEGACY_NONCE_RECORD_SIZE];
+
+fn legacy_record_error_to_app_sw(e: LegacyNonceRecordError) -> AppSW {
+    match e {
+        LegacyNonceRecordError::Reused => AppSW::LegacyNonceReused,
+        LegacyNonceRecordError::Full => AppSW::LegacyNonceStoreFull,
+    }
+}
 
 /// Sign a challenge with a device held key and a device generated nonce named by `nonce_handle`.
 ///
@@ -100,14 +123,18 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// to the device, and it carries the flaw that change fixed: the host picks the nonce index, so it can ask for two
 /// signatures over the same key and nonce with different challenges and solve for the private key.
 ///
-/// It survives for the pre-mine spend flow alone. `check_legacy_nonce_branches` holds it to `PreMine` keys, and
-/// every request that passes is shown to the user for approval before anything is signed, so a second request for
-/// the same key and nonce is visible.
+/// It survives for the pre-mine spend flow alone. `check_legacy_nonce_branches` holds it to `PreMine` keys,
+/// `check_legacy_nonce_index` to nonce indexes an older application never derived, and `legacy_nonce_ctx` refuses a
+/// second use of a nonce index for anything but the identical request until the application restarts. Every request
+/// that passes is shown to the user for approval before anything is signed.
 ///
 /// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs, what it reached
 /// before it was narrowed to `PreMine` (`alpha`, via the script offset reply), and the TODO that deletes this handler
 /// along with everything else on the legacy path.
-pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result<(), AppSW> {
+pub fn handler_get_raw_schnorr_signature_legacy_nonce(
+    comm: &mut Comm,
+    legacy_nonce_ctx: &mut LegacyNonceCtx,
+) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     let request = GetRawSchnorrSignatureLegacyNonceRequest::decode(data).map_err(|_| invalid_data_length())?;
 
@@ -120,6 +147,8 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
     // This check is the one that counts; the host's is only there to produce a legible error. It runs before the
     // review, so a refused request never reaches the screen.
     check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|_| AppSW::BadBranchKey)?;
+    // An index below 2^32 names a nonce an application before 6.1.1-pre.0 may already have signed with.
+    check_legacy_nonce_index(request.nonce_index).map_err(|_| AppSW::BadBranchKey)?;
 
     // Note: `KeyType::from_branch_key` rejects the spend branch a second time, so `alpha` stays unreachable even
     // if the whitelist above is ever loosened.
@@ -132,6 +161,17 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
     let key_index = request.key_index;
     let nonce_index = request.nonce_index;
     let challenge: [u8; 64] = *request.challenge;
+
+    // A nonce index may be signed with again only for the identical request. Checked before the review, so a reuse is
+    // refused without a screen; recorded after the approval and before the signature, below.
+    let use_of_nonce = LegacyNonceUse {
+        account,
+        nonce_index,
+        key_branch: private_key_branch.as_byte(),
+        key_index,
+        challenge_hash: legacy_challenge_hash(&challenge),
+    };
+    check_legacy_nonce_use(&legacy_nonce_ctx[..], &use_of_nonce).map_err(legacy_record_error_to_app_sw)?;
 
     let purpose = legacy_signature_purpose(key_index);
     let key_value = format!("{} {}", private_key_branch.as_str(), u64_to_string(key_index));
@@ -176,6 +216,9 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
             return Err(AppSW::UserCancelled);
         }
     }
+
+    // Recorded before anything is derived or signed, so a failure from here on still leaves the nonce index spent.
+    record_legacy_nonce_use(&mut legacy_nonce_ctx[..], use_of_nonce).map_err(legacy_record_error_to_app_sw)?;
 
     let private_key = derive_from_bip32_key(account, key_index, private_key_type)?;
     let private_nonce = derive_from_bip32_key(account, nonce_index, nonce_key_type)?;

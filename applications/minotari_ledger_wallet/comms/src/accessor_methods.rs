@@ -54,7 +54,7 @@ use minotari_ledger_wallet_common::{
     },
     common_types::{AppSW, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
-    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
+    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_request},
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
         check_script_key_count,
@@ -692,7 +692,7 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     // The device enforces this too, against the same shared whitelist, and its check is the only one that
     // matters; this is here so a caller gets a legible error instead of a status word, and so that a request the
     // device would refuse never reaches the wire.
-    check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|e| match e {
+    check_legacy_nonce_request(private_key_branch, nonce_branch, nonce_index).map_err(|e| match e {
         LegacyNonceBranchError::KeyBranchNotAllowed => LedgerDeviceError::Processing(format!(
             "GetRawSchnorrSignatureLegacyNonce: '{private_key_branch}' keys cannot be signed with a host chosen \
              nonce; only the pre-mine spend flow may use this instruction"
@@ -700,6 +700,10 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
         LegacyNonceBranchError::NonceBranchNotAllowed => LedgerDeviceError::Processing(format!(
             "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce_branch}'",
             LedgerKeyBranch::Random
+        )),
+        LegacyNonceBranchError::NonceIndexAliasesOldApp => LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below 2^32, where it names a nonce a \
+             ledger application before 6.1.1-pre.0 may already have signed with; redo pre-mine step 2"
         )),
     })?;
     verify_ledger_application()?;
@@ -715,6 +719,23 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
 
     match Command::from_request(&request).execute() {
         Ok(result) => {
+            if result.retcode() == AppSW::UserCancelled as u16 {
+                return Err(LedgerDeviceError::UserCancelled);
+            }
+            if result.retcode() == AppSW::LegacyNonceReused as u16 {
+                return Err(LedgerDeviceError::Processing(format!(
+                    "GetRawSchnorrSignatureLegacyNonce: LegacyNonceReused - the device has already signed with nonce \
+                     index {nonce_index} for a different key or challenge, and signing again would give up the key. \
+                     Do not retry; the pre-mine session file may have been tampered with."
+                )));
+            }
+            if result.retcode() == AppSW::LegacyNonceStoreFull as u16 {
+                return Err(LedgerDeviceError::Processing(
+                    "GetRawSchnorrSignatureLegacyNonce: LegacyNonceStoreFull - the device's record of used legacy \
+                     nonces is full; restart the Minotari Wallet application on the device and continue"
+                        .to_string(),
+                ));
+            }
             let Ok(reply) = SchnorrReply::decode(result.data()) else {
                 return Err(LedgerDeviceError::Processing(format!(
                     "GetRawSchnorrSignatureLegacyNonce: expected 65 bytes, got {} ({:?})",

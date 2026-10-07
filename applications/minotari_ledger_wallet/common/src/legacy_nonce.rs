@@ -86,6 +86,42 @@ pub enum LegacyNonceBranchError {
     KeyBranchNotAllowed,
     /// The nonce branch is not the one the pre-mine spend flow reserves from.
     NonceBranchNotAllowed,
+    /// The nonce index is below 2^32, where it names the same nonce an application before 6.1.1-pre.0 derived for
+    /// some index at or above 2^32. See [`check_legacy_nonce_index`].
+    NonceIndexAliasesOldApp,
+}
+
+/// [`check_legacy_nonce_branches`] then [`check_legacy_nonce_index`]: every stateless rule a legacy request has to pass.
+/// The host mirrors call this; the device calls the two in the same order.
+pub fn check_legacy_nonce_request(
+    private_key_branch: LedgerKeyBranch,
+    nonce_branch: LedgerKeyBranch,
+    nonce_index: u64,
+) -> Result<(), LegacyNonceBranchError> {
+    check_legacy_nonce_branches(private_key_branch, nonce_branch)?;
+    check_legacy_nonce_index(nonce_index)
+}
+
+/// The smallest nonce index the legacy instruction will sign with.
+pub const MIN_LEGACY_NONCE_INDEX: u64 = 1 << 32;
+
+/// Refuse a legacy nonce index below 2^32.
+///
+/// Applications before 6.1.1-pre.0 derived every key from `index mod 2^32`, so the `Random` nonce a pre-upgrade
+/// session reserved at index `j` (a random `u64`, almost always at or above 2^32) was the key this application derives
+/// at `j mod 2^32` - an index below 2^32 keeps its old derivation path. One signature from an aborted pre-upgrade
+/// session plus one new legacy signature at `j mod 2^32` over a different challenge would give up the signing key, and
+/// this application's used-nonce record cannot know about the old one. Indexes at or above 2^32 derive differently
+/// from anything an old application signed with, so they are safe.
+///
+/// An honest step 2 draws a random `u64` nonce index, which is below 2^32 with probability 2^-32; the host redraws in
+/// that case (`get_random_key` on a ledger wallet), so an honest request is never refused. Checked on both sides,
+/// before the review.
+pub fn check_legacy_nonce_index(nonce_index: u64) -> Result<(), LegacyNonceBranchError> {
+    if nonce_index < MIN_LEGACY_NONCE_INDEX {
+        return Err(LegacyNonceBranchError::NonceIndexAliasesOldApp);
+    }
+    Ok(())
 }
 
 /// Check that a legacy nonce request is one the pre-mine spend flow could actually have made.
@@ -114,6 +150,85 @@ pub fn check_legacy_nonce_branches(
         return Err(LegacyNonceBranchError::NonceBranchNotAllowed);
     }
     Ok(())
+}
+
+/// How many legacy signatures the device remembers per application run. See [`LegacyNonceUse`].
+pub const LEGACY_NONCE_RECORD_SIZE: usize = 64;
+
+/// One legacy signature the device has made (or approved and is about to make): which nonce it used, and what for.
+///
+/// The device keeps these in a fixed array of [`LEGACY_NONCE_RECORD_SIZE`] slots and checks every new legacy request
+/// against it with [`check_legacy_nonce_use`] / [`record_legacy_nonce_use`]. A nonce index may be asked for again only
+/// with the same key and the same challenge - an honest retry, which reproduces the same signature and so discloses
+/// nothing. Any other second use of a nonce index is refused: that is the one thing that turns two signatures into a
+/// private key, including the same-nonce, two-keys variant where the script signature and the metadata signature of
+/// one pre-mine output are both asked for under one nonce index and the step 2 script offset closes the system.
+///
+/// **The record is RAM-backed and is cleared by an application restart.** Persisting it in NVM is a follow-up
+/// decision (flash wear, and what a record that outlives the app means for an honest re-run); until then an attacker
+/// who wants a second signature under a used nonce index has to get the user to restart the application between two
+/// approvals. The record never evicts: when it is full it refuses, until the application is restarted.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct LegacyNonceUse {
+    pub account: u64,
+    pub nonce_index: u64,
+    pub key_branch: u8,
+    pub key_index: u64,
+    /// A domain separated hash of the 64 byte challenge, so a slot costs 32 bytes rather than 64.
+    pub challenge_hash: [u8; 32],
+}
+
+/// Why a legacy signature was refused by the used-nonce record.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum LegacyNonceRecordError {
+    /// The nonce index was already used on this account, for a different key or a different challenge.
+    Reused,
+    /// Every slot is taken. The record fails closed rather than forgetting an earlier use.
+    Full,
+}
+
+/// Check a legacy request against the record without changing it.
+///
+/// `Ok(true)` means this exact use is already recorded (an honest retry), `Ok(false)` that the nonce index is unused
+/// and there is room to record it. The device calls this before its review, so a refused request never reaches the
+/// screen, and calls [`record_legacy_nonce_use`] after the user approves.
+pub fn check_legacy_nonce_use(
+    record: &[Option<LegacyNonceUse>],
+    used: &LegacyNonceUse,
+) -> Result<bool, LegacyNonceRecordError> {
+    for entry in record.iter().flatten() {
+        if entry.account == used.account && entry.nonce_index == used.nonce_index {
+            if entry == used {
+                return Ok(true);
+            }
+            return Err(LegacyNonceRecordError::Reused);
+        }
+    }
+    if record.iter().any(|slot| slot.is_none()) {
+        Ok(false)
+    } else {
+        Err(LegacyNonceRecordError::Full)
+    }
+}
+
+/// Record a legacy use, refusing it as [`check_legacy_nonce_use`] would. Recording an already recorded use is a no-op.
+///
+/// Called after the review and before the signature is computed, so a failure after the screen still leaves the
+/// nonce index spent.
+pub fn record_legacy_nonce_use(
+    record: &mut [Option<LegacyNonceUse>],
+    used: LegacyNonceUse,
+) -> Result<(), LegacyNonceRecordError> {
+    if check_legacy_nonce_use(record, &used)? {
+        return Ok(());
+    }
+    for slot in record.iter_mut() {
+        if slot.is_none() {
+            *slot = Some(used);
+            return Ok(());
+        }
+    }
+    Err(LegacyNonceRecordError::Full)
 }
 
 /// The purpose line the device shows when asked for a legacy signature by the `PreMine` key at `key_index`.
@@ -226,5 +341,104 @@ mod test {
             "Pre-mine metadata signature"
         );
         assert_eq!(legacy_signature_purpose(u64::MAX), "Pre-mine metadata signature");
+    }
+
+    fn used(account: u64, nonce_index: u64, key_index: u64, challenge: u8) -> LegacyNonceUse {
+        LegacyNonceUse {
+            account,
+            nonce_index,
+            key_branch: LedgerKeyBranch::PreMine.as_byte(),
+            key_index,
+            challenge_hash: [challenge; 32],
+        }
+    }
+
+    #[test]
+    fn a_new_nonce_index_is_recorded() {
+        let mut record = [None; 4];
+        assert_eq!(check_legacy_nonce_use(&record, &used(1, 2, 3, 4)), Ok(false));
+        assert_eq!(record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)), Ok(()));
+        assert_eq!(record[0], Some(used(1, 2, 3, 4)));
+        assert_eq!(check_legacy_nonce_use(&record, &used(1, 2, 3, 4)), Ok(true));
+    }
+
+    /// An honest retry - same key, same challenge - reproduces the same signature, so it is allowed and takes no
+    /// second slot.
+    #[test]
+    fn the_same_use_again_is_allowed_without_a_second_slot() {
+        let mut record = [None; 2];
+        record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
+        assert_eq!(record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)), Ok(()));
+        assert_eq!(record[1], None);
+    }
+
+    #[test]
+    fn a_different_challenge_under_a_used_nonce_is_refused() {
+        let mut record = [None; 4];
+        record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
+        assert_eq!(
+            check_legacy_nonce_use(&record, &used(1, 2, 3, 5)),
+            Err(LegacyNonceRecordError::Reused)
+        );
+        assert_eq!(
+            record_legacy_nonce_use(&mut record, used(1, 2, 3, 5)),
+            Err(LegacyNonceRecordError::Reused)
+        );
+    }
+
+    /// The same-nonce, two-keys attack: the script key and the sender offset key under one nonce index.
+    #[test]
+    fn a_different_key_under_a_used_nonce_is_refused() {
+        let mut record = [None; 4];
+        record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
+        assert_eq!(
+            record_legacy_nonce_use(&mut record, used(1, 2, PRE_MINE_SENDER_OFFSET_INDEX_BIT | 3, 4)),
+            Err(LegacyNonceRecordError::Reused)
+        );
+        let mut other_branch = used(1, 2, 3, 4);
+        other_branch.key_branch = LedgerKeyBranch::Random.as_byte();
+        assert_eq!(
+            record_legacy_nonce_use(&mut record, other_branch),
+            Err(LegacyNonceRecordError::Reused)
+        );
+    }
+
+    /// A full record refuses rather than evicting, and still allows a retry of something it holds.
+    #[test]
+    fn a_full_record_refuses_and_never_evicts() {
+        let mut record = [None; 2];
+        record_legacy_nonce_use(&mut record, used(1, 1, 3, 4)).unwrap();
+        record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
+        assert_eq!(
+            record_legacy_nonce_use(&mut record, used(1, 3, 3, 4)),
+            Err(LegacyNonceRecordError::Full)
+        );
+        assert_eq!(record_legacy_nonce_use(&mut record, used(1, 1, 3, 4)), Ok(()));
+        assert_eq!(
+            record_legacy_nonce_use(&mut record, used(1, 1, 3, 5)),
+            Err(LegacyNonceRecordError::Reused)
+        );
+    }
+
+    /// Accounts derive different nonces from one index, so they are tracked independently.
+    #[test]
+    fn accounts_are_independent() {
+        let mut record = [None; 4];
+        record_legacy_nonce_use(&mut record, used(1, 2, 3, 4)).unwrap();
+        assert_eq!(record_legacy_nonce_use(&mut record, used(9, 2, 7, 8)), Ok(()));
+    }
+
+    #[test]
+    fn a_nonce_index_below_two_to_the_thirty_two_is_refused() {
+        for index in [0, 1, MIN_LEGACY_NONCE_INDEX - 1] {
+            assert_eq!(
+                check_legacy_nonce_index(index),
+                Err(LegacyNonceBranchError::NonceIndexAliasesOldApp),
+                "{index}"
+            );
+        }
+        for index in [MIN_LEGACY_NONCE_INDEX, u64::MAX] {
+            assert_eq!(check_legacy_nonce_index(index), Ok(()), "{index}");
+        }
     }
 }

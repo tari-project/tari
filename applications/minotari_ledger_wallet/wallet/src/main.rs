@@ -37,6 +37,7 @@ use handlers::{
         handler_get_raw_schnorr_signature,
         handler_get_raw_schnorr_signature_legacy_nonce,
         handler_get_script_schnorr_signature,
+        LegacyNonceCtx,
     },
     get_script_offset::{handler_get_script_offset, ScriptOffsetCtx},
     get_script_signature::{handler_get_script_signature_derived, handler_get_script_signature_managed},
@@ -53,6 +54,7 @@ use ledger_device_sdk::ui::gadgets::display_pending_review;
 use minotari_ledger_wallet_common::{
     codec::{TextReply, CHUNK_LAST, CHUNK_MORE, CLA},
     common_types::{AppSW as AppSWMapping, Instruction as InstructionMapping, LedgerKeyBranch as BranchMapping},
+    legacy_nonce::LEGACY_NONCE_RECORD_SIZE,
 };
 ledger_device_sdk::set_panic!(ledger_device_sdk::exiting_panic);
 
@@ -79,6 +81,8 @@ pub enum AppSW {
     ScriptOffsetNoDeviceScriptKeys = AppSWMapping::ScriptOffsetNoDeviceScriptKeys as u16,
     NonceStoreFull = AppSWMapping::NonceStoreFull as u16,
     NonceHandleInvalid = AppSWMapping::NonceHandleInvalid as u16,
+    LegacyNonceReused = AppSWMapping::LegacyNonceReused as u16,
+    LegacyNonceStoreFull = AppSWMapping::LegacyNonceStoreFull as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = AppSWMapping::Ok as u16,
@@ -233,9 +237,12 @@ fn show_status_and_home_if_needed(
     // notice, and what makes it indistinguishable on screen from a device that has hung.
     //
     // BAGL models do not have this problem: their main loop redraws the home menu itself on every pass.
+    //
+    // `GetRawSchnorrSignatureLegacyNonce` shows a review too, so it needs the same redraw. Its refusals all come
+    // before the review, with other status words, and leave the home screen up.
     let (show_status, _status_type) = match (ins, status) {
         (
-            Instruction::GetOneSidedMetadataSignature,
+            Instruction::GetOneSidedMetadataSignature | Instruction::GetRawSchnorrSignatureLegacyNonce,
             AppSW::Deny | AppSW::Ok | AppSW::UserCancelled,
         ) => (true, StatusType::Transaction),
         (_, _) => (false, StatusType::Transaction),
@@ -263,6 +270,12 @@ extern "C" fn sample_main() {
     // and spent by a later one, so unrelated instructions in between must leave it alone. Entries only ever leave
     // this store by being consumed, or by the store itself going away when the application exits.
     let mut nonce_ctx = EphemeralNonceCtx::new();
+
+    // The legacy nonce instruction's used-nonce record. Long-lived like `nonce_ctx`, and deliberately never reset -
+    // not by another instruction and not by an error: a record that forgot a use would let a host ask for a second
+    // signature under that nonce index, which gives up the key. It is RAM, so an application restart clears it; see
+    // `minotari_ledger_wallet_common::legacy_nonce::LegacyNonceUse` for why that is accepted for now.
+    let mut legacy_nonce_ctx: LegacyNonceCtx = [None; LEGACY_NONCE_RECORD_SIZE];
 
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
@@ -294,7 +307,7 @@ extern "C" fn sample_main() {
             offset_ctx.reset();
         }
 
-        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx, &mut nonce_ctx) {
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx, &mut nonce_ctx, &mut legacy_nonce_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
@@ -316,6 +329,7 @@ fn handle_apdu(
     ins: Instruction,
     offset_ctx: &mut ScriptOffsetCtx,
     nonce_ctx: &mut EphemeralNonceCtx,
+    legacy_nonce_ctx: &mut LegacyNonceCtx,
 ) -> Result<(), AppSW> {
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
@@ -338,7 +352,9 @@ fn handle_apdu(
         Instruction::GetViewKey => handler_get_view_key(comm),
         Instruction::GetDHSharedSecret => handler_get_dh_shared_secret(comm),
         Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm, nonce_ctx),
-        Instruction::GetRawSchnorrSignatureLegacyNonce => handler_get_raw_schnorr_signature_legacy_nonce(comm),
+        Instruction::GetRawSchnorrSignatureLegacyNonce => {
+            handler_get_raw_schnorr_signature_legacy_nonce(comm, legacy_nonce_ctx)
+        },
         Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
         Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
         Instruction::GenerateEphemeralNonce => handler_generate_ephemeral_nonce(comm, nonce_ctx),

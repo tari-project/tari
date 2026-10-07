@@ -104,19 +104,25 @@ const SCENARIOS: &[Scenario] = &[
         run: disallowed_pairs_are_refused,
     },
     Scenario {
-        name: "the legacy nonce really is deterministic, which is why the whitelist exists",
+        name: "a legacy retry over the same challenge is identical, and a different challenge is refused as reused",
         covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::Required,
         run: the_nonce_is_deterministic,
     },
     Scenario {
-        name: "a legacy signature by PreMine x and by PreMine 2^63 | x are by different keys",
+        name: "PreMine x and PreMine 2^63 | x are different keys, and one nonce index will not sign for both",
         covers: &[
             Instruction::GetRawSchnorrSignatureLegacyNonce,
             Instruction::GetPublicKey,
         ],
         approval: Approval::Required,
         run: the_reviewed_index_is_the_signing_index,
+    },
+    Scenario {
+        name: "a legacy nonce index below 2^32 is refused with BadBranchKey, before any review",
+        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
+        approval: Approval::NotNeeded,
+        run: a_nonce_index_below_two_to_the_thirty_two_is_refused,
     },
 ];
 
@@ -153,6 +159,12 @@ fn legacy_signature(
     .context(|| {
         format!("GetRawSchnorrSignatureLegacyNonce with key branch {key_branch:#04x}, nonce branch {nonce_branch:#04x}")
     })
+}
+
+/// A random legacy nonce index at or above 2^32, the range the device signs with (see
+/// `minotari_ledger_wallet_common::legacy_nonce::check_legacy_nonce_index`).
+fn legacy_nonce_index() -> u64 {
+    fixtures::random_u64() | (1 << 32)
 }
 
 /// Ask for a `PreMine` legacy signature through the shipped accessor, approving the review the device puts up -
@@ -210,7 +222,7 @@ fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> Sce
     // the 104 byte payload, applies the host mirror of the whitelist, and parses the reply. The refusal scenarios
     // have to bypass it - that is the whole point of them - but the accepting path must not, or a regression in
     // shipped code would be invisible while this suite stayed green.
-    let signature = reviewed_pre_mine_signature(context, account, key_index, fixtures::random_u64(), &challenge)?;
+    let signature = reviewed_pre_mine_signature(context, account, key_index, legacy_nonce_index(), &challenge)?;
 
     let public_key = ledger_get_public_key(account, key_index, LedgerKeyBranch::PreMine)
         .context(|| "GetPublicKey for the PreMine key".to_string())?;
@@ -361,62 +373,59 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
     )
 }
 
-/// Acceptance: the nonce really is re-derived rather than drawn, which is the property the whitelist contains.
+/// Acceptance: the nonce really is re-derived rather than drawn, which is why the device has to remember which
+/// nonce indexes it has used - and it does.
 ///
-/// Two signatures over *different* challenges with the same `(key index, nonce index)` come back with the **same**
-/// public nonce. That is not a bug being reported - it is the documented behaviour of this instruction, and it is
-/// the reason the whitelist exists at all. Asserting it here means the containment and the thing being contained
-/// are in the same file: if the device ever starts drawing a fresh nonce, this scenario fails, and whoever sees it
-/// fail is looking at the module that explains why that would be a *good* change and what else should be deleted
-/// alongside it.
-///
-/// Deliberately **not** carried further. The next two lines of arithmetic recover the private key, and this suite
-/// has no business writing a key recovery it does not need: the equality above already proves the nonce is reused,
-/// and a recovered key would be a secret in a failure message in a file CI uploads.
+/// Two approved signatures over the **same** challenge with the same `(key index, nonce index)` are identical - an
+/// honest retry, which the used-nonce record allows because it discloses nothing new. A third request under that
+/// nonce index over a **different** challenge is refused with `LegacyNonceReused`, before any review: two signatures
+/// under one nonce over different challenges give up the key, and the record exists to stop exactly that. The refusal
+/// goes over raw APDUs so the device's own check is what answers.
 fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     // A key index with the top bit set: the shape of a pre-mine *sender offset* key, so both reviews must say
     // "Pre-mine metadata signature".
     let key_index = fixtures::random_u64() | SENDER_OFFSET_INDEX_BIT;
-    let nonce_index = fixtures::random_u64();
+    let nonce_index = legacy_nonce_index();
+    let challenge = fixtures::random_challenge();
 
-    // Both calls go through the accessor, and each is reviewed and approved. This is an *accepting* path - the pair is
-    // on the whitelist, so the host mirror passes it through - and the rule in `crate::raw` is that accepting paths
-    // use the shipped accessor.
-    let sign = |challenge: [u8; 64]| reviewed_pre_mine_signature(context, account, key_index, nonce_index, &challenge);
-
-    let first = sign(fixtures::random_challenge())?;
-    let second = sign(fixtures::random_challenge())?;
-
-    require(
-        first.get_compressed_public_nonce() == second.get_compressed_public_nonce(),
-        || {
-            "the legacy instruction returned a different public nonce for the same nonce index. That is a *safer* \
-             device than the one documented, but it means this instruction is no longer what \
-             `minotari_ledger_wallet_common::legacy_nonce` describes - read that module, and check whether the \
-             whitelist and this whole instruction can now be deleted rather than just updating this assertion."
-                .to_string()
-        },
-    )?;
-    require(first.get_signature() != second.get_signature(), || {
-        "two legacy signatures over different challenges produced the same `s`, which cannot happen for a correct \
-         signature over a reused nonce"
+    let first = reviewed_pre_mine_signature(context, account, key_index, nonce_index, &challenge)?;
+    let second = reviewed_pre_mine_signature(context, account, key_index, nonce_index, &challenge)?;
+    require(first == second, || {
+        "the same legacy request twice produced two different signatures: either the nonce is no longer re-derived \
+         (read `minotari_ledger_wallet_common::legacy_nonce` - the instruction may be deletable) or the retry was not \
+         served from the same nonce"
             .to_string()
-    })
+    })?;
+
+    let reply = legacy_signature(
+        account,
+        key_index,
+        LedgerKeyBranch::PreMine.as_byte(),
+        nonce_index,
+        LedgerKeyBranch::Random.as_byte(),
+        &fixtures::random_challenge(),
+    )?;
+    expect_status(
+        "a legacy signature under a used nonce index over a different challenge",
+        &reply,
+        AppSW::LegacyNonceReused,
+    )
 }
 
 /// Acceptance: the index on the review is the index the device signs with - `PreMine x` and `PreMine 2^63 | x` are
-/// different keys, so their signatures under one nonce index verify against different public keys.
+/// different keys, so their signatures verify against different public keys - and once a nonce index has signed for
+/// one of them, it will not sign for the other.
 ///
-/// When the device reduced the index modulo 2^32 they were one key. A host could then put up "Pre-mine metadata
-/// signature, Key PreMine 2^63 | x" and get a signature by the pre-mine *script* key at `x`, and pair it with an
-/// ordinary-looking script signature review over the same nonce: two reviews that look like a step 3 pair, one key,
-/// one nonce. Each signature here is checked against its own key and against the other's.
+/// When the device reduced the index modulo 2^32 the two were one key. And with the step 2 script offset, signatures
+/// by the script key and the sender offset key under *one* nonce index are three equations in three unknowns: the
+/// same-nonce, two-keys extraction behind two honest-looking reviews. So each key signs under its own nonce index
+/// here, and the cross request - the sender offset key under the script key's nonce index - is refused with
+/// `LegacyNonceReused`, before any review.
 fn the_reviewed_index_is_the_signing_index(context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let script_index = fixtures::random_u64() % 100_000;
     let sender_offset_index = SENDER_OFFSET_INDEX_BIT | script_index;
-    let nonce_index = fixtures::random_u64();
 
     let script_key = ledger_get_public_key(account, script_index, LedgerKeyBranch::PreMine)
         .context(|| format!("GetPublicKey for PreMine {script_index}"))?;
@@ -426,9 +435,15 @@ fn the_reviewed_index_is_the_signing_index(context: &ScenarioContext<'_>) -> Sce
         format!("PreMine {script_index} and PreMine {sender_offset_index} are the same key: the index still wraps")
     })?;
 
-    for (index, own_key, other_key) in [
-        (script_index, &script_key, &sender_offset_key),
-        (sender_offset_index, &sender_offset_key, &script_key),
+    let script_nonce_index = legacy_nonce_index();
+    for (index, nonce_index, own_key, other_key) in [
+        (script_index, script_nonce_index, &script_key, &sender_offset_key),
+        (
+            sender_offset_index,
+            legacy_nonce_index(),
+            &sender_offset_key,
+            &script_key,
+        ),
     ] {
         let challenge = fixtures::random_challenge();
         let signature = reviewed_pre_mine_signature(context, account, index, nonce_index, &challenge)?
@@ -440,6 +455,44 @@ fn the_reviewed_index_is_the_signing_index(context: &ScenarioContext<'_>) -> Sce
         require(!signature.verify_raw_uniform(other_key, &challenge), || {
             format!("the legacy signature by PreMine {index} also verifies against the other index's key")
         })?;
+    }
+
+    let reply = legacy_signature(
+        account,
+        sender_offset_index,
+        LedgerKeyBranch::PreMine.as_byte(),
+        script_nonce_index,
+        LedgerKeyBranch::Random.as_byte(),
+        &fixtures::random_challenge(),
+    )?;
+    expect_status(
+        "the sender offset key under the nonce index the script key already signed with",
+        &reply,
+        AppSW::LegacyNonceReused,
+    )
+}
+
+/// Acceptance: a legacy nonce index below 2^32 is refused with `BadBranchKey`, before any review.
+///
+/// An application before 6.1.1-pre.0 derived nonce index `j` as `j mod 2^32`, and an index below 2^32 still derives
+/// along that same path - so one old signature plus one new one under `j mod 2^32` would give up a key, and this
+/// application's used-nonce record knows nothing of the old one. Over raw APDUs, so the device's check answers.
+fn a_nonce_index_below_two_to_the_thirty_two_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    for nonce_index in [0, 1, (1u64 << 32) - 1, fixtures::random_u64() & 0xFFFF_FFFF] {
+        let reply = legacy_signature(
+            account,
+            fixtures::random_u64() % 100_000,
+            LedgerKeyBranch::PreMine.as_byte(),
+            nonce_index,
+            LedgerKeyBranch::Random.as_byte(),
+            &fixtures::random_challenge(),
+        )?;
+        expect_status(
+            &format!("a legacy signature under nonce index {nonce_index}, below 2^32"),
+            &reply,
+            AppSW::BadBranchKey,
+        )?;
     }
     Ok(())
 }

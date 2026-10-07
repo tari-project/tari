@@ -33,7 +33,7 @@ use digest::{KeyInit, consts::U64};
 use log::trace;
 use minotari_ledger_wallet_common::{
     common_types::LedgerKeyBranch,
-    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
+    legacy_nonce::{LegacyNonceBranchError, MIN_LEGACY_NONCE_INDEX, check_legacy_nonce_request},
     script_offset::MAX_SENDER_OFFSET_KEYS,
 };
 #[cfg(feature = "ledger")]
@@ -496,7 +496,7 @@ impl KeyManager {
         nonce: LedgerKeyBranch,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
-        check_legacy_nonce_branches(private_key, nonce).map_err(|e| match e {
+        check_legacy_nonce_request(private_key, nonce, nonce_index).map_err(|e| match e {
             LegacyNonceBranchError::KeyBranchNotAllowed => KeyManagerError::LedgerError(format!(
                 "GetRawSchnorrSignatureLegacyNonce: '{private_key}' keys cannot be signed with a host chosen nonce; \
                  only the pre-mine spend flow may use this instruction"
@@ -504,6 +504,10 @@ impl KeyManager {
             LegacyNonceBranchError::NonceBranchNotAllowed => KeyManagerError::LedgerError(format!(
                 "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce}'",
                 LedgerKeyBranch::Random
+            )),
+            LegacyNonceBranchError::NonceIndexAliasesOldApp => KeyManagerError::LedgerError(format!(
+                "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below 2^32, where it names a nonce a \
+                 ledger application before 6.1.1-pre.0 may already have signed with; redo pre-mine step 2"
             )),
         })?;
 
@@ -759,7 +763,13 @@ impl TransactionKeyManagerInterface for KeyManager {
         if let Some(branch) = ledger_key &&
             self.wallet_type.is_ledger()
         {
-            let random_index = rand::rng().next_u64();
+            let mut random_index = rand::rng().next_u64();
+            // `Random` ledger keys are the pre-mine flow's legacy nonces, and the device refuses a legacy nonce index
+            // below 2^32 (see `minotari_ledger_wallet_common::legacy_nonce::check_legacy_nonce_index`). Redraw rather
+            // than hand step 2 a nonce step 4 could not sign with; this loops with probability 2^-32.
+            while branch == LedgerKeyBranch::Random && random_index < MIN_LEGACY_NONCE_INDEX {
+                random_index = rand::rng().next_u64();
+            }
             let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
             return Ok(TariKeyAndId {
                 key_id: TariKeyId::LedgerKey {
@@ -1800,7 +1810,11 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
 
 #[cfg(test)]
 mod tests {
-    use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
+    use minotari_ledger_wallet_common::{
+        common_types::LedgerKeyBranch,
+        legacy_nonce::MIN_LEGACY_NONCE_INDEX,
+        script_offset::MAX_SENDER_OFFSET_KEYS,
+    };
     use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, PrivateKey};
 
     use super::{MAX_SOFTWARE_EPHEMERAL_NONCES, sender_offset_key_takes_a_reserved_nonce};
@@ -2143,7 +2157,7 @@ mod tests {
             };
             let nonce = TariKeyId::LedgerKey {
                 branch: LedgerKeyBranch::Random,
-                index: 9,
+                index: MIN_LEGACY_NONCE_INDEX | 9,
             };
 
             let err = key_manager
@@ -2168,7 +2182,7 @@ mod tests {
         let key_manager = KeyManager::new_random().unwrap();
         let nonce = TariKeyId::LedgerKey {
             branch: LedgerKeyBranch::Random,
-            index: 9,
+            index: MIN_LEGACY_NONCE_INDEX | 9,
         };
 
         for key_branch in [
@@ -2216,6 +2230,34 @@ mod tests {
                 );
             },
             other => panic!("a OneSidedSenderOffset nonce was not refused by the whitelist: {other:?}"),
+        }
+    }
+
+    /// A legacy nonce index below 2^32 is refused on any wallet: it names a nonce an application before 6.1.1-pre.0
+    /// derived for some index 2^32 or more apart, which a pre-upgrade session may already have signed with.
+    #[test]
+    fn the_legacy_arm_refuses_a_nonce_index_below_two_to_the_thirty_two() {
+        let key_manager = KeyManager::new_random().unwrap();
+        for nonce_index in [0, 9, MIN_LEGACY_NONCE_INDEX - 1] {
+            let err = key_manager
+                .sign_with_nonce_and_challenge(
+                    &TariKeyId::LedgerKey {
+                        branch: LedgerKeyBranch::PreMine,
+                        index: 7,
+                    },
+                    &TariKeyId::LedgerKey {
+                        branch: LedgerKeyBranch::Random,
+                        index: nonce_index,
+                    },
+                    &challenge(1),
+                )
+                .unwrap_err();
+            match err {
+                KeyManagerError::LedgerError(message) => {
+                    assert!(message.contains("below 2^32"), "unexpected message: {message}");
+                },
+                other => panic!("nonce index {nonce_index} was not refused: {other:?}"),
+            }
         }
     }
 
