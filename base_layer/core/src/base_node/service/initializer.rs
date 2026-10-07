@@ -30,7 +30,7 @@ use tari_node_components::blocks::NewBlock;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
-    services::utils::{map_decode, map_decode_with_max_items},
+    services::utils::map_decode_with_max_items,
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
@@ -102,7 +102,12 @@ where T: BlockchainBackend
     ) -> impl Stream<Item = DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>> + use<T> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::BaseNodeRequest, SUBSCRIPTION_LABEL)
-            .map(map_decode::<proto::BaseNodeServiceRequest>)
+            // The only list a request carries is `ExcessSigs`: the kernel excess signatures of a `NewBlock` that the
+            // requester is missing from its mempool. A `NewBlock` is decoded under this same budget, so a legitimate
+            // request never needs more, and without it one 8 MiB frame of empty signatures decodes into ~4M `Vec`s.
+            .map(map_decode_with_max_items::<proto::BaseNodeServiceRequest>(
+                shared_protos::MESSAGE_MAX_DECODE_ITEMS,
+            ))
     }
 
     /// Get a stream for inbound Base Node response messages
@@ -276,6 +281,38 @@ mod test {
         let decoded =
             map_decode_with_max_items::<proto::BaseNodeServiceResponse>(shared_protos::MESSAGE_MAX_DECODE_ITEMS)(msg);
         assert!(matches!(&decoded.inner, Err(err) if err.to_string().contains("decode budget")));
+    }
+
+    #[test]
+    fn an_over_budget_base_node_request_is_a_decode_error() {
+        // `BaseNodeServiceRequest.fetch_mempool_transactions_by_excess_sigs` (tag 9) holding a frame of empty
+        // `excess_sigs` (tag 1)
+        let excess_sigs = len_header(1, 0).repeat(4_000_000);
+        let mut body = len_header(9, excess_sigs.len());
+        body.extend_from_slice(&excess_sigs);
+        let msg = create_peer_message(TariMessageType::BaseNodeRequest, body.clone());
+        // Prost alone accepts it
+        assert!(msg.decode_message::<proto::BaseNodeServiceRequest>().is_ok());
+        let decoded =
+            map_decode_with_max_items::<proto::BaseNodeServiceRequest>(shared_protos::MESSAGE_MAX_DECODE_ITEMS)(msg);
+        assert!(matches!(&decoded.inner, Err(err) if err.to_string().contains("decode budget")));
+
+        // A request for every kernel excess signature of a max-size `NewBlock` passes
+        let request = proto::BaseNodeServiceRequest {
+            request_key: 1,
+            request: Some(
+                proto::base_node_service_request::Request::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
+                    excess_sigs: vec![vec![1u8; 32]; 8_994],
+                }),
+            ),
+        };
+        let msg = create_peer_message(
+            TariMessageType::BaseNodeRequest,
+            prost::Message::encode_to_vec(&request),
+        );
+        let decoded =
+            map_decode_with_max_items::<proto::BaseNodeServiceRequest>(shared_protos::MESSAGE_MAX_DECODE_ITEMS)(msg);
+        assert_eq!(decoded.inner.unwrap(), request);
     }
 
     #[test]
