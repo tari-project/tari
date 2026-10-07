@@ -78,11 +78,12 @@ use error::MempoolProtocolError;
 use futures::{SinkExt, Stream, StreamExt, stream};
 pub use initializer::MempoolSyncInitializer;
 use log::*;
-use prost::Message;
 use tari_comms::{
     Bytes,
+    BytesMut,
     PeerConnection,
     connectivity::{ConnectivityEvent, ConnectivityRequester, ConnectivitySelection},
+    decode_budget::{DecodeBudget, check_decode_budget},
     framing,
     framing::CanonicalFraming,
     message::MessageExt,
@@ -161,6 +162,26 @@ fn log_close_outcome(result: Result<Result<(), std::io::Error>, time::error::Ela
         Ok(Err(err)) => debug!(target: LOG_TARGET, "IO error when closing stream: {err}"),
         Ok(Ok(())) => {},
     }
+}
+
+/// Decode a frame received from the peer, first checking that it carries at most `max_items` embedded message
+/// instances (see `tari_comms::decode_budget`). A frame is up to [`MAX_FRAME_SIZE`]; without the check, one frame of
+/// empty transaction inputs decodes into ~1.5M inputs (~365 MB). Every repeated element, including each `bytes` item
+/// of the inventory, is charged, so the budget also bounds an inventory of empty items. An over-budget frame is
+/// reported as [`MempoolProtocolError::DecodeFailed`], exactly like any other undecodable frame.
+fn decode_frame<T>(frame: BytesMut, max_items: usize, peer: &NodeId) -> Result<T, MempoolProtocolError>
+where T: prost::Message + Default + DecodeBudget {
+    let to_error = |source| MempoolProtocolError::DecodeFailed {
+        source,
+        peer: peer.clone(),
+    };
+    check_decode_budget::<T>(&frame, max_items).map_err(|err| {
+        to_error(prost::DecodeError::new(format!(
+            "message exceeds the decode budget ({} embedded items, at most {} allowed)",
+            err.items, err.max
+        )))
+    })?;
+    T::decode(&mut frame.freeze()).map_err(to_error)
 }
 
 pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
@@ -561,7 +582,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         self.read_and_insert_transactions_until_complete().await?;
 
-        let missing_items: proto::InventoryIndexes = self.read_message().await?;
+        let missing_items: proto::InventoryIndexes = self.read_message(shared_proto::MESSAGE_MAX_DECODE_ITEMS).await?;
         debug!(
             target: LOG_TARGET,
             "Received {} missing transaction index(es) from peer `{}`",
@@ -623,7 +644,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let inventory: proto::TransactionInventory = self.read_message().await?;
+        let inventory: proto::TransactionInventory = self.read_message(shared_proto::MESSAGE_MAX_DECODE_ITEMS).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -735,12 +756,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
         {
             let bytes = result?;
-            let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
-                MempoolProtocolError::DecodeFailed {
-                    source: err,
-                    peer: self.peer_node_id.clone(),
-                }
-            })?;
+            let item: proto::TransactionItem =
+                decode_frame(bytes, shared_proto::MESSAGE_MAX_DECODE_ITEMS, &self.peer_node_id)?;
 
             match item.transaction {
                 Some(txn) => {
@@ -845,16 +862,16 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         Ok(())
     }
 
-    async fn read_message<T: prost::Message + Default>(&mut self) -> Result<T, MempoolProtocolError> {
+    /// Read one control message, rejecting it before decoding if it carries more than `max_items` embedded message
+    /// instances (see [`decode_frame`]).
+    async fn read_message<T>(&mut self, max_items: usize) -> Result<T, MempoolProtocolError>
+    where T: prost::Message + Default + DecodeBudget {
         let msg = time::timeout(MESSAGE_TIMEOUT, self.framed.next())
             .await
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
             .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_node_id.clone()))??;
 
-        T::decode(&mut msg.freeze()).map_err(|err| MempoolProtocolError::DecodeFailed {
-            source: err,
-            peer: self.peer_node_id.clone(),
-        })
+        decode_frame(msg, max_items, &self.peer_node_id)
     }
 
     async fn write_messages<S, T>(&mut self, stream: S) -> Result<(), MempoolProtocolError>

@@ -338,6 +338,20 @@ mod max_size_payloads {
         assert_eq!(decoded.kernel_excess_sigs.len(), MAX_KERNELS);
     }
 
+    /// A max-size transaction wrapped as a mempool-sync `TransactionItem` passes the budget the sync protocol applies
+    /// to every frame it reads.
+    #[test]
+    fn a_max_size_mempool_sync_transaction_item_passes_the_messaging_budget() {
+        let item = crate::mempool::proto::TransactionItem {
+            transaction: Some(transaction(Bytes::random().body(MAX_INPUTS, 1, 1))),
+        };
+        let frame = prost::Message::encode_to_vec(&item);
+        let items =
+            check_decode_budget::<crate::mempool::proto::TransactionItem>(&frame, proto::MESSAGE_MAX_DECODE_ITEMS)
+                .unwrap();
+        assert!(items > MAX_INPUTS);
+    }
+
     /// The budget of the hash-batch query methods (fetch_matching_utxos, utxo_query, query_deleted, find_chain_split)
     const QUERY_MAX_ITEMS: usize = 65_536;
 
