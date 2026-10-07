@@ -351,3 +351,60 @@ mod max_size_payloads {
         check_decode_budget::<proto::mempool::StateResponse>(&payload, BODY_MAX_ITEMS).unwrap_err();
     }
 }
+
+/// The block-body decode budget must hold on every network, for every consensus epoch.
+mod per_network {
+    use tari_common::configuration::Network;
+    use tari_transaction_components::consensus::ConsensusConstants;
+
+    /// The decode budget of sync_blocks, mempool get_state and submit_transaction
+    const BODY_MAX_ITEMS: usize = 262_144;
+    /// Message instances in a fully populated (hydrated) input: the input, its 9 features messages, commitment and
+    /// two signatures
+    const HYDRATED_INPUT_MESSAGES: u64 = 13;
+    /// A compact input, as sync_blocks serves them: the input and its script signature
+    const COMPACT_INPUT_MESSAGES: u64 = 2;
+    /// A fully populated coinbase output, rounded up
+    const OUTPUT_MESSAGES: u64 = 14;
+    const KERNEL_MESSAGES: u64 = 4;
+
+    #[test]
+    fn a_max_weight_block_fits_the_body_budget_on_every_network() {
+        let networks = [
+            Network::MainNet,
+            Network::StageNet,
+            Network::NextNet,
+            Network::LocalNet,
+            Network::Igor,
+            Network::Esmeralda,
+        ];
+        for network in networks {
+            for constants in ConsensusConstants::for_network(network) {
+                let weights = constants.transaction_weight_params().params();
+                // The rest of the weight goes to inputs, after the one kernel and one output a transaction needs
+                let max_inputs = constants
+                    .max_block_transaction_weight()
+                    .saturating_sub(weights.kernel_weight)
+                    .saturating_sub(weights.output_weight) /
+                    weights.input_weight;
+                let coinbases = constants.max_block_coinbase_count();
+                // The body, the coinbase outputs, the transaction's kernel and the coinbase kernel
+                let fixed = 1 + coinbases * OUTPUT_MESSAGES + 2 * KERNEL_MESSAGES;
+                let hydrated = fixed + max_inputs * HYDRATED_INPUT_MESSAGES;
+                let compact = fixed + max_inputs * COMPACT_INPUT_MESSAGES;
+                println!(
+                    "{network} (from height {}): {max_inputs} inputs; hydrated {hydrated} instances ({:.2}x \
+                     headroom), compact {compact} ({:.2}x)",
+                    constants.effective_from_height(),
+                    BODY_MAX_ITEMS as f64 / hydrated as f64,
+                    BODY_MAX_ITEMS as f64 / compact as f64,
+                );
+                assert!(
+                    hydrated < BODY_MAX_ITEMS as u64,
+                    "{network}: a max-weight block of hydrated inputs is {hydrated} message instances, over the \
+                     {BODY_MAX_ITEMS} decode budget"
+                );
+            }
+        }
+    }
+}

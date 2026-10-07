@@ -36,8 +36,11 @@ pub use peer_info::UnvalidatedPeerInfo;
 
 // `max_items` is the decode budget for a method: the most embedded message instances (plus repeated bytes/string
 // elements and packed scalar bytes) its request, response or each stream item may carry (see
-// `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction: 11,242 fully populated inputs
-// are 146,147 instances, ~1.8x headroom. 65_536 covers the batched queries and streams. The default is 16_384.
+// `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction of fully populated (hydrated)
+// inputs plus 1,000 coinbases: ~160k instances on mainnet (~1.6x headroom), ~222k on the 127,795-weight networks
+// (~1.2x); see `proto::decode_budget_tests::per_network`. sync_blocks serves compact inputs (2 instances each), so a
+// synced body has ~7x (mainnet) / ~5.7x headroom; hydrated inputs only reach submit_transaction, which rejects an
+// over-budget request without a ban. 65_536 covers the batched queries and streams. The default is 16_384.
 #[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
 pub trait DhtRpcService: Send + Sync + 'static {
     #[rpc(method = 10, max_items = 65_536)]
