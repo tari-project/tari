@@ -25,7 +25,11 @@ use std::collections::HashMap;
 use proc_macro2::TokenStream;
 use syn::{FnArg, GenericArgument, ItemTrait, PathArguments, ReturnType, TraitItem, TraitItemFn, Type};
 
-use crate::{generator::RpcCodeGenerator, method_info::RpcMethodInfo, options::RpcTraitOptions};
+use crate::{
+    generator::RpcCodeGenerator,
+    method_info::{ItemBudget, RpcMethodInfo},
+    options::RpcTraitOptions,
+};
 
 /// Expands `#[tari_rpc(...)]` on `node`. Any problem with the trait is returned as a compile error.
 pub fn expand_trait(mut node: ItemTrait, options: RpcTraitOptions) -> TokenStream {
@@ -118,6 +122,20 @@ fn collect_rpc_methods(node: &mut ItemTrait, options: &RpcTraitOptions) -> syn::
     }
 }
 
+/// Parses a decode budget: a non-zero integer literal, or a path to a `usize` constant
+fn parse_item_budget(input: syn::parse::ParseStream, name: &str) -> syn::Result<ItemBudget> {
+    if input.peek(syn::LitInt) {
+        let lit: syn::LitInt = input.parse()?;
+        let value = lit.base10_parse::<usize>()?;
+        if value == 0 {
+            return Err(syn_error!(lit, "{} must be greater than 0", name));
+        }
+        Ok(ItemBudget::Literal(value))
+    } else {
+        Ok(ItemBudget::Path(input.parse()?))
+    }
+}
+
 fn parse_rpc_method(attr: &syn::Attribute, method: &TraitItemFn) -> syn::Result<RpcMethodInfo> {
     let mut method_lit = None;
     let mut max_items = None;
@@ -130,9 +148,9 @@ fn parse_rpc_method(attr: &syn::Attribute, method: &TraitItemFn) -> syn::Result<
                 meta.error("expected `method = <number>`, `max_items = <number>` or `max_request_items = <number>`")
             })?
             .clone();
-        let lit: syn::LitInt = meta.value()?.parse()?;
         match ident.to_string().as_str() {
             "method" => {
+                let lit: syn::LitInt = meta.value()?.parse()?;
                 if method_lit.is_some() {
                     return Err(syn_error!(ident, "`method` is specified more than once"));
                 }
@@ -140,24 +158,18 @@ fn parse_rpc_method(attr: &syn::Attribute, method: &TraitItemFn) -> syn::Result<
                 method_lit = Some(lit);
             },
             "max_items" => {
+                let budget = parse_item_budget(meta.value()?, "max_items")?;
                 if max_items.is_some() {
                     return Err(syn_error!(ident, "`max_items` is specified more than once"));
                 }
-                let value = lit.base10_parse::<usize>()?;
-                if value == 0 {
-                    return Err(syn_error!(lit, "max_items must be greater than 0"));
-                }
-                max_items = Some(value);
+                max_items = Some(budget);
             },
             "max_request_items" => {
+                let budget = parse_item_budget(meta.value()?, "max_request_items")?;
                 if max_request_items.is_some() {
                     return Err(syn_error!(ident, "`max_request_items` is specified more than once"));
                 }
-                let value = lit.base10_parse::<usize>()?;
-                if value == 0 {
-                    return Err(syn_error!(lit, "max_request_items must be greater than 0"));
-                }
-                max_request_items = Some(value);
+                max_request_items = Some(budget);
             },
             s => return Err(syn_error!(ident, "invalid option `{}` in #[rpc(...)] attribute", s)),
         }

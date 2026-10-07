@@ -28,12 +28,21 @@ pub struct RpcMethodInfo {
     pub method_lit: syn::LitInt,
     pub method_num: u32,
     /// The `max_items = M` decode budget, if one was given
-    pub max_items: Option<usize>,
+    pub max_items: Option<ItemBudget>,
     /// The `max_request_items = R` decode budget for requests, if one was given (defaults to `max_items`)
-    pub max_request_items: Option<usize>,
+    pub max_request_items: Option<ItemBudget>,
     pub is_server_streaming: bool,
     /// `T` in `Request<T>`
     pub request_type: syn::Type,
     /// `T` in `Response<T>` or `Streaming<T>`
     pub return_type: syn::Type,
+}
+
+/// A decode budget given in an `#[rpc(...)]` attribute
+#[derive(Debug, Clone)]
+pub enum ItemBudget {
+    /// An integer literal, checked to be non-zero when the macro expands
+    Literal(usize),
+    /// A path to a `usize` constant, checked to be non-zero when the generated code is compiled
+    Path(syn::Path),
 }

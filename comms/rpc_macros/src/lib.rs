@@ -76,7 +76,8 @@ mod options;
 ///   request, its response or each item of its response stream may carry (see `tari_comms::decode_budget`). Request and
 ///   response types must implement `DecodeBudget` (derive it with `#[derive(DecodeBudget)]`). The server checks
 ///   requests against it before decoding them and the generated client checks responses. Defaults to
-///   `tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS`.
+///   `tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS`. Either a non-zero integer literal or a path to a `usize`
+///   constant (checked to be non-zero at compile time), so a budget can be shared with code that tests it.
 /// - `max_request_items` (optional) is a separate decode budget for the request only, which the server checks before
 ///   decoding it. Defaults to `max_items`. Use it when requests are small but responses large (e.g. a batch query whose
 ///   handler accepts a few hundred hashes but returns many outputs), so a request cannot use the response budget. It

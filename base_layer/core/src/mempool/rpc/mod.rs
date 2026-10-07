@@ -39,17 +39,18 @@ use crate::{
 
 // `max_items` is the decode budget for a method: the most embedded message instances (plus repeated bytes/string
 // elements and packed scalar bytes) its request, response or each stream item may carry (see
-// `tari_comms::decode_budget`). 262_144 covers a max-weight block body or transaction of fully populated (hydrated)
-// inputs plus 1,000 coinbases: ~160k instances on mainnet (~1.6x headroom), ~222k on the 127,795-weight networks
-// (~1.2x); see `proto::decode_budget_tests::per_network`. sync_blocks serves compact inputs (2 instances each), so a
-// synced body has ~7x (mainnet) / ~5.7x headroom; hydrated inputs only reach submit_transaction, which rejects an
-// over-budget request without a ban. 65_536 covers the batched queries and streams. The default is 16_384.
+// `tari_comms::decode_budget`). BODY_MAX_DECODE_ITEMS (262,144) covers a max-weight block body or transaction of fully
+// populated (hydrated) inputs plus 1,000 coinbases: ~160k instances on mainnet (~1.6x headroom), ~222k on the
+// 127,795-weight networks (~1.2x); see `proto::decode_budget_tests::per_network`. sync_blocks serves compact inputs (2
+// instances each), so a synced body has ~7x (mainnet) / ~5.7x headroom; hydrated inputs only reach submit_transaction,
+// which rejects an over-budget request without a ban. 65_536 covers the batched queries and streams. The default is
+// 16_384.
 #[tari_rpc(protocol_name = b"t/mempool/1", server_struct = MempoolRpcServer, client_struct = MempoolRpcClient)]
 pub trait MempoolService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;
 
-    #[rpc(method = 2, max_items = 262_144)]
+    #[rpc(method = 2, max_items = crate::proto::BODY_MAX_DECODE_ITEMS)]
     async fn get_state(&self, request: Request<()>) -> Result<Response<StateResponse>, RpcStatus>;
 
     #[rpc(method = 3)]
@@ -58,7 +59,7 @@ pub trait MempoolService: Send + Sync + 'static {
         request: Request<Signature>,
     ) -> Result<Response<TxStorage>, RpcStatus>;
 
-    #[rpc(method = 4, max_items = 262_144)]
+    #[rpc(method = 4, max_items = crate::proto::BODY_MAX_DECODE_ITEMS)]
     async fn submit_transaction(&self, request: Request<Transaction>) -> Result<Response<TxStorage>, RpcStatus>;
 }
 

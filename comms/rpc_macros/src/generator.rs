@@ -23,7 +23,10 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 
-use crate::{method_info::RpcMethodInfo, options::RpcTraitOptions};
+use crate::{
+    method_info::{ItemBudget, RpcMethodInfo},
+    options::RpcTraitOptions,
+};
 
 pub struct RpcCodeGenerator {
     options: RpcTraitOptions,
@@ -37,19 +40,31 @@ fn dep_mod() -> TokenStream {
     quote!(::tari_comms::protocol::rpc::__macro_reexports)
 }
 
+/// The tokens of a decode budget. A path is checked to be non-zero at compile time, as a literal is when the macro
+/// expands.
+fn item_budget_tokens(budget: &ItemBudget) -> TokenStream {
+    match budget {
+        ItemBudget::Literal(value) => quote!(#value),
+        ItemBudget::Path(path) => quote! {{
+            const _: () = ::std::assert!(#path > 0, "an RPC decode budget must be greater than 0");
+            #path
+        }},
+    }
+}
+
 /// The decode budget for a method's responses and stream items: its `max_items`, or the default.
 fn max_items_tokens(method: &RpcMethodInfo) -> TokenStream {
     let dep_mod = dep_mod();
-    match method.max_items {
-        Some(max_items) => quote!(#max_items),
+    match &method.max_items {
+        Some(max_items) => item_budget_tokens(max_items),
         None => quote!(#dep_mod::DEFAULT_MAX_DECODE_ITEMS),
     }
 }
 
 /// The decode budget for a method's requests: its `max_request_items`, else its `max_items`, else the default.
 fn max_request_items_tokens(method: &RpcMethodInfo) -> TokenStream {
-    match method.max_request_items {
-        Some(max_request_items) => quote!(#max_request_items),
+    match &method.max_request_items {
+        Some(max_request_items) => item_budget_tokens(max_request_items),
         None => max_items_tokens(method),
     }
 }

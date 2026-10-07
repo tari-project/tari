@@ -55,6 +55,9 @@ pub struct Items {
     pub items: Vec<Item>,
 }
 
+/// A budget given as a path rather than a literal
+const MANY_ITEMS: usize = 300_000;
+
 #[tari_rpc(protocol_name = b"/test/decode-budget/1", server_struct = BudgetServer, client_struct = BudgetClient)]
 pub trait Budget: Send + Sync + 'static {
     #[rpc(method = 1)]
@@ -63,7 +66,7 @@ pub trait Budget: Send + Sync + 'static {
     #[rpc(method = 2)]
     async fn take_items(&self, request: Request<Items>) -> Result<Response<()>, RpcStatus>;
 
-    #[rpc(method = 3, max_items = 300_000)]
+    #[rpc(method = 3, max_items = MANY_ITEMS)]
     async fn take_many_items(&self, request: Request<Items>) -> Result<Response<()>, RpcStatus>;
 
     #[rpc(method = 4)]

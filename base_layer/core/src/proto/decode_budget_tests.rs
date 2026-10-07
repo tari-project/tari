@@ -57,7 +57,7 @@ mod max_size_payloads {
 
     /// The decode budget of the methods that carry a block body or transaction (sync_blocks, get_state,
     /// submit_transaction)
-    const BODY_MAX_ITEMS: usize = 262_144;
+    const BODY_MAX_ITEMS: usize = proto::BODY_MAX_DECODE_ITEMS;
 
     // The most of each that fits in a mainnet block (weight 90,000) on its own
     const MAX_INPUTS: usize = 11_242;
@@ -71,13 +71,13 @@ mod max_size_payloads {
 
     /// Fills `bytes` fields: with deterministic pseudo-random data like real hashes, keys and ciphertexts, or entirely
     /// with `0a 00`, which reads as a run of empty embedded messages to anything that enters bytes fields.
-    struct Bytes {
+    pub(super) struct Bytes {
         state: u64,
         fake_messages: bool,
     }
 
     impl Bytes {
-        fn random() -> Self {
+        pub(super) fn random() -> Self {
             Self {
                 state: 0x9e37_79b9_7f4a_7c15,
                 fake_messages: false,
@@ -91,7 +91,7 @@ mod max_size_payloads {
             }
         }
 
-        fn take(&mut self, len: usize) -> Vec<u8> {
+        pub(super) fn take(&mut self, len: usize) -> Vec<u8> {
             if self.fake_messages {
                 return [0x0a, 0x00].repeat(len / 2);
             }
@@ -105,14 +105,14 @@ mod max_size_payloads {
                 .collect()
         }
 
-        fn signature(&mut self) -> Signature {
+        pub(super) fn signature(&mut self) -> Signature {
             Signature {
                 public_nonce: self.take(32),
                 signature: self.take(32),
             }
         }
 
-        fn com_and_pub_signature(&mut self) -> Box<ComAndPubSignature> {
+        pub(super) fn com_and_pub_signature(&mut self) -> Box<ComAndPubSignature> {
             Box::new(ComAndPubSignature {
                 ephemeral_commitment: self.take(32),
                 ephemeral_pubkey: self.take(32),
@@ -157,7 +157,7 @@ mod max_size_payloads {
         }
 
         /// An input with every field set
-        fn input(&mut self) -> TransactionInput {
+        pub(super) fn input(&mut self) -> TransactionInput {
             TransactionInput {
                 features: Some(self.features()),
                 commitment: Some(Commitment { data: self.take(32) }),
@@ -176,7 +176,7 @@ mod max_size_payloads {
         }
 
         /// An output with every field set
-        fn output(&mut self) -> TransactionOutput {
+        pub(super) fn output(&mut self) -> TransactionOutput {
             TransactionOutput {
                 features: Some(self.features()),
                 commitment: Some(Commitment { data: self.take(32) }),
@@ -194,7 +194,7 @@ mod max_size_payloads {
         }
 
         /// A kernel with every field set
-        fn kernel(&mut self) -> TransactionKernel {
+        pub(super) fn kernel(&mut self) -> TransactionKernel {
             TransactionKernel {
                 features: 1,
                 fee: 1_000,
@@ -222,7 +222,7 @@ mod max_size_payloads {
         })
     }
 
-    fn transaction(body: proto::types::AggregateBody) -> proto::types::Transaction {
+    pub(super) fn transaction(body: proto::types::AggregateBody) -> proto::types::Transaction {
         proto::types::Transaction {
             offset: Some(PrivateKey { data: vec![0x22; 32] }),
             body: Some(body),
@@ -395,57 +395,158 @@ mod max_size_payloads {
 
 /// The block-body decode budget must hold on every network, for every consensus epoch.
 mod per_network {
+    use std::collections::BTreeSet;
+
     use tari_common::configuration::Network;
+    use tari_comms::decode_budget::check_decode_budget;
+    use tari_p2p::tari_message::TariMessageType;
     use tari_transaction_components::consensus::ConsensusConstants;
 
-    /// The decode budget of sync_blocks, mempool get_state and submit_transaction
-    const BODY_MAX_ITEMS: usize = 262_144;
-    /// Message instances in a fully populated (hydrated) input: the input, its 9 features messages, commitment and
-    /// two signatures
-    const HYDRATED_INPUT_MESSAGES: u64 = 13;
-    /// A compact input, as sync_blocks serves them: the input and its script signature
-    const COMPACT_INPUT_MESSAGES: u64 = 2;
-    /// A fully populated coinbase output, rounded up
-    const OUTPUT_MESSAGES: u64 = 14;
-    const KERNEL_MESSAGES: u64 = 4;
+    use super::max_size_payloads::{Bytes, transaction};
+    use crate::{proto, test_helpers::create_peer_message};
+
+    const NETWORKS: [Network; 6] = [
+        Network::MainNet,
+        Network::StageNet,
+        Network::NextNet,
+        Network::LocalNet,
+        Network::Igor,
+        Network::Esmeralda,
+    ];
+
+    /// The message instances the walker counts for one element, encoded in an otherwise empty `AggregateBody`
+    fn instances(body: proto::types::AggregateBody) -> u64 {
+        let count =
+            check_decode_budget::<proto::types::AggregateBody>(&prost::Message::encode_to_vec(&body), usize::MAX)
+                .unwrap();
+        count as u64
+    }
+
+    fn body() -> proto::types::AggregateBody {
+        proto::types::AggregateBody::default()
+    }
+
+    /// The most of each element a max-weight block can hold, for one set of consensus constants
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    struct Limits {
+        /// Inputs, after the one kernel and one output a transaction needs
+        inputs: u64,
+        /// Kernels, if the block held nothing else (an upper bound on its kernel excess signatures)
+        kernels: u64,
+        coinbases: u64,
+    }
+
+    fn limits(constants: &ConsensusConstants) -> Limits {
+        let weights = constants.transaction_weight_params().params();
+        let max_weight = constants.max_block_transaction_weight();
+        Limits {
+            inputs: max_weight
+                .saturating_sub(weights.kernel_weight)
+                .saturating_sub(weights.output_weight) /
+                weights.input_weight,
+            kernels: max_weight / weights.kernel_weight,
+            coinbases: constants.max_block_coinbase_count(),
+        }
+    }
+
+    fn all_limits() -> Vec<(Network, ConsensusConstants)> {
+        NETWORKS
+            .into_iter()
+            .flat_map(|network| {
+                ConsensusConstants::for_network(network)
+                    .into_iter()
+                    .map(move |constants| (network, constants))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_messaging_budget_is_the_body_budget() {
+        assert_eq!(proto::MESSAGE_MAX_DECODE_ITEMS, proto::BODY_MAX_DECODE_ITEMS);
+    }
 
     #[test]
     fn a_max_weight_block_fits_the_body_budget_on_every_network() {
-        let networks = [
-            Network::MainNet,
-            Network::StageNet,
-            Network::NextNet,
-            Network::LocalNet,
-            Network::Igor,
-            Network::Esmeralda,
-        ];
-        for network in networks {
-            for constants in ConsensusConstants::for_network(network) {
-                let weights = constants.transaction_weight_params().params();
-                // The rest of the weight goes to inputs, after the one kernel and one output a transaction needs
-                let max_inputs = constants
-                    .max_block_transaction_weight()
-                    .saturating_sub(weights.kernel_weight)
-                    .saturating_sub(weights.output_weight) /
-                    weights.input_weight;
-                let coinbases = constants.max_block_coinbase_count();
-                // The body, the coinbase outputs, the transaction's kernel and the coinbase kernel
-                let fixed = 1 + coinbases * OUTPUT_MESSAGES + 2 * KERNEL_MESSAGES;
-                let hydrated = fixed + max_inputs * HYDRATED_INPUT_MESSAGES;
-                let compact = fixed + max_inputs * COMPACT_INPUT_MESSAGES;
-                println!(
-                    "{network} (from height {}): {max_inputs} inputs; hydrated {hydrated} instances ({:.2}x \
-                     headroom), compact {compact} ({:.2}x)",
-                    constants.effective_from_height(),
-                    BODY_MAX_ITEMS as f64 / hydrated as f64,
-                    BODY_MAX_ITEMS as f64 / compact as f64,
-                );
-                assert!(
-                    hydrated < BODY_MAX_ITEMS as u64,
-                    "{network}: a max-weight block of hydrated inputs is {hydrated} message instances, over the \
-                     {BODY_MAX_ITEMS} decode budget"
-                );
-            }
+        // Measured from fully populated elements, so a proto shape change moves them
+        let mut bytes = Bytes::random();
+        let hydrated_input = instances(proto::types::AggregateBody {
+            inputs: vec![bytes.input()],
+            ..body()
+        });
+        // A compact input, as sync_blocks serves them: the output hash, input data and script signature
+        let compact_input = instances(proto::types::AggregateBody {
+            inputs: vec![proto::types::TransactionInput {
+                output_hash: bytes.take(32),
+                input_data: bytes.take(70),
+                script_signature: Some(bytes.com_and_pub_signature()),
+                version: 1,
+                ..Default::default()
+            }],
+            ..body()
+        });
+        let output = instances(proto::types::AggregateBody {
+            outputs: vec![bytes.output()],
+            ..body()
+        });
+        let kernel = instances(proto::types::AggregateBody {
+            kernels: vec![bytes.kernel()],
+            ..body()
+        });
+        println!(
+            "instances: hydrated input {hydrated_input}, compact input {compact_input}, output {output}, kernel \
+             {kernel}"
+        );
+
+        let budget = proto::BODY_MAX_DECODE_ITEMS as u64;
+        for (network, constants) in all_limits() {
+            let Limits { inputs, coinbases, .. } = limits(&constants);
+            // The body, the coinbase outputs, the transaction's kernel and the coinbase kernel
+            let fixed = 1 + coinbases * output + 2 * kernel;
+            let hydrated = fixed + inputs * hydrated_input;
+            let compact = fixed + inputs * compact_input;
+            println!(
+                "{network} (from height {}): {inputs} inputs; hydrated {hydrated} instances ({:.2}x headroom), \
+                 compact {compact} ({:.2}x)",
+                constants.effective_from_height(),
+                budget as f64 / hydrated as f64,
+                budget as f64 / compact as f64,
+            );
+            assert!(
+                hydrated < budget,
+                "{network}: a max-weight block of hydrated inputs is {hydrated} message instances, over the {budget} \
+                 decode budget"
+            );
+        }
+    }
+
+    /// The largest transaction and `NewBlock` each network allows pass the messaging decode budget
+    #[test]
+    fn max_size_messages_pass_the_messaging_budget_on_every_network() {
+        // Distinct limits only: building a max-size transaction is not free
+        let distinct = all_limits()
+            .iter()
+            .map(|(_, constants)| limits(constants))
+            .collect::<BTreeSet<_>>();
+        for limits in distinct {
+            let mut bytes = Bytes::random();
+            let tx = transaction(proto::types::AggregateBody {
+                inputs: (0..limits.inputs).map(|_| bytes.input()).collect(),
+                outputs: vec![bytes.output()],
+                kernels: vec![bytes.kernel()],
+            });
+            let msg = create_peer_message(TariMessageType::NewTransaction, prost::Message::encode_to_vec(&tx));
+            msg.decode_message_with_max_items::<proto::types::Transaction>(proto::MESSAGE_MAX_DECODE_ITEMS)
+                .unwrap_or_else(|err| panic!("{limits:?}: {err}"));
+
+            let block = proto::core::NewBlock {
+                header: Some(proto::core::BlockHeader::default()),
+                coinbase_kernels: vec![bytes.kernel()],
+                coinbase_outputs: (0..limits.coinbases).map(|_| bytes.output()).collect(),
+                kernel_excess_sigs: (0..limits.kernels).map(|_| bytes.take(32)).collect(),
+            };
+            let msg = create_peer_message(TariMessageType::NewBlock, prost::Message::encode_to_vec(&block));
+            msg.decode_message_with_max_items::<proto::core::NewBlock>(proto::MESSAGE_MAX_DECODE_ITEMS)
+                .unwrap_or_else(|err| panic!("{limits:?}: {err}"));
         }
     }
 }

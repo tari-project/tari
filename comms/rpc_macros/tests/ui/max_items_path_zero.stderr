@@ -1,0 +1,11 @@
+error[E0080]: evaluation panicked: an RPC decode budget must be greater than 0
+  --> tests/ui/max_items_path_zero.rs:11:1
+   |
+11 | #[tari_rpc(protocol_name = b"/test/1", server_struct = TestServer, client_struct = TestClient)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `<TestServer<T> as tari_comms::protocol::rpc::__macro_reexports::Service<tari_comms::protocol::rpc::Request<tari_comms::Bytes>>>::call::{closure#0}::_` failed here
+
+error[E0080]: evaluation panicked: an RPC decode budget must be greater than 0
+  --> tests/ui/max_items_path_zero.rs:11:1
+   |
+11 | #[tari_rpc(protocol_name = b"/test/1", server_struct = TestServer, client_struct = TestClient)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ evaluation of `TestClient::hello::{closure#0}::_` failed here
