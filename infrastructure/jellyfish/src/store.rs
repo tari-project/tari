@@ -22,6 +22,17 @@ pub trait TreeStoreWriter<P> {
 
     /// Marks the given tree part for a (potential) future removal by an arbitrary external pruning
     /// process.
+    ///
+    /// The tree emits stale nodes as [`StaleNodeIndex`](crate::StaleNodeIndex)`{ node_key, stale_since_version }` in
+    /// [`TreeUpdateBatch::stale_node_index_batch`](crate::TreeUpdateBatch::stale_node_index_batch); record each one as
+    /// [`StaleTreeNode::Node(node_key)`](StaleTreeNode::Node); that is also how to prune a version range.
+    /// [`StaleTreeNode::Subtree`] marks a node and everything reachable through its children's version links,
+    /// including nodes that newer roots still share, so it is only safe when no retained root can reach any node in
+    /// the subtree (e.g. dropping a whole tree).
+    ///
+    /// A `StaleNodeIndex` entry may only be deleted once its `stale_since_version` is no newer than the oldest version
+    /// the store still serves; until then an older retained root still references the node. This method does not
+    /// receive the version, so the store must track it.
     fn record_stale_tree_node(&mut self, part: StaleTreeNode) -> Result<(), JmtStorageError>;
 }
 
@@ -50,7 +61,8 @@ impl<P, T: TreeStoreWriter<P>> TreeStoreWriter<P> for &mut T {
 pub enum StaleTreeNode {
     /// A single node to be removed.
     Node(NodeKey),
-    /// An entire subtree of descendants of a specific node (including itself).
+    /// An entire subtree of descendants of a specific node (including itself). Only safe when no retained root can
+    /// reach any node in the subtree; see [`TreeStoreWriter::record_stale_tree_node`].
     Subtree(NodeKey),
 }
 

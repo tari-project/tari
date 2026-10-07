@@ -18,5 +18,9 @@ digest = "0.10"
 thiserror = { workspace = true }
 indexmap = { version = "2.6", features = ["serde"] }
 
+[features]
+# In-memory `TreeStore` for tests and tooling. Not for production use.
+memory-store = []
+
 [dev-dependencies]
 serde_json = { workspace = true }
