@@ -292,8 +292,10 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 /// learn, and it cannot solve for the spend key. Outputs that arrived fully formed in the payload also have their
 /// sender offset keys replaced inside the signer, and those are not returned either; the rule does not rely on them.
 ///
-/// This only addresses recovery through the script offset. It does not, on its own, make the signed result safe to
-/// hand to a host that is trying to extract the spend key by other means.
+/// This only addresses recovery through the script offset. It does not make it safe to treat the online wallet as
+/// untrusted in general: anyone holding the view key can produce a payload that passes the integrity check, so the
+/// operator must still check every recipient, amount and "Other outputs" entry in the
+/// [`crate::offline_signing::PayloadSummary`] before approving.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedTransaction {
     pub transaction: Transaction,
