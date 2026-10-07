@@ -7869,7 +7869,7 @@ dependencies = [
  "proc-macro2",
  "prost 0.13.5",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.118",
  "tari_comms",
  "tari_test_utils",
  "tokio",
