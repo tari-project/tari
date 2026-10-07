@@ -73,11 +73,15 @@
 //! 2. **Malicious leader re-run.** A leader sends a changed step 3 file ("please redo step 4") and the party re-signs
 //!    under the same step 2 nonces, with identical screens. The host refuses to run step 4 when its output file for the
 //!    session exists; the device record refuses it within one application run.
-//! 3. **Session file tamper.** The step 2 self file is plain JSON: an attacker with write access can point two
-//!    signatures at one nonce, at an earlier session's nonce, or at another output's script key. Step 4 validates the
-//!    file's shape before signing and checks every signature's public nonce against the nonce step 2 published,
-//!    aborting before anything is written or sent - but after the device has signed, which is why the device record
-//!    matters.
+//! 3. **Session file tamper.** The step 2 self file is plain JSON and unauthenticated: an attacker with write access
+//!    can point two signatures at one nonce, at an earlier session's nonce, or at another output's script key. Step 4
+//!    validates the file's shape before signing (distinct nonce ids, the expected key shapes), which refuses the first
+//!    and last. It also compares each signature's public nonce with the public nonce stored in the same file - but
+//!    whoever can edit the nonce ids can edit those too, and the public key of any `Random` index can be read from the
+//!    device without a prompt, so that comparison only catches an edit that left the stored public nonces alone (and
+//!    host/device drift). Within one application run the device's used-nonce record is what blocks a redirect to a
+//!    nonce already used; a redirect to a nonce an *earlier* run used is blocked only by the follow-up - an NVM-backed
+//!    record, or device-issued handles. A MAC over the self file is a further follow-up.
 //! 4. **Pre-upgrade alias.** An application before 6.1.1-pre.0 derived nonce index `j` as `j mod 2^32`; this one
 //!    derives an index below 2^32 along that same path. One signature from an aborted pre-upgrade session plus one new
 //!    one at `j mod 2^32` gives up the key, and the record knows nothing of the old one. Nonce indexes below 2^32 are

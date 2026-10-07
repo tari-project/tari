@@ -78,9 +78,12 @@ pub struct Step2OutputsForSelf {
     /// `pre_mine_script_key - sender_offset_key`, computed when the key manager generated the sender offset key.
     script_offset: PrivateKey,
     /// The public nonces step 2 published to the leader for `script_nonce_key_id` and `sender_offset_nonce_key_id`.
-    /// Step 4 checks each legacy signature's public nonce against them, which catches a self file whose nonce ids
-    /// were changed after step 2. `None` only in a file written by a build before they were stored; step 4 refuses
-    /// such a file ("redo step 2").
+    /// Step 4 checks each legacy signature's public nonce against them. This file is unauthenticated, so that only
+    /// catches an edit to the nonce ids that left these alone (and host/device drift): whoever can edit one can edit
+    /// both, and any `Random` public key can be read from the device without a prompt. Within one app run the
+    /// device's used-nonce record is what blocks a redirect to a used nonce; across runs only the NVM-backed record /
+    /// device-issued handles follow-up does. `None` only in a file written by a build before they were stored; step
+    /// 4 refuses such a file ("redo step 2").
     #[serde(default)]
     public_script_nonce_key: Option<CompressedPublicKey>,
     #[serde(default)]
