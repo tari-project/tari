@@ -39,57 +39,7 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
     let module = quote!(::tari_comms::decode_budget);
 
     let body = match &input.data {
-        Data::Struct(data) => {
-            let mut arms = Vec::new();
-            let mut map_tags = Vec::new();
-            for field in &data.fields {
-                match field_kind(&field.attrs)? {
-                    FieldKind::Message(tag) => {
-                        let ty = inner_type(&field.ty);
-                        arms.push(quote!(#tag => budget.charge_message::<#ty>(contents),));
-                    },
-                    FieldKind::MessageMap(tag) => {
-                        let ty = map_value_type(&field.ty)?;
-                        map_tags.push(tag);
-                        arms.push(quote!(#tag => budget.charge_map_entry::<#ty>(contents),));
-                    },
-                    FieldKind::ScalarMap(tag) => {
-                        map_tags.push(tag);
-                        arms.push(quote!(#tag => budget.charge_items(1),));
-                    },
-                    FieldKind::Oneof(tags) => {
-                        let ty = inner_type(&field.ty);
-                        arms.push(quote! {
-                            #(#tags)|* => <#ty as #module::DecodeBudget>::count_oneof_field(tag, contents, budget),
-                        });
-                    },
-                    FieldKind::RepeatedBytes(tag) => {
-                        arms.push(quote!(#tag => budget.charge_items(1),));
-                    },
-                    FieldKind::RepeatedScalar(tag) => {
-                        arms.push(quote!(#tag => budget.charge_items(contents.len()),));
-                    },
-                    FieldKind::Other => {},
-                }
-            }
-            if arms.is_empty() {
-                no_embedded_messages(&module)
-            } else {
-                quote! {
-                    // Not every arm uses `contents`
-                    #[allow(unused_variables)]
-                    fn count_messages(
-                        buf: &[u8],
-                        budget: &mut #module::Budget,
-                    ) -> ::std::result::Result<(), #module::DecodeBudgetExceeded> {
-                        #module::walk_fields(buf, budget, &[#(#map_tags),*], |tag, contents, budget| match tag {
-                            #(#arms)*
-                            _ => ::std::result::Result::Ok(()),
-                        })
-                    }
-                }
-            }
-        },
+        Data::Struct(data) => struct_count_messages(data, &module)?,
         Data::Enum(data) => {
             // A oneof: each variant holds one field. A plain protobuf enum has unit variants and no attributes that
             // name a message, so it counts nothing.
@@ -141,6 +91,67 @@ fn expand_inner(input: &DeriveInput) -> syn::Result<TokenStream> {
     })
 }
 
+/// The `count_messages` of a prost message struct
+fn struct_count_messages(data: &syn::DataStruct, module: &TokenStream) -> syn::Result<TokenStream> {
+    let mut arms = Vec::new();
+    let mut map_tags = Vec::new();
+    let mut repeated_scalar_tags = Vec::new();
+    for field in &data.fields {
+        match field_kind(&field.attrs)? {
+            FieldKind::Message(tag) => {
+                let ty = inner_type(&field.ty);
+                arms.push(quote!(#tag => budget.charge_message::<#ty>(contents),));
+            },
+            FieldKind::MessageMap(tag) => {
+                let ty = map_value_type(&field.ty)?;
+                map_tags.push(tag);
+                arms.push(quote!(#tag => budget.charge_map_entry::<#ty>(contents),));
+            },
+            FieldKind::ScalarMap(tag) => {
+                map_tags.push(tag);
+                arms.push(quote!(#tag => budget.charge_items(1),));
+            },
+            FieldKind::Oneof(tags) => {
+                let ty = inner_type(&field.ty);
+                arms.push(quote! {
+                    #(#tags)|* => <#ty as #module::DecodeBudget>::count_oneof_field(tag, contents, budget),
+                });
+            },
+            FieldKind::RepeatedBytes(tag) => {
+                arms.push(quote!(#tag => budget.charge_items(1),));
+            },
+            FieldKind::RepeatedScalar(tag) => {
+                // Packed: charged by byte length here. Unpacked elements are charged by `walk_fields`.
+                repeated_scalar_tags.push(tag);
+                arms.push(quote!(#tag => budget.charge_items(contents.len()),));
+            },
+            FieldKind::Other => {},
+        }
+    }
+    if arms.is_empty() {
+        return Ok(no_embedded_messages(module));
+    }
+    Ok(quote! {
+        // Not every arm uses `contents`
+        #[allow(unused_variables)]
+        fn count_messages(
+            buf: &[u8],
+            budget: &mut #module::Budget,
+        ) -> ::std::result::Result<(), #module::DecodeBudgetExceeded> {
+            #module::walk_fields(
+                buf,
+                budget,
+                &[#(#map_tags),*],
+                &[#(#repeated_scalar_tags),*],
+                |tag, contents, budget| match tag {
+                    #(#arms)*
+                    _ => ::std::result::Result::Ok(()),
+                },
+            )
+        }
+    })
+}
+
 /// A `count_messages` that counts nothing, for types without embedded messages
 fn no_embedded_messages(module: &TokenStream) -> TokenStream {
     quote! {
@@ -187,7 +198,9 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
                     _,
                 ) => is_scalar = true,
                 ("oneof", _) => is_oneof = true,
-                ("map", Some(syn::Lit::Str(spec))) => {
+                // prost-build emits `map` for a `HashMap` and `btree_map` for a `BTreeMap`; `hash_map` is the
+                // explicit spelling of `map`
+                ("map" | "btree_map" | "hash_map", Some(syn::Lit::Str(spec))) => {
                     is_map = true;
                     map_of_messages = spec.value().split(',').nth(1).map(str::trim) == Some("message");
                 },

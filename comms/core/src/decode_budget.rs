@@ -11,10 +11,11 @@
 //! the message schema: `#[derive(DecodeBudget)]` (from `tari_comms_rpc_macros`) generates, for each prost type, a
 //! walker that charges one item for every length-delimited field whose tag is a message-typed field and descends into
 //! it with that field's own walker. Each element of a `repeated bytes`/`repeated string` field is also charged one item
-//! (it is a separate `Vec`/`String` once decoded) and a packed repeated scalar field is charged its byte length (an
-//! upper bound on its element count). The contents of `bytes`, `string`, packed and unknown fields are never entered,
-//! so attacker-chosen bytes (ciphertexts, script data) are never mistaken for messages. Every tari protobuf type gets
-//! the derive through `tari_common::build::ProtobufCompiler`.
+//! (it is a separate `Vec`/`String` once decoded), a packed repeated scalar field is charged its byte length (an
+//! upper bound on its element count) and each unpacked element of a repeated scalar field is charged one item. The
+//! contents of `bytes`, `string`, packed and unknown fields are never entered, so attacker-chosen bytes (ciphertexts,
+//! script data) are never mistaken for messages. Every tari protobuf type gets the derive through
+//! `tari_common::build::ProtobufCompiler`.
 //!
 //! Unknown groups are skipped the way prost skips them, so they cannot hide what follows. Malformed wire data (an
 //! invalid wire type, a truncated varint, a length running past the end, an unterminated group) simply stops the count:
@@ -167,14 +168,29 @@ where T: prost::Message + Default + DecodeBudget {
 /// groups, as prost does). Stops (with `Ok`) at the first malformed field.
 pub fn walk_len_fields<F>(buf: &[u8], budget: &mut Budget, f: F) -> Result<(), DecodeBudgetExceeded>
 where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
-    walk_fields(buf, budget, &[], f)
+    walk_fields(buf, budget, &[], &[], f)
 }
 
-/// Like [walk_len_fields], for a message with map fields under `map_tags`. prost decodes a map field without checking
-/// its wire type: whatever the wire type, it reads a length and a map entry. So a field under a map tag is handed to
-/// `f` as length-delimited whatever its wire type says, which keeps the walk in step with prost.
-pub fn walk_fields<F>(buf: &[u8], budget: &mut Budget, map_tags: &[u32], mut f: F) -> Result<(), DecodeBudgetExceeded>
-where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
+/// Like [walk_len_fields], for a message with map fields under `map_tags` and repeated scalar fields under
+/// `repeated_scalar_tags`.
+///
+/// prost decodes a map field without checking its wire type: whatever the wire type, it reads a length and a map entry.
+/// So a field under a map tag is handed to `f` as length-delimited whatever its wire type says, which keeps the walk in
+/// step with prost.
+///
+/// prost accepts a repeated scalar field both packed (one length-delimited occurrence, handed to `f`, which charges its
+/// byte length) and unpacked (one varint, 32-bit or 64-bit occurrence per element). Each unpacked occurrence under a
+/// repeated scalar tag is charged one item here, so unpacking a list does not get it past the budget.
+pub fn walk_fields<F>(
+    buf: &[u8],
+    budget: &mut Budget,
+    map_tags: &[u32],
+    repeated_scalar_tags: &[u32],
+    mut f: F,
+) -> Result<(), DecodeBudgetExceeded>
+where
+    F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded>,
+{
     let mut pos = 0usize;
     while pos < buf.len() {
         let Some(key) = read_varint(buf, &mut pos) else {
@@ -192,6 +208,10 @@ where F: FnMut(u32, &[u8], &mut Budget) -> Result<(), DecodeBudgetExceeded> {
             return Ok(());
         }
         let wire_type = if map_tags.contains(&tag) { 2 } else { wire_type };
+        // An unpacked element of a repeated scalar field (wire types VARINT, I64 and I32)
+        if matches!(wire_type, 0 | 1 | 5) && repeated_scalar_tags.contains(&tag) {
+            budget.charge_items(1)?;
+        }
         let skip = match wire_type {
             // VARINT
             0 => {
@@ -297,7 +317,7 @@ fn read_varint(buf: &[u8], pos: &mut usize) -> Option<u64> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     use prost::Message;
     use tari_comms_rpc_macros::DecodeBudget;
@@ -350,6 +370,10 @@ mod test {
         names: Vec<String>,
         #[prost(map = "int32, bytes", tag = "12")]
         blobs: HashMap<i32, Vec<u8>>,
+        #[prost(fixed32, repeated, tag = "13")]
+        fixed: Vec<u32>,
+        #[prost(btree_map = "string, message", tag = "14")]
+        tree: BTreeMap<String, Leaf>,
     }
 
     /// A recursive message type
@@ -401,10 +425,14 @@ mod test {
             names: vec![String::from_utf8(fake_messages(64)).unwrap(); 2],
             // One per entry, values not entered
             blobs: [(1, fake_messages(64)), (2, fake_messages(64))].into_iter().collect(),
+            // Packed: four bytes each, charged by byte length
+            fixed: vec![1; 10],
+            // 1 entry + 1 value
+            tree: [("t".to_string(), leaf())].into_iter().collect(),
         };
         assert_eq!(
             count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
-            9 + 5 + 6 + 4 + 100 + 3 + 2 + 2
+            9 + 5 + 6 + 4 + 100 + 3 + 2 + 2 + 40 + 2
         );
 
         let boxed_variant = Outer {
@@ -548,6 +576,78 @@ mod test {
             ..Default::default()
         };
         assert_eq!(count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(), 1_000);
+    }
+
+    /// prost accepts a repeated scalar field unpacked (one varint or fixed-width occurrence per element) as well as
+    /// packed; each unpacked element is charged one item
+    #[test]
+    fn unpacked_repeated_scalars_are_charged_one_per_element() {
+        use prost::encoding::{WireType, encode_key, encode_varint};
+
+        let mut bytes = Vec::new();
+        // 100 unpacked `numbers` (tag 9, varint) and 50 unpacked `fixed` (tag 13, 32-bit)
+        for _ in 0..100 {
+            encode_key(9, WireType::Varint, &mut bytes);
+            encode_varint(7, &mut bytes);
+        }
+        for _ in 0..50 {
+            encode_key(13, WireType::ThirtyTwoBit, &mut bytes);
+            bytes.extend_from_slice(&7u32.to_le_bytes());
+        }
+        // Then one packed `numbers` occurrence of 10 one-byte elements, charged by byte length
+        bytes.extend_from_slice(&len_field(9, &[7u8; 10]));
+
+        let decoded = Outer::decode(bytes.as_slice()).unwrap();
+        assert_eq!(decoded.numbers.len(), 110);
+        assert_eq!(decoded.fixed.len(), 50);
+        assert_eq!(
+            check_decode_budget::<Outer>(&bytes, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
+            160
+        );
+
+        // A flood of unpacked elements is a flood
+        let mut element = Vec::new();
+        encode_key(9, WireType::Varint, &mut element);
+        encode_varint(0, &mut element);
+        let flood = element.repeat(FLOOD_ELEMENTS);
+        assert_eq!(
+            Outer::decode(flood.get(..2 * 1_000).unwrap()).unwrap().numbers.len(),
+            1_000
+        );
+        check_decode_budget::<Outer>(&flood, DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
+    }
+
+    /// prost-build emits `btree_map` for a `BTreeMap` field: its entries are charged, and read whatever their wire
+    /// type, like those of a `map`
+    #[test]
+    fn a_btree_map_field_is_charged_like_a_map() {
+        use prost::encoding::{WireType, encode_key, encode_varint};
+
+        let msg = Outer {
+            tree: [("a".to_string(), leaf()), ("b".to_string(), leaf())]
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        };
+        // 2 entries + 2 values
+        assert_eq!(count::<Outer>(&msg, DEFAULT_MAX_DECODE_ITEMS).unwrap(), 4);
+
+        let mut entry = len_field(1, b"a");
+        entry.extend_from_slice(&len_field(2, &leaf().encode_to_vec()));
+        let mut bytes = Vec::new();
+        encode_key(14, WireType::Varint, &mut bytes);
+        encode_varint(entry.len() as u64, &mut bytes);
+        bytes.extend_from_slice(&entry);
+        bytes.extend_from_slice(&empty_elements(1, 10));
+        let decoded = Outer::decode(bytes.as_slice()).unwrap();
+        assert_eq!(decoded.tree.len(), 1);
+        assert_eq!(decoded.items.len(), 10);
+        assert_eq!(
+            check_decode_budget::<Outer>(&bytes, DEFAULT_MAX_DECODE_ITEMS).unwrap(),
+            12
+        );
+
+        check_decode_budget::<Outer>(&len_field(14, &[]).repeat(FLOOD_ELEMENTS), DEFAULT_MAX_DECODE_ITEMS).unwrap_err();
     }
 
     /// An unknown group, which prost skips before carrying on
