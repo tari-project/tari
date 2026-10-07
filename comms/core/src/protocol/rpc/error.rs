@@ -102,6 +102,11 @@ impl RpcError {
             RpcError::DecodeError(_) |
             RpcError::RemotePeerExceededMaxChunkCount { .. } |
             RpcError::HandshakeError(RpcHandshakeError::DecodeError(_)) |
+            // On the client, an oversized handshake reply: an honest server's reply is a few bytes, never over the
+            // 1 KiB limit. (Before the limit, an oversized malformed reply was a server-caused `DecodeError`.) The
+            // server-side check returns the same variant, but the server only logs handshake errors, so that one
+            // never reaches this function.
+            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { .. }) |
             RpcError::HandshakeError(RpcHandshakeError::ServerClosedRequest) |
             RpcError::HandshakeError(RpcHandshakeError::Rejected(_)) |
             RpcError::HandshakeError(RpcHandshakeError::TimedOut) |
@@ -126,8 +131,6 @@ impl RpcError {
             RpcError::HandshakeError(RpcHandshakeError::Io(_)) |
             RpcError::HandshakeError(RpcHandshakeError::ClientNoSupportedVersion) |
             RpcError::HandshakeError(RpcHandshakeError::ClientClosed) |
-            // An oversized handshake frame is rejected before decoding; this adds no ban where there was none
-            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { .. }) |
             RpcError::UnknownError(_) => false,
         }
     }

@@ -74,6 +74,8 @@ async fn the_client_rejects_an_oversized_handshake_reply() {
         .await
         .unwrap_err();
     unpack_enum!(RpcHandshakeError::FrameTooLarge { .. } = err);
+    // An honest server never sends an oversized reply, so the client blames the server for it
+    assert!(crate::protocol::rpc::RpcError::from(err).is_caused_by_server());
 }
 
 #[tokio::test]
