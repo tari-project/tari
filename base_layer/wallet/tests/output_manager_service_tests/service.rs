@@ -2588,9 +2588,10 @@ async fn spend_backup_pre_mine_utxo_fee_estimate_counts_the_output_memo() {
         .await;
 }
 
-/// Covers the `PrepareWithdrawMultisigTransaction` estimate in the transaction service, which spends a whole
-/// multisig input to a single recipient with no change output. Its output memo is the recipient address attached
-/// to an empty payment id, again padded to the 130 byte `AddressAndData` minimum.
+/// Covers the `PrepareWithdrawMultisigTransaction` estimate in the transaction service: the fee for a multisig input
+/// spent to a single recipient before a change output is added, which the handler then adds the change output's fee
+/// to. Its output memo is the recipient address attached to an empty payment id, again padded to the 130 byte
+/// `AddressAndData` minimum.
 ///
 /// The path needs collected multisig signatures over a real UTXO, so as above this exercises the production
 /// estimate and memo constructor it uses against a real transaction of the same shape.

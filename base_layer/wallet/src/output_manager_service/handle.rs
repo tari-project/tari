@@ -32,6 +32,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
+    transaction_builder::PendingOutput,
     transaction_components::{
         MemoField,
         OutputFeatures,
@@ -104,6 +105,9 @@ pub enum OutputManagerRequest {
         script: TariScript,
         covenant: Covenant,
         memo: MemoField,
+        /// Set for a payload that will be signed offline: the outputs the signer will declare to its reservation.
+        /// The request is refused, before any input is encumbered, if the transaction would carry no change output.
+        required_change: Option<Vec<PendingOutput>>,
     },
     GetTransactionBuilderRangeLimitedCoinJoin {
         tx_id: TxId,
@@ -633,6 +637,47 @@ where KM: LegacyTransactionKeyManagerInterface
                 script,
                 covenant,
                 memo: memo_field,
+                required_change: None,
+            })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetTransactionBuilder({e})"))??
+        {
+            OutputManagerResponse::TransactionBuilderToSend(stp) => Ok(*stp),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::GetTransactionBuilder".to_string(),
+            )),
+        }
+    }
+
+    /// Like [`Self::prepare_transaction_to_send`], for a payload that will be signed offline.
+    ///
+    /// The offline signer refuses to sign a transaction without a change output, so this refuses one too, with
+    /// `TransactionBuilderError::OfflineTransactionRequiresChange`, before any input is encumbered. `pending` is what
+    /// the signer will declare to its reservation for the recipient output.
+    pub async fn prepare_offline_transaction_to_send(
+        &mut self,
+        tx_id: TxId,
+        amount: MicroMinotari,
+        utxo_selection: UtxoSelectionCriteria,
+        output_features: OutputFeatures,
+        fee_per_gram: MicroMinotari,
+        script: TariScript,
+        covenant: Covenant,
+        memo_field: MemoField,
+        pending: Vec<PendingOutput>,
+    ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetTransactionBuilder {
+                tx_id,
+                amount,
+                selection_criteria: utxo_selection,
+                output_features: Box::new(output_features),
+                fee_per_gram,
+                script,
+                covenant,
+                memo: memo_field,
+                required_change: Some(pending),
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::GetTransactionBuilder({e})"))??

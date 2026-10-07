@@ -46,6 +46,10 @@ pub struct OutputManagerServiceConfig {
     pub autoignore_onesided_utxos: bool,
     /// The number of seconds that have to pass for the wallet to run revalidation of invalid UTXOs on startup.
     pub num_of_seconds_to_revalidate_invalid_utxos: u64,
+    /// When the inputs chosen for a send leave too little over to pay for a change output, add another input so the
+    /// transaction has one. Only standard selections are affected, never coin-control ones. Payloads prepared for the
+    /// offline signer behave as if this were on, whatever its value, because the offline signer refuses to sign a
+    /// transaction without change; a coin-control offline prepare that would leave no change is refused instead.
     pub force_change_output: bool,
 }
 

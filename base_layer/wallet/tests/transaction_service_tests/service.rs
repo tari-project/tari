@@ -34,6 +34,7 @@ use minotari_wallet::{
         OutputManagerServiceInitializer,
         UtxoSelectionCriteria,
         config::OutputManagerServiceConfig,
+        error::OutputManagerError,
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
@@ -99,10 +100,14 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::{ConfidentialOutputHasher, TariKeyId, TransactionKeyManagerInterface},
-    offline_signing::prepare_withdraw_multisig_transaction,
+    offline_signing::{
+        PaymentRecipient,
+        one_sided_signer::withdraw_pending_output,
+        prepare_withdraw_multisig_transaction,
+    },
     rpc::models::TipInfoResponse,
     tari_amount::*,
-    transaction_builder::TransactionBuilder,
+    transaction_builder::{TransactionBuilder, TransactionBuilderError},
     transaction_components::{
         EncryptedData,
         KernelBuilder,
@@ -280,6 +285,23 @@ async fn setup_transaction_service_no_comms(
     db_connection: WalletDbConnection,
     config: Option<TransactionServiceConfig>,
 ) -> TransactionServiceNoCommsInterface {
+    setup_transaction_service_no_comms_with_oms_config(
+        factories,
+        db_connection,
+        config,
+        OutputManagerServiceConfig::default(),
+    )
+    .await
+}
+
+/// As [`setup_transaction_service_no_comms`], with the output manager configured by `oms_config`.
+#[allow(clippy::type_complexity)]
+async fn setup_transaction_service_no_comms_with_oms_config(
+    factories: CryptoFactories,
+    db_connection: WalletDbConnection,
+    config: Option<TransactionServiceConfig>,
+    oms_config: OutputManagerServiceConfig,
+) -> TransactionServiceNoCommsInterface {
     let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
 
     let (output_manager_service_event_publisher, _) = broadcast::channel(200);
@@ -334,7 +356,7 @@ async fn setup_transaction_service_no_comms(
 
     let wallet_connectivity_service_mock = WalletConnectivityHandle::new(mock_http);
     let output_manager_service = OutputManagerService::new(
-        OutputManagerServiceConfig::default(),
+        oms_config,
         oms_request_receiver,
         oms_db.clone(),
         output_manager_service_event_publisher.clone(),
@@ -2762,10 +2784,26 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         &measured_memo,
     )
     .unwrap();
-    let fee = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size);
+    // The offline signer only signs a transaction that leaves change, so leave one microminotari of it, as the
+    // wallet's `PrepareWithdrawMultisigTransaction` handler does, measuring the change output with the memo and the
+    // recipient declared the way the signer declares them.
+    let mut probe = tx_builder.clone();
+    probe.with_memo(measured_memo.clone());
+    let measured_recipient = PaymentRecipient {
+        amount: MicroMinotari::zero(),
+        output_features: OutputFeatures::default(),
+        address: own_address.clone(),
+        payment_id: measured_memo.clone(),
+    };
+    let change_fee = probe
+        .get_change_output_fee(&[
+            withdraw_pending_output(&consensus_constants, &measured_recipient, &measured_memo).unwrap(),
+        ])
+        .unwrap();
+    let fee = fee_calculator.calculate(fee_per_gram, 1, 1, 1, features_and_scripts_byte_size) + change_fee;
     let output_payment_id =
         addressed_output_memo(MemoField::default(), own_address.clone(), fee, TxType::PaymentToOther).unwrap();
-    let total_amount = input_amount.checked_sub(fee).unwrap();
+    let total_amount = input_amount - fee - MicroMinotari(1);
 
     let prepared = prepare_withdraw_multisig_transaction(
         key_manager,
@@ -2786,10 +2824,596 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
         .sign_one_sided_withdraw_multisig_transaction(prepared)
         .await;
 
-    assert!(
-        result.is_ok(),
-        "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own commitment_mask_key_id, \
-         got: {:?}",
-        result.err()
+    let signed = result.unwrap_or_else(|e| {
+        panic!(
+            "expected SignOneSidedWithdrawMultisigTransaction to succeed using the output's own \
+             commitment_mask_key_id, got: {e:?}"
+        )
+    });
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
     );
+}
+
+/// Preparing a payload for the offline signer that would leave no change output has to be refused online too, with
+/// the error the signer would give, and before any input is encumbered - the signer would only refuse it after the
+/// operator had approved it, with the inputs left locked as pending.
+#[tokio::test]
+async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_change() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let fee_per_gram = MicroMinotari(1);
+
+    // Walk the amount down from the whole input until the selection stops refusing it for want of funds. The first
+    // amount it accepts leaves less than a change output costs, so it must be refused for want of change.
+    let mut amount = input_value;
+    let (remainder, change_fee) = loop {
+        let result = alice_ts_interface
+            .transaction_service_handle
+            .prepare_one_sided_transaction_for_signing(
+                bob_address.clone(),
+                amount,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                fee_per_gram,
+                MemoField::new_empty(),
+            )
+            .await;
+        match result {
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                amount -= MicroMinotari(1);
+            },
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::TransactionBuilderError(
+                TransactionBuilderError::OfflineTransactionRequiresChange { remainder, change_fee },
+            ))) => break (remainder, change_fee),
+            other => panic!("expected the prepare to be refused for want of change, got {other:?}"),
+        }
+    };
+    assert!(remainder <= change_fee);
+
+    // Nothing was locked: the input is still available and nothing is pending.
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+
+    // Leaving one microminotari more than the change output costs prepares, and the signer agrees: it signs with that
+    // microminotari as change.
+    let amount = amount + remainder - change_fee - MicroMinotari(1);
+    let prepared = alice_ts_interface
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            fee_per_gram,
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    let signed = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_transaction(prepared)
+        .await
+        .unwrap();
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
+    );
+}
+
+/// A payload for the offline signer seeks change even when `force_change_output` is off: when the selection lands on
+/// an exact match and the wallet has a spare output, it adds that output rather than leaving the signer nothing to
+/// put change on. Without the spare output the same payment is refused, as above.
+#[tokio::test]
+async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let oms_config = OutputManagerServiceConfig {
+        force_change_output: false,
+        ..Default::default()
+    };
+    let mut alice_ts_interface =
+        setup_transaction_service_no_comms_with_oms_config(factories, connection, None, oms_config).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let fee_per_gram = MicroMinotari(1);
+
+    // Find an amount the single input pays for exactly, with nothing left for change.
+    let mut amount = input_value;
+    loop {
+        let result = alice_ts_interface
+            .transaction_service_handle
+            .prepare_one_sided_transaction_for_signing(
+                bob_address.clone(),
+                amount,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                fee_per_gram,
+                MemoField::new_empty(),
+            )
+            .await;
+        match result {
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                amount -= MicroMinotari(1);
+            },
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::TransactionBuilderError(
+                TransactionBuilderError::OfflineTransactionRequiresChange { .. },
+            ))) => break,
+            other => panic!("expected the prepare to be refused for want of change, got {other:?}"),
+        }
+    }
+
+    // A spare output, too small to pay for the amount on its own, so the exact match is still the selection's first
+    // choice.
+    let spare_value = MicroMinotari(100_000);
+    let spare = make_input(
+        &mut rand::rng(),
+        spare_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(spare.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(spare.output_hash(), true)])
+        .unwrap();
+
+    let prepared = alice_ts_interface
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            fee_per_gram,
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.info.inputs.len(), 2, "the spare output should have been added");
+    let signed = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_transaction(prepared)
+        .await
+        .unwrap();
+    assert!(signed.signed_transaction.change_output.is_some());
+}
+
+/// As [`prepare_one_sided_transaction_for_signing_refuses_a_payload_without_change`], for the multisig deposit: a
+/// deposit that would leave no change is refused online, before any input is encumbered, and one that leaves a
+/// microminotari more than the change output costs prepares and signs with that microminotari as change.
+#[tokio::test]
+async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let charlie_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let party_number = 2;
+    let public_keys = vec![
+        charlie_key_manager.get_spend_key().pub_key,
+        alice_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+    ];
+
+    // Walk the amount down from the whole input until the selection stops refusing it for want of funds. The first
+    // amount it accepts leaves less than a change output costs, so it must be refused for want of change.
+    let mut amount = input_value;
+    let (remainder, change_fee) = loop {
+        let result = alice_ts_interface
+            .transaction_service_handle
+            .prepare_deposit_multisig_transaction(amount, party_number, public_keys.clone(), bob_address.clone())
+            .await;
+        match result {
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                amount -= MicroMinotari(1);
+            },
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::TransactionBuilderError(
+                TransactionBuilderError::OfflineTransactionRequiresChange { remainder, change_fee },
+            ))) => break (remainder, change_fee),
+            other => panic!("expected the deposit to be refused for want of change, got {other:?}"),
+        }
+    };
+    assert!(remainder <= change_fee);
+
+    // Nothing was locked: the input is still available and nothing is pending.
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+
+    // Leaving one microminotari more than the change output costs prepares, and the signer agrees: it signs with that
+    // microminotari as change.
+    let amount = amount + remainder - change_fee - MicroMinotari(1);
+    let prepared = alice_ts_interface
+        .transaction_service_handle
+        .prepare_deposit_multisig_transaction(amount, party_number, public_keys, bob_address)
+        .await
+        .unwrap();
+    let signed = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_deposit_multisig_transaction(prepared)
+        .await
+        .unwrap();
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
+    );
+}
+
+/// A payment id the recipient's memo can carry but the change memo cannot means no change output can be built. The
+/// online prepare must refuse it before any input is locked, rather than leave the signer to fail after approval.
+#[tokio::test]
+async fn prepare_one_sided_transaction_for_signing_refuses_a_payment_id_the_change_memo_cannot_carry() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    let result = alice_ts_interface
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            MicroMinotari(100_000),
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari(1),
+            MemoField::new_open_from_string(&"x".repeat(200), TxType::PaymentToOther).unwrap(),
+        )
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::TransactionBuilderError(TransactionBuilderError::InvalidMemo(_))
+            ))
+        ),
+        "expected the prepare to be refused for the change memo, got {result:?}"
+    );
+
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// The builder makes change once the surplus exceeds the change output's fee, but branch-and-bound only reports
+/// change once the surplus also pays for another input. A payload for the offline signer whose surplus falls between
+/// the two already has change, so no spare input may be added to it.
+#[tokio::test]
+async fn prepare_one_sided_transaction_for_signing_adds_no_input_when_the_builder_finds_change() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let fee_per_gram = MicroMinotari(1);
+
+    // Find the amount the single input pays for exactly, as above.
+    let mut amount = input_value;
+    let (remainder, change_fee) = loop {
+        let result = alice_ts_interface
+            .transaction_service_handle
+            .prepare_one_sided_transaction_for_signing(
+                bob_address.clone(),
+                amount,
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                fee_per_gram,
+                MemoField::new_empty(),
+            )
+            .await;
+        match result {
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::NotEnoughFunds)) => {
+                amount -= MicroMinotari(1);
+            },
+            Err(TransactionServiceError::OutputManagerError(OutputManagerError::TransactionBuilderError(
+                TransactionBuilderError::OfflineTransactionRequiresChange { remainder, change_fee },
+            ))) => break (remainder, change_fee),
+            other => panic!("expected the prepare to be refused for want of change, got {other:?}"),
+        }
+    };
+
+    // A spare output the selection could add, as in the forced-change test.
+    let spare = make_input(
+        &mut rand::rng(),
+        MicroMinotari(100_000),
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(spare.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(spare.output_hash(), true)])
+        .unwrap();
+
+    // One microminotari more than the change output costs: the builder makes change, but the surplus is far too
+    // small to pay for another input as well.
+    let amount = amount + remainder - change_fee - MicroMinotari(1);
+    let prepared = alice_ts_interface
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            fee_per_gram,
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(prepared.info.inputs.len(), 1, "no spare input should have been added");
+    let signed = alice_ts_interface
+        .transaction_service_handle
+        .sign_one_sided_transaction(prepared)
+        .await
+        .unwrap();
+    assert_eq!(
+        signed.signed_transaction.change_output.map(|o| o.value()),
+        Some(MicroMinotari(1))
+    );
+}
+
+/// The offline signer refuses a transaction whose fee exceeds the amount it sends, so the online prepare has to
+/// refuse it too, with the same error and before any input is locked, rather than leave it to fail after approval.
+#[tokio::test]
+async fn prepare_one_sided_transaction_for_signing_refuses_an_amount_below_the_fee() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    // No transaction pays a fee of a single microminotari, so this amount is below any fee.
+    let result = alice_ts_interface
+        .transaction_service_handle
+        .prepare_one_sided_transaction_for_signing(
+            bob_address,
+            MicroMinotari(1),
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari(1),
+            MemoField::new_empty(),
+        )
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::TransactionBuilderError(TransactionBuilderError::FeeGreaterThanAmount { .. })
+            ))
+        ),
+        "expected the prepare to be refused for a fee greater than the amount, got {result:?}"
+    );
+
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// As [`prepare_one_sided_transaction_for_signing_refuses_an_amount_below_the_fee`], for the multisig deposit.
+#[tokio::test]
+async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories, connection, None).await;
+
+    let input_value = MicroMinotari(1_000_000);
+    let uo = make_input(
+        &mut rand::rng(),
+        input_value,
+        &OutputFeatures::default(),
+        alice_ts_interface.key_manager_handle.key_manager(),
+    );
+    alice_ts_interface
+        .output_manager_service_handle
+        .add_output(uo.clone(), None)
+        .await
+        .unwrap();
+    alice_ts_interface
+        .oms_db
+        .mark_outputs_as_unspent(vec![(uo.output_hash(), true)])
+        .unwrap();
+
+    let bob_key_manager = create_new_random_key_manager().await.unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_key_manager.get_view_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+        Network::LocalNet,
+    )
+    .unwrap();
+    let public_keys = vec![
+        alice_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        bob_key_manager.get_spend_key().pub_key,
+    ];
+
+    // No transaction pays a fee of a single microminotari, so this amount is below any fee.
+    let result = alice_ts_interface
+        .transaction_service_handle
+        .prepare_deposit_multisig_transaction(MicroMinotari(1), 2, public_keys, bob_address)
+        .await;
+    assert!(
+        matches!(
+            result,
+            Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::TransactionBuilderError(TransactionBuilderError::FeeGreaterThanAmount { .. })
+            ))
+        ),
+        "expected the deposit to be refused for a fee greater than the amount, got {result:?}"
+    );
+
+    let balance = alice_ts_interface
+        .output_manager_service_handle
+        .get_balance()
+        .await
+        .unwrap();
+    assert_eq!(balance.available_balance, input_value);
+    assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
 }

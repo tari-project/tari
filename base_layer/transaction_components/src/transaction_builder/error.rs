@@ -87,6 +87,15 @@ pub enum TransactionBuilderError {
     TooManyOutputsForDevice { requested: usize, max: usize },
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
+    #[error(
+        "The offline signer only signs transactions that carry a change output, but this one would not: the \
+         {remainder} left over after the outputs and fee does not exceed the {change_fee} a change output would cost. \
+         Prepare the transaction again with a smaller amount."
+    )]
+    OfflineTransactionRequiresChange {
+        remainder: MicroMinotari,
+        change_fee: MicroMinotari,
+    },
     #[error("Transaction builder error: {0}")]
     Other(String),
 }

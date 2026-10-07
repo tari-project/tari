@@ -454,6 +454,7 @@ where
                 script,
                 covenant,
                 memo,
+                required_change,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -464,6 +465,7 @@ where
                     script,
                     covenant,
                     memo,
+                    required_change,
                 )
                 .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
             OutputManagerRequest::GetTransactionBuilderRangeLimitedCoinJoin {
@@ -1084,6 +1086,7 @@ where
             num_outputs,
             features_and_scripts_byte_size.saturating_mul(num_outputs),
             Vec::new(),
+            None,
         ) {
             Ok(v) => Ok(v),
             Err(OutputManagerError::FundsPending | OutputManagerError::NotEnoughFunds) => {
@@ -1133,6 +1136,7 @@ where
         recipient_script: TariScript,
         recipient_covenant: Covenant,
         recipient_memo_field: MemoField,
+        required_change: Option<Vec<PendingOutput>>,
     ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1146,15 +1150,6 @@ where
             &recipient_memo_field,
         )?;
 
-        let input_selection = self.select_utxos(
-            amount,
-            selection_criteria,
-            fee_per_gram,
-            1,
-            features_and_scripts_byte_size,
-            recipient_memo_field.get_payment_id(),
-        )?;
-
         let mut builder = TransactionBuilder::new(
             self.resources.consensus_constants.clone(),
             self.resources.key_manager.clone(),
@@ -1163,6 +1158,40 @@ where
         builder
             .with_fee_per_gram(fee_per_gram)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+
+        // For a payload the offline signer will sign, the selection has to size the change output exactly as the
+        // builder will, or it can believe there is change where the signer will find none. The change output's fee
+        // does not depend on the inputs, so it can be measured before they are chosen.
+        let offline_change_fee = match &required_change {
+            Some(pending) => {
+                let mut probe = builder.clone();
+                probe.with_memo(recipient_memo_field.clone());
+                Some(probe.get_change_output_fee(pending)?)
+            },
+            None => None,
+        };
+
+        // The signer weighs the outputs it declares, which for a multisig deposit is a larger script than
+        // `recipient_script`; selecting for less would choose inputs that cannot pay the signer's fee.
+        let (num_outputs, features_and_scripts_byte_size) = match &required_change {
+            Some(pending) => (
+                pending.len(),
+                pending
+                    .iter()
+                    .fold(0usize, |acc, p| acc.saturating_add(p.features_and_scripts_size())),
+            ),
+            None => (1, features_and_scripts_byte_size),
+        };
+
+        let input_selection = self.select_utxos(
+            amount,
+            selection_criteria,
+            fee_per_gram,
+            num_outputs,
+            features_and_scripts_byte_size,
+            recipient_memo_field.get_payment_id(),
+            offline_change_fee,
+        )?;
 
         for uo in input_selection.iter() {
             builder.with_input(uo.wallet_output.clone())?;
@@ -1174,6 +1203,17 @@ where
             input_selection.as_final_fee(),
             input_selection.num_selected(),
         );
+
+        // A payload for the offline signer must leave change, and the selection may not have left any: an exact
+        // match, or `force_change_output` finding no extra input. Ask the builder, set up as the signer will set up
+        // its own, so this is the decision the signer will make - and refuse before any input is encumbered.
+        // The signer's builder always refuses a fee greater than the amount, whatever this wallet's
+        // `prevent_fee_gt_amount` says, so the probe does too.
+        if let Some(pending) = required_change {
+            let mut probe = builder.clone();
+            probe.with_memo(recipient_memo_field).with_prevent_fee_gt_amount(true);
+            probe.check_offline_payload(&pending)?;
+        }
 
         self.resources
             .db
@@ -1764,6 +1804,7 @@ where
             1,
             features_and_scripts_byte_size,
             Vec::new(),
+            None,
         )?;
 
         // Create builder with no recipients (other than ourselves)
@@ -1905,6 +1946,7 @@ where
         num_outputs: usize,
         total_output_features_and_scripts_byte_size: usize,
         recipient_payment_id: Vec<u8>,
+        offline_change_fee: Option<MicroMinotari>,
     ) -> Result<UtxoSelection, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -1988,7 +2030,10 @@ where
         )?;
 
         let kernel_fee = fee_calc.calculate(fee_per_gram, 1, 0, 0, 0);
-        let default_output_fee = fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size);
+        // A payload for the offline signer passes the builder's own measurement of the change output, so that the
+        // selection and the signer agree on whether there is change. Other sends keep the estimate above.
+        let default_output_fee = offline_change_fee
+            .unwrap_or_else(|| fee_calc.calculate(fee_per_gram, 0, 0, 1, default_features_and_scripts_size));
         let output_fee = fee_calc.calculate(
             fee_per_gram,
             0,
@@ -2001,8 +2046,10 @@ where
         // If `force_change_output` is enabled we may need to add an extra UTXO after branch-and-bound to guarantee a
         // change output. Snapshot the spendable outputs to choose from (branch-and-bound consumes `uo` below), but only
         // for standard selections (we never pull in extra inputs for coin-control selections where the user
-        // deliberately picked the inputs).
-        let force_change_enabled = self.resources.config.force_change_output && selection_criteria.filter.is_standard();
+        // deliberately picked the inputs). A payload for the offline signer always seeks change, because the signer
+        // refuses to sign one without it.
+        let force_change_enabled = (self.resources.config.force_change_output || offline_change_fee.is_some()) &&
+            selection_criteria.filter.is_standard();
         let force_change_pool = if force_change_enabled { uo.clone() } else { Vec::new() };
 
         let bnb = BranchAndBoundUtxoSelectionBuilder::new(uo)
@@ -2081,7 +2128,19 @@ where
         // `force_change_output`: branch-and-bound found a selection that needs no change (a perfect match or a
         // selection where the surplus was too small to warrant change). Add one extra UTXO so the transaction produces
         // a meaningful change output, then recompute the fee to account for the extra input and the change output.
-        if force_change_enabled && !has_change {
+        //
+        // Branch-and-bound only reports change when the surplus also pays for another input, but the builder makes
+        // change whenever the surplus exceeds the change output's fee. For a payload the offline signer will sign,
+        // ask the builder's question instead, so an extra input is only added when the builder would find no change.
+        let needs_forced_change = match offline_change_fee {
+            Some(change_fee) => {
+                let inputs_fee = input_fee.saturating_mul(MicroMinotari::from(utxos.len() as u64));
+                let fee_without_change = output_fee.saturating_add(inputs_fee).saturating_add(kernel_fee);
+                total_value.saturating_sub(amount).saturating_sub(fee_without_change) <= change_fee
+            },
+            None => !has_change,
+        };
+        if force_change_enabled && needs_forced_change {
             // Exclude the outputs branch-and-bound already selected (matched by commitment) so the forced extra input
             // is never one of the inputs we are already spending.
             let force_change_candidates: Vec<DbWalletOutput> = force_change_pool
@@ -2107,6 +2166,13 @@ where
                         utxos.len(),
                         total_value,
                     );
+                    if offline_change_fee.is_some() && !self.resources.config.force_change_output {
+                        info!(
+                            target: LOG_TARGET,
+                            "Added an extra input so the payload for the offline signer has a change output, although \
+                             force_change_output is off: the offline signer only signs transactions with change"
+                        );
+                    }
                 },
                 None => {
                     debug!(
@@ -2528,6 +2594,7 @@ where
                         .map_err(|e| OutputManagerError::ConversionError(e.to_string()))?
                         .saturating_mul(number_of_splits),
                     Vec::new(),
+                    None,
                 )?;
 
                 self.create_coin_split(selection.utxos, amount_per_split, number_of_splits, fee_per_gram)
