@@ -460,6 +460,19 @@ mod per_network {
             .collect()
     }
 
+    /// A node asks for the missing excess signatures of a block's kernels, so the request cap must cover every kernel
+    /// a block can hold
+    #[test]
+    fn the_excess_sig_request_cap_covers_a_blocks_kernels_on_every_network() {
+        for (network, constants) in all_limits() {
+            let kernels = limits(&constants).kernels;
+            assert!(
+                kernels <= crate::base_node::proto::MAX_EXCESS_SIGS_PER_REQUEST as u64,
+                "{network}: a block can hold {kernels} kernels"
+            );
+        }
+    }
+
     #[test]
     fn the_messaging_budget_is_the_body_budget() {
         assert_eq!(proto::MESSAGE_MAX_DECODE_ITEMS, proto::BODY_MAX_DECODE_ITEMS);

@@ -23,6 +23,8 @@
 mod chain_metadata;
 
 mod request;
+#[cfg(test)]
+pub(crate) use request::MAX_EXCESS_SIGS_PER_REQUEST;
 
 mod response;
 
