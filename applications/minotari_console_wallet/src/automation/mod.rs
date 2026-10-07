@@ -77,6 +77,14 @@ pub struct Step2OutputsForSelf {
     pre_mine_script_key_id: TariKeyId,
     /// `pre_mine_script_key - sender_offset_key`, computed when the key manager generated the sender offset key.
     script_offset: PrivateKey,
+    /// The public nonces step 2 published to the leader for `script_nonce_key_id` and `sender_offset_nonce_key_id`.
+    /// Step 4 checks each legacy signature's public nonce against them, which catches a self file whose nonce ids
+    /// were changed after step 2. `None` only in a file written by a build before they were stored; step 4 refuses
+    /// such a file ("redo step 2").
+    #[serde(default)]
+    public_script_nonce_key: Option<CompressedPublicKey>,
+    #[serde(default)]
+    public_sender_offset_nonce_key: Option<CompressedPublicKey>,
 }
 
 // Step 2 outputs for leader with `PreMineSpendPartyDetails`

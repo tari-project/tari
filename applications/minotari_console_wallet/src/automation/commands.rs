@@ -1011,9 +1011,9 @@ pub async fn command_runner(
                         output_index,
                         recipient_address: recipient_info.recipient_address.clone(),
                         script_input_signature,
-                        public_script_nonce_key: script_nonce_key.pub_key,
+                        public_script_nonce_key: script_nonce_key.pub_key.clone(),
                         public_sender_offset_key: sender_offset_key.pub_key,
-                        public_sender_offset_nonce_key: sender_offset_nonce.pub_key,
+                        public_sender_offset_nonce_key: sender_offset_nonce.pub_key.clone(),
                         dh_shared_secret_public_key: shared_secret_public_key,
                         pre_mine_public_script_key,
                     });
@@ -1026,6 +1026,8 @@ pub async fn command_runner(
                         sender_offset_nonce_key_id: sender_offset_nonce.key_id,
                         pre_mine_script_key_id,
                         script_offset,
+                        public_script_nonce_key: Some(script_nonce_key.pub_key),
+                        public_sender_offset_nonce_key: Some(sender_offset_nonce.pub_key),
                     });
                     println!(
                         "    Processed {} of {} transactions",
@@ -1038,6 +1040,12 @@ pub async fn command_runner(
                     }
                 }
                 if error {
+                    break;
+                }
+                // Defensive: `get_random_key` makes a repeat astronomically unlikely, but a self file that names one
+                // nonce twice would have step 4 sign two keys under one nonce, which gives both keys up.
+                if let Err(e) = step_2_nonce_ids_are_unique(&outputs_for_self) {
+                    eprintln!("\nError: {e}\n");
                     break;
                 }
 
@@ -1441,6 +1449,34 @@ pub async fn command_runner(
                     break;
                 }
 
+                // Every signature below uses a host indexed nonce through `GetRawSchnorrSignatureLegacyNonce`, so the
+                // self file decides which nonce signs for which key. Check it is the shape step 2 writes before
+                // anything is signed. See `minotari_ledger_wallet_common::legacy_nonce` for what a tampered file
+                // could otherwise extract.
+                if let Err(e) = validate_step_2_self_outputs(&party_info_indexed.outputs_for_self) {
+                    eprintln!("\nError: {e}\n");
+                    break;
+                }
+
+                // Never sign step 4 twice. Signing again over a changed step 3 file (a "please redo step 4" from the
+                // leader) would put two signatures under each step 2 nonce, from which the leader could solve for this
+                // party's pre-mine script and sender offset keys.
+                let out_dir = out_dir(&session_id)?;
+                let out_file = out_dir.join(get_file_name(
+                    SPEND_STEP_4_LEADER,
+                    Some(party_info_indexed.alias.clone()),
+                ));
+                if out_file.exists() {
+                    eprintln!(
+                        "\nError: step 4 has already been signed for this session ('{}' exists). Signing again under \
+                         the same step 2 nonces would let the leader recover your pre-mine keys, so it is refused. \
+                         Re-send the existing file to the leader instead; if the session has to change, start a new \
+                         session from step 1.\n",
+                        out_file.display()
+                    );
+                    break;
+                }
+
                 let pre_mine_from_file =
                     match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
                         Ok(outputs) => outputs,
@@ -1498,6 +1534,19 @@ pub async fn command_runner(
                             break;
                         },
                     };
+                    if Some(script_signature.get_compressed_public_nonce()) !=
+                        party_info.public_script_nonce_key.as_ref()
+                    {
+                        eprintln!(
+                            "\nError: the script signature for output {} was made with a nonce that is not the one \
+                             step 2 published - the step 2 self file has been changed. The signature has already been \
+                             made on the device but nothing has been written or sent; do not send anything from this \
+                             session to the leader.\n",
+                            party_info.output_index
+                        );
+                        error = true;
+                        break;
+                    }
 
                     // lets verify the script
                     let shared_secret =
@@ -1591,6 +1640,19 @@ pub async fn command_runner(
                             break;
                         },
                     };
+                    if Some(metadata_signature.get_compressed_public_nonce()) !=
+                        party_info.public_sender_offset_nonce_key.as_ref()
+                    {
+                        eprintln!(
+                            "\nError: the metadata signature for output {} was made with a nonce that is not the one \
+                             step 2 published - the step 2 self file has been changed. The signature has already been \
+                             made on the device but nothing has been written or sent; do not send anything from this \
+                             session to the leader.\n",
+                            party_info.output_index
+                        );
+                        error = true;
+                        break;
+                    }
 
                     if script_signature.get_signature() == CompressedSignature::default().get_signature() ||
                         metadata_signature.get_signature() == CompressedSignature::default().get_signature()
@@ -1620,11 +1682,6 @@ pub async fn command_runner(
                     break;
                 }
 
-                let out_dir = out_dir(&session_id)?;
-                let out_file = out_dir.join(get_file_name(
-                    SPEND_STEP_4_LEADER,
-                    Some(party_info_indexed.alias.clone()),
-                ));
                 write_json_object_to_file_as_line(&out_file, true, session_info.clone())?;
                 write_json_object_to_file_as_line(&out_file, false, PreMineSpendStep4OutputsForLeader {
                     outputs_for_leader,
@@ -3927,9 +3984,207 @@ fn write_audit_to_csv_file(
     Ok(())
 }
 
+/// Every nonce key id a pre-mine step 2 self file names must be distinct, within and across outputs.
+///
+/// Two signatures under one legacy nonce give up the signing key, and with the step 2 script offset two different
+/// keys under one nonce give up both. The device refuses such a pair too (its used-nonce record), but only within one
+/// application run.
+fn step_2_nonce_ids_are_unique(outputs: &[Step2OutputsForSelf]) -> Result<(), String> {
+    let mut seen: Vec<&TariKeyId> = Vec::with_capacity(outputs.len().saturating_mul(2));
+    for output in outputs {
+        for nonce_id in [&output.script_nonce_key_id, &output.sender_offset_nonce_key_id] {
+            if seen.contains(&nonce_id) {
+                return Err(format!(
+                    "the pre-mine step 2 self file names nonce '{nonce_id}' more than once (output {}). Signing with \
+                     it twice would give up your pre-mine keys; redo step 2",
+                    output.output_index
+                ));
+            }
+            seen.push(nonce_id);
+        }
+    }
+    Ok(())
+}
+
+/// Check a pre-mine step 2 self file is the shape step 2 writes, before step 4 signs anything with it.
+///
+/// - every nonce id is distinct ([`step_2_nonce_ids_are_unique`]);
+/// - the script key is the `PreMine` key at the output's own genesis index, as step 2 derives it;
+/// - the sender offset key is a `PreMine` key with the pre-mine sender offset bit set, as `get_script_offset` issues it
+///   in pre-mine mode;
+/// - every nonce id is a `Random` ledger key at an index the device will sign with (at or above 2^32);
+/// - the public nonces step 2 published are stored, so step 4 can check each signature's nonce against them.
+fn validate_step_2_self_outputs(outputs: &[Step2OutputsForSelf]) -> Result<(), String> {
+    use minotari_ledger_wallet_common::{
+        legacy_nonce::MIN_LEGACY_NONCE_INDEX,
+        script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+    };
+
+    step_2_nonce_ids_are_unique(outputs)?;
+    for output in outputs {
+        let index = output.output_index;
+        if output.public_script_nonce_key.is_none() || output.public_sender_offset_nonce_key.is_none() {
+            return Err(format!(
+                "the pre-mine step 2 self file for output {index} was written by an older build and does not record \
+                 the public nonces it published; redo step 2"
+            ));
+        }
+        let expected_script_key = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: u64::try_from(index).map_err(|_| format!("output index {index} does not fit a key index"))?,
+        };
+        if output.pre_mine_script_key_id != expected_script_key {
+            return Err(format!(
+                "the pre-mine step 2 self file names script key '{}' for output {index}, but step 2 derives '{}'; the \
+                 file has been changed - redo step 2",
+                output.pre_mine_script_key_id, expected_script_key
+            ));
+        }
+        match output.sender_offset_key_id {
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::PreMine,
+                index: key_index,
+            } if key_index & PRE_MINE_SENDER_OFFSET_INDEX_BIT != 0 => {},
+            ref other => {
+                return Err(format!(
+                    "the pre-mine step 2 self file names sender offset key '{other}' for output {index}, which is not \
+                     a pre-mine sender offset key; redo step 2"
+                ));
+            },
+        }
+        for nonce_id in [&output.script_nonce_key_id, &output.sender_offset_nonce_key_id] {
+            match nonce_id {
+                TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::Random,
+                    index: nonce_index,
+                } if *nonce_index >= MIN_LEGACY_NONCE_INDEX => {},
+                other => {
+                    return Err(format!(
+                        "the pre-mine step 2 self file names nonce '{other}' for output {index}, which is not a nonce \
+                         this device will sign with (a Random key at index 2^32 or above); redo step 2"
+                    ));
+                },
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+
+    mod pre_mine_step_2_self_file {
+        use minotari_ledger_wallet_common::{
+            legacy_nonce::MIN_LEGACY_NONCE_INDEX,
+            script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+        };
+        use tari_common_types::types::CompressedPublicKey;
+
+        use super::*;
+
+        fn ledger_key(branch: LedgerKeyBranch, index: u64) -> TariKeyId {
+            TariKeyId::LedgerKey { branch, index }
+        }
+
+        /// What step 2 writes for `output_index`, with nonces distinguished by `salt`.
+        fn honest(output_index: usize, salt: u64) -> Step2OutputsForSelf {
+            Step2OutputsForSelf {
+                output_index,
+                script_nonce_key_id: ledger_key(LedgerKeyBranch::Random, MIN_LEGACY_NONCE_INDEX | salt),
+                sender_offset_nonce_key_id: ledger_key(
+                    LedgerKeyBranch::Random,
+                    MIN_LEGACY_NONCE_INDEX | (1 << 40) | salt,
+                ),
+                sender_offset_key_id: ledger_key(LedgerKeyBranch::PreMine, PRE_MINE_SENDER_OFFSET_INDEX_BIT | salt),
+                pre_mine_script_key_id: ledger_key(LedgerKeyBranch::PreMine, output_index as u64),
+                public_script_nonce_key: Some(CompressedPublicKey::default()),
+                public_sender_offset_nonce_key: Some(CompressedPublicKey::default()),
+                ..Default::default()
+            }
+        }
+
+        #[test]
+        fn an_honest_file_passes() {
+            assert_eq!(validate_step_2_self_outputs(&[honest(3, 1), honest(9, 2)]), Ok(()));
+        }
+
+        /// The same-nonce, two-keys extraction, set up by editing the file.
+        #[test]
+        fn a_nonce_named_twice_within_an_output_is_refused() {
+            let mut output = honest(3, 1);
+            output.sender_offset_nonce_key_id = output.script_nonce_key_id.clone();
+            let err = validate_step_2_self_outputs(&[output.clone()]).unwrap_err();
+            assert!(err.contains("more than once"), "{err}");
+            assert!(step_2_nonce_ids_are_unique(&[output]).is_err());
+        }
+
+        #[test]
+        fn a_nonce_named_twice_across_outputs_is_refused() {
+            let first = honest(3, 1);
+            let mut second = honest(9, 2);
+            second.script_nonce_key_id = first.sender_offset_nonce_key_id.clone();
+            let err = validate_step_2_self_outputs(&[first, second]).unwrap_err();
+            assert!(err.contains("more than once"), "{err}");
+        }
+
+        #[test]
+        fn a_script_key_at_another_index_is_refused() {
+            let mut output = honest(3, 1);
+            output.pre_mine_script_key_id = ledger_key(LedgerKeyBranch::PreMine, 4);
+            let err = validate_step_2_self_outputs(&[output]).unwrap_err();
+            assert!(err.contains("script key"), "{err}");
+        }
+
+        #[test]
+        fn a_sender_offset_key_without_the_pre_mine_bit_is_refused() {
+            for key in [
+                ledger_key(LedgerKeyBranch::PreMine, 5),
+                ledger_key(
+                    LedgerKeyBranch::OneSidedSenderOffset,
+                    PRE_MINE_SENDER_OFFSET_INDEX_BIT | 5,
+                ),
+            ] {
+                let mut output = honest(3, 1);
+                output.sender_offset_key_id = key;
+                let err = validate_step_2_self_outputs(&[output]).unwrap_err();
+                assert!(err.contains("sender offset key"), "{err}");
+            }
+        }
+
+        #[test]
+        fn a_nonce_below_two_to_the_thirty_two_or_off_random_is_refused() {
+            for nonce in [
+                ledger_key(LedgerKeyBranch::Random, 7),
+                ledger_key(LedgerKeyBranch::PreMine, MIN_LEGACY_NONCE_INDEX | 7),
+            ] {
+                let mut output = honest(3, 1);
+                output.script_nonce_key_id = nonce;
+                let err = validate_step_2_self_outputs(&[output]).unwrap_err();
+                assert!(err.contains("not a nonce"), "{err}");
+            }
+        }
+
+        /// A file from a build that did not store the published nonces cannot be checked, so it is refused.
+        #[test]
+        fn a_file_without_the_published_nonces_is_refused() {
+            let mut output = honest(3, 1);
+            output.public_sender_offset_nonce_key = None;
+            let err = validate_step_2_self_outputs(&[output]).unwrap_err();
+            assert!(err.contains("redo step 2"), "{err}");
+        }
+
+        /// The old file format still parses - so the refusal above is what the user sees, not a serde error.
+        #[test]
+        fn an_old_file_without_the_new_fields_still_parses() {
+            let mut value = serde_json::to_value(honest(3, 1)).unwrap();
+            let object = value.as_object_mut().unwrap();
+            object.remove("public_script_nonce_key");
+            object.remove("public_sender_offset_nonce_key");
+            let parsed: Step2OutputsForSelf = serde_json::from_value(value).unwrap();
+            assert_eq!(parsed.public_script_nonce_key, None);
+        }
+    }
 
     #[test]
     fn random_alphanumeric_is_the_requested_length_and_not_repeated() {
