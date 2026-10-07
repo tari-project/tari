@@ -33,7 +33,6 @@ use std::{
 };
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
-use prost::Message;
 use tari_common::configuration::Network;
 use tari_comms::{
     Bytes,
@@ -882,18 +881,31 @@ fn frame_of_empty_elements(tag: u32) -> Vec<u8> {
     len_field(tag, &[]).repeat(MAX_FRAME_SIZE / 2 - 16)
 }
 
+/// Checks that prost alone accepts `flood` and the decode budget rejects it. Callers pass a flood just over the
+/// budget, never a full frame: prost-decoding a full frame of empty elements costs hundreds of MB, and the lib tests
+/// run in parallel.
+fn assert_prost_accepts_but_budget_rejects<T>(flood: &[u8])
+where T: prost::Message + Default + tari_comms::decode_budget::DecodeBudget {
+    T::decode(flood).expect("prost alone accepts the flood");
+    tari_comms::decode_budget::check_decode_budget::<T>(flood, shared_proto::MESSAGE_MAX_DECODE_ITEMS)
+        .expect_err("the decode budget rejects the flood");
+}
+
 fn is_decode_budget_error(err: &MempoolProtocolError) -> bool {
     matches!(err, MempoolProtocolError::DecodeFailed { source, .. } if source.to_string().contains("decode budget"))
 }
 
 /// An inventory frame of empty items is rejected by the decode budget before prost decodes it. Prost alone would
-/// accept it (and allocate ~1.5M `Vec`s), so the error being a decode-budget `DecodeFailed`, rather than
+/// accept it (~1.5M `Vec`s for a full frame), so the error being a decode-budget `DecodeFailed`, rather than
 /// `InvalidInventoryItem`, shows the frame never reached prost.
 #[tokio::test]
 async fn responder_rejects_an_inventory_frame_of_empty_items_before_decoding_it() {
+    // Inventory.items is tag 1
+    assert_prost_accepts_but_budget_rejects::<proto::TransactionInventory>(
+        &len_field(1, &[]).repeat(shared_proto::MESSAGE_MAX_DECODE_ITEMS + 1),
+    );
     let inventory = frame_of_empty_elements(1);
     assert!(inventory.len() <= MAX_FRAME_SIZE);
-    proto::TransactionInventory::decode(inventory.as_slice()).expect("prost alone accepts the flood");
 
     let (mempool, _) = new_mempool_with_transactions(1).await;
     let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -922,10 +934,13 @@ async fn responder_rejects_an_inventory_frame_of_empty_items_before_decoding_it(
 #[tokio::test]
 async fn responder_rejects_a_transaction_frame_of_empty_inputs_before_decoding_it() {
     // TransactionItem.transaction (1) -> Transaction.body (2) -> AggregateBody.inputs (1)
-    let inputs = len_field(1, &[]).repeat(MAX_FRAME_SIZE / 2 - 32);
-    let flood = len_field(1, &len_field(2, &inputs));
+    let item_of_empty_inputs = |count: usize| len_field(1, &len_field(2, &len_field(1, &[]).repeat(count)));
+    assert_prost_accepts_but_budget_rejects::<proto::TransactionItem>(&item_of_empty_inputs(
+        shared_proto::MESSAGE_MAX_DECODE_ITEMS + 1,
+    ));
+    // The frame actually sent fills MAX_FRAME_SIZE; it is only ever checked against the budget, never decoded
+    let flood = item_of_empty_inputs(MAX_FRAME_SIZE / 2 - 32);
     assert!(flood.len() <= MAX_FRAME_SIZE);
-    proto::TransactionItem::decode(flood.as_slice()).expect("prost alone accepts the flood");
 
     for send_flood in [true, false] {
         let (mempool, _) = new_mempool_with_transactions(1).await;

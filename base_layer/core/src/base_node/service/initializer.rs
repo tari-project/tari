@@ -287,12 +287,23 @@ mod test {
     fn an_over_budget_base_node_request_is_a_decode_error() {
         // `BaseNodeServiceRequest.fetch_mempool_transactions_by_excess_sigs` (tag 9) holding a frame of empty
         // `excess_sigs` (tag 1)
-        let excess_sigs = len_header(1, 0).repeat(4_000_000);
-        let mut body = len_header(9, excess_sigs.len());
-        body.extend_from_slice(&excess_sigs);
-        let msg = create_peer_message(TariMessageType::BaseNodeRequest, body.clone());
-        // Prost alone accepts it
-        assert!(msg.decode_message::<proto::BaseNodeServiceRequest>().is_ok());
+        let request_of_empty_sigs = |count: usize| {
+            let excess_sigs = len_header(1, 0).repeat(count);
+            let mut body = len_header(9, excess_sigs.len());
+            body.extend_from_slice(&excess_sigs);
+            create_peer_message(TariMessageType::BaseNodeRequest, body)
+        };
+        // Prost alone accepts a flood just over the budget. Only that one is decoded: prost-decoding the full-frame
+        // flood below would cost ~135 MB, and the lib tests run in parallel.
+        let just_over = request_of_empty_sigs(shared_protos::MESSAGE_MAX_DECODE_ITEMS + 1);
+        assert!(just_over.decode_message::<proto::BaseNodeServiceRequest>().is_ok());
+        let decoded = map_decode_with_max_items::<proto::BaseNodeServiceRequest>(
+            shared_protos::MESSAGE_MAX_DECODE_ITEMS,
+        )(just_over);
+        assert!(matches!(&decoded.inner, Err(err) if err.to_string().contains("decode budget")));
+
+        // A full 8 MiB frame of empty signatures is rejected without being decoded
+        let msg = request_of_empty_sigs(4_000_000);
         let decoded =
             map_decode_with_max_items::<proto::BaseNodeServiceRequest>(shared_protos::MESSAGE_MAX_DECODE_ITEMS)(msg);
         assert!(matches!(&decoded.inner, Err(err) if err.to_string().contains("decode budget")));
