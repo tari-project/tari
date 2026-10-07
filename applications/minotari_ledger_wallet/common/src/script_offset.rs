@@ -172,6 +172,10 @@ pub fn sender_offset_index(base_index: u64, i: u64) -> u64 {
 /// Pre-mine sender offset keys share the `PreMine` branch with them, and are kept apart by drawing their base index
 /// from the top half of `u64` - see [`sender_offset_base_index`]. That is what lets the device tell the user which
 /// pre-mine signature it is being asked for; see `crate::legacy_nonce::legacy_signature_purpose`.
+///
+/// This separation is only real because the device's `derive_from_bip32_key` puts the high 32 bits of the index in a
+/// path element of their own. Before that, the whole index was parsed into one wrapping `u32` element, so `2^63 | x`
+/// derived the same key as `x` and this bit reached nothing.
 pub const PRE_MINE_SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
 
 /// The branch the device derives a script offset's sender offset keys on.
@@ -198,7 +202,10 @@ pub fn sender_offset_branch(derived_script_keys: u64) -> LedgerKeyBranch {
 ///
 /// On `OneSidedSenderOffset` this is the draw itself. On `PreMine` it is moved into the top half of `u64`, where no
 /// pre-mine script key index is, and kept a quarter of the range below `u64::MAX` so that walking
-/// [`MAX_SENDER_OFFSET_KEYS`] keys from it never wraps back out of that half. That leaves 62 random bits.
+/// [`MAX_SENDER_OFFSET_KEYS`] keys from it never wraps back out of that half. That leaves 62 random bits - all of
+/// which reach the derivation now that `derive_from_bip32_key` splits the index across two path elements (the draw
+/// on `OneSidedSenderOffset` keeps all 64). Before that only the low 32 counted, which let a host match two
+/// `GetScriptOffset` bases in about 2^16 calls.
 pub fn sender_offset_base_index(branch: LedgerKeyBranch, random: u64) -> u64 {
     match branch {
         LedgerKeyBranch::PreMine => PRE_MINE_SENDER_OFFSET_INDEX_BIT | (random >> 2),

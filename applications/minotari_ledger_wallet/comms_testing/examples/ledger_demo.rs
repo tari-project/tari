@@ -36,7 +36,7 @@
 //!   asserts on values the device returns, including a `GetViewKey` secret scalar.
 //! * **A device that will never hold value.** Those mnemonics are public. Anything sent to an address derived from them
 //!   can be swept by anyone, instantly, with no compromise of your machine.
-//! * A terminal. Three scenarios raise reviews, and `HumanApprover` asks you two questions about each.
+//! * A terminal. Four scenarios raise reviews, and `HumanApprover` asks you two questions about each.
 //!
 //! # A few scenarios need you; the rest do not
 //!

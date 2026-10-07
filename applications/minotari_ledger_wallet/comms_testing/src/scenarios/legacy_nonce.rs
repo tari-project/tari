@@ -109,6 +109,15 @@ const SCENARIOS: &[Scenario] = &[
         approval: Approval::Required,
         run: the_nonce_is_deterministic,
     },
+    Scenario {
+        name: "a legacy signature by PreMine x and by PreMine 2^63 | x are by different keys",
+        covers: &[
+            Instruction::GetRawSchnorrSignatureLegacyNonce,
+            Instruction::GetPublicKey,
+        ],
+        approval: Approval::Required,
+        run: the_reviewed_index_is_the_signing_index,
+    },
 ];
 
 /// Every branch the shared enum names. The whitelist is stated over all four, so the scenarios enumerate all four.
@@ -394,4 +403,43 @@ fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
          signature over a reused nonce"
             .to_string()
     })
+}
+
+/// Acceptance: the index on the review is the index the device signs with - `PreMine x` and `PreMine 2^63 | x` are
+/// different keys, so their signatures under one nonce index verify against different public keys.
+///
+/// When the device reduced the index modulo 2^32 they were one key. A host could then put up "Pre-mine metadata
+/// signature, Key PreMine 2^63 | x" and get a signature by the pre-mine *script* key at `x`, and pair it with an
+/// ordinary-looking script signature review over the same nonce: two reviews that look like a step 3 pair, one key,
+/// one nonce. Each signature here is checked against its own key and against the other's.
+fn the_reviewed_index_is_the_signing_index(context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let script_index = fixtures::random_u64() % 100_000;
+    let sender_offset_index = SENDER_OFFSET_INDEX_BIT | script_index;
+    let nonce_index = fixtures::random_u64();
+
+    let script_key = ledger_get_public_key(account, script_index, LedgerKeyBranch::PreMine)
+        .context(|| format!("GetPublicKey for PreMine {script_index}"))?;
+    let sender_offset_key = ledger_get_public_key(account, sender_offset_index, LedgerKeyBranch::PreMine)
+        .context(|| format!("GetPublicKey for PreMine {sender_offset_index}"))?;
+    require(script_key != sender_offset_key, || {
+        format!("PreMine {script_index} and PreMine {sender_offset_index} are the same key: the index still wraps")
+    })?;
+
+    for (index, own_key, other_key) in [
+        (script_index, &script_key, &sender_offset_key),
+        (sender_offset_index, &sender_offset_key, &script_key),
+    ] {
+        let challenge = fixtures::random_challenge();
+        let signature = reviewed_pre_mine_signature(context, account, index, nonce_index, &challenge)?
+            .to_schnorr_signature()
+            .context(|| "the device's compressed signature would not decompress".to_string())?;
+        require(signature.verify_raw_uniform(own_key, &challenge), || {
+            format!("the legacy signature by PreMine {index} does not verify against that key")
+        })?;
+        require(!signature.verify_raw_uniform(other_key, &challenge), || {
+            format!("the legacy signature by PreMine {index} also verifies against the other index's key")
+        })?;
+    }
+    Ok(())
 }

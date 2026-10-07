@@ -122,6 +122,10 @@ pub fn check_legacy_nonce_branches(
 /// [`PRE_MINE_SENDER_OFFSET_INDEX_BIT`](crate::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT) set, and pre-mine
 /// script keys at their genesis output index, which never has it. So the index says which of the two signatures this
 /// is: the script signature signs with the script key, and the metadata signature with the sender offset key.
+///
+/// The displayed index is the derived index only because `derive_from_bip32_key` on the device uses all 64 bits of
+/// it. When the index wrapped at 2^32, `PreMine 2^63 | x` *was* the script key at `x`, and a host could show two
+/// different-looking reviews for one key and one nonce.
 pub fn legacy_signature_purpose(key_index: u64) -> &'static str {
     if key_index & PRE_MINE_SENDER_OFFSET_INDEX_BIT == 0 {
         "Pre-mine script signature"
