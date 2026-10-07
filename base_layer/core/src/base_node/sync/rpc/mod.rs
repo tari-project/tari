@@ -47,15 +47,23 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
+// `max_items` is the decode budget for a method (see `tari_comms::protocol::rpc::decode_guard`). 524_288 covers a
+// max-weight block body or transaction (~484k embedded items at most); 131_072 covers the batched queries and streams.
+// Method 7 belonged to a removed method and must not be reused.
+#[tari_rpc(
+    protocol_name = b"t/blksync/1",
+    server_struct = BaseNodeSyncRpcServer,
+    client_struct = BaseNodeSyncRpcClient,
+    reserved_methods = [7]
+)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
-    #[rpc(method = 1)]
+    #[rpc(method = 1, max_items = 524_288)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
     ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus>;
 
-    #[rpc(method = 2)]
+    #[rpc(method = 2, max_items = 131_072)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
@@ -67,7 +75,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
         request: Request<u64>,
     ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 
-    #[rpc(method = 4)]
+    #[rpc(method = 4, max_items = 131_072)]
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,
@@ -85,7 +93,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
         request: Request<SyncKernelsRequest>,
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>;
 
-    #[rpc(method = 8)]
+    #[rpc(method = 8, max_items = 131_072)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
 }
 

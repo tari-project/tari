@@ -103,9 +103,11 @@ pub trait BaseNodeWalletQueryService: Send + Sync + 'static {
     async fn get_mempool_fee_per_gram_stats(&self, count: usize) -> Result<Vec<models::FeePerGramStat>, Self::Error>;
 }
 
+// `max_items` is the decode budget for a method (see `tari_comms::protocol::rpc::decode_guard`). 524_288 covers a
+// max-weight block body or transaction (~484k embedded items at most); 131_072 covers the batched queries and streams.
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
-    #[rpc(method = 1)]
+    #[rpc(method = 1, max_items = 524_288)]
     async fn submit_transaction(
         &self,
         request: Request<Transaction>,
@@ -114,13 +116,13 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 2)]
     async fn transaction_query(&self, request: Request<Signature>) -> Result<Response<TxQueryResponse>, RpcStatus>;
 
-    #[rpc(method = 3)]
+    #[rpc(method = 3, max_items = 131_072)]
     async fn transaction_batch_query(
         &self,
         request: Request<Signatures>,
     ) -> Result<Response<TxQueryBatchResponses>, RpcStatus>;
 
-    #[rpc(method = 4)]
+    #[rpc(method = 4, max_items = 131_072)]
     async fn fetch_matching_utxos(
         &self,
         request: Request<FetchMatchingUtxos>,
@@ -132,10 +134,10 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 6)]
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 
-    #[rpc(method = 7)]
+    #[rpc(method = 7, max_items = 131_072)]
     async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus>;
 
-    #[rpc(method = 8)]
+    #[rpc(method = 8, max_items = 131_072)]
     async fn query_deleted(
         &self,
         request: Request<QueryDeletedRequest>,
@@ -150,7 +152,7 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
     #[rpc(method = 10)]
     async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;
 
-    #[rpc(method = 11)]
+    #[rpc(method = 11, max_items = 131_072)]
     async fn sync_utxos_by_block(
         &self,
         request: Request<SyncUtxosByBlockRequest>,

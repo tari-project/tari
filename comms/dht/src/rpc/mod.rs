@@ -34,8 +34,10 @@ use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
 mod peer_info;
 pub use peer_info::UnvalidatedPeerInfo;
 
+// `max_items` is the decode budget for a method (see `tari_comms::protocol::rpc::decode_guard`). 524_288 covers a
+// max-weight block body or transaction (~484k embedded items at most); 131_072 covers the batched queries and streams.
 #[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
 pub trait DhtRpcService: Send + Sync + 'static {
-    #[rpc(method = 10)]
+    #[rpc(method = 10, max_items = 131_072)]
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
 }
