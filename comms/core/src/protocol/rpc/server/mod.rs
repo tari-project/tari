@@ -55,7 +55,11 @@ use futures::{SinkExt, StreamExt, future, stream::FuturesUnordered};
 use log::*;
 use prost::Message;
 use router::Router;
-use tokio::{sync::mpsc, task::JoinHandle, time};
+use tokio::{
+    sync::mpsc,
+    task::{JoinHandle, JoinSet},
+    time,
+};
 use tokio_stream::Stream;
 use tower::{Service, make::MakeService};
 use tracing::{Instrument, Level, debug, error, instrument, span, trace, warn};
@@ -200,6 +204,8 @@ pub struct RpcServerBuilder {
     minimum_client_deadline: Duration,
     maximum_client_deadline: Duration,
     handshake_timeout: Duration,
+    maximum_pending_handshakes: usize,
+    maximum_pending_handshakes_per_client: usize,
     idle_session_timeout: Option<Duration>,
     cull_oldest_peer_rpc_connection_on_full: bool,
 }
@@ -267,6 +273,27 @@ impl RpcServerBuilder {
         cmp::max(capped, self.minimum_client_deadline)
     }
 
+    /// Limit the handshakes in progress at once across all peers. Handshakes run off the accept loop, so a peer that
+    /// opens a substream and never sends its handshake only holds one of these until the handshake times out. A new
+    /// substream over the limit is dropped without a reply.
+    pub fn with_maximum_pending_handshakes(mut self, limit: usize) -> Self {
+        self.maximum_pending_handshakes = limit;
+        self
+    }
+
+    /// Limit the handshakes in progress at once for a single peer. A new substream over the limit is dropped without a
+    /// reply.
+    pub fn with_maximum_pending_handshakes_per_client(mut self, limit: usize) -> Self {
+        self.maximum_pending_handshakes_per_client = limit;
+        self
+    }
+
+    /// How long a client has to complete the handshake on a new substream
+    pub fn with_handshake_timeout(mut self, timeout: Duration) -> Self {
+        self.handshake_timeout = timeout;
+        self
+    }
+
     /// Close a session that has not received a request for `timeout`. A session holds a slot in the
     /// global session limit for as long as its substream is open, and a peer that goes away without
     /// closing the substream (common over Tor) never releases it. Only idle time counts; a session
@@ -302,6 +329,17 @@ const DEFAULT_MAXIMUM_SIMULTANEOUS_SESSIONS: usize = 100;
 /// [RpcServerBuilder::with_unlimited_sessions_per_client] to opt out.
 const DEFAULT_MAXIMUM_SESSIONS_PER_CLIENT: usize = 10;
 
+/// The default time a client has to complete the handshake. A handshake is two frames of a few bytes, so even over Tor
+/// this is generous; it bounds how long a substream that never sends one holds a pending-handshake slot.
+const DEFAULT_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The default limit on handshakes in progress at once, across all peers
+const DEFAULT_MAXIMUM_PENDING_HANDSHAKES: usize = 32;
+
+/// The default limit on handshakes in progress at once for a single peer. A client opens one session at a time per
+/// substream, so a peer with more than this many unfinished handshakes is not an ordinary client.
+const DEFAULT_MAXIMUM_PENDING_HANDSHAKES_PER_CLIENT: usize = 2;
+
 impl Default for RpcServerBuilder {
     fn default() -> Self {
         Self {
@@ -309,14 +347,18 @@ impl Default for RpcServerBuilder {
             maximum_sessions_per_client: Some(DEFAULT_MAXIMUM_SESSIONS_PER_CLIENT),
             minimum_client_deadline: Duration::from_secs(1),
             maximum_client_deadline: DEFAULT_MAXIMUM_CLIENT_DEADLINE,
-            handshake_timeout: Duration::from_secs(15),
+            handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
+            maximum_pending_handshakes: DEFAULT_MAXIMUM_PENDING_HANDSHAKES,
+            maximum_pending_handshakes_per_client: DEFAULT_MAXIMUM_PENDING_HANDSHAKES_PER_CLIENT,
             idle_session_timeout: Some(DEFAULT_IDLE_SESSION_TIMEOUT),
             cull_oldest_peer_rpc_connection_on_full: false,
         }
     }
 }
 
-pub(super) struct PeerRpcServer<TSvc, TCommsProvider> {
+pub(super) struct PeerRpcServer<TSvc, TCommsProvider>
+where TSvc: MakeService<ProtocolId, Request<Bytes>>
+{
     executor: BoundedExecutor,
     config: RpcServerBuilder,
     service: TSvc,
@@ -325,6 +367,28 @@ pub(super) struct PeerRpcServer<TSvc, TCommsProvider> {
     request_rx: mpsc::Receiver<RpcServerRequest>,
     sessions: HashMap<NodeId, Vec<SessionInfo>>,
     tasks: FuturesUnordered<JoinHandle<(NodeId, Id)>>,
+    /// Handshakes in progress. Dropping the set (when `serve` returns) aborts them, so none outlives the server.
+    handshakes: JoinSet<HandshakeOutcome<<TSvc as MakeService<ProtocolId, Request<Bytes>>>::Service>>,
+    /// The peer of each handshake task, so its pending slot is released however the task ends
+    handshake_peers: HashMap<tokio::task::Id, NodeId>,
+    /// Pending handshakes per peer
+    pending_handshakes: HashMap<NodeId, usize>,
+}
+
+/// What a handshake task returns to the accept loop
+struct HandshakeOutcome<S> {
+    protocol: ProtocolId,
+    node_id: NodeId,
+    /// The service and the substream, ready to start a session; or why the session was not started
+    result: Result<(S, CanonicalFraming<Substream>), RpcServerError>,
+}
+
+/// What the accept loop decided before handing a substream to a handshake task
+enum SessionDecision<S> {
+    /// Perform the handshake, then start a session with this service
+    Accept(S),
+    /// Reply with this rejection, and report this error
+    Reject(HandshakeRejectReason, RpcServerError),
 }
 
 struct SessionInfo {
@@ -367,6 +431,9 @@ where
             request_rx,
             sessions: HashMap::new(),
             tasks: FuturesUnordered::new(),
+            handshakes: JoinSet::new(),
+            handshake_peers: HashMap::new(),
+            pending_handshakes: HashMap::new(),
         }
     }
 
@@ -388,6 +455,10 @@ where
 
                 Some(Ok((node_id, stream_id))) = self.tasks.next() => {
                     self.on_session_complete(&node_id, stream_id);
+                },
+
+                Some(joined) = self.handshakes.join_next_with_id() => {
+                    self.on_handshake_finished(joined);
                 },
 
                 Some(req) = self.request_rx.recv() => {
@@ -440,25 +511,176 @@ where
                     node_id
                 );
 
-                let framed = framing::canonical(substream, RPC_MAX_FRAME_SIZE);
-                match self
-                    .try_initiate_service(notification.protocol.clone(), &node_id, framed)
-                    .await
-                {
-                    Ok(_) => {},
-                    Err(err @ RpcServerError::HandshakeError(_)) => {
-                        debug!(target: LOG_TARGET, "Handshake error: {}", err);
-                        #[cfg(feature = "metrics")]
-                        metrics::handshake_error_counter(&notification.protocol).inc();
-                    },
-                    Err(err) => {
-                        debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
-                    },
+                // Over either pending-handshake limit the substream is dropped without a reply: replying would mean
+                // more I/O on behalf of a peer that is already holding handshakes open.
+                let pending_for_peer = self.pending_handshakes.get(&node_id).copied().unwrap_or(0);
+                if pending_for_peer >= self.config.maximum_pending_handshakes_per_client {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Dropping RPC substream from peer `{}`: it already has {} handshake(s) in progress",
+                        node_id,
+                        pending_for_peer
+                    );
+                    return Ok(());
                 }
+                if self.handshakes.len() >= self.config.maximum_pending_handshakes {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Dropping RPC substream from peer `{}`: {} handshake(s) already in progress",
+                        node_id,
+                        self.handshakes.len()
+                    );
+                    return Ok(());
+                }
+
+                let framed = framing::canonical(substream, RPC_MAX_FRAME_SIZE);
+                let decision = self.decide_session(notification.protocol.clone(), &node_id).await;
+                self.spawn_handshake(notification.protocol, node_id, framed, decision);
             },
         }
 
         Ok(())
+    }
+
+    /// Checks whether a session for `protocol` with `node_id` can be started, before any handshake I/O
+    async fn decide_session(&mut self, protocol: ProtocolId, node_id: &NodeId) -> SessionDecision<TSvc::Service> {
+        let service = match self.service.make_service(protocol).await {
+            Ok(service) => service,
+            Err(err) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Rejecting RPC session request for peer `{}` because {}",
+                    node_id,
+                    HandshakeRejectReason::ProtocolNotSupported
+                );
+                return SessionDecision::Reject(HandshakeRejectReason::ProtocolNotSupported, err);
+            },
+        };
+
+        // The per-peer limit is enforced before the global one so that culling still happens when
+        // the server is sitting on its global limit - that is precisely when reclaiming a slot from
+        // a peer that is over its own quota matters. Doing the global check first made
+        // `cull_oldest_peer_rpc_connection_on_full` unreachable exactly when it was needed.
+        if let Err(err) = self.new_session_possible_for(node_id) {
+            return SessionDecision::Reject(
+                HandshakeRejectReason::NoServerSessionsAvailable("Maximum sessions for client"),
+                err,
+            );
+        }
+
+        if !self.executor.can_spawn() {
+            let msg = format!("Used all {} sessions", self.executor.max_available());
+            debug!(
+                target: LOG_TARGET,
+                "Rejecting RPC session request for peer `{}` because {}",
+                node_id,
+                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
+            );
+            // A session culled above only releases its slot once that task winds down, so this
+            // request is still rejected. The client's next attempt is the one that gets in.
+            return SessionDecision::Reject(
+                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions"),
+                RpcServerError::MaximumSessionsReached(msg),
+            );
+        }
+
+        SessionDecision::Accept(service)
+    }
+
+    /// Performs the handshake (or sends the rejection) on its own task, so a slow or silent client cannot stall the
+    /// accept loop. The task is bounded by the handshake timeout, and holds a pending-handshake slot until it ends.
+    fn spawn_handshake(
+        &mut self,
+        protocol: ProtocolId,
+        node_id: NodeId,
+        mut framed: CanonicalFraming<Substream>,
+        decision: SessionDecision<TSvc::Service>,
+    ) {
+        let timeout = self.config.handshake_timeout;
+        let task_node_id = node_id.clone();
+        let handle = self.handshakes.spawn(async move {
+            let result = match decision {
+                SessionDecision::Reject(reason, err) => {
+                    // Best effort: the session is refused either way
+                    let _result = time::timeout(timeout, Handshake::new(&mut framed).reject_with_reason(reason)).await;
+                    Err(err)
+                },
+                SessionDecision::Accept(service) => {
+                    // The timeout covers the reply as well as the client's handshake frame
+                    match time::timeout(
+                        timeout,
+                        Handshake::new(&mut framed)
+                            .with_timeout(timeout)
+                            .perform_server_handshake(),
+                    )
+                    .await
+                    {
+                        Ok(Ok(version)) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Server negotiated RPC v{version} with client node `{task_node_id}`"
+                            );
+                            Ok((service, framed))
+                        },
+                        Ok(Err(err)) => Err(err.into()),
+                        Err(_elapsed) => Err(rpc::RpcHandshakeError::TimedOut.into()),
+                    }
+                },
+            };
+            HandshakeOutcome {
+                protocol,
+                node_id: task_node_id,
+                result,
+            }
+        });
+        self.handshake_peers.insert(handle.id(), node_id.clone());
+        let pending = self.pending_handshakes.entry(node_id).or_insert(0);
+        *pending = pending.saturating_add(1);
+    }
+
+    /// Releases the pending-handshake slot of a finished handshake task, and starts the session if it succeeded
+    fn on_handshake_finished(
+        &mut self,
+        joined: Result<(tokio::task::Id, HandshakeOutcome<TSvc::Service>), tokio::task::JoinError>,
+    ) {
+        let task_id = match &joined {
+            Ok((id, _)) => *id,
+            Err(err) => err.id(),
+        };
+        if let Some(node_id) = self.handshake_peers.remove(&task_id) &&
+            let Some(pending) = self.pending_handshakes.get_mut(&node_id)
+        {
+            *pending = pending.saturating_sub(1);
+            if *pending == 0 {
+                self.pending_handshakes.remove(&node_id);
+            }
+        }
+
+        let outcome = match joined {
+            Ok((_, outcome)) => outcome,
+            Err(err) => {
+                error!(target: LOG_TARGET, "RPC handshake task failed: {err}");
+                return;
+            },
+        };
+        let HandshakeOutcome {
+            protocol,
+            node_id,
+            result,
+        } = outcome;
+        let result =
+            result.and_then(|(service, framed)| self.start_session(protocol.clone(), &node_id, service, framed));
+        match result {
+            Ok(()) => {},
+            Err(err @ RpcServerError::HandshakeError(_)) => {
+                debug!(target: LOG_TARGET, "Handshake error: {}", err);
+                #[cfg(feature = "metrics")]
+                metrics::handshake_error_counter(&protocol).inc();
+            },
+            Err(err) => {
+                debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
+            },
+        }
     }
 
     fn new_session_possible_for(&mut self, node_id: &NodeId) -> Result<usize, RpcServerError> {
@@ -521,63 +743,21 @@ where
         }
     }
 
-    #[allow(clippy::too_many_lines)]
-    async fn try_initiate_service(
+    /// Starts a session on a substream whose handshake has completed. The session limits are checked again: other
+    /// sessions may have started while this handshake was in progress, and the limits apply to completed sessions.
+    fn start_session(
         &mut self,
         protocol: ProtocolId,
         node_id: &NodeId,
-        mut framed: CanonicalFraming<Substream>,
+        service: TSvc::Service,
+        framed: CanonicalFraming<Substream>,
     ) -> Result<(), RpcServerError> {
-        let mut handshake = Handshake::new(&mut framed).with_timeout(self.config.handshake_timeout);
-
-        let service = match self.service.make_service(protocol.clone()).await {
-            Ok(s) => s,
-            Err(err) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Rejecting RPC session request for peer `{}` because {}",
-                    node_id,
-                    HandshakeRejectReason::ProtocolNotSupported
-                );
-                handshake
-                    .reject_with_reason(HandshakeRejectReason::ProtocolNotSupported)
-                    .await?;
-                return Err(err);
-            },
-        };
-
-        // The per-peer limit is enforced before the global one so that culling still happens when
-        // the server is sitting on its global limit - that is precisely when reclaiming a slot from
-        // a peer that is over its own quota matters. Doing the global check first made
-        // `cull_oldest_peer_rpc_connection_on_full` unreachable exactly when it was needed.
-        let num_sessions = match self.new_session_possible_for(node_id) {
-            Ok(num_sessions) => num_sessions,
-            Err(err) => {
-                handshake
-                    .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
-                        "Maximum sessions for client",
-                    ))
-                    .await?;
-                return Err(err);
-            },
-        };
-
+        let num_sessions = self.new_session_possible_for(node_id)?;
         if !self.executor.can_spawn() {
-            let msg = format!("Used all {} sessions", self.executor.max_available());
-            debug!(
-                target: LOG_TARGET,
-                "Rejecting RPC session request for peer `{}` because {}",
-                node_id,
-                HandshakeRejectReason::NoServerSessionsAvailable("Cannot spawn more sessions")
-            );
-            handshake
-                .reject_with_reason(HandshakeRejectReason::NoServerSessionsAvailable(
-                    "Cannot spawn more sessions",
-                ))
-                .await?;
-            // A session culled above only releases its slot once that task winds down, so this
-            // request is still rejected. The client's next attempt is the one that gets in.
-            return Err(RpcServerError::MaximumSessionsReached(msg));
+            return Err(RpcServerError::MaximumSessionsReached(format!(
+                "Used all {} sessions",
+                self.executor.max_available()
+            )));
         }
 
         info!(
@@ -585,11 +765,6 @@ where
             "NEW SESSION for {node_id} ({num_sessions} currently active) "
         );
 
-        let version = handshake.perform_server_handshake().await?;
-        debug!(
-            target: LOG_TARGET,
-            "Server negotiated RPC v{version} with client node `{node_id}`"
-        );
         let stream_id = framed.stream_id();
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(());
         let service = ActivePeerRpcService::new(

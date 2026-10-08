@@ -1038,3 +1038,143 @@ async fn a_slow_reader_receives_every_item_of_a_prefetched_stream() {
         .unwrap();
     assert_eq!(resp.greeting, "Sawubona Ruby");
 }
+
+/// Connects a new peer to the server behind `notif_tx`, returning its identity and its end of the connection
+async fn connect_peer(
+    notif_tx: &mpsc::Sender<ProtocolNotification<Substream>>,
+    context: &RpcCommsBackend,
+) -> (Arc<NodeIdentity>, Yamux) {
+    let (_, inbound, outbound) = build_multiplexed_connections().await;
+    let node_identity = build_node_identity(Default::default());
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
+    spawn_inbound(
+        inbound.into_incoming(),
+        notif_tx.clone(),
+        node_identity.node_id().clone(),
+    );
+    (node_identity, outbound)
+}
+
+/// Opens a substream for the greeting protocol and never completes the handshake. It sends one byte (the start of a
+/// frame length prefix): yamux opens a stream lazily, so the server only learns of it when data arrives.
+async fn open_silent_substream(peer: &Yamux) -> Substream {
+    let mut substream = peer.get_yamux_control().open_stream().await.unwrap();
+    substream.write_all(&[0]).await.unwrap();
+    substream.flush().await.unwrap();
+    substream
+}
+
+/// Whether the server has closed (or dropped) `substream` within `wait`
+async fn is_closed_within(substream: &mut Substream, wait: Duration) -> bool {
+    let mut buf = [0u8; 16];
+    match time::timeout(wait, substream.read(&mut buf)).await {
+        // EOF or an error: the server dropped it
+        Ok(Ok(0)) | Ok(Err(_)) => true,
+        Ok(Ok(n)) => panic!("unexpected {n} byte(s) on a substream that never sent a handshake"),
+        Err(_elapsed) => false,
+    }
+}
+
+async fn connect_greeting_client(peer: &Yamux) -> Result<GreetingClient, RpcError> {
+    let socket = peer.get_yamux_control().open_stream().await.unwrap();
+    GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .with_handshake_timeout(Duration::from_secs(5))
+        .connect(framing::canonical(socket, 1024))
+        .await
+}
+
+/// Handshakes run off the accept loop: a peer holding substreams open without ever handshaking does not delay another
+/// peer's session, even with a long handshake timeout
+#[tokio::test]
+async fn silent_substreams_do_not_stall_other_peers() {
+    let builder = RpcServer::builder().with_handshake_timeout(Duration::from_secs(60));
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+
+    let (_, silent_peer) = connect_peer(&notif_tx, &context).await;
+    let mut silent = Vec::new();
+    for _ in 0..2 {
+        silent.push(open_silent_substream(&silent_peer).await);
+    }
+
+    let (_, honest_peer) = connect_peer(&notif_tx, &context).await;
+    let mut client = time::timeout(Duration::from_secs(5), connect_greeting_client(&honest_peer))
+        .await
+        .expect("the session was held up behind the silent handshakes")
+        .unwrap();
+    let resp = client
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp.greeting, "Jambo Yathvan");
+
+    // The silent substreams are still waiting for their handshakes
+    for substream in &mut silent {
+        assert!(!is_closed_within(substream, Duration::from_millis(200)).await);
+    }
+}
+
+/// Pending handshakes are capped per peer and in total: a substream over either cap is dropped at once. A handshake
+/// that times out releases its slot.
+#[tokio::test]
+async fn pending_handshakes_are_capped_and_released_on_timeout() {
+    let builder = RpcServer::builder()
+        .with_handshake_timeout(Duration::from_secs(2))
+        .with_maximum_pending_handshakes_per_client(2)
+        .with_maximum_pending_handshakes(3);
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+
+    // Peer A fills its own cap; its third substream is dropped
+    let (_, peer_a) = connect_peer(&notif_tx, &context).await;
+    let mut a1 = open_silent_substream(&peer_a).await;
+    let mut a2 = open_silent_substream(&peer_a).await;
+    let mut a3 = open_silent_substream(&peer_a).await;
+    assert!(
+        is_closed_within(&mut a3, Duration::from_secs(1)).await,
+        "per-peer cap not enforced"
+    );
+
+    // Peer B takes the last global slot; peer C is then dropped by the global cap
+    let (_, peer_b) = connect_peer(&notif_tx, &context).await;
+    let mut b1 = open_silent_substream(&peer_b).await;
+    assert!(!is_closed_within(&mut b1, Duration::from_millis(200)).await);
+    let (_, peer_c) = connect_peer(&notif_tx, &context).await;
+    let mut c1 = open_silent_substream(&peer_c).await;
+    assert!(
+        is_closed_within(&mut c1, Duration::from_secs(1)).await,
+        "global cap not enforced"
+    );
+    assert!(!is_closed_within(&mut a1, Duration::from_millis(10)).await);
+
+    // Once the pending handshakes time out, they are closed and their slots released: A and C can both connect
+    for substream in [&mut a1, &mut a2, &mut b1] {
+        assert!(
+            is_closed_within(substream, Duration::from_secs(5)).await,
+            "handshake did not time out"
+        );
+    }
+    let _client_a = connect_greeting_client(&peer_a).await.unwrap();
+    let _client_c = connect_greeting_client(&peer_c).await.unwrap();
+}
+
+/// A handshake in progress does not outlive the server: shutting it down aborts the handshake task and closes the
+/// substream, well before the handshake timeout
+#[tokio::test]
+async fn pending_handshakes_end_with_the_server() {
+    let builder = RpcServer::builder().with_handshake_timeout(Duration::from_secs(60));
+    let (notif_tx, server, context, shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut silent = open_silent_substream(&peer).await;
+    assert!(!is_closed_within(&mut silent, Duration::from_millis(200)).await);
+
+    shutdown.trigger();
+    server.await.unwrap();
+    assert!(is_closed_within(&mut silent, Duration::from_secs(5)).await);
+}

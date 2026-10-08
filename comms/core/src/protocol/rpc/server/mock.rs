@@ -201,7 +201,9 @@ impl RpcCommsProvider for MockCommsProvider {
     }
 }
 
-pub struct MockRpcServer<TSvc> {
+pub struct MockRpcServer<TSvc>
+where TSvc: MakeService<ProtocolId, Request<Bytes>>
+{
     inner: Option<PeerRpcServer<TSvc, MockCommsProvider>>,
     protocol_tx: ProtocolNotificationTx<Substream>,
     our_node: Arc<NodeIdentity>,
