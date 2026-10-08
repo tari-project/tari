@@ -662,6 +662,28 @@ mod tests {
         }
     }
 
+    /// Pre-mine step 2 writes the `PreMine` sender offset key `get_script_offset` issued into a JSON session file,
+    /// and step 4 reads it back to sign with. It must survive both the string form and JSON exactly - a lossy round
+    /// trip would sign with a different key than the script offset was built from. Large values are included because
+    /// a ledger key index may be any `u64`.
+    #[test]
+    fn a_pre_mine_sender_offset_key_round_trips_through_its_string_and_json_forms() {
+        for index in [
+            1u64 << 63,
+            (1u64 << 63) | 0x3fff_ffff_ffff_ffff,
+            (1u64 << 63) | 7,
+            u64::MAX,
+        ] {
+            let key_id = TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::PreMine,
+                index,
+            };
+            assert_eq!(TariKeyId::from_str(&key_id.to_string()).unwrap(), key_id);
+            let json = serde_json::to_string(&key_id).unwrap();
+            assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), key_id, "{json}");
+        }
+    }
+
     #[test]
     fn roundtrip_ledger_ephemeral_nonce() {
         let s = format!("{LEDGER_EPHEMERAL_NONCE_BRANCH}.{}", 7u64);

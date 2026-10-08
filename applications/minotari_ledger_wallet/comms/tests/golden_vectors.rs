@@ -14,7 +14,11 @@
 //! the migration and afterwards.
 //!
 //! A change to any constant below is therefore a wire format change, which needs its own spec and its own
-//! application version bump. It is never a test fix.
+//! application version bump. It is never a test fix. (Example: the optional trailing `sender_offset_branch` of
+//! `GetOneSidedMetadataSignature` ships with the next application release, and `MIN_LEDGER_APP_VERSION` moves to
+//! that release with it. It is appended after `message`, and only when it is not the default `OneSidedSenderOffset`,
+//! so `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` - an ordinary send - is unchanged from before it existed, and only
+//! `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE` carries it.)
 //!
 //! # What is covered
 //!
@@ -281,6 +285,27 @@ const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST: &str = concat!(
     "66331ea3494b3fc582744b92cea35e0f230322bc68a88851713d5ba8a8ea8594",
     "4711eeeff07d",
     "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9", // message
+);
+/// `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` for the backup pre-mine spend: the same bytes with the trailing
+/// `sender_offset_branch` appended, which a host sends only when the branch is not the default `OneSidedSenderOffset`.
+const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE: &str = concat!(
+    "80",                                                               // cla
+    "11",                                                               // ins
+    "00",                                                               // p1
+    "00",                                                               // p2
+    "b8",                                                               // lc
+    "0102030405060708",                                                 // account
+    "2600000000000000",                                                 // network (Esmeralda, widened to u64)
+    "0100000000000000",                                                 // txo_version (widened to u64)
+    "4142434445464748",                                                 // sender_offset_key_index
+    "87d6120000000000",                                                 // value
+    "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b801", // commitment_mask
+    "4600",                                                             // address_size (70, u16)
+    "2605b676b11050b58e4adbd76040817cc822865ed00073fad2b0d53d72e074ce", // receiver_address (dual, 3 byte payment id)
+    "66331ea3494b3fc582744b92cea35e0f230322bc68a88851713d5ba8a8ea8594",
+    "4711eeeff07d",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9", // message
+    "0900000000000000",                                                 // sender_offset_branch (PreMine, trailing)
 );
 const GENERATE_EPHEMERAL_NONCE_REQUEST: &str = concat!(
     "80",               // cla
@@ -653,6 +678,7 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
         TXO_VERSION,
         VALUE,
         SENDER_OFFSET_KEY_INDEX,
+        LedgerKeyBranch::OneSidedSenderOffset,
         &scalar(0xb8),
         &receiver_address(),
         &[0xb9; 32],
@@ -661,6 +687,24 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
     expected_com_and_pub(&signature);
     assert_request("GetOneSidedMetadataSignature", device.take_sent(), &[
         GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST,
+    ]);
+
+    device.expect(vec![unhex(COM_AND_PUB_SIG_REPLY)]);
+    let signature = ledger_get_one_sided_metadata_signature(
+        ACCOUNT,
+        NETWORK,
+        TXO_VERSION,
+        VALUE,
+        SENDER_OFFSET_KEY_INDEX,
+        LedgerKeyBranch::PreMine,
+        &scalar(0xb8),
+        &receiver_address(),
+        &[0xb9; 32],
+    )
+    .unwrap();
+    expected_com_and_pub(&signature);
+    assert_request("GetOneSidedMetadataSignature (PreMine)", device.take_sent(), &[
+        GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE,
     ]);
 
     // --- GenerateEphemeralNonce
@@ -873,6 +917,22 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
             u64::from(NETWORK.as_byte()),
             u64::from(TXO_VERSION),
             SENDER_OFFSET_KEY_INDEX,
+            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+            VALUE,
+            &mask,
+            &address,
+            &[0xb9; 32],
+        )
+        .unwrap())
+    );
+    assert_eq!(
+        GetOneSidedMetadataSignatureRequest::decode(&payload(GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE)),
+        Ok(GetOneSidedMetadataSignatureRequest::new(
+            ACCOUNT,
+            u64::from(NETWORK.as_byte()),
+            u64::from(TXO_VERSION),
+            SENDER_OFFSET_KEY_INDEX,
+            u64::from(LedgerKeyBranch::PreMine.as_byte()),
             VALUE,
             &mask,
             &address,

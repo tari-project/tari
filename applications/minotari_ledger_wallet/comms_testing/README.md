@@ -290,9 +290,11 @@ account silently moved.
 
 ## The review screen
 
-Exactly one instruction shows anything to a human: `GetOneSidedMetadataSignature` puts up a transaction review and
-does not answer until somebody approves or rejects it. `src/review.rs`, `src/approver.rs` and `src/speculos_api.rs`
-drive and assert that one screen, and `tests/speculos_review.rs` is the scenario file.
+Two instructions show anything to a human: `GetOneSidedMetadataSignature` puts up a transaction review, and
+`GetRawSchnorrSignatureLegacyNonce` puts up the pre-mine signature it is about to make (purpose, key and nonce).
+Neither answers until somebody approves or rejects it. `src/review.rs`, `src/approver.rs` and `src/speculos_api.rs`
+drive and assert those screens; `tests/speculos_review.rs` is the metadata signature scenario file, and the legacy
+nonce reviews are answered by the `legacy_nonce` scenarios.
 
 ### The assertion is the field text
 

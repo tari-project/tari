@@ -45,6 +45,7 @@ use minotari_ledger_wallet_common::{
         GetVersionRequest,
         GetViewKeyRequest,
         KeyReply,
+        MAX_APDU_DATA_SIZE,
         RESPONSE_VERSION,
         SchnorrReply,
         ScriptOffsetReply,
@@ -54,9 +55,15 @@ use minotari_ledger_wallet_common::{
     },
     common_types::{AppSW, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
-    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
+    legacy_nonce::{
+        LEGACY_NONCE_INDEX_FLOOR,
+        LegacyNonceBranchError,
+        check_legacy_nonce_branches,
+        check_legacy_nonce_index,
+    },
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
+        check_indexed_script_key_index,
         check_script_key_count,
         check_sender_offset_key_count,
         sender_offset_index,
@@ -431,7 +438,9 @@ pub fn ledger_get_script_signature(
 /// host already knows, `script_key_indexes` names pre-mine script keys by index and `derived_script_keys` carries
 /// the blinding factors of alpha derived script keys. The device generates `sender_offset_count` sender offset keys
 /// itself and returns the base index it derived them from, so the reply is always blinded by keys the host has
-/// never seen.
+/// never seen. They are on the branch that
+/// [`minotari_ledger_wallet_common::script_offset::sender_offset_branch`] names for `derived_script_keys.len()`:
+/// `PreMine` when there are no alpha derived script keys (the pre-mine spend flow), `OneSidedSenderOffset` otherwise.
 ///
 /// Neither side of the sum may leave the device unblinded by a term the host cannot compute, so the device refuses
 /// a request with no sender offset keys *and* one with no script key it derived itself. Both refusals are mirrored
@@ -461,6 +470,10 @@ pub fn ledger_get_script_offset(
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     check_script_key_count(script_key_indexes.len() as u64, derived_script_keys.len() as u64)
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
+    for (_, index) in script_key_indexes {
+        check_indexed_script_key_index(*index)
+            .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: script key index {index}: {e:?}")))?;
+    }
     verify_ledger_application()?;
 
     let script_key_indexes = script_key_indexes
@@ -668,9 +681,11 @@ pub fn ledger_get_raw_schnorr_signature(
 /// flow, whose nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between -
 /// which the device's RAM backed nonce store cannot serve.
 ///
-/// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs - including
-/// why allowing the sender offset branch reaches pre-mine script keys as well - the scope of the exposure, and the
-/// TODO that deletes this function along with the rest of the legacy path.
+/// Only `PreMine` keys are signed, and the device asks the user to approve every request.
+///
+/// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs, what it reached
+/// before it was narrowed to `PreMine`, the scope of the exposure, and the TODO that deletes this function along with
+/// the rest of the legacy path.
 pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     account: u64,
     private_key_index: u64,
@@ -698,6 +713,22 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
             LedgerKeyBranch::Random
         )),
     })?;
+    check_legacy_nonce_index(nonce_index).map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below {LEGACY_NONCE_INDEX_FLOOR}, where \
+             it would name a nonce an application from before the 64-bit index split derived"
+        ))
+    })?;
+    // The device refuses a challenge that reduces to zero before its review: the signature would be the nonce itself.
+    if <PrivateKey as tari_crypto::keys::SecretKey>::from_uniform_bytes(challenge)
+        .map_or(true, |e| e == PrivateKey::default())
+    {
+        return Err(LedgerDeviceError::Processing(
+            "GetRawSchnorrSignatureLegacyNonce: the challenge reduces to zero, so the signature would be the nonce \
+             itself"
+                .to_string(),
+        ));
+    }
     verify_ledger_application()?;
 
     let request = GetRawSchnorrSignatureLegacyNonceRequest {
@@ -774,12 +805,17 @@ pub fn ledger_get_script_schnorr_signature(
 }
 
 /// Get the one sided metadata signature
+///
+/// `sender_offset_branch` is the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary output,
+/// `PreMine` for the backup pre-mine spend, whose sender offset `GetScriptOffset` issued in pre-mine mode. The device
+/// refuses any other branch with `BadBranchKey`, before its review; that refusal is mirrored here.
 pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
     txo_version: u8,
     value: u64,
     sender_offset_key_index: u64,
+    sender_offset_branch: LedgerKeyBranch,
     commitment_mask: &PrivateKey,
     receiver_address: &TariAddress,
     message: &[u8; 32],
@@ -789,6 +825,43 @@ pub fn ledger_get_one_sided_metadata_signature(
         "ledger_get_one_sided_metadata_signature: account '{}', message '{}'",
         account, message.to_hex()
     );
+    if !matches!(
+        sender_offset_branch,
+        LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine
+    ) {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: '{sender_offset_branch}' is not a sender offset key branch"
+        )));
+    }
+    let address_bytes = receiver_address.to_vec();
+    let request = GetOneSidedMetadataSignatureRequest::new(
+        account,
+        u64::from(network.as_byte()),
+        u64::from(txo_version),
+        sender_offset_key_index,
+        u64::from(sender_offset_branch.as_byte()),
+        value,
+        key_field(commitment_mask)?,
+        &address_bytes,
+        message,
+    )
+    .map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "Address size {} exceeds maximum u16 value",
+            address_bytes.len()
+        ))
+    })?;
+
+    // The transport writes the data length as one byte, so a longer payload would go out with a wrapped length and be
+    // refused by the device as `WrongApduLength`. Say so here instead, before the device is touched.
+    if !request.fits_in_one_apdu() {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: the request is {} bytes, more than the {MAX_APDU_DATA_SIZE} one APDU can \
+             carry; the receiver address ({} bytes) is too long to sign for on a Ledger",
+            request.encoded_len(),
+            address_bytes.len()
+        )));
+    }
     verify_ledger_application()?;
 
     // Ensure the receiver address is valid
@@ -808,24 +881,6 @@ pub fn ledger_get_one_sided_metadata_signature(
             "Processing integrated address with embedded payment ID"
         );
     }
-
-    let address_bytes = receiver_address.to_vec();
-    let request = GetOneSidedMetadataSignatureRequest::new(
-        account,
-        u64::from(network.as_byte()),
-        u64::from(txo_version),
-        sender_offset_key_index,
-        value,
-        key_field(commitment_mask)?,
-        &address_bytes,
-        message,
-    )
-    .map_err(|_| {
-        LedgerDeviceError::Processing(format!(
-            "Address size {} exceeds maximum u16 value",
-            address_bytes.len()
-        ))
-    })?;
 
     match Command::from_request(&request).execute() {
         Ok(result) => {
@@ -855,5 +910,51 @@ pub fn ledger_get_one_sided_metadata_signature(
         Err(e) => Err(LedgerDeviceError::Instruction(format!(
             "GetOneSidedMetadataSignature: {e}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::tari_address::TariAddressFeatures;
+
+    use super::*;
+
+    fn dual_address(payment_id_len: usize) -> TariAddress {
+        let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(7u64));
+        TariAddress::new_dual_address(
+            key.clone(),
+            key,
+            Network::Esmeralda,
+            TariAddressFeatures::create_one_sided_only() | TariAddressFeatures::PAYMENT_ID,
+            Some(vec![0xaa; payment_id_len]),
+        )
+        .expect("a dual address with a payment id")
+    }
+
+    /// A receiver address too long for one APDU is refused on the host, with an error that says so, before the device
+    /// is asked - not sent with a wrapped length byte for the device to answer `WrongApduLength`.
+    #[test]
+    fn a_metadata_request_longer_than_one_apdu_is_refused_on_the_host() {
+        let address = dual_address(200);
+        assert!(address.to_vec().len() > MAX_APDU_DATA_SIZE - 106);
+        let error = ledger_get_one_sided_metadata_signature(
+            1,
+            Network::Esmeralda,
+            0,
+            1_000,
+            7,
+            LedgerKeyBranch::OneSidedSenderOffset,
+            &PrivateKey::from(3u64),
+            &address,
+            &[0x42; 32],
+        )
+        .unwrap_err();
+        match error {
+            LedgerDeviceError::Processing(message) => assert!(
+                message.contains("more than the 255 one APDU can carry"),
+                "unexpected message: {message}"
+            ),
+            other => panic!("expected the host's size refusal, got {other:?}"),
+        }
     }
 }

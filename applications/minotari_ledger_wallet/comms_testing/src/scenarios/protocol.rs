@@ -119,6 +119,7 @@ const SCENARIOS: &[Scenario] = &[
             Instruction::GetDHSharedSecret,
             Instruction::GetScriptSchnorrSignature,
             Instruction::GetScriptOffset,
+            Instruction::GetOneSidedMetadataSignature,
         ],
         approval: Approval::NotNeeded,
         run: the_spend_branch_is_refused,
@@ -259,8 +260,13 @@ fn bad_p1_p2_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
 
 /// The smallest `GetOneSidedMetadataSignature` payload the device will look at, from the handler's own comment:
 /// `account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) +
-/// address_size(2) + min_address(67) + message(32)`.
+/// address_size(2) + min_address(67) + message(32)`, less the two bytes the device has always been short by. The
+/// trailing `sender_offset_branch` is optional and does not count towards it.
 const METADATA_SIGNATURE_MINIMUM: usize = 171;
+
+/// The marker bit of a pre-mine sender offset key index, restated rather than imported so that a device that moved it
+/// would be caught.
+const SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
 
 /// Acceptance: a payload one byte short, or one byte long, is `WrongApduLength`.
 ///
@@ -364,6 +370,8 @@ fn a_wrong_length_payload_is_refused(_context: &ScenarioContext<'_>) -> Scenario
 /// `GetScriptOffset`'s indexed script key chunk is here too, with a twist: it refuses a `Random` branch as well,
 /// with its own `ScriptOffsetInvalidScriptBranch`, because only pre-mine script keys may be addressed by index.
 /// Both refusals are asserted, because they are two different rules and only one of them is the spend branch rule.
+/// So is a third: a `PreMine` index with the sender offset marker (bit 63) set is refused with the same status word,
+/// because a sender offset key is never a script key - see `check_indexed_script_key_index`.
 fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let index = fixtures::random_u64();
@@ -396,11 +404,49 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
         expect_status(&format!("{name} on the spend branch"), &reply, AppSW::BadBranchKey)?;
     }
 
+    // `GetOneSidedMetadataSignature`'s sender offset key may be on `OneSidedSenderOffset` or `PreMine` and nothing
+    // else. Both refusals come before the review, so this stays unattended; a device that drew the review instead
+    // would block here until the scenario timed out.
+    let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
+    // So is a `PreMine` sender offset without the pre-mine sender offset marker: those are script key indexes.
+    for (branch, index) in [
+        (LedgerKeyBranch::Spend, index),
+        (LedgerKeyBranch::Random, index),
+        (LedgerKeyBranch::PreMine, index & !SENDER_OFFSET_INDEX_BIT),
+    ] {
+        let reply = raw::command(
+            account,
+            Instruction::GetOneSidedMetadataSignature,
+            payload::one_sided_metadata_signature(
+                0x26,
+                0,
+                index,
+                branch,
+                12_345,
+                &fixtures::random_scalar_bytes(),
+                &receiver,
+                &fixtures::random_bytes_32(),
+            ),
+        )
+        .send()
+        .context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
+        expect_status(
+            &format!("GetOneSidedMetadataSignature with a {branch} sender offset key"),
+            &reply,
+            AppSW::BadBranchKey,
+        )?;
+    }
+
     // The script offset's indexed script key chunk. A valid header first, so the chunk lands in the indexed script
     // key section rather than in no section at all - in which case it would carry nothing and be accepted.
-    for (branch, expected) in [
-        (LedgerKeyBranch::Spend, AppSW::BadBranchKey),
-        (LedgerKeyBranch::Random, AppSW::ScriptOffsetInvalidScriptBranch),
+    for (branch, index, expected) in [
+        (LedgerKeyBranch::Spend, index, AppSW::BadBranchKey),
+        (LedgerKeyBranch::Random, index, AppSW::ScriptOffsetInvalidScriptBranch),
+        (
+            LedgerKeyBranch::PreMine,
+            index | SENDER_OFFSET_INDEX_BIT,
+            AppSW::ScriptOffsetInvalidScriptBranch,
+        ),
     ] {
         let header = raw::chunk(
             account,
@@ -421,9 +467,9 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
             payload::script_offset_script_index(branch, index),
         )
         .send()
-        .context(|| format!("a GetScriptOffset script key on the {branch} branch"))?;
+        .context(|| format!("a GetScriptOffset script key on the {branch} branch at {index}"))?;
         expect_status(
-            &format!("a GetScriptOffset script key addressed by index on the {branch} branch"),
+            &format!("a GetScriptOffset script key addressed by index {index} on the {branch} branch"),
             &reply,
             expected,
         )?;

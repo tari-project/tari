@@ -10,7 +10,10 @@
 //! The byte layout of every chunk is not in here: it is in [`crate::codec`], with every other layout. This module is
 //! the rules about what the decoded values may be.
 
-use crate::codec::{Decode, ScriptOffsetHeaderChunk};
+use crate::{
+    codec::{Decode, ScriptOffsetHeaderChunk},
+    common_types::LedgerKeyBranch,
+};
 
 /// The device draws a single random base index and derives `base..base + count` from it, so the reply is a fixed
 /// size no matter how many keys were asked for. The bound therefore no longer exists to keep the reply inside one
@@ -34,6 +37,8 @@ pub enum ScriptOffsetHeaderError {
     TooManySenderOffsetKeys,
     /// No script side term of the sum was derived on the device.
     NoDeviceScriptKeys,
+    /// An indexed script key named a pre-mine sender offset index. See [`check_indexed_script_key_index`].
+    SenderOffsetIndexAsScriptKey,
 }
 
 /// The `GetScriptOffset` header, as sent in chunk 0.
@@ -161,6 +166,92 @@ pub fn check_offset_is_blinded(
 /// Both sides call this, so a base near `u64::MAX` needs no special case on either.
 pub fn sender_offset_index(base_index: u64, i: u64) -> u64 {
     base_index.wrapping_add(i)
+}
+
+/// The bit every pre-mine sender offset key index has set, and no pre-mine script key index does.
+///
+/// Pre-mine script keys are named by their output's position in the genesis block, so their indexes are small.
+/// Pre-mine sender offset keys share the `PreMine` branch with them, and are kept apart by drawing their base index
+/// from the range this bit marks - see [`sender_offset_base_index`]. That is what lets the device tell the user which
+/// pre-mine signature it is being asked for (see `crate::legacy_nonce::legacy_signature_purpose`), and what lets
+/// `GetScriptOffset` refuse a sender offset index named as a script key (see [`check_indexed_script_key_index`]).
+///
+/// The device derives from every bit of a `u64` index (the high word and the low word are separate BIP32 path
+/// elements), so a bit-63 marker is part of the key, not just of the request: `i` and `2^63 | i` are different keys.
+pub const PRE_MINE_SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
+
+/// The random part of a pre-mine sender offset base index: 62 bits.
+///
+/// One bit short of the marker, so that the highest base, `PRE_MINE_SENDER_OFFSET_INDEX_BIT | MASK`, has
+/// [`MAX_SENDER_OFFSET_KEYS`] of headroom before the walk could carry into bit 63 and clear the marker.
+pub const PRE_MINE_SENDER_OFFSET_RANDOM_MASK: u64 = (1 << 62) - 1;
+
+/// Whether `index` is in the range pre-mine sender offset keys are drawn from.
+pub fn is_pre_mine_sender_offset_index(index: u64) -> bool {
+    index & PRE_MINE_SENDER_OFFSET_INDEX_BIT != 0
+}
+
+/// Check a pre-mine script key index named in `GetScriptOffset`'s indexed script key section.
+///
+/// A sender offset key is never a script key, so an index in the pre-mine sender offset range is refused. Without
+/// this the host could feed the sender offset keys of one reply back in as script keys of the next: with script keys
+/// `{A, b_(n-1)}` each reply is `k_A + k(b_(n-1)) - k(b_n)`, so the replies telescope, and the first repeated base
+/// closes the chain and gives up `k_A` - a pre-mine script key, with nothing on the screen. The full 64 bit bases
+/// already make that repeat unreachable; this makes the chain impossible to start.
+///
+/// Both sides call this: the device to refuse the chunk, the host so a caller gets a legible error instead of a
+/// status word.
+pub fn check_indexed_script_key_index(index: u64) -> Result<(), ScriptOffsetHeaderError> {
+    if is_pre_mine_sender_offset_index(index) {
+        return Err(ScriptOffsetHeaderError::SenderOffsetIndexAsScriptKey);
+    }
+    Ok(())
+}
+
+/// The branch the device derives a script offset's sender offset keys on.
+///
+/// `derived_script_keys` is the number of alpha derived script keys folded into the sum. With none, every script key
+/// the device derived was a pre-mine key (the device refuses any other indexed branch), so this is the pre-mine spend
+/// flow and the sender offsets go on the `PreMine` branch. Otherwise they go on `OneSidedSenderOffset`.
+///
+/// This split is what keeps `alpha` out of reach of `GetRawSchnorrSignatureLegacyNonce`. A reply that folds an
+/// alpha derived key is `H(b) + alpha - k_sender`, and the legacy instruction can only sign `PreMine` keys, so its
+/// `k_sender` is never one the legacy instruction can be made to give up. A reply whose `k_sender` *is* on `PreMine`
+/// has no `alpha` in it. See `crate::legacy_nonce`.
+///
+/// Both sides call this - the device to derive the keys, the host to name them - so they cannot drift apart.
+pub fn sender_offset_branch(derived_script_keys: u64) -> LedgerKeyBranch {
+    if derived_script_keys == 0 {
+        LedgerKeyBranch::PreMine
+    } else {
+        LedgerKeyBranch::OneSidedSenderOffset
+    }
+}
+
+/// The base index the device derives sender offset keys from, given a fresh random draw.
+///
+/// On `OneSidedSenderOffset` this is the draw itself: 64 random bits. On `PreMine` it is
+/// `PRE_MINE_SENDER_OFFSET_INDEX_BIT` plus 62 random bits ([`PRE_MINE_SENDER_OFFSET_RANDOM_MASK`]), so that every
+/// index walked from it carries the marker and is clear of every pre-mine script key index.
+///
+/// # Why the bases must not collide
+///
+/// The reply hands the host the base, and the reply is a linear function of the keys it names: `R = S - K(base)`,
+/// where `S` is the script side and `K(base)` the sum of the sender offset keys walked from `base`. Two replies whose
+/// bases are equal have the same `K`, so the host can subtract them and be left with the difference of two script
+/// sides it chose. Ask over `{Derived b1}` and then `{Derived b1, Derived b2}` and that difference is
+/// `alpha + H(b2)` - the wallet's root spend key - and in pre-mine mode `{A}` and `{A, B}` give up the pre-mine
+/// script key `k_B`. No step of that shows anything on the screen.
+///
+/// So a reply is only un-differenceable while bases do not repeat, and every bit of the base has to be derived from
+/// for that to hold. The device used to derive from the index modulo `2^32` (one BIP32 path element), so a host
+/// found a repeat by birthday in about `2^16` calls; it now derives from all 64 bits (see `derive_from_bip32_key` in
+/// the Ledger application), which puts a repeat out of reach at 64 and 62 random bits.
+pub fn sender_offset_base_index(branch: LedgerKeyBranch, random: u64) -> u64 {
+    match branch {
+        LedgerKeyBranch::PreMine => PRE_MINE_SENDER_OFFSET_INDEX_BIT | (random & PRE_MINE_SENDER_OFFSET_RANDOM_MASK),
+        _ => random,
+    }
 }
 
 /// Parse and validate a `GetScriptOffset` header.
@@ -449,6 +540,85 @@ mod test {
             let index = sender_offset_index(base, i);
             assert!(!seen.contains(&index), "index {index} was derived twice");
             seen.push(index);
+        }
+    }
+
+    /// A request with no alpha derived script key is the pre-mine spend flow, and only that one gets `PreMine`
+    /// sender offsets. Anything that folds `alpha` keeps `OneSidedSenderOffset`, which the legacy instruction cannot
+    /// sign.
+    #[test]
+    fn only_a_request_without_alpha_derived_keys_issues_pre_mine_sender_offsets() {
+        assert_eq!(sender_offset_branch(0), LedgerKeyBranch::PreMine);
+        for derived in [1, 2, MAX_SENDER_OFFSET_KEYS, u64::MAX] {
+            assert_eq!(sender_offset_branch(derived), LedgerKeyBranch::OneSidedSenderOffset);
+        }
+    }
+
+    /// Pre-mine sender offset indexes all carry the marker, every one of them, from any draw - so none collides
+    /// with a pre-mine script key index, and the device labels it as the metadata signature key.
+    #[test]
+    fn pre_mine_sender_offset_indexes_carry_the_marker() {
+        for random in [
+            0,
+            1,
+            PRE_MINE_SENDER_OFFSET_RANDOM_MASK,
+            u64::MAX >> 1,
+            u64::MAX - 1,
+            u64::MAX,
+        ] {
+            let base = sender_offset_base_index(LedgerKeyBranch::PreMine, random);
+            for i in 0..MAX_SENDER_OFFSET_KEYS {
+                let index = sender_offset_index(base, i);
+                assert!(is_pre_mine_sender_offset_index(index), "index {index} lost the marker");
+            }
+        }
+        // Different draws still give different bases, across all 62 random bits.
+        let bases = [0, 1, 1 << 32, 1 << 61, PRE_MINE_SENDER_OFFSET_RANDOM_MASK]
+            .map(|random| sender_offset_base_index(LedgerKeyBranch::PreMine, random));
+        for (a, x) in bases.iter().enumerate() {
+            for y in bases.iter().skip(a + 1) {
+                assert_ne!(x, y);
+            }
+        }
+    }
+
+    /// A sender offset index is never a script key: naming one in the indexed script key section is what would let a
+    /// host chain one reply's sender offsets into the next reply's script side. Genesis output indexes pass.
+    #[test]
+    fn a_sender_offset_index_is_refused_as_a_script_key() {
+        for index in [
+            0,
+            1,
+            12_345,
+            u64::from(u32::MAX),
+            1 << 32,
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT - 1,
+        ] {
+            assert_eq!(check_indexed_script_key_index(index), Ok(()), "index {index}");
+        }
+        let base = sender_offset_base_index(LedgerKeyBranch::PreMine, 0x1234_5678_9abc);
+        for index in [
+            PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+            base,
+            sender_offset_index(base, 3),
+            u64::MAX,
+        ] {
+            assert_eq!(
+                check_indexed_script_key_index(index),
+                Err(ScriptOffsetHeaderError::SenderOffsetIndexAsScriptKey),
+                "index {index}"
+            );
+        }
+    }
+
+    /// Off the pre-mine branch the draw is used as it is.
+    #[test]
+    fn other_sender_offset_bases_are_the_draw() {
+        for random in [0, 7, u64::MAX] {
+            assert_eq!(
+                sender_offset_base_index(LedgerKeyBranch::OneSidedSenderOffset, random),
+                random
+            );
         }
     }
 }

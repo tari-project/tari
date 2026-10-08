@@ -107,6 +107,12 @@ const SCENARIOS: &[Scenario] = &[
         run: the_script_offset_is_the_sum_it_claims,
     },
     Scenario {
+        name: "a script offset over pre-mine script keys only is blinded by PreMine sender offset keys",
+        covers: &[Instruction::GetScriptOffset, Instruction::GetPublicKey],
+        approval: Approval::NotNeeded,
+        run: a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine,
+    },
+    Scenario {
         name: "a Diffie-Hellman shared secret is the device's key times the host's point",
         covers: &[Instruction::GetDHSharedSecret, Instruction::GetPublicKey],
         approval: Approval::NotNeeded,
@@ -423,7 +429,9 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
     let account = fixtures::random_u64();
     let partial_sum = fixtures::random_secret_key();
     let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
-        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64()))
+        // A pre-mine *script* key never carries the sender offset marker (bit 63); the host and the device refuse
+        // one that does, so the draw stays in the unmarked half.
+        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64() >> 1))
         .collect();
     let derived_script_keys: Vec<RistrettoSecretKey> = (0..DERIVED_SCRIPT_KEYS)
         .map(|_| fixtures::random_secret_key())
@@ -477,6 +485,63 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
              script key.",
             RistrettoPublicKey::from_secret_key(&script_offset).to_hex(),
             expected.to_hex(),
+        )
+    })
+}
+
+/// Acceptance: a script offset whose only device derived script keys are pre-mine keys - the pre-mine spend flow's
+/// step 2 - is blinded by sender offset keys on the **`PreMine`** branch, at indexes with bit 63 set.
+///
+/// This is what lets pre-mine step 3 sign its metadata signature through the legacy nonce instruction, which signs
+/// `PreMine` keys only. The other half of the rule - a request that folds an alpha derived key keeps
+/// `OneSidedSenderOffset` sender offsets, which the legacy instruction refuses - is
+/// [`the_script_offset_is_the_sum_it_claims`], whose equation only balances on that branch.
+///
+/// Through the accessor, which returns indexes only: the branch is asserted by the equation balancing against the
+/// `PreMine` public keys at those indexes and *not* against the `OneSidedSenderOffset` ones.
+fn a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let partial_sum = fixtures::random_secret_key();
+    // Genesis output indexes are small; the device draws pre-mine sender offsets from the range bit 63 marks.
+    let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
+        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64() % 100_000))
+        .collect();
+
+    let (script_offset, sender_offset_indexes) =
+        ledger_get_script_offset(account, &partial_sum, &[], &script_indexes, 1)
+            .context(|| "GetScriptOffset over pre-mine script keys only".to_string())?;
+    let sender_offset_index = match sender_offset_indexes.as_slice() {
+        [index] => *index,
+        other => return Err(super::fail(format!("expected one sender offset index, got {other:?}"))),
+    };
+    require(sender_offset_index & (1 << 63) != 0, || {
+        format!("the pre-mine sender offset index {sender_offset_index} does not have bit 63 set")
+    })?;
+
+    let mut script_side = RistrettoPublicKey::from_secret_key(&partial_sum);
+    for (branch, index) in &script_indexes {
+        let key = ledger_get_public_key(account, *index, *branch)
+            .context(|| format!("GetPublicKey for the pre-mine script key at index {index}"))?;
+        script_side = script_side + key;
+    }
+    let pre_mine_sender_offset = ledger_get_public_key(account, sender_offset_index, LedgerKeyBranch::PreMine)
+        .context(|| "GetPublicKey for the PreMine sender offset key".to_string())?;
+    let one_sided_sender_offset =
+        ledger_get_public_key(account, sender_offset_index, LedgerKeyBranch::OneSidedSenderOffset)
+            .context(|| "GetPublicKey for the OneSidedSenderOffset key at the same index".to_string())?;
+
+    let actual = RistrettoPublicKey::from_secret_key(&script_offset);
+    require(actual == script_side.clone() - pre_mine_sender_offset, || {
+        let on_one_sided = actual == script_side.clone() - one_sided_sender_offset.clone();
+        format!(
+            "the pre-mine script offset is not the script keys minus the PreMine sender offset key at index \
+             {sender_offset_index}. Against the OneSidedSenderOffset key at that index it {} - a device still issuing \
+             pre-mine sender offsets on that branch would leave pre-mine step 3 unable to sign.",
+            if on_one_sided {
+                "does balance"
+            } else {
+                "does not balance either"
+            }
         )
     })
 }
@@ -544,16 +609,36 @@ const REVIEW_VALUE: u64 = 12_345;
 ///    host built, and a message derived from the receiver's own stealth script. Which is to say: what the user approved
 ///    on screen and what the device signed are the same transaction. A device that displayed one address and signed for
 ///    another would pass every screen assertion ever written, and fails here.
+///
+/// Run once per sender offset branch the device accepts: `OneSidedSenderOffset` for an ordinary output, and `PreMine`
+/// for the backup pre-mine spend, whose sender offset `GetScriptOffset` issues in pre-mine mode. Each run's signature
+/// is checked against the public key on *its* branch, so a device that ignored the branch and derived on
+/// `OneSidedSenderOffset` regardless fails the `PreMine` run.
+///
+/// The `OneSidedSenderOffset` run is also the old layout byte for byte: the trailing `sender_offset_branch` is only
+/// sent when it is not the default, so this is exactly what a host from before the field existed sends, and the device
+/// must keep reading it as an ordinary request.
 fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> ScenarioResult {
+    for branch in [LedgerKeyBranch::OneSidedSenderOffset, LedgerKeyBranch::PreMine] {
+        approved_metadata_signature_verifies(context, branch)?;
+    }
+    Ok(())
+}
+
+fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: LedgerKeyBranch) -> ScenarioResult {
     let account = fixtures::random_u64();
-    let sender_offset_key_index = fixtures::random_u64();
+    // A `PreMine` sender offset only ever comes from pre-mine mode, with the marker (bit 63) set, and the device
+    // refuses one without it.
+    let sender_offset_key_index = match branch {
+        LedgerKeyBranch::PreMine => fixtures::random_u64() | (1 << 63),
+        _ => fixtures::random_u64(),
+    };
     let commitment_mask = fixtures::random_secret_key();
     let common_message = fixtures::random_bytes_32();
     let receiver = fixtures::published_receiver(0).map_err(super::fail)?;
 
-    let sender_offset_public_key =
-        ledger_get_public_key(account, sender_offset_key_index, LedgerKeyBranch::OneSidedSenderOffset)
-            .context(|| "GetPublicKey for the sender offset key".to_string())?;
+    let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
+        .context(|| format!("GetPublicKey for the {branch} sender offset key"))?;
 
     let expected_review = ExpectedReview::one_sided_metadata_signature(REVIEW_VALUE, &receiver.to_base58(), 0);
     let (signature, review) = while_reviewing(context.approver(), &expected_review, Outcome::Approve, || {
@@ -563,13 +648,14 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
             0,
             REVIEW_VALUE,
             sender_offset_key_index,
+            branch,
             &commitment_mask,
             &receiver,
             &common_message,
         )
     });
-    review.context(|| "the device's review screen".to_string())?;
-    let signature = signature.context(|| "GetOneSidedMetadataSignature".to_string())?;
+    review.context(|| format!("the device's review screen ({branch} sender offset)"))?;
+    let signature = signature.context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
 
     // What the device should have signed, rebuilt from the same inputs the request carried.
     let value = RistrettoSecretKey::from(REVIEW_VALUE);
@@ -583,7 +669,7 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
     let message = fixtures::metadata_signature_message(network, &script, &common_message);
 
     verify_com_and_pub_signature(
-        "the one sided metadata signature",
+        &format!("the one sided metadata signature with a {branch} sender offset"),
         &signature.to_vec(),
         &commitment,
         &sender_offset_public_key,

@@ -21,8 +21,10 @@ use ledger_device_sdk::ui::{
 };
 use minotari_ledger_wallet_common::{
     codec::{Decode, OneSidedMetadataSignatureHead},
+    common_types::LedgerKeyBranch,
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
+    script_offset::is_pre_mine_sender_offset_index,
     tari_dual_address_display,
 };
 use tari_utilities::ByteArray;
@@ -47,6 +49,7 @@ use crate::{
         TransactionHashDomain,
     },
     wire::{reply_com_and_pub_sig, with_screen},
+    branch_key_from_u64,
     AppSW,
     KeyType,
 };
@@ -114,6 +117,26 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     // Copied for the same reason as the address: it is hashed into the signed message after the review.
     let metadata_signature_message_common: [u8; 32] = *tail.message().map_err(|_| AppSW::WrongApduLength)?;
 
+    // The optional trailing `sender_offset_branch`, `OneSidedSenderOffset` when a host from before it existed leaves
+    // it out - see `minotari_ledger_wallet_common::codec::metadata`. An ordinary one-sided output's sender offset key
+    // is on `OneSidedSenderOffset`; the backup pre-mine spend's is on `PreMine`, because `GetScriptOffset` issues it
+    // in pre-mine mode. Nothing else is a sender offset key, and the request is refused before the review. Signing
+    // either branch here is safe: the nonces are drawn on the device, so there is no second signature under one
+    // nonce to difference against.
+    let sender_offset_branch = tail.sender_offset_branch().map_err(|_| AppSW::WrongApduLength)?;
+    //
+    // A `PreMine` sender offset only ever comes from `GetScriptOffset` in pre-mine mode, which always sets the pre-mine
+    // sender offset marker; a `PreMine` index without it is a script key, and is refused here too.
+    let sender_offset_key_type = match branch_key_from_u64(sender_offset_branch)? {
+        LedgerKeyBranch::OneSidedSenderOffset => KeyType::from_branch_key(sender_offset_branch)?,
+        LedgerKeyBranch::PreMine if is_pre_mine_sender_offset_index(sender_offset_key_index) => {
+            KeyType::from_branch_key(sender_offset_branch)?
+        },
+        LedgerKeyBranch::PreMine | LedgerKeyBranch::Random | LedgerKeyBranch::Spend => {
+            return Err(AppSW::BadBranchKey)
+        },
+    };
+
     // Extract payment ID if present
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
@@ -180,7 +203,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let value_as_private_key: RistrettoSecretKey = value_u64.into();
 
     let sender_offset_private_key =
-        derive_from_bip32_key(account, sender_offset_key_index, KeyType::OneSidedSenderOffset)?;
+        derive_from_bip32_key(account, sender_offset_key_index, sender_offset_key_type)?;
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_private_key);
 
     let r_a = get_random_nonce()?;

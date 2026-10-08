@@ -6,14 +6,15 @@
 //! # One library, two frontends, everything shared
 //!
 //! * `tests/speculos_scenarios.rs` runs every scenario against a Speculos simulator, unattended, with
-//!   [`crate::approver::SpeculosApprover`] answering the one scenario that raises a review.
+//!   [`crate::approver::SpeculosApprover`] answering the scenarios that raise a review.
 //! * `examples/ledger_demo.rs` runs **the same scenarios, with the same assertions** against real hardware, with
-//!   [`crate::approver::HumanApprover`] answering that same scenario.
+//!   [`crate::approver::HumanApprover`] answering those same scenarios.
 //!
 //! A scenario declares whether it needs approval ([`Scenario::approval`]) and **nothing else varies between the two
-//! frontends**. That is affordable for one reason: exactly one instruction in the whole application -
-//! `GetOneSidedMetadataSignature` - puts anything in front of a human. Every other scenario here, including all of
-//! the malformed-APDU probes and all of the nonce eviction probes, runs completely unattended on real hardware.
+//! frontends**. That is affordable for one reason: only two instructions in the whole application -
+//! `GetOneSidedMetadataSignature` and `GetRawSchnorrSignatureLegacyNonce` - put anything in front of a human, and only
+//! a handful of scenarios complete one. Every other scenario here, including all of the malformed-APDU probes, all of
+//! the nonce eviction probes and every legacy nonce refusal, runs completely unattended on real hardware.
 //!
 //! # Why not `transaction_components::test_helpers`
 //!
@@ -373,45 +374,48 @@ mod test {
         assert!(all_scenarios().count() >= MODULES.len());
     }
 
-    /// Exactly one scenario raises a review.
+    /// The scenarios that raise a review are exactly the ones we decided on.
     ///
-    /// This is the premise of locked decision 1 - one scenario library driving both frontends is affordable
-    /// *because* only `GetOneSidedMetadataSignature` shows a screen - so it is asserted rather than assumed. A
-    /// second approval scenario is not forbidden, but it doubles what a human has to do for every hardware run, so
-    /// it should be a decision somebody made on purpose rather than one that arrived with a merge.
+    /// One scenario library driving both frontends is affordable *because* only a few scenarios show a screen, so
+    /// the list is asserted rather than assumed: the one sided metadata signature, and the two legacy nonce scenarios
+    /// that complete a signature (the legacy instruction prompts for every signature since it was narrowed to
+    /// `PreMine` keys). Another approval scenario is not forbidden, but it adds to what a human has to do for every
+    /// hardware run, so it should be a decision somebody made on purpose rather than one that arrived with a merge.
     #[test]
-    fn exactly_one_scenario_needs_approval() {
+    fn the_approval_scenarios_are_the_expected_ones() {
         let approving: Vec<&str> = all_scenarios()
             .filter(|scenario| scenario.approval == Approval::Required)
             .map(|scenario| scenario.name)
             .collect();
         assert_eq!(
             approving.len(),
-            1,
-            "expected exactly one approval scenario, found {approving:?}. Every one of these has to be answered by \
-             hand on the hardware frontend."
+            3,
+            "expected three approval scenarios, found {approving:?}. Every one of these has to be answered by hand on \
+             the hardware frontend."
         );
     }
 
-    /// An approval scenario is one that reaches the only instruction with a review screen.
+    /// An approval scenario is one that reaches an instruction with a review screen.
     ///
     /// One direction only, and the asymmetry is the interesting part. Every scenario that declares
-    /// [`Approval::Required`] must be a `GetOneSidedMetadataSignature` scenario, because no other handler in the
-    /// application draws anything - a scenario that asked for approval on any other instruction would leave the
-    /// hardware frontend asking an operator about a screen that will never appear.
+    /// [`Approval::Required`] must cover `GetOneSidedMetadataSignature` or `GetRawSchnorrSignatureLegacyNonce`,
+    /// because no other handler in the application draws anything - a scenario that asked for approval on any other
+    /// instruction would leave the hardware frontend asking an operator about a screen that will never appear.
     ///
     /// The converse does **not** hold, and asserting it was a mistake worth recording: `protocol`'s length probe
     /// sends a `GetOneSidedMetadataSignature` that is one byte below the handler's minimum, which is refused before
-    /// the review is built. Covering the instruction and *completing* it are different things, and only the second
-    /// needs a human. Aiming that probe at this instruction is deliberate for exactly that reason - see
-    /// [`super::protocol`].
+    /// the review is built, and every legacy nonce refusal is refused before its review too. Covering the
+    /// instruction and *completing* it are different things, and only the second needs a human.
     #[test]
     fn every_approval_scenario_is_a_review_scenario() {
         for scenario in all_scenarios().filter(|scenario| scenario.approval == Approval::Required) {
             assert!(
-                scenario.covers.contains(&Instruction::GetOneSidedMetadataSignature),
-                "'{}' asks for approval, but GetOneSidedMetadataSignature is the only instruction that shows a \
-                 screen, so nothing would ever appear for the operator to answer",
+                scenario.covers.contains(&Instruction::GetOneSidedMetadataSignature) ||
+                    scenario
+                        .covers
+                        .contains(&Instruction::GetRawSchnorrSignatureLegacyNonce),
+                "'{}' asks for approval, but only GetOneSidedMetadataSignature and GetRawSchnorrSignatureLegacyNonce \
+                 show a screen, so nothing would ever appear for the operator to answer",
                 scenario.name
             );
         }

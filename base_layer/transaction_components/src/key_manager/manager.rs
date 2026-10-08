@@ -31,7 +31,16 @@ use blake2::Blake2b;
 use chacha20poly1305::{Key, XChaCha20Poly1305};
 use digest::{KeyInit, consts::U64};
 use log::trace;
-use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
+use minotari_ledger_wallet_common::{
+    common_types::LedgerKeyBranch,
+    legacy_nonce::{
+        LEGACY_NONCE_INDEX_FLOOR,
+        LegacyNonceBranchError,
+        check_legacy_nonce_branches,
+        check_legacy_nonce_index,
+    },
+    script_offset::MAX_SENDER_OFFSET_KEYS,
+};
 #[cfg(feature = "ledger")]
 use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
@@ -394,12 +403,14 @@ impl KeyManager {
             )
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
 
+            // The device puts the sender offset keys on `PreMine` when no alpha derived script key is in the sum (the
+            // pre-mine spend flow), and on `OneSidedSenderOffset` otherwise. The same shared function decides it on
+            // both sides, from the same count, so the keys named here are the keys the device derived.
+            let derived_count = u64::try_from(derived_script_keys.len()).unwrap_or(u64::MAX);
+            let branch = minotari_ledger_wallet_common::script_offset::sender_offset_branch(derived_count);
             let mut sender_offset_keys = Vec::with_capacity(sender_offset_indexes.len());
             for index in sender_offset_indexes {
-                let key_id = TariKeyId::LedgerKey {
-                    branch: LedgerKeyBranch::OneSidedSenderOffset,
-                    index,
-                };
+                let key_id = TariKeyId::LedgerKey { branch, index };
                 let pub_key = self.get_public_key_at_key_id(&key_id)?;
                 sender_offset_keys.push(TariKeyAndId { key_id, pub_key });
             }
@@ -475,9 +486,13 @@ impl KeyManager {
     /// nonce with different challenges and solve for the private key. Only the pre-mine spend flow still uses it,
     /// because its nonces are reserved in step 2 and spent in step 3 with a file, not a device session, in between.
     ///
-    /// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs -
-    /// including why allowing the sender offset branch reaches pre-mine script keys as well - the scope of the
-    /// exposure, and the TODO that deletes this wrapper along with the rest of the legacy path.
+    /// The branch whitelist is checked here, before any wallet type or transport is consulted, so that a request
+    /// the device would refuse - a `OneSidedSenderOffset` key above all - is refused by the key manager on every
+    /// wallet. The device prompts for every request that passes.
+    ///
+    /// See [`minotari_ledger_wallet_common::legacy_nonce`] for the canonical account of what this costs, what it
+    /// reached before the whitelist was narrowed to `PreMine`, and the TODO that deletes this wrapper along with the
+    /// rest of the legacy path.
     fn ledger_get_raw_schnorr_signature_legacy_nonce_wrapper(
         &self,
         private_key_index: u64,
@@ -486,6 +501,32 @@ impl KeyManager {
         nonce: LedgerKeyBranch,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
+        check_legacy_nonce_branches(private_key, nonce).map_err(|e| match e {
+            LegacyNonceBranchError::KeyBranchNotAllowed => KeyManagerError::LedgerError(format!(
+                "GetRawSchnorrSignatureLegacyNonce: '{private_key}' keys cannot be signed with a host chosen nonce; \
+                 only the pre-mine spend flow may use this instruction"
+            )),
+            LegacyNonceBranchError::NonceBranchNotAllowed => KeyManagerError::LedgerError(format!(
+                "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce}'",
+                LedgerKeyBranch::Random
+            )),
+        })?;
+        check_legacy_nonce_index(nonce_index).map_err(|_| {
+            KeyManagerError::LedgerError(format!(
+                "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below {LEGACY_NONCE_INDEX_FLOOR}, \
+                 where it would name a nonce an application from before the 64-bit index split derived"
+            ))
+        })?;
+        // A challenge that reduces to zero would make the signature the nonce scalar itself. The device refuses it
+        // before its review; this mirrors it.
+        if legacy_challenge_is_zero(challenge) {
+            return Err(KeyManagerError::LedgerError(
+                "GetRawSchnorrSignatureLegacyNonce: the challenge reduces to zero, so the signature would be the \
+                 nonce itself"
+                    .to_string(),
+            ));
+        }
+
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
             let signature = ledger_get_raw_schnorr_signature_legacy_nonce(
@@ -616,21 +657,18 @@ impl KeyManager {
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
-            let sender_offset_key_index = match sender_offset_key_id {
-                TariKeyId::LedgerKey { branch: _, index } => index,
-                _ => {
-                    return Err(KeyManagerError::LedgerError(
-                        "Non ledger key for sender offset in ledger wallet".to_string(),
-                    ));
-                },
-            };
+            // An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine
+            // spend's is on `PreMine`, because `get_script_offset` issues it in pre-mine mode. The device derives the
+            // key on the branch it is sent and refuses any other, and so does this.
+            let (sender_offset_key_index, sender_offset_branch) = ledger_sender_offset_key(sender_offset_key_id)?;
             let commitment_mask = self.get_private_key(commitment_mask_key_id)?;
             let sig = ledger_get_one_sided_metadata_signature(
                 ledger.account,
                 ledger.network,
                 txo_version.as_u8(),
                 value.into(),
-                *sender_offset_key_index,
+                sender_offset_key_index,
+                sender_offset_branch,
                 &commitment_mask,
                 receiver_address,
                 metadata_signature_message_common,
@@ -723,7 +761,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         if let Some(branch) = ledger_key &&
             self.wallet_type.is_ledger()
         {
-            let random_index = rand::rng().next_u64();
+            let random_index = ledger_random_index(branch, rand::rng().next_u64());
             let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
             return Ok(TariKeyAndId {
                 key_id: TariKeyId::LedgerKey {
@@ -1762,12 +1800,82 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
     }
 }
 
+/// The index and branch of the sender offset key a ledger one-sided metadata signature is asked for, or why it cannot
+/// be one.
+///
+/// An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine spend's is on
+/// `PreMine`, because `get_script_offset` issues it in pre-mine mode - and so always with the pre-mine sender offset
+/// marker set. A `PreMine` index without the marker is a script key, not a sender offset key, and is refused, as the
+/// device refuses it. Nothing else is a sender offset key.
+#[cfg_attr(not(feature = "ledger"), allow(dead_code))]
+fn ledger_sender_offset_key(sender_offset_key_id: &TariKeyId) -> Result<(u64, LedgerKeyBranch), KeyManagerError> {
+    match sender_offset_key_id {
+        TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::OneSidedSenderOffset,
+            index,
+        } => Ok((*index, LedgerKeyBranch::OneSidedSenderOffset)),
+        TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index,
+        } if minotari_ledger_wallet_common::script_offset::is_pre_mine_sender_offset_index(*index) => {
+            Ok((*index, LedgerKeyBranch::PreMine))
+        },
+        TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index,
+        } => Err(KeyManagerError::LedgerError(format!(
+            "A '{}' sender offset key must be one `get_script_offset` issued, with the pre-mine sender offset marker \
+             set; index {index} is a pre-mine script key index",
+            LedgerKeyBranch::PreMine
+        ))),
+        TariKeyId::LedgerKey { branch, .. } => Err(KeyManagerError::LedgerError(format!(
+            "A one sided metadata signature needs a '{}' or '{}' sender offset key, got '{branch}'",
+            LedgerKeyBranch::OneSidedSenderOffset,
+            LedgerKeyBranch::PreMine
+        ))),
+        _ => Err(KeyManagerError::LedgerError(
+            "Non ledger key for sender offset in ledger wallet".to_string(),
+        )),
+    }
+}
+
+/// Whether a legacy nonce challenge reduces to the zero scalar, which the device refuses: `s = r + e·k` would then be
+/// the nonce `r` itself.
+fn legacy_challenge_is_zero(challenge: &[u8; 64]) -> bool {
+    <PrivateKey as tari_crypto::keys::SecretKey>::from_uniform_bytes(challenge)
+        .map_or(true, |e| e == PrivateKey::default())
+}
+
+/// The index `get_random_key` draws a ledger key at, from a uniformly random `random`.
+///
+/// - A `PreMine` key the host draws is a script key. The range the marker bit names belongs to the sender offset keys
+///   `get_script_offset` issues on `PreMine`, and the device refuses an index in it as a script key, so the marker is
+///   cleared.
+/// - A `Random` key is a legacy nonce (pre-mine step 2 reserves them), and the legacy instruction refuses a nonce index
+///   below `2^32` - see `minotari_ledger_wallet_common::legacy_nonce::LEGACY_NONCE_INDEX_FLOOR` - so bit 32 is set.
+fn ledger_random_index(branch: LedgerKeyBranch, random: u64) -> u64 {
+    match branch {
+        LedgerKeyBranch::PreMine => {
+            random & !minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT
+        },
+        LedgerKeyBranch::Random => random | LEGACY_NONCE_INDEX_FLOOR,
+        _ => random,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use minotari_ledger_wallet_common::{common_types::LedgerKeyBranch, script_offset::MAX_SENDER_OFFSET_KEYS};
     use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, PrivateKey};
 
-    use super::{MAX_SOFTWARE_EPHEMERAL_NONCES, sender_offset_key_takes_a_reserved_nonce};
+    use super::{
+        LEGACY_NONCE_INDEX_FLOOR,
+        MAX_SOFTWARE_EPHEMERAL_NONCES,
+        ledger_random_index,
+        ledger_sender_offset_key,
+        legacy_challenge_is_zero,
+        sender_offset_key_takes_a_reserved_nonce,
+    };
     use crate::{
         MicroMinotari,
         key_manager::{
@@ -2086,25 +2194,28 @@ mod tests {
         assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle: used });
     }
 
-    /// The pre-mine spend flow signs its script signature with a `PreMine` key and its metadata signature with the
-    /// `OneSidedSenderOffset` key `get_script_offset` issued, both against a `Random` branch nonce reserved back in
-    /// step 2. Both pairs have to reach the device call rather than being turned away by the legacy branch
-    /// whitelist - on a software wallet "reached the device call" shows up as `InvalidWalletType`, which is raised
-    /// at the transport boundary, after every guard.
+    /// The pre-mine spend flow signs its script signature with its `PreMine` script key and its metadata signature
+    /// with the `PreMine` sender offset key `get_script_offset` issued in pre-mine mode, both against a `Random`
+    /// branch nonce reserved back in step 2. That pair has to reach the device call rather than being turned away by
+    /// the legacy branch whitelist - on a software wallet "reached the device call" shows up as `InvalidWalletType`,
+    /// which is raised at the transport boundary, after every guard.
     ///
-    /// See `minotari_ledger_wallet_common::legacy_nonce` for why that whitelist is as wide as it is.
+    /// See `minotari_ledger_wallet_common::legacy_nonce` for why `PreMine` is the only branch on that whitelist.
     #[test]
-    fn the_pre_mine_signing_pairs_reach_the_ledger_call() {
+    fn the_pre_mine_signing_pair_reaches_the_ledger_call() {
         let key_manager = KeyManager::new_random().unwrap();
 
-        for key_branch in [LedgerKeyBranch::PreMine, LedgerKeyBranch::OneSidedSenderOffset] {
+        for index in [
+            7,
+            minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7,
+        ] {
             let private_key_id = TariKeyId::LedgerKey {
-                branch: key_branch,
-                index: 7,
+                branch: LedgerKeyBranch::PreMine,
+                index,
             };
             let nonce = TariKeyId::LedgerKey {
                 branch: LedgerKeyBranch::Random,
-                index: 9,
+                index: LEGACY_NONCE_INDEX_FLOOR | 9,
             };
 
             let err = key_manager
@@ -2114,8 +2225,187 @@ mod tests {
                 KeyManagerError::InvalidWalletType(message) => {
                     assert!(message.contains("non-Ledger wallet"), "unexpected message: {message}");
                 },
-                other => panic!("'{key_branch}' was turned away before the device call: {other:?}"),
+                other => panic!("the pre-mine key at {index} was turned away before the device call: {other:?}"),
             }
+        }
+    }
+
+    /// A legacy nonce index below `2^32` names a nonce an application from before the 64-bit index split derived, so
+    /// the legacy arm refuses it on any wallet, before the transport is consulted; `2^32` itself reaches the device
+    /// call.
+    #[test]
+    fn the_legacy_arm_refuses_a_nonce_index_below_2_32() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let private_key_id = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: 7,
+        };
+        for nonce_index in [0, 9, u64::from(u32::MAX)] {
+            let nonce = TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: nonce_index,
+            };
+            match key_manager
+                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &challenge(1))
+                .unwrap_err()
+            {
+                KeyManagerError::LedgerError(message) => {
+                    assert!(message.contains("is below"), "unexpected message: {message}")
+                },
+                other => panic!("nonce index {nonce_index} was not refused: {other:?}"),
+            }
+        }
+        let nonce = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::Random,
+            index: LEGACY_NONCE_INDEX_FLOOR,
+        };
+        assert!(matches!(
+            key_manager
+                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &challenge(1))
+                .unwrap_err(),
+            KeyManagerError::InvalidWalletType(_)
+        ));
+    }
+
+    /// A ledger metadata signature takes a `OneSidedSenderOffset` key at any index, a `PreMine` key only with the
+    /// sender offset marker, and nothing else.
+    #[test]
+    fn a_pre_mine_sender_offset_key_must_carry_the_marker() {
+        use minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+        let key = |branch, index| TariKeyId::LedgerKey { branch, index };
+        assert_eq!(
+            ledger_sender_offset_key(&key(LedgerKeyBranch::OneSidedSenderOffset, 7)).unwrap(),
+            (7, LedgerKeyBranch::OneSidedSenderOffset)
+        );
+        let marked = PRE_MINE_SENDER_OFFSET_INDEX_BIT | 7;
+        assert_eq!(
+            ledger_sender_offset_key(&key(LedgerKeyBranch::PreMine, marked)).unwrap(),
+            (marked, LedgerKeyBranch::PreMine)
+        );
+        for refused in [
+            key(LedgerKeyBranch::PreMine, 7),
+            key(LedgerKeyBranch::Random, marked),
+            key(LedgerKeyBranch::Spend, 7),
+            TariKeyId::SpendKey,
+        ] {
+            assert!(
+                matches!(ledger_sender_offset_key(&refused), Err(KeyManagerError::LedgerError(_))),
+                "{refused}"
+            );
+        }
+    }
+
+    /// A challenge that reduces to zero - the zero bytes, or the group order padded to 64 bytes - is refused by the
+    /// legacy arm before the transport is consulted; any other challenge reaches the device call.
+    #[test]
+    fn the_legacy_arm_refuses_a_challenge_that_reduces_to_zero() {
+        // The Ristretto group order, little endian, padded to the 64 bytes `from_uniform_bytes` reduces.
+        let mut order = [0u8; 64];
+        order[..32].copy_from_slice(&[
+            0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+        ]);
+        assert!(legacy_challenge_is_zero(&[0u8; 64]));
+        assert!(legacy_challenge_is_zero(&order));
+        assert!(!legacy_challenge_is_zero(&challenge(1)));
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let private_key_id = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: 7,
+        };
+        let nonce = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::Random,
+            index: LEGACY_NONCE_INDEX_FLOOR | 9,
+        };
+        for zero in [[0u8; 64], order] {
+            match key_manager
+                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &zero)
+                .unwrap_err()
+            {
+                KeyManagerError::LedgerError(message) => {
+                    assert!(message.contains("reduces to zero"), "unexpected message: {message}")
+                },
+                other => panic!("a zero challenge was not refused: {other:?}"),
+            }
+        }
+    }
+
+    /// `get_random_key` draws ledger `Random` keys - legacy nonces - at or above `2^32`, and `PreMine` keys - script
+    /// keys - without the sender offset marker, whatever the draw.
+    #[test]
+    fn ledger_random_indexes_stay_in_their_ranges() {
+        use minotari_ledger_wallet_common::{
+            legacy_nonce::check_legacy_nonce_index,
+            script_offset::is_pre_mine_sender_offset_index,
+        };
+        for random in [0, 1, 0x8765_4321, u64::from(u32::MAX), 1 << 32, 1 << 63, u64::MAX] {
+            let nonce = ledger_random_index(LedgerKeyBranch::Random, random);
+            assert!(check_legacy_nonce_index(nonce).is_ok(), "{random} -> {nonce}");
+            assert_eq!(nonce & !LEGACY_NONCE_INDEX_FLOOR, random & !LEGACY_NONCE_INDEX_FLOOR);
+            let script = ledger_random_index(LedgerKeyBranch::PreMine, random);
+            assert!(!is_pre_mine_sender_offset_index(script), "{random} -> {script}");
+        }
+    }
+
+    /// The `(LedgerKey, LedgerKey)` arm refuses a `OneSidedSenderOffset` private key - and every other branch but
+    /// `PreMine` - on any wallet, before the transport is consulted.
+    ///
+    /// `get_script_offset` returns the index of the `OneSidedSenderOffset` key that blinds a reply containing
+    /// `alpha`. Two legacy signatures under that key and one nonce index gave up the key, and `alpha` with it.
+    #[test]
+    fn the_legacy_arm_refuses_a_sender_offset_key() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let nonce = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::Random,
+            index: 9,
+        };
+
+        for key_branch in [
+            LedgerKeyBranch::OneSidedSenderOffset,
+            LedgerKeyBranch::Random,
+            LedgerKeyBranch::Spend,
+        ] {
+            let private_key_id = TariKeyId::LedgerKey {
+                branch: key_branch,
+                index: 7,
+            };
+            let err = key_manager
+                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &challenge(1))
+                .unwrap_err();
+            match err {
+                KeyManagerError::LedgerError(message) => {
+                    assert!(
+                        message.contains("keys cannot be signed with a host chosen nonce"),
+                        "unexpected message for '{key_branch}': {message}"
+                    );
+                },
+                other => panic!("a '{key_branch}' key was not refused by the whitelist: {other:?}"),
+            }
+        }
+
+        // And a `PreMine` key against a nonce off the `Random` branch.
+        let err = key_manager
+            .sign_with_nonce_and_challenge(
+                &TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::PreMine,
+                    index: 7,
+                },
+                &TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::OneSidedSenderOffset,
+                    index: 9,
+                },
+                &challenge(1),
+            )
+            .unwrap_err();
+        match err {
+            KeyManagerError::LedgerError(message) => {
+                assert!(
+                    message.contains("the nonce branch must be"),
+                    "unexpected message: {message}"
+                );
+            },
+            other => panic!("a OneSidedSenderOffset nonce was not refused by the whitelist: {other:?}"),
         }
     }
 

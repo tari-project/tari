@@ -15,10 +15,11 @@
 //! Two signatures over different challenges with the same `(key index, nonce index)` therefore give
 //! `k = (s1 - s2) / (e1 - e2)` and then `x = (s1 - k) / e1`.
 //!
-//! Because `OneSidedSenderOffset` is on the whitelist, that reaches **sender offset private keys**; and because a
-//! pre-mine output's script offset is a single script key minus a single sender offset key, a host that recovers
-//! the sender offset key can subtract it back out of an offset it already holds and recover the *script* private
-//! key too.
+//! The whitelist used to admit `OneSidedSenderOffset` keys, which together with the base index `GetScriptOffset`
+//! returns reached `alpha`. It now admits `PreMine` keys only - pre-mine script keys and, since `GetScriptOffset`
+//! puts pre-mine sender offsets on `PreMine`, pre-mine sender offset keys - and the device asks the user to approve
+//! every signature it makes. So every *accepting* scenario here answers a review, and every *refusal* must be
+//! refused before one is drawn.
 //!
 //! # The whitelist is the entire containment, and only the device's copy counts
 //!
@@ -35,7 +36,7 @@
 //! transport*, so a scenario driven through it would only ever re-test the mirror, from a second angle, and would
 //! report green against a device with no check in it at all.
 //!
-//! The two **accepting** scenarios do the opposite and drive the accessor, which is the rule stated in
+//! The **accepting** scenarios do the opposite and drive the accessor, which is the rule stated in
 //! [`crate::raw`] with no exception in this module: the pair is on the whitelist, so the mirror passes it through,
 //! and the accessor is the shipped code the pre-mine spend flow calls. It is also the only caller of that accessor
 //! anywhere in the repository.
@@ -56,10 +57,13 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_public_key,
     ledger_get_raw_schnorr_signature_legacy_nonce,
 };
+use tari_common_types::types::CompressedSignature;
 
 use crate::{
+    approver::{Outcome, while_reviewing},
     fixtures,
     raw::{self, payload},
+    review::ExpectedReview,
     scenarios::{
         Approval,
         Scenario,
@@ -79,13 +83,19 @@ pub const MODULE: ScenarioModule = ScenarioModule {
 
 const SCENARIOS: &[Scenario] = &[
     Scenario {
-        name: "the device accepts exactly the branch pairs the pre-mine spend flow uses",
+        name: "the device signs a PreMine key against a Random nonce once the user approves the review",
         covers: &[
             Instruction::GetRawSchnorrSignatureLegacyNonce,
             Instruction::GetPublicKey,
         ],
+        approval: Approval::Required,
+        run: the_allowed_pair_is_reviewed_and_signed,
+    },
+    Scenario {
+        name: "a legacy request for a OneSidedSenderOffset key is refused with BadBranchKey, before any review",
+        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::NotNeeded,
-        run: allowed_pairs_are_accepted,
+        run: a_sender_offset_key_is_refused,
     },
     Scenario {
         name: "the device refuses every disallowed legacy nonce branch pair with BadBranchKey",
@@ -94,9 +104,21 @@ const SCENARIOS: &[Scenario] = &[
         run: disallowed_pairs_are_refused,
     },
     Scenario {
-        name: "the legacy nonce really is deterministic, which is why the whitelist exists",
+        name: "a legacy nonce index below 2^32 is refused with BadBranchKey, before any review",
         covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::NotNeeded,
+        run: a_nonce_index_below_2_32_is_refused,
+    },
+    Scenario {
+        name: "a legacy challenge that reduces to zero is refused with RawSchnorrSignatureFail, before any review",
+        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
+        approval: Approval::NotNeeded,
+        run: a_zero_challenge_is_refused,
+    },
+    Scenario {
+        name: "the legacy nonce really is deterministic, which is why the whitelist exists",
+        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
+        approval: Approval::Required,
         run: the_nonce_is_deterministic,
     },
 ];
@@ -108,6 +130,18 @@ const ALL_BRANCHES: [LedgerKeyBranch; 4] = [
     LedgerKeyBranch::Random,
     LedgerKeyBranch::PreMine,
 ];
+
+/// The marker bit of a pre-mine sender offset key index, restated rather than imported so that a device which put
+/// the metadata signature's purpose on the wrong side of it would be caught. See `ExpectedReview::legacy_signature`.
+const SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
+
+/// The smallest nonce index the device will sign with, restated rather than imported for the same reason.
+const NONCE_INDEX_FLOOR: u64 = 1 << 32;
+
+/// A random legacy nonce index the device accepts: at or above `2^32`, as the host's `get_random_key` draws them.
+fn legacy_nonce_index() -> u64 {
+    fixtures::random_u64() | NONCE_INDEX_FLOOR
+}
 
 /// Ask the device for a legacy signature, over raw APDUs so that the host's mirror of the whitelist is bypassed.
 ///
@@ -132,63 +166,156 @@ fn legacy_signature(
     })
 }
 
-/// Acceptance: the three key branches the pre-mine spend flow signs with, against a `Random` nonce, are accepted -
-/// and the signature they produce verifies.
+/// Ask for a `PreMine` legacy signature through the shipped accessor, approving the review the device puts up -
+/// after checking it names the purpose, the key and the nonce that were asked for.
+fn reviewed_pre_mine_signature(
+    context: &ScenarioContext<'_>,
+    account: u64,
+    key_index: u64,
+    nonce_index: u64,
+    challenge: &[u8; 64],
+) -> Result<CompressedSignature, crate::scenarios::ScenarioError> {
+    let expected = ExpectedReview::legacy_signature(
+        &LedgerKeyBranch::PreMine.to_string(),
+        key_index,
+        &LedgerKeyBranch::Random.to_string(),
+        nonce_index,
+    );
+    let (signature, review) = while_reviewing(context.approver(), &expected, Outcome::Approve, || {
+        ledger_get_raw_schnorr_signature_legacy_nonce(
+            account,
+            key_index,
+            LedgerKeyBranch::PreMine,
+            nonce_index,
+            LedgerKeyBranch::Random,
+            challenge,
+        )
+    });
+    review.context(|| "the device's legacy signature review".to_string())?;
+    signature.context(|| "GetRawSchnorrSignatureLegacyNonce on the PreMine branch".to_string())
+}
+
+/// Acceptance: the one pair the pre-mine spend flow signs with - a `PreMine` key against a `Random` nonce - is shown
+/// to the user, and once approved it is signed, and the signature verifies.
 ///
 /// The accepting half is as necessary as the refusing half. A device that refused *everything* would satisfy every
 /// other scenario in this module while breaking the pre-mine spend flow outright, and nothing else in this
 /// repository exercises that flow end to end.
 ///
-/// `PreMine` signs the script signature, `OneSidedSenderOffset` signs the metadata signature, and `Random` is where
-/// pre-mine sender offset keys lived before they moved on to the device.
-fn allowed_pairs_are_accepted(_context: &ScenarioContext<'_>) -> ScenarioResult {
+/// The key index is a small one, the shape of a pre-mine *script* key (its genesis output index), so the review must
+/// say "Pre-mine script signature". [`the_nonce_is_deterministic`] covers the sender offset shape.
+fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
 
-    for key_branch in [
-        LedgerKeyBranch::PreMine,
-        LedgerKeyBranch::OneSidedSenderOffset,
-        LedgerKeyBranch::Random,
-    ] {
-        // The shared whitelist has to agree that this pair is allowed, or the scenario is asserting the wrong
-        // thing: a pair the host also refuses would make a device rejection look like success.
-        require(
-            check_legacy_nonce_branches(key_branch, LedgerKeyBranch::Random).is_ok(),
-            || {
-                format!(
-                    "the shared whitelist no longer allows {key_branch}, so this scenario is testing the wrong pair"
-                )
-            },
-        )?;
+    // The shared whitelist has to agree that this pair is allowed, or the scenario is asserting the wrong thing: a
+    // pair the host also refuses would make a device rejection look like success.
+    require(
+        check_legacy_nonce_branches(LedgerKeyBranch::PreMine, LedgerKeyBranch::Random).is_ok(),
+        || "the shared whitelist no longer allows PreMine, so this scenario is testing the wrong pair".to_string(),
+    )?;
 
-        let key_index = fixtures::random_u64();
-        let challenge = fixtures::random_challenge();
+    let key_index = fixtures::random_u64() % 100_000;
+    let challenge = fixtures::random_challenge();
 
-        // Through the accessor, not over raw APDUs. This is the pre-mine spend flow's own call, and it is the only
-        // place in the repository that exercises it: the accessor lays out the 104 byte payload, applies the host
-        // mirror of the whitelist, and parses the reply into a `CompressedSignature`. The refusal scenarios below
-        // have to bypass it - that is the whole point of them - but the accepting path must not, or a regression in
-        // shipped code would be invisible while this suite stayed green.
-        let signature = ledger_get_raw_schnorr_signature_legacy_nonce(
-            account,
-            key_index,
-            key_branch,
+    // Through the accessor, not over raw APDUs. This is the pre-mine spend flow's own call: the accessor lays out
+    // the 104 byte payload, applies the host mirror of the whitelist, and parses the reply. The refusal scenarios
+    // have to bypass it - that is the whole point of them - but the accepting path must not, or a regression in
+    // shipped code would be invisible while this suite stayed green.
+    let signature = reviewed_pre_mine_signature(context, account, key_index, legacy_nonce_index(), &challenge)?;
+
+    let public_key = ledger_get_public_key(account, key_index, LedgerKeyBranch::PreMine)
+        .context(|| "GetPublicKey for the PreMine key".to_string())?;
+    let signature = signature
+        .to_schnorr_signature()
+        .context(|| "the device's compressed signature would not decompress".to_string())?;
+
+    require(signature.verify_raw_uniform(&public_key, &challenge), || {
+        "the legacy signature on the PreMine branch does not verify against that branch's key".to_string()
+    })
+}
+
+/// Acceptance: a legacy request for a `OneSidedSenderOffset` private key is refused with `BadBranchKey`, and is
+/// refused before any review is drawn.
+///
+/// This is the pair that reached `alpha`: `GetScriptOffset` returns the index of the `OneSidedSenderOffset` key that
+/// blinds a reply containing `alpha`, and two legacy signatures under it gave the key up. It is in the enumeration
+/// below as well; it is spelled out here because it is the one that matters most. Sent over raw APDUs, so the
+/// host's mirror is bypassed and the device's own check is what answers. Had the device drawn a review instead, this
+/// would block rather than return, and the scenario would fail on its timeout.
+/// Acceptance: a nonce index below `2^32` is refused with `BadBranchKey`, before any review.
+///
+/// An application from before the 64-bit index split derived from the nonce index modulo `2^32`, with a constant `0`
+/// where the high word now goes, so its nonce at host index `j` is this application's nonce at `j mod 2^32`. Signing
+/// there would let one new signature be combined with an old one. Over raw APDUs, so the device's check is what
+/// answers; a review instead would block and fail the scenario on its timeout. Only the side below `2^32` is probed
+/// here; at or above it is the accepting path every reviewed scenario in this module takes.
+fn a_nonce_index_below_2_32_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    for nonce_index in [0, fixtures::random_u64() % NONCE_INDEX_FLOOR, NONCE_INDEX_FLOOR - 1] {
+        let reply = legacy_signature(
             fixtures::random_u64(),
-            LedgerKeyBranch::Random,
-            &challenge,
-        )
-        .context(|| format!("GetRawSchnorrSignatureLegacyNonce on the {key_branch} branch"))?;
-
-        let public_key = ledger_get_public_key(account, key_index, key_branch)
-            .context(|| format!("GetPublicKey for the {key_branch} key"))?;
-        let signature = signature
-            .to_schnorr_signature()
-            .context(|| "the device's compressed signature would not decompress".to_string())?;
-
-        require(signature.verify_raw_uniform(&public_key, &challenge), || {
-            format!("the legacy signature on the {key_branch} branch does not verify against that branch's key")
-        })?;
+            fixtures::random_u64() % 100_000,
+            LedgerKeyBranch::PreMine.as_byte(),
+            nonce_index,
+            LedgerKeyBranch::Random.as_byte(),
+            &fixtures::random_challenge(),
+        )?;
+        expect_status(
+            &format!("a legacy signature against Random nonce index {nonce_index}"),
+            &reply,
+            AppSW::BadBranchKey,
+        )?;
     }
     Ok(())
+}
+
+/// Acceptance: a challenge that reduces to the zero scalar is refused with `RawSchnorrSignatureFail`, before any
+/// review.
+///
+/// `s = r + e·k` with `e = 0` is the nonce scalar itself, so one approved signature would hand the nonce over. Both
+/// the zero bytes and the group order (which reduces to zero) are sent, on an otherwise accepted request - a
+/// whitelisted pair and a nonce index above the floor - so the challenge is the only thing wrong. Over raw APDUs, so
+/// the host's mirror is bypassed; a review instead would block and fail the scenario on its timeout.
+fn a_zero_challenge_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    // The Ristretto group order, little endian, padded to the 64 bytes the device reduces.
+    let mut order = [0u8; 64];
+    if let Some(low) = order.get_mut(..32) {
+        low.copy_from_slice(&[
+            0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+        ]);
+    }
+    for (what, challenge) in [("the zero challenge", [0u8; 64]), ("the group order", order)] {
+        let reply = legacy_signature(
+            fixtures::random_u64(),
+            fixtures::random_u64() % 100_000,
+            LedgerKeyBranch::PreMine.as_byte(),
+            legacy_nonce_index(),
+            LedgerKeyBranch::Random.as_byte(),
+            &challenge,
+        )?;
+        expect_status(
+            &format!("a legacy signature over {what}"),
+            &reply,
+            AppSW::RawSchnorrSignatureFail,
+        )?;
+    }
+    Ok(())
+}
+
+fn a_sender_offset_key_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let reply = legacy_signature(
+        fixtures::random_u64(),
+        fixtures::random_u64(),
+        LedgerKeyBranch::OneSidedSenderOffset.as_byte(),
+        fixtures::random_u64(),
+        LedgerKeyBranch::Random.as_byte(),
+        &fixtures::random_challenge(),
+    )?;
+    expect_status(
+        "a legacy signature by a OneSidedSenderOffset key against a Random nonce",
+        &reply,
+        AppSW::BadBranchKey,
+    )
 }
 
 /// Acceptance: **every** disallowed pair is refused by the device, with `BadBranchKey`.
@@ -214,17 +341,17 @@ fn allowed_pairs_are_accepted(_context: &ScenarioContext<'_>) -> ScenarioResult 
 /// # Which pairs only the whitelist can be refusing
 ///
 /// That distinction cannot be observed pair by pair, but it can be observed in aggregate, and it is the half that
-/// matters. Split the 13 disallowed pairs by what would happen if `check_legacy_nonce_branches` were deleted from
+/// matters. Split the 15 disallowed pairs by what would happen if `check_legacy_nonce_branches` were deleted from
 /// the handler tomorrow:
 ///
 /// * the 7 pairs with `Spend` on either side would still be refused, by `KeyType::from_branch_key`, which has no
 ///   mapping for that branch;
-/// * the remaining **6** - key branch in `{PreMine, OneSidedSenderOffset, Random}` against a nonce branch of `PreMine`
-///   or `OneSidedSenderOffset` - would be **accepted and signed**. `from_branch_key` maps all of those happily, so the
-///   whitelist is the only thing standing between a host and a deterministic-nonce signature over a pre-mine or sender
-///   offset key, which is the disclosure this module's docs describe.
+/// * the remaining **8** - every pair of `{PreMine, OneSidedSenderOffset, Random}` but `(PreMine, Random)` - would be
+///   **accepted and signed**. `from_branch_key` maps all of those happily, so the whitelist is the only thing standing
+///   between a host and a deterministic-nonce signature over a sender offset key, which is the disclosure this module's
+///   docs describe - `(OneSidedSenderOffset, Random)` is the pair that reached `alpha`.
 ///
-/// Those 6 are counted separately below. They are the load bearing ones; a change that left the other 7 passing and
+/// Those 8 are counted separately below. They are the load bearing ones; a change that left the other 7 passing and
 /// silently dropped these would be the change this scenario exists to catch.
 ///
 /// A branch byte the shared enum does not name is checked too. It is refused earlier, by `branch_key_from_u64`, but
@@ -261,24 +388,24 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
         }
     }
 
-    // 16 pairs, of which 3 are allowed, so 13 must have been refused. Pinned because every assertion above is
+    // 16 pairs, of which 1 is allowed, so 15 must have been refused. Pinned because every assertion above is
     // inside a `continue`-guarded loop, and a whitelist that accidentally allowed everything would make this
     // scenario pass having sent nothing at all.
-    require(checked == 13, || {
+    require(checked == 15, || {
         format!(
-            "expected 13 disallowed branch pairs out of {}, checked {checked}. The whitelist in \
+            "expected 15 disallowed branch pairs out of {}, checked {checked}. The whitelist in \
              `minotari_ledger_wallet_common::legacy_nonce` has changed shape; make sure the new shape is the one you \
              meant before updating this number.",
             ALL_BRANCHES.len() * ALL_BRANCHES.len()
         )
     })?;
 
-    // And of those 13, six must have been pairs that only the whitelist refuses. Without this the scenario could
+    // And of those 15, eight must have been pairs that only the whitelist refuses. Without this the scenario could
     // stay green on a device that had lost `check_legacy_nonce_branches` entirely, because the seven pairs
     // involving `Spend` would still be refused by the branch mapping.
-    require(whitelist_only == 6, || {
+    require(whitelist_only == 8, || {
         format!(
-            "expected 6 of the disallowed pairs to be ones only `check_legacy_nonce_branches` refuses, found \
+            "expected 8 of the disallowed pairs to be ones only `check_legacy_nonce_branches` refuses, found \
              {whitelist_only}. Those are the pairs `KeyType::from_branch_key` would otherwise sign; if that number \
              has fallen, the whitelist is covering less than it did."
         )
@@ -317,28 +444,20 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
 /// Deliberately **not** carried further. The next two lines of arithmetic recover the private key, and this suite
 /// has no business writing a key recovery it does not need: the equality above already proves the nonce is reused,
 /// and a recovered key would be a secret in a failure message in a file CI uploads.
-fn the_nonce_is_deterministic(_context: &ScenarioContext<'_>) -> ScenarioResult {
+fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
-    let key_index = fixtures::random_u64();
-    let nonce_index = fixtures::random_u64();
+    // A key index with the marker bit set: the shape of a pre-mine *sender offset* key, so both reviews must say
+    // "Pre-mine metadata signature".
+    let key_index = (fixtures::random_u64() % SENDER_OFFSET_INDEX_BIT) | SENDER_OFFSET_INDEX_BIT;
+    let nonce_index = legacy_nonce_index();
 
-    // Both calls go through the accessor. This is an *accepting* path - the pair is on the whitelist, so the host
-    // mirror passes it through - and the rule in `crate::raw` is that accepting paths use the shipped accessor.
-    let sign = |challenge: [u8; 64]| {
-        ledger_get_raw_schnorr_signature_legacy_nonce(
-            account,
-            key_index,
-            LedgerKeyBranch::PreMine,
-            nonce_index,
-            LedgerKeyBranch::Random,
-            &challenge,
-        )
-    };
+    // Both calls go through the accessor, and each is reviewed and approved. This is an *accepting* path - the pair is
+    // on the whitelist, so the host mirror passes it through - and the rule in `crate::raw` is that accepting paths
+    // use the shipped accessor.
+    let sign = |challenge: [u8; 64]| reviewed_pre_mine_signature(context, account, key_index, nonce_index, &challenge);
 
-    let first =
-        sign(fixtures::random_challenge()).context(|| "the first GetRawSchnorrSignatureLegacyNonce".to_string())?;
-    let second =
-        sign(fixtures::random_challenge()).context(|| "the second GetRawSchnorrSignatureLegacyNonce".to_string())?;
+    let first = sign(fixtures::random_challenge())?;
+    let second = sign(fixtures::random_challenge())?;
 
     require(
         first.get_compressed_public_nonce() == second.get_compressed_public_nonce(),

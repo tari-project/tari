@@ -104,6 +104,7 @@ fn main() -> ExitCode {
             0,
             VALUE,
             SENDER_OFFSET_KEY_INDEX,
+            minotari_ledger_wallet_common::common_types::LedgerKeyBranch::OneSidedSenderOffset,
             &PrivateKey::from(42u64),
             &receiver,
             &[7u8; 32],
