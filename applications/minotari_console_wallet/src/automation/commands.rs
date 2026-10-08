@@ -976,8 +976,9 @@ pub async fn command_runner(
                     // checks each signature's nonce against the public nonce stored here (which only catches edits
                     // that leave the stored public nonces alone - the file is unauthenticated), and never signs an
                     // output twice.
-                    // What is still open (an app restart between two approvals, devices on 6.1.0 or earlier) is the
-                    // "Residual" section of `minotari_ledger_wallet_common::legacy_nonce`; read that before touching
+                    // What is still open (any app restart between two approvals - the host can quit the app itself - a
+                    // deleted or bypassed step 4 progress file, devices on 6.1.0 or earlier) is the "Residual" section
+                    // of `minotari_ledger_wallet_common::legacy_nonce`; read that before touching
                     // either of these lines. `get_random_key` never returns a `Random` index below 2^32, which the
                     // device refuses.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
@@ -1676,9 +1677,13 @@ pub async fn command_runner(
                     // - the device refuses a second use of a nonce index within one app run (`LegacyNonceReused`);
                     // - each signature's nonce is compared with the public nonce stored in the self file - an
                     //   unauthenticated file, so this only catches edits that left the stored nonce alone.
-                    // What none of that covers - anyone with write access to the session directory can delete the
-                    // progress file or edit the self file, a redirect to a nonce an earlier app run used, a restart
-                    // between two approvals - is the residual in `minotari_ledger_wallet_common::legacy_nonce`. None of
+                    // What none of that covers is the residual in `minotari_ledger_wallet_common::legacy_nonce`: the
+                    // device record is RAM and lasts one app run, which the host can end itself (the dashboard quit
+                    // APDU) - so any restart between two approvals, including the one this step asks for every 32
+                    // outputs, defeats it; the progress file can be deleted, overwritten, or bypassed by running from a
+                    // copied directory or another machine; the self file can be edited; a nonce an earlier run used can
+                    // be named again. Nothing is stored on the Ledger by design, so cross-run protection is the host's,
+                    // and the follow-up is a used-nonce ledger in the wallet database. None of
                     // it reaches `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
                     // `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo step 2 for such a
                     // session. A step 2 file written with a ledger app before 6.1.1-pre.0 is invalid for a second

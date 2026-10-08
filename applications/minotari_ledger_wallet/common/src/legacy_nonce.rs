@@ -47,8 +47,9 @@
 //!   legacy instruction can sign is a term of a reply that contains `alpha`.
 //! - The device shows a review for every legacy signature - key and nonce, branch and index, and which pre-mine
 //!   signature it is (see [`legacy_signature_purpose`]).
-//! - The device remembers which nonce indexes it has signed with ([`LegacyNonceUse`]) and refuses any second use but
-//!   the identical request, and refuses nonce indexes below 2^32 ([`check_legacy_nonce_index`]).
+//! - Within one run of the application, the device remembers which nonce indexes it has signed with
+//!   ([`LegacyNonceUse`], RAM only) and refuses any second use but the identical request. It refuses nonce indexes
+//!   below 2^32 ([`check_legacy_nonce_index`]) and accounts of 2^32 or more ([`check_legacy_account`]).
 //!
 //! What remains extractable is pre-mine script keys and pre-mine sender offset keys. A pre-mine output's script
 //! offset is its script key minus its sender offset key, so recovering either gives up the other.
@@ -59,6 +60,13 @@
 //! spend flows are unaffected: they sign through `GetRawSchnorrSignature` with a device-issued handle that the host
 //! can neither choose nor redeem twice, so there is no second signature to difference against.
 //!
+//! # Design decision: no persistent data on the Ledger
+//!
+//! Nothing is stored persistently on the device. The used-nonce record is RAM and lasts one run of the application, so
+//! protection *across* runs is the host's responsibility. The recommended follow-up is a cross-session used-nonce
+//! ledger in the wallet database: step 2 records the nonce ids it issued, and step 4 refuses any nonce the wallet did
+//! not issue or has already signed with. An NVM record on the device is not an option.
+//!
 //! # Residual
 //!
 //! The pre-mine flow reserves its nonces in step 2 and signs with them in step 4, with a session file in between, so
@@ -67,20 +75,26 @@
 //! 1. **Same nonce, two keys.** A compromised host asks for the script signature as `(PreMine x, Random j, e1)` and the
 //!    metadata signature as `(PreMine 2^63|b, Random j, e2)`. With the step 2 script offset `off = P_x - K_b` that is
 //!    three equations in three unknowns, and both keys fall out - behind exactly the two reviews an honest step 4
-//!    shows; the only tell is the same nonce number on both. The device's used-nonce record refuses the second request
-//!    (`LegacyNonceReused`, before any screen). It is RAM, so the attack now needs the user to restart the application
-//!    between the two approvals.
+//!    shows. The device's used-nonce record refuses the second request (`LegacyNonceReused`, before any screen) - but
+//!    only within one run of the application. The record is RAM, and the *host* can end the run itself: the Ledger SDK
+//!    honours the dashboard quit APDU (`B0 A7`) before the application sees any command, so the user only has to reopen
+//!    the app. Any restart between the two approvals defeats the record, including the restart step 4 itself asks for
+//!    on sessions of more than 32 outputs, and a signature an earlier aborted run left on disk counts as the first
+//!    approval. The nonce number on the screen is not a usable tell across a restart.
 //! 2. **Malicious leader re-run.** A leader sends a changed step 3 file ("please redo step 4") and the party re-signs
 //!    under the same step 2 nonces, with identical screens - or the leader makes step 4 stop after the script signature
-//!    (a bad shared secret or encrypted data), then sends a "fixed" file with a different script challenge. Step 4 now
-//!    checks all leader data and builds both challenges before the first signature, and keeps a write-ahead progress
-//!    file in the session directory: before each legacy signature it records the output, which signature, the signing
-//!    key, the nonce and a hash of the challenge, and after it the signature. A later run reuses recorded signatures,
-//!    may retry an identical request (same challenge, which reproduces the signature), and refuses the whole step if
-//!    any recorded request's challenge, key or nonce differs from the current one. Step 4 also refuses to run once its
-//!    final output file exists, and the device record refuses a second challenge within one application run. Not
-//!    covered: anyone with write access to the session directory can delete or edit the progress file (the file-tamper
-//!    residual below), and then only the device record - one application run - stands in the way.
+//!    (a bad shared secret or encrypted data), then sends a "fixed" file with a different script challenge. For each
+//!    output, step 4 now checks that output's leader data and builds both of its challenges before its first signature
+//!    (per output, not for the whole file up front), and keeps a durable write-ahead progress file in the session
+//!    directory: before each legacy signature it records the output, which signature, the signing key, the nonce and a
+//!    hash of the challenge, and after it the signature. A later run reuses recorded signatures, may retry an identical
+//!    request (same challenge, which reproduces the signature), and refuses the whole step if any recorded request's
+//!    challenge, key or nonce differs from the current one. Step 4 also refuses to run once its final output file
+//!    exists, and the device record refuses a second challenge within one application run. Not covered: the progress
+//!    file can be defeated without any write access by an attacker - the user deletes or overwrites it at the leader's
+//!    request, runs step 4 from a copied session directory or on another machine, or the directory is a synced
+//!    `~/Documents` folder (a planted symlink is now refused). Then only the device record - one application run -
+//!    stands in the way, and the host-side nonce ledger above is the follow-up.
 //! 3. **Session file tamper.** The step 2 self file is plain JSON and unauthenticated: an attacker with write access
 //!    can point two signatures at one nonce, at an earlier session's nonce, or at another output's script key. Step 4
 //!    validates the file's shape before signing (distinct nonce ids, the expected key shapes), which refuses the first
@@ -88,15 +102,17 @@
 //!    whoever can edit the nonce ids can edit those too, and the public key of any `Random` index can be read from the
 //!    device without a prompt, so that comparison only catches an edit that left the stored public nonces alone (and
 //!    host/device drift). Within one application run the device's used-nonce record is what blocks a redirect to a
-//!    nonce already used; a redirect to a nonce an *earlier* run used is blocked only by the follow-up - an NVM-backed
-//!    record, or device-issued handles. A MAC over the self file is a further follow-up.
+//!    nonce already used; a redirect to a nonce an *earlier* run used is blocked only by the follow-up - the host-side
+//!    nonce ledger above, or device-issued handles. A MAC over the self file is a further follow-up.
 //! 4. **Pre-upgrade alias.** An application before 6.1.1-pre.0 derived nonce index `j` as `j mod 2^32`; this one
 //!    derives an index below 2^32 along that same path. One signature from an aborted pre-upgrade session plus one new
 //!    one at `j mod 2^32` gives up the key, and the record knows nothing of the old one. Nonce indexes below 2^32 are
 //!    refused ([`check_legacy_nonce_index`]), and the host never draws one.
 //! 5. **Old devices.** A device still on 6.1.0 or earlier signs `OneSidedSenderOffset` keys through this instruction
 //!    and so remains exposed to the `alpha` extraction above, whatever the host does. The host refuses such a device
-//!    (`MIN_LEDGER_APP_VERSION`), but a compromised host would not.
+//!    (`MIN_LEDGER_APP_VERSION`), but a compromised host would not. Intermediate development builds between commits
+//!    00b68516d and 1f08c14ce report 6.1.1-pre.0 without the used-nonce record or the 2^32 rules (development devices
+//!    only).
 //! 6. **Consent.** `GetScriptSchnorrSignature` and `GetRawSchnorrSignature` still sign `PreMine` keys with no prompt,
 //!    over messages the host chooses (with device drawn nonces, so nothing is extractable). That is a separate issue.
 //!    The legacy review is therefore an extraction control - it makes a second signature under one nonce visible and,
@@ -104,13 +120,14 @@
 //!
 //! # The fix, and what gets deleted with it
 //!
-//! TODO: Teach the pre-mine step 2 / step 3 session file to carry device-issued nonce handles instead of nonce
-//! branches and indexes. Handles survive a file fine - what they cannot survive is the device restarting between
-//! the two steps, so this also needs the pre-mine flow to reserve its nonces in the same device session that signs
-//! with them, or the device store to be made persistent.
+//! TODO: Replace host-indexed nonces with device-issued nonce handles that live for one run of the application - the
+//! existing `GenerateEphemeralNonce` handles, which store nothing persistently and so fit the no-persistent-data rule.
+//! A handle cannot survive the application restarting between step 2 and step 4, so this needs the pre-mine flow to
+//! reserve its nonces in the same application run that signs with them (step 2's public nonces would be published
+//! from that run), rather than across a session file.
 //!
-//! An NVM-backed used-nonce record is the intermediate step: it would close the restart gap in residuals 1 and 2
-//! without changing the session file.
+//! Until then, the host-side cross-session nonce ledger (see the design decision above) is the intermediate step: it
+//! closes the restart gap in residuals 1 and 2 on the honest host, without device storage.
 //!
 //! When that lands, these get deleted together:
 //!
@@ -151,8 +168,9 @@ pub fn legacy_account_word(account: u64) -> u32 {
 ///
 /// Such an account names the same keys as its low word (see [`legacy_account_word`]), and nothing on the review shows
 /// the account, so a host could otherwise sign one nonce under two different-looking accounts. The record keys on the
-/// low word anyway; this refuses the ambiguous form outright. A ledger wallet's account is the small number the user
-/// chose at setup (the prompt suggests 1-9), so an honest request is never refused.
+/// low word anyway; this refuses the ambiguous form outright. A ledger wallet's account is the number the user chose
+/// at setup, which now refuses 2^32 or more; a wallet set up before that with such an account is refused here, and
+/// recovering it with the account modulo 2^32 derives the same keys.
 pub fn check_legacy_account(account: u64) -> Result<(), LegacyNonceBranchError> {
     if account > u64::from(u32::MAX) {
         return Err(LegacyNonceBranchError::AccountWraps);
@@ -224,8 +242,9 @@ pub fn check_legacy_nonce_branches(
 /// How many legacy signatures the device remembers per application run. See [`LegacyNonceUse`].
 ///
 /// Pre-mine step 4 makes two legacy signatures per output, so this bounds one application run to 32 pre-mine
-/// outputs; step 4 saves its progress and asks for an application restart to continue past that. Kept at 64 because
-/// the device's RAM budget has not been measured for more; an NVM-backed record is the follow-up.
+/// outputs; step 4 saves its progress and asks for an application restart to continue past that - a restart that also
+/// clears the record (see the residuals). Kept at 64 because the device's RAM budget has not been measured for more.
+/// It is RAM by design: nothing is stored persistently on the device.
 pub const LEGACY_NONCE_RECORD_SIZE: usize = 64;
 
 /// One legacy signature the device has made (or approved and is about to make): which nonce it used, and what for.
@@ -237,10 +256,11 @@ pub const LEGACY_NONCE_RECORD_SIZE: usize = 64;
 /// private key, including the same-nonce, two-keys variant where the script signature and the metadata signature of
 /// one pre-mine output are both asked for under one nonce index and the step 2 script offset closes the system.
 ///
-/// **The record is RAM-backed and is cleared by an application restart.** Persisting it in NVM is a follow-up
-/// decision (flash wear, and what a record that outlives the app means for an honest re-run); until then an attacker
-/// who wants a second signature under a used nonce index has to get the user to restart the application between two
-/// approvals. The record never evicts: when it is full it refuses, until the application is restarted.
+/// **The record is RAM-backed and is cleared when the application run ends.** By design nothing is stored persistently
+/// on the device, so this is never moved to NVM. The host can end the run (the dashboard quit APDU `B0 A7`) and the
+/// user only has to reopen the app, so an attacker who wants a second signature under a used nonce index needs one
+/// restart between two approvals; cross-run protection is the host's job (see the module docs). The record never
+/// evicts: when it is full it refuses, until the application is restarted.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct LegacyNonceUse {
     /// The account word that reaches the derivation path - [`legacy_account_word`] of the requested account - so that
