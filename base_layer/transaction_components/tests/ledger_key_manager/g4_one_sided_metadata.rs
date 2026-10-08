@@ -24,6 +24,7 @@
 //! The approver blocks on the device drawing each screen; there is no sleep and no retry anywhere in it, and this
 //! puts its timing on the merge path on purpose.
 
+use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_ledger_wallet_comms_testing::{
     approver::{Outcome, while_reviewing},
     fixtures,
@@ -32,7 +33,7 @@ use minotari_ledger_wallet_comms_testing::{
 use tari_script::{ExecutionStack, push_pubkey_script};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::TransactionKeyManagerInterface,
+    key_manager::{TariKeyId, TransactionKeyManagerInterface},
     transaction_components::{MemoField, TransactionError, WalletOutput, WalletOutputBuilder},
 };
 
@@ -46,12 +47,42 @@ fn one_sided_output(
     payment_id_length: usize,
     outcome: Outcome,
 ) -> Result<WalletOutput, TransactionError> {
+    one_sided_output_from(device, value, payment_id_length, outcome, false)
+}
+
+/// [`one_sided_output`], with `pre_mine` choosing the script key: an alpha derived one (an ordinary send, so the
+/// sender offset key is on `OneSidedSenderOffset`), or a `PreMine` one (the backup pre-mine spend, so
+/// `get_script_offset` is in pre-mine mode and the sender offset key is on `PreMine`).
+fn one_sided_output_from(
+    device: &Device,
+    value: u64,
+    payment_id_length: usize,
+    outcome: Outcome,
+    pre_mine: bool,
+) -> Result<WalletOutput, TransactionError> {
     let key_manager = device.key_manager();
-    let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+    let (commitment_mask, derived_script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+    let script_key = if pre_mine {
+        key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::PreMine))
+            .expect("a pre-mine script key")
+    } else {
+        derived_script_key
+    };
     let (_offset, mut sender_offsets) = key_manager
         .get_script_offset(std::slice::from_ref(&script_key.key_id), 1)
         .expect("a sender offset key from the device");
     let sender_offset = sender_offsets.pop().expect("one sender offset key");
+    let expected_branch = if pre_mine {
+        LedgerKeyBranch::PreMine
+    } else {
+        LedgerKeyBranch::OneSidedSenderOffset
+    };
+    assert!(
+        matches!(sender_offset.key_id, TariKeyId::LedgerKey { branch, .. } if branch == expected_branch),
+        "expected a {expected_branch} sender offset key, got {}",
+        sender_offset.key_id
+    );
 
     let receiver = fixtures::published_receiver(payment_id_length).unwrap_or_else(|e| panic!("{e}"));
     let stealth_key = key_manager
@@ -96,6 +127,19 @@ fn assert_metadata_signature_verifies(output: &WalletOutput) {
 fn the_review_shows_amount_receiver_and_payment_id_and_the_approved_signature_verifies() {
     with_device(|device| {
         let output = one_sided_output(device, 12_345, 8, Outcome::Approve).expect("an approved one-sided output");
+        assert_metadata_signature_verifies(&output);
+    });
+}
+
+/// The backup pre-mine spend: the only script key is a `PreMine` key, so the sender offset key is on `PreMine` too,
+/// and the device has to derive it there - the review is the same, and the approved signature verifies against the
+/// `PreMine` sender offset key. Before the request carried the branch, the device derived on `OneSidedSenderOffset`
+/// regardless and the output was invalid.
+#[test]
+fn a_pre_mine_sender_offset_key_is_reviewed_and_signs_on_its_own_branch() {
+    with_device(|device| {
+        let output =
+            one_sided_output_from(device, 12_345, 0, Outcome::Approve, true).expect("an approved pre-mine output");
         assert_metadata_signature_verifies(&output);
     });
 }

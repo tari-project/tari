@@ -119,6 +119,7 @@ const SCENARIOS: &[Scenario] = &[
             Instruction::GetDHSharedSecret,
             Instruction::GetScriptSchnorrSignature,
             Instruction::GetScriptOffset,
+            Instruction::GetOneSidedMetadataSignature,
         ],
         approval: Approval::NotNeeded,
         run: the_spend_branch_is_refused,
@@ -258,9 +259,10 @@ fn bad_p1_p2_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
 }
 
 /// The smallest `GetOneSidedMetadataSignature` payload the device will look at, from the handler's own comment:
-/// `account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) +
-/// address_size(2) + min_address(67) + message(32)`.
-const METADATA_SIGNATURE_MINIMUM: usize = 171;
+/// `account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + sender_offset_branch(8) + value(8) +
+/// commitment_mask(32) + address_size(2) + min_address(67) + message(32)`, less the two bytes the device has always
+/// been short by.
+const METADATA_SIGNATURE_MINIMUM: usize = 179;
 
 /// Acceptance: a payload one byte short, or one byte long, is `WrongApduLength`.
 ///
@@ -394,6 +396,34 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
     for (name, request) in probes {
         let reply = request.send().context(|| format!("{name} on the spend branch"))?;
         expect_status(&format!("{name} on the spend branch"), &reply, AppSW::BadBranchKey)?;
+    }
+
+    // `GetOneSidedMetadataSignature`'s sender offset key may be on `OneSidedSenderOffset` or `PreMine` and nothing
+    // else. Both refusals come before the review, so this stays unattended; a device that drew the review instead
+    // would block here until the scenario timed out.
+    let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
+    for branch in [LedgerKeyBranch::Spend, LedgerKeyBranch::Random] {
+        let reply = raw::command(
+            account,
+            Instruction::GetOneSidedMetadataSignature,
+            payload::one_sided_metadata_signature(
+                0x26,
+                0,
+                index,
+                branch,
+                12_345,
+                &fixtures::random_scalar_bytes(),
+                &receiver,
+                &fixtures::random_bytes_32(),
+            ),
+        )
+        .send()
+        .context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
+        expect_status(
+            &format!("GetOneSidedMetadataSignature with a {branch} sender offset key"),
+            &reply,
+            AppSW::BadBranchKey,
+        )?;
     }
 
     // The script offset's indexed script key chunk. A valid header first, so the chunk lands in the indexed script

@@ -24,17 +24,44 @@
 //! - recover the nonce as `k = (s1 - s2) / (e1 - e2)`,
 //! - recover the private key as `x = (s1 - k) / e1`.
 //!
-//! [`LedgerKeyBranch::OneSidedSenderOffset`] is on the whitelist below, so this reaches sender offset private keys.
-//! That matters more than it looks: a pre-mine output's script offset is a single script key minus a single sender
-//! offset key, so a host that recovers the sender offset private key can subtract it back out of the script offset
-//! it already holds and recover that output's *script* private key too. For pre-mine outputs specifically, this
-//! re-opens what device-generated sender offset keys closed.
+//! So every key the whitelist below admits is a key a compromised host can extract.
+//!
+//! ## Before: this reached `alpha`
+//!
+//! The whitelist used to admit [`LedgerKeyBranch::OneSidedSenderOffset`] (and `Random`) private keys, at any index.
+//! That did not stop at sender offset keys. `GetScriptOffset` answers `s = H(b) + alpha - k_i` for any blinding
+//! factor `b` the host names, and returns the index `i` of the sender offset key `k_i` it just derived - on the
+//! `OneSidedSenderOffset` branch. Three APDUs then gave up the wallet's root spend key, with nothing on the screen:
+//!
+//! 1. `GetScriptOffset` over one alpha derived script key with a known `b` yields `s` and `i`;
+//! 2. two legacy signatures under `(OneSidedSenderOffset, i)` and one `(Random, j)` nonce over different challenges
+//!    yield `k_i`;
+//! 3. `alpha = s - H(b) + k_i`.
+//!
+//! ## After: pre-mine script and sender offset keys only
+//!
+//! - The whitelist admits [`LedgerKeyBranch::PreMine`] private keys and nothing else.
+//! - `GetScriptOffset` derives sender offset keys on `PreMine` only when no alpha derived script key is in the sum (see
+//!   `crate::script_offset::sender_offset_branch`). A reply with `alpha` in it is blinded by a `OneSidedSenderOffset`
+//!   key, which this instruction cannot sign, and a reply blinded by a `PreMine` key has no `alpha` in it. Nothing the
+//!   legacy instruction can sign is a term of a reply that contains `alpha`.
+//! - The device shows a review for every legacy signature - key and nonce, branch and index, and which pre-mine
+//!   signature it is (see [`legacy_signature_purpose`]) - so a second request for the same pair is visible.
+//!
+//! What remains extractable is pre-mine script keys and pre-mine sender offset keys. A pre-mine output's script
+//! offset is its script key minus its sender offset key, so recovering either gives up the other.
 //!
 //! # Scope
 //!
 //! This applies only to keys signed through the legacy instruction, which is only the pre-mine spend flow. Normal
 //! spend flows are unaffected: they sign through `GetRawSchnorrSignature` with a device-issued handle that the host
 //! can neither choose nor redeem twice, so there is no second signature to difference against.
+//!
+//! The residual: the pre-mine flow reserves its nonces in step 2 and signs in step 3 with a file in between, so a
+//! compromised host can still ask for a second signature under one nonce index - in the same device session or
+//! across a device restart. The device deliberately keeps no record of which nonce indexes it has signed with (it
+//! stores nothing for this instruction, in RAM or in NVM). The review makes that second request visible to the user;
+//! it does not make it impossible. The exposure is contained to pre-mine outputs.
 //!
 //! # The fix, and what gets deleted with it
 //!
@@ -52,7 +79,7 @@
 //!   `sign_with_nonce_and_challenge`
 //! - this module
 
-use crate::common_types::LedgerKeyBranch;
+use crate::{common_types::LedgerKeyBranch, script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT};
 
 /// Why a `GetRawSchnorrSignatureLegacyNonce` request was refused.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -66,8 +93,12 @@ pub enum LegacyNonceBranchError {
 /// Check that a legacy nonce request is one the pre-mine spend flow could actually have made.
 ///
 /// The whitelist is the containment: signing with a deterministic nonce is equivalent to handing the private key
-/// over (see the module docs), so the exposure is held to the branches pre-mine genuinely uses and no others.
-/// `Spend` is excluded here as well as by the device's branch mapping - `alpha` is never signable by index.
+/// over (see the module docs), so the exposure is held to the one branch pre-mine signs with. The pre-mine script
+/// signature and the pre-mine metadata signature both sign a `PreMine` key: the script key at its genesis output
+/// index, and the sender offset key `GetScriptOffset` derived for it on `PreMine` in pre-mine mode.
+///
+/// `OneSidedSenderOffset` is refused because `GetScriptOffset` hands out its indexes next to replies that contain
+/// `alpha`; `Random` and `Spend` are refused because pre-mine never signs with them.
 ///
 /// This lives in the shared crate, and is checked on both sides, so the two whitelists cannot drift apart. The
 /// device's check is the one that counts; the host mirrors it so a caller gets a legible error instead of a status
@@ -76,11 +107,8 @@ pub fn check_legacy_nonce_branches(
     private_key_branch: LedgerKeyBranch,
     nonce_branch: LedgerKeyBranch,
 ) -> Result<(), LegacyNonceBranchError> {
-    match private_key_branch {
-        // `PreMine` signs the script signature, `OneSidedSenderOffset` signs the metadata signature, and `Random`
-        // is what pre-mine sender offset keys were on before they moved onto the device.
-        LedgerKeyBranch::PreMine | LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::Random => {},
-        LedgerKeyBranch::Spend => return Err(LegacyNonceBranchError::KeyBranchNotAllowed),
+    if private_key_branch != LedgerKeyBranch::PreMine {
+        return Err(LegacyNonceBranchError::KeyBranchNotAllowed);
     }
     // Pinned so the instruction cannot be turned into a way to extract a key on some other branch by pointing its
     // nonce there. Pre-mine reserves both of its nonces from `Random`.
@@ -90,33 +118,77 @@ pub fn check_legacy_nonce_branches(
     Ok(())
 }
 
+/// The purpose line the device shows when asked for a legacy signature by the `PreMine` key at `key_index`.
+///
+/// Pre-mine sender offset keys are derived at indexes with
+/// [`PRE_MINE_SENDER_OFFSET_INDEX_BIT`](crate::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT) set, and pre-mine
+/// script keys at their genesis output index, which never has it. So the index says which of the two signatures this
+/// is: the script signature signs with the script key, and the metadata signature with the sender offset key.
+pub fn legacy_signature_purpose(key_index: u64) -> &'static str {
+    if key_index & PRE_MINE_SENDER_OFFSET_INDEX_BIT == 0 {
+        "Pre-mine script signature"
+    } else {
+        "Pre-mine metadata signature"
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
-    /// The exact set the pre-mine spend flow signs with, as of sender offset keys being device generated:
-    /// `PreMine` for the script signature and `OneSidedSenderOffset` for the metadata signature.
+    const ALL_BRANCHES: [LedgerKeyBranch; 4] = [
+        LedgerKeyBranch::OneSidedSenderOffset,
+        LedgerKeyBranch::Random,
+        LedgerKeyBranch::PreMine,
+        LedgerKeyBranch::Spend,
+    ];
+
+    /// The pre-mine spend flow signs both its script signature and its metadata signature with a `PreMine` key,
+    /// against a `Random` nonce. That pair, and only that pair, is allowed.
     #[test]
-    fn the_branches_pre_mine_signs_with_are_allowed() {
-        for branch in [
-            LedgerKeyBranch::PreMine,
-            LedgerKeyBranch::OneSidedSenderOffset,
-            LedgerKeyBranch::Random,
-        ] {
-            assert_eq!(check_legacy_nonce_branches(branch, LedgerKeyBranch::Random), Ok(()));
+    fn only_a_pre_mine_key_with_a_random_nonce_is_allowed() {
+        let mut allowed = 0u32;
+        for key_branch in ALL_BRANCHES {
+            for nonce_branch in ALL_BRANCHES {
+                if check_legacy_nonce_branches(key_branch, nonce_branch).is_ok() {
+                    allowed = allowed.saturating_add(1);
+                    assert_eq!(
+                        (key_branch, nonce_branch),
+                        (LedgerKeyBranch::PreMine, LedgerKeyBranch::Random)
+                    );
+                }
+            }
         }
+        assert_eq!(allowed, 1);
     }
 
-    /// `alpha` is never signable by index, on this instruction least of all.
+    /// `OneSidedSenderOffset` is the branch `GetScriptOffset` blinds `alpha` with. Signing it here is what recovered
+    /// `alpha`; see the module docs.
     #[test]
-    fn the_spend_branch_is_refused() {
+    fn the_sender_offset_branch_is_refused() {
         assert_eq!(
-            check_legacy_nonce_branches(LedgerKeyBranch::Spend, LedgerKeyBranch::Random),
+            check_legacy_nonce_branches(LedgerKeyBranch::OneSidedSenderOffset, LedgerKeyBranch::Random),
             Err(LegacyNonceBranchError::KeyBranchNotAllowed)
         );
     }
 
-    /// Every branch other than `Random` is refused as a nonce, including the ones that are fine as a key.
+    /// Every key branch but `PreMine` is refused, `alpha` and the old pre-mine `Random` sender offsets included.
+    #[test]
+    fn every_other_key_branch_is_refused() {
+        for key_branch in [
+            LedgerKeyBranch::OneSidedSenderOffset,
+            LedgerKeyBranch::Random,
+            LedgerKeyBranch::Spend,
+        ] {
+            assert_eq!(
+                check_legacy_nonce_branches(key_branch, LedgerKeyBranch::Random),
+                Err(LegacyNonceBranchError::KeyBranchNotAllowed),
+                "{key_branch}"
+            );
+        }
+    }
+
+    /// Every branch other than `Random` is refused as a nonce.
     #[test]
     fn only_the_random_branch_may_supply_a_nonce() {
         for nonce_branch in [
@@ -139,5 +211,18 @@ mod test {
             check_legacy_nonce_branches(LedgerKeyBranch::Spend, LedgerKeyBranch::PreMine),
             Err(LegacyNonceBranchError::KeyBranchNotAllowed)
         );
+    }
+
+    /// Script keys sit at genesis output indexes; sender offsets in the top half of `u64`.
+    #[test]
+    fn the_purpose_follows_the_index() {
+        assert_eq!(legacy_signature_purpose(0), "Pre-mine script signature");
+        assert_eq!(legacy_signature_purpose(12_345), "Pre-mine script signature");
+        assert_eq!(legacy_signature_purpose(u64::MAX >> 1), "Pre-mine script signature");
+        assert_eq!(
+            legacy_signature_purpose(PRE_MINE_SENDER_OFFSET_INDEX_BIT),
+            "Pre-mine metadata signature"
+        );
+        assert_eq!(legacy_signature_purpose(u64::MAX), "Pre-mine metadata signature");
     }
 }

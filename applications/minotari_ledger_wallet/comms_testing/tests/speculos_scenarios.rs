@@ -170,8 +170,8 @@ fn b_vector_scenarios() {
     run_module(&vectors::MODULE);
 }
 
-/// Signatures, script offsets and shared secrets, verified as mathematics. Includes the one scenario in the suite
-/// that raises a review, which `SpeculosApprover` answers.
+/// Signatures, script offsets and shared secrets, verified as mathematics. Includes the metadata signature scenario,
+/// which raises a review that `SpeculosApprover` answers.
 #[test]
 #[ignore = "needs a running Speculos simulator; see the module docs"]
 fn c_crypto_scenarios() {
@@ -192,7 +192,8 @@ fn e_stateful_scenarios() {
     run_module(&stateful::MODULE);
 }
 
-/// The legacy nonce branch whitelist, enforced by the device rather than mirrored by the host.
+/// The legacy nonce branch whitelist, enforced by the device rather than mirrored by the host, and the review the
+/// device shows before every legacy signature it makes, which `SpeculosApprover` answers.
 #[test]
 #[ignore = "needs a running Speculos simulator; see the module docs"]
 fn f_legacy_nonce_scenarios() {
@@ -352,9 +353,9 @@ fn a_wrong_length_payload_does_not_block_on_a_button_press() {
 ///
 /// **BAGL only, and that is a limitation rather than an optimisation.** A button press clears the BAGL modal and
 /// the device comes home. NBGL has no equivalent: the status screen is cleared by the next NBGL draw, and the only
-/// thing in the application that draws one is the `GetOneSidedMetadataSignature` review. So on NBGL this does
-/// nothing, the device stays off its home screen, and the test's exclusion from `ledger_speculos.sh` is what
-/// prevents the cascade instead. See the test's doc comment.
+/// things in the application that draw one are the `GetOneSidedMetadataSignature` and legacy nonce reviews. So on
+/// NBGL this does nothing, the device stays off its home screen, and the test's exclusion from `ledger_speculos.sh`
+/// is what prevents the cascade instead. See the test's doc comment.
 fn dismiss_any_modal() {
     let Ok(approver) = SpeculosApprover::from_env() else {
         return;

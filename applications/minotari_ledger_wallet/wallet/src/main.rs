@@ -132,7 +132,7 @@ const STATIC_VIEW_INDEX: u64 = 57311; // No significance, just a random number b
 const MAX_PAYLOADS: u8 = 250;
 
 #[repr(u8)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum KeyType {
     Spend = 0x01,
     Nonce = 0x02,
@@ -233,9 +233,12 @@ fn show_status_and_home_if_needed(
     // notice, and what makes it indistinguishable on screen from a device that has hung.
     //
     // BAGL models do not have this problem: their main loop redraws the home menu itself on every pass.
+    //
+    // `GetRawSchnorrSignatureLegacyNonce` shows a review too, so it needs the same redraw. Its refusals all come
+    // before the review, with other status words, and leave the home screen up.
     let (show_status, _status_type) = match (ins, status) {
         (
-            Instruction::GetOneSidedMetadataSignature,
+            Instruction::GetOneSidedMetadataSignature | Instruction::GetRawSchnorrSignatureLegacyNonce,
             AppSW::Deny | AppSW::Ok | AppSW::UserCancelled,
         ) => (true, StatusType::Transaction),
         (_, _) => (false, StatusType::Transaction),
