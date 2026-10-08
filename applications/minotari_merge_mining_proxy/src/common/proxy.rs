@@ -26,11 +26,21 @@ use std::convert::TryInto;
 
 use bytes::{BufMut, BytesMut};
 use http_body::Body;
-use http_body_util::{BodyExt, Full, combinators::BoxBody};
+use http_body_util::{BodyExt, Full, LengthLimitError, Limited, combinators::BoxBody};
 use hyper::{Response, StatusCode, Version, header, header::HeaderValue, http::response};
 use serde_json as json;
+use tari_common::MAX_GRPC_MESSAGE_SIZE;
 
 use crate::{error::MmProxyError, proxy::service::ProxyBody};
+
+/// The maximum size of an HTTP body the proxy will buffer, applied to both inbound requests and monerod responses.
+///
+/// Everything on these paths is JSON-RPC. The largest legitimate payloads are the hex encoded Monero block blobs: a
+/// `getblocktemplate` response carries `blocktemplate_blob` and a `submitblock` request carries the solved block,
+/// each twice the size of the block itself. Monero's block weight limit keeps those well under a megabyte in
+/// practice, so this leaves plenty of headroom while making the paths bounded. The value matches
+/// [`MAX_GRPC_MESSAGE_SIZE`], which already bounds this application's gRPC traffic.
+pub const MAX_BODY_SIZE: usize = MAX_GRPC_MESSAGE_SIZE;
 
 pub async fn convert_json_to_hyper_json_response(
     resp: json::Value,
@@ -92,16 +102,22 @@ pub fn into_body_from_response(resp: Response<json::Value>) -> Result<Response<P
     into_response(parts, &body)
 }
 
-/// Reads the body until there is no more to read.
+/// Reads the body until there is no more to read, or until [`MAX_BODY_SIZE`] bytes have been read.
+///
+/// The cap matters because this is applied to every inbound request body: without it a single client could make the
+/// proxy buffer an arbitrarily large body in memory, and with no inbound concurrency limit, many of them at once.
 pub async fn read_body_until_end<B>(body: B) -> Result<BytesMut, MmProxyError>
 where
     B: Body + Unpin,
     B::Error: std::error::Error + Send + Sync + 'static,
 {
-    let collected = body
-        .collect()
-        .await
-        .map_err(|e| MmProxyError::InvalidMonerodResponse(format!("Failed to read body until the end: {e}")))?;
+    let collected = Limited::new(body, MAX_BODY_SIZE).collect().await.map_err(|e| {
+        if e.downcast_ref::<LengthLimitError>().is_some() {
+            MmProxyError::BodyTooLarge(MAX_BODY_SIZE)
+        } else {
+            MmProxyError::InvalidMonerodResponse(format!("Failed to read body until the end: {e}"))
+        }
+    })?;
     Ok(BytesMut::from(collected.to_bytes().as_ref()))
 }
 
@@ -132,6 +148,21 @@ pub mod test {
         assert_eq!(response.headers()["content-length"], body.to_string().len().to_string());
         let bytes = read_body_until_end(response.into_body()).await.unwrap();
         assert_eq!(bytes, serde_json::to_vec(&body).unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_read_body_until_end_rejects_an_oversized_body() {
+        // One byte over the cap must be refused rather than buffered: this is applied to every inbound request
+        // body, so without it a single client can make the proxy allocate as much as it likes.
+        let body = Full::new(bytes::Bytes::from(vec![0u8; MAX_BODY_SIZE.saturating_add(1)]));
+        let err = read_body_until_end(body).await.unwrap_err();
+        assert!(matches!(err, MmProxyError::BodyTooLarge(MAX_BODY_SIZE)), "{err}");
+    }
+
+    #[tokio::test]
+    async fn test_read_body_until_end_accepts_a_body_at_the_cap() {
+        let body = Full::new(bytes::Bytes::from(vec![0u8; MAX_BODY_SIZE]));
+        assert_eq!(read_body_until_end(body).await.unwrap().len(), MAX_BODY_SIZE);
     }
 
     #[test]
