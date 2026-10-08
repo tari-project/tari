@@ -163,12 +163,20 @@ fn is_allowed_mask_id(key_id: &TariKeyId) -> bool {
     is_mask_key_id(key_id) && is_within_payload_limits(key_id)
 }
 
-/// A script key may be any mask key id (see [`require_mask_id`], so an `Encrypted` under the spend key is refused here
-/// too), `Derived` over one (an ordinary wallet script key), or the spend key itself
-/// when the output's script is exactly `PushPubKey(<our public spend key>)`. That last case is how the wallet holds
-/// non-stealth outputs (for example non-stealth coinbases), and it is the same rule `WalletOutput` uses to pick the
-/// spend key as a script key. The script key only feeds the script signature (under a random nonce) and the script
-/// offset, so the spend key here gives the host nothing a `Derived` script key would not.
+/// A script key may be:
+/// - any mask key id (see [`require_mask_id`]);
+/// - `Derived` over a mask key id (an ordinary wallet script key);
+/// - the spend key itself when the output's script is exactly `PushPubKey(<our public spend key>)`. That is how the
+///   wallet holds non-stealth outputs (for example non-stealth coinbases), and it is the same rule `WalletOutput` uses
+///   to pick the spend key as a script key;
+/// - `Encrypted` under the spend key: an imported output's script key (`UnblindedOutput::to_wallet_output`).
+///
+/// The script key only feeds the script signature (under a random nonce) and the script offset (blinded by fresh
+/// sender offset keys), exactly as when the output is spent online, so none of these gives the host anything. An
+/// `Encrypted` under the spend key cannot be minted by the host (the cipher is keyed by the spend key), only replayed
+/// from an imported output it saw; as a script key that replay does nothing new. As a *mask* it would be decrypted and
+/// published in the output's recovery data, which is why [`require_mask_id`] refuses it there, and why `Derived` over
+/// it is refused here.
 fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spend_key: &CompressedPublicKey) -> bool {
     if !is_within_payload_limits(key_id) {
         return false;
@@ -176,6 +184,9 @@ fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spen
     match key_id {
         TariKeyId::SpendKey => matches!(script.as_slice(), [Opcode::PushPubKey(pk)] if **pk == *public_spend_key),
         TariKeyId::Derived { key } => TariKeyId::from_str(key.as_str()).is_ok_and(|inner| is_mask_key_id(&inner)),
+        TariKeyId::Encrypted { key, .. } if matches!(TariKeyId::from_str(key.as_str()), Ok(TariKeyId::SpendKey)) => {
+            true
+        },
         _ => is_mask_key_id(key_id),
     }
 }

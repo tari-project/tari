@@ -2124,8 +2124,9 @@ mod test {
     }
 
     /// An imported output's script key id is `Encrypted` under the spend key, and the host sees it in any payload that
-    /// spends that output. Replayed as a forged output's mask or script key it must be refused; so must a `DH*` mask
-    /// over the spend key.
+    /// spends that output. Replayed as a forged output's mask, or under `Derived` as a script key, it must be refused;
+    /// so must a `DH*` mask over the spend key. As a plain script key it is allowed, see
+    /// `sign_locked_transaction_signs_an_imported_input`.
     #[test]
     fn sign_locked_transaction_refuses_key_ids_over_the_spend_key() {
         let rules = create_consensus_manager();
@@ -2153,11 +2154,6 @@ mod test {
             ),
             (
                 good_mask.clone(),
-                imported_script_key.clone(),
-                "outputs[0].script_key_id",
-            ),
-            (
-                good_mask.clone(),
                 TariKeyId::Derived {
                     key: (&imported_script_key).into(),
                 },
@@ -2175,5 +2171,101 @@ mod test {
             );
             assert_key_id_refused(result, field);
         }
+    }
+
+    /// An imported output, built the way `UnblindedOutput::to_wallet_output` builds it: mask `Encrypted` under the
+    /// view key, script key `Encrypted` under the spend key, script `PushPubKey(s·G)`. Spending it offline must still
+    /// sign.
+    #[test]
+    fn sign_locked_transaction_signs_an_imported_input() {
+        use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+        use tari_crypto::keys::SecretKey;
+
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_view_key_manager = create_view_key_manager(ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let mask = alice_key_manager
+            .create_encrypted_key(PrivateKey::random(&mut rand::rng()), None)
+            .unwrap();
+        let script_private_key = PrivateKey::random(&mut rand::rng());
+        let script_public_key = CompressedPublicKey::from_secret_key(&script_private_key);
+        let script_key = alice_key_manager
+            .create_encrypted_key(script_private_key, Some(alice_key_manager.get_spend_key().key_id))
+            .unwrap();
+        let sender_offset = alice_key_manager.get_random_key(None, None).unwrap();
+        let input = WalletOutputBuilder::new(MicroMinotari(20000), mask)
+            .with_script(push_pubkey_script(&script_public_key))
+            .encrypt_data_for_recovery(&alice_key_manager, None, MemoField::new_empty())
+            .unwrap()
+            .with_input_data(ExecutionStack::default())
+            .with_sender_offset_public_key(sender_offset.pub_key)
+            .with_script_key(script_key.clone())
+            .sign_metadata_signature(&alice_key_manager, &sender_offset.key_id)
+            .unwrap()
+            .try_build(&alice_key_manager)
+            .unwrap();
+
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(5))
+            .with_input(input)
+            .unwrap();
+
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(5000),
+            output_features: OutputFeatures::default(),
+            address: bob_address,
+            payment_id: MemoField::new_empty(),
+        }];
+        let prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+        assert_eq!(*prepared.info.inputs[0].script_key_id(), script_key);
+
+        let signed = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        )
+        .unwrap();
+        let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
+        validator
+            .validate(&signed.signed_transaction.transaction, None, None, u64::MAX)
+            .unwrap();
     }
 }
