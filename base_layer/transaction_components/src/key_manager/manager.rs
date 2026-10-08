@@ -181,9 +181,25 @@ pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
         Ok(())
     } else {
         Err(KeyManagerError::KeyIdNotAMask {
-            key_id: key_id.to_string(),
+            key_id: truncated_key_id(key_id),
         })
     }
+}
+
+/// The longest key id string an error message echoes in full.
+const MAX_ECHOED_KEY_ID_CHARS: usize = 128;
+
+/// A key id's string form for an error message, cut to its first 128 characters (followed by `…(<total> chars)`)
+/// when longer. Key ids in refusals can come from an untrusted payload of up to megabytes, which must not be echoed
+/// whole into a terminal or log.
+pub fn truncated_key_id(key_id: &TariKeyId) -> String {
+    let full = key_id.to_string();
+    let total = full.chars().count();
+    if total <= MAX_ECHOED_KEY_ID_CHARS {
+        return full;
+    }
+    let head: String = full.chars().take(MAX_ECHOED_KEY_ID_CHARS).collect();
+    format!("{head}…({total} chars)")
 }
 
 /// Whether a nested key id string names the view key.
@@ -2742,7 +2758,9 @@ mod tests {
 
     fn assert_not_a_mask<T: std::fmt::Debug>(result: Result<T, KeyManagerError>, key_id: &TariKeyId, method: &str) {
         match result {
-            Err(KeyManagerError::KeyIdNotAMask { key_id: refused }) => assert_eq!(refused, key_id.to_string()),
+            Err(KeyManagerError::KeyIdNotAMask { key_id: refused }) => {
+                assert_eq!(refused, super::truncated_key_id(key_id))
+            },
             other => panic!("{method} accepted `{key_id}` as a mask: {other:?}"),
         }
     }
@@ -2923,5 +2941,27 @@ mod tests {
         key_manager
             .get_commitment(&under_view_key, &PrivateKey::from(100u64))
             .unwrap();
+    }
+
+    #[test]
+    fn truncated_key_id_bounds_long_ids() {
+        assert_eq!(super::truncated_key_id(&TariKeyId::SpendKey), "spend_key");
+        let long = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 600],
+            key: (&TariKeyId::SpendKey).into(),
+        };
+        let total = long.to_string().len();
+        let truncated = super::truncated_key_id(&long);
+        assert!(truncated.starts_with(&long.to_string()[..128]));
+        assert!(truncated.ends_with(&format!("…({total} chars)")));
+        assert_eq!(
+            truncated.chars().count(),
+            128 + format!("…({total} chars)").chars().count()
+        );
+        // and the refusal carries the truncated form
+        match super::require_mask_id(&long) {
+            Err(KeyManagerError::KeyIdNotAMask { key_id }) => assert_eq!(key_id, truncated),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
     }
 }

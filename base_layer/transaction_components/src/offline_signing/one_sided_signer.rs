@@ -37,7 +37,12 @@ use crate::{
     TransactionBuilderError,
     consensus::ConsensusConstants,
     fee::recipient_output_features_and_scripts_size,
-    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, manager::require_mask_id},
+    key_manager::{
+        TariKeyAndId,
+        TariKeyId,
+        TransactionKeyManagerInterface,
+        manager::{require_mask_id, truncated_key_id},
+    },
     multisig::script::derive_multisig_ephemeral_pubkeys,
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
@@ -166,6 +171,10 @@ fn is_allowed_mask_id(key_id: &TariKeyId) -> bool {
 /// A script key may be:
 /// - any mask key id (see [`require_mask_id`]);
 /// - `Derived` over a mask key id (an ordinary wallet script key);
+/// - `Derived` over the spend key: what the legacy key conversion turns `derived.managed.comms.0` into, so a migrated
+///   wallet can hold unspent outputs with it. It is the spend key plus a tweak, so it is no different as a script key
+///   from `Derived` over a mask. `Derived` over anything else (the view key, another `Derived`, an `Encrypted` under
+///   the spend key) is refused;
 /// - the spend key itself when the output's script is exactly `PushPubKey(<our public spend key>)`. That is how the
 ///   wallet holds non-stealth outputs (for example non-stealth coinbases), and it is the same rule `WalletOutput` uses
 ///   to pick the spend key as a script key;
@@ -183,7 +192,11 @@ fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spen
     }
     match key_id {
         TariKeyId::SpendKey => matches!(script.as_slice(), [Opcode::PushPubKey(pk)] if **pk == *public_spend_key),
-        TariKeyId::Derived { key } => TariKeyId::from_str(key.as_str()).is_ok_and(|inner| is_mask_key_id(&inner)),
+        TariKeyId::Derived { key } => match TariKeyId::from_str(key.as_str()) {
+            Ok(TariKeyId::SpendKey) => true,
+            Ok(inner) => is_mask_key_id(&inner),
+            Err(_) => false,
+        },
         TariKeyId::Encrypted { key, .. } if matches!(TariKeyId::from_str(key.as_str()), Ok(TariKeyId::SpendKey)) => {
             true
         },
@@ -191,16 +204,18 @@ fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spen
     }
 }
 
-/// Checks the key ids of every wallet output an offline signing payload carries, before any of them reaches the
-/// builder or the key manager.
+/// Checks the key ids of every wallet output an offline signing payload carries. It runs first in each signing entry
+/// point, before the signer's own builder or key manager calls touch any of them. Callers that pre-process payload
+/// masks before calling the signer (the wallet's withdraw-multisig service derives each input's script key from its
+/// host-supplied mask) are not covered by this check and rely on the key manager's [`require_mask_id`] gate on those
+/// calls instead.
 ///
 /// The payload is only integrity-signed with the view key, so whoever holds the view key (the online host) can
 /// forge it, and the operator summary does not show key ids. A payload output whose commitment mask names the spend
 /// key would otherwise make the signer encrypt the spend key into the output's recovery data, so masks must be one
 /// of `Encrypted`, `DHCommitmentMask`, `DHEncryptedData` or `LedgerKey` over the keys [`require_mask_id`] allows (an
-/// `Encrypted` under the spend key, such as an imported output's script key, is refused). Script keys may additionally
-/// be `Derived` over one of those, or the spend key for a `PushPubKey(<our public spend key>)` script (see
-/// `is_allowed_script_key_id`).
+/// `Encrypted` under the spend key, such as an imported output's script key, is refused). Script keys have a wider
+/// rule, see `is_allowed_script_key_id`. Refused key ids are echoed truncated (see [`truncated_key_id`]).
 fn check_payload_key_ids(
     inputs: &[WalletOutput],
     outputs: &[WalletOutput],
@@ -213,14 +228,14 @@ fn check_payload_key_ids(
             if !is_allowed_mask_id(mask) {
                 return Err(TransactionBuilderError::OfflinePayloadKeyIdNotAllowed {
                     field: format!("{list_name}[{i}].commitment_mask_key_id"),
-                    key_id: mask.to_string(),
+                    key_id: truncated_key_id(mask),
                 });
             }
             let script_key = output.script_key_id();
             if !is_allowed_script_key_id(script_key, output.script(), public_spend_key) {
                 return Err(TransactionBuilderError::OfflinePayloadKeyIdNotAllowed {
                     field: format!("{list_name}[{i}].script_key_id"),
-                    key_id: script_key.to_string(),
+                    key_id: truncated_key_id(script_key),
                 });
             }
         }

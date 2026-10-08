@@ -1951,7 +1951,16 @@ mod test {
             Network::LocalNet,
             prepared,
         );
-        assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
+        match result {
+            Err(crate::TransactionBuilderError::OfflinePayloadKeyIdNotAllowed { field, key_id }) => {
+                assert_eq!(field, "outputs[0].commitment_mask_key_id");
+                // The refused id is echoed truncated, not as the 1200+ characters the payload carried
+                assert!(key_id.chars().count() < 160, "key id not truncated: {key_id}");
+                assert!(key_id.ends_with(" chars)"), "key id not truncated: {key_id}");
+            },
+            Err(e) => panic!("expected the payload key id to be refused, got: {e}"),
+            Ok(_) => panic!("expected the payload key id to be refused, but the payload was signed"),
+        }
     }
 
     /// Forged inputs are checked too.
@@ -1991,6 +2000,16 @@ mod test {
         amount: MicroMinotari,
         script: TariScript,
     ) -> crate::transaction_components::WalletOutput {
+        input_with_script_key(key_manager, amount, script, TariKeyId::SpendKey)
+    }
+
+    /// A signed wallet output with the given script and script key, under a fresh mask.
+    fn input_with_script_key(
+        key_manager: &KeyManager,
+        amount: MicroMinotari,
+        script: TariScript,
+        script_key: TariKeyId,
+    ) -> crate::transaction_components::WalletOutput {
         let mask = key_manager.get_random_key(None, None).unwrap();
         let sender_offset = key_manager.get_random_key(None, None).unwrap();
         WalletOutputBuilder::new(amount, mask.key_id)
@@ -1999,7 +2018,7 @@ mod test {
             .unwrap()
             .with_input_data(ExecutionStack::default())
             .with_sender_offset_public_key(sender_offset.pub_key)
-            .with_script_key(TariKeyId::SpendKey)
+            .with_script_key(script_key)
             .sign_metadata_signature(key_manager, &sender_offset.key_id)
             .unwrap()
             .try_build(key_manager)
@@ -2267,5 +2286,113 @@ mod test {
         validator
             .validate(&signed.signed_transaction.transaction, None, None, u64::MAX)
             .unwrap();
+    }
+
+    /// A payload spending `input`, prepared by a view wallet over `key_manager`'s keys and signed by `key_manager`.
+    fn sign_single_input_payload(
+        key_manager: &KeyManager,
+        input: crate::transaction_components::WalletOutput,
+    ) -> Result<crate::offline_signing::models::SignedOneSidedTransactionResult, crate::TransactionBuilderError> {
+        let rules = create_consensus_manager();
+        let view_key_manager = create_view_key_manager(ViewWallet::new(
+            key_manager.get_spend_key().pub_key,
+            key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(5))
+            .with_input(input)
+            .unwrap();
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let sender_address = TariAddress::new_dual_address(
+            view_key_manager.get_view_key().pub_key,
+            view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(5000),
+            output_features: OutputFeatures::default(),
+            address: bob_address,
+            payment_id: MemoField::new_empty(),
+        }];
+        let prepared = prepare_one_sided_transaction_for_signing(
+            &view_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            sender_address,
+        )
+        .unwrap();
+        sign_locked_transaction(
+            key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        )
+    }
+
+    /// The legacy key conversion turns `derived.managed.comms.0` into `derived.spend_key`, so a migrated wallet can
+    /// hold unspent outputs with that script key. Spending one offline must still sign.
+    #[test]
+    fn sign_locked_transaction_signs_a_legacy_derived_spend_key_input() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let script_key = TariKeyId::Derived {
+            key: (&TariKeyId::SpendKey).into(),
+        };
+        let script_public_key = alice_key_manager.get_public_key_at_key_id(&script_key).unwrap();
+        let input = input_with_script_key(
+            &alice_key_manager,
+            MicroMinotari(20000),
+            push_pubkey_script(&script_public_key),
+            script_key,
+        );
+
+        let signed = sign_single_input_payload(&alice_key_manager, input).unwrap();
+        let validator =
+            TransactionInternalConsistencyValidator::new(false, create_consensus_manager(), CryptoFactories::default());
+        validator
+            .validate(&signed.signed_transaction.transaction, None, None, u64::MAX)
+            .unwrap();
+    }
+
+    /// `Derived` over the spend key is the only non-mask inner id a script key may have; `Derived` over the view key
+    /// is refused.
+    #[test]
+    fn sign_locked_transaction_refuses_a_derived_view_key_script_key() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let script_key = TariKeyId::Derived {
+            key: (&TariKeyId::ViewKey).into(),
+        };
+        let script_public_key = alice_key_manager.get_public_key_at_key_id(&script_key).unwrap();
+        let input = input_with_script_key(
+            &alice_key_manager,
+            MicroMinotari(20000),
+            push_pubkey_script(&script_public_key),
+            script_key,
+        );
+
+        assert_key_id_refused(
+            sign_single_input_payload(&alice_key_manager, input),
+            "inputs[0].script_key_id",
+        );
     }
 }
