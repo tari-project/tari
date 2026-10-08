@@ -4,5 +4,13 @@
 ./base_layer/core/src/blocks/gen_block/Tari.Manifesto
 ./base_layer/transaction_key_manager/src/schema.rs
 ./base_layer/wallet/src/schema.rs
+./comms/rpc_macros/tests/ui/duplicate_method.stderr
+./comms/rpc_macros/tests/ui/empty_rpc_attribute.stderr
+./comms/rpc_macros/tests/ui/max_items_path_zero.stderr
+./comms/rpc_macros/tests/ui/max_request_items_zero.stderr
+./comms/rpc_macros/tests/ui/method_zero.stderr
+./comms/rpc_macros/tests/ui/missing_server_struct.stderr
+./comms/rpc_macros/tests/ui/non_rpc_status_error.stderr
+./comms/rpc_macros/tests/ui/reserved_method.stderr
 ./docs/src/theme/book.js
 ./docs/src/theme/highlight.js
