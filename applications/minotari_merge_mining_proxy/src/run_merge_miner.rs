@@ -146,7 +146,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let block_templates = BlockTemplateRepository::new();
     // Read before `config` is moved into the service.
-    let max_concurrent_connections = config.max_concurrent_connections.max(1);
+    let max_concurrent_connections = config.max_concurrent_connections;
     let inbound_connection_lifetime = config.inbound_connection_lifetime;
 
     // Run clean up old templates every 10 minutes
@@ -228,6 +228,7 @@ async fn run_accept_loop<S, B>(
     B::Data: Send,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
+    // A limit of zero would refuse every connection, which is never what an operator means by it.
     let connection_limit = Arc::new(Semaphore::new(max_concurrent_connections.max(1)));
     let mut shutdown = pin!(shutdown);
     loop {

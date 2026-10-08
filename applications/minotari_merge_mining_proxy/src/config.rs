@@ -279,6 +279,8 @@ impl SubConfigPath for MergeMiningProxyConfig {
 #[cfg(test)]
 mod test {
 
+    use std::time::Duration;
+
     use tari_common::{DefaultConfigLoader, configuration::StringList};
 
     use crate::config::MergeMiningProxyConfig;
@@ -352,5 +354,9 @@ mod test {
         assert_eq!(config.base_node_grpc_address, None);
         assert!(!config.monerod_use_auth);
         assert!(config.submit_to_origin);
+        // The inbound connection bounds must be in place by default: the proxy is reachable by anything that can
+        // open a TCP connection to it, so an operator should not have to opt in to them.
+        assert_eq!(config.max_concurrent_connections, 256);
+        assert_eq!(config.inbound_connection_lifetime, Duration::from_secs(120));
     }
 }
