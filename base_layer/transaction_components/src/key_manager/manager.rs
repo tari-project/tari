@@ -521,9 +521,11 @@ impl KeyManager {
             // instruction.
             minotari_ledger_wallet_common::legacy_nonce::check_legacy_account(ledger.account).map_err(|_| {
                 KeyManagerError::LedgerError(format!(
-                    "GetRawSchnorrSignatureLegacyNonce: ledger account {} is 2^32 or more, where it names the same \
-                     keys as a smaller account; the legacy instruction (pre-mine spend) refuses it",
-                    ledger.account
+                    "GetRawSchnorrSignatureLegacyNonce: ledger account {} is 2^32 or more, which the legacy \
+                     instruction (pre-mine spend) refuses. Recover this wallet with account {}; it derives the same \
+                     keys.",
+                    ledger.account,
+                    minotari_ledger_wallet_common::legacy_nonce::legacy_account_word(ledger.account)
                 ))
             })?;
             let signature = ledger_get_raw_schnorr_signature_legacy_nonce(

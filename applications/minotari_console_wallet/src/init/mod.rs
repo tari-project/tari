@@ -740,7 +740,12 @@ pub fn prompt_wallet_type(
                     })?;
                 if use_hardware {
                     print!("Scanning for connected Ledger hardware device... ");
-                    let account = prompt_ledger_account(boot_mode).expect("An account value");
+                    let account = prompt_ledger_account(boot_mode).ok_or_else(|| {
+                        ExitError::new(
+                            ExitCode::IOError,
+                            "stdin closed before a Ledger account number was entered".to_string(),
+                        )
+                    })?;
                     match ledger_get_public_spend_key(account) {
                         Ok(public_alpha) => match ledger_get_view_key(account) {
                             Ok(view_key) => {
@@ -769,13 +774,37 @@ pub fn prompt_ledger_account(boot_mode: WalletBoot) -> Option<u64> {
     };
 
     println!("{question}");
-    let mut input = "".to_string();
-    io::stdin().read_line(&mut input).unwrap();
-    let input = input.trim();
-    match input.parse() {
-        Ok(num) => Some(num),
-        Err(_e) => Some(1),
+    loop {
+        let mut input = "".to_string();
+        match io::stdin().read_line(&mut input) {
+            Ok(0) | Err(_) => return None,
+            Ok(_) => {},
+        }
+        match parse_ledger_account(input.trim()) {
+            Ok(account) => return Some(account),
+            Err(e) => println!("{e} Please enter the account number again."),
+        }
     }
+}
+
+/// Parse a Ledger account number, refusing one of 2^32 or more.
+///
+/// The Ledger derivation uses the account modulo 2^32 (its path element is a 32 bit word), so a larger account names
+/// the same keys as a smaller one, and the pre-mine signing path (`GetRawSchnorrSignatureLegacyNonce`) refuses it -
+/// see `minotari_ledger_wallet_common::legacy_nonce::check_legacy_account`.
+fn parse_ledger_account(input: &str) -> Result<u64, String> {
+    let account: u64 = input
+        .parse()
+        .map_err(|_| format!("'{input}' is not an account number."))?;
+    if account > u64::from(u32::MAX) {
+        return Err(format!(
+            "Account {account} is too large: the Ledger derivation uses the account modulo 2^32, and pre-mine signing \
+             refuses accounts of 2^32 or more. Use an account below {} (account {} derives the same keys).",
+            1u64 << 32,
+            account & u64::from(u32::MAX)
+        ));
+    }
+    Ok(account)
 }
 
 pub fn prompt_private_key(prompt: &str) -> Option<PrivateKey> {
@@ -817,9 +846,23 @@ pub fn prompt_public_key(prompt: &str) -> Option<CompressedPublicKey> {
 
 #[cfg(test)]
 mod test {
+    #[test]
+    fn a_ledger_account_of_two_to_the_thirty_two_or_more_is_refused() {
+        assert_eq!(parse_ledger_account("1"), Ok(1));
+        assert_eq!(parse_ledger_account("4294967295"), Ok(u64::from(u32::MAX)));
+        let err = parse_ledger_account("4294967297").unwrap_err();
+        assert!(err.contains("modulo 2^32"), "{err}");
+        assert!(err.contains("account 1 derives the same keys"), "{err}");
+        assert!(
+            parse_ledger_account("abc")
+                .unwrap_err()
+                .contains("not an account number")
+        );
+        assert!(parse_ledger_account("").is_err());
+    }
     use tari_utilities::SafePassword;
 
-    use super::get_password_feedback;
+    use super::{get_password_feedback, parse_ledger_account};
 
     #[test]
     fn weak_password() {

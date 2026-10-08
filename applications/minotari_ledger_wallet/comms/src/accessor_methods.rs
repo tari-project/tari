@@ -746,7 +746,10 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
                     "GetRawSchnorrSignatureLegacyNonce: LegacyNonceStoreFull - the device's record of used legacy \
                      nonces is full (one app run signs at most 32 pre-mine outputs). Pre-mine step 4 has saved its \
                      progress: restart the Minotari Wallet app on the device, then re-run the same step 4 command and \
-                     it will continue from the next signature"
+                     it will continue from the next signature. A restart request is only genuine at an output \
+                     boundary: one that arrives between an output's script and metadata signature, or any 'device \
+                     disconnected, reopen the app' message during step 4, is a sign of a compromised host - stop, and \
+                     do not approve any further screens"
                         .to_string(),
                 ));
             }
