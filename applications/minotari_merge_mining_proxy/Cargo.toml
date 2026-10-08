@@ -44,7 +44,7 @@ dhat = "0.3.3"
 futures = "0.3"
 hex = "0.4.2"
 hyper = { version = "1.6.0", features = ["full"] }
-hyper-util = "0.1"
+hyper-util = { version = "0.1", features = ["tokio"] }
 http-body = "1.0"
 http-body-util = "0.1"
 jsonrpc = "0.12.0"
@@ -54,7 +54,7 @@ reqwest = { version = "0.12", features = ["json", "native-tls", "blocking"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["macros", "net", "signal"] }
+tokio = { workspace = true, features = ["macros", "net", "signal", "sync", "time"] }
 url = "2.1.1"
 rand = { workspace = true }
 blake2 = "0.10"
@@ -64,3 +64,4 @@ tari_features = { workspace = true }
 
 [dev-dependencies]
 hyper = { version = "1.6.0", features = ["full"] }
+tokio = { workspace = true, features = ["io-util", "rt-multi-thread"] }

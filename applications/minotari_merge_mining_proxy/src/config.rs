@@ -123,6 +123,16 @@ pub struct MergeMiningProxyConfig {
     /// The timeout duration for connecting to monerod (default = 2s)
     #[serde(with = "serializers::seconds")]
     pub monerod_connection_timeout: Duration,
+    /// The maximum number of inbound (miner-side) connections that are served simultaneously. Connections that
+    /// arrive while this many are already in flight are closed immediately, which bounds the file descriptors,
+    /// tasks and read buffers the proxy can be made to hold. (default = 256)
+    pub max_concurrent_connections: usize,
+    /// The maximum lifetime of an inbound (miner-side) connection. When it is reached the connection is shut down
+    /// gracefully - the in-flight request, if any, is allowed to finish first - and the miner is expected to
+    /// reconnect. This bounds connections that keep the socket alive but never go idle long enough for the HTTP
+    /// header read timeout to reap them. (default = 120s)
+    #[serde(with = "serializers::seconds")]
+    pub inbound_connection_lifetime: Duration,
 }
 
 /// Masks a URL or address for display, so credentials in it never reach the logs (see [`mask_value`]).
@@ -178,6 +188,8 @@ impl fmt::Debug for MergeMiningProxyConfig {
             .field("range_proof_type", &self.range_proof_type)
             .field("p2pool_enabled", &self.p2pool_enabled)
             .field("monerod_connection_timeout", &self.monerod_connection_timeout)
+            .field("max_concurrent_connections", &self.max_concurrent_connections)
+            .field("inbound_connection_lifetime", &self.inbound_connection_lifetime)
             .finish()
     }
 }
@@ -243,6 +255,8 @@ impl Default for MergeMiningProxyConfig {
             range_proof_type: RangeProofType::RevealedValue,
             p2pool_enabled: false,
             monerod_connection_timeout: Duration::from_secs(2),
+            max_concurrent_connections: 256,
+            inbound_connection_lifetime: Duration::from_secs(120),
         }
     }
 }
