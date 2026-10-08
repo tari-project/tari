@@ -1121,8 +1121,9 @@ async fn silent_substreams_do_not_stall_other_peers() {
     }
 }
 
-/// Pending handshakes are capped per peer and in total: a substream over either cap is dropped at once. A handshake
-/// that times out releases its slot.
+/// Pending handshakes are capped per peer and in total: a substream over either cap is refused at once with an
+/// explicit `NoServerSessionsAvailable` rejection (not dropped, which a client pool would treat as a failure to
+/// connect). A handshake that times out releases its slot.
 #[tokio::test]
 async fn pending_handshakes_are_capped_and_released_on_timeout() {
     let builder = RpcServer::builder()
@@ -1131,26 +1132,18 @@ async fn pending_handshakes_are_capped_and_released_on_timeout() {
         .with_maximum_pending_handshakes(3);
     let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
 
-    // Peer A fills its own cap; its third substream is dropped
+    // Peer A fills its own cap; its next session is refused
     let (_, peer_a) = connect_peer(&notif_tx, &context).await;
     let mut a1 = open_silent_substream(&peer_a).await;
     let mut a2 = open_silent_substream(&peer_a).await;
-    let mut a3 = open_silent_substream(&peer_a).await;
-    assert!(
-        is_closed_within(&mut a3, Duration::from_secs(1)).await,
-        "per-peer cap not enforced"
-    );
+    assert_explicitly_rejected(&peer_a).await;
 
-    // Peer B takes the last global slot; peer C is then dropped by the global cap
+    // Peer B takes the last global slot; peer C is then refused by the global cap
     let (_, peer_b) = connect_peer(&notif_tx, &context).await;
     let mut b1 = open_silent_substream(&peer_b).await;
     assert!(!is_closed_within(&mut b1, Duration::from_millis(200)).await);
     let (_, peer_c) = connect_peer(&notif_tx, &context).await;
-    let mut c1 = open_silent_substream(&peer_c).await;
-    assert!(
-        is_closed_within(&mut c1, Duration::from_secs(1)).await,
-        "global cap not enforced"
-    );
+    assert_explicitly_rejected(&peer_c).await;
     assert!(!is_closed_within(&mut a1, Duration::from_millis(10)).await);
 
     // Once the pending handshakes time out, they are closed and their slots released: A and C can both connect
@@ -1179,42 +1172,36 @@ async fn pending_handshakes_end_with_the_server() {
     assert!(is_closed_within(&mut silent, Duration::from_secs(5)).await);
 }
 
-/// With one session slot left, two overlapping handshakes from one peer get exactly one session and one explicit
-/// rejection. The first handshake is held open (one byte sent) while the second arrives, so they overlap. Neither may
-/// be accepted and then dropped, which the client would only see as the substream closing on its first request
-/// (`ServerClosedRequest`, blamed on the server).
-async fn assert_one_session_and_one_explicit_rejection(builder: RpcServerBuilder) {
-    use prost::Message;
-
+/// A handshake frame (length prefix and `RpcSession`)
+fn handshake_frame() -> Vec<u8> {
     use crate::{message::MessageExt, proto};
 
-    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
-    let (_, peer) = connect_peer(&notif_tx, &context).await;
-    // Takes all but one slot
-    let _first = connect_greeting_client(&peer).await.unwrap();
-
-    // The first handshake: its frame, sent one byte first
     let handshake = proto::rpc::RpcSession {
         supported_versions: vec![0],
     }
     .to_encoded_bytes();
     let mut frame = u32::try_from(handshake.len()).unwrap().to_be_bytes().to_vec();
     frame.extend_from_slice(&handshake);
+    frame
+}
+
+/// Starts a handshake and holds it open after its first byte. Waits for the server to have taken it in (and, if it is
+/// accepted, reserved its session).
+async fn hold_handshake(peer: &Yamux) -> Substream {
     let mut held = peer.get_yamux_control().open_stream().await.unwrap();
-    held.write_all(&frame[..1]).await.unwrap();
+    held.write_all(handshake_frame().get(..1).unwrap()).await.unwrap();
     held.flush().await.unwrap();
-    // Let the server accept it (and reserve its slot) before the second one arrives
     time::sleep(Duration::from_millis(200)).await;
+    held
+}
 
-    // The second handshake, while the first is pending: explicitly rejected
-    let Err(rejection) = connect_greeting_client(&peer).await else {
-        panic!("the last slot was handed out twice");
-    };
-    unpack_enum!(RpcError::HandshakeError(rejection) = rejection);
-    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable(_)) = rejection);
+/// Completes a held handshake and asserts it is accepted and its session stays open
+async fn complete_held_handshake(mut held: Substream) -> framing::CanonicalFraming<Substream> {
+    use prost::Message;
 
-    // The first completes: it is accepted, and its session stays open
-    held.write_all(&frame[1..]).await.unwrap();
+    use crate::proto;
+
+    held.write_all(handshake_frame().get(1..).unwrap()).await.unwrap();
     held.flush().await.unwrap();
     let mut held = framing::canonical(held, 1024);
     let reply = time::timeout(Duration::from_secs(5), held.next())
@@ -1231,6 +1218,34 @@ async fn assert_one_session_and_one_explicit_rejection(builder: RpcServerBuilder
         time::timeout(Duration::from_millis(500), held.next()).await.is_err(),
         "an accepted handshake was dropped"
     );
+    held
+}
+
+/// Asserts that connecting fails with an explicit `NoServerSessionsAvailable` rejection, which a client pool treats as
+/// "use an existing session"
+async fn assert_explicitly_rejected(peer: &Yamux) {
+    let Err(rejection) = connect_greeting_client(peer).await else {
+        panic!("the session was not rejected");
+    };
+    unpack_enum!(RpcError::HandshakeError(rejection) = rejection);
+    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable(_)) = rejection);
+}
+
+/// With one session slot left, two overlapping handshakes from one peer get exactly one session and one explicit
+/// rejection. The first handshake is held open while the second arrives, so they overlap. Neither may be accepted and
+/// then dropped, which the client would only see as the substream closing on its first request (`ServerClosedRequest`,
+/// blamed on the server).
+async fn assert_one_session_and_one_explicit_rejection(builder: RpcServerBuilder) {
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    // Takes all but one slot
+    let _first = connect_greeting_client(&peer).await.unwrap();
+
+    let held = hold_handshake(&peer).await;
+    // The second handshake, while the first is pending: explicitly rejected
+    assert_explicitly_rejected(&peer).await;
+    // The first completes: it is accepted, and its session stays open
+    complete_held_handshake(held).await;
 }
 
 #[tokio::test]
@@ -1247,4 +1262,68 @@ async fn concurrent_handshakes_at_the_per_client_limit_are_rejected_not_dropped(
         .with_maximum_simultaneous_sessions(100)
         .with_maximum_sessions_per_client(2);
     assert_one_session_and_one_explicit_rejection(builder).await;
+}
+
+/// In cull mode, the cull decision counts accepted handshakes: a new request culls the oldest running sessions when
+/// that leaves room for it, alongside the handshakes already accepted, and is then accepted. It is never refused after
+/// sessions were culled for it.
+#[tokio::test]
+async fn culling_counts_accepted_handshakes() {
+    let builder = RpcServer::builder()
+        .with_maximum_sessions_per_client(2)
+        .with_cull_oldest_peer_rpc_connection_on_full(true);
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let _oldest = connect_greeting_client(&peer).await.unwrap();
+    let mut second = connect_greeting_client(&peer).await.unwrap();
+
+    // At the limit: this culls the oldest session and is accepted (and reserved)
+    let held = hold_handshake(&peer).await;
+    // One running session and one accepted handshake: this culls the second session and is accepted
+    let mut newest = connect_greeting_client(&peer).await.unwrap();
+    let greeting = newest
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(greeting.greeting, "Jambo Yathvan");
+    second
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .expect_err("the second session was not culled");
+    complete_held_handshake(held).await;
+}
+
+/// In cull mode, accepted handshakes are never culled: once they alone fill the peer's limit, a further request is
+/// explicitly rejected, and the accepted handshakes still get their sessions
+#[tokio::test]
+async fn culling_cannot_make_room_past_accepted_handshakes() {
+    let builder = RpcServer::builder()
+        .with_maximum_sessions_per_client(2)
+        .with_cull_oldest_peer_rpc_connection_on_full(true);
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut running = connect_greeting_client(&peer).await.unwrap();
+
+    // One running session: accepted without culling
+    let held_a = hold_handshake(&peer).await;
+    // One running and one accepted: culls the running session, accepted
+    let held_b = hold_handshake(&peer).await;
+    running
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .expect_err("the running session was not culled");
+
+    // Two accepted handshakes fill the limit: rejected
+    assert_explicitly_rejected(&peer).await;
+    let _a = complete_held_handshake(held_a).await;
+    let _b = complete_held_handshake(held_b).await;
 }

@@ -81,6 +81,13 @@ impl From<io::Error> for RpcHandshakeError {
     }
 }
 
+fn send_timed_out() -> RpcHandshakeError {
+    RpcHandshakeError::Io(io::Error::new(
+        io::ErrorKind::TimedOut,
+        "timed out sending a handshake frame",
+    ))
+}
+
 /// Handshake protocol
 pub struct Handshake<'a, T> {
     framed: &'a mut CanonicalFraming<T>,
@@ -116,8 +123,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                         ..Default::default()
                     };
                     let span = span!(Level::INFO, "rpc::server::handshake::send_accept_version_reply");
-                    self.framed
-                        .send(reply.to_encoded_bytes().into())
+                    self.send_bounded(reply.to_encoded_bytes().into())
                         .instrument(span)
                         .await?;
                     return Ok(*version);
@@ -145,13 +151,30 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {
-        warn!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
+        // Debug, not warn: the server logs (and rate-limits) the reasons it rejects sessions
+        debug!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
         let reply = proto::rpc::RpcSessionReply {
             session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
             reject_reason: reject_reason.as_i32(),
         };
-        self.framed.send(reply.to_encoded_bytes().into()).await?;
-        self.framed.close().await?;
+        self.send_bounded(reply.to_encoded_bytes().into()).await?;
+        match self.timeout {
+            Some(timeout) => time::timeout(timeout, self.framed.close())
+                .await
+                .map_err(|_| send_timed_out())??,
+            None => self.framed.close().await?,
+        }
+        Ok(())
+    }
+
+    /// Sends a handshake frame, within the timeout if one is set. A send that does not finish in time is an IO error.
+    async fn send_bounded(&mut self, frame: bytes::Bytes) -> Result<(), RpcHandshakeError> {
+        match self.timeout {
+            Some(timeout) => time::timeout(timeout, self.framed.send(frame))
+                .await
+                .map_err(|_| send_timed_out())??,
+            None => self.framed.send(frame).await?,
+        }
         Ok(())
     }
 
