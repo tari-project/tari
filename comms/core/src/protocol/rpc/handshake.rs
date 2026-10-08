@@ -24,13 +24,12 @@ use std::{cmp, io, time::Duration};
 
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
-use log::info;
 use prost::{DecodeError, Message};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time,
 };
-use tracing::{Instrument, Level, debug, error, span, warn};
+use tracing::{Instrument, Level, debug, error, span, trace, warn};
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 
@@ -136,23 +135,23 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => {
-                info!(target: LOG_TARGET, "Error during handshake: {err}");
+                trace!(target: LOG_TARGET, "Error during handshake: {err}");
                 Err(err.into())
             },
             Ok(None) => {
-                info!(target: LOG_TARGET, "Error during handshake, client closed connection");
+                trace!(target: LOG_TARGET, "Error during handshake, client closed connection");
                 Err(RpcHandshakeError::ClientClosed)
             },
             Err(_) => {
-                info!(target: LOG_TARGET, "Error during handshake, timed out");
+                trace!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }
     }
 
     pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {
-        // Debug, not warn: the server logs (and rate-limits) the reasons it rejects sessions
-        debug!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
+        // Trace: a peer can trigger one per substream; the server counts rejections and rate-limits its warnings
+        trace!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
         let reply = proto::rpc::RpcSessionReply {
             session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
             reject_reason: reject_reason.as_i32(),

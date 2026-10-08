@@ -388,6 +388,7 @@ where TSvc: MakeService<ProtocolId, Request<Bytes>>
     capacity_rejections: JoinSet<()>,
     capacity_warning: RateLimitedWarning,
     timeout_warning: RateLimitedWarning,
+    session_limit_warning: RateLimitedWarning,
 }
 
 /// Lets a warning through at most once per [HANDSHAKE_WARNING_INTERVAL], counting the ones it holds back
@@ -479,6 +480,7 @@ where
             capacity_rejections: JoinSet::new(),
             capacity_warning: RateLimitedWarning::default(),
             timeout_warning: RateLimitedWarning::default(),
+            session_limit_warning: RateLimitedWarning::default(),
         }
     }
 
@@ -551,7 +553,7 @@ where
     ) -> Result<(), RpcServerError> {
         match notification.event {
             ProtocolEvent::NewInboundSubstream(node_id, substream) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "New client connection for protocol `{}` from peer `{}`",
                     String::from_utf8_lossy(&notification.protocol),
@@ -564,7 +566,7 @@ where
                 // client pool treats as "use an existing session" rather than a failure to connect
                 let pending_for_peer = self.pending_handshakes.get(&node_id).copied().unwrap_or(0);
                 if pending_for_peer >= self.config.maximum_pending_handshakes_per_client {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Rejecting RPC substream from peer `{}`: it already has {} handshake(s) in progress",
                         node_id,
@@ -574,7 +576,7 @@ where
                     return Ok(());
                 }
                 if self.handshakes.len() >= self.config.maximum_pending_handshakes {
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Rejecting RPC substream from peer `{}`: {} handshake(s) already in progress",
                         node_id,
@@ -629,7 +631,7 @@ where
         let service = match self.service.make_service(protocol).await {
             Ok(service) => service,
             Err(err) => {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
                     "Rejecting RPC session request for peer `{}` because {}",
                     node_id,
@@ -657,7 +659,7 @@ where
 
         if self.executor.num_available() <= self.accepted_pending_total {
             let msg = format!("Used all {} sessions", self.executor.max_available());
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Rejecting RPC session request for peer `{}` because {}",
                 node_id,
@@ -795,12 +797,12 @@ where
         }
         match err {
             err @ RpcServerError::HandshakeError(_) => {
-                debug!(target: LOG_TARGET, "Handshake error: {}", err);
+                trace!(target: LOG_TARGET, "Handshake error: {}", err);
                 #[cfg(feature = "metrics")]
                 metrics::handshake_error_counter(protocol).inc();
             },
             err => {
-                debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
+                trace!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
             },
         }
     }
@@ -834,11 +836,17 @@ where
                 return Ok(running);
             }
         }
-        warn!(
+        trace!(
             target: LOG_TARGET,
             "Maximum RPC sessions for peer {node_id} met or exceeded. Max: {max}, running: {running}, accepted \
              handshakes: {reserved}"
         );
+        if let Some(count) = self.session_limit_warning.occurred() {
+            warn!(
+                target: LOG_TARGET,
+                "Refused {count} RPC session(s) because the peer was at its limit of {max} session(s)"
+            );
+        }
         Err(RpcServerError::MaxSessionsPerClientReached {
             node_id: node_id.clone(),
             max_sessions: max,
