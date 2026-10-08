@@ -429,7 +429,9 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
     let account = fixtures::random_u64();
     let partial_sum = fixtures::random_secret_key();
     let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
-        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64()))
+        // A pre-mine *script* key never carries the sender offset marker (bit 63); the host and the device refuse
+        // one that does, so the draw stays in the unmarked half.
+        .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64() >> 1))
         .collect();
     let derived_script_keys: Vec<RistrettoSecretKey> = (0..DERIVED_SCRIPT_KEYS)
         .map(|_| fixtures::random_secret_key())
