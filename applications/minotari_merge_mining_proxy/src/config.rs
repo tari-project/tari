@@ -58,7 +58,8 @@ pub(crate) const TARI_MONEROD_SERVERS: [&str; 1] = ["https://xmr-01.tari.com"];
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct MergeMiningProxyConfig {
-    override_from: Option<String>,
+    /// Crate visible so that tests in other modules can build a configuration with the struct update syntax.
+    pub(crate) override_from: Option<String>,
     /// Use dynamic monerod URL obtained form the official Monero website (https://monero.fail/)
     pub use_dynamic_fail_data: bool,
     /// The monero fail URL to get the monerod URLs from - must be pointing to the official Monero website.

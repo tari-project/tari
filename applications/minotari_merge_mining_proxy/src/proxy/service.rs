@@ -42,7 +42,10 @@ use crate::{
     common::{json_rpc, proxy},
     config::MergeMiningProxyConfig,
     error::MmProxyError,
-    proxy::{inner::InnerService, monerod_method::parse_monerod_rpc_method},
+    proxy::{
+        inner::{InnerService, MonerodState},
+        monerod_method::parse_monerod_rpc_method,
+    },
 };
 
 const LOG_TARGET: &str = "minotari_mm_proxy::proxy::service";
@@ -74,7 +77,7 @@ impl MergeMiningProxyService {
                 base_node_client,
                 p2pool_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
-                current_monerod_server: Arc::new(RwLock::new(None)),
+                monerod_state: Arc::new(RwLock::new(MonerodState::Unqualified)),
                 last_assigned_monerod_url: Arc::new(RwLock::new(last_assigned_monerod_url)),
                 randomx_factory,
                 consensus_manager,

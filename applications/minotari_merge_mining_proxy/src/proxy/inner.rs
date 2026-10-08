@@ -28,7 +28,7 @@ use std::{
         RwLock,
         atomic::{AtomicBool, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use blake2::{Blake2s256, Digest, digest::Update};
@@ -80,6 +80,43 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy::inner";
 const TARI_CHAIN_ID: &str = "xtr";
 const BUSY_QUALIFYING: &str = "BusyQualifyingMonerodUrl";
 
+/// Where the proxy is in the process of qualifying one of the configured `monerod_url` entries.
+///
+/// All of the states are held behind one lock so that the transition out of [`MonerodState::Unqualified`] is a
+/// single atomic check-and-set. This used to be a read lock that was taken and released, followed by a separate
+/// write lock, which let two requests on different worker threads both observe that no sweep was running and both
+/// start a full sweep of every configured server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MonerodState {
+    /// Nothing is qualified and no sweep is running, so the next request starts one.
+    Unqualified,
+    /// A sweep is running; other requests wait for its result instead of starting one of their own.
+    Qualifying,
+    /// This server answered the last probe and is the one requests are proxied to.
+    Qualified(String),
+}
+
+/// What [`InnerService::claim_monerod_qualification`] tells its caller to do.
+#[derive(Debug)]
+enum Qualification {
+    /// Proxy to this already-qualified server.
+    Use(String),
+    /// The caller now owns [`MonerodState::Qualifying`] and must run a sweep.
+    Claimed,
+    /// Another request is sweeping; wait for it to publish a result.
+    Wait,
+}
+
+/// Whether a probe response means the server can be proxied to.
+///
+/// A probe is a bare `GET` of the inbound request's path, so a `4xx` is expected from any monerod that sits behind a
+/// reverse proxy which only allows `POST /json_rpc`: the server answered, which is all the probe needs to
+/// establish. A `5xx` is different - that is typically a reverse proxy reporting that monerod itself is down - and
+/// so is a `429`, which explicitly asks us not to send more traffic.
+fn is_usable_probe_status(status: reqwest::StatusCode) -> bool {
+    !status.is_server_error() && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
 #[derive(Debug, Clone)]
 pub struct InnerService {
     pub(crate) config: Arc<MergeMiningProxyConfig>,
@@ -88,7 +125,7 @@ pub struct InnerService {
     pub(crate) base_node_client: BaseNodeGrpcClient,
     pub(crate) p2pool_client: Option<ShaP2PoolGrpcClient>,
     pub(crate) initial_sync_achieved: Arc<AtomicBool>,
-    pub(crate) current_monerod_server: Arc<RwLock<Option<String>>>,
+    pub(crate) monerod_state: Arc<RwLock<MonerodState>>,
     pub(crate) last_assigned_monerod_url: Arc<RwLock<Option<String>>>,
     pub(crate) randomx_factory: RandomXFactory,
     pub(crate) consensus_manager: BaseNodeConsensusManager,
@@ -600,12 +637,28 @@ impl InnerService {
         proxy::into_response(parts, &resp)
     }
 
+    /// Atomically inspects the qualification state and, when a sweep is needed, claims the right to run it.
+    ///
+    /// The whole decision is made inside one write lock, so exactly one request can ever hold
+    /// [`MonerodState::Qualifying`] and sweeps are properly serialised.
+    fn claim_monerod_qualification(&self) -> Qualification {
+        let mut state = self.monerod_state.write().expect("Write lock should not fail");
+        let decision = match &*state {
+            MonerodState::Qualified(server) => Qualification::Use(server.clone()),
+            MonerodState::Qualifying => Qualification::Wait,
+            MonerodState::Unqualified => Qualification::Claimed,
+        };
+        if matches!(decision, Qualification::Claimed) {
+            *state = MonerodState::Qualifying;
+        }
+        decision
+    }
+
     fn clear_current_monerod_server_lock(&self, last_assigned_server: Option<&str>, host_with_error: Option<&str>) {
         // Current
-        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
-        let current = lock.clone();
+        let mut lock = self.monerod_state.write().expect("Write lock should not fail");
         if let Some(host) = host_with_error
-            && let Some(server) = current.clone()
+            && let MonerodState::Qualified(server) = &*lock
             // If the error was reported on a previously assigned server, we do not clear the lock. This happens on
             // requests that timed out after a new server has been assigned.
             && !server.contains(host)
@@ -613,11 +666,12 @@ impl InnerService {
             trace!(
                 target: LOG_TARGET, "A new monerod server has already been assigned. Current: '{}', host with \
                 error: '{}'",
-                mask_value("monerod_url", &server), host
+                mask_value("monerod_url", server), host
             );
             return;
         }
-        *lock = None;
+        *lock = MonerodState::Unqualified;
+        drop(lock);
         // Last assigned
         if let Some(server) = last_assigned_server {
             let mut lock = self
@@ -635,48 +689,58 @@ impl InnerService {
         );
     }
 
-    fn set_current_monerod_server_lock_busy(&self) {
-        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
-        *lock = Some(BUSY_QUALIFYING.to_string());
-        trace!(
-            target: LOG_TARGET, "Monerod status - Current: '{}', Last assigned: {}",
-            BUSY_QUALIFYING,
-            mask_value(
-                "monerod_url",
-                &self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
-            )
-        );
-    }
-
     fn update_monerod_server_locks(&self, server: &str) {
         // Current
-        let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
-        *lock = Some(server.to_string());
+        let mut lock = self.monerod_state.write().expect("Write lock should not fail");
+        *lock = MonerodState::Qualified(server.to_string());
+        drop(lock);
         // Last assigned
         let mut lock = self
             .last_assigned_monerod_url
             .write()
             .expect("Write lock should not fail");
         *lock = Some(server.to_string());
+        drop(lock);
         let shown = mask_value("monerod_url", server);
         trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", shown, shown);
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// Appends the path of the inbound request to a configured monerod server to get the URL to proxy to.
+    ///
+    /// An [`MmProxyError::InvalidMonerodRequest`] means the configured entry is fine and it is the inbound request
+    /// path that cannot be appended to it; any other error means the configured entry itself is unusable.
+    fn monerod_url_for(&self, server: &str, request_uri: &Uri) -> Result<Url, MmProxyError> {
+        match format!("{}{}", server, request_uri.path()).parse::<Url>() {
+            Ok(url) => Ok(url),
+            Err(err) => {
+                if format!("{server}/getheight").parse::<Url>().is_ok() {
+                    return Err(MmProxyError::InvalidMonerodRequest(request_uri.path().to_string()));
+                }
+                Err(err.into())
+            },
+        }
+    }
+
     async fn get_monerod_url(&self, request_uri: &Uri) -> Result<Option<Url>, MmProxyError> {
-        // Return the previously qualified monerod URL if it exists
         let mut busy_qualifying = 0u64;
         let start_reading_lock_time = Instant::now();
         loop {
-            let lock_contents = {
-                self.current_monerod_server
-                    .read()
-                    .expect("Read lock should not fail")
-                    .clone()
-            };
-            if let Some(server) = lock_contents {
-                // Give some time for the server to be qualified
-                if server == BUSY_QUALIFYING {
+            match self.claim_monerod_qualification() {
+                // Return the previously qualified monerod URL if it exists
+                Qualification::Use(server) => {
+                    return match self.monerod_url_for(&server, request_uri) {
+                        Ok(url) => Ok(Some(url)),
+                        Err(err @ MmProxyError::InvalidMonerodRequest(_)) => Err(err),
+                        Err(err) => {
+                            // The qualified entry cannot produce a URL at all, so stop proxying to it.
+                            self.clear_current_monerod_server_lock(None, None);
+                            Err(err)
+                        },
+                    };
+                },
+                Qualification::Claimed => return self.qualify_monerod_server(request_uri).await.map(Some),
+                Qualification::Wait => {
+                    // Give some time for the server to be qualified
                     let time_lapsed = start_reading_lock_time.elapsed();
                     if time_lapsed > self.config.monerod_connection_timeout {
                         return Err(MmProxyError::ServersUnavailable(BUSY_QUALIFYING.to_string()));
@@ -686,29 +750,17 @@ impl InnerService {
                         "Waiting for lock data ({} - {:.2?}), {}, {}",
                         {busy_qualifying = busy_qualifying.saturating_add(1); busy_qualifying}, time_lapsed, BUSY_QUALIFYING, request_uri.path()
                     );
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                    continue;
-                }
-                // Parse the URL if qualifying is done
-                match format!("{}{}", server, request_uri.path()).parse::<Url>() {
-                    Ok(url) => return Ok(Some(url)),
-                    Err(err) => {
-                        return if format!("{server}/getheight").parse::<Url>().is_ok() {
-                            Err(MmProxyError::InvalidMonerodRequest(request_uri.path().to_string()))
-                        } else {
-                            self.clear_current_monerod_server_lock(None, None);
-                            Err(err.into())
-                        };
-                    },
-                }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                },
             }
-            // If no server is qualified, proceed with qualifying
-            break;
         }
+    }
 
-        // Set the "busy qualifying" state
-        self.set_current_monerod_server_lock_busy();
-
+    /// Probes each configured monerod server in turn, starting after the one that was assigned last, and locks onto
+    /// the first one that answers.
+    ///
+    /// The caller must already hold [`MonerodState::Qualifying`]; every exit path from here publishes a new state.
+    async fn qualify_monerod_server(&self, request_uri: &Uri) -> Result<Url, MmProxyError> {
         // Create an iterator to query the list, starting after the last used entry
         let last_used_url = {
             let lock = self
@@ -737,19 +789,19 @@ impl InnerService {
         let iter = right.iter().chain(left.iter());
 
         // Lock the current and last monerod server into the first available server
+        let mut first_probed = None;
         for server in iter {
             let start = Instant::now();
-            let url = match format!("{}{}", server, request_uri.path()).parse::<Url>() {
-                Ok(val) => val,
-                Err(e) => {
+            let url = match self.monerod_url_for(server, request_uri) {
+                Ok(url) => url,
+                Err(err) => {
                     self.clear_current_monerod_server_lock(Some(server), None);
-                    return if format!("{server}/getheight").parse::<Url>().is_ok() {
-                        Err(MmProxyError::InvalidMonerodRequest(request_uri.path().to_string()))
-                    } else {
-                        Err(e.into())
-                    };
+                    return Err(err);
                 },
             };
+            if first_probed.is_none() {
+                first_probed = Some(server.clone());
+            }
             let pos = self.config.monerod_url.iter().position(|x| x == server).unwrap_or(0);
             debug!(
                 target: LOG_TARGET, "Trying to connect to Monerod server at: {} (entry {} of {})",
@@ -759,31 +811,50 @@ impl InnerService {
                 .http_client
                 .get(url.clone())
                 .timeout(self.config.monerod_connection_timeout);
+            // For this availability check we deliberately do not provide the body of the request if it is a POST
+            // request and turns it into an invalid GET request. This is because we are only interested in the
+            // connection. A typical response of a monerod daemon upon an invalid POST request
+            // `https://<host>/json_rpc` would be:
+            //     "error": {
+            //         "code": -32600,
+            //         "message": "Invalid Request"
+            //     },
+            //     "id": 0,
+            //     "jsonrpc": "2.0"
+            // This approach is used to verify the server's availability without needing a valid request body.
+            //
+            // `timeout` yields `Result<Result<Response, reqwest::Error>, Elapsed>`, so the outer `Ok` only says
+            // that the request finished inside the timeout, not that it succeeded. Both results have to be
+            // destructured: `Ok(Err(_))` is a connection refused, a DNS failure or a rejected TLS handshake, and
+            // treating it as "server available" is what made the proxy lock onto a hard-down server, fail the real
+            // request, clear the lock and do it all again without ever failing over to a healthy entry.
             match timeout(self.config.monerod_connection_timeout, probe.send()).await {
-                // For this availability check we deliberately do not provide the body of the request if it is a POST
-                // request and turns it into an invalid GET request. This is because we are only interested in the
-                // connection. A typical response of a monerod daemon upon an invalid POST request
-                // `https://<host>/json_rpc` would be:
-                //     "error": {
-                //         "code": -32600,
-                //         "message": "Invalid Request"
-                //     },
-                //     "id": 0,
-                //     "jsonrpc": "2.0"
-                // This approach is used to verify the server's availability without needing a valid request body.
-                Ok(response) => {
+                Ok(Ok(response)) if is_usable_probe_status(response.status()) => {
                     self.update_monerod_server_locks(server);
                     info!(
                         target: LOG_TARGET,
-                        "Monerod server available (response in {:.2?}, {} bytes): {}",
+                        "Monerod server available (response in {:.2?}, status {}, {} bytes): {}",
                         start.elapsed(),
-                        match response {
-                            Ok(data) => data.content_length().unwrap_or_default(),
-                            Err(_) => 0,
-                        },
+                        response.status(),
+                        response.content_length().unwrap_or_default(),
                         mask_value("monerod_url", url.as_str())
                     );
-                    return Ok(Some(url));
+                    return Ok(url);
+                },
+                Ok(Ok(response)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Monerod server unavailable (status {} in {:.2?}): {}",
+                        response.status(), start.elapsed(), mask_value("monerod_url", url.as_str())
+                    );
+                },
+                Ok(Err(err)) => {
+                    // `without_url` keeps the monerod URL (which may carry credentials or a query) out of the log
+                    warn!(
+                        target: LOG_TARGET,
+                        "Monerod server unavailable (request failed in {:.2?}, {}): {}",
+                        start.elapsed(), err.without_url(), mask_value("monerod_url", url.as_str())
+                    );
                 },
                 Err(_) => {
                     warn!(
@@ -795,8 +866,11 @@ impl InnerService {
             }
         }
 
-        // Clear the "busy qualifying" state
-        self.clear_current_monerod_server_lock(None, None);
+        // Clear the "busy qualifying" state. The entry the sweep started at is recorded as the last assigned one so
+        // that the next sweep starts at the entry after it: without that, every failed sweep re-probed the same
+        // entries in the same order from the same offset, always burning the full connection timeout on whichever
+        // dead entry happened to be first.
+        self.clear_current_monerod_server_lock(first_probed.as_deref(), None);
         Err(MmProxyError::ServersUnavailable(
             self.config
                 .monerod_url
@@ -1066,5 +1140,168 @@ impl InnerService {
                 Err(e)
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{convert::Infallible, net::SocketAddr};
+
+    use http_body_util::Full;
+    use hyper::{server::conn::http1, service::service_fn};
+    use hyper_util::rt::TokioIo;
+    use minotari_node_grpc_client::grpc::base_node_client::BaseNodeClient;
+    use minotari_wallet_grpc_client::{ClientAuthenticationInterceptor, GrpcAuthentication};
+    use tari_common::configuration::{Network, StringList};
+    use tokio::net::TcpListener;
+    use tonic::transport::Endpoint;
+
+    use super::*;
+
+    const NETWORK: Network = Network::LocalNet;
+
+    fn test_service(monerod_url: Vec<String>, monerod_connection_timeout: Duration) -> InnerService {
+        let config = MergeMiningProxyConfig {
+            monerod_url: StringList::from(monerod_url),
+            monerod_connection_timeout,
+            network: NETWORK,
+            ..Default::default()
+        };
+        // The base node is never contacted by the qualification tests, so a lazy channel is enough.
+        let base_node_client = BaseNodeClient::with_interceptor(
+            Endpoint::from_static("http://127.0.0.1:18142").connect_lazy(),
+            ClientAuthenticationInterceptor::create(&GrpcAuthentication::default()).unwrap(),
+        );
+        InnerService {
+            config: Arc::new(config),
+            block_templates: BlockTemplateRepository::new(),
+            http_client: reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap(),
+            base_node_client,
+            p2pool_client: None,
+            initial_sync_achieved: Arc::new(AtomicBool::new(false)),
+            monerod_state: Arc::new(RwLock::new(MonerodState::Unqualified)),
+            last_assigned_monerod_url: Arc::new(RwLock::new(None)),
+            randomx_factory: RandomXFactory::new(1),
+            consensus_manager: BaseNodeConsensusManager::builder(NETWORK).build().unwrap(),
+            wallet_payment_address: TariAddress::default(),
+        }
+    }
+
+    fn get_height_uri() -> Uri {
+        "/get_height".parse().unwrap()
+    }
+
+    fn monerod_state(service: &InnerService) -> MonerodState {
+        service.monerod_state.read().expect("Read lock should not fail").clone()
+    }
+
+    fn last_assigned(service: &InnerService) -> Option<String> {
+        service
+            .last_assigned_monerod_url
+            .read()
+            .expect("Read lock should not fail")
+            .clone()
+    }
+
+    /// Returns the address of a port nothing is listening on, so connecting to it is refused outright. This is the
+    /// `Ok(Err(reqwest::Error))` case: the probe finished well inside the timeout, but it failed.
+    async fn refused_address() -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        addr
+    }
+
+    /// Spawns a minimal HTTP server on an ephemeral port that answers every request with `status`.
+    async fn spawn_monerod_stub(status: StatusCode) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((tcp, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let service = service_fn(move |_request| async move {
+                        Ok::<_, Infallible>(
+                            Response::builder()
+                                .status(status)
+                                .body(Full::new(Bytes::from_static(b"{}")))
+                                .expect("valid response"),
+                        )
+                    });
+                    let _result = http1::Builder::new().serve_connection(TokioIo::new(tcp), service).await;
+                });
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn qualification_is_claimed_by_exactly_one_request() {
+        let service = test_service(vec!["http://127.0.0.1:18081".to_string()], Duration::from_secs(2));
+        // The check and the claim are a single critical section, so the second caller is told to wait rather than
+        // launching a sweep of its own.
+        assert!(matches!(service.claim_monerod_qualification(), Qualification::Claimed));
+        assert!(matches!(service.claim_monerod_qualification(), Qualification::Wait));
+        assert_eq!(monerod_state(&service), MonerodState::Qualifying);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_refuses_the_connection_is_not_qualified() {
+        let addr = refused_address().await;
+        let server = format!("http://{addr}");
+        let service = test_service(vec![server], Duration::from_secs(5));
+
+        // `timeout(.., send())` resolves to `Ok(Err(..))` here. Treating the outer `Ok` as "server available" used
+        // to qualify this server, so the proxy then hammered a dead host without ever failing over.
+        let err = service.get_monerod_url(&get_height_uri()).await.unwrap_err();
+        assert!(matches!(err, MmProxyError::ServersUnavailable(_)), "{err}");
+        assert_eq!(monerod_state(&service), MonerodState::Unqualified);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_reports_a_server_error_is_not_qualified() {
+        let addr = spawn_monerod_stub(StatusCode::SERVICE_UNAVAILABLE).await;
+        let server = format!("http://{addr}");
+        let service = test_service(vec![server], Duration::from_secs(5));
+
+        let err = service.get_monerod_url(&get_height_uri()).await.unwrap_err();
+        assert!(matches!(err, MmProxyError::ServersUnavailable(_)), "{err}");
+        assert_eq!(monerod_state(&service), MonerodState::Unqualified);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_answers_is_qualified() {
+        let addr = spawn_monerod_stub(StatusCode::OK).await;
+        let server = format!("http://{addr}");
+        let service = test_service(vec![server.clone()], Duration::from_secs(5));
+
+        let url = service.get_monerod_url(&get_height_uri()).await.unwrap().unwrap();
+        assert_eq!(url.as_str(), format!("{server}/get_height"));
+        assert_eq!(monerod_state(&service), MonerodState::Qualified(server.clone()));
+        assert_eq!(last_assigned(&service), Some(server));
+    }
+
+    #[tokio::test]
+    async fn a_failed_sweep_advances_the_round_robin() {
+        let mut servers = Vec::with_capacity(3);
+        for _ in 0..3u32 {
+            servers.push(format!("http://{}", refused_address().await));
+        }
+        let service = test_service(servers.clone(), Duration::from_secs(5));
+
+        // The sweep starts at the entry after the last assigned one, and records where it started so that the next
+        // sweep does not re-probe the same entries in the same order.
+        service.get_monerod_url(&get_height_uri()).await.unwrap_err();
+        assert_eq!(last_assigned(&service), Some(servers[1].clone()));
+
+        *service.monerod_state.write().unwrap() = MonerodState::Unqualified;
+        service.get_monerod_url(&get_height_uri()).await.unwrap_err();
+        assert_eq!(last_assigned(&service), Some(servers[2].clone()));
+
+        *service.monerod_state.write().unwrap() = MonerodState::Unqualified;
+        service.get_monerod_url(&get_height_uri()).await.unwrap_err();
+        assert_eq!(last_assigned(&service), Some(servers[0].clone()));
     }
 }
