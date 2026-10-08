@@ -168,17 +168,24 @@ pub fn sender_offset_index(base_index: u64, i: u64) -> u64 {
 
 /// The bit every pre-mine sender offset key index has set, and no pre-mine script key index does.
 ///
-/// Pre-mine script keys are named by their output's position in the genesis block, so their indexes are small.
-/// Pre-mine sender offset keys share the `PreMine` branch with them, and are kept apart by drawing their base index
-/// from the top half of `u64` - see [`sender_offset_base_index`]. That is what lets the device tell the user which
-/// pre-mine signature it is being asked for; see `crate::legacy_nonce::legacy_signature_purpose`.
+/// Pre-mine script keys are named by their output's position in the genesis block, so their indexes are small - far
+/// below `2^30`. Pre-mine sender offset keys share the `PreMine` branch with them, and are kept apart by drawing their
+/// base index from the range this bit marks - see [`sender_offset_base_index`]. That is what lets the device tell the
+/// user which pre-mine signature it is being asked for; see `crate::legacy_nonce::legacy_signature_purpose`.
 ///
-/// The split is between indexes as the host and the device name them, which is what the purpose line reads. It is not
-/// a split between derived keys: the device's `derive_from_bip32_key` writes the index into a single hardened 32 bit
-/// BIP32 path element, so only the low 31 bits reach the derivation, and an index with this bit set can derive the
-/// same key as a small one. Nothing here depends on that separation - every `PreMine` key, script or sender offset,
-/// is already one the legacy instruction will sign - so the label is a description of the request, not a guarantee.
-pub const PRE_MINE_SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
+/// It is bit 30, inside the low 32 bits, on purpose. The device derives a key from its index modulo `2^32` (see
+/// `crate::legacy_nonce::derivation_index`), so a marker above bit 31 would be a property of the request and not of
+/// the key: a host could set it on a script key index, and the device would label a script signature as a metadata
+/// signature while signing with the script key. Inside 32 bits the marker is part of the value the key is derived
+/// from, so the label and the key cannot disagree.
+pub const PRE_MINE_SENDER_OFFSET_INDEX_BIT: u64 = 1 << 30;
+
+/// The random part of a pre-mine sender offset base index: 29 bits.
+///
+/// One bit short of the marker, so that the highest base, `PRE_MINE_SENDER_OFFSET_INDEX_BIT | MASK`, still has
+/// [`MAX_SENDER_OFFSET_KEYS`] of headroom before the walk could carry into bit 30 and clear the marker - and every
+/// index the walk reaches stays below `2^31` and so below `2^32`, where it is its own derivation index.
+pub const PRE_MINE_SENDER_OFFSET_RANDOM_MASK: u64 = (1 << 29) - 1;
 
 /// The branch the device derives a script offset's sender offset keys on.
 ///
@@ -202,12 +209,15 @@ pub fn sender_offset_branch(derived_script_keys: u64) -> LedgerKeyBranch {
 
 /// The base index the device derives sender offset keys from, given a fresh random draw.
 ///
-/// On `OneSidedSenderOffset` this is the draw itself. On `PreMine` it is moved into the top half of `u64`, where no
-/// pre-mine script key index is, and kept a quarter of the range below `u64::MAX` so that walking
-/// [`MAX_SENDER_OFFSET_KEYS`] keys from it never wraps back out of that half. That leaves 62 random bits.
+/// On `OneSidedSenderOffset` this is the draw itself. On `PreMine` it is `PRE_MINE_SENDER_OFFSET_INDEX_BIT` plus 29
+/// random bits ([`PRE_MINE_SENDER_OFFSET_RANDOM_MASK`]), so that every index walked from it carries the marker, is
+/// below `2^32`, and is clear of every pre-mine script key index.
+///
+/// 29 random bits is fewer than `OneSidedSenderOffset` gets, and that is acceptable here: a reply blinded by `PreMine`
+/// sender offsets has no `alpha` in it, and every key in it is already one the legacy instruction will sign.
 pub fn sender_offset_base_index(branch: LedgerKeyBranch, random: u64) -> u64 {
     match branch {
-        LedgerKeyBranch::PreMine => PRE_MINE_SENDER_OFFSET_INDEX_BIT | (random >> 2),
+        LedgerKeyBranch::PreMine => PRE_MINE_SENDER_OFFSET_INDEX_BIT | (random & PRE_MINE_SENDER_OFFSET_RANDOM_MASK),
         _ => random,
     }
 }
@@ -512,25 +522,35 @@ mod test {
         }
     }
 
-    /// Pre-mine sender offset indexes sit in the top half of `u64`, every one of them, from any draw - so they never
-    /// collide with a pre-mine script key index and the device can label them.
+    /// Pre-mine sender offset indexes all carry the marker and stay below `2^31`, every one of them, from any draw -
+    /// so each is its own derivation index, never collides with a pre-mine script key index, and the device labels it
+    /// from the value the key is actually derived from.
     #[test]
-    fn pre_mine_sender_offset_indexes_stay_in_the_top_half() {
-        for random in [0, 1, u64::MAX >> 1, u64::MAX - 1, u64::MAX] {
+    fn pre_mine_sender_offset_indexes_carry_the_marker_inside_32_bits() {
+        for random in [
+            0,
+            1,
+            PRE_MINE_SENDER_OFFSET_RANDOM_MASK,
+            u64::MAX >> 1,
+            u64::MAX - 1,
+            u64::MAX,
+        ] {
             let base = sender_offset_base_index(LedgerKeyBranch::PreMine, random);
             for i in 0..MAX_SENDER_OFFSET_KEYS {
                 let index = sender_offset_index(base, i);
                 assert_ne!(
                     index & PRE_MINE_SENDER_OFFSET_INDEX_BIT,
                     0,
-                    "index {index} left the top half"
+                    "index {index} lost the marker"
                 );
+                assert!(index < 1 << 31, "index {index} is not below 2^31");
+                assert_eq!(crate::legacy_nonce::derivation_index(index), index);
             }
         }
         // Different draws still give different bases.
         assert_ne!(
             sender_offset_base_index(LedgerKeyBranch::PreMine, 0),
-            sender_offset_base_index(LedgerKeyBranch::PreMine, u64::MAX)
+            sender_offset_base_index(LedgerKeyBranch::PreMine, PRE_MINE_SENDER_OFFSET_RANDOM_MASK)
         );
     }
 

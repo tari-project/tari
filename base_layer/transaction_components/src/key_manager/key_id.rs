@@ -663,11 +663,12 @@ mod tests {
     }
 
     /// Pre-mine step 2 writes the `PreMine` sender offset key `get_script_offset` issued into a JSON session file,
-    /// and step 4 reads it back to sign with. Its index has the top bit set, so it must survive both the string form
-    /// and JSON exactly - a lossy round trip would sign with a different key than the script offset was built from.
+    /// and step 4 reads it back to sign with. It must survive both the string form and JSON exactly - a lossy round
+    /// trip would sign with a different key than the script offset was built from. Large values are included because
+    /// a ledger key index may be any `u64`.
     #[test]
     fn a_pre_mine_sender_offset_key_round_trips_through_its_string_and_json_forms() {
-        for index in [1u64 << 63, (1u64 << 63) | 0x1234_5678_9abc_def0, u64::MAX] {
+        for index in [1u64 << 30, (1u64 << 30) | 0x1fff_ffff, 1u64 << 63, u64::MAX] {
             let key_id = TariKeyId::LedgerKey {
                 branch: LedgerKeyBranch::PreMine,
                 index,

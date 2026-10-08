@@ -260,10 +260,15 @@ impl ExpectedReview {
     ///
     /// The purpose line is restated here rather than taken from `legacy_signature_purpose`, for the same reason
     /// [`minotari_amount`] is a copy: an expectation computed by the device's own function would agree with the device
-    /// by construction. Pre-mine sender offset keys - which sign the metadata signature - are the ones with the top
-    /// bit of their index set; pre-mine script keys are at their genesis output index.
+    /// by construction. Pre-mine sender offset keys - which sign the metadata signature - are the ones with bit 30 of
+    /// their index set; pre-mine script keys are at their genesis output index.
+    ///
+    /// The device shows each index as the value the key is derived from - the index modulo `2^32` - so the expectation
+    /// does too, and the purpose is read from that value.
     pub fn legacy_signature(key_branch: &str, key_index: u64, nonce_branch: &str, nonce_index: u64) -> Self {
-        let purpose = if key_index >> 63 == 1 {
+        let key_index = key_index & 0xFFFF_FFFF;
+        let nonce_index = nonce_index & 0xFFFF_FFFF;
+        let purpose = if key_index & (1 << 30) != 0 {
             "Pre-mine metadata signature"
         } else {
             "Pre-mine script signature"
@@ -911,7 +916,7 @@ mod test {
     }
 
     /// The legacy nonce review names the purpose, then the key, then the nonce, and the purpose follows the key
-    /// index: pre-mine sender offset keys are the ones in the top half of `u64`.
+    /// index: pre-mine sender offset keys are the ones with bit 30 set. Indexes are shown modulo `2^32`.
     #[test]
     fn a_legacy_signature_review_names_purpose_key_and_nonce() {
         let script = ExpectedReview::legacy_signature("PreMine", 12, "Random", 34);
@@ -919,12 +924,16 @@ mod test {
             script.summary(),
             "Purpose: Pre-mine script signature, Key: PreMine 12, Nonce: Random 34"
         );
-        let sender_offset_index = (1u64 << 63) | 5;
+        let sender_offset_index = (1u64 << 30) | 5;
         let metadata = ExpectedReview::legacy_signature("PreMine", sender_offset_index, "Random", 34);
         assert_eq!(
             metadata.summary(),
             format!("Purpose: Pre-mine metadata signature, Key: PreMine {sender_offset_index}, Nonce: Random 34")
         );
         assert!(metadata.absent().is_empty());
+
+        // An index aliased above 32 bits is the same key, and the same review.
+        let aliased = ExpectedReview::legacy_signature("PreMine", (1u64 << 63) | 12, "Random", 34 + (1u64 << 32));
+        assert_eq!(aliased.summary(), script.summary());
     }
 }

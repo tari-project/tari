@@ -46,7 +46,9 @@
 //!   key, which this instruction cannot sign, and a reply blinded by a `PreMine` key has no `alpha` in it. Nothing the
 //!   legacy instruction can sign is a term of a reply that contains `alpha`.
 //! - The device shows a review for every legacy signature - key and nonce, branch and index, and which pre-mine
-//!   signature it is (see [`legacy_signature_purpose`]) - so a second request for the same pair is visible.
+//!   signature it is (see [`legacy_signature_purpose`]) - so a second request for the same pair is visible. The indexes
+//!   shown are the ones the keys are derived from ([`derivation_index`]), not the ones the host sent, so a host cannot
+//!   dress one key and nonce up as two different requests by aliasing an index modulo `2^32`.
 //!
 //! What remains extractable is pre-mine script keys and pre-mine sender offset keys. A pre-mine output's script
 //! offset is its script key minus its sender offset key, so recovering either gives up the other.
@@ -118,14 +120,29 @@ pub fn check_legacy_nonce_branches(
     Ok(())
 }
 
+/// The index a key is actually derived from: `index` modulo `2^32`.
+///
+/// The device writes the `u64` index into a single BIP32 path element, and the SDK's `make_bip32_path` accumulates
+/// that element in a wrapping `u32`. So any two indexes that agree modulo `2^32` derive the same key on the same
+/// branch, and this is exactly that equivalence class - bit 31 is still part of the value (it decides whether the
+/// element ends up hardened), so two indexes that differ only there derive different keys.
+///
+/// The legacy review shows this value rather than the one the host sent, and derives the purpose line from it, so
+/// that two requests the screen tells apart are requests for different keys. Showing the raw `u64` let a host present
+/// `i` and `2^63 | i` - or nonces `j` and `j + 2^32` - as two different signatures that in fact share key and nonce.
+pub fn derivation_index(index: u64) -> u64 {
+    index & 0xFFFF_FFFF
+}
+
 /// The purpose line the device shows when asked for a legacy signature by the `PreMine` key at `key_index`.
 ///
 /// Pre-mine sender offset keys are derived at indexes with
 /// [`PRE_MINE_SENDER_OFFSET_INDEX_BIT`](crate::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT) set, and pre-mine
 /// script keys at their genesis output index, which never has it. So the index says which of the two signatures this
-/// is: the script signature signs with the script key, and the metadata signature with the sender offset key.
+/// is: the script signature signs with the script key, and the metadata signature with the sender offset key. It is
+/// read from [`derivation_index`], so an alias of an index always gets the same purpose as the index itself.
 pub fn legacy_signature_purpose(key_index: u64) -> &'static str {
-    if key_index & PRE_MINE_SENDER_OFFSET_INDEX_BIT == 0 {
+    if derivation_index(key_index) & PRE_MINE_SENDER_OFFSET_INDEX_BIT == 0 {
         "Pre-mine script signature"
     } else {
         "Pre-mine metadata signature"
@@ -213,16 +230,46 @@ mod test {
         );
     }
 
-    /// Script keys sit at genesis output indexes; sender offsets in the top half of `u64`.
+    /// Script keys sit at genesis output indexes; sender offsets have bit 30 set.
     #[test]
     fn the_purpose_follows_the_index() {
         assert_eq!(legacy_signature_purpose(0), "Pre-mine script signature");
         assert_eq!(legacy_signature_purpose(12_345), "Pre-mine script signature");
-        assert_eq!(legacy_signature_purpose(u64::MAX >> 1), "Pre-mine script signature");
+        assert_eq!(
+            legacy_signature_purpose(PRE_MINE_SENDER_OFFSET_INDEX_BIT - 1),
+            "Pre-mine script signature"
+        );
         assert_eq!(
             legacy_signature_purpose(PRE_MINE_SENDER_OFFSET_INDEX_BIT),
             "Pre-mine metadata signature"
         );
-        assert_eq!(legacy_signature_purpose(u64::MAX), "Pre-mine metadata signature");
+        assert_eq!(
+            legacy_signature_purpose(PRE_MINE_SENDER_OFFSET_INDEX_BIT | 12_345),
+            "Pre-mine metadata signature"
+        );
+    }
+
+    /// Indexes that derive the same key display the same and get the same purpose: the aliasing a host could use to
+    /// make one key and one nonce look like two different signatures on the review.
+    #[test]
+    fn aliased_indexes_have_one_canonical_form_and_one_purpose() {
+        let i = 12_345u64;
+        let j = 0x8765_4321u64;
+        assert_eq!(derivation_index(i), derivation_index((1 << 63) | i));
+        assert_eq!(derivation_index(i), derivation_index(i + (1 << 32)));
+        assert_eq!(derivation_index(j), derivation_index(j + (1 << 32)));
+        assert_eq!(derivation_index(j), j);
+        assert_eq!(legacy_signature_purpose(i), legacy_signature_purpose((1 << 63) | i));
+        assert_eq!(legacy_signature_purpose((1 << 63) | i), "Pre-mine script signature");
+
+        let sender_offset = PRE_MINE_SENDER_OFFSET_INDEX_BIT | i;
+        assert_eq!(
+            legacy_signature_purpose(sender_offset),
+            legacy_signature_purpose(sender_offset + (1 << 32))
+        );
+
+        // Bit 31 is part of the derivation index: an index differing only there is a different key.
+        assert_ne!(derivation_index(i), derivation_index(i | (1 << 31)));
+        assert_eq!(derivation_index(u64::MAX), 0xFFFF_FFFF);
     }
 }

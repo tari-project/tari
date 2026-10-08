@@ -488,7 +488,7 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
 }
 
 /// Acceptance: a script offset whose only device derived script keys are pre-mine keys - the pre-mine spend flow's
-/// step 2 - is blinded by sender offset keys on the **`PreMine`** branch, at indexes in the top half of `u64`.
+/// step 2 - is blinded by sender offset keys on the **`PreMine`** branch, at indexes with bit 30 set and below `2^31`.
 ///
 /// This is what lets pre-mine step 3 sign its metadata signature through the legacy nonce instruction, which signs
 /// `PreMine` keys only. The other half of the rule - a request that folds an alpha derived key keeps
@@ -500,7 +500,7 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
 fn a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let partial_sum = fixtures::random_secret_key();
-    // Genesis output indexes are small; the device draws pre-mine sender offsets from the top half of `u64`.
+    // Genesis output indexes are small; the device draws pre-mine sender offsets from the range bit 30 marks.
     let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
         .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64() % 100_000))
         .collect();
@@ -512,9 +512,10 @@ fn a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine(_context: &Sc
         [index] => *index,
         other => return Err(super::fail(format!("expected one sender offset index, got {other:?}"))),
     };
-    require(sender_offset_index >> 63 == 1, || {
-        format!("the pre-mine sender offset index {sender_offset_index} is not in the top half of u64")
-    })?;
+    require(
+        sender_offset_index & (1 << 30) != 0 && sender_offset_index < 1 << 31,
+        || format!("the pre-mine sender offset index {sender_offset_index} does not have bit 30 set below 2^31"),
+    )?;
 
     let mut script_side = RistrettoPublicKey::from_secret_key(&partial_sum);
     for (branch, index) in &script_indexes {

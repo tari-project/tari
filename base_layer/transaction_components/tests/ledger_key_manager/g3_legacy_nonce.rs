@@ -153,6 +153,63 @@ fn the_whitelisted_pair_signs_with_the_indexed_random_key_as_its_nonce() {
     });
 }
 
+/// Two requests whose indexes alias modulo `2^32` show the same review and make the same signature.
+///
+/// The device derives a key from its index modulo `2^32`, so `PreMine i` and `PreMine 2^63 | i` are one key, and
+/// `Random j` and `Random j + 2^32` are one nonce. If the review showed the raw `u64`s, a host could present those two
+/// requests as the two different pre-mine signatures ("script" then "metadata", different nonce numbers), have both
+/// approved, and difference them for the key. The review shows the derived index instead, so both requests are
+/// answered against one expectation built from `i` and `j` - an exact field-text match - and, given one challenge,
+/// produce one signature.
+#[test]
+fn aliased_indexes_show_the_same_review_and_make_the_same_signature() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let i = fixtures::random_u64() % 100_000;
+        let j = fixtures::random_u64() & 0xFFFF_FFFF;
+        let expected = ExpectedReview::legacy_signature(
+            &LedgerKeyBranch::PreMine.to_string(),
+            i,
+            &LedgerKeyBranch::Random.to_string(),
+            j,
+        );
+        let challenge = fixtures::random_challenge();
+
+        let mut signatures = Vec::new();
+        for (key_index, nonce_index) in [(i, j), ((1u64 << 63) | i, j | (1u64 << 32))] {
+            let key_id = TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::PreMine,
+                index: key_index,
+            };
+            let nonce_id = TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: nonce_index,
+            };
+            let (signature, review) = while_reviewing(device.approver(), &expected, Outcome::Approve, || {
+                key_manager.sign_with_nonce_and_challenge(&key_id, &nonce_id, &challenge)
+            });
+            review.unwrap_or_else(|e| {
+                panic!(
+                    "the review for key {key_index} / nonce {nonce_index} is not {}: {e}",
+                    expected.summary()
+                )
+            });
+            signatures.push(signature.unwrap_or_else(|e| panic!("a legacy signature by PreMine {key_index}: {e}")));
+        }
+
+        assert_eq!(
+            signatures[0].get_compressed_public_nonce().to_hex(),
+            signatures[1].get_compressed_public_nonce().to_hex(),
+            "aliased nonce indexes should be one nonce"
+        );
+        assert_eq!(
+            signatures[0].get_signature().to_hex(),
+            signatures[1].get_signature().to_hex(),
+            "aliased key and nonce indexes over one challenge should be one signature"
+        );
+    });
+}
+
 /// The pairs off the whitelist are refused by the key manager, and the device is never asked.
 ///
 /// `OneSidedSenderOffset` is the branch `get_script_offset` blinds `alpha` with, and its index comes back with the

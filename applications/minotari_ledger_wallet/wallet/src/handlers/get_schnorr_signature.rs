@@ -22,7 +22,7 @@ use minotari_ledger_wallet_common::{
         GetScriptSchnorrSignatureRequest,
         SchnorrReply,
     },
-    legacy_nonce::{check_legacy_nonce_branches, legacy_signature_purpose},
+    legacy_nonce::{check_legacy_nonce_branches, derivation_index, legacy_signature_purpose},
     u64_to_string,
 };
 
@@ -128,9 +128,14 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
 
     // Everything used after the review is an owned copy, never a borrow of `data`: on Stax and Flex the review
     // polls for events, and an APDU arriving meanwhile overwrites the buffer `request` borrows. See `wire`.
+    //
+    // The indexes are reduced to the value the keys are actually derived from (`derivation_index`, the index modulo
+    // 2^32) before anything is shown, and that reduced value is both what the screen names and what is derived. The
+    // raw `u64` would let a host show `i` and `2^63 | i`, or nonces `j` and `j + 2^32`, as two different requests
+    // that sign with the same key and the same nonce.
     let account = request.account;
-    let key_index = request.key_index;
-    let nonce_index = request.nonce_index;
+    let key_index = derivation_index(request.key_index);
+    let nonce_index = derivation_index(request.nonce_index);
     let challenge: [u8; 64] = *request.challenge;
 
     let purpose = legacy_signature_purpose(key_index);

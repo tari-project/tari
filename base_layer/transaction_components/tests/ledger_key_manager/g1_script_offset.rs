@@ -189,7 +189,8 @@ fn a_mixed_chunked_script_offset_is_the_script_keys_minus_the_sender_offset_keys
 }
 
 /// A script offset over pre-mine script keys only - pre-mine spend step 2 - comes back blinded by sender offset keys
-/// on the `PreMine` branch, in the top half of `u64`, and the offset is exactly the difference of the two sums.
+/// on the `PreMine` branch, at indexes with bit 30 set and below `2^31`, and the offset is exactly the difference of
+/// the two sums.
 ///
 /// That is what lets pre-mine step 3 sign the metadata signature through the legacy nonce instruction, which signs
 /// `PreMine` keys only. Every other test in this module folds an alpha derived key and so gets `OneSidedSenderOffset`
@@ -211,7 +212,11 @@ fn a_pre_mine_only_script_offset_is_blinded_by_pre_mine_sender_offset_keys() {
                 assert_ne!(
                     index & PRE_MINE_SENDER_OFFSET_INDEX_BIT,
                     0,
-                    "pre-mine sender offset index {index} is not in the top half of u64"
+                    "pre-mine sender offset index {index} does not have the marker bit"
+                );
+                assert!(
+                    index < 1 << 31,
+                    "pre-mine sender offset index {index} is not below 2^31"
                 );
             }
         }
