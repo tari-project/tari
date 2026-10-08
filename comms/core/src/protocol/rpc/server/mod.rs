@@ -369,10 +369,16 @@ where TSvc: MakeService<ProtocolId, Request<Bytes>>
     tasks: FuturesUnordered<JoinHandle<(NodeId, Id)>>,
     /// Handshakes in progress. Dropping the set (when `serve` returns) aborts them, so none outlives the server.
     handshakes: JoinSet<HandshakeOutcome<<TSvc as MakeService<ProtocolId, Request<Bytes>>>::Service>>,
-    /// The peer of each handshake task, so its pending slot is released however the task ends
-    handshake_peers: HashMap<tokio::task::Id, NodeId>,
+    /// The peer of each handshake task, and whether the task will accept the session, so its pending slot and session
+    /// reservation are released however the task ends
+    handshake_peers: HashMap<tokio::task::Id, (NodeId, bool)>,
     /// Pending handshakes per peer
     pending_handshakes: HashMap<NodeId, usize>,
+    /// Handshakes per peer that will accept the session if the client completes them. Each holds a reservation
+    /// against the per-client session limit, so an accepted handshake is never refused a session afterwards.
+    accepted_pending: HashMap<NodeId, usize>,
+    /// All handshakes that will accept the session, each holding a reservation against the global session limit
+    accepted_pending_total: usize,
 }
 
 /// What a handshake task returns to the accept loop
@@ -434,6 +440,8 @@ where
             handshakes: JoinSet::new(),
             handshake_peers: HashMap::new(),
             pending_handshakes: HashMap::new(),
+            accepted_pending: HashMap::new(),
+            accepted_pending_total: 0,
         }
     }
 
@@ -561,14 +569,39 @@ where
         // the server is sitting on its global limit - that is precisely when reclaiming a slot from
         // a peer that is over its own quota matters. Doing the global check first made
         // `cull_oldest_peer_rpc_connection_on_full` unreachable exactly when it was needed.
-        if let Err(err) = self.new_session_possible_for(node_id) {
+        //
+        // Both limits count the handshakes already accepted (reserved) as well as the running sessions: an accepted
+        // handshake must never be refused a session afterwards, because the client would only see the substream close
+        // on its first request (`ServerClosedRequest`, which it blames on the server) instead of an explicit rejection.
+        let num_sessions = match self.new_session_possible_for(node_id) {
+            Ok(num_sessions) => num_sessions,
+            Err(err) => {
+                return SessionDecision::Reject(
+                    HandshakeRejectReason::NoServerSessionsAvailable("Maximum sessions for client"),
+                    err,
+                );
+            },
+        };
+        let accepted_for_peer = self.accepted_pending.get(node_id).copied().unwrap_or(0);
+        if let Some(max) = self.config.maximum_sessions_per_client &&
+            max > 0 &&
+            num_sessions.saturating_add(accepted_for_peer) >= max
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Rejecting RPC session request for peer `{node_id}`: {num_sessions} session(s) and {accepted_for_peer} \
+                 accepted handshake(s) reach the limit of {max}"
+            );
             return SessionDecision::Reject(
                 HandshakeRejectReason::NoServerSessionsAvailable("Maximum sessions for client"),
-                err,
+                RpcServerError::MaxSessionsPerClientReached {
+                    node_id: node_id.clone(),
+                    max_sessions: max,
+                },
             );
         }
 
-        if !self.executor.can_spawn() {
+        if self.executor.num_available() <= self.accepted_pending_total {
             let msg = format!("Used all {} sessions", self.executor.max_available());
             debug!(
                 target: LOG_TARGET,
@@ -598,6 +631,7 @@ where
     ) {
         let timeout = self.config.handshake_timeout;
         let task_node_id = node_id.clone();
+        let accepted = matches!(decision, SessionDecision::Accept(_));
         let handle = self.handshakes.spawn(async move {
             let result = match decision {
                 SessionDecision::Reject(reason, err) => {
@@ -633,7 +667,12 @@ where
                 result,
             }
         });
-        self.handshake_peers.insert(handle.id(), node_id.clone());
+        self.handshake_peers.insert(handle.id(), (node_id.clone(), accepted));
+        if accepted {
+            let reserved = self.accepted_pending.entry(node_id.clone()).or_insert(0);
+            *reserved = reserved.saturating_add(1);
+            self.accepted_pending_total = self.accepted_pending_total.saturating_add(1);
+        }
         let pending = self.pending_handshakes.entry(node_id).or_insert(0);
         *pending = pending.saturating_add(1);
     }
@@ -647,12 +686,11 @@ where
             Ok((id, _)) => *id,
             Err(err) => err.id(),
         };
-        if let Some(node_id) = self.handshake_peers.remove(&task_id) &&
-            let Some(pending) = self.pending_handshakes.get_mut(&node_id)
-        {
-            *pending = pending.saturating_sub(1);
-            if *pending == 0 {
-                self.pending_handshakes.remove(&node_id);
+        if let Some((node_id, accepted)) = self.handshake_peers.remove(&task_id) {
+            decrement(&mut self.pending_handshakes, &node_id);
+            if accepted {
+                decrement(&mut self.accepted_pending, &node_id);
+                self.accepted_pending_total = self.accepted_pending_total.saturating_sub(1);
             }
         }
 
@@ -668,16 +706,33 @@ where
             node_id,
             result,
         } = outcome;
-        let result =
-            result.and_then(|(service, framed)| self.start_session(protocol.clone(), &node_id, service, framed));
-        match result {
-            Ok(()) => {},
-            Err(err @ RpcServerError::HandshakeError(_)) => {
+        let (service, framed) = match result {
+            Ok(accepted) => accepted,
+            Err(err) => {
+                Self::log_handshake_failure(&protocol, &err);
+                return;
+            },
+        };
+        // The session was reserved when the handshake was accepted, so this cannot fail unless that bookkeeping is
+        // wrong. The substream is dropped if it does.
+        if let Err(err) = self.start_session(protocol, &node_id, service, framed) {
+            warn!(
+                target: LOG_TARGET,
+                "BUG: an accepted RPC handshake from peer `{node_id}` could not start its session: {err}"
+            );
+        }
+    }
+
+    fn log_handshake_failure(protocol: &ProtocolId, err: &RpcServerError) {
+        #[cfg(not(feature = "metrics"))]
+        let _ = protocol;
+        match err {
+            err @ RpcServerError::HandshakeError(_) => {
                 debug!(target: LOG_TARGET, "Handshake error: {}", err);
                 #[cfg(feature = "metrics")]
-                metrics::handshake_error_counter(&protocol).inc();
+                metrics::handshake_error_counter(protocol).inc();
             },
-            Err(err) => {
+            err => {
                 debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
             },
         }
@@ -743,8 +798,8 @@ where
         }
     }
 
-    /// Starts a session on a substream whose handshake has completed. The session limits are checked again: other
-    /// sessions may have started while this handshake was in progress, and the limits apply to completed sessions.
+    /// Starts a session on a substream whose handshake has completed. Its session was reserved when the handshake was
+    /// accepted; the limits are checked again only as a defensive invariant.
     fn start_session(
         &mut self,
         protocol: ProtocolId,
@@ -818,6 +873,16 @@ where
         }
 
         Ok(())
+    }
+}
+
+/// Decrements `node_id`'s count, removing it at zero
+fn decrement(counts: &mut HashMap<NodeId, usize>, node_id: &NodeId) {
+    if let Some(count) = counts.get_mut(node_id) {
+        *count = count.saturating_sub(1);
+        if *count == 0 {
+            counts.remove(node_id);
+        }
     }
 }
 

@@ -1178,3 +1178,73 @@ async fn pending_handshakes_end_with_the_server() {
     server.await.unwrap();
     assert!(is_closed_within(&mut silent, Duration::from_secs(5)).await);
 }
+
+/// With one session slot left, two overlapping handshakes from one peer get exactly one session and one explicit
+/// rejection. The first handshake is held open (one byte sent) while the second arrives, so they overlap. Neither may
+/// be accepted and then dropped, which the client would only see as the substream closing on its first request
+/// (`ServerClosedRequest`, blamed on the server).
+async fn assert_one_session_and_one_explicit_rejection(builder: RpcServerBuilder) {
+    use prost::Message;
+
+    use crate::{message::MessageExt, proto};
+
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    // Takes all but one slot
+    let _first = connect_greeting_client(&peer).await.unwrap();
+
+    // The first handshake: its frame, sent one byte first
+    let handshake = proto::rpc::RpcSession {
+        supported_versions: vec![0],
+    }
+    .to_encoded_bytes();
+    let mut frame = u32::try_from(handshake.len()).unwrap().to_be_bytes().to_vec();
+    frame.extend_from_slice(&handshake);
+    let mut held = peer.get_yamux_control().open_stream().await.unwrap();
+    held.write_all(&frame[..1]).await.unwrap();
+    held.flush().await.unwrap();
+    // Let the server accept it (and reserve its slot) before the second one arrives
+    time::sleep(Duration::from_millis(200)).await;
+
+    // The second handshake, while the first is pending: explicitly rejected
+    let Err(rejection) = connect_greeting_client(&peer).await else {
+        panic!("the last slot was handed out twice");
+    };
+    unpack_enum!(RpcError::HandshakeError(rejection) = rejection);
+    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable(_)) = rejection);
+
+    // The first completes: it is accepted, and its session stays open
+    held.write_all(&frame[1..]).await.unwrap();
+    held.flush().await.unwrap();
+    let mut held = framing::canonical(held, 1024);
+    let reply = time::timeout(Duration::from_secs(5), held.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let reply = proto::rpc::RpcSessionReply::decode(reply.freeze()).unwrap();
+    assert_eq!(
+        reply.session_result,
+        Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(0))
+    );
+    assert!(
+        time::timeout(Duration::from_millis(500), held.next()).await.is_err(),
+        "an accepted handshake was dropped"
+    );
+}
+
+#[tokio::test]
+async fn concurrent_handshakes_at_the_global_limit_are_rejected_not_dropped() {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(2)
+        .with_unlimited_sessions_per_client();
+    assert_one_session_and_one_explicit_rejection(builder).await;
+}
+
+#[tokio::test]
+async fn concurrent_handshakes_at_the_per_client_limit_are_rejected_not_dropped() {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(100)
+        .with_maximum_sessions_per_client(2);
+    assert_one_session_and_one_explicit_rejection(builder).await;
+}
