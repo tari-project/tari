@@ -11,7 +11,7 @@ use tari_common_types::{
 };
 use tari_crypto::signatures::{CompressedSchnorrSignature, SchnorrSignature};
 use tari_hashing::{ValidatorNodeHashDomain, layer2};
-use tari_jellyfish::{LeafKey, SparseMerkleProofExt, TreeHash};
+use tari_jellyfish::{JmtHashScheme, LeafKey, SparseMerkleProofExt, TreeHash};
 use tari_utilities::ByteArray;
 
 use super::error::SidechainProofValidationError;
@@ -27,6 +27,15 @@ pub type ValidatorBlockSignature =
 /// A [`ValidatorBlockSignature`] decoded to curve points, the form it is verified in.
 pub type DecodedValidatorBlockSignature = SchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
 pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<bool, SidechainProofValidationError> + 'a;
+
+/// The JMT hash scheme a sidechain block's `command_merkle_root` was built with, selected by the header's
+/// `protocol_version`. Ootle builds the root, so this mapping must match Ootle's for every protocol version. A new
+/// scheme is a new arm here.
+pub fn jmt_hash_scheme(protocol_version: u32) -> JmtHashScheme {
+    match protocol_version {
+        0.. => JmtHashScheme::V1,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
 pub enum CommandCommitProof<C> {
@@ -103,7 +112,12 @@ impl<C: ToCommand> CommandCommitProofV1<C> {
         // Command JMT uses an identity mapping between hashes and keys.
         let key = LeafKey::new(command_hash);
         let root_hash = TreeHash::new(self.commit_proof.header.command_merkle_root.into_array());
-        self.inclusion_proof.verify_inclusion(&root_hash, &key, &command_hash)?;
+        self.inclusion_proof.verify_inclusion(
+            jmt_hash_scheme(self.commit_proof.header.protocol_version),
+            &root_hash,
+            &key,
+            &command_hash,
+        )?;
         Ok(())
     }
 

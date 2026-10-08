@@ -113,22 +113,42 @@ pub fn jmt_node_hash2(d1: &TreeHash, d2: &TreeHash) -> TreeHash {
     jmt_node_hasher().chain(d1).chain(d2).finalize_into_array().into()
 }
 
-// Leaf and internal node hashes use distinct labels so that a leaf can never be passed off as an internal node (or
-// vice versa) in a proof, since both hash two 32-byte values.
-fn jmt_leaf_hash(key: &LeafKey, value_hash: &TreeHash) -> TreeHash {
-    tari_hasher32::<JmtHashDomain>("Leaf")
-        .chain(&key.bytes)
-        .chain(value_hash)
-        .finalize_into_array()
-        .into()
+/// The scheme used to hash JMT leaf and internal nodes, and so every root and proof.
+///
+/// There is deliberately no `Default`: every caller chooses the scheme explicitly. A verifier derives it from its
+/// authenticated context (e.g. a protocol version in a signed header), never from the proof, which carries no scheme
+/// tag.
+///
+/// The enum is `#[non_exhaustive]`, so a `match` on it outside this crate needs a wildcard arm. A new scheme is a new
+/// variant with its own domain version; existing variants never change. See the crate docs for the scheme table.
+#[non_exhaustive]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub enum JmtHashScheme {
+    /// Domain "com.tari.jmt" version 0; labels "Leaf" and "Internal". The only scheme in use (since tari_jellyfish
+    /// 6.0.1-pre.2).
+    V1,
 }
 
-fn jmt_internal_hash(left: &TreeHash, right: &TreeHash) -> TreeHash {
-    tari_hasher32::<JmtHashDomain>("Internal")
-        .chain(left)
-        .chain(right)
-        .finalize_into_array()
-        .into()
+// Leaf and internal node hashes use distinct labels so that a leaf can never be passed off as an internal node (or
+// vice versa) in a proof, since both hash two 32-byte values.
+fn jmt_leaf_hash(scheme: JmtHashScheme, key: &LeafKey, value_hash: &TreeHash) -> TreeHash {
+    match scheme {
+        JmtHashScheme::V1 => tari_hasher32::<JmtHashDomain>("Leaf")
+            .chain(&key.bytes)
+            .chain(value_hash)
+            .finalize_into_array()
+            .into(),
+    }
+}
+
+fn jmt_internal_hash(scheme: JmtHashScheme, left: &TreeHash, right: &TreeHash) -> TreeHash {
+    match scheme {
+        JmtHashScheme::V1 => tari_hasher32::<JmtHashDomain>("Internal")
+            .chain(left)
+            .chain(right)
+            .finalize_into_array()
+            .into(),
+    }
 }
 
 // SOURCE: https://github.com/aptos-labs/aptos-core/blob/1.0.4/types/src/proof/definition.rs#L182
@@ -151,10 +171,14 @@ pub const MAX_NIBBLE_PATH_LEN: usize = 64;
 /// key is absent at that root; it does not show that the key was destroyed or never existed. Proving destruction also
 /// needs an inclusion proof at an earlier authenticated root.
 ///
+/// # Hash scheme
+/// The proof carries no [`JmtHashScheme`] tag. A verifier pins the scheme from the same authenticated context as the
+/// root (e.g. the protocol version of the signed header), never from the proof or from the prover.
+///
 /// # Malleability
 /// The encoding is not canonical: a sibling [`NodeInProof::Leaf(l)`](NodeInProof::Leaf) verifies identically to
-/// [`NodeInProof::Other(l.hash())`](NodeInProof::Other), so several different byte strings prove the same fact. Proof
-/// bytes, and any hash over them, are not an identity. Key dedup, replay protection or caching on
+/// [`NodeInProof::Other(l.hash(scheme))`](NodeInProof::Other), so several different byte strings prove the same fact.
+/// Proof bytes, and any hash over them, are not an identity. Key dedup, replay protection or caching on
 /// `(root, key, value_hash)` instead.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, BorshSerialize)]
 pub struct SparseMerkleProofExt {
@@ -239,11 +263,12 @@ impl SparseMerkleProofExt {
     /// the type-level docs.
     pub fn verify_inclusion(
         &self,
+        scheme: JmtHashScheme,
         expected_root_hash: &TreeHash,
         element_key: &LeafKey,
         element_value_hash: &TreeHash,
     ) -> Result<(), JmtProofVerifyError> {
-        self.verify(expected_root_hash, element_key, Some(element_value_hash))
+        self.verify(scheme, expected_root_hash, element_key, Some(element_value_hash))
     }
 
     /// Verifies the proof is a valid non-inclusion proof that shows this key doesn't exist in the tree.
@@ -258,13 +283,14 @@ impl SparseMerkleProofExt {
     /// authenticated context.
     pub fn verify_exclusion(
         &self,
+        scheme: JmtHashScheme,
         expected_root_hash: &TreeHash,
         element_key: &LeafKey,
     ) -> Result<(), JmtProofVerifyError> {
         if *expected_root_hash == SPARSE_MERKLE_PLACEHOLDER_HASH {
             return Err(JmtProofVerifyError::EmptyTreeRoot);
         }
-        self.verify(expected_root_hash, element_key, None)
+        self.verify(scheme, expected_root_hash, element_key, None)
     }
 
     /// Like [`Self::verify_exclusion`], but also accepts the empty-tree root
@@ -276,6 +302,7 @@ impl SparseMerkleProofExt {
     /// could default to zero.
     pub fn verify_exclusion_or_empty_tree(
         &self,
+        scheme: JmtHashScheme,
         expected_root_hash: &TreeHash,
         element_key: &LeafKey,
     ) -> Result<(), JmtProofVerifyError> {
@@ -284,11 +311,11 @@ impl SparseMerkleProofExt {
                 return Ok(());
             }
             return Err(JmtProofVerifyError::RootHashMismatch {
-                actual_root_hash: self.compute_root_hash(element_key),
+                actual_root_hash: self.compute_root_hash(scheme, element_key),
                 expected_root_hash: *expected_root_hash,
             });
         }
-        self.verify(expected_root_hash, element_key, None)
+        self.verify(scheme, expected_root_hash, element_key, None)
     }
 
     /// If `element_value` is present, verifies an element whose key is `element_key` and value is
@@ -297,6 +324,7 @@ impl SparseMerkleProofExt {
     /// tree.
     fn verify(
         &self,
+        scheme: JmtHashScheme,
         expected_root_hash: &TreeHash,
         element_key: &LeafKey,
         element_value: Option<&TreeHash>,
@@ -345,7 +373,7 @@ impl SparseMerkleProofExt {
             },
         }
 
-        let actual_root_hash = self.compute_root_hash(element_key);
+        let actual_root_hash = self.compute_root_hash(scheme, element_key);
         if actual_root_hash != *expected_root_hash {
             return Err(JmtProofVerifyError::RootHashMismatch {
                 actual_root_hash,
@@ -357,11 +385,11 @@ impl SparseMerkleProofExt {
     }
 
     /// Folds the leaf (or the placeholder) up through the siblings along `element_key`'s path.
-    fn compute_root_hash(&self, element_key: &LeafKey) -> TreeHash {
+    fn compute_root_hash(&self, scheme: JmtHashScheme, element_key: &LeafKey) -> TreeHash {
         let current_hash = self
             .leaf
             .as_ref()
-            .map_or(SPARSE_MERKLE_PLACEHOLDER_HASH, |leaf| leaf.hash());
+            .map_or(SPARSE_MERKLE_PLACEHOLDER_HASH, |leaf| leaf.hash(scheme));
         self.siblings
             .iter()
             .zip(
@@ -372,19 +400,18 @@ impl SparseMerkleProofExt {
             )
             .fold(current_hash, |hash, (sibling_node, bit)| {
                 if bit {
-                    SparseMerkleInternalNode::new(sibling_node.hash(), hash).hash()
+                    SparseMerkleInternalNode::new(sibling_node.hash(scheme), hash).hash(scheme)
                 } else {
-                    SparseMerkleInternalNode::new(hash, sibling_node.hash()).hash()
+                    SparseMerkleInternalNode::new(hash, sibling_node.hash(scheme)).hash(scheme)
                 }
             })
     }
-}
 
-impl From<SparseMerkleProofExt> for SparseMerkleProof {
-    fn from(proof_ext: SparseMerkleProofExt) -> Self {
-        Self::new(
-            proof_ext.leaf,
-            proof_ext.siblings.into_iter().map(|node| node.hash()).collect(),
+    /// Converts into a [`SparseMerkleProof`], hashing every [`NodeInProof::Leaf`] sibling under `scheme`.
+    pub fn into_compact(self, scheme: JmtHashScheme) -> SparseMerkleProof {
+        SparseMerkleProof::new(
+            self.leaf,
+            self.siblings.into_iter().map(|node| node.hash(scheme)).collect(),
         )
     }
 }
@@ -427,7 +454,7 @@ pub struct SparseMerkleProof {
 
 /// A sibling in a [`SparseMerkleProofExt`].
 ///
-/// Not canonical: `Leaf(l)` and `Other(l.hash())` verify identically, so proof bytes are not an identity. See the
+/// Not canonical: `Leaf(l)` and `Other(l.hash(scheme))` verify identically, so proof bytes are not an identity. See the
 /// malleability note on [`SparseMerkleProofExt`].
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum NodeInProof {
@@ -448,9 +475,9 @@ impl From<SparseMerkleLeafNode> for NodeInProof {
 }
 
 impl NodeInProof {
-    pub fn hash(&self) -> TreeHash {
+    pub fn hash(&self, scheme: JmtHashScheme) -> TreeHash {
         match self {
-            Self::Leaf(leaf) => leaf.hash(),
+            Self::Leaf(leaf) => leaf.hash(scheme),
             Self::Other(hash) => *hash,
         }
     }
@@ -519,8 +546,8 @@ impl SparseMerkleLeafNode {
         &self.value_hash
     }
 
-    pub fn hash(&self) -> TreeHash {
-        jmt_leaf_hash(&self.key, &self.value_hash)
+    pub fn hash(&self, scheme: JmtHashScheme) -> TreeHash {
+        jmt_leaf_hash(scheme, &self.key, &self.value_hash)
     }
 }
 
@@ -537,8 +564,8 @@ impl SparseMerkleInternalNode {
         }
     }
 
-    fn hash(&self) -> TreeHash {
-        jmt_internal_hash(&self.left_child, &self.right_child)
+    fn hash(&self, scheme: JmtHashScheme) -> TreeHash {
+        jmt_internal_hash(scheme, &self.left_child, &self.right_child)
     }
 }
 
@@ -1262,11 +1289,12 @@ impl InternalNode {
         }
     }
 
-    pub fn hash(&self) -> TreeHash {
+    pub fn hash(&self, scheme: JmtHashScheme) -> TreeHash {
         self.merkle_hash(
             0,  // start index
             16, // the number of leaves in the subtree of which we want the hash of root
             self.generate_bitmaps(),
+            scheme,
         )
     }
 
@@ -1316,7 +1344,13 @@ impl InternalNode {
         (bitmaps.0 & mask, bitmaps.1 & mask)
     }
 
-    fn merkle_hash(&self, start: u8, width: u8, (existence_bitmap, leaf_bitmap): (u16, u16)) -> TreeHash {
+    fn merkle_hash(
+        &self,
+        start: u8,
+        width: u8,
+        (existence_bitmap, leaf_bitmap): (u16, u16),
+        scheme: JmtHashScheme,
+    ) -> TreeHash {
         // Given a bit [start, 1 << nibble_height], return the value of that range.
         let (range_existence_bitmap, range_leaf_bitmap) =
             Self::range_bitmaps(start, width, (existence_bitmap, leaf_bitmap));
@@ -1331,13 +1365,14 @@ impl InternalNode {
             self.child(only_child_index)
                 .map_or(SPARSE_MERKLE_PLACEHOLDER_HASH, |child| child.hash)
         } else {
-            let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
+            let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap), scheme);
             let right_child = self.merkle_hash(
                 start.saturating_add(width / 2),
                 width / 2,
                 (range_existence_bitmap, range_leaf_bitmap),
+                scheme,
             );
-            SparseMerkleInternalNode::new(left_child, right_child).hash()
+            SparseMerkleInternalNode::new(left_child, right_child).hash(scheme)
         }
     }
 
@@ -1347,6 +1382,7 @@ impl InternalNode {
         width: u8,
         (existence_bitmap, leaf_bitmap): (u16, u16),
         (tree_reader, node_key): (&R, &NodeKey),
+        scheme: JmtHashScheme,
     ) -> Result<NodeInProof, JmtStorageError> {
         // Given a bit [start, 1 << nibble_height], return the value of that range.
         let (range_existence_bitmap, range_leaf_bitmap) =
@@ -1375,13 +1411,14 @@ impl InternalNode {
                 NodeInProof::Other(only_child.hash)
             }
         } else {
-            let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap));
+            let left_child = self.merkle_hash(start, width / 2, (range_existence_bitmap, range_leaf_bitmap), scheme);
             let right_child = self.merkle_hash(
                 start.saturating_add(width / 2),
                 width / 2,
                 (range_existence_bitmap, range_leaf_bitmap),
+                scheme,
             );
-            NodeInProof::Other(SparseMerkleInternalNode::new(left_child, right_child).hash())
+            NodeInProof::Other(SparseMerkleInternalNode::new(left_child, right_child).hash(scheme))
         })
     }
 
@@ -1410,6 +1447,7 @@ impl InternalNode {
         node_key: &NodeKey,
         n: Nibble,
         reader: Option<&R>,
+        scheme: JmtHashScheme,
     ) -> Result<(Option<NodeKey>, Vec<NodeInProof>), JmtStorageError> {
         let mut siblings = vec![];
         let (existence_bitmap, leaf_bitmap) = self.generate_bitmaps();
@@ -1427,10 +1465,11 @@ impl InternalNode {
                     width,
                     (existence_bitmap, leaf_bitmap),
                     (reader, node_key),
+                    scheme,
                 )?);
             } else {
                 siblings.push(
-                    self.merkle_hash(sibling_half_start, width, (existence_bitmap, leaf_bitmap))
+                    self.merkle_hash(sibling_half_start, width, (existence_bitmap, leaf_bitmap), scheme)
                         .into(),
                 );
             }
@@ -1539,8 +1578,8 @@ impl<P> LeafNode<P> {
     /// This hash incorporates the node's key and the value's hash, in order to capture certain
     /// changes within a sparse merkle tree (consider 2 trees, both containing a single element with
     /// the same value, but stored under different keys - we want their root hashes to differ).
-    pub fn leaf_hash(&self) -> TreeHash {
-        jmt_leaf_hash(&self.leaf_key, &self.value_hash)
+    pub fn leaf_hash(&self, scheme: JmtHashScheme) -> TreeHash {
+        jmt_leaf_hash(scheme, &self.leaf_key, &self.value_hash)
     }
 }
 
@@ -1618,10 +1657,10 @@ impl<P> Node<P> {
     }
 
     /// Computes the hash of nodes.
-    pub fn hash(&self) -> TreeHash {
+    pub fn hash(&self, scheme: JmtHashScheme) -> TreeHash {
         match self {
-            Node::Internal(internal_node) => internal_node.hash(),
-            Node::Leaf(leaf_node) => leaf_node.leaf_hash(),
+            Node::Internal(internal_node) => internal_node.hash(scheme),
+            Node::Leaf(leaf_node) => leaf_node.leaf_hash(scheme),
             Node::Null => SPARSE_MERKLE_PLACEHOLDER_HASH,
         }
     }
@@ -1856,28 +1895,34 @@ mod tests {
         let empty = SparseMerkleProofExt::new(None, vec![]);
         let zero = TreeHash::zero();
         assert!(matches!(
-            empty.verify_exclusion(&zero, &key),
+            empty.verify_exclusion(JmtHashScheme::V1, &zero, &key),
             Err(JmtProofVerifyError::EmptyTreeRoot)
         ));
-        empty.verify_exclusion_or_empty_tree(&zero, &key).unwrap();
+        empty
+            .verify_exclusion_or_empty_tree(JmtHashScheme::V1, &zero, &key)
+            .unwrap();
 
         let with_sibling = SparseMerkleProofExt::new(None, vec![NodeInProof::Other(jmt_node_hash(&2u64))]);
         assert!(matches!(
-            with_sibling.verify_exclusion_or_empty_tree(&zero, &key),
+            with_sibling.verify_exclusion_or_empty_tree(JmtHashScheme::V1, &zero, &key),
             Err(JmtProofVerifyError::RootHashMismatch { .. })
         ));
         let other_key = LeafKey::new(jmt_node_hash(&3u64));
         let with_leaf = SparseMerkleProofExt::new(Some(SparseMerkleLeafNode::new(other_key, zero)), vec![]);
         assert!(matches!(
-            with_leaf.verify_exclusion_or_empty_tree(&zero, &key),
+            with_leaf.verify_exclusion_or_empty_tree(JmtHashScheme::V1, &zero, &key),
             Err(JmtProofVerifyError::RootHashMismatch { .. })
         ));
 
         // A non-empty root still goes through the full check
-        let root = SparseMerkleLeafNode::new(other_key, zero).hash();
-        with_leaf.verify_exclusion(&root, &key).unwrap();
-        with_leaf.verify_exclusion_or_empty_tree(&root, &key).unwrap();
-        empty.verify_exclusion_or_empty_tree(&root, &key).unwrap_err();
+        let root = SparseMerkleLeafNode::new(other_key, zero).hash(JmtHashScheme::V1);
+        with_leaf.verify_exclusion(JmtHashScheme::V1, &root, &key).unwrap();
+        with_leaf
+            .verify_exclusion_or_empty_tree(JmtHashScheme::V1, &root, &key)
+            .unwrap();
+        empty
+            .verify_exclusion_or_empty_tree(JmtHashScheme::V1, &root, &key)
+            .unwrap_err();
     }
 
     #[test]
