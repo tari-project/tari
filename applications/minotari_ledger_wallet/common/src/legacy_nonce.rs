@@ -75,8 +75,13 @@
 //! 3 shows - and the only tell is the same nonce index on both screens. A careful user can notice that; it is not a
 //! control to rely on.
 //!
-//! What bounds it: `alpha` stays out of reach (see above), the exposure is contained to pre-mine outputs, and those are
-//! multisig, so one leaked key share is not theft by itself.
+//! What bounds it: `alpha` stays out of reach (see above), and the exposure is contained to pre-mine outputs. Within
+//! them it is not bounded by the multisig. Every pre-mine output's script is `CheckHeight(fail_safe_height) LeZero
+//! IfThen CheckMultiSigVerifyAggregatePubKey(..) Else PushPubKey(backup_key) EndIf`, and the backup key is a `PreMine`
+//! key at a small, host-known index (the backup spend names it from the output's payment id). It is one of the keys
+//! this instruction signs - labelled "Pre-mine script signature" - so a compromised host that recovers it can spend
+//! that output *alone* once `fail_safe_height` has passed. The multisig protects only the pre-fail-safe path, and some
+//! schedule entries set `fail_safe_height` to the payout period, which may already be behind the tip.
 //!
 //! Folding the signing key's branch and index into the legacy nonce derivation would close this without any device
 //! state - a nonce index would then name a different nonce under every key - but it changes what step 2 reserves and
