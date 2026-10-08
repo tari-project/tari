@@ -20,14 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use tari_test_utils::unpack_enum;
-use tokio::task;
+use tokio::{task, time};
 
 use crate::{
     framing,
     memsocket::MemorySocket,
     protocol::rpc::{
         Handshake,
+        RPC_MAX_FRAME_SIZE,
         error::HandshakeRejectReason,
         handshake::{MAX_HANDSHAKE_FRAME_SIZE, RpcHandshakeError, SUPPORTED_RPC_VERSIONS},
     },
@@ -55,9 +58,41 @@ async fn the_server_rejects_an_oversized_handshake_frame() {
         .perform_server_handshake()
         .await
         .unwrap_err();
-    unpack_enum!(RpcHandshakeError::FrameTooLarge { size, max } = err);
-    assert_eq!(size, MAX_HANDSHAKE_FRAME_SIZE + 1);
+    unpack_enum!(RpcHandshakeError::FrameTooLarge { max } = err);
     assert_eq!(max, MAX_HANDSHAKE_FRAME_SIZE);
+    // The codec's own limit is restored once the handshake frame has been read
+    assert_eq!(server_framed.codec().max_frame_length(), 4096);
+}
+
+/// Only the length prefix of a frame declaring 8 MiB is sent. On either side, the codec rejects it from the declared
+/// length alone, before reserving a buffer for it or waiting for the body (without the handshake limit it would wait
+/// for 8 MiB), and the codec's own limit is restored afterwards.
+#[tokio::test]
+async fn a_handshake_frame_declaring_more_than_the_limit_is_rejected_by_the_codec() {
+    use tokio::io::AsyncWriteExt;
+
+    let declared = u32::try_from(RPC_MAX_FRAME_SIZE).unwrap();
+    for server_side in [true, false] {
+        let (mut peer, local) = MemorySocket::new_pair();
+        // The codec's length prefix (4 bytes, big-endian) and nothing else. `peer` stays open, so this is not EOF.
+        peer.write_all(&declared.to_be_bytes()).await.unwrap();
+
+        let mut framed = framing::canonical(local, RPC_MAX_FRAME_SIZE);
+        let result = time::timeout(Duration::from_secs(5), async {
+            let mut handshake = Handshake::new(&mut framed);
+            if server_side {
+                handshake.perform_server_handshake().await.map(|_| ())
+            } else {
+                handshake.perform_client_handshake().await
+            }
+        })
+        .await
+        .expect("the codec did not reject the frame from its declared length");
+        unpack_enum!(RpcHandshakeError::FrameTooLarge { max } = result.unwrap_err());
+        assert_eq!(max, MAX_HANDSHAKE_FRAME_SIZE);
+        assert_eq!(framed.codec().max_frame_length(), RPC_MAX_FRAME_SIZE);
+        drop(peer);
+    }
 }
 
 #[tokio::test]

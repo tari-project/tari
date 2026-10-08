@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, time::Duration};
+use std::{cmp, io, time::Duration};
 
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
@@ -40,9 +40,10 @@ const LOG_TARGET: &str = "comms::rpc::handshake";
 /// Currently only v0 is supported
 pub(super) const SUPPORTED_RPC_VERSIONS: &[u32] = &[0];
 
-/// The largest handshake frame either side will decode. A handshake carries a short list of protocol versions (or the
-/// reply to one), so anything near this size is not a real handshake; without a bound the frame could be as large as
-/// the RPC framing allows (8 MiB) and decode into a very long version list.
+/// The largest handshake frame either side will read. A handshake carries a short list of protocol versions (or the
+/// reply to one), so anything near this size is not a real handshake. The codec's frame limit is lowered to this while
+/// a handshake frame is read, so a larger declared length is rejected before any buffer is reserved for it (the RPC
+/// framing otherwise allows 8 MiB).
 pub(super) const MAX_HANDSHAKE_FRAME_SIZE: usize = 1024;
 
 #[derive(Debug, thiserror::Error)]
@@ -50,7 +51,7 @@ pub enum RpcHandshakeError {
     #[error("Failed to decode message: {0}")]
     DecodeError(#[from] DecodeError),
     #[error("IO Error: {0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     #[error("The client does not support any RPC protocol version supported by this node")]
     ClientNoSupportedVersion,
     #[error("Remote peer unexpectedly closed the RPC connection")]
@@ -61,19 +62,23 @@ pub enum RpcHandshakeError {
     Rejected(#[from] HandshakeRejectReason),
     #[error("The client connection is closed")]
     ClientClosed,
-    #[error("Handshake frame was too large: {size} bytes, at most {max} allowed")]
-    FrameTooLarge { size: usize, max: usize },
+    #[error("Handshake frame was larger than the {max} byte limit")]
+    FrameTooLarge { max: usize },
 }
 
-/// Rejects a handshake frame larger than [MAX_HANDSHAKE_FRAME_SIZE] before it is decoded.
-fn check_frame_size(frame: &BytesMut) -> Result<(), RpcHandshakeError> {
-    if frame.len() > MAX_HANDSHAKE_FRAME_SIZE {
-        return Err(RpcHandshakeError::FrameTooLarge {
-            size: frame.len(),
-            max: MAX_HANDSHAKE_FRAME_SIZE,
-        });
+impl From<io::Error> for RpcHandshakeError {
+    fn from(err: io::Error) -> Self {
+        // The codec rejects a frame whose declared length is over its limit with this error, before reading it
+        if err
+            .get_ref()
+            .is_some_and(|inner| inner.is::<tokio_util::codec::LengthDelimitedCodecError>())
+        {
+            return RpcHandshakeError::FrameTooLarge {
+                max: MAX_HANDSHAKE_FRAME_SIZE,
+            };
+        }
+        RpcHandshakeError::Io(err)
     }
-    Ok(())
 }
 
 /// Handshake protocol
@@ -100,7 +105,6 @@ where T: AsyncRead + AsyncWrite + Unpin
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
-                check_frame_size(&msg)?;
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
                 let version = SUPPORTED_RPC_VERSIONS
                     .iter()
@@ -170,7 +174,6 @@ where T: AsyncRead + AsyncWrite + Unpin
         self.framed.flush().await?;
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
-                check_frame_size(&msg)?;
                 let msg = proto::rpc::RpcSessionReply::decode(&mut msg.freeze())?;
                 let version = msg.result()?;
                 debug!(target: LOG_TARGET, "Remote server accepted version {}", version);
@@ -191,10 +194,18 @@ where T: AsyncRead + AsyncWrite + Unpin
         }
     }
 
+    /// Reads the next (handshake) frame with the codec's frame limit lowered to [MAX_HANDSHAKE_FRAME_SIZE], restoring
+    /// the previous limit afterwards
     async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::error::Elapsed> {
-        match self.timeout {
+        let previous_limit = self.framed.codec().max_frame_length();
+        self.framed
+            .codec_mut()
+            .set_max_frame_length(cmp::min(previous_limit, MAX_HANDSHAKE_FRAME_SIZE));
+        let result = match self.timeout {
             Some(timeout) => time::timeout(timeout, self.framed.next()).await,
             None => Ok(self.framed.next().await),
-        }
+        };
+        self.framed.codec_mut().set_max_frame_length(previous_limit);
+        result
     }
 }
