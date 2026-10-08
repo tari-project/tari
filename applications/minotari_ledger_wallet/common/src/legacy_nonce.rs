@@ -76,9 +76,11 @@
 //!   signatures under each nonce over different challenges. The two device reviews are identical - same keys, same
 //!   nonce indexes - which is exactly what a legitimate retry looks like.
 //! - **Anyone who can write the session directory**, against an honest host: the step 2 self file names the keys and
-//!   nonces step 4 signs with. Step 4 checks that they have the shapes step 2 gives them (two different `Random`
-//!   nonces, an unmarked `PreMine` script key, a marked `PreMine` sender offset key), which stops a file that names one
-//!   nonce twice, but not one that is re-used or that pairs a nonce with another output's key.
+//!   nonces step 4 signs with. Step 4 holds the file to the shape step 2 writes - every nonce and every sender offset
+//!   key distinct across the whole file, every nonce a `Random` key, each script key the unmarked `PreMine` key at its
+//!   output index, each sender offset key a marked `PreMine` key - which stops a file that names one nonce twice, in
+//!   one output or across two. It does not stop the file being used again (a re-run), and it does nothing against a
+//!   leader-induced re-run or a compromised host.
 //!
 //! Under the rule that the device stores nothing, the only closure on the host side is a record of the legacy nonce
 //! indexes already signed with, kept by the wallet and checked before every legacy signature. That is a tracked

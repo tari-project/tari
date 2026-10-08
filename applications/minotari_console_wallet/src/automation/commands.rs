@@ -129,6 +129,7 @@ use crate::{
         Step3OutputsForParties,
         Step3OutputsForSelf,
         Step4OutputsForLeader,
+        check_self_file_key_ids,
         utils::{
             create_pre_mine_output_dir,
             get_file_name,
@@ -1450,12 +1451,10 @@ pub async fn command_runner(
                     break;
                 }
                 // The self file is host-writable, and what it names is signed with below through the legacy nonce
-                // instruction. Refuse one whose key ids step 2 could not have written - a nonce named twice above all.
-                if let Some(e) = party_info_indexed
-                    .outputs_for_self
-                    .iter()
-                    .find_map(|output| output.check_key_ids().err())
-                {
+                // instruction. Hold it to the shape step 2 writes: distinct nonces and sender offset keys across the
+                // whole file, each script key at its output index. That does not stop a leader-induced re-run of this
+                // step or a compromised host; see `minotari_ledger_wallet_common::legacy_nonce`.
+                if let Err(e) = check_self_file_key_ids(&party_info_indexed.outputs_for_self) {
                     eprintln!("\nError: Inconsistent step 2 self file! {e}\n");
                     break;
                 }
