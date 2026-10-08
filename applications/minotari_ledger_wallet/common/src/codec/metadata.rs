@@ -5,15 +5,21 @@
 //!
 //! # Layout
 //!
-//! `account(8) | network(8) | txo_version(8) | sender_offset_key_index(8) | sender_offset_branch(8) | value(8) |
-//! commitment_mask(32) | address_size(2) | receiver_address(address_size) | message(32)`
+//! `account(8) | network(8) | txo_version(8) | sender_offset_key_index(8) | value(8) | commitment_mask(32) |
+//! address_size(2) | receiver_address(address_size) | message(32) [| sender_offset_branch(8)]`
 //!
 //! `network`, `txo_version` and `sender_offset_branch` are bytes widened to little endian `u64`s, `address_size` is a
-//! little endian `u16`, and anything after `message` is ignored.
+//! little endian `u16`, and anything after `sender_offset_branch` is ignored.
 //!
 //! `sender_offset_branch` names the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary
 //! one-sided output, `PreMine` for one whose sender offset `GetScriptOffset` issued in pre-mine mode (the backup
 //! pre-mine spend). The device refuses any other branch before its review.
+//!
+//! It is an optional *trailing* field, appended after `message`, and every field before it keeps the offset it always
+//! had. Anything after `message` used to be ignored, which is what lets the format grow this way: hosts only enforce a
+//! minimum application version, so an older host talks to a newer application, and its payload - which stops at
+//! `message`, or carries fewer than eight bytes after it - decodes exactly as before, with the branch defaulting to
+//! `OneSidedSenderOffset` ([`DEFAULT_SENDER_OFFSET_BRANCH`]). Current hosts always send it.
 //!
 //! # Why the device decodes this in three steps
 //!
@@ -38,9 +44,16 @@ use super::{ACCOUNT_SIZE, Decode, DecodeError, Encode, Reader, Request, Writer, 
 use crate::{TARI_DUAL_ADDRESS_MAX_SIZE, TARI_DUAL_ADDRESS_MIN_SIZE, common_types::Instruction};
 
 /// Offset of `address_size`: everything before it is fixed width.
-const FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 5 + 32;
+const FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 4 + 32;
 const ADDRESS_SIZE_SIZE: usize = 2;
 const MESSAGE_SIZE: usize = 32;
+const SENDER_OFFSET_BRANCH_SIZE: usize = 8;
+
+/// The `sender_offset_branch` of a payload that does not carry one: `OneSidedSenderOffset`, the only branch a host
+/// from before the field existed ever meant.
+pub const DEFAULT_SENDER_OFFSET_BRANCH: u64 = 0x06;
+const _: () =
+    assert!(DEFAULT_SENDER_OFFSET_BRANCH == crate::common_types::LedgerKeyBranch::OneSidedSenderOffset as u64);
 
 // `MIN_SIZE` is two bytes short of the shortest payload that can actually be valid - see its docs. Pinned, so that
 // neither side of the gap can move without the other being looked at.
@@ -73,11 +86,11 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
     /// The shortest payload the device reads any further than.
     ///
     /// This is **not** the shortest valid payload. That would be the fixed fields, the length prefix, a minimum size
-    /// dual address and the message - 181 bytes; the device has always checked for two short of that (171 of 173
-    /// before `sender_offset_branch` was added). It is kept two short because the gap is observable: a 179 or 180
-    /// byte payload gets as far as the `commitment_mask` and address checks, and fails with *their* status word if
-    /// they fail, before the missing message is noticed.
-    pub const MIN_SIZE: usize = 179;
+    /// dual address and the message - 173 bytes; the device has always checked for 171, two short. It is kept at 171
+    /// because the gap is observable: a 171 or 172 byte payload gets as far as the `commitment_mask` and address
+    /// checks, and fails with *their* status word if they fail, before the missing message is noticed. The optional
+    /// trailing `sender_offset_branch` does not count towards it.
+    pub const MIN_SIZE: usize = 171;
 
     /// Build a request, refusing a receiver address its `u16` length prefix cannot describe.
     #[allow(clippy::too_many_arguments)]
@@ -118,7 +131,6 @@ impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
         write_u64(out, self.network);
         write_u64(out, self.txo_version);
         write_u64(out, self.sender_offset_key_index);
-        write_u64(out, self.sender_offset_branch);
         write_u64(out, self.value);
         out.write(self.commitment_mask);
         // `new` has already refused anything longer, so this never saturates.
@@ -126,6 +138,8 @@ impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
         out.write(&address_size.to_le_bytes());
         out.write(self.receiver_address);
         out.write(self.message);
+        // Appended, so that every field above keeps its offset; see the module docs.
+        write_u64(out, self.sender_offset_branch);
     }
 }
 
@@ -146,7 +160,7 @@ impl<'a> Decode<'a> for GetOneSidedMetadataSignatureRequest<'a> {
             network: head.network,
             txo_version: head.txo_version,
             sender_offset_key_index: head.sender_offset_key_index,
-            sender_offset_branch: head.sender_offset_branch,
+            sender_offset_branch: tail.sender_offset_branch()?,
             value: head.value,
             commitment_mask: head.commitment_mask,
             receiver_address: tail.receiver_address,
@@ -166,7 +180,6 @@ pub struct OneSidedMetadataSignatureHead<'a> {
     pub network: u64,
     pub txo_version: u64,
     pub sender_offset_key_index: u64,
-    pub sender_offset_branch: u64,
     pub value: u64,
     pub commitment_mask: &'a [u8; 32],
     /// Everything from `address_size` on.
@@ -181,7 +194,6 @@ impl<'a> Decode<'a> for OneSidedMetadataSignatureHead<'a> {
             network: reader.u64()?,
             txo_version: reader.u64()?,
             sender_offset_key_index: reader.u64()?,
-            sender_offset_branch: reader.u64()?,
             value: reader.u64()?,
             commitment_mask: reader.array()?,
             rest: reader.rest,
@@ -216,10 +228,22 @@ pub struct OneSidedMetadataSignatureTail<'a> {
 }
 
 impl<'a> OneSidedMetadataSignatureTail<'a> {
-    /// Step 5: the message after the address. Anything after the message is ignored, as it always has been.
+    /// Step 5: the message after the address.
     pub fn message(&self) -> Result<&'a [u8; 32], DecodeError> {
         let mut reader = Reader::at_least(self.rest, MESSAGE_SIZE)?;
         reader.array()
+    }
+
+    /// The optional `sender_offset_branch` after the message, or [`DEFAULT_SENDER_OFFSET_BRANCH`] when fewer than
+    /// eight bytes follow it - which is every payload a host from before the field existed sends. Bytes after it are
+    /// ignored. Only a payload short of the message itself is an error, the same one [`Self::message`] gives.
+    pub fn sender_offset_branch(&self) -> Result<u64, DecodeError> {
+        let mut reader = Reader::at_least(self.rest, MESSAGE_SIZE)?;
+        reader.array::<MESSAGE_SIZE>()?;
+        if reader.rest.len() < SENDER_OFFSET_BRANCH_SIZE {
+            return Ok(DEFAULT_SENDER_OFFSET_BRANCH);
+        }
+        reader.u64()
     }
 }
 
@@ -236,25 +260,38 @@ mod test {
     const MESSAGE: [u8; 32] = [0x42; 32];
 
     fn request(address: &[u8]) -> GetOneSidedMetadataSignatureRequest<'_> {
-        GetOneSidedMetadataSignatureRequest::new(1, 0x26, 1, 7, 0x06, 1_000_000, &MASK, address, &MESSAGE).unwrap()
+        request_on(address, 0x09)
+    }
+
+    fn request_on(address: &[u8], sender_offset_branch: u64) -> GetOneSidedMetadataSignatureRequest<'_> {
+        GetOneSidedMetadataSignatureRequest::new(
+            1,
+            0x26,
+            1,
+            7,
+            sender_offset_branch,
+            1_000_000,
+            &MASK,
+            address,
+            &MESSAGE,
+        )
+        .unwrap()
     }
 
     #[test]
     fn it_round_trips_with_the_address_size_in_front_of_the_address() {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE + 3];
         let bytes = request(&address).to_vec();
-        assert_eq!(bytes.len(), FIXED_SIZE + 2 + address.len() + 32);
+        assert_eq!(bytes.len(), FIXED_SIZE + 2 + address.len() + 32 + 8);
+        // Every field keeps the offset it had before `sender_offset_branch` existed...
         assert_eq!(&bytes[24..32], &7u64.to_le_bytes());
-        assert_eq!(
-            &bytes[32..40],
-            &0x06u64.to_le_bytes(),
-            "the sender offset branch follows its index"
-        );
-        assert_eq!(&bytes[40..48], &1_000_000u64.to_le_bytes());
-        assert_eq!(&bytes[48..80], &MASK);
-        assert_eq!(&bytes[80..82], &70u16.to_le_bytes());
-        assert_eq!(&bytes[82..152], address.as_slice());
-        assert_eq!(&bytes[152..], &MESSAGE);
+        assert_eq!(&bytes[32..40], &1_000_000u64.to_le_bytes());
+        assert_eq!(&bytes[40..72], &MASK);
+        assert_eq!(&bytes[72..74], &70u16.to_le_bytes());
+        assert_eq!(&bytes[74..144], address.as_slice());
+        assert_eq!(&bytes[144..176], &MESSAGE);
+        // ...and the branch is appended after the message.
+        assert_eq!(&bytes[176..], &0x09u64.to_le_bytes());
         assert_eq!(
             GetOneSidedMetadataSignatureRequest::decode(&bytes),
             Ok(request(&address))
@@ -278,7 +315,7 @@ mod test {
     fn a_payload_short_in_its_message_still_yields_its_head_and_address() {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
         let bytes = request(&address).to_vec();
-        // 179 bytes: two short of the message, but not short of the minimum the device checks first.
+        // 171 bytes: two short of the message, but not short of the minimum the device checks first.
         let short = &bytes[..GetOneSidedMetadataSignatureRequest::MIN_SIZE];
         let head = OneSidedMetadataSignatureHead::decode(short).unwrap();
         assert_eq!(head.commitment_mask, &MASK);
@@ -301,7 +338,7 @@ mod test {
             usize::from(u16::MAX),
         ] {
             let size = u16::try_from(size).unwrap();
-            bytes[80..82].copy_from_slice(&size.to_le_bytes());
+            bytes[72..74].copy_from_slice(&size.to_le_bytes());
             let head = OneSidedMetadataSignatureHead::decode(&bytes).unwrap();
             assert_eq!(head.receiver_address(), Err(DecodeError::WrongLength), "size {size}");
         }
@@ -311,14 +348,14 @@ mod test {
     fn an_address_that_runs_past_the_end_is_refused() {
         let mut bytes: Vec<u8> = request(&[0xaa; TARI_DUAL_ADDRESS_MIN_SIZE]).to_vec();
         let size = u16::try_from(TARI_DUAL_ADDRESS_MAX_SIZE).unwrap();
-        bytes[80..82].copy_from_slice(&size.to_le_bytes());
+        bytes[72..74].copy_from_slice(&size.to_le_bytes());
         let head = OneSidedMetadataSignatureHead::decode(&bytes).unwrap();
         assert_eq!(head.receiver_address(), Err(DecodeError::WrongLength));
     }
 
-    /// Trailing bytes after the message have always been ignored.
+    /// Bytes after the trailing branch are ignored.
     #[test]
-    fn bytes_after_the_message_are_ignored() {
+    fn bytes_after_the_sender_offset_branch_are_ignored() {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
         let mut bytes = request(&address).to_vec();
         bytes.extend_from_slice(&[0xff; 5]);
@@ -326,5 +363,69 @@ mod test {
             GetOneSidedMetadataSignatureRequest::decode(&bytes),
             Ok(request(&address))
         );
+    }
+
+    /// A host from before `sender_offset_branch` existed stops at the message. Its payload must decode exactly as it
+    /// always did - same fields from the same offsets - with the branch defaulting to `OneSidedSenderOffset`, so an
+    /// older host's ordinary one-sided send still works against this application.
+    #[test]
+    fn an_old_layout_payload_decodes_with_the_default_branch() {
+        let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE + 3];
+        let mut old_layout = request(&address).to_vec();
+        old_layout.truncate(old_layout.len() - 8);
+        assert_eq!(old_layout.len(), FIXED_SIZE + 2 + address.len() + 32);
+
+        let expected = request_on(&address, DEFAULT_SENDER_OFFSET_BRANCH);
+        assert_eq!(GetOneSidedMetadataSignatureRequest::decode(&old_layout), Ok(expected));
+
+        // Fewer than eight trailing bytes - which an old host was free to send, and which were ignored - still mean
+        // "no branch".
+        for extra in 1..8 {
+            let mut bytes = old_layout.clone();
+            bytes.extend_from_slice(&vec![0xff; extra]);
+            assert_eq!(
+                GetOneSidedMetadataSignatureRequest::decode(&bytes),
+                Ok(expected),
+                "{extra} trailing bytes"
+            );
+        }
+
+        // The staged decode the device uses agrees.
+        let head = OneSidedMetadataSignatureHead::decode(&old_layout).unwrap();
+        assert_eq!(head.value, 1_000_000);
+        assert_eq!(
+            head.receiver_address().unwrap().sender_offset_branch(),
+            Ok(DEFAULT_SENDER_OFFSET_BRANCH)
+        );
+    }
+
+    /// A current host's payload carries the branch, and both decoders read it.
+    #[test]
+    fn a_new_layout_payload_decodes_its_branch() {
+        let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
+        for branch in [0x06, 0x09, 0x07, 0xff] {
+            let bytes = request_on(&address, branch).to_vec();
+            assert_eq!(
+                GetOneSidedMetadataSignatureRequest::decode(&bytes).map(|r| r.sender_offset_branch),
+                Ok(branch)
+            );
+            let tail = OneSidedMetadataSignatureHead::decode(&bytes)
+                .unwrap()
+                .receiver_address()
+                .unwrap();
+            assert_eq!(tail.sender_offset_branch(), Ok(branch));
+        }
+    }
+
+    /// A payload short of the message is still refused by the branch read, with the message's own error.
+    #[test]
+    fn the_branch_read_needs_the_message() {
+        let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
+        let bytes = request(&address).to_vec();
+        let tail = OneSidedMetadataSignatureHead::decode(&bytes[..GetOneSidedMetadataSignatureRequest::MIN_SIZE])
+            .unwrap()
+            .receiver_address()
+            .unwrap();
+        assert_eq!(tail.sender_offset_branch(), Err(DecodeError::WrongLength));
     }
 }

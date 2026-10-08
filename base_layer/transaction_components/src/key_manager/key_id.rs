@@ -668,7 +668,12 @@ mod tests {
     /// a ledger key index may be any `u64`.
     #[test]
     fn a_pre_mine_sender_offset_key_round_trips_through_its_string_and_json_forms() {
-        for index in [1u64 << 30, (1u64 << 30) | 0x1fff_ffff, 1u64 << 63, u64::MAX] {
+        for index in [
+            1u64 << 63,
+            (1u64 << 63) | 0x3fff_ffff_ffff_ffff,
+            (1u64 << 63) | 7,
+            u64::MAX,
+        ] {
             let key_id = TariKeyId::LedgerKey {
                 branch: LedgerKeyBranch::PreMine,
                 index,

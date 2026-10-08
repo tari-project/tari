@@ -57,6 +57,7 @@ use minotari_ledger_wallet_common::{
     legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
+        check_indexed_script_key_index,
         check_script_key_count,
         check_sender_offset_key_count,
         sender_offset_index,
@@ -463,6 +464,10 @@ pub fn ledger_get_script_offset(
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     check_script_key_count(script_key_indexes.len() as u64, derived_script_keys.len() as u64)
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
+    for (_, index) in script_key_indexes {
+        check_indexed_script_key_index(*index)
+            .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: script key index {index}: {e:?}")))?;
+    }
     verify_ledger_application()?;
 
     let script_key_indexes = script_key_indexes

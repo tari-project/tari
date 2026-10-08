@@ -34,14 +34,23 @@ use minotari_ledger_wallet_common::codec::{CLA, Request};
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-/// `6.1.1-pre.1` is the first application that issues pre-mine sender offset keys on the `PreMine` branch from
-/// `GetScriptOffset`, carries `sender_offset_branch` in `GetOneSidedMetadataSignature`, signs only `PreMine` keys
-/// through `GetRawSchnorrSignatureLegacyNonce`, and asks the user to approve each of those signatures. An older
-/// application answers the same `GetScriptOffset` request with a `OneSidedSenderOffset` key, which this host would name
-/// as a `PreMine` key - pre-mine step 2 would complete with a sender offset key that does not match the script
-/// offset - and misparses this host's metadata request, so it is refused here. (Before that, `5.7.0-pre.6` was the
-/// first to take device issued nonce handles.) Keep this in step with the ledger application's `version` in its
-/// `Cargo.toml`.
+/// `6.1.1-pre.1` is the first application that:
+///
+/// - issues pre-mine sender offset keys on the `PreMine` branch from `GetScriptOffset`;
+/// - reads the trailing `sender_offset_branch` of `GetOneSidedMetadataSignature` (an older application ignores it and
+///   derives every sender offset on `OneSidedSenderOffset`, so it would sign a pre-mine output with the wrong key);
+/// - signs only `PreMine` keys through `GetRawSchnorrSignatureLegacyNonce`, and asks the user to approve each one;
+/// - derives from every bit of a `u64` key index: the path is `m/44'/535348'/{account}'/{index >> 32}/{index &
+///   0xFFFF_FFFF}'/{key_type}`, where it used to be `.../{account}'/0/{index}'/...` with the index wrapped modulo
+///   `2^32`. Indexes below `2^32` derive the same keys as before; an index at or above it derives a different key than
+///   an older application gave it. The host only carries such an index across an application upgrade in a pre-mine step
+///   2 session file (its `Random` nonce indexes), and those files have to be redone on this application anyway: they
+///   name a `OneSidedSenderOffset` sender offset key, which the legacy whitelist refuses.
+///
+/// An older application answers the same `GetScriptOffset` request with a `OneSidedSenderOffset` key, which this host
+/// would name as a `PreMine` key - pre-mine step 2 would complete with a sender offset key that does not match the
+/// script offset - so it is refused here. (Before that, `5.7.0-pre.6` was the first to take device issued nonce
+/// handles.) Keep this in step with the ledger application's `version` in its `Cargo.toml`.
 pub const MIN_LEDGER_APP_VERSION: &str = "6.1.1-pre.1";
 
 struct HidManager {

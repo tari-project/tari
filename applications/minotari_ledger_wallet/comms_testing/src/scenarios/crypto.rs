@@ -52,12 +52,12 @@ use tari_crypto::{
     ristretto::{RistrettoPublicKey, RistrettoSecretKey},
     signatures::CommitmentAndPublicKeySignature,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     approver::{Outcome, while_reviewing},
     fixtures,
-    raw::ComAndPubSigReply,
+    raw::{self, ComAndPubSigReply},
     review::ExpectedReview,
     scenarios::{Approval, Scenario, ScenarioContext, ScenarioModule, ScenarioResult, WithContext, require},
 };
@@ -488,7 +488,7 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
 }
 
 /// Acceptance: a script offset whose only device derived script keys are pre-mine keys - the pre-mine spend flow's
-/// step 2 - is blinded by sender offset keys on the **`PreMine`** branch, at indexes with bit 30 set and below `2^31`.
+/// step 2 - is blinded by sender offset keys on the **`PreMine`** branch, at indexes with bit 63 set.
 ///
 /// This is what lets pre-mine step 3 sign its metadata signature through the legacy nonce instruction, which signs
 /// `PreMine` keys only. The other half of the rule - a request that folds an alpha derived key keeps
@@ -500,7 +500,7 @@ fn the_script_offset_is_the_sum_it_claims(_context: &ScenarioContext<'_>) -> Sce
 fn a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let partial_sum = fixtures::random_secret_key();
-    // Genesis output indexes are small; the device draws pre-mine sender offsets from the range bit 30 marks.
+    // Genesis output indexes are small; the device draws pre-mine sender offsets from the range bit 63 marks.
     let script_indexes: Vec<(LedgerKeyBranch, u64)> = (0..SCRIPT_INDEXES)
         .map(|_| (LedgerKeyBranch::PreMine, fixtures::random_u64() % 100_000))
         .collect();
@@ -512,10 +512,9 @@ fn a_pre_mine_script_offset_derives_its_sender_offsets_on_pre_mine(_context: &Sc
         [index] => *index,
         other => return Err(super::fail(format!("expected one sender offset index, got {other:?}"))),
     };
-    require(
-        sender_offset_index & (1 << 30) != 0 && sender_offset_index < 1 << 31,
-        || format!("the pre-mine sender offset index {sender_offset_index} does not have bit 30 set below 2^31"),
-    )?;
+    require(sender_offset_index & (1 << 63) != 0, || {
+        format!("the pre-mine sender offset index {sender_offset_index} does not have bit 63 set")
+    })?;
 
     let mut script_side = RistrettoPublicKey::from_secret_key(&partial_sum);
     for (branch, index) in &script_indexes {
@@ -613,14 +612,25 @@ const REVIEW_VALUE: u64 = 12_345;
 /// for the backup pre-mine spend, whose sender offset `GetScriptOffset` issues in pre-mine mode. Each run's signature
 /// is checked against the public key on *its* branch, so a device that ignored the branch and derived on
 /// `OneSidedSenderOffset` regardless fails the `PreMine` run.
+///
+/// And once more as a host from before `sender_offset_branch` existed sends it: without the trailing branch. Hosts
+/// only enforce a minimum application version, so this application has to keep reading that request as an ordinary
+/// `OneSidedSenderOffset` one. No shipped accessor sends it any more, so that run goes over raw APDUs - an accepting
+/// path that cannot use the accessor, because the accessor is no longer what the old host runs.
 fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> ScenarioResult {
     for branch in [LedgerKeyBranch::OneSidedSenderOffset, LedgerKeyBranch::PreMine] {
-        approved_metadata_signature_verifies(context, branch)?;
+        approved_metadata_signature_verifies(context, Some(branch))?;
     }
-    Ok(())
+    approved_metadata_signature_verifies(context, None)
 }
 
-fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: LedgerKeyBranch) -> ScenarioResult {
+/// `branch` is the trailing `sender_offset_branch` to send, or `None` to leave it out as an older host does - in which
+/// case the device must derive on `OneSidedSenderOffset`.
+fn approved_metadata_signature_verifies(
+    context: &ScenarioContext<'_>,
+    sent_branch: Option<LedgerKeyBranch>,
+) -> ScenarioResult {
+    let branch = sent_branch.unwrap_or(LedgerKeyBranch::OneSidedSenderOffset);
     let account = fixtures::random_u64();
     let sender_offset_key_index = fixtures::random_u64();
     let commitment_mask = fixtures::random_secret_key();
@@ -631,21 +641,39 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
         .context(|| format!("GetPublicKey for the {branch} sender offset key"))?;
 
     let expected_review = ExpectedReview::one_sided_metadata_signature(REVIEW_VALUE, &receiver.to_base58(), 0);
-    let (signature, review) = while_reviewing(context.approver(), &expected_review, Outcome::Approve, || {
-        ledger_get_one_sided_metadata_signature(
-            account,
-            receiver.network(),
-            0,
-            REVIEW_VALUE,
-            sender_offset_key_index,
-            branch,
-            &commitment_mask,
-            &receiver,
-            &common_message,
-        )
-    });
-    review.context(|| format!("the device's review screen ({branch} sender offset)"))?;
-    let signature = signature.context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
+    let (signature, review) =
+        while_reviewing(
+            context.approver(),
+            &expected_review,
+            Outcome::Approve,
+            || match sent_branch {
+                Some(branch) => ledger_get_one_sided_metadata_signature(
+                    account,
+                    receiver.network(),
+                    0,
+                    REVIEW_VALUE,
+                    sender_offset_key_index,
+                    branch,
+                    &commitment_mask,
+                    &receiver,
+                    &common_message,
+                )
+                .map(|signature| signature.to_vec())
+                .map_err(|e| e.to_string()),
+                None => old_layout_metadata_signature(
+                    account,
+                    receiver.network().as_byte(),
+                    sender_offset_key_index,
+                    &commitment_mask,
+                    &receiver.to_vec(),
+                    &common_message,
+                ),
+            },
+        );
+    review.context(|| format!("the device's review screen ({branch} sender offset, sent as {sent_branch:?})"))?;
+    let signature = signature
+        .map_err(super::fail)
+        .context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset, sent as {sent_branch:?}"))?;
 
     // What the device should have signed, rebuilt from the same inputs the request carried.
     let value = RistrettoSecretKey::from(REVIEW_VALUE);
@@ -659,8 +687,8 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
     let message = fixtures::metadata_signature_message(network, &script, &common_message);
 
     verify_com_and_pub_signature(
-        &format!("the one sided metadata signature with a {branch} sender offset"),
-        &signature.to_vec(),
+        &format!("the one sided metadata signature with a {branch} sender offset, sent as {sent_branch:?}"),
+        &signature,
         &commitment,
         &sender_offset_public_key,
         |ephemeral_commitment, ephemeral_pubkey| {
@@ -674,6 +702,41 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
             )
         },
     )
+}
+
+/// `GetOneSidedMetadataSignature` in the layout every host before `6.1.1-pre.1` sends: no trailing
+/// `sender_offset_branch`. Returns the 160 byte signature body.
+fn old_layout_metadata_signature(
+    account: u64,
+    network: u8,
+    sender_offset_key_index: u64,
+    commitment_mask: &RistrettoSecretKey,
+    receiver_address: &[u8],
+    common_message: &[u8; 32],
+) -> Result<Vec<u8>, String> {
+    let mut payload = raw::payload::one_sided_metadata_signature(
+        network,
+        0,
+        sender_offset_key_index,
+        LedgerKeyBranch::OneSidedSenderOffset,
+        REVIEW_VALUE,
+        &commitment_mask
+            .as_bytes()
+            .try_into()
+            .map_err(|_| "a 32 byte mask".to_string())?,
+        receiver_address,
+        common_message,
+    );
+    // Drop the trailing branch.
+    payload.truncate(payload.len().saturating_sub(8));
+    let reply = raw::command(account, Instruction::GetOneSidedMetadataSignature, payload)
+        .send()
+        .map_err(|e| e.to_string())?;
+    if !reply.is_ok() {
+        return Err(format!("the device answered {}", reply.describe_status()));
+    }
+    // The response version byte, then the body.
+    Ok(reply.data.get(1..).unwrap_or_default().to_vec())
 }
 
 /// Verify a commitment and public key signature against a challenge the caller builds from the ephemeral values

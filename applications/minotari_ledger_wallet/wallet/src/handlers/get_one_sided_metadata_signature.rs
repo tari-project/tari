@@ -66,16 +66,6 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let network = u8::try_from(head.network).map_err(|_| AppSW::WrongApduLength)?;
     let txo_version = head.txo_version;
     let sender_offset_key_index = head.sender_offset_key_index;
-    // An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine spend's is on
-    // `PreMine`, because `GetScriptOffset` issues it in pre-mine mode. Nothing else is a sender offset key, and the
-    // request is refused before the review. Signing either branch here is safe: the nonces are drawn on the device,
-    // so there is no second signature under one nonce to difference against.
-    let sender_offset_key_type = match branch_key_from_u64(head.sender_offset_branch)? {
-        LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine => {
-            KeyType::from_branch_key(head.sender_offset_branch)?
-        },
-        LedgerKeyBranch::Random | LedgerKeyBranch::Spend => return Err(AppSW::BadBranchKey),
-    };
     let value_u64 = head.value;
     let value = Minotari::new(head.value);
 
@@ -125,6 +115,20 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     // Copied for the same reason as the address: it is hashed into the signed message after the review.
     let metadata_signature_message_common: [u8; 32] = *tail.message().map_err(|_| AppSW::WrongApduLength)?;
+
+    // The optional trailing `sender_offset_branch`, `OneSidedSenderOffset` when a host from before it existed leaves
+    // it out - see `minotari_ledger_wallet_common::codec::metadata`. An ordinary one-sided output's sender offset key
+    // is on `OneSidedSenderOffset`; the backup pre-mine spend's is on `PreMine`, because `GetScriptOffset` issues it
+    // in pre-mine mode. Nothing else is a sender offset key, and the request is refused before the review. Signing
+    // either branch here is safe: the nonces are drawn on the device, so there is no second signature under one
+    // nonce to difference against.
+    let sender_offset_branch = tail.sender_offset_branch().map_err(|_| AppSW::WrongApduLength)?;
+    let sender_offset_key_type = match branch_key_from_u64(sender_offset_branch)? {
+        LedgerKeyBranch::OneSidedSenderOffset | LedgerKeyBranch::PreMine => {
+            KeyType::from_branch_key(sender_offset_branch)?
+        },
+        LedgerKeyBranch::Random | LedgerKeyBranch::Spend => return Err(AppSW::BadBranchKey),
+    };
 
     // Extract payment ID if present
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)

@@ -189,7 +189,7 @@ fn a_mixed_chunked_script_offset_is_the_script_keys_minus_the_sender_offset_keys
 }
 
 /// A script offset over pre-mine script keys only - pre-mine spend step 2 - comes back blinded by sender offset keys
-/// on the `PreMine` branch, at indexes with bit 30 set and below `2^31`, and the offset is exactly the difference of
+/// on the `PreMine` branch, at indexes with bit 63 set, and the offset is exactly the difference of
 /// the two sums.
 ///
 /// That is what lets pre-mine step 3 sign the metadata signature through the legacy nonce instruction, which signs
@@ -214,10 +214,6 @@ fn a_pre_mine_only_script_offset_is_blinded_by_pre_mine_sender_offset_keys() {
                     0,
                     "pre-mine sender offset index {index} does not have the marker bit"
                 );
-                assert!(
-                    index < 1 << 31,
-                    "pre-mine sender offset index {index} is not below 2^31"
-                );
             }
         }
         assert_offset_is_the_difference(&offset, &script_keys.keys, &sender_offsets);
@@ -228,6 +224,35 @@ fn a_pre_mine_only_script_offset_is_blinded_by_pre_mine_sender_offset_keys() {
 ///
 /// The bound exists because the device performs every derivation in one exchange; the key manager checks it first
 /// so that an over-large request surfaces as a typed error rather than a status word. Both halves, at the boundary.
+/// A pre-mine sender offset key is never a script key: naming one in a later script offset is refused by the key
+/// manager before the wire (and by the device too - see the `protocol` scenario suite).
+///
+/// Without that a host could chain replies: script keys `{A, b_(n-1)}` give `k_A + k(b_(n-1)) - k(b_n)`, the chain
+/// telescopes, and a repeated base closes it to give up the pre-mine script key `k_A`, with nothing on the screen.
+#[test]
+fn a_pre_mine_sender_offset_key_cannot_be_fed_back_as_a_script_key() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let script_keys = ScriptKeys::new(&key_manager, 1, 0, 0);
+        let (_, sender_offsets) = key_manager
+            .get_script_offset(&script_keys.ids(), 1)
+            .expect("the control: a pre-mine script offset");
+
+        let mut chained = script_keys.ids();
+        chained.push(sender_offsets[0].key_id.clone());
+        let (result, wire) = device.watch(|| key_manager.get_script_offset(&chained, 1));
+        let error = ledger_error(result.map(|(offset, _)| offset.to_hex()).unwrap_err());
+        assert!(
+            error.contains("SenderOffsetIndexAsScriptKey"),
+            "unexpected refusal of a chained sender offset key: {error}"
+        );
+        assert!(
+            wire.is_empty(),
+            "a chained sender offset key reached the device: {wire:?}"
+        );
+    });
+}
+
 #[test]
 fn the_largest_sender_offset_count_is_served_and_one_more_is_refused_before_the_wire() {
     with_device(|device| {

@@ -7,6 +7,7 @@ use minotari_ledger_wallet_common::{
     script_offset::{
         ScriptKeySection,
         ScriptOffsetHeaderError,
+        check_indexed_script_key_index,
         check_offset_is_blinded,
         parse_script_offset_header,
         script_key_section,
@@ -91,6 +92,9 @@ fn header_error_to_app_sw(e: ScriptOffsetHeaderError) -> AppSW {
         },
         ScriptOffsetHeaderError::NoSenderOffsetKeys => AppSW::ScriptOffsetNoSenderOffsets,
         ScriptOffsetHeaderError::NoDeviceScriptKeys => AppSW::ScriptOffsetNoDeviceScriptKeys,
+        // A sender offset index is not a pre-mine script key, so it gets the same status word as any other script
+        // key the device will not fold.
+        ScriptOffsetHeaderError::SenderOffsetIndexAsScriptKey => AppSW::ScriptOffsetInvalidScriptBranch,
     }
 }
 
@@ -188,6 +192,10 @@ pub fn handler_get_script_offset(
             if branch != KeyType::PreMine {
                 return Err(AppSW::ScriptOffsetInvalidScriptBranch);
             }
+            // ...and of those, only the genesis script keys: an index in the pre-mine sender offset range names a key
+            // this instruction issued as a blinding term, and folding it back in as a script term would let replies
+            // be chained and telescoped. See `check_indexed_script_key_index`.
+            check_indexed_script_key_index(index).map_err(header_error_to_app_sw)?;
             Some(derive_from_bip32_key(offset_ctx.account, index, branch)?)
         },
         ScriptKeySection::DerivedScriptKey => {
@@ -222,8 +230,10 @@ pub fn handler_get_script_offset(
     .map_err(header_error_to_app_sw)?;
 
     // 5. Generate the sender offset keys. One random base index is drawn from the device RNG and the keys are
-    //    derived from `base..base + count`, so the host cannot replay a call and difference two replies to strip
-    //    the blinding, and no per-key state has to be accumulated on the device.
+    //    derived from `base..base + count`, so no per-key state has to be accumulated on the device. The reply
+    //    hands the host the base, and two replies whose bases name the same keys can be differenced to strip the
+    //    blinding - so what stops that is that bases do not repeat: 64 random bits on `OneSidedSenderOffset`, 62 on
+    //    `PreMine`, every one of them derived from (see `derive_from_bip32_key` and `sender_offset_base_index`).
     //
     //    The branch is decided by what was folded, not by what the header declared. With no alpha derived key in
     //    the sum this is the pre-mine spend flow, and the keys go on `PreMine` - the one branch the legacy nonce

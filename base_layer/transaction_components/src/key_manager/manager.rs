@@ -759,7 +759,13 @@ impl TransactionKeyManagerInterface for KeyManager {
         if let Some(branch) = ledger_key &&
             self.wallet_type.is_ledger()
         {
-            let random_index = rand::rng().next_u64();
+            let mut random_index = rand::rng().next_u64();
+            // A `PreMine` key the host draws is a script key. The range the marker bit names belongs to the sender
+            // offset keys `get_script_offset` issues on `PreMine`, and the device refuses an index in it as a script
+            // key, so it is kept out of that range.
+            if branch == LedgerKeyBranch::PreMine {
+                random_index &= !minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+            }
             let public_key = self.ledger_get_public_key_wrapper(branch, random_index)?;
             return Ok(TariKeyAndId {
                 key_id: TariKeyId::LedgerKey {

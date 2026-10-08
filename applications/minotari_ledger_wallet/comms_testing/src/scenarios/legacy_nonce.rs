@@ -121,7 +121,7 @@ const ALL_BRANCHES: [LedgerKeyBranch; 4] = [
 
 /// The marker bit of a pre-mine sender offset key index, restated rather than imported so that a device which put
 /// the metadata signature's purpose on the wrong side of it would be caught. See `ExpectedReview::legacy_signature`.
-const SENDER_OFFSET_INDEX_BIT: u64 = 1 << 30;
+const SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
 
 /// Ask the device for a legacy signature, over raw APDUs so that the host's mirror of the whitelist is bypassed.
 ///
@@ -366,8 +366,8 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
 /// and a recovered key would be a secret in a failure message in a file CI uploads.
 fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
-    // A key index with the marker bit set and below 2^31: the shape of a pre-mine *sender offset* key, so both
-    // reviews must say "Pre-mine metadata signature".
+    // A key index with the marker bit set: the shape of a pre-mine *sender offset* key, so both reviews must say
+    // "Pre-mine metadata signature".
     let key_index = (fixtures::random_u64() % SENDER_OFFSET_INDEX_BIT) | SENDER_OFFSET_INDEX_BIT;
     let nonce_index = fixtures::random_u64();
 

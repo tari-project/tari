@@ -311,12 +311,15 @@ pub fn bip32_secp256k1_private_key(seed: &[u8], path: &[u32]) -> Result<Zeroizin
 
 /// Build the derivation path exactly as `wallet/src/utils.rs::derive_from_bip32_key` does.
 ///
-/// The device formats `m/44'/535348'/{account}'/0/{index}'/{key_type}` into a string and hands it to the SDK's
-/// `make_bip32_path`, which parses it back out. Two consequences are reproduced here rather than tidied up, because
-/// the device is the specification and the point of the oracle is to agree with it:
+/// The device formats `m/44'/535348'/{account}'/{index >> 32}/{index & 0xFFFF_FFFF}'/{key_type}` into a string and
+/// hands it to the SDK's `make_bip32_path`, which parses it back out. The index is split across two elements so that
+/// every bit of it is derived from; the high word sits where a constant `0` used to, so an index below `2^32` has the
+/// path it always had. Two consequences are reproduced here rather than tidied up, because the device is the
+/// specification and the point of the oracle is to agree with it:
 ///
-/// * Only elements written with a `'` are hardened. `0` and the trailing key type are **not**, which is why the oracle
-///   needs secp256k1 point arithmetic at all.
+/// * Only elements written with a `'` are hardened. The high word and the trailing key type are **not** written with
+///   one, which is why the oracle needs secp256k1 point arithmetic at all. (A high word at or above `2^31` is still a
+///   hardened child numerically, and is derived as one here and on the device alike.)
 /// * `make_bip32_path` accumulates each element into a `u32` with `acc * 10 + digit`, then adds `0x80000000` for
 ///   hardening. The device application is a release build, so both of those wrap rather than panic. A `u64` account -
 ///   and the host does send random `u64` accounts - therefore addresses the path element congruent to it modulo 2^32,
@@ -327,8 +330,8 @@ pub fn derivation_path(account: u64, index: u64, key_type: KeyType) -> [u32; 6] 
         0x8000_0000u32.wrapping_add(44),
         0x8000_0000u32.wrapping_add(BIP32_COIN_TYPE),
         0x8000_0000u32.wrapping_add(decimal_to_wrapping_u32(account)),
-        0,
-        0x8000_0000u32.wrapping_add(decimal_to_wrapping_u32(index)),
+        decimal_to_wrapping_u32(index >> 32),
+        0x8000_0000u32.wrapping_add(decimal_to_wrapping_u32(index & 0xFFFF_FFFF)),
         u32::from(key_type.as_byte()),
     ]
 }
@@ -471,12 +474,42 @@ mod test {
             0x8000_0000,
             4,
         ]);
-        // The `0` element is not hardened, and the key type is not either.
+        // The high word element is not hardened, and the key type is not either.
         let path = derivation_path(7, 9, KeyType::ViewKey);
         assert_eq!(path[3], 0);
         assert_eq!(path[5], 3);
         assert_eq!(path[2], 0x8000_0000 + 7);
         assert_eq!(path[4], 0x8000_0000 + 9);
+    }
+
+    /// The index is split across two elements, so indexes `2^32` apart - or differing only in bit 63 - are different
+    /// paths, while an index below `2^32` keeps the path it had when the high element was a constant `0`.
+    #[test]
+    fn every_bit_of_the_index_is_in_the_path() {
+        let low = 0x8765_4321u64;
+        let path = derivation_path(0, low, KeyType::Random);
+        assert_eq!(path[3], 0, "an index below 2^32 keeps the old constant 0");
+        assert_eq!(path[4], 0x8000_0000u32.wrapping_add(0x8765_4321));
+
+        let path = derivation_path(0, (1u64 << 32) | low, KeyType::Random);
+        assert_eq!(path[3], 1);
+        assert_eq!(path[4], 0x8000_0000u32.wrapping_add(0x8765_4321));
+
+        let path = derivation_path(0, (1u64 << 63) | 7, KeyType::PreMine);
+        assert_eq!(path[3], 0x8000_0000);
+        assert_eq!(path[4], 0x8000_0007);
+
+        let path = derivation_path(0, u64::MAX, KeyType::PreMine);
+        assert_eq!(path[3], u32::MAX);
+        assert_eq!(path[4], 0x7FFF_FFFF);
+
+        for (a, b) in [(7, (1u64 << 63) | 7), (low, low + (1 << 32)), (0, 1 << 32)] {
+            assert_ne!(
+                derivation_path(0, a, KeyType::PreMine),
+                derivation_path(0, b, KeyType::PreMine),
+                "{a} and {b}"
+            );
+        }
     }
 
     /// `make_bip32_path` parses the decimal rendering into a wrapping `u32`, so accounts 2^32 apart collide.
