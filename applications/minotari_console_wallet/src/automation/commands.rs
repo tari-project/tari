@@ -1682,8 +1682,10 @@ pub async fn command_runner(
                     // APDU) - so any restart between two approvals, including the one this step asks for every 32
                     // outputs, defeats it; the progress file can be deleted, overwritten, or bypassed by running from a
                     // copied directory or another machine; the self file can be edited; a nonce an earlier run used can
-                    // be named again. Nothing is stored on the Ledger by design, so cross-run protection is the host's,
-                    // and the follow-up is a used-nonce ledger in the wallet database. None of
+                    // be named again. Nothing is stored on the Ledger by design. The planned used-nonce ledger in the
+                    // wallet database closes the progress-file and stale/re-named-nonce gaps for an honest host, but
+                    // not a compromised host restarting the app between two approvals - that host runs the ledger;
+                    // only device-issued one-run nonce handles close that. None of
                     // it reaches `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
                     // `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo step 2 for such a
                     // session. A step 2 file written with a ledger app before 6.1.1-pre.0 is invalid for a second
@@ -4085,12 +4087,11 @@ fn check_pre_mine_ledger_account(wallet_type: &WalletType) -> Result<(), String>
 
 /// What step 4 prints when the device's legacy used-nonce record is full.
 const STEP_4_STORE_FULL_MESSAGE: &str =
-    "The Ledger device's record of used pre-mine nonces is full (it holds one app run's worth: 32 outputs). Progress \
-     is saved. Restart the Minotari Wallet app on the Ledger device, then re-run this same step 4 command; it will \
-     continue from the next signature. A restart request is only genuine at an output boundary, after every 32 \
-     outputs: one that arrives in the middle of an output (between its script and metadata signature), or any 'device \
-     disconnected, reopen the app' message during step 4, is a sign of a compromised host - stop, and do not approve \
-     any further screens.";
+    "The Ledger device's record of used pre-mine nonces is full (it holds 64 approved signatures per app run: 32 \
+     outputs). Progress is saved. Restart the Minotari Wallet app on the Ledger device, then re-run this same step 4 \
+     command; it will continue from the next signature. Caution: a restart or reconnect request in the middle of an \
+     output is unexpected unless you unplugged the device or ran other sessions in this app run; if in doubt, stop \
+     and do not approve further screens, and never approve a screen you did not expect.";
 
 /// Whether a signing error is the device refusing because its legacy used-nonce record is full.
 ///
@@ -4116,10 +4117,9 @@ fn warn_if_step_4_needs_app_restarts(outputs: usize) {
             "\nWarning: this session has {outputs} outputs. On a Ledger device step 4 can sign \
              {STEP_4_OUTPUTS_PER_APP_RUN} outputs per run of the Minotari Wallet app, so step 4 will stop {restarts} \
              time(s) and ask you to restart the app on the device and re-run the same command; it continues where it \
-             stopped. A restart request is only genuine at an output boundary, after every \
-             {STEP_4_OUTPUTS_PER_APP_RUN} outputs: one that arrives in the middle of an output (between its script \
-             and metadata signature), or any 'device disconnected, reopen the app' message during step 4, is a sign \
-             of a compromised host - stop, and do not approve any further screens.\n"
+             stopped. Caution: a restart or reconnect request in the middle of an output is unexpected unless you \
+             unplugged the device or ran other sessions in this app run; if in doubt, stop and do not approve further \
+             screens, and never approve a screen you did not expect.\n"
         );
     }
 }

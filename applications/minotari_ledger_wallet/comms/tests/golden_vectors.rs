@@ -15,8 +15,8 @@
 //!
 //! A change to any constant below is therefore a wire format change, which needs its own spec and its own
 //! application version bump. It is never a test fix. (Example: `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` gained
-//! `sender_offset_branch` and narrowed `network` and `txo_version` to one byte each in application `6.1.1-pre.0`,
-//! and `MIN_LEDGER_APP_VERSION` moved to `6.1.1-pre.0` with it.)
+//! `sender_offset_branch` and narrowed `network` and `txo_version` to one byte each; `6.1.1-pre.1` is the first
+//! application with that final layout and all the accompanying checks, and `MIN_LEDGER_APP_VERSION` is `6.1.1-pre.1`.)
 //!
 //! # What is covered
 //!
@@ -115,7 +115,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 
 /// Little endian `01 02 03 04 05 06 07 08` on the wire, so the account is recognisable in every vector.
 const ACCOUNT: u64 = 0x0807_0605_0403_0201;
-/// `ACCOUNT` is 2^32 or more, which the legacy nonce instruction refuses from application 6.1.1-pre.0 (it names the
+/// `ACCOUNT` is 2^32 or more, which the legacy nonce instruction refuses from application 6.1.1-pre.1 (it names the
 /// same keys as its low word). The legacy vector therefore uses this account instead - a wire format change made
 /// with that version, not a test fix.
 const LEGACY_ACCOUNT: u64 = 0x0403_0201;

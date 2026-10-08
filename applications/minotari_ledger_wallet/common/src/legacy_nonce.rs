@@ -63,9 +63,12 @@
 //! # Design decision: no persistent data on the Ledger
 //!
 //! Nothing is stored persistently on the device. The used-nonce record is RAM and lasts one run of the application, so
-//! protection *across* runs is the host's responsibility. The recommended follow-up is a cross-session used-nonce
-//! ledger in the wallet database: step 2 records the nonce ids it issued, and step 4 refuses any nonce the wallet did
-//! not issue or has already signed with. An NVM record on the device is not an option.
+//! protection *across* runs falls to the host. The recommended follow-up is a cross-session used-nonce ledger in the
+//! wallet database: step 2 records the nonce ids it issued, and step 4 refuses any nonce the wallet did not issue or
+//! has already signed with. An NVM record on the device is not an option. That host-side ledger protects an honest
+//! host: it closes residual 2 and the honest-host parts of residual 3 (a stale or re-named nonce). It cannot close
+//! residual 1, whose attacker *is* the host and runs the ledger. Residual 1 stays open until device-issued one-run
+//! nonce handles (the TODO below) replace host-chosen nonce indexes.
 //!
 //! # Residual
 //!
@@ -110,9 +113,7 @@
 //!    refused ([`check_legacy_nonce_index`]), and the host never draws one.
 //! 5. **Old devices.** A device still on 6.1.0 or earlier signs `OneSidedSenderOffset` keys through this instruction
 //!    and so remains exposed to the `alpha` extraction above, whatever the host does. The host refuses such a device
-//!    (`MIN_LEDGER_APP_VERSION`), but a compromised host would not. Intermediate development builds between commits
-//!    00b68516d and 1f08c14ce report 6.1.1-pre.0 without the used-nonce record or the 2^32 rules (development devices
-//!    only).
+//!    (`MIN_LEDGER_APP_VERSION`), but a compromised host would not.
 //! 6. **Consent.** `GetScriptSchnorrSignature` and `GetRawSchnorrSignature` still sign `PreMine` keys with no prompt,
 //!    over messages the host chooses (with device drawn nonces, so nothing is extractable). That is a separate issue.
 //!    The legacy review is therefore an extraction control - it makes a second signature under one nonce visible and,
@@ -127,7 +128,8 @@
 //! from that run), rather than across a session file.
 //!
 //! Until then, the host-side cross-session nonce ledger (see the design decision above) is the intermediate step: it
-//! closes the restart gap in residuals 1 and 2 on the honest host, without device storage.
+//! closes residual 2 and the honest-host parts of residual 3, without device storage. It does not close residual 1 -
+//! a compromised host runs that ledger - which only these handles do.
 //!
 //! When that lands, these get deleted together:
 //!
@@ -259,7 +261,8 @@ pub const LEGACY_NONCE_RECORD_SIZE: usize = 64;
 /// **The record is RAM-backed and is cleared when the application run ends.** By design nothing is stored persistently
 /// on the device, so this is never moved to NVM. The host can end the run (the dashboard quit APDU `B0 A7`) and the
 /// user only has to reopen the app, so an attacker who wants a second signature under a used nonce index needs one
-/// restart between two approvals; cross-run protection is the host's job (see the module docs). The record never
+/// restart between two approvals. A host-side ledger protects an honest host across runs; against a compromised host
+/// only device-issued one-run nonce handles close this (see the module docs). The record never
 /// evicts: when it is full it refuses, until the application is restarted.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct LegacyNonceUse {

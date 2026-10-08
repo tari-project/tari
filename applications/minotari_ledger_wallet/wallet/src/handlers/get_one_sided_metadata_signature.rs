@@ -62,7 +62,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let head = OneSidedMetadataSignatureHead::decode(data).map_err(|_| AppSW::WrongApduLength)?;
 
     let account = head.account;
-    // A single byte on the wire since 6.1.1-pre.0, as it is in the hash label, so there is nothing to truncate.
+    // A single byte on the wire since 6.1.1-pre.1, as it is in the hash label, so there is nothing to truncate.
     let network = head.network;
     let txo_version = u64::from(head.txo_version);
     let sender_offset_key_index = head.sender_offset_key_index;

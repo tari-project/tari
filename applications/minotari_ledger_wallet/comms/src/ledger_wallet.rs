@@ -34,12 +34,15 @@ use minotari_ledger_wallet_common::codec::{CLA, Request};
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-/// `6.1.1-pre.0` is the first application that carries `sender_offset_branch` in `GetOneSidedMetadataSignature`, the
-/// `PreMine`-only legacy nonce whitelist, pre-mine mode in `GetScriptOffset`, and 64 bit key indexes. An older
-/// application would refuse or - worse, for pre-mine step 2 - silently mis-derive the sender offset key, so it is
-/// refused here. (Before that, `5.7.0-pre.6` was the first to take device issued nonce handles.) Keep this in step
-/// with the ledger application's `version` in its `Cargo.toml`.
-pub const MIN_LEDGER_APP_VERSION: &str = "6.1.1-pre.0";
+/// `6.1.1-pre.1` is the first application with the final `GetOneSidedMetadataSignature` layout (`sender_offset_branch`,
+/// byte-sized `network` / `txo_version`) and all of the checks: the `PreMine`-only legacy nonce whitelist, pre-mine
+/// mode in `GetScriptOffset`, 64 bit key indexes, the legacy used-nonce record keyed on the account's low word, the
+/// 2^32 nonce index and account rules, and the bit-63 rule for `PreMine` metadata sender offsets. Development builds
+/// that report `6.1.1-pre.0` have only some of these and misparse this host's metadata request. An older application
+/// would refuse or - worse, for pre-mine step 2 - silently mis-derive the sender offset key, so it is refused here.
+/// (Before that, `5.7.0-pre.6` was the first to take device issued nonce handles.) Keep this in step with the ledger
+/// application's `version` in its `Cargo.toml`.
+pub const MIN_LEDGER_APP_VERSION: &str = "6.1.1-pre.1";
 
 struct HidManager {
     inner: Option<HidApi>,

@@ -9,7 +9,7 @@
 //! commitment_mask(32) | address_size(2) | receiver_address(address_size) | message(32)`
 //!
 //! `network`, `txo_version` and `sender_offset_branch` are single bytes - they are bytes on both sides, and were
-//! widened to `u64`s until application 6.1.1-pre.0 narrowed them, which buys back the room `sender_offset_branch`
+//! widened to `u64`s until application 6.1.1-pre.1 narrowed them, which buys back the room `sender_offset_branch`
 //! took: a 149 byte receiver address (an 82 byte payment ID) fits one APDU again. `address_size` is a little endian
 //! `u16`, and anything after `message` is ignored.
 //!

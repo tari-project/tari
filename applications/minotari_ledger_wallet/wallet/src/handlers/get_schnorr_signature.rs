@@ -61,7 +61,9 @@ pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
 ///
 /// RAM-backed and owned by the event loop for the whole application run; it is never reset by another instruction or
 /// by an error, and is cleared only when the application run ends (which the host can cause). It is never persisted:
-/// by design nothing is stored on the device, and cross-run protection is the host's.
+/// by design nothing is stored on the device. An honest host protects itself across runs; a compromised host that
+/// restarts the app between two approvals is stopped only once device-issued one-run handles replace host-chosen
+/// nonce indexes (the TODO in `minotari_ledger_wallet_common::legacy_nonce`).
 pub type LegacyNonceCtx = [Option<LegacyNonceUse>; LEGACY_NONCE_RECORD_SIZE];
 
 fn legacy_record_error_to_app_sw(e: LegacyNonceRecordError) -> AppSW {
