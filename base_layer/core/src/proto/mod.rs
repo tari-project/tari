@@ -22,6 +22,16 @@
 
 //! Imports of code generated from protobuf files
 
+/// The decode budget (see `tari_comms::decode_budget`) of the RPC methods that carry a whole block body or
+/// transaction: sync_blocks, mempool get_state and submit_transaction, and the wallet's submit_transaction. The
+/// per-network test in `decode_budget_tests` checks a max-weight block fits it on every network.
+pub const BODY_MAX_DECODE_ITEMS: usize = 262_144;
+
+/// The decode budget for transactions, blocks and base node messages received over messaging: the same as the RPC
+/// block-body budget. A messaging frame is up to 8 MiB, so without it a single frame of empty inputs decodes into about
+/// 1 GB.
+pub const MESSAGE_MAX_DECODE_ITEMS: usize = BODY_MAX_DECODE_ITEMS;
+
 pub mod transaction;
 mod types_impls;
 
@@ -45,3 +55,6 @@ pub mod types {
 mod block;
 mod block_header;
 mod sidechain_feature;
+
+#[cfg(test)]
+mod decode_budget_tests;

@@ -476,7 +476,11 @@ mod test {
                 .await
                 .unwrap()
                 .unwrap();
-            msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
+            msg.success()
+                .unwrap()
+                .decode_part_with_max_items::<Vec<u8>>(0, 0)
+                .unwrap()
+                .unwrap()
         };
 
         assert_eq!(msg, b"secret");
@@ -530,7 +534,11 @@ mod test {
                 .await
                 .unwrap()
                 .unwrap();
-            msg.success().unwrap().decode_part::<Vec<u8>>(0).unwrap().unwrap()
+            msg.success()
+                .unwrap()
+                .decode_part_with_max_items::<Vec<u8>>(0, 0)
+                .unwrap()
+                .unwrap()
         };
 
         assert_eq!(msg, b"secret");

@@ -33,6 +33,7 @@ use std::{
 };
 
 use futures::{Sink, SinkExt, Stream, StreamExt};
+use prost::Message;
 use tari_common::configuration::Network;
 use tari_comms::{
     Bytes,
@@ -69,11 +70,13 @@ use crate::{
         MempoolServiceConfig,
         proto,
         sync_protocol::{
+            INVENTORY_INDEXES_MAX_DECODE_ITEMS,
             MAX_FRAME_SIZE,
             MEMPOOL_SYNC_PROTOCOL,
             MempoolPeerProtocol,
             MempoolProtocolError,
             MempoolSyncProtocol,
+            decode_frame,
         },
     },
     proto as shared_proto,
@@ -865,4 +868,242 @@ async fn responder_rejects_an_inventory_item_that_is_not_an_excess_signature() {
     );
     // Nothing was streamed before the substream closed
     assert!(framed.next().await.is_none());
+}
+
+/// The wire bytes of field `tag` holding `contents`
+fn len_field(tag: u32, contents: &[u8]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(contents.len() + 16);
+    prost::encoding::encode_key(tag, prost::encoding::WireType::LengthDelimited, &mut buf);
+    prost::encoding::encode_varint(contents.len() as u64, &mut buf);
+    buf.extend_from_slice(contents);
+    buf
+}
+
+/// Empty elements of the repeated field `tag` (two bytes each on the wire) that fill a frame
+fn frame_of_empty_elements(tag: u32) -> Vec<u8> {
+    len_field(tag, &[]).repeat(MAX_FRAME_SIZE / 2 - 16)
+}
+
+/// Checks that prost alone accepts `flood` and the decode budget rejects it. Callers pass a flood just over the
+/// budget, never a full frame: prost-decoding a full frame of empty elements costs hundreds of MB, and the lib tests
+/// run in parallel.
+fn assert_prost_accepts_but_budget_rejects<T>(flood: &[u8])
+where T: prost::Message + Default + tari_comms::decode_budget::DecodeBudget {
+    T::decode(flood).expect("prost alone accepts the flood");
+    tari_comms::decode_budget::check_decode_budget::<T>(flood, shared_proto::MESSAGE_MAX_DECODE_ITEMS)
+        .expect_err("the decode budget rejects the flood");
+}
+
+fn is_decode_budget_error(err: &MempoolProtocolError) -> bool {
+    matches!(err, MempoolProtocolError::DecodeFailed { source, .. } if source.to_string().contains("decode budget"))
+}
+
+/// An inventory frame of empty items is rejected by the decode budget before prost decodes it. Prost alone would
+/// accept it (~1.5M `Vec`s for a full frame), so the error being a decode-budget `DecodeFailed`, rather than
+/// `InvalidInventoryItem`, shows the frame never reached prost.
+#[tokio::test]
+async fn responder_rejects_an_inventory_frame_of_empty_items_before_decoding_it() {
+    // Inventory.items is tag 1
+    assert_prost_accepts_but_budget_rejects::<proto::TransactionInventory>(
+        &len_field(1, &[]).repeat(shared_proto::MESSAGE_MAX_DECODE_ITEMS + 1),
+    );
+    let inventory = frame_of_empty_elements(1);
+    assert!(inventory.len() <= MAX_FRAME_SIZE);
+
+    let (mempool, _) = new_mempool_with_transactions(1).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let responder = task::spawn(async move {
+        MempoolPeerProtocol::new(
+            Default::default(),
+            framing::canonical(sock_in, MAX_FRAME_SIZE),
+            peer.node_id().clone(),
+            mempool,
+        )
+        .start_responder()
+        .await
+    });
+
+    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    framed.send(Bytes::from(inventory)).await.unwrap();
+
+    let err = responder.await.unwrap().unwrap_err();
+    assert!(is_decode_budget_error(&err), "unexpected error: {err}");
+    assert!(framed.next().await.is_none());
+}
+
+/// A peer that announces one unknown transaction and answers the request for it with a frame of empty inputs is
+/// rejected by the decode budget; a legitimate transaction in the same place is inserted.
+#[tokio::test]
+async fn responder_rejects_a_transaction_frame_of_empty_inputs_before_decoding_it() {
+    // TransactionItem.transaction (1) -> Transaction.body (2) -> AggregateBody.inputs (1)
+    let item_of_empty_inputs = |count: usize| len_field(1, &len_field(2, &len_field(1, &[]).repeat(count)));
+    assert_prost_accepts_but_budget_rejects::<proto::TransactionItem>(&item_of_empty_inputs(
+        shared_proto::MESSAGE_MAX_DECODE_ITEMS + 1,
+    ));
+    // The frame actually sent fills MAX_FRAME_SIZE; it is only ever checked against the budget, never decoded
+    let flood = item_of_empty_inputs(MAX_FRAME_SIZE / 2 - 32);
+    assert!(flood.len() <= MAX_FRAME_SIZE);
+
+    for send_flood in [true, false] {
+        let (mempool, _) = new_mempool_with_transactions(1).await;
+        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let (sock_in, sock_out) = MemorySocket::new_pair();
+        let responder_mempool = mempool.clone();
+        let responder = task::spawn(async move {
+            MempoolPeerProtocol::new(
+                Default::default(),
+                framing::canonical(sock_in, MAX_FRAME_SIZE),
+                peer.node_id().clone(),
+                responder_mempool,
+            )
+            .start_responder()
+            .await
+        });
+
+        let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+        let unknown = create_transactions(1).remove(0);
+        let inventory = proto::TransactionInventory {
+            items: vec![excess_sig_bytes(&unknown)],
+        };
+        write_message(&mut framed, inventory).await;
+        loop {
+            let item: proto::TransactionItem = read_message(&mut framed).await;
+            if item.transaction.is_none() {
+                break;
+            }
+        }
+        let indexes: proto::InventoryIndexes = read_message(&mut framed).await;
+        assert_eq!(indexes.indexes, vec![0]);
+
+        if send_flood {
+            framed.send(Bytes::from(flood.clone())).await.unwrap();
+            let err = responder.await.unwrap().unwrap_err();
+            assert!(is_decode_budget_error(&err), "unexpected error: {err}");
+        } else {
+            write_message(&mut framed, transaction_item(&unknown)).await;
+            write_message(&mut framed, proto::TransactionItem::empty()).await;
+            responder.await.unwrap().unwrap();
+            let inserted = get_snapshot(&mempool).await;
+            assert!(
+                inserted
+                    .iter()
+                    .any(|tx| excess_sig_bytes(tx) == excess_sig_bytes(&unknown))
+            );
+        }
+    }
+}
+
+/// The largest inventory one frame can carry: 32-byte items at 34 wire bytes each
+const MAX_FRAME_INVENTORY_ITEMS: usize = MAX_FRAME_SIZE / 34;
+
+/// An `InventoryIndexes` reply naming every item of the largest inventory a frame can carry decodes under its cap,
+/// with headroom
+#[test]
+fn indexes_for_the_largest_inventory_a_frame_can_carry_round_trip() {
+    let largest_inventory = proto::TransactionInventory {
+        items: vec![vec![0xAA; 32]; MAX_FRAME_INVENTORY_ITEMS],
+    };
+    assert!(largest_inventory.encoded_len() <= MAX_FRAME_SIZE);
+
+    #[allow(clippy::cast_possible_truncation)]
+    let indexes = proto::InventoryIndexes {
+        indexes: (0..MAX_FRAME_INVENTORY_ITEMS as u32).collect(),
+    };
+    let frame = BytesMut::from(indexes.encode_to_vec().as_slice());
+    let charged =
+        tari_comms::decode_budget::check_decode_budget::<proto::InventoryIndexes>(&frame, usize::MAX).unwrap();
+    // At least 3x headroom over the largest honest list
+    assert!(
+        charged.saturating_mul(3) <= INVENTORY_INDEXES_MAX_DECODE_ITEMS,
+        "{charged}"
+    );
+
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let decoded: proto::InventoryIndexes =
+        decode_frame(frame, INVENTORY_INDEXES_MAX_DECODE_ITEMS, peer.node_id()).unwrap();
+    assert_eq!(decoded, indexes);
+}
+
+/// prost accepts `InventoryIndexes.indexes` unpacked (one varint per element), which the budget charges one item per
+/// element: a full frame of them is rejected before prost decodes it
+#[test]
+fn an_unpacked_indexes_flood_is_rejected_before_decoding_it() {
+    // `indexes` (tag 1) as a varint: two bytes per element
+    let element = [0x08, 0x00];
+    // Prost alone accepts unpacked indexes (checked on a small list; never prost-decode a full frame in a test)
+    assert_eq!(
+        proto::InventoryIndexes::decode(element.repeat(1_000).as_slice())
+            .unwrap()
+            .indexes
+            .len(),
+        1_000
+    );
+
+    let flood = element.repeat(MAX_FRAME_SIZE / 2);
+    assert!(flood.len() <= MAX_FRAME_SIZE);
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let err = decode_frame::<proto::InventoryIndexes>(
+        BytesMut::from(flood.as_slice()),
+        INVENTORY_INDEXES_MAX_DECODE_ITEMS,
+        peer.node_id(),
+    )
+    .unwrap_err();
+    assert!(is_decode_budget_error(&err), "unexpected error: {err}");
+}
+
+/// Runs an initiator with a mempool of `num_transactions`, plays a responder that sends no transactions and replies
+/// with `indexes`, and returns the initiator's result and the transactions it sent back
+async fn initiator_answering_indexes(
+    num_transactions: usize,
+    indexes: Vec<u32>,
+) -> (Result<(), MempoolProtocolError>, Vec<proto::TransactionItem>) {
+    let (mempool, _transactions) = new_mempool_with_transactions(num_transactions).await;
+    let peer_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let mut peer = framing::canonical(sock_in, MAX_FRAME_SIZE);
+    let framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let initiator = task::spawn(async move {
+        MempoolPeerProtocol::new(Default::default(), framed, peer_node.node_id().clone(), mempool)
+            .start_initiator()
+            .await
+    });
+
+    let inventory: proto::TransactionInventory = read_message(&mut peer).await;
+    assert_eq!(inventory.items.len(), num_transactions);
+    write_message(&mut peer, proto::TransactionItem::empty()).await;
+    write_message(&mut peer, proto::InventoryIndexes { indexes }).await;
+
+    let result = initiator.await.unwrap();
+    let mut sent = Vec::new();
+    while let Some(Ok(frame)) = peer.next().await {
+        let item = proto::TransactionItem::decode(frame.freeze()).unwrap();
+        if item.transaction.is_none() {
+            break;
+        }
+        sent.push(item);
+    }
+    (result, sent)
+}
+
+/// A repeated index is sent once
+#[tokio::test]
+async fn the_initiator_sends_each_requested_transaction_once() {
+    let (result, sent) = initiator_answering_indexes(2, vec![1, 1]).await;
+    result.unwrap();
+    assert_eq!(sent.len(), 1);
+}
+
+/// A reply asking for more indexes than inventory items were sent is rejected, and nothing is sent
+#[tokio::test]
+async fn the_initiator_rejects_more_indexes_than_it_sent_items() {
+    let (result, sent) = initiator_answering_indexes(2, vec![0; 3]).await;
+    assert!(
+        matches!(
+            result,
+            Err(MempoolProtocolError::TooManyInventoryIndexes { count: 3, max: 2, .. })
+        ),
+        "unexpected result: {result:?}"
+    );
+    assert!(sent.is_empty());
 }

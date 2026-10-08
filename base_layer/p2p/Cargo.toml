@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 tari_comms = { workspace = true }
 tari_comms_dht = { workspace = true }
+tari_comms_rpc_macros = { workspace = true }
 tari_common = { workspace = true }
 tari_common_sqlite = { workspace = true }
 tari_service_framework = { workspace = true }
@@ -57,4 +58,6 @@ test-mocks = []
 auto-update = ["reqwest/default", "pgp", "semver"]
 
 [package.metadata.cargo-machete]
-ignored = []
+# tari_comms_rpc_macros: used only by the `DecodeBudget` derive that build.rs adds to the prost-generated code in OUT_DIR,
+# which machete does not scan
+ignored = ["tari_comms_rpc_macros"]

@@ -63,6 +63,7 @@ use tracing::{Instrument, Level, span};
 
 use super::message::RpcMethod;
 use crate::{
+    decode_budget::{DecodeBudget, check_decode_budget},
     framing::CanonicalFraming,
     message::MessageExt,
     peer_manager::NodeId,
@@ -144,11 +145,13 @@ impl RpcClient {
         Ok(Self { connector })
     }
 
-    /// Perform a single request and single response
-    pub async fn request_response<T, R, M>(&mut self, request: T, method: M) -> Result<R, RpcError>
+    /// Perform a single request and single response. The response is rejected with
+    /// [RpcError::DecodeBudgetExceeded] before decoding if it carries more than `max_items` embedded items (see
+    /// [crate::decode_budget]).
+    pub async fn request_response<T, R, M>(&mut self, request: T, method: M, max_items: usize) -> Result<R, RpcError>
     where
         T: prost::Message,
-        R: prost::Message + Default + std::fmt::Debug,
+        R: prost::Message + Default + DecodeBudget + std::fmt::Debug,
         M: Into<RpcMethod>,
     {
         let req_bytes = request.to_encoded_bytes();
@@ -156,16 +159,25 @@ impl RpcClient {
 
         let mut resp = self.call_inner(request).await?;
         let resp = resp.recv().await.ok_or(RpcError::ServerClosedRequest)??;
-        let resp = R::decode(resp.into_message())?;
+        let resp = resp.into_message();
+        check_decode_budget::<R>(&resp, max_items)?;
+        let resp = R::decode(resp)?;
 
         Ok(resp)
     }
 
-    /// Perform a single request and streaming response
-    pub async fn server_streaming<T, M, R>(&mut self, request: T, method: M) -> Result<ClientStreaming<R>, RpcError>
+    /// Perform a single request and streaming response. Each streamed item is rejected with
+    /// [RpcError::DecodeBudgetExceeded] before decoding if it carries more than `max_items` embedded items (see
+    /// [crate::decode_budget]).
+    pub async fn server_streaming<T, M, R>(
+        &mut self,
+        request: T,
+        method: M,
+        max_items: usize,
+    ) -> Result<ClientStreaming<R>, RpcError>
     where
         T: prost::Message,
-        R: prost::Message + Default,
+        R: prost::Message + Default + DecodeBudget,
         M: Into<RpcMethod>,
     {
         let req_bytes = request.to_encoded_bytes();
@@ -173,7 +185,7 @@ impl RpcClient {
 
         let resp = self.call_inner(request).await?;
 
-        Ok(ClientStreaming::new(resp))
+        Ok(ClientStreaming::new(resp, max_items))
     }
 
     /// Close the RPC session. Any subsequent calls will error.

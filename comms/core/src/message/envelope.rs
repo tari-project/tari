@@ -26,6 +26,7 @@ use std::{
 };
 
 use super::MessageError;
+use crate::decode_budget::{DecodeBudget, decode_with_max_items};
 // Re-export protos
 pub use crate::proto::envelope::*;
 
@@ -85,10 +86,21 @@ impl EnvelopeBody {
 
     /// Decodes a part of the message body and returns the result. If the part index is out of range Ok(None) is
     /// returned
+    #[deprecated(note = "use the _with_max_items variant, which bounds what decoding can allocate")]
     pub fn decode_part<T>(&self, index: usize) -> Result<Option<T>, MessageError>
     where T: prost::Message + Default {
         match self.parts.get(index) {
             Some(part) => T::decode(part.as_slice()).map(Some).map_err(Into::into),
+            None => Ok(None),
+        }
+    }
+
+    /// Like [Self::decode_part], but rejects a part carrying more than `max_items` embedded items (see
+    /// [crate::decode_budget]) before decoding it. The rejection is a [MessageError::DecodeError].
+    pub fn decode_part_with_max_items<T>(&self, index: usize, max_items: usize) -> Result<Option<T>, MessageError>
+    where T: prost::Message + Default + DecodeBudget {
+        match self.parts.get(index) {
+            Some(part) => decode_with_max_items(part, max_items).map(Some).map_err(Into::into),
             None => Ok(None),
         }
     }
@@ -97,5 +109,48 @@ impl EnvelopeBody {
 impl Display for EnvelopeBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} byte(s), {} part(s)", self.total_size(), self.len())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use prost::Message;
+
+    use super::*;
+
+    fn body_of_empty_parts(count: usize) -> EnvelopeBody {
+        EnvelopeBody {
+            parts: vec![Vec::new(); count],
+        }
+    }
+
+    #[test]
+    fn decode_part_with_max_items_rejects_an_over_budget_part_before_decoding_it() {
+        let flood = body_of_empty_parts(2_000).encode_to_vec();
+        let at_budget = body_of_empty_parts(1_000).encode_to_vec();
+        let body = EnvelopeBody {
+            parts: vec![flood, at_budget],
+        };
+
+        // Prost alone accepts the flood
+        assert_eq!(
+            EnvelopeBody::decode(body.parts.first().unwrap().as_slice())
+                .unwrap()
+                .len(),
+            2_000
+        );
+        let err = body.decode_part_with_max_items::<EnvelopeBody>(0, 1_000).unwrap_err();
+        assert!(err.to_string().contains("decode budget"), "unexpected error: {err}");
+
+        let decoded = body
+            .decode_part_with_max_items::<EnvelopeBody>(1, 1_000)
+            .unwrap()
+            .unwrap();
+        assert_eq!(decoded.len(), 1_000);
+        assert!(
+            body.decode_part_with_max_items::<EnvelopeBody>(2, 1_000)
+                .unwrap()
+                .is_none()
+        );
     }
 }

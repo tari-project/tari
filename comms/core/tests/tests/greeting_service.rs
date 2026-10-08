@@ -150,7 +150,7 @@ impl GreetingRpc for GreetingService {
     }
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SayHelloRequest {
     #[prost(string, tag = "1")]
     pub name: String,
@@ -158,13 +158,13 @@ pub struct SayHelloRequest {
     pub language: u32,
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SayHelloResponse {
     #[prost(string, tag = "1")]
     pub greeting: String,
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct StreamLargeItemsRequest {
     #[prost(uint64, tag = "1")]
     pub id: u64,

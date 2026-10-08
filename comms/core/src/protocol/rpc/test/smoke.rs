@@ -206,7 +206,7 @@ async fn request_response_errors_and_streaming() {
     assert_eq!(status.details(), "I haven't gotten to this yet :(");
 
     let stream = client.streaming_error("Gurglesplurb".to_string()).await.unwrap();
-    let status = stream
+    let err = stream
         // StreamExt::collect has a Default trait bound which Result<_, _> cannot satisfy
         // so we must first collect the results into a Vec
         .collect::<Vec<_>>()
@@ -214,6 +214,7 @@ async fn request_response_errors_and_streaming() {
         .into_iter()
         .collect::<Result<String, _>>()
         .unwrap_err();
+    unpack_enum!(RpcError::RequestFailed(status) = err);
     assert_eq!(status.as_status_code(), RpcStatusCode::BadRequest);
     assert_eq!(status.details(), "What does 'Gurglesplurb' mean?");
 
@@ -224,6 +225,7 @@ async fn request_response_errors_and_streaming() {
     assert_eq!(first_reply, "This is ok");
 
     let second_reply = results.get(1).unwrap().as_ref().unwrap_err();
+    unpack_enum!(RpcError::RequestFailed(second_reply) = second_reply);
     assert_eq!(second_reply.as_status_code(), RpcStatusCode::BadRequest);
     assert_eq!(second_reply.details(), "This is a problem");
 
@@ -1035,4 +1037,332 @@ async fn a_slow_reader_receives_every_item_of_a_prefetched_stream() {
         .await
         .unwrap();
     assert_eq!(resp.greeting, "Sawubona Ruby");
+}
+
+/// Connects a new peer to the server behind `notif_tx`, returning its identity and its end of the connection
+async fn connect_peer(
+    notif_tx: &mpsc::Sender<ProtocolNotification<Substream>>,
+    context: &RpcCommsBackend,
+) -> (Arc<NodeIdentity>, Yamux) {
+    let (_, inbound, outbound) = build_multiplexed_connections().await;
+    let node_identity = build_node_identity(Default::default());
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
+    spawn_inbound(
+        inbound.into_incoming(),
+        notif_tx.clone(),
+        node_identity.node_id().clone(),
+    );
+    (node_identity, outbound)
+}
+
+/// Opens a substream for the greeting protocol and never completes the handshake. It sends one byte (the start of a
+/// frame length prefix): yamux opens a stream lazily, so the server only learns of it when data arrives.
+async fn open_silent_substream(peer: &Yamux) -> Substream {
+    let mut substream = peer.get_yamux_control().open_stream().await.unwrap();
+    substream.write_all(&[0]).await.unwrap();
+    substream.flush().await.unwrap();
+    substream
+}
+
+/// Whether the server has closed (or dropped) `substream` within `wait`
+async fn is_closed_within(substream: &mut Substream, wait: Duration) -> bool {
+    let mut buf = [0u8; 16];
+    match time::timeout(wait, substream.read(&mut buf)).await {
+        // EOF or an error: the server dropped it
+        Ok(Ok(0)) | Ok(Err(_)) => true,
+        Ok(Ok(n)) => panic!("unexpected {n} byte(s) on a substream that never sent a handshake"),
+        Err(_elapsed) => false,
+    }
+}
+
+async fn connect_greeting_client(peer: &Yamux) -> Result<GreetingClient, RpcError> {
+    let socket = peer.get_yamux_control().open_stream().await.unwrap();
+    GreetingClient::builder()
+        .with_deadline(Duration::from_secs(5))
+        .with_handshake_timeout(Duration::from_secs(5))
+        .connect(framing::canonical(socket, 1024))
+        .await
+}
+
+/// Handshakes run off the accept loop: a peer holding substreams open without ever handshaking does not delay another
+/// peer's session, even with a long handshake timeout
+#[tokio::test]
+async fn silent_substreams_do_not_stall_other_peers() {
+    let builder = RpcServer::builder().with_handshake_timeout(Duration::from_secs(60));
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+
+    let (_, silent_peer) = connect_peer(&notif_tx, &context).await;
+    let mut silent = Vec::new();
+    for _ in 0..2 {
+        silent.push(open_silent_substream(&silent_peer).await);
+    }
+
+    let (_, honest_peer) = connect_peer(&notif_tx, &context).await;
+    let mut client = time::timeout(Duration::from_secs(5), connect_greeting_client(&honest_peer))
+        .await
+        .expect("the session was held up behind the silent handshakes")
+        .unwrap();
+    let resp = client
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(resp.greeting, "Jambo Yathvan");
+
+    // The silent substreams are still waiting for their handshakes
+    for substream in &mut silent {
+        assert!(!is_closed_within(substream, Duration::from_millis(200)).await);
+    }
+}
+
+/// Pending handshakes are capped per peer and in total: a substream over either cap is refused at once with an
+/// explicit `NoServerSessionsAvailable` rejection (not dropped, which a client pool would treat as a failure to
+/// connect). A handshake that times out releases its slot.
+#[tokio::test]
+async fn pending_handshakes_are_capped_and_released_on_timeout() {
+    let builder = RpcServer::builder()
+        .with_handshake_timeout(Duration::from_secs(2))
+        .with_maximum_pending_handshakes_per_client(2)
+        .with_maximum_pending_handshakes(3);
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+
+    // Peer A fills its own cap; its next session is refused
+    let (_, peer_a) = connect_peer(&notif_tx, &context).await;
+    let mut a1 = open_silent_substream(&peer_a).await;
+    let mut a2 = open_silent_substream(&peer_a).await;
+    assert_explicitly_rejected(&peer_a).await;
+
+    // Peer B takes the last global slot; peer C is then refused by the global cap
+    let (_, peer_b) = connect_peer(&notif_tx, &context).await;
+    let mut b1 = open_silent_substream(&peer_b).await;
+    assert!(!is_closed_within(&mut b1, Duration::from_millis(200)).await);
+    let (_, peer_c) = connect_peer(&notif_tx, &context).await;
+    assert_explicitly_rejected(&peer_c).await;
+    assert!(!is_closed_within(&mut a1, Duration::from_millis(10)).await);
+
+    // Once the pending handshakes time out, they are closed and their slots released: A and C can both connect
+    for substream in [&mut a1, &mut a2, &mut b1] {
+        assert!(
+            is_closed_within(substream, Duration::from_secs(5)).await,
+            "handshake did not time out"
+        );
+    }
+    let _client_a = connect_greeting_client(&peer_a).await.unwrap();
+    let _client_c = connect_greeting_client(&peer_c).await.unwrap();
+}
+
+/// A handshake in progress does not outlive the server: shutting it down aborts the handshake task and closes the
+/// substream, well before the handshake timeout
+#[tokio::test]
+async fn pending_handshakes_end_with_the_server() {
+    let builder = RpcServer::builder().with_handshake_timeout(Duration::from_secs(60));
+    let (notif_tx, server, context, shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut silent = open_silent_substream(&peer).await;
+    assert!(!is_closed_within(&mut silent, Duration::from_millis(200)).await);
+
+    shutdown.trigger();
+    server.await.unwrap();
+    assert!(is_closed_within(&mut silent, Duration::from_secs(5)).await);
+}
+
+/// A handshake frame (length prefix and `RpcSession`)
+fn handshake_frame() -> Vec<u8> {
+    use crate::{message::MessageExt, proto};
+
+    let handshake = proto::rpc::RpcSession {
+        supported_versions: vec![0],
+    }
+    .to_encoded_bytes();
+    let mut frame = u32::try_from(handshake.len()).unwrap().to_be_bytes().to_vec();
+    frame.extend_from_slice(&handshake);
+    frame
+}
+
+/// Starts a handshake and holds it open after its first byte. Waits for the server to have taken it in (and, if it is
+/// accepted, reserved its session).
+async fn hold_handshake(peer: &Yamux) -> Substream {
+    let mut held = peer.get_yamux_control().open_stream().await.unwrap();
+    held.write_all(handshake_frame().get(..1).unwrap()).await.unwrap();
+    held.flush().await.unwrap();
+    time::sleep(Duration::from_millis(200)).await;
+    held
+}
+
+/// Completes a held handshake and asserts it is accepted and its session stays open
+async fn complete_held_handshake(mut held: Substream) -> framing::CanonicalFraming<Substream> {
+    use prost::Message;
+
+    use crate::proto;
+
+    held.write_all(handshake_frame().get(1..).unwrap()).await.unwrap();
+    held.flush().await.unwrap();
+    let mut held = framing::canonical(held, 1024);
+    let reply = time::timeout(Duration::from_secs(5), held.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let reply = proto::rpc::RpcSessionReply::decode(reply.freeze()).unwrap();
+    assert_eq!(
+        reply.session_result,
+        Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(0))
+    );
+    assert!(
+        time::timeout(Duration::from_millis(500), held.next()).await.is_err(),
+        "an accepted handshake was dropped"
+    );
+    held
+}
+
+/// Asserts that connecting fails with an explicit `NoServerSessionsAvailable` rejection, which a client pool treats as
+/// "use an existing session"
+async fn assert_explicitly_rejected(peer: &Yamux) {
+    let Err(rejection) = connect_greeting_client(peer).await else {
+        panic!("the session was not rejected");
+    };
+    unpack_enum!(RpcError::HandshakeError(rejection) = rejection);
+    unpack_enum!(RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable(_)) = rejection);
+}
+
+/// With one session slot left, two overlapping handshakes from one peer get exactly one session and one explicit
+/// rejection. The first handshake is held open while the second arrives, so they overlap. Neither may be accepted and
+/// then dropped, which the client would only see as the substream closing on its first request (`ServerClosedRequest`,
+/// blamed on the server).
+async fn assert_one_session_and_one_explicit_rejection(builder: RpcServerBuilder) {
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    // Takes all but one slot
+    let _first = connect_greeting_client(&peer).await.unwrap();
+
+    let held = hold_handshake(&peer).await;
+    // The second handshake, while the first is pending: explicitly rejected
+    assert_explicitly_rejected(&peer).await;
+    // The first completes: it is accepted, and its session stays open
+    complete_held_handshake(held).await;
+}
+
+#[tokio::test]
+async fn concurrent_handshakes_at_the_global_limit_are_rejected_not_dropped() {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(2)
+        .with_unlimited_sessions_per_client();
+    assert_one_session_and_one_explicit_rejection(builder).await;
+}
+
+#[tokio::test]
+async fn concurrent_handshakes_at_the_per_client_limit_are_rejected_not_dropped() {
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(100)
+        .with_maximum_sessions_per_client(2);
+    assert_one_session_and_one_explicit_rejection(builder).await;
+}
+
+/// In cull mode, the cull decision counts accepted handshakes: a new request culls the oldest running sessions when
+/// that leaves room for it, alongside the handshakes already accepted, and is then accepted. It is never refused after
+/// sessions were culled for it.
+#[tokio::test]
+async fn culling_counts_accepted_handshakes() {
+    let builder = RpcServer::builder()
+        .with_maximum_sessions_per_client(2)
+        .with_cull_oldest_peer_rpc_connection_on_full(true);
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let _oldest = connect_greeting_client(&peer).await.unwrap();
+    let mut second = connect_greeting_client(&peer).await.unwrap();
+
+    // At the limit: this culls the oldest session and is accepted (and reserved)
+    let held = hold_handshake(&peer).await;
+    // One running session and one accepted handshake: this culls the second session and is accepted
+    let mut newest = connect_greeting_client(&peer).await.unwrap();
+    let greeting = newest
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .unwrap();
+    assert_eq!(greeting.greeting, "Jambo Yathvan");
+    second
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .expect_err("the second session was not culled");
+    complete_held_handshake(held).await;
+}
+
+/// In cull mode, accepted handshakes are never culled: once they alone fill the peer's limit, a further request is
+/// explicitly rejected, and the accepted handshakes still get their sessions
+#[tokio::test]
+async fn culling_cannot_make_room_past_accepted_handshakes() {
+    let builder = RpcServer::builder()
+        .with_maximum_sessions_per_client(2)
+        .with_cull_oldest_peer_rpc_connection_on_full(true);
+    let (notif_tx, _server, context, _shutdown) = setup_service_with_builder(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut running = connect_greeting_client(&peer).await.unwrap();
+
+    // One running session: accepted without culling
+    let held_a = hold_handshake(&peer).await;
+    // One running and one accepted: culls the running session, accepted
+    let held_b = hold_handshake(&peer).await;
+    running
+        .say_hello(SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        })
+        .await
+        .expect_err("the running session was not culled");
+
+    // Two accepted handshakes fill the limit: rejected
+    assert_explicitly_rejected(&peer).await;
+    let _a = complete_held_handshake(held_a).await;
+    let _b = complete_held_handshake(held_b).await;
+}
+
+/// A client is only told its session was accepted once the server counts it. With the in-memory transport the server's
+/// status query races the session's registration as closely as it can: on every one of many connects, the count read
+/// straight after `connect` returns already includes the new session.
+#[tokio::test]
+async fn a_session_is_counted_before_the_client_is_told_it_was_accepted() {
+    const NUM_SESSIONS: usize = 50;
+    let (notif_tx, notif_rx) = mpsc::channel(10);
+    let (context, _) = create_mocked_rpc_context();
+    let server = RpcServer::builder()
+        .with_maximum_sessions_per_client(NUM_SESSIONS)
+        .with_maximum_simultaneous_sessions(NUM_SESSIONS)
+        .finish();
+    let mut handle = server.get_handle();
+    let _server = task::spawn({
+        let context = context.clone();
+        async move {
+            server
+                .add_service(GreetingServer::new(GreetingService::default()))
+                .serve(notif_rx, context)
+                .await
+                .unwrap();
+        }
+    });
+    let (node_identity, peer) = connect_peer(&notif_tx, &context).await;
+
+    let mut clients = Vec::with_capacity(NUM_SESSIONS);
+    for expected in 1..=NUM_SESSIONS {
+        clients.push(connect_greeting_client(&peer).await.unwrap());
+        let counted = handle
+            .get_num_active_sessions_for(node_identity.node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            counted, expected,
+            "the client was told it was accepted before its session was counted"
+        );
+    }
 }

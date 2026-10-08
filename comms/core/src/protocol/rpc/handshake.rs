@@ -20,17 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, time::Duration};
+use std::{cmp, io, time::Duration};
 
 use bytes::BytesMut;
 use futures::{SinkExt, StreamExt};
-use log::info;
 use prost::{DecodeError, Message};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     time,
 };
-use tracing::{Instrument, Level, debug, error, span, warn};
+use tracing::{Instrument, Level, debug, error, span, trace, warn};
 
 use crate::{framing::CanonicalFraming, message::MessageExt, proto, protocol::rpc::error::HandshakeRejectReason};
 
@@ -40,12 +39,18 @@ const LOG_TARGET: &str = "comms::rpc::handshake";
 /// Currently only v0 is supported
 pub(super) const SUPPORTED_RPC_VERSIONS: &[u32] = &[0];
 
+/// The largest handshake frame either side will read. A handshake carries a short list of protocol versions (or the
+/// reply to one), so anything near this size is not a real handshake. The codec's frame limit is lowered to this while
+/// a handshake frame is read, so a larger declared length is rejected before any buffer is reserved for it (the RPC
+/// framing otherwise allows 8 MiB).
+pub(super) const MAX_HANDSHAKE_FRAME_SIZE: usize = 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum RpcHandshakeError {
     #[error("Failed to decode message: {0}")]
     DecodeError(#[from] DecodeError),
     #[error("IO Error: {0}")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     #[error("The client does not support any RPC protocol version supported by this node")]
     ClientNoSupportedVersion,
     #[error("Remote peer unexpectedly closed the RPC connection")]
@@ -56,6 +61,30 @@ pub enum RpcHandshakeError {
     Rejected(#[from] HandshakeRejectReason),
     #[error("The client connection is closed")]
     ClientClosed,
+    #[error("Handshake frame was larger than the {max} byte limit")]
+    FrameTooLarge { max: usize },
+}
+
+impl From<io::Error> for RpcHandshakeError {
+    fn from(err: io::Error) -> Self {
+        // The codec rejects a frame whose declared length is over its limit with this error, before reading it
+        if err
+            .get_ref()
+            .is_some_and(|inner| inner.is::<tokio_util::codec::LengthDelimitedCodecError>())
+        {
+            return RpcHandshakeError::FrameTooLarge {
+                max: MAX_HANDSHAKE_FRAME_SIZE,
+            };
+        }
+        RpcHandshakeError::Io(err)
+    }
+}
+
+fn send_timed_out() -> RpcHandshakeError {
+    RpcHandshakeError::Io(io::Error::new(
+        io::ErrorKind::TimedOut,
+        "timed out sending a handshake frame",
+    ))
 }
 
 /// Handshake protocol
@@ -78,8 +107,17 @@ where T: AsyncRead + AsyncWrite + Unpin
         self
     }
 
-    /// Server-side handshake protocol
+    /// Server-side handshake protocol: receives the client's handshake and replies with the negotiated version
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
+        let version = self.receive_client_handshake().await?;
+        self.accept_version(version).await?;
+        Ok(version)
+    }
+
+    /// The first half of the server-side handshake: receives the client's handshake and negotiates a version. If none
+    /// is supported, sends the rejection and returns `ClientNoSupportedVersion`. The acceptance is sent separately
+    /// with [Self::accept_version], so a server can register the session before the client learns it was accepted.
+    pub async fn receive_client_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
@@ -88,15 +126,6 @@ where T: AsyncRead + AsyncWrite + Unpin
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
                     debug!(target: LOG_TARGET, "Local server accepted version: {}", version);
-                    let reply = proto::rpc::RpcSessionReply {
-                        session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
-                        ..Default::default()
-                    };
-                    let span = span!(Level::INFO, "rpc::server::handshake::send_accept_version_reply");
-                    self.framed
-                        .send(reply.to_encoded_bytes().into())
-                        .instrument(span)
-                        .await?;
                     return Ok(*version);
                 }
 
@@ -107,28 +136,58 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::ClientNoSupportedVersion)
             },
             Ok(Some(Err(err))) => {
-                info!(target: LOG_TARGET, "Error during handshake: {err}");
+                trace!(target: LOG_TARGET, "Error during handshake: {err}");
                 Err(err.into())
             },
             Ok(None) => {
-                info!(target: LOG_TARGET, "Error during handshake, client closed connection");
+                trace!(target: LOG_TARGET, "Error during handshake, client closed connection");
                 Err(RpcHandshakeError::ClientClosed)
             },
             Err(_) => {
-                info!(target: LOG_TARGET, "Error during handshake, timed out");
+                trace!(target: LOG_TARGET, "Error during handshake, timed out");
                 Err(RpcHandshakeError::TimedOut)
             },
         }
     }
 
+    /// The second half of the server-side handshake: tells the client its session was accepted with `version`, within
+    /// the timeout if one is set
+    pub async fn accept_version(&mut self, version: u32) -> Result<(), RpcHandshakeError> {
+        let reply = proto::rpc::RpcSessionReply {
+            session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(version)),
+            ..Default::default()
+        };
+        let span = span!(Level::INFO, "rpc::server::handshake::send_accept_version_reply");
+        self.send_bounded(reply.to_encoded_bytes().into())
+            .instrument(span)
+            .await
+    }
+
     pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {
-        warn!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
+        // Trace: a peer can trigger one per substream; the server counts rejections and rate-limits its warnings
+        trace!(target: LOG_TARGET, "Rejecting handshake because {}", reject_reason);
         let reply = proto::rpc::RpcSessionReply {
             session_result: Some(proto::rpc::rpc_session_reply::SessionResult::Rejected(true)),
             reject_reason: reject_reason.as_i32(),
         };
-        self.framed.send(reply.to_encoded_bytes().into()).await?;
-        self.framed.close().await?;
+        self.send_bounded(reply.to_encoded_bytes().into()).await?;
+        match self.timeout {
+            Some(timeout) => time::timeout(timeout, self.framed.close())
+                .await
+                .map_err(|_| send_timed_out())??,
+            None => self.framed.close().await?,
+        }
+        Ok(())
+    }
+
+    /// Sends a handshake frame, within the timeout if one is set. A send that does not finish in time is an IO error.
+    async fn send_bounded(&mut self, frame: bytes::Bytes) -> Result<(), RpcHandshakeError> {
+        match self.timeout {
+            Some(timeout) => time::timeout(timeout, self.framed.send(frame))
+                .await
+                .map_err(|_| send_timed_out())??,
+            None => self.framed.send(frame).await?,
+        }
         Ok(())
     }
 
@@ -171,10 +230,18 @@ where T: AsyncRead + AsyncWrite + Unpin
         }
     }
 
+    /// Reads the next (handshake) frame with the codec's frame limit lowered to [MAX_HANDSHAKE_FRAME_SIZE], restoring
+    /// the previous limit afterwards
     async fn recv_next_frame(&mut self) -> Result<Option<Result<BytesMut, io::Error>>, time::error::Elapsed> {
-        match self.timeout {
+        let previous_limit = self.framed.codec().max_frame_length();
+        self.framed
+            .codec_mut()
+            .set_max_frame_length(cmp::min(previous_limit, MAX_HANDSHAKE_FRAME_SIZE));
+        let result = match self.timeout {
             Some(timeout) => time::timeout(timeout, self.framed.next()).await,
             None => Ok(self.framed.next().await),
-        }
+        };
+        self.framed.codec_mut().set_max_frame_length(previous_limit);
+        result
     }
 }

@@ -78,11 +78,12 @@ use error::MempoolProtocolError;
 use futures::{SinkExt, Stream, StreamExt, stream};
 pub use initializer::MempoolSyncInitializer;
 use log::*;
-use prost::Message;
 use tari_comms::{
     Bytes,
+    BytesMut,
     PeerConnection,
     connectivity::{ConnectivityEvent, ConnectivityRequester, ConnectivitySelection},
+    decode_budget::{DecodeBudget, check_decode_budget},
     framing,
     framing::CanonicalFraming,
     message::MessageExt,
@@ -118,6 +119,16 @@ const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 
 /// Size of a transaction inventory item: a kernel excess signature scalar.
 const INVENTORY_ITEM_SIZE: usize = 32;
+
+/// The decode budget for the `InventoryIndexes` reply. Its only list is a repeated `uint32`, which the budget charges
+/// by byte length when packed and one item per element when unpacked.
+///
+/// The general [`shared_proto::MESSAGE_MAX_DECODE_ITEMS`] (262,144) is too tight for it: the largest inventory one
+/// frame can carry is ~92.5k items (34 wire bytes each), and the packed list of all their indexes is ~261k bytes. And
+/// the item budget adds little here: a list of `u32`s decodes into at most 4 bytes per element, never more than ~4x its
+/// wire size, with no per-element allocation. This cap leaves 3x headroom over the largest honest (packed) list while
+/// still rejecting a full frame of unpacked indexes (~1.57M elements at 2 bytes each).
+const INVENTORY_INDEXES_MAX_DECODE_ITEMS: usize = MAX_FRAME_SIZE / 4;
 
 /// Deadline for a single control message — the transaction inventory and the list of requested
 /// indexes. Both are one bounded frame, so a short deadline is safe.
@@ -161,6 +172,26 @@ fn log_close_outcome(result: Result<Result<(), std::io::Error>, time::error::Ela
         Ok(Err(err)) => debug!(target: LOG_TARGET, "IO error when closing stream: {err}"),
         Ok(Ok(())) => {},
     }
+}
+
+/// Decode a frame received from the peer, first checking that it carries at most `max_items` embedded message
+/// instances (see `tari_comms::decode_budget`). A frame is up to [`MAX_FRAME_SIZE`]; without the check, one frame of
+/// empty transaction inputs decodes into ~1.5M inputs (~365 MB). Every repeated element, including each `bytes` item
+/// of the inventory, is charged, so the budget also bounds an inventory of empty items. An over-budget frame is
+/// reported as [`MempoolProtocolError::DecodeFailed`], exactly like any other undecodable frame.
+fn decode_frame<T>(frame: BytesMut, max_items: usize, peer: &NodeId) -> Result<T, MempoolProtocolError>
+where T: prost::Message + Default + DecodeBudget {
+    let to_error = |source| MempoolProtocolError::DecodeFailed {
+        source,
+        peer: peer.clone(),
+    };
+    check_decode_budget::<T>(&frame, max_items).map_err(|err| {
+        to_error(prost::DecodeError::new(format!(
+            "message exceeds the decode budget ({} embedded items, at most {} allowed)",
+            err.items, err.max
+        )))
+    })?;
+    T::decode(&mut frame.freeze()).map_err(to_error)
 }
 
 pub static MEMPOOL_SYNC_PROTOCOL: Bytes = Bytes::from_static(b"t/mempool-sync/1");
@@ -548,6 +579,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             .map(|excess| excess.get_signature().to_vec())
             .collect();
         let inventory = proto::TransactionInventory { items };
+        let num_inventory_items = inventory.items.len();
 
         // Send an inventory of items currently in this node's mempool
         debug!(
@@ -561,22 +593,33 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         self.read_and_insert_transactions_until_complete().await?;
 
-        let missing_items: proto::InventoryIndexes = self.read_message().await?;
+        let missing_items: proto::InventoryIndexes = self.read_message(INVENTORY_INDEXES_MAX_DECODE_ITEMS).await?;
         debug!(
             target: LOG_TARGET,
             "Received {} missing transaction index(es) from peer `{}`",
             missing_items.indexes.len(),
             self.peer_node_id.short_str(),
         );
+        // The peer can only be missing items we sent it, each once. Without these checks a reply naming one index up to
+        // the frame limit would make this node send that transaction over and over.
+        if missing_items.indexes.len() > num_inventory_items {
+            return Err(MempoolProtocolError::TooManyInventoryIndexes {
+                peer: self.peer_node_id.clone(),
+                count: missing_items.indexes.len(),
+                max: num_inventory_items,
+            });
+        }
+        let mut requested = HashSet::with_capacity(missing_items.indexes.len());
         let missing_txns = missing_items
             .indexes
             .iter()
+            .filter(|idx| requested.insert(**idx))
             .filter_map(|idx| transactions.get(*idx as usize).cloned())
             .collect::<Vec<_>>();
         debug!(
             target: LOG_TARGET,
             "Sending {} missing transaction(s) to peer `{}`",
-            missing_items.indexes.len(),
+            missing_txns.len(),
             self.peer_node_id.short_str(),
         );
 
@@ -623,7 +666,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let inventory: proto::TransactionInventory = self.read_message().await?;
+        let inventory: proto::TransactionInventory = self.read_message(shared_proto::MESSAGE_MAX_DECODE_ITEMS).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -735,12 +778,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
         {
             let bytes = result?;
-            let item = proto::TransactionItem::decode(&mut bytes.freeze()).map_err(|err| {
-                MempoolProtocolError::DecodeFailed {
-                    source: err,
-                    peer: self.peer_node_id.clone(),
-                }
-            })?;
+            let item: proto::TransactionItem =
+                decode_frame(bytes, shared_proto::MESSAGE_MAX_DECODE_ITEMS, &self.peer_node_id)?;
 
             match item.transaction {
                 Some(txn) => {
@@ -845,16 +884,16 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         Ok(())
     }
 
-    async fn read_message<T: prost::Message + Default>(&mut self) -> Result<T, MempoolProtocolError> {
+    /// Read one control message, rejecting it before decoding if it carries more than `max_items` embedded message
+    /// instances (see [`decode_frame`]).
+    async fn read_message<T>(&mut self, max_items: usize) -> Result<T, MempoolProtocolError>
+    where T: prost::Message + Default + DecodeBudget {
         let msg = time::timeout(MESSAGE_TIMEOUT, self.framed.next())
             .await
             .map_err(|_| MempoolProtocolError::RecvTimeout)?
             .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_node_id.clone()))??;
 
-        T::decode(&mut msg.freeze()).map_err(|err| MempoolProtocolError::DecodeFailed {
-            source: err,
-            peer: self.peer_node_id.clone(),
-        })
+        decode_frame(msg, max_items, &self.peer_node_id)
     }
 
     async fn write_messages<S, T>(&mut self, stream: S) -> Result<(), MempoolProtocolError>

@@ -395,7 +395,7 @@ async fn test_dht_propagate_dedup() {
     let mut node_D_messaging = node_D.messaging_events.subscribe();
     let mut node_D_messaging2 = node_D.messaging_events.subscribe();
 
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, ::prost::Message, tari_comms_rpc_macros::DecodeBudget)]
     struct Person {
         #[prost(string, tag = "1")]
         name: String,
@@ -429,7 +429,7 @@ async fn test_dht_propagate_dedup() {
     let person = msg
         .decryption_result
         .unwrap()
-        .decode_part::<Person>(1)
+        .decode_part_with_max_items::<Person>(1, tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS)
         .unwrap()
         .unwrap();
     assert_eq!(person.name, "John Conway");
@@ -534,7 +534,7 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
 
     let mut node_C_messaging = node_C.messaging_events.subscribe();
 
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, ::prost::Message, tari_comms_rpc_macros::DecodeBudget)]
     struct Person {
         #[prost(string, tag = "1")]
         name: String,
@@ -625,7 +625,7 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     let person = msg
         .decryption_result
         .unwrap()
-        .decode_part::<Person>(1)
+        .decode_part_with_max_items::<Person>(1, tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS)
         .unwrap()
         .unwrap();
     assert_eq!(person.name, "John Conway");
@@ -708,7 +708,7 @@ async fn test_dht_repropagate() {
     connect_nodes(&mut node_A, &mut node_C).await;
     connect_nodes(&mut node_B, &mut node_C).await;
 
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, ::prost::Message, tari_comms_rpc_macros::DecodeBudget)]
     struct Person {
         #[prost(string, tag = "1")]
         name: String,
@@ -813,7 +813,7 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
     wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, ::prost::Message, tari_comms_rpc_macros::DecodeBudget)]
     struct Person {
         #[prost(string, tag = "1")]
         name: String,
@@ -923,7 +923,7 @@ async fn test_dht_header_not_malleable() {
     ensure_connected(&node_B, &[node_C.node_identity().node_id()]).await;
     wait_for_connectivity_to_settle(&[&node_A, &node_B, &node_C]).await;
 
-    #[derive(Clone, PartialEq, ::prost::Message)]
+    #[derive(Clone, PartialEq, ::prost::Message, tari_comms_rpc_macros::DecodeBudget)]
     struct Person {
         #[prost(string, tag = "1")]
         name: String,

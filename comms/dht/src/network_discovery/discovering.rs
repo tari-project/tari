@@ -30,7 +30,7 @@ use tari_comms::{
     RefKind,
     connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer, PeerId},
-    protocol::rpc::{ClientStreaming, RpcStatus},
+    protocol::rpc::{ClientStreaming, RpcError},
     types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
@@ -308,7 +308,7 @@ impl Discovering {
         &mut self,
         stream: &mut ClientStreaming<GetPeersResponse>,
         sync_peer: &NodeId,
-    ) -> Result<Option<Result<GetPeersResponse, RpcStatus>>, NetworkDiscoveryError> {
+    ) -> Result<Option<Result<GetPeersResponse, RpcError>>, NetworkDiscoveryError> {
         let rpc_streaming_timeout = self.config().network_discovery.bootstrap_rpc_streaming_timeout;
 
         tokio::time::timeout(rpc_streaming_timeout, stream.next())
@@ -349,7 +349,7 @@ impl Discovering {
                     target: LOG_TARGET,
                     "Discovering: Sync peer `{sync_peer}` sent an error response: {err:?}"
                 );
-                NetworkDiscoveryError::from(err)
+                NetworkDiscoveryError::from_stream_error(err)
             })?;
             let peer = peer
                 .ok_or_else(|| NetworkDiscoveryError::EmptyPeerMessageReceived)
@@ -574,6 +574,22 @@ mod test {
 
     fn validation_error(err: PeerValidatorError) -> NetworkDiscoveryError {
         DhtPeerValidatorError::ValidatorError(err).into()
+    }
+
+    #[test]
+    fn a_bad_get_peers_stream_item_is_a_high_offence_but_a_status_stays_low() {
+        use tari_comms::protocol::rpc::RpcStatus;
+
+        let over_budget = NetworkDiscoveryError::from_stream_error(RpcError::DecodeBudgetExceeded { items: 2, max: 1 });
+        assert!(matches!(offence_severity(&over_budget), Some(OffenceSeverity::High)));
+
+        let undecodable =
+            NetworkDiscoveryError::from_stream_error(RpcError::DecodeError(prost::DecodeError::new("bad item")));
+        assert!(matches!(offence_severity(&undecodable), Some(OffenceSeverity::High)));
+
+        let status = NetworkDiscoveryError::from_stream_error(RpcError::RequestFailed(RpcStatus::bad_request("no")));
+        assert!(matches!(status, NetworkDiscoveryError::RpcStatus(_)));
+        assert!(matches!(offence_severity(&status), Some(OffenceSeverity::Low)));
     }
 
     #[test]

@@ -21,61 +21,57 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use proc_macro2::Span;
-use quote::quote;
 use syn::{
     Ident,
+    LitByteStr,
+    LitInt,
     Token,
-    parse::{Parse, ParseBuffer},
+    bracketed,
+    parse::{Parse, ParseStream},
+    punctuated::Punctuated,
 };
 
-#[allow(dead_code)]
+/// Options given to `#[tari_rpc(...)]`
 #[derive(Debug)]
 pub struct RpcTraitOptions {
-    pub protocol_name: syn::LitByteStr,
-    pub dep_module_name: Ident,
-    pub client_struct: Option<Ident>,
-    pub server_struct: Option<Ident>,
-}
-// Parses `= <value>` in `<name> = <value>` and returns value and span of name-value pair.
-fn parse_value<T: Parse>(input: &ParseBuffer<'_>, name: &Ident) -> syn::Result<T> {
-    if input.is_empty() {
-        return Err(syn_error!(name, "expected `{0} = <identifier>`, found `{0}`", name));
-    }
-    let eq_token: Token![=] = input.parse()?;
-    if input.is_empty() {
-        let span = quote!(#name #eq_token);
-        return Err(syn_error!(span, "expected `{0} = <identifier>`, found `{0} =`", name));
-    }
-    let value = input.parse()?;
-    Ok(value)
+    /// The protocol name used during protocol negotiation
+    pub protocol_name: LitByteStr,
+    /// The name of the generated client struct
+    pub client_struct: Ident,
+    /// The name of the generated server struct
+    pub server_struct: Ident,
+    /// Method numbers that must never be (re)used, e.g. the numbers of removed methods
+    pub reserved_methods: Vec<LitInt>,
 }
 
 impl Parse for RpcTraitOptions {
-    fn parse(input: &ParseBuffer<'_>) -> Result<Self, syn::Error> {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let mut protocol_name = None;
         let mut server_struct = None;
         let mut client_struct = None;
-        let mut module_name = syn::Ident::new("__rpc_deps", Span::call_site());
+        let mut reserved_methods = None;
 
         while !input.is_empty() {
-            let name: syn::Ident = input.parse()?;
+            let name: Ident = input.parse()?;
+            let _: Token![=] = input.parse()?;
 
             match name.to_string().as_str() {
-                "protocol_name" => protocol_name = Some(parse_value(input, &name)?),
-                "dep_module" => {
-                    module_name = parse_value(input, &name)?;
-                },
-                "server_struct" => {
-                    server_struct = parse_value(input, &name)?;
-                },
-
-                "client_struct" => {
-                    client_struct = parse_value(input, &name)?;
+                "protocol_name" => set_once(&mut protocol_name, &name, input.parse()?)?,
+                "server_struct" => set_once(&mut server_struct, &name, input.parse()?)?,
+                "client_struct" => set_once(&mut client_struct, &name, input.parse()?)?,
+                "reserved_methods" => {
+                    let content;
+                    bracketed!(content in input);
+                    let list = Punctuated::<LitInt, Token![,]>::parse_terminated(&content)?;
+                    for lit in &list {
+                        lit.base10_parse::<u32>()?;
+                    }
+                    set_once(&mut reserved_methods, &name, list.into_iter().collect())?;
                 },
                 n => {
                     return Err(syn_error!(
                         name,
-                        "expected `protocol_name`, `dep_module`, `server_struct` or `client_struct`, found `{}`",
+                        "expected `protocol_name`, `server_struct`, `client_struct` or `reserved_methods`, found `{}`",
                         n
                     ));
                 },
@@ -84,16 +80,27 @@ impl Parse for RpcTraitOptions {
             if input.is_empty() {
                 break;
             }
-
             let _: Token![,] = input.parse()?;
         }
 
         Ok(Self {
-            protocol_name: protocol_name
-                .ok_or_else(|| syn::Error::new(Span::call_site(), "protocol_name must be specified"))?,
-            dep_module_name: module_name,
-            client_struct,
-            server_struct,
+            protocol_name: protocol_name.ok_or_else(|| missing("protocol_name = b\"...\""))?,
+            server_struct: server_struct.ok_or_else(|| missing("server_struct = <Name>"))?,
+            client_struct: client_struct.ok_or_else(|| missing("client_struct = <Name>"))?,
+            reserved_methods: reserved_methods.unwrap_or_default(),
         })
     }
+}
+
+/// Stores `value` in `slot`, or errors if the option was already given.
+fn set_once<T>(slot: &mut Option<T>, name: &Ident, value: T) -> syn::Result<()> {
+    if slot.is_some() {
+        return Err(syn_error!(name, "`{}` is specified more than once", name));
+    }
+    *slot = Some(value);
+    Ok(())
+}
+
+fn missing(option: &str) -> syn::Error {
+    syn::Error::new(Span::call_site(), format!("#[tari_rpc(...)] requires `{option}`"))
 }

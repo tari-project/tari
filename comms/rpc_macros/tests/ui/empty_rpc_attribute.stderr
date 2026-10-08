@@ -1,0 +1,5 @@
+error: #[rpc(...)] on method `hello` requires `method = <number>`
+  --> tests/ui/empty_rpc_attribute.rs:11:5
+   |
+11 |     #[rpc()]
+   |     ^^^^^^^^

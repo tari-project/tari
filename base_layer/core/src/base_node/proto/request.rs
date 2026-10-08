@@ -30,6 +30,13 @@ use crate::{
     proto::{base_node as proto, base_node::base_node_service_request::Request as ProtoNodeCommsRequest},
 };
 
+/// The most kernel excess signatures a `FetchMempoolTransactionsByExcessSigs` request may carry. A node asks for the
+/// excess signatures of a new block's kernels that it is missing from its mempool, so a request never needs more than a
+/// block's kernels: about 9,000 on mainnet and 12,780 on the 127,795-weight networks (checked for every network in
+/// `proto::decode_budget_tests::per_network`). Without a cap the decode budget alone allows ~246k signatures in an
+/// 8 MiB frame, each parsed and looked up, with a not-found list of the same size echoed back.
+pub(crate) const MAX_EXCESS_SIGS_PER_REQUEST: usize = 16_384;
+
 //---------------------------------- BaseNodeRequest --------------------------------------------//
 impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
@@ -41,6 +48,12 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
                 NodeCommsRequest::GetBlockFromAllChains(req.hash.try_into().map_err(|_| "Malformed hash".to_string())?)
             },
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
+                if excess_sigs.excess_sigs.len() > MAX_EXCESS_SIGS_PER_REQUEST {
+                    return Err(format!(
+                        "Too many excess sigs: {}, at most {MAX_EXCESS_SIGS_PER_REQUEST} allowed",
+                        excess_sigs.excess_sigs.len()
+                    ));
+                }
                 let excess_sigs = excess_sigs
                     .excess_sigs
                     .into_iter()
@@ -80,5 +93,30 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
 impl From<Vec<u64>> for proto::BlockHeights {
     fn from(heights: Vec<u64>) -> Self {
         Self { heights }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn request(count: usize) -> ProtoNodeCommsRequest {
+        // A canonical scalar
+        let sig = PrivateKey::from(1u64).to_vec();
+        ProtoNodeCommsRequest::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
+            excess_sigs: vec![sig; count],
+        })
+    }
+
+    #[test]
+    fn excess_sig_requests_are_capped() {
+        let converted: NodeCommsRequest = request(MAX_EXCESS_SIGS_PER_REQUEST).try_into().unwrap();
+        assert!(matches!(
+            converted,
+            NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } if excess_sigs.len() == MAX_EXCESS_SIGS_PER_REQUEST
+        ));
+
+        let err = TryInto::<NodeCommsRequest>::try_into(request(MAX_EXCESS_SIGS_PER_REQUEST + 1)).unwrap_err();
+        assert!(err.contains("Too many excess sigs"), "{err}");
     }
 }

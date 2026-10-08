@@ -47,6 +47,8 @@ pub enum MempoolProtocolError {
     RecvTimeout,
     #[error("Peer `{peer}` sent more than the agreed maximum of {max} transaction(s)")]
     TooManyTransactions { peer: NodeId, max: usize },
+    #[error("Peer `{peer}` asked for {count} inventory index(es), but only {max} inventory item(s) were sent")]
+    TooManyInventoryIndexes { peer: NodeId, count: usize, max: usize },
     #[error("Peer `{peer}` sent an inventory item of {len} byte(s) at index {index}; expected {expected}")]
     InvalidInventoryItem {
         peer: NodeId,

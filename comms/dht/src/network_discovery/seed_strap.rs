@@ -800,7 +800,7 @@ async fn collect_peer_stream<S>(
     rpc_streaming_timeout: Duration,
 ) -> Result<Vec<crate::proto::rpc::PeerInfo>, NetworkDiscoveryError>
 where
-    S: StreamExt<Item = Result<crate::proto::rpc::GetPeersResponse, tari_comms::protocol::rpc::RpcStatus>> + Unpin,
+    S: StreamExt<Item = Result<crate::proto::rpc::GetPeersResponse, tari_comms::protocol::rpc::RpcError>> + Unpin,
 {
     let max_peers = max_peers.max(1);
     // Allow some slack for empty responses interleaved with real ones before abandoning the round.
@@ -888,7 +888,7 @@ where
                             peers_from_seed.len(),
                             stream_items_processed_total
                         );
-                        return Err(e.into());
+                        return Err(NetworkDiscoveryError::from_stream_error(e));
                     },
                     None => {
                         debug!(
@@ -918,14 +918,14 @@ where
 #[cfg(test)]
 mod test {
     use futures::stream;
-    use tari_comms::protocol::rpc::RpcStatus;
+    use tari_comms::protocol::rpc::{RpcError, RpcStatus};
 
     use super::*;
     use crate::proto::rpc::{GetPeersResponse, PeerInfo};
 
     const TIMEOUT: Duration = Duration::from_secs(30);
 
-    fn peer_response(n: usize) -> Vec<Result<GetPeersResponse, RpcStatus>> {
+    fn peer_response(n: usize) -> Vec<Result<GetPeersResponse, RpcError>> {
         (0..n)
             .map(|i| {
                 Ok(GetPeersResponse {
@@ -958,7 +958,7 @@ mod test {
     /// never fire. Without the item budget this call does not return at all.
     #[tokio::test]
     async fn it_gives_up_on_an_endless_stream_of_empty_responses() {
-        let mut peer_stream = stream::repeat(Ok(GetPeersResponse { peer: None }));
+        let mut peer_stream = stream::repeat_with(|| Ok(GetPeersResponse { peer: None }));
         let peers = tokio::time::timeout(
             Duration::from_secs(5),
             collect_peer_stream("seed", &mut peer_stream, 10, TIMEOUT),
@@ -972,12 +972,14 @@ mod test {
     /// Same, but the peer drip-feeds real entries as well, so the peer cap is what stops it.
     #[tokio::test]
     async fn it_gives_up_on_an_endless_stream_of_peers() {
-        let mut peer_stream = stream::repeat(Ok(GetPeersResponse {
-            peer: Some(PeerInfo {
-                public_key: vec![1u8; 32],
-                claims: vec![],
-            }),
-        }));
+        let mut peer_stream = stream::repeat_with(|| {
+            Ok(GetPeersResponse {
+                peer: Some(PeerInfo {
+                    public_key: vec![1u8; 32],
+                    claims: vec![],
+                }),
+            })
+        });
         let peers = tokio::time::timeout(
             Duration::from_secs(5),
             collect_peer_stream("seed", &mut peer_stream, 7, TIMEOUT),
@@ -991,7 +993,7 @@ mod test {
     #[tokio::test]
     async fn it_propagates_a_stream_error() {
         let mut responses = peer_response(1);
-        responses.push(Err(RpcStatus::general("the seed fell over")));
+        responses.push(Err(RpcError::RequestFailed(RpcStatus::general("the seed fell over"))));
         let mut peer_stream = stream::iter(responses);
 
         let err = collect_peer_stream("seed", &mut peer_stream, 10, TIMEOUT)
@@ -1004,12 +1006,14 @@ mod test {
     /// or collecting nothing.
     #[tokio::test]
     async fn a_zero_request_still_makes_progress_and_terminates() {
-        let mut peer_stream = stream::repeat(Ok(GetPeersResponse {
-            peer: Some(PeerInfo {
-                public_key: vec![1u8; 32],
-                claims: vec![],
-            }),
-        }));
+        let mut peer_stream = stream::repeat_with(|| {
+            Ok(GetPeersResponse {
+                peer: Some(PeerInfo {
+                    public_key: vec![1u8; 32],
+                    claims: vec![],
+                }),
+            })
+        });
         let peers = tokio::time::timeout(
             Duration::from_secs(5),
             collect_peer_stream("seed", &mut peer_stream, 0, TIMEOUT),

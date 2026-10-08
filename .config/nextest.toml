@@ -1,6 +1,12 @@
 [profile.ci]
 slow-timeout = { period = "120s", terminate-after=3}
 
+# The trybuild compile-fail tests build the macro crate's dev-dependencies (tari_comms and friends) in their own target
+# directory on first run, which can take several minutes on a loaded runner.
+[[profile.ci.overrides]]
+filter = 'package(tari_comms_rpc_macros) and binary(compile_fail)'
+slow-timeout = { period = "300s", terminate-after = 3 }
+
 [profile.ci.junit]  # this can be some other profile, too
 path = "junit.xml"
 

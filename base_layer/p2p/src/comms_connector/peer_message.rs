@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::{
+    decode_budget::{DecodeBudget, decode_with_max_items},
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
@@ -42,10 +43,22 @@ pub struct PeerMessage {
 }
 
 impl PeerMessage {
+    /// Decodes the body with no decode budget. Not for messages from peers: a message of empty repeated elements can
+    /// decode into far more memory than its size.
+    #[deprecated(note = "use the _with_max_items variant, which bounds what decoding can allocate")]
     pub fn decode_message<T>(&self) -> Result<T, prost::DecodeError>
     where T: prost::Message + Default {
         let msg = T::decode(self.body.as_slice())?;
         Ok(msg)
+    }
+
+    /// Like [Self::decode_message], but first checks that the body carries at most `max_items` embedded message
+    /// instances (see `tari_comms::decode_budget`), so an over-budget message is rejected before prost allocates
+    /// anything for it. The rejection is a `DecodeError`, so callers handle it exactly like any other undecodable
+    /// message.
+    pub fn decode_message_with_max_items<T>(&self, max_items: usize) -> Result<T, prost::DecodeError>
+    where T: prost::Message + Default + DecodeBudget {
+        decode_with_max_items(&self.body, max_items)
     }
 
     pub fn origin_node_id(&self) -> NodeId {

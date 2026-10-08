@@ -147,7 +147,7 @@ async fn prompt(node: &CommsNode, dht: &Dht) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Clone, prost::Message)]
+#[derive(Clone, prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 struct PropagationMessage {
     #[prost(uint32, tag = "1")]
     id: u32,
@@ -176,7 +176,13 @@ fn spawn_received_message_logger(_node: &CommsNode, mut msg_in: mpsc::Receiver<D
         while let Some(msg) = msg_in.recv().await {
             total_received += 1;
             let body = msg.success().unwrap();
-            let msg = body.decode_part::<PropagationMessage>(1).unwrap().unwrap();
+            let msg = body
+                .decode_part_with_max_items::<PropagationMessage>(
+                    1,
+                    tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS,
+                )
+                .unwrap()
+                .unwrap();
             let dt = chrono::DateTime::parse_from_rfc2822(&msg.ts).unwrap();
             let since = chrono::Utc::now().signed_duration_since(dt);
             tps.push_front(Instant::now());

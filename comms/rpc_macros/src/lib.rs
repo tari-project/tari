@@ -6,6 +6,7 @@ use proc_macro::TokenStream;
 #[macro_use]
 mod macros;
 
+mod decode_budget;
 mod expand;
 mod generator;
 mod method_info;
@@ -62,18 +63,44 @@ mod options;
 /// ```
 ///
 /// `tari_rpc` options
-/// - `protocol_name` is the value used during protocol negotiation
-/// - `server_struct` is the name of the "server" struct that is generated
-/// - `client_struct` is the name of the client struct that is generated
+/// - `protocol_name` (required) is the value used during protocol negotiation
+/// - `server_struct` (required) is the name of the "server" struct that is generated
+/// - `client_struct` (required) is the name of the client struct that is generated
+/// - `reserved_methods = [N, ...]` (optional) lists method numbers that must never be used again, e.g. those of removed
+///   methods. Using one is a compile error.
 ///
 /// `rpc` attribute
-/// - `method` is a unique number that uniquely identifies each function within the service. Once a `method` is used it
-///   should never be reused (think protobuf field numbers).
+/// - `method` (required) is a unique, non-zero number that identifies each function within the service. Once a `method`
+///   is used it should never be reused (think protobuf field numbers).
+/// - `max_items` (optional) is the decode budget for the method: the maximum number of embedded message instances its
+///   request, its response or each item of its response stream may carry (see `tari_comms::decode_budget`). Request and
+///   response types must implement `DecodeBudget` (derive it with `#[derive(DecodeBudget)]`). The server checks
+///   requests against it before decoding them and the generated client checks responses. Defaults to
+///   `tari_comms::decode_budget::DEFAULT_MAX_DECODE_ITEMS`. Either a non-zero integer literal or a path to a `usize`
+///   constant (checked to be non-zero at compile time), so a budget can be shared with code that tests it.
+/// - `max_request_items` (optional) is a separate decode budget for the request only, which the server checks before
+///   decoding it. Defaults to `max_items`. Use it when requests are small but responses large (e.g. a batch query whose
+///   handler accepts a few hundred hashes but returns many outputs), so a request cannot use the response budget. It
+///   may be larger than `max_items`.
+///
+/// Every RPC method must have the form `async fn name(&self, request: Request<T>) -> Result<Response<U>, RpcStatus>`
+/// or `async fn name(&self, request: Request<T>) -> Result<Streaming<U>, RpcStatus>`. Anything else is a compile error.
 #[proc_macro_attribute]
 pub fn tari_rpc(attr: TokenStream, item: TokenStream) -> TokenStream {
     let options = syn::parse_macro_input!(attr as options::RpcTraitOptions);
     let target_trait = syn::parse_macro_input!(item as syn::ItemTrait);
-    let code = expand::expand_trait(target_trait, options);
-    let ts = quote::quote! { #code };
-    ts.into()
+    expand::expand_trait(target_trait, options).into()
+}
+
+/// `#[derive(DecodeBudget)]` implements `tari_comms::decode_budget::DecodeBudget` for a prost message, oneof or enum.
+///
+/// It reads the `#[prost(...)]` field attributes (as emitted by prost-build) and generates a walker over the encoded
+/// message that charges one instance for each message-typed field (optional, repeated, map values and oneof variants)
+/// and descends into it with that type's own walker. Each element of a repeated `bytes`/`string` field is charged one
+/// item and a packed repeated scalar field its byte length; `bytes`, `string` and scalar contents are never entered.
+/// `tari_common::build::ProtobufCompiler` adds this derive to every tari protobuf type.
+#[proc_macro_derive(DecodeBudget, attributes(prost))]
+pub fn derive_decode_budget(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    decode_budget::expand(&input).into()
 }

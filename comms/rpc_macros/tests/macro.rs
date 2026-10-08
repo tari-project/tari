@@ -58,7 +58,7 @@ pub trait Test: Sync + Send + 'static {
     fn some_non_rpc_method(&self);
 }
 
-#[derive(Clone, PartialEq, prost::Message)]
+#[derive(Clone, PartialEq, prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct CustomMessage {}
 
 #[derive(Default)]

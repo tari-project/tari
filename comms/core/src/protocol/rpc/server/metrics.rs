@@ -55,6 +55,32 @@ pub fn handshake_error_counter(protocol: &ProtocolId) -> IntCounter {
     METER.with_label_values(&[String::from_utf8_lossy(protocol).as_ref()])
 }
 
+pub fn handshake_capacity_rejection_counter(protocol: &ProtocolId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::rpc::server::handshake_capacity_rejection_count",
+            "The number of substreams refused because too many handshakes were in progress, per protocol",
+            &["protocol"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[String::from_utf8_lossy(protocol).as_ref()])
+}
+
+pub fn handshake_timeout_counter(protocol: &ProtocolId) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::rpc::server::handshake_timeout_count",
+            "The number of handshakes that timed out waiting for the client, per protocol",
+            &["protocol"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[String::from_utf8_lossy(protocol).as_ref()])
+}
+
 pub fn error_counter(protocol: &ProtocolId, err: &RpcServerError) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(

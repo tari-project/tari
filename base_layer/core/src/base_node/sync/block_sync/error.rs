@@ -77,6 +77,12 @@ pub enum BlockSyncError {
 impl BlockSyncError {
     pub fn to_short_str(&self) -> &'static str {
         match self {
+            // Stream items carry the server's error status as `RpcError::RequestFailed`
+            BlockSyncError::RpcError(RpcError::RequestFailed(status))
+                if status.as_status_code() == RpcStatusCode::Timeout =>
+            {
+                "RpcTimeout"
+            },
             BlockSyncError::RpcError(_) => "RpcError",
             BlockSyncError::RpcRequestError(status) if status.as_status_code() == RpcStatusCode::Timeout => {
                 "RpcTimeout"

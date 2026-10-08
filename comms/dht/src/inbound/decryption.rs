@@ -28,6 +28,7 @@ use prost::Message;
 use tari_comms::{
     BytesMut,
     connectivity::ConnectivityRequester,
+    decode_budget::decode_with_max_items,
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
     pipeline::PipelineError,
@@ -43,6 +44,7 @@ use crate::{
     crypt,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
     message_signature::{MessageSignature, ProtoMessageSignature},
+    proto::DHT_MESSAGE_MAX_DECODE_ITEMS,
 };
 
 const LOG_TARGET: &str = "comms::middleware::decryption";
@@ -275,6 +277,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     validated_msg.into_message(),
                 ))
             },
+            // The body passed the AEAD check, so the message is provably for us, but it did not decode (or was over
+            // the decode budget). Drop it: treating it as "not for us" would forward it on.
+            Err(DecryptionError::EnvelopeBodyDecodeFailed) => Err(DecryptionError::EnvelopeBodyDecodeFailed),
             Err(err) => {
                 debug!(
                     target: LOG_TARGET,
@@ -347,7 +352,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::MessageRejectDecryptionFailed)?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
-        EnvelopeBody::decode(decrypted.freeze())
+        decode_with_max_items::<EnvelopeBody>(&decrypted, DHT_MESSAGE_MAX_DECODE_ITEMS)
             .and_then(|body| {
                 // Check if we received a body length of zero
                 //
@@ -378,7 +383,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let authenticated_pk = validated.authenticated_origin().cloned();
         let msg = validated.message();
-        match EnvelopeBody::decode(msg.body.as_slice()) {
+        match decode_with_max_items::<EnvelopeBody>(&msg.body, DHT_MESSAGE_MAX_DECODE_ITEMS) {
             Ok(deserialized) => {
                 trace!(
                     target: LOG_TARGET,
@@ -736,6 +741,99 @@ mod test {
                 // Ban the peer
                 expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature, true).await;
             }
+        }
+    }
+
+    #[tokio::test]
+    /// An envelope body with more parts than the decode budget allows is rejected before prost decodes it, with the
+    /// handling any other undecodable body gets: discarded, without a ban. (The encrypted case is
+    /// `a_decryptable_body_that_fails_to_decode_is_dropped_not_forwarded`.)
+    async fn an_envelope_body_over_the_decode_budget_is_rejected() {
+        let node_identity = make_node_identity();
+        let flood = EnvelopeBody {
+            parts: vec![Vec::new(); DHT_MESSAGE_MAX_DECODE_ITEMS + 1],
+        };
+        // Prost alone accepts it
+        assert_eq!(
+            EnvelopeBody::decode(flood.to_encoded_bytes().as_slice()).unwrap(),
+            flood
+        );
+
+        // Clear text (the test maker only signs encrypted messages correctly; this one needs no signature)
+        let message = make_dht_inbound_message(&node_identity, &flood, DhtMessageFlags::NONE, false, true).unwrap();
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
+        service.call(message).await.unwrap();
+        assert!(result.lock().unwrap().is_none(), "an over-budget body was passed on");
+        sleep(Duration::from_secs(1)).await;
+        assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
+
+        // At the budget, it decodes
+        let at_budget = EnvelopeBody {
+            parts: vec![Vec::new(); DHT_MESSAGE_MAX_DECODE_ITEMS],
+        };
+        let message =
+            make_dht_inbound_message(&node_identity, &at_budget, DhtMessageFlags::ENCRYPTED, true, true).unwrap();
+        let decrypted = expect_no_error(node_identity, message, true).await;
+        assert_eq!(decrypted.decryption_result.unwrap(), at_budget);
+    }
+
+    /// Calls the decryption service with `message` and returns whether the message was passed on (to the forwarder
+    /// and the rest of the pipeline), and how many bans were requested
+    async fn passed_on_and_bans(node_identity: Arc<NodeIdentity>, message: DhtInboundMessage) -> (bool, usize) {
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let result = Arc::new(Mutex::new(None));
+        let service = service_fn({
+            let result = result.clone();
+            move |msg: DecryptedDhtMessage| {
+                *result.lock().unwrap() = Some(msg);
+                future::ready(Result::<(), PipelineError>::Ok(()))
+            }
+        });
+        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+        service.call(message).await.unwrap();
+        sleep(Duration::from_secs(1)).await;
+        let passed_on = result.lock().unwrap().is_some();
+        (passed_on, mock_state.count_calls_containing("BanPeer").await)
+    }
+
+    #[tokio::test]
+    /// An encrypted body that decrypts (so passes the AEAD check, and is provably for us) but does not decode, or is
+    /// over the decode budget, is dropped without a ban. It used to be treated as "not for us" and passed on as
+    /// undecrypted, which forwards it.
+    async fn a_decryptable_body_that_fails_to_decode_is_dropped_not_forwarded() {
+        let node_identity = make_node_identity();
+        let over_budget = EnvelopeBody {
+            parts: vec![Vec::new(); DHT_MESSAGE_MAX_DECODE_ITEMS + 1],
+        };
+        // Encodes as field 1 with a varint, which prost rejects for `EnvelopeBody.parts` (field 1, bytes)
+        let undecodable = 1u32;
+
+        for (name, message) in [
+            (
+                "over budget",
+                make_dht_inbound_message(&node_identity, &over_budget, DhtMessageFlags::ENCRYPTED, true, true),
+            ),
+            (
+                "undecodable",
+                make_dht_inbound_message(&node_identity, &undecodable, DhtMessageFlags::ENCRYPTED, true, true),
+            ),
+        ] {
+            assert_eq!(
+                passed_on_and_bans(node_identity.clone(), message.unwrap()).await,
+                (false, 0),
+                "{name}"
+            );
         }
     }
 }

@@ -42,7 +42,16 @@ use crate::{
     async_trait,
     protocol::{
         ProtocolId,
-        rpc::{NamedProtocolService, Request, Response, RpcError, RpcServerError, RpcStatus, Streaming},
+        rpc::{
+            DEFAULT_MAX_DECODE_ITEMS,
+            NamedProtocolService,
+            Request,
+            Response,
+            RpcError,
+            RpcServerError,
+            RpcStatus,
+            Streaming,
+        },
     },
     utils,
 };
@@ -239,7 +248,7 @@ impl GreetingRpc for SlowGreetingService {
         unimplemented!()
     }
 }
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SlowStreamRequest {
     #[prost(uint32, tag = "1")]
     pub num_items: u32,
@@ -249,7 +258,7 @@ pub struct SlowStreamRequest {
     pub delay_ms: u64,
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SayHelloRequest {
     #[prost(string, tag = "1")]
     pub name: String,
@@ -257,7 +266,7 @@ pub struct SayHelloRequest {
     pub language: u32,
 }
 
-#[derive(prost::Message)]
+#[derive(prost::Message, tari_comms_rpc_macros::DecodeBudget)]
 pub struct SayHelloResponse {
     #[prost(string, tag = "1")]
     pub greeting: String,
@@ -422,38 +431,38 @@ impl GreetingClient {
     }
 
     pub async fn say_hello(&mut self, request: SayHelloRequest) -> Result<SayHelloResponse, RpcError> {
-        self.inner.request_response(request, 1).await
+        self.inner.request_response(request, 1, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn return_error(&mut self) -> Result<(), RpcError> {
-        self.inner.request_response((), 2).await
+        self.inner.request_response((), 2, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn get_greetings(&mut self, request: u32) -> Result<__rpc_deps::ClientStreaming<String>, RpcError> {
-        self.inner.server_streaming(request, 3).await
+        self.inner.server_streaming(request, 3, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn streaming_error(&mut self, request: String) -> Result<__rpc_deps::ClientStreaming<String>, RpcError> {
-        self.inner.server_streaming(request, 4).await
+        self.inner.server_streaming(request, 4, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn streaming_error2(&mut self) -> Result<__rpc_deps::ClientStreaming<String>, RpcError> {
-        self.inner.server_streaming((), 5).await
+        self.inner.server_streaming((), 5, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn get_public_key_hex(&mut self) -> Result<String, RpcError> {
-        self.inner.request_response((), 6).await
+        self.inner.request_response((), 6, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn reply_with_msg_of_size(&mut self, request: u64) -> Result<String, RpcError> {
-        self.inner.request_response(request, 7).await
+        self.inner.request_response(request, 7, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub async fn slow_stream(
         &mut self,
         request: SlowStreamRequest,
     ) -> Result<__rpc_deps::ClientStreaming<Vec<u8>>, RpcError> {
-        self.inner.server_streaming(request, 8).await
+        self.inner.server_streaming(request, 8, DEFAULT_MAX_DECODE_ITEMS).await
     }
 
     pub fn get_last_request_latency(&mut self) -> Option<Duration> {

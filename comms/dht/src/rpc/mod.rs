@@ -26,7 +26,7 @@ mod test;
 
 mod service;
 pub use service::DhtRpcServiceImpl;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::protocol::rpc::{Request, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
 use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
@@ -34,8 +34,13 @@ use crate::proto::rpc::{GetPeersRequest, GetPeersResponse};
 mod peer_info;
 pub use peer_info::UnvalidatedPeerInfo;
 
+// `max_items` is the decode budget for a method: the most embedded message instances (plus repeated bytes/string
+// elements and packed or unpacked scalars) its request, response or each stream item may carry (see
+// `tari_comms::decode_budget`). get_peers streams peer records, each a handful of instances, so it uses 65_536 like the
+// base node's batched queries and streams. (The block-body budget of the base node services is
+// `tari_core::proto::BODY_MAX_DECODE_ITEMS`; nothing here carries a block.) The default is 16_384.
 #[tari_rpc(protocol_name = b"t/dht/1", server_struct = DhtService, client_struct = DhtClient)]
 pub trait DhtRpcService: Send + Sync + 'static {
-    #[rpc(method = 10)]
+    #[rpc(method = 10, max_items = 65_536)]
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus>;
 }

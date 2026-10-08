@@ -47,15 +47,30 @@ use crate::{
     },
 };
 
-#[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
+// `max_items` is the decode budget for a method: the most embedded message instances (plus repeated bytes/string
+// elements and packed scalar bytes) its request, response or each stream item may carry (see
+// `tari_comms::decode_budget`). BODY_MAX_DECODE_ITEMS (262,144) covers a max-weight block body or transaction of fully
+// populated (hydrated) inputs plus 1,000 coinbases: ~160k instances on mainnet (~1.6x headroom), ~222k on the
+// 127,795-weight networks (~1.2x); see `proto::decode_budget_tests::per_network`. sync_blocks serves compact inputs (2
+// instances each), so a synced body has ~7x (mainnet) / ~5.7x headroom; hydrated inputs only reach submit_transaction,
+// which rejects an over-budget request without a ban. 65_536 covers the batched queries and streams. The default is
+// 16_384. `max_request_items` bounds the request on its own where the handler accepts far less than the response may
+// carry: about twice the handler's own count limit (512 hashes or signatures; 1,000 chain-split hashes). Method 7
+// belonged to a removed method and must not be reused.
+#[tari_rpc(
+    protocol_name = b"t/blksync/1",
+    server_struct = BaseNodeSyncRpcServer,
+    client_struct = BaseNodeSyncRpcClient,
+    reserved_methods = [7]
+)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
-    #[rpc(method = 1)]
+    #[rpc(method = 1, max_items = crate::proto::BODY_MAX_DECODE_ITEMS)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
     ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus>;
 
-    #[rpc(method = 2)]
+    #[rpc(method = 2, max_items = 65_536)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,
@@ -67,7 +82,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
         request: Request<u64>,
     ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
 
-    #[rpc(method = 4)]
+    #[rpc(method = 4, max_items = 65_536, max_request_items = 2_048)]
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,
@@ -85,7 +100,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
         request: Request<SyncKernelsRequest>,
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus>;
 
-    #[rpc(method = 8)]
+    #[rpc(method = 8, max_items = 65_536)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
 }
 

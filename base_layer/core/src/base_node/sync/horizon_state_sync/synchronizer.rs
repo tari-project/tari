@@ -338,7 +338,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
         )
         .await
-        .map_err(|_| HorizonSyncError::RpcError(RpcError::ReplyTimeout))??;
+        .map_err(|_| HorizonSyncError::RpcError(RpcError::ReplyTimeout))?
+        .map_err(HorizonSyncError::from_connect_error)?;
 
         let latency = client
             .get_last_request_latency()

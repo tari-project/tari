@@ -29,6 +29,7 @@ use super::{RpcStatus, handshake::RpcHandshakeError, server::RpcServerError};
 use crate::{
     PeerConnectionError,
     connectivity::ConnectivityError,
+    decode_budget::DecodeBudgetExceeded,
     peer_manager::PeerManagerError,
     proto::rpc as rpc_proto,
     traits::OrOptional,
@@ -74,13 +75,44 @@ pub enum RpcError {
     MaxRequestSizeExceeded { got: usize, expected: usize },
     #[error("Streamed response was too large. Expected <= {expected} but got {got}")]
     MaxResponseSizeExceeded { got: usize, expected: usize },
+    #[error("Message carries too many embedded items to decode: at least {items}, allowed {max}")]
+    DecodeBudgetExceeded { items: usize, max: usize },
     #[error(transparent)]
     UnknownError(#[from] anyhow::Error),
+}
+
+impl From<DecodeBudgetExceeded> for RpcError {
+    fn from(err: DecodeBudgetExceeded) -> Self {
+        RpcError::DecodeBudgetExceeded {
+            items: err.items,
+            max: err.max,
+        }
+    }
 }
 
 impl RpcError {
     pub fn client_internal_error<T: ToString>(err: &T) -> Self {
         RpcError::ClientInternalError(err.to_string())
+    }
+
+    /// Returns true if, while connecting, the server could not take a session right now, or the connection failed
+    /// underneath the handshake: an explicit "no sessions available" rejection, the server closing the substream, or an
+    /// IO error. None of these says the server misbehaved, and a busy server is cheap for other peers to induce, so a
+    /// caller choosing a peer for a long task (e.g. sync) should skip it and retry elsewhere rather than penalise it.
+    /// A handshake timeout, an undecodable or oversized reply, and every error after connecting are not included.
+    ///
+    /// This deliberately differs from [Self::is_caused_by_server], which other callers rely on.
+    pub fn is_handshake_unavailable(&self) -> bool {
+        matches!(
+            self,
+            RpcError::HandshakeError(
+                RpcHandshakeError::Rejected(
+                    HandshakeRejectReason::NoServerSessionsAvailable(_) |
+                        HandshakeRejectReason::NoClientSessionsAvailable(_)
+                ) | RpcHandshakeError::ServerClosedRequest |
+                    RpcHandshakeError::Io(_)
+            )
+        )
     }
 
     /// Returns true if the server directly caused the error, otherwise false
@@ -90,12 +122,18 @@ impl RpcError {
             RpcError::DecodeError(_) |
             RpcError::RemotePeerExceededMaxChunkCount { .. } |
             RpcError::HandshakeError(RpcHandshakeError::DecodeError(_)) |
+            // On the client, an oversized handshake reply: an honest server's reply is a few bytes, never over the
+            // 1 KiB limit. (Before the limit, an oversized malformed reply was a server-caused `DecodeError`.) The
+            // server-side check returns the same variant, but the server only logs handshake errors, so that one
+            // never reaches this function.
+            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { .. }) |
             RpcError::HandshakeError(RpcHandshakeError::ServerClosedRequest) |
             RpcError::HandshakeError(RpcHandshakeError::Rejected(_)) |
             RpcError::HandshakeError(RpcHandshakeError::TimedOut) |
             RpcError::ServerClosedRequest |
             RpcError::UnexpectedAckResponse |
             RpcError::MaxResponseSizeExceeded { .. } |
+            RpcError::DecodeBudgetExceeded { .. } |
             RpcError::ResponseIdDidNotMatchRequest { .. } => true,
 
             // Some of these may be caused by the server, but not with 100% certainty

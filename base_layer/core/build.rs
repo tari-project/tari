@@ -27,6 +27,14 @@ fn main() {
     tari_common::build::ProtobufCompiler::new()
         .include_paths(&["src/proto"])
         .proto_paths(&["src/mempool/proto", "src/base_node/proto"])
+        // Box the large optional sub-messages of inputs and outputs. prost allocates a full struct per decoded
+        // input/output, so their inline size is what a flood of (near) empty elements costs. No wire change.
+        .add_boxed(".tari.types.TransactionInput.features")
+        .add_boxed(".tari.types.TransactionInput.script_signature")
+        .add_boxed(".tari.types.TransactionInput.metadata_signature")
+        .add_boxed(".tari.types.TransactionOutput.features")
+        .add_boxed(".tari.types.TransactionOutput.metadata_signature")
+        .add_boxed(".tari.types.OutputFeatures.sidechain_feature")
         .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();

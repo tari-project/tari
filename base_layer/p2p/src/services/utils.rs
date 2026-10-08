@@ -22,14 +22,33 @@
 
 use std::sync::Arc;
 
+use tari_comms::decode_budget::DecodeBudget;
+
 use crate::{comms_connector::PeerMessage, domain_message::DomainMessage};
 
+/// Decodes a message with no decode budget (see [map_decode_with_max_items])
+#[deprecated(note = "use the _with_max_items variant, which bounds what decoding can allocate")]
 pub fn map_decode<T>(serialized: Arc<PeerMessage>) -> DomainMessage<Result<T, prost::DecodeError>>
 where T: prost::Message + Default {
     DomainMessage {
         source_peer: serialized.source_peer.clone(),
         dht_header: serialized.dht_header.clone(),
         authenticated_origin: serialized.authenticated_origin.clone(),
+        #[allow(deprecated)]
         inner: serialized.decode_message(),
+    }
+}
+
+/// Like [map_decode], but rejects a message carrying more than `max_items` embedded message instances before decoding
+/// it (see [PeerMessage::decode_message_with_max_items]).
+pub fn map_decode_with_max_items<T>(
+    max_items: usize,
+) -> impl Fn(Arc<PeerMessage>) -> DomainMessage<Result<T, prost::DecodeError>>
+where T: prost::Message + Default + DecodeBudget {
+    move |serialized| DomainMessage {
+        source_peer: serialized.source_peer.clone(),
+        dht_header: serialized.dht_header.clone(),
+        authenticated_origin: serialized.authenticated_origin.clone(),
+        inner: serialized.decode_message_with_max_items(max_items),
     }
 }

@@ -356,6 +356,35 @@ async fn rpc_server_drop_sessions_when_peer_is_disconnected() {
     }
 }
 
+/// A client is only told its session was accepted once the server counts it: as soon as `connect_rpc` returns, the
+/// server's session count already includes it, every time
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_session_is_counted_by_the_time_connect_returns() {
+    let shutdown = Shutdown::new();
+    let (node1, _rpc_server1) = spawn_node(shutdown.to_signal()).await;
+    let (node2, mut rpc_server2) = spawn_node(shutdown.to_signal()).await;
+    node1
+        .peer_manager()
+        .add_or_update_peer(node2.node_identity().to_peer())
+        .await
+        .unwrap();
+    let mut conn1_2 = node1
+        .connectivity()
+        .dial_peer(node2.node_identity().node_id().clone(), RefKind::Weak)
+        .await
+        .unwrap();
+
+    let mut clients = Vec::new();
+    for expected in 1..=8 {
+        clients.push(conn1_2.connect_rpc::<GreetingClient>().await.unwrap());
+        let num_sessions = rpc_server2
+            .get_num_active_sessions_for(node1.node_identity().node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(num_sessions, expected, "a connected session was not counted yet");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rpc_server_drop_sessions_when_peer_connection_clone_is_dropped() {
     // env_logger::init(); // Set `$env:RUST_LOG = "trace"`

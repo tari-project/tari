@@ -69,6 +69,8 @@ pub enum HorizonSyncError {
     InvalidMmrPosition { at_height: u64, mmr_position: u64 },
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
+    #[error("The sync peer could not take an RPC session ({0}). Sync will be retried with another peer if possible.")]
+    SyncPeerUnavailable(RpcError),
     #[error("RPC status: {0}")]
     RpcStatus(#[from] RpcStatus),
     #[error("Could not convert data:{0}")]
@@ -126,6 +128,16 @@ impl From<RangeProofError> for HorizonSyncError {
 }
 
 impl HorizonSyncError {
+    /// The error for a failure to connect an RPC client to a sync peer. A peer that could not take a session (see
+    /// `RpcError::is_handshake_unavailable`) is skipped without a ban; any other connect error is an `RpcError`.
+    pub(crate) fn from_connect_error(err: RpcError) -> Self {
+        if err.is_handshake_unavailable() {
+            Self::SyncPeerUnavailable(err)
+        } else {
+            Self::RpcError(err)
+        }
+    }
+
     pub fn get_ban_reason(&self) -> Option<BanReason> {
         match self {
             // no ban
@@ -136,6 +148,7 @@ impl HorizonSyncError {
             HorizonSyncError::ConnectivityError(_) |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
+            HorizonSyncError::SyncPeerUnavailable(_) |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
@@ -166,5 +179,52 @@ impl HorizonSyncError {
 
             HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err),
         }
+    }
+}
+
+#[cfg(test)]
+mod connect_error_test {
+    use tari_comms::protocol::rpc::{HandshakeRejectReason, RpcError, RpcHandshakeError};
+
+    use super::*;
+
+    /// A sync peer that cannot take a session while connecting is skipped without a ban; one that misbehaves while
+    /// connecting, and any RPC error after connecting, is still banned
+    #[test]
+    fn only_a_busy_or_unreachable_sync_peer_escapes_the_ban() {
+        let unavailable = || {
+            vec![
+                RpcHandshakeError::Rejected(HandshakeRejectReason::NoServerSessionsAvailable("busy")),
+                RpcHandshakeError::Rejected(HandshakeRejectReason::NoClientSessionsAvailable("busy")),
+                RpcHandshakeError::ServerClosedRequest,
+                RpcHandshakeError::Io(std::io::ErrorKind::ConnectionReset.into()),
+            ]
+        };
+        for err in unavailable() {
+            let err = HorizonSyncError::from_connect_error(RpcError::HandshakeError(err));
+            assert!(err.get_ban_reason().is_none(), "{err} was banned");
+        }
+
+        let misbehaving = vec![
+            RpcError::ReplyTimeout,
+            RpcError::HandshakeError(RpcHandshakeError::DecodeError(prost::DecodeError::new("bad"))),
+            RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { max: 1024 }),
+            RpcError::HandshakeError(RpcHandshakeError::Rejected(HandshakeRejectReason::UnsupportedVersion)),
+        ];
+        for err in misbehaving {
+            let err = HorizonSyncError::from_connect_error(err);
+            assert!(err.get_ban_reason().is_some(), "{err} was not banned");
+        }
+
+        // After connecting, the same errors are still banned
+        for err in unavailable() {
+            let err = HorizonSyncError::from(RpcError::HandshakeError(err));
+            assert!(err.get_ban_reason().is_some(), "{err} was not banned after connecting");
+        }
+        assert!(
+            HorizonSyncError::from(RpcError::ServerClosedRequest)
+                .get_ban_reason()
+                .is_some()
+        );
     }
 }

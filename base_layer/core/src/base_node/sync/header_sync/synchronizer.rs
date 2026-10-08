@@ -284,7 +284,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
         )
         .await
-        .map_err(|_| BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout))??;
+        .map_err(|_| BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout))?
+        .map_err(BlockHeaderSyncError::from_connect_error)?;
 
         let latency = client
             .get_last_request_latency()
