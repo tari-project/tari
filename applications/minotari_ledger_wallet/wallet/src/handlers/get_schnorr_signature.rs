@@ -29,7 +29,7 @@ use minotari_ledger_wallet_common::{
 use crate::{
     alloc::string::ToString,
     branch_key_from_u64,
-    crypto::schnorr::SchnorrSignature,
+    crypto::{keys::RistrettoSecretKey, schnorr::SchnorrSignature},
     hash_domain,
     handlers::get_ephemeral_nonce::{nonce_store_error_to_app_sw, EphemeralNonceCtx},
     utils::{derive_from_bip32_key, get_random_nonce},
@@ -106,9 +106,10 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// `GetScriptOffset` hands the host linear relations between pre-mine keys, and the two reviews can read exactly like
 /// a legitimate step 3 - script signature then metadata signature - with only the repeated nonce index as the tell.
 /// Nor does reuse need a compromised host: a malicious pre-mine leader asking for step 4 to be re-run, or anyone who
-/// can write the session files, gets the same reviews a legitimate retry shows. Nothing here records a used nonce; the
-/// closure is a host-side record, tracked separately. Nonce indexes below `2^32` are refused before the review,
-/// because they name nonces an application before `6.1.1-pre.1` derived (`LEGACY_NONCE_INDEX_FLOOR`).
+/// can write the session files (including copying in a nonce an earlier session already used), gets reviews that
+/// look normal. Nothing here records a used nonce; the closure is a global host-side allowlist of issued nonce
+/// indexes, tracked separately. Nonce indexes below `2^32` are refused before the review, because they name nonces an
+/// application before `6.1.1-pre.1` derived (`LEGACY_NONCE_INDEX_FLOOR`), and so is a challenge that reduces to zero.
 ///
 /// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs, what it reached
 /// before it was narrowed to `PreMine` (`alpha`, via the script offset reply), and the TODO that deletes this handler
@@ -130,6 +131,15 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
     // signature under it could be combined with an old one. Refused before the review, like the branches; see
     // `minotari_ledger_wallet_common::legacy_nonce::LEGACY_NONCE_INDEX_FLOOR`.
     check_legacy_nonce_index(request.nonce_index).map_err(|_| AppSW::BadBranchKey)?;
+    // A challenge that reduces to zero makes `s = r + e·k` the nonce scalar itself, so one approved signature would
+    // hand the nonce over. Hardening only - step 4's challenges are hash outputs, and the residual still needs two
+    // approvals under one index - but it costs a reduction. Refused before the review with `RawSchnorrSignatureFail`,
+    // the status word this handler already returns for a challenge it cannot sign.
+    let challenge_scalar = RistrettoSecretKey::from_uniform_bytes(request.challenge.as_slice())
+        .map_err(|_| AppSW::RawSchnorrSignatureFail)?;
+    if challenge_scalar == RistrettoSecretKey::default() {
+        return Err(AppSW::RawSchnorrSignatureFail);
+    }
 
     // Note: `KeyType::from_branch_key` rejects the spend branch a second time, so `alpha` stays unreachable even
     // if the whitelist above is ever loosened.

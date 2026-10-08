@@ -103,6 +103,14 @@ fn get_raw_key_hash(path: &[u32]) -> Result<Zeroizing<[u8; 64]>, String> {
 /// 64 it does not. See `minotari_ledger_wallet_common::script_offset::sender_offset_base_index`.
 ///
 /// The account element still wraps modulo `2^32`.
+///
+/// The hardened low word relies on the SDK's parser. `make_bip32_path` hardens an element as `acc + 0x80000000` in a
+/// `u32`, and in a release build (no overflow checks) that wraps: a low word at or above `2^31` lands on the
+/// *non-hardened* element `low - 2^31`. That is a bijection, so no two indexes collide, and harmless, because the leaf
+/// key is hashed before it is used. But it is a property of this exact SDK and build profile - which is why
+/// `ledger_device_sdk` is pinned exactly in `Cargo.toml` - and a parser change, or overflow checks, would change every
+/// key whose low word is at or above `2^31`. The `comms_testing` oracle pins the expected path elements for such
+/// indexes.
 pub fn derive_from_bip32_key(
     u64_account: u64,
     u64_index: u64,

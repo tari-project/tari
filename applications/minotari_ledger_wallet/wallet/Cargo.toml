@@ -15,6 +15,10 @@ blake2 = { version = "0.10", default-features = false }
 borsh = { version = "1.5.7", default-features = false }
 digest = { version = "0.10", default-features = false }
 include_gif = "1.2"
+# Pinned exactly: key derivation depends on how this SDK's `make_bip32_path` parses a path. A hardened low word is
+# `acc + 0x80000000` in a `u32`, which wraps in a release build (no overflow checks), so a key index whose low word is
+# at or above 2^31 lands on a non-hardened path element. See `derive_from_bip32_key` in `src/utils.rs`: a parser
+# change, or overflow checks, would change those keys.
 ledger_device_sdk = "=1.35.0"
 # Pinned: ledger_secure_sdk_sys 1.16.4 compiles the C SDK with -fstack-protector-strong and
 # relies on --wrap=__stack_chk_fail in its own device linker specs. The ledger-app-builder

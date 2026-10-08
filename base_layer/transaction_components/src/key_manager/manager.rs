@@ -517,6 +517,15 @@ impl KeyManager {
                  where it would name a nonce an application before 6.1.1-pre.1 derived"
             ))
         })?;
+        // A challenge that reduces to zero would make the signature the nonce scalar itself. The device refuses it
+        // before its review; this mirrors it.
+        if legacy_challenge_is_zero(challenge) {
+            return Err(KeyManagerError::LedgerError(
+                "GetRawSchnorrSignatureLegacyNonce: the challenge reduces to zero, so the signature would be the \
+                 nonce itself"
+                    .to_string(),
+            ));
+        }
 
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
@@ -1830,6 +1839,13 @@ fn ledger_sender_offset_key(sender_offset_key_id: &TariKeyId) -> Result<(u64, Le
     }
 }
 
+/// Whether a legacy nonce challenge reduces to the zero scalar, which the device refuses: `s = r + e·k` would then be
+/// the nonce `r` itself.
+fn legacy_challenge_is_zero(challenge: &[u8; 64]) -> bool {
+    <PrivateKey as tari_crypto::keys::SecretKey>::from_uniform_bytes(challenge)
+        .map_or(true, |e| e == PrivateKey::default())
+}
+
 /// The index `get_random_key` draws a ledger key at, from a uniformly random `random`.
 ///
 /// - A `PreMine` key the host draws is a script key. The range the marker bit names belongs to the sender offset keys
@@ -1857,6 +1873,7 @@ mod tests {
         MAX_SOFTWARE_EPHEMERAL_NONCES,
         ledger_random_index,
         ledger_sender_offset_key,
+        legacy_challenge_is_zero,
         sender_offset_key_takes_a_reserved_nonce,
     };
     use crate::{
@@ -2274,6 +2291,42 @@ mod tests {
                 matches!(ledger_sender_offset_key(&refused), Err(KeyManagerError::LedgerError(_))),
                 "{refused}"
             );
+        }
+    }
+
+    /// A challenge that reduces to zero - the zero bytes, or the group order padded to 64 bytes - is refused by the
+    /// legacy arm before the transport is consulted; any other challenge reaches the device call.
+    #[test]
+    fn the_legacy_arm_refuses_a_challenge_that_reduces_to_zero() {
+        // The Ristretto group order, little endian, padded to the 64 bytes `from_uniform_bytes` reduces.
+        let mut order = [0u8; 64];
+        order[..32].copy_from_slice(&[
+            0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+        ]);
+        assert!(legacy_challenge_is_zero(&[0u8; 64]));
+        assert!(legacy_challenge_is_zero(&order));
+        assert!(!legacy_challenge_is_zero(&challenge(1)));
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let private_key_id = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: 7,
+        };
+        let nonce = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::Random,
+            index: LEGACY_NONCE_INDEX_FLOOR | 9,
+        };
+        for zero in [[0u8; 64], order] {
+            match key_manager
+                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &zero)
+                .unwrap_err()
+            {
+                KeyManagerError::LedgerError(message) => {
+                    assert!(message.contains("reduces to zero"), "unexpected message: {message}")
+                },
+                other => panic!("a zero challenge was not refused: {other:?}"),
+            }
         }
     }
 

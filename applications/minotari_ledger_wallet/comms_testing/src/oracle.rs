@@ -482,6 +482,40 @@ mod test {
         assert_eq!(path[4], 0x8000_0000 + 9);
     }
 
+    /// Pinned path vectors for the two edges of the split, as literal path elements.
+    ///
+    /// A low word at or above `2^31` is "hardened" by `make_bip32_path` as `acc + 0x80000000` in a `u32`, which wraps
+    /// in the release build the device runs: it lands on the non-hardened element `low - 2^31`. That is what the device
+    /// derives today with `ledger_device_sdk` 1.35.0, and these vectors pin it, so an SDK parser change or overflow
+    /// checks show up here rather than as keys that silently moved. An index at or above `2^32` puts its high word in
+    /// the fourth element.
+    #[test]
+    fn the_split_path_is_pinned_at_its_edges() {
+        // m/44'/535348'/0'/0/(0x8000_0005 + 0x8000_0000 wrapping)/6: low word >= 2^31, high word 0.
+        assert_eq!(derivation_path(0, 0x8000_0005, KeyType::Random), [
+            0x8000_002C,
+            0x8000_0000 + 535_348,
+            0x8000_0000,
+            0,
+            0x0000_0005,
+            6,
+        ]);
+        // m/44'/535348'/0'/1/5'/6: index 2^32 + 5, high word 1, low word hardened as usual.
+        assert_eq!(derivation_path(0, (1u64 << 32) | 5, KeyType::Random), [
+            0x8000_002C,
+            0x8000_0000 + 535_348,
+            0x8000_0000,
+            1,
+            0x8000_0005,
+            6,
+        ]);
+        // Both at once: high word 1, low word >= 2^31.
+        assert_eq!(derivation_path(0, (1u64 << 32) | 0x8000_0005, KeyType::Random)[3..5], [
+            1,
+            0x0000_0005
+        ]);
+    }
+
     /// The index is split across two elements, so indexes `2^32` apart - or differing only in bit 63 - are different
     /// paths, while an index below `2^32` keeps the path it had when the high element was a constant `0`.
     #[test]

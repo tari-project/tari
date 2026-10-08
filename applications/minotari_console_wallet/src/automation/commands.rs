@@ -966,12 +966,15 @@ pub async fn command_runner(
                     // `PreMine` keys leaks both, because the script offset relates them. The device shows each
                     // signature for approval, nonce index included, but the two reviews can look like a legitimate
                     // step 3; that is not a control to rely on. `alpha` stays out of reach, but the reachable
-                    // `PreMine` keys include each output's single-key fail-safe backup key: recovering it lets a
-                    // compromised host spend that output alone after `fail_safe_height` - the multisig protects only
-                    // the pre-fail-safe path. Reuse does not need a compromised host either: a malicious leader who
-                    // asks for step 4 to be re-run against a second step 3 file, or anyone who can write the session
-                    // directory, gets it with an honest host, and the reviews look like a legitimate retry. Nothing
-                    // records which nonces were signed with; a host-side used-nonce record is the tracked follow-up.
+                    // `PreMine` keys include each output's single-key fail-safe backup key: whoever recovers it can
+                    // spend that output alone after `fail_safe_height` - the multisig protects only the pre-fail-safe
+                    // path. Reuse does not need a compromised host: a malicious leader who asks for step 4 to be
+                    // re-run against a second step 3 file, or anyone who can write the session directory (which can
+                    // copy a nonce an earlier session already used into a new session's file), gets it with an honest
+                    // host, and the reviews look normal. For them extraction is the whole capability; a compromised
+                    // host can already spend pre-mine outputs without a prompt, so it gains only permanence. Nothing
+                    // records which nonces were signed with; the tracked follow-up is a global allowlist of issued
+                    // nonce indexes in the wallet database, consumed before signing.
                     // The full cost, the scope, and the TODO that closes it live in
                     // `minotari_ledger_wallet_common::legacy_nonce`; read that before touching either of these lines.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
@@ -1452,8 +1455,9 @@ pub async fn command_runner(
                 }
                 // The self file is host-writable, and what it names is signed with below through the legacy nonce
                 // instruction. Hold it to the shape step 2 writes: distinct nonces and sender offset keys across the
-                // whole file, each script key at its output index. That does not stop a leader-induced re-run of this
-                // step or a compromised host; see `minotari_ledger_wallet_common::legacy_nonce`.
+                // whole file, each script key at its output index. That is per file: it does not stop a nonce an
+                // earlier session already used being copied in, a leader-induced re-run of this step, or a compromised
+                // host; see `minotari_ledger_wallet_common::legacy_nonce`.
                 if let Err(e) = check_self_file_key_ids(&party_info_indexed.outputs_for_self) {
                     eprintln!("\nError: Inconsistent step 2 self file! {e}\n");
                     break;
@@ -1591,7 +1595,8 @@ pub async fn command_runner(
                     // reserved back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce`.
                     //
                     // A compromised host - or a leader who gets this step re-run against a second step 3 file, or
-                    // anyone who can write the session directory - can recover this output's sender offset private
+                    // anyone who can write the session directory, including by copying in a nonce an earlier session
+                    // already signed with - can recover this output's sender offset private
                     // key that way, and then subtract it back out of the script offset to recover the script private
                     // key too. It cannot reach `alpha`: a step 2 session file from before sender offsets moved to
                     // `PreMine` names a `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo

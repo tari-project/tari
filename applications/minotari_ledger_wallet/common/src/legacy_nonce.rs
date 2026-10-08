@@ -79,12 +79,22 @@
 //!   nonces step 4 signs with. Step 4 holds the file to the shape step 2 writes - every nonce and every sender offset
 //!   key distinct across the whole file, every nonce a `Random` key, each script key the unmarked `PreMine` key at its
 //!   output index, each sender offset key a marked `PreMine` key - which stops a file that names one nonce twice, in
-//!   one output or across two. It does not stop the file being used again (a re-run), and it does nothing against a
-//!   leader-induced re-run or a compromised host.
+//!   one output or across two. That check is per *file*. Every session lives under one directory
+//!   (`~/Documents/tari_pre_mine/spend/`, often cloud-synced), so a writer can copy a nonce id that an earlier session
+//!   already signed with into a new session's self file: one ordinary step 4 run of the new session - normal-looking
+//!   screens, no re-run - is then a second signature under that nonce. It also does nothing against a re-run of the
+//!   same file, a leader-induced re-run, or a compromised host.
 //!
-//! Under the rule that the device stores nothing, the only closure on the host side is a record of the legacy nonce
-//! indexes already signed with, kept by the wallet and checked before every legacy signature. That is a tracked
-//! follow-up, not part of this change.
+//! Under the rule that the device stores nothing, the only closure on the host side is a record of legacy nonces,
+//! kept by the wallet and checked before every legacy signature. That is a tracked follow-up, not part of this change.
+//! To close the attacks above it has to be:
+//!
+//! 1. **global across sessions**, not per session file;
+//! 2. **kept in the wallet database**, outside the session directory the files live in;
+//! 3. an **allowlist** of the nonce indexes step 2 issued, each consumed *before* it is signed with - a denylist of
+//!    indexes already signed with fails open on a restored wallet or on another machine, which have never seen them;
+//! 4. **keyed on the full `u64` nonce index** - the account path element still wraps modulo `2^32`, and the review does
+//!    not show the account - with a log of `(nonce index, H(challenge))` for audit.
 //!
 //! It does not need the *same pair* to do it. Reusing one nonce index across **any two `PreMine` keys** leaks both,
 //! because `GetScriptOffset` hands the host linear relations between pre-mine keys with no prompt at all: step 2 gives
@@ -99,9 +109,18 @@
 //! them it is not bounded by the multisig. Every pre-mine output's script is `CheckHeight(fail_safe_height) LeZero
 //! IfThen CheckMultiSigVerifyAggregatePubKey(..) Else PushPubKey(backup_key) EndIf`, and the backup key is a `PreMine`
 //! key at a small, host-known index (the backup spend names it from the output's payment id). It is one of the keys
-//! this instruction signs - labelled "Pre-mine script signature" - so a compromised host that recovers it can spend
-//! that output *alone* once `fail_safe_height` has passed. The multisig protects only the pre-fail-safe path, and some
-//! schedule entries set `fail_safe_height` to the payout period, which may already be behind the tip.
+//! this instruction signs - labelled "Pre-mine script signature" - so whoever recovers it can spend that output
+//! *alone* once `fail_safe_height` has passed. The multisig protects only the pre-fail-safe path, and some schedule
+//! entries set `fail_safe_height` to the payout period, which may already be behind the tip.
+//!
+//! What extraction adds depends on who does it:
+//!
+//! - **A compromised host gains only permanence.** It can already spend any pre-mine output this device holds keys for,
+//!   with no prompt at all: `GetScriptSignatureManaged`, the handle based `GetRawSchnorrSignature` and pre-mine mode
+//!   `GetScriptOffset` all use `PreMine` keys without a review. That is a pre-existing gap outside this change, tracked
+//!   separately. Extracting the key only means it keeps working after the compromise ends.
+//! - **For the malicious leader and the session directory writer, extraction is the whole capability.** Neither has
+//!   device access, so the key is the only way they get to spend.
 //!
 //! Folding the signing key's branch and index into the legacy nonce derivation would close the cross-key case without
 //! any device state - a nonce index would then name a different nonce under every key - but it changes what step 2
@@ -120,9 +139,12 @@
 //!
 //! - **same-session reservation**: teach the pre-mine flow to carry device-issued nonce handles instead of nonce
 //!   branches and indexes, and to reserve its nonces in the same device session that signs with them (handles survive a
-//!   file fine; what they cannot survive is the device restarting between the two steps); or
-//! - **a host-side used-nonce ledger**: the wallet records every legacy nonce index it has signed with and refuses a
-//!   second signature under one, which keeps the file-based flow but trusts the host to keep the record.
+//!   file fine; what they cannot survive is the device restarting between the two steps). Its feasibility is open: the
+//!   device nonce store is 8 RAM slots, so 4 outputs per device session at two nonces each, and the application would
+//!   have to stay open across the leader's step 3 round trip. Neither constraint has been examined; or
+//! - **a host-side nonce ledger**: the wallet keeps the record described above - global, in the wallet database, an
+//!   allowlist consumed before signing, keyed on the full nonce index - which keeps the file-based flow but trusts the
+//!   host to keep the record.
 //!
 //! Only the first lets everything below be deleted.
 //!

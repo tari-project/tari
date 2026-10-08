@@ -719,6 +719,16 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
              it would name a nonce an application before 6.1.1-pre.1 derived"
         ))
     })?;
+    // The device refuses a challenge that reduces to zero before its review: the signature would be the nonce itself.
+    if <PrivateKey as tari_crypto::keys::SecretKey>::from_uniform_bytes(challenge)
+        .map_or(true, |e| e == PrivateKey::default())
+    {
+        return Err(LedgerDeviceError::Processing(
+            "GetRawSchnorrSignatureLegacyNonce: the challenge reduces to zero, so the signature would be the nonce \
+             itself"
+                .to_string(),
+        ));
+    }
     verify_ledger_application()?;
 
     let request = GetRawSchnorrSignatureLegacyNonceRequest {

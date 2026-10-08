@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file. See [standa
 ## 6.1.1-pre.1 (unreleased)
 
 
+### ⚠ Security
+
+* **Update the Ledger application, not only the wallet.** Ledger applications before `6.1.1-pre.1` let a compromised
+  host recover the wallet's root spend key without any prompt on the device. Updating the wallet software alone does
+  not protect a device: the fix is in the Ledger application. Until the application is updated, do not connect the
+  device to a host you do not trust.
+
+
 ### ⚠ Upgrade notes
 
 * **Upgrade the wallet and the Ledger application together.** Wallets from `5.7.0-pre.6` up to (not including)

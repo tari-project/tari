@@ -110,6 +110,12 @@ const SCENARIOS: &[Scenario] = &[
         run: a_nonce_index_below_2_32_is_refused,
     },
     Scenario {
+        name: "a legacy challenge that reduces to zero is refused with RawSchnorrSignatureFail, before any review",
+        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
+        approval: Approval::NotNeeded,
+        run: a_zero_challenge_is_refused,
+    },
+    Scenario {
         name: "the legacy nonce really is deterministic, which is why the whitelist exists",
         covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::Required,
@@ -257,6 +263,40 @@ fn a_nonce_index_below_2_32_is_refused(_context: &ScenarioContext<'_>) -> Scenar
             &format!("a legacy signature against Random nonce index {nonce_index}"),
             &reply,
             AppSW::BadBranchKey,
+        )?;
+    }
+    Ok(())
+}
+
+/// Acceptance: a challenge that reduces to the zero scalar is refused with `RawSchnorrSignatureFail`, before any
+/// review.
+///
+/// `s = r + e·k` with `e = 0` is the nonce scalar itself, so one approved signature would hand the nonce over. Both
+/// the zero bytes and the group order (which reduces to zero) are sent, on an otherwise accepted request - a
+/// whitelisted pair and a nonce index above the floor - so the challenge is the only thing wrong. Over raw APDUs, so
+/// the host's mirror is bypassed; a review instead would block and fail the scenario on its timeout.
+fn a_zero_challenge_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    // The Ristretto group order, little endian, padded to the 64 bytes the device reduces.
+    let mut order = [0u8; 64];
+    if let Some(low) = order.get_mut(..32) {
+        low.copy_from_slice(&[
+            0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
+        ]);
+    }
+    for (what, challenge) in [("the zero challenge", [0u8; 64]), ("the group order", order)] {
+        let reply = legacy_signature(
+            fixtures::random_u64(),
+            fixtures::random_u64() % 100_000,
+            LedgerKeyBranch::PreMine.as_byte(),
+            legacy_nonce_index(),
+            LedgerKeyBranch::Random.as_byte(),
+            &challenge,
+        )?;
+        expect_status(
+            &format!("a legacy signature over {what}"),
+            &reply,
+            AppSW::RawSchnorrSignatureFail,
         )?;
     }
     Ok(())
