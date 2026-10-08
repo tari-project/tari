@@ -408,7 +408,12 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
     // else. Both refusals come before the review, so this stays unattended; a device that drew the review instead
     // would block here until the scenario timed out.
     let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
-    for branch in [LedgerKeyBranch::Spend, LedgerKeyBranch::Random] {
+    // So is a `PreMine` sender offset without the pre-mine sender offset marker: those are script key indexes.
+    for (branch, index) in [
+        (LedgerKeyBranch::Spend, index),
+        (LedgerKeyBranch::Random, index),
+        (LedgerKeyBranch::PreMine, index & !SENDER_OFFSET_INDEX_BIT),
+    ] {
         let reply = raw::command(
             account,
             Instruction::GetOneSidedMetadataSignature,

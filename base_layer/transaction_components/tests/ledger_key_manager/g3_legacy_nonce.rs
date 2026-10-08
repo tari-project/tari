@@ -21,7 +21,10 @@
 //!   4 `legacy_nonce` scenarios' job, over raw APDUs);
 //! * and the legacy instruction does not touch the ephemeral nonce store the handle based path relies on.
 
-use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_common::{
+    common_types::{Instruction, LedgerKeyBranch},
+    legacy_nonce::LEGACY_NONCE_INDEX_FLOOR,
+};
 use minotari_ledger_wallet_comms_testing::{
     approver::{Outcome, while_reviewing},
     fixtures,
@@ -38,11 +41,15 @@ use tari_utilities::hex::Hex;
 
 use crate::harness::{Device, ledger_error, with_device};
 
+/// A ledger key at a random index. A `Random` key - a legacy nonce - is drawn at or above `2^32`, as the key manager
+/// draws them, because the legacy instruction refuses a nonce index below that; see
+/// `minotari_ledger_wallet_common::legacy_nonce::LEGACY_NONCE_INDEX_FLOOR`.
 fn ledger_key(branch: LedgerKeyBranch) -> TariKeyId {
-    TariKeyId::LedgerKey {
-        branch,
-        index: fixtures::random_u64(),
-    }
+    let index = match branch {
+        LedgerKeyBranch::Random => fixtures::random_u64() | LEGACY_NONCE_INDEX_FLOOR,
+        _ => fixtures::random_u64(),
+    };
+    TariKeyId::LedgerKey { branch, index }
 }
 
 /// Sign through the `(LedgerKey, LedgerKey)` arm, approving the review the device puts up for it - after checking it
@@ -166,10 +173,14 @@ fn indexes_equal_modulo_2_32_show_different_reviews_and_sign_with_different_keys
     with_device(|device| {
         let key_manager = device.key_manager();
         let i = fixtures::random_u64() % 100_000;
-        let j = fixtures::random_u64() & 0xFFFF_FFFF;
+        // At or above 2^32, as every legacy nonce must be, and with room to add 2^32 without wrapping.
+        let j = (fixtures::random_u64() >> 1) | LEGACY_NONCE_INDEX_FLOOR;
         let challenge = fixtures::random_challenge();
 
-        let pairs = [(i, j), ((1u64 << 63) | i, j | (1u64 << 32))];
+        let pairs = [
+            (i, j),
+            ((1u64 << 63) | i, j.checked_add(1u64 << 32).expect("j has room")),
+        ];
         let mut summaries = Vec::new();
         let mut signatures = Vec::new();
         let mut public_keys = Vec::new();

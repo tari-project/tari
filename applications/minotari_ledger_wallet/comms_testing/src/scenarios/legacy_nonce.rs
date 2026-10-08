@@ -104,6 +104,12 @@ const SCENARIOS: &[Scenario] = &[
         run: disallowed_pairs_are_refused,
     },
     Scenario {
+        name: "a legacy nonce index below 2^32 is refused with BadBranchKey, before any review",
+        covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
+        approval: Approval::NotNeeded,
+        run: a_nonce_index_below_2_32_is_refused,
+    },
+    Scenario {
         name: "the legacy nonce really is deterministic, which is why the whitelist exists",
         covers: &[Instruction::GetRawSchnorrSignatureLegacyNonce],
         approval: Approval::Required,
@@ -122,6 +128,14 @@ const ALL_BRANCHES: [LedgerKeyBranch; 4] = [
 /// The marker bit of a pre-mine sender offset key index, restated rather than imported so that a device which put
 /// the metadata signature's purpose on the wrong side of it would be caught. See `ExpectedReview::legacy_signature`.
 const SENDER_OFFSET_INDEX_BIT: u64 = 1 << 63;
+
+/// The smallest nonce index the device will sign with, restated rather than imported for the same reason.
+const NONCE_INDEX_FLOOR: u64 = 1 << 32;
+
+/// A random legacy nonce index the device accepts: at or above `2^32`, as the host's `get_random_key` draws them.
+fn legacy_nonce_index() -> u64 {
+    fixtures::random_u64() | NONCE_INDEX_FLOOR
+}
 
 /// Ask the device for a legacy signature, over raw APDUs so that the host's mirror of the whitelist is bypassed.
 ///
@@ -201,7 +215,7 @@ fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> Sce
     // the 104 byte payload, applies the host mirror of the whitelist, and parses the reply. The refusal scenarios
     // have to bypass it - that is the whole point of them - but the accepting path must not, or a regression in
     // shipped code would be invisible while this suite stayed green.
-    let signature = reviewed_pre_mine_signature(context, account, key_index, fixtures::random_u64(), &challenge)?;
+    let signature = reviewed_pre_mine_signature(context, account, key_index, legacy_nonce_index(), &challenge)?;
 
     let public_key = ledger_get_public_key(account, key_index, LedgerKeyBranch::PreMine)
         .context(|| "GetPublicKey for the PreMine key".to_string())?;
@@ -222,6 +236,32 @@ fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> Sce
 /// below as well; it is spelled out here because it is the one that matters most. Sent over raw APDUs, so the
 /// host's mirror is bypassed and the device's own check is what answers. Had the device drawn a review instead, this
 /// would block rather than return, and the scenario would fail on its timeout.
+/// Acceptance: a nonce index below `2^32` is refused with `BadBranchKey`, before any review.
+///
+/// An application before `6.1.1-pre.1` derived from the nonce index modulo `2^32`, with a constant `0` where the high
+/// word now goes, so its nonce at host index `j` is this application's nonce at `j mod 2^32`. Signing there would let
+/// one new signature be combined with an old one. Over raw APDUs, so the device's check is what answers; a review
+/// instead would block and fail the scenario on its timeout. Only the side below `2^32` is probed here; at or above
+/// it is the accepting path every reviewed scenario in this module takes.
+fn a_nonce_index_below_2_32_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    for nonce_index in [0, fixtures::random_u64() % NONCE_INDEX_FLOOR, NONCE_INDEX_FLOOR - 1] {
+        let reply = legacy_signature(
+            fixtures::random_u64(),
+            fixtures::random_u64() % 100_000,
+            LedgerKeyBranch::PreMine.as_byte(),
+            nonce_index,
+            LedgerKeyBranch::Random.as_byte(),
+            &fixtures::random_challenge(),
+        )?;
+        expect_status(
+            &format!("a legacy signature against Random nonce index {nonce_index}"),
+            &reply,
+            AppSW::BadBranchKey,
+        )?;
+    }
+    Ok(())
+}
+
 fn a_sender_offset_key_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let reply = legacy_signature(
         fixtures::random_u64(),
@@ -369,7 +409,7 @@ fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
     // A key index with the marker bit set: the shape of a pre-mine *sender offset* key, so both reviews must say
     // "Pre-mine metadata signature".
     let key_index = (fixtures::random_u64() % SENDER_OFFSET_INDEX_BIT) | SENDER_OFFSET_INDEX_BIT;
-    let nonce_index = fixtures::random_u64();
+    let nonce_index = legacy_nonce_index();
 
     // Both calls go through the accessor, and each is reviewed and approved. This is an *accepting* path - the pair is
     // on the whitelist, so the host mirror passes it through - and the rule in `crate::raw` is that accepting paths

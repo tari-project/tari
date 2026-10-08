@@ -61,10 +61,28 @@
 //! spend flows are unaffected: they sign through `GetRawSchnorrSignature` with a device-issued handle that the host
 //! can neither choose nor redeem twice, so there is no second signature to difference against.
 //!
-//! The residual: the pre-mine flow reserves its nonces in step 2 and signs in step 3 with a file in between, so a
-//! compromised host can still sign twice under one nonce index - in the same device session or across a device
-//! restart. The device deliberately keeps no record of which nonce indexes it has signed with (it stores nothing for
-//! this instruction, in RAM or in NVM).
+//! The residual: the pre-mine flow reserves its nonces in step 2 and signs in step 3 with a file in between, so one
+//! nonce index can still be signed with twice - in the same device session or across a device restart. The device
+//! deliberately keeps no record of which nonce indexes it has signed with (it stores nothing for this instruction, in
+//! RAM or in NVM), and neither does the host.
+//!
+//! Three attackers get there, and only the first needs a compromised host:
+//!
+//! - **A compromised host**, which can ask for any legacy signature it likes.
+//! - **A malicious pre-mine leader, against an honest host.** Both step 4 challenges are built entirely from fields the
+//!   leader's step 3 file supplies (the script and metadata signature ephemerals, `total_script_key`, the sender offset
+//!   public key), and the nonce ids come from the party's own step 2 self file, which nothing marks as spent. A leader
+//!   that sends a second step 3 file differing in one ephemeral value and asks the party to re-run step 4 gets two
+//!   signatures under each nonce over different challenges. The two device reviews are identical - same keys, same
+//!   nonce indexes - which is exactly what a legitimate retry looks like.
+//! - **Anyone who can write the session directory**, against an honest host: the step 2 self file names the keys and
+//!   nonces step 4 signs with. Step 4 checks that they have the shapes step 2 gives them (two different `Random`
+//!   nonces, an unmarked `PreMine` script key, a marked `PreMine` sender offset key), which stops a file that names one
+//!   nonce twice, but not one that is re-used or that pairs a nonce with another output's key.
+//!
+//! Under the rule that the device stores nothing, the only closure on the host side is a record of the legacy nonce
+//! indexes already signed with, kept by the wallet and checked before every legacy signature. That is a tracked
+//! follow-up, not part of this change.
 //!
 //! It does not need the *same pair* to do it. Reusing one nonce index across **any two `PreMine` keys** leaks both,
 //! because `GetScriptOffset` hands the host linear relations between pre-mine keys with no prompt at all: step 2 gives
@@ -83,16 +101,28 @@
 //! that output *alone* once `fail_safe_height` has passed. The multisig protects only the pre-fail-safe path, and some
 //! schedule entries set `fail_safe_height` to the payout period, which may already be behind the tip.
 //!
-//! Folding the signing key's branch and index into the legacy nonce derivation would close this without any device
-//! state - a nonce index would then name a different nonce under every key - but it changes what step 2 reserves and
-//! step 3 signs with, so it belongs with the TODO below rather than in front of it.
+//! Folding the signing key's branch and index into the legacy nonce derivation would close the cross-key case without
+//! any device state - a nonce index would then name a different nonce under every key - but it changes what step 2
+//! reserves and step 3 signs with, so it belongs with the TODO below rather than in front of it. It would not close a
+//! re-run of step 4 under one key.
+//!
+//! One more boundary: an application before `6.1.1-pre.1` derived nonces from the index modulo `2^32`, so its nonce
+//! at host index `j` is this application's nonce at `j mod 2^32`. The legacy instruction therefore refuses a nonce
+//! index below `2^32` ([`LEGACY_NONCE_INDEX_FLOOR`]), and the host draws its nonces above it. A legacy signature from
+//! an older application can never be combined with one from this one - and an old step 2 session cannot be finished
+//! on this application, which it could not have been anyway.
 //!
 //! # The fix, and what gets deleted with it
 //!
-//! TODO: Teach the pre-mine step 2 / step 3 session file to carry device-issued nonce handles instead of nonce
-//! branches and indexes. Handles survive a file fine - what they cannot survive is the device restarting between
-//! the two steps, so this also needs the pre-mine flow to reserve its nonces in the same device session that signs
-//! with them, or the device store to be made persistent.
+//! TODO: Close the reuse, without any persistent data on the device - that option is ruled out. Either:
+//!
+//! - **same-session reservation**: teach the pre-mine flow to carry device-issued nonce handles instead of nonce
+//!   branches and indexes, and to reserve its nonces in the same device session that signs with them (handles survive a
+//!   file fine; what they cannot survive is the device restarting between the two steps); or
+//! - **a host-side used-nonce ledger**: the wallet records every legacy nonce index it has signed with and refuses a
+//!   second signature under one, which keeps the file-based flow but trusts the host to keep the record.
+//!
+//! Only the first lets everything below be deleted.
 //!
 //! When that lands, these get deleted together:
 //!
@@ -138,6 +168,34 @@ pub fn check_legacy_nonce_branches(
     // nonce there. Pre-mine reserves both of its nonces from `Random`.
     if nonce_branch != LedgerKeyBranch::Random {
         return Err(LegacyNonceBranchError::NonceBranchNotAllowed);
+    }
+    Ok(())
+}
+
+/// The smallest nonce index the legacy instruction will sign with: `2^32`.
+///
+/// Before `6.1.1-pre.1` the device derived from an index modulo `2^32`, so an old application's nonce at index `j`
+/// sat at exactly the path the current application uses for the small index `j mod 2^32` (the high word element was a
+/// constant `0`). Host nonce indexes are random `u64`s, so almost every old legacy nonce is reachable that way: a host
+/// holding one old legacy signature - old step 4 output carries them - could ask for a single new signature under
+/// `(PreMine i, Random j mod 2^32)`, with an index on screen the user has never seen, and solve the two for the key.
+///
+/// An index at or above `2^32` has a non-zero high word element, which no old application ever derived from, so a
+/// new-application nonce can never be an old-application one. The cost is that a signature from an old application
+/// cannot be combined with one from this application - which is the point.
+pub const LEGACY_NONCE_INDEX_FLOOR: u64 = 1 << 32;
+
+/// A legacy nonce index below [`LEGACY_NONCE_INDEX_FLOOR`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct LegacyNonceIndexBelowFloor;
+
+/// Check that a legacy nonce index cannot name a nonce an application before `6.1.1-pre.1` derived. See
+/// [`LEGACY_NONCE_INDEX_FLOOR`]. The device refuses with `BadBranchKey` - the same status word as the branch
+/// whitelist, because it is the same kind of refusal: a nonce the legacy instruction will not sign with - before
+/// its review; the host mirrors it.
+pub fn check_legacy_nonce_index(nonce_index: u64) -> Result<(), LegacyNonceIndexBelowFloor> {
+    if nonce_index < LEGACY_NONCE_INDEX_FLOOR {
+        return Err(LegacyNonceIndexBelowFloor);
     }
     Ok(())
 }
@@ -258,6 +316,22 @@ mod test {
             "Pre-mine metadata signature"
         );
         assert_eq!(legacy_signature_purpose(u64::MAX), "Pre-mine metadata signature");
+    }
+
+    /// Nonce indexes below `2^32` alias an old application's nonces and are refused; everything from `2^32` up is
+    /// allowed.
+    #[test]
+    fn nonce_indexes_below_2_32_are_refused() {
+        for index in [0, 1, 0x8765_4321, u64::from(u32::MAX)] {
+            assert_eq!(
+                check_legacy_nonce_index(index),
+                Err(LegacyNonceIndexBelowFloor),
+                "{index}"
+            );
+        }
+        for index in [1 << 32, (1 << 32) | 0x8765_4321, 1 << 63, u64::MAX] {
+            assert_eq!(check_legacy_nonce_index(index), Ok(()), "{index}");
+        }
     }
 
     /// `i` and `2^63 | i` used to derive one key and get two labels. They are different keys now, so the two labels

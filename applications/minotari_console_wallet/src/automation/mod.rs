@@ -79,6 +79,76 @@ pub struct Step2OutputsForSelf {
     script_offset: PrivateKey,
 }
 
+impl Step2OutputsForSelf {
+    /// Check that the key ids this output's step 2 self file names are ones step 2 could have written.
+    ///
+    /// The self file is host-writable, and step 4 signs with what it names through the legacy nonce instruction, so
+    /// a file that names one nonce twice, or a sender offset key where the script key belongs, turns step 4 into a
+    /// nonce reuse with no further help. Each id is held to the shape step 2 gives it:
+    ///
+    /// - the two nonces are different keys;
+    /// - each nonce is a ledger `Random` key, or an `Encrypted` key on a software wallet;
+    /// - the pre-mine script key is a ledger `PreMine` key without the pre-mine sender offset marker (its genesis
+    ///   output index);
+    /// - the sender offset key is a ledger `PreMine` key *with* the marker, as `get_script_offset` issues it in
+    ///   pre-mine mode, or an `Encrypted` key on a software wallet.
+    pub(crate) fn check_key_ids(&self) -> Result<(), String> {
+        use minotari_ledger_wallet_common::{
+            common_types::LedgerKeyBranch,
+            script_offset::is_pre_mine_sender_offset_index,
+        };
+
+        let output = self.output_index;
+        if self.script_nonce_key_id == self.sender_offset_nonce_key_id {
+            return Err(format!(
+                "output {output}: the script nonce and the sender offset nonce are the same key ({})",
+                self.script_nonce_key_id
+            ));
+        }
+        for (what, nonce) in [
+            ("script nonce", &self.script_nonce_key_id),
+            ("sender offset nonce", &self.sender_offset_nonce_key_id),
+        ] {
+            match nonce {
+                TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::Random,
+                    ..
+                } |
+                TariKeyId::Encrypted { .. } => {},
+                other => {
+                    return Err(format!(
+                        "output {output}: the {what} is not a Random nonce key ({other})"
+                    ));
+                },
+            }
+        }
+        match &self.pre_mine_script_key_id {
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::PreMine,
+                index,
+            } if !is_pre_mine_sender_offset_index(*index) => {},
+            other => {
+                return Err(format!(
+                    "output {output}: the pre-mine script key is not a pre-mine script key index ({other})"
+                ));
+            },
+        }
+        match &self.sender_offset_key_id {
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::PreMine,
+                index,
+            } if is_pre_mine_sender_offset_index(*index) => {},
+            TariKeyId::Encrypted { .. } => {},
+            other => {
+                return Err(format!(
+                    "output {output}: the sender offset key is not a pre-mine sender offset key ({other})"
+                ));
+            },
+        }
+        Ok(())
+    }
+}
+
 // Step 2 outputs for leader with `PreMineSpendPartyDetails`
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct PreMineSpendStep2OutputsForLeader {
@@ -150,4 +220,72 @@ struct Step4OutputsForLeader {
 
 trait SessionId {
     fn session_id(&self) -> String;
+}
+
+#[cfg(test)]
+mod test {
+    use minotari_ledger_wallet_common::{
+        common_types::LedgerKeyBranch,
+        script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+    };
+    use tari_transaction_components::key_manager::{KeyManager, TransactionKeyManagerInterface};
+
+    use super::*;
+
+    fn ledger(branch: LedgerKeyBranch, index: u64) -> TariKeyId {
+        TariKeyId::LedgerKey { branch, index }
+    }
+
+    fn ledger_output() -> Step2OutputsForSelf {
+        Step2OutputsForSelf {
+            output_index: 3,
+            script_nonce_key_id: ledger(LedgerKeyBranch::Random, (1 << 32) | 1),
+            sender_offset_key_id: ledger(LedgerKeyBranch::PreMine, PRE_MINE_SENDER_OFFSET_INDEX_BIT | 5),
+            sender_offset_nonce_key_id: ledger(LedgerKeyBranch::Random, (1 << 32) | 2),
+            pre_mine_script_key_id: ledger(LedgerKeyBranch::PreMine, 3),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn what_step_2_writes_passes() {
+        assert_eq!(ledger_output().check_key_ids(), Ok(()));
+
+        // A software wallet's nonces and sender offset key are encrypted keys.
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut software = ledger_output();
+        software.script_nonce_key_id = key_manager.get_random_key(None, None).unwrap().key_id;
+        software.sender_offset_nonce_key_id = key_manager.get_random_key(None, None).unwrap().key_id;
+        software.sender_offset_key_id = key_manager.get_random_key(None, None).unwrap().key_id;
+        assert_eq!(software.check_key_ids(), Ok(()));
+    }
+
+    #[test]
+    fn a_tampered_self_file_is_refused() {
+        let mut same_nonce = ledger_output();
+        same_nonce.sender_offset_nonce_key_id = same_nonce.script_nonce_key_id.clone();
+
+        let mut nonce_off_random = ledger_output();
+        nonce_off_random.script_nonce_key_id = ledger(LedgerKeyBranch::PreMine, (1 << 32) | 1);
+
+        let mut marked_script_key = ledger_output();
+        marked_script_key.pre_mine_script_key_id =
+            ledger(LedgerKeyBranch::PreMine, PRE_MINE_SENDER_OFFSET_INDEX_BIT | 3);
+
+        let mut unmarked_sender_offset = ledger_output();
+        unmarked_sender_offset.sender_offset_key_id = ledger(LedgerKeyBranch::PreMine, 3);
+
+        let mut one_sided_sender_offset = ledger_output();
+        one_sided_sender_offset.sender_offset_key_id = ledger(LedgerKeyBranch::OneSidedSenderOffset, 9);
+
+        for (what, output) in [
+            ("one nonce twice", same_nonce),
+            ("a nonce off the Random branch", nonce_off_random),
+            ("a marked script key", marked_script_key),
+            ("an unmarked sender offset key", unmarked_sender_offset),
+            ("a OneSidedSenderOffset sender offset key", one_sided_sender_offset),
+        ] {
+            assert!(output.check_key_ids().is_err(), "{what} was accepted");
+        }
+    }
 }

@@ -967,7 +967,11 @@ pub async fn command_runner(
                     // step 3; that is not a control to rely on. `alpha` stays out of reach, but the reachable
                     // `PreMine` keys include each output's single-key fail-safe backup key: recovering it lets a
                     // compromised host spend that output alone after `fail_safe_height` - the multisig protects only
-                    // the pre-fail-safe path. The full cost, the scope, and the TODO that closes it live in
+                    // the pre-fail-safe path. Reuse does not need a compromised host either: a malicious leader who
+                    // asks for step 4 to be re-run against a second step 3 file, or anyone who can write the session
+                    // directory, gets it with an honest host, and the reviews look like a legitimate retry. Nothing
+                    // records which nonces were signed with; a host-side used-nonce record is the tracked follow-up.
+                    // The full cost, the scope, and the TODO that closes it live in
                     // `minotari_ledger_wallet_common::legacy_nonce`; read that before touching either of these lines.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
                     let sender_offset_nonce =
@@ -1445,6 +1449,16 @@ pub async fn command_runner(
                     );
                     break;
                 }
+                // The self file is host-writable, and what it names is signed with below through the legacy nonce
+                // instruction. Refuse one whose key ids step 2 could not have written - a nonce named twice above all.
+                if let Some(e) = party_info_indexed
+                    .outputs_for_self
+                    .iter()
+                    .find_map(|output| output.check_key_ids().err())
+                {
+                    eprintln!("\nError: Inconsistent step 2 self file! {e}\n");
+                    break;
+                }
 
                 let pre_mine_from_file =
                     match read_genesis_file_outputs(session_info.use_pre_mine_input_file, args.pre_mine_file_path) {
@@ -1488,8 +1502,11 @@ pub async fn command_runner(
                     );
 
                     // KNOWN, DELIBERATELY DEFERRED GAP: `script_nonce_key_id` is a host indexed nonce reserved
-                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce` and stays open to the
-                    // two-signatures-one-nonce attack. See `minotari_ledger_wallet_common::legacy_nonce` for the
+                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce` and stays open to
+                    // nonce reuse. Nothing marks the nonce spent once this step has run, and the challenge is built
+                    // entirely from the leader's step 3 fields, so a leader who sends a second step 3 file and asks
+                    // for this step to be re-run gets a second signature under the same nonce - with the same review
+                    // on the device as a legitimate retry. See `minotari_ledger_wallet_common::legacy_nonce` for the
                     // full cost and the TODO that closes it, and the reservation site in step 2 for why.
                     let script_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.pre_mine_script_key_id,
@@ -1574,12 +1591,14 @@ pub async fn command_runner(
                     // `get_script_offset` issued in step 2, and `sender_offset_nonce_key_id` is a host indexed nonce
                     // reserved back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce`.
                     //
-                    // A compromised host can recover this output's sender offset private key that way, and then
-                    // subtract it back out of the script offset to recover the script private key too. It cannot
-                    // reach `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
-                    // `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo step 2 for such a
-                    // session. `minotari_ledger_wallet_common::legacy_nonce` sets out the derivation, the scope -
-                    // pre-mine only, normal spends use device issued handles - and the TODO that closes it.
+                    // A compromised host - or a leader who gets this step re-run against a second step 3 file, or
+                    // anyone who can write the session directory - can recover this output's sender offset private
+                    // key that way, and then subtract it back out of the script offset to recover the script private
+                    // key too. It cannot reach `alpha`: a step 2 session file from before sender offsets moved to
+                    // `PreMine` names a `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo
+                    // step 2 for such a session. `minotari_ledger_wallet_common::legacy_nonce` sets out the
+                    // derivation, the scope - pre-mine only, normal spends use device issued handles - and the TODO
+                    // that closes it.
                     let metadata_signature = match key_manager_service.sign_with_nonce_and_challenge(
                         &party_info.sender_offset_key_id,
                         &party_info.sender_offset_nonce_key_id,

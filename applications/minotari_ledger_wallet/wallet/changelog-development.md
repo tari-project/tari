@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## 6.1.1-pre.1 (unreleased)
+
+
+### ⚠ Upgrade notes
+
+* **Upgrade the wallet and the Ledger application together.** Wallets from `5.7.0-pre.6` up to (not including)
+  `6.1.1-pre.1` still connect to this application, but they label pre-mine sender offset keys as
+  `OneSidedSenderOffset`, so pre-mine spends and backup pre-mine spends fail against it. Do not run a pre-mine spend
+  or a backup pre-mine spend from a wallet older than `6.1.1-pre.1` against this application. Wallets from
+  `6.1.1-pre.1` refuse older applications.
+* **Redo pre-mine step 2.** Step 2 session files written with an older application name keys this application no
+  longer signs with (a `OneSidedSenderOffset` sender offset key, and nonce indexes that older applications derived
+  modulo `2^32`). Start those sessions again from step 2.
+* Key indexes are now derived from all 64 bits. Every index below `2^32` keeps its key, and no key an ordinary
+  wallet re-derives after a transaction is built is above it, so ordinary sends and spends are unaffected.
+
 ## [5.2.0-pre.6](https://github.com/tari-project/tari/compare/v5.2.0-pre.5...v5.2.0-pre.6) (2025-11-28)
 
 

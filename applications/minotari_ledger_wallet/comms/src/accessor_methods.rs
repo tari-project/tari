@@ -55,7 +55,12 @@ use minotari_ledger_wallet_common::{
     },
     common_types::{AppSW, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_REPLY_SIZE, INVALID_NONCE_HANDLE},
-    legacy_nonce::{LegacyNonceBranchError, check_legacy_nonce_branches},
+    legacy_nonce::{
+        LEGACY_NONCE_INDEX_FLOOR,
+        LegacyNonceBranchError,
+        check_legacy_nonce_branches,
+        check_legacy_nonce_index,
+    },
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
         check_indexed_script_key_index,
@@ -707,6 +712,12 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
             "GetRawSchnorrSignatureLegacyNonce: the nonce branch must be '{}', got '{nonce_branch}'",
             LedgerKeyBranch::Random
         )),
+    })?;
+    check_legacy_nonce_index(nonce_index).map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below {LEGACY_NONCE_INDEX_FLOOR}, where \
+             it would name a nonce an application before 6.1.1-pre.1 derived"
+        ))
     })?;
     verify_ledger_application()?;
 

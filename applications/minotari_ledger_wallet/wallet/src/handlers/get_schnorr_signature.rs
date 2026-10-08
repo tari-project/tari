@@ -22,7 +22,7 @@ use minotari_ledger_wallet_common::{
         GetScriptSchnorrSignatureRequest,
         SchnorrReply,
     },
-    legacy_nonce::{check_legacy_nonce_branches, legacy_signature_purpose},
+    legacy_nonce::{check_legacy_nonce_branches, check_legacy_nonce_index, legacy_signature_purpose},
     u64_to_string,
 };
 
@@ -105,6 +105,10 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// review is not a reliable control: one nonce index reused across *any* two `PreMine` keys leaks both, because
 /// `GetScriptOffset` hands the host linear relations between pre-mine keys, and the two reviews can read exactly like
 /// a legitimate step 3 - script signature then metadata signature - with only the repeated nonce index as the tell.
+/// Nor does reuse need a compromised host: a malicious pre-mine leader asking for step 4 to be re-run, or anyone who
+/// can write the session files, gets the same reviews a legitimate retry shows. Nothing here records a used nonce; the
+/// closure is a host-side record, tracked separately. Nonce indexes below `2^32` are refused before the review,
+/// because they name nonces an application before `6.1.1-pre.1` derived (`LEGACY_NONCE_INDEX_FLOOR`).
 ///
 /// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs, what it reached
 /// before it was narrowed to `PreMine` (`alpha`, via the script offset reply), and the TODO that deletes this handler
@@ -122,6 +126,10 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
     // This check is the one that counts; the host's is only there to produce a legible error. It runs before the
     // review, so a refused request never reaches the screen.
     check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|_| AppSW::BadBranchKey)?;
+    // A nonce index below 2^32 names the nonce an application before 6.1.1-pre.1 derived for some host index, so a
+    // signature under it could be combined with an old one. Refused before the review, like the branches; see
+    // `minotari_ledger_wallet_common::legacy_nonce::LEGACY_NONCE_INDEX_FLOOR`.
+    check_legacy_nonce_index(request.nonce_index).map_err(|_| AppSW::BadBranchKey)?;
 
     // Note: `KeyType::from_branch_key` rejects the spend branch a second time, so `alpha` stays unreachable even
     // if the whitelist above is ever loosened.

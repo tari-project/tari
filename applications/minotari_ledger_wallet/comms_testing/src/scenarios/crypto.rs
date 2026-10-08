@@ -625,7 +625,12 @@ fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> Sc
 
 fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: LedgerKeyBranch) -> ScenarioResult {
     let account = fixtures::random_u64();
-    let sender_offset_key_index = fixtures::random_u64();
+    // A `PreMine` sender offset only ever comes from pre-mine mode, with the marker (bit 63) set, and the device
+    // refuses one without it.
+    let sender_offset_key_index = match branch {
+        LedgerKeyBranch::PreMine => fixtures::random_u64() | (1 << 63),
+        _ => fixtures::random_u64(),
+    };
     let commitment_mask = fixtures::random_secret_key();
     let common_message = fixtures::random_bytes_32();
     let receiver = fixtures::published_receiver(0).map_err(super::fail)?;
