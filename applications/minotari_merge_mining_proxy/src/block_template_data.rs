@@ -22,7 +22,10 @@
 
 //! Provides methods for building template data and storing them with timestamps.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 
 #[cfg(not(test))]
 use chrono::Duration;
@@ -37,10 +40,34 @@ use crate::{block_template_manager::FinalBlockTemplateData, error::MmProxyError}
 
 const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
 
+/// The maximum number of final block templates held at once.
+///
+/// Every `getblocktemplate` request produces a brand new template - the coinbase is built from a freshly generated
+/// random key - so entries accumulate at the request rate, and the dedup in
+/// [`BlockTemplateRepository::save_final_block_template_if_key_unique`] never actually dedups. Combined with the
+/// time based retention below (a 20 minute window swept every 10 minutes, so up to 30 minutes of residency) the size
+/// of the repository was set purely by how fast miners asked for templates, and each entry holds a complete Tari
+/// block including all of its mempool transactions.
+///
+/// A template is only useful until a solution for it is submitted, which a miner does within seconds of receiving
+/// it, so this cap is far more than a working miner ever needs: 2048 entries is about 30 minutes of history at one
+/// template per second, or three minutes at the 10 per second of a large farm. What it buys is a fixed ceiling -
+/// worst case occupancy becomes 2048 blocks rather than `request_rate * 1800s` blocks.
+const MAX_BLOCK_TEMPLATES: usize = 2048;
+
 /// Structure for holding hashmap of hashes -> [BlockRepositoryItem] and [TemplateRepositoryItem].
 #[derive(Debug, Clone)]
 pub(crate) struct BlockTemplateRepository {
-    blocks: Arc<RwLock<HashMap<Vec<u8>, BlockRepositoryItem>>>,
+    blocks: Arc<RwLock<BlockTemplates>>,
+}
+
+/// The stored templates, together with the insertion order needed to evict the oldest once the cap is reached.
+#[derive(Debug, Default)]
+struct BlockTemplates {
+    by_hash: HashMap<Vec<u8>, BlockRepositoryItem>,
+    /// The keys of `by_hash` in insertion order. May still contain keys that have since been removed from
+    /// `by_hash`; those are simply skipped when evicting, which keeps removal O(1).
+    insertion_order: VecDeque<Vec<u8>>,
 }
 
 /// Structure holding [FinalBlockTemplateData] along with a timestamp.
@@ -68,22 +95,43 @@ impl BlockRepositoryItem {
 impl BlockTemplateRepository {
     pub fn new() -> Self {
         Self {
-            blocks: Arc::new(RwLock::new(HashMap::new())),
+            blocks: Arc::new(RwLock::new(BlockTemplates::default())),
         }
     }
 
     /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
     pub async fn get_final_template<T: AsRef<[u8]>>(&self, merge_mining_hash: T) -> Option<FinalBlockTemplateData> {
         let b = self.blocks.read().await;
-        b.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
+        b.by_hash.get(merge_mining_hash.as_ref()).map(|item| item.data.clone())
     }
 
     /// Store [FinalBlockTemplateData] at the hash value if the key does not exist.
+    ///
+    /// Once [`MAX_BLOCK_TEMPLATES`] are held, the oldest entries are evicted to make room. This is a hard ceiling
+    /// on top of the time based [`Self::remove_outdated`] cleanup, not a replacement for it: the time window is
+    /// what normally frees templates, and the cap is what stops the request rate from deciding how much memory the
+    /// proxy uses.
     pub async fn save_final_block_template_if_key_unique(&self, block_template: FinalBlockTemplateData) {
         let merge_mining_hash = block_template.aux_chain_mr.to_vec();
         let mut b = self.blocks.write().await;
-        b.entry(merge_mining_hash)
-            .or_insert_with(|| BlockRepositoryItem::new(block_template));
+        if b.by_hash.contains_key(&merge_mining_hash) {
+            return;
+        }
+        b.by_hash
+            .insert(merge_mining_hash.clone(), BlockRepositoryItem::new(block_template));
+        b.insertion_order.push_back(merge_mining_hash);
+        while b.insertion_order.len() > MAX_BLOCK_TEMPLATES {
+            let Some(oldest) = b.insertion_order.pop_front() else {
+                break;
+            };
+            if b.by_hash.remove(&oldest).is_some() {
+                trace!(
+                    target: LOG_TARGET,
+                    "Final block template with merge mining hash {:?} evicted: more than {} are held",
+                    hex::encode(&oldest), MAX_BLOCK_TEMPLATES
+                );
+            }
+        }
     }
 
     /// Remove any data that is older than 20 minutes.
@@ -96,7 +144,13 @@ impl BlockTemplateRepository {
         let threshold = Utc::now()
             .checked_sub_signed(Duration::minutes(20))
             .unwrap_or(chrono::DateTime::<Utc>::MIN_UTC);
-        *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
+        let BlockTemplates {
+            by_hash,
+            insertion_order,
+        } = &mut *b;
+        let retained = by_hash.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
+        *by_hash = retained;
+        insertion_order.retain(|hash| by_hash.contains_key(hash));
     }
 
     /// Remove a particularfinla block template for hash and return the associated [BlockRepositoryItem] if any.
@@ -107,7 +161,13 @@ impl BlockTemplateRepository {
             hex::encode(hash.as_ref())
         );
         let mut b = self.blocks.write().await;
-        b.remove(hash.as_ref())
+        b.by_hash.remove(hash.as_ref())
+    }
+
+    /// The number of final block templates currently held.
+    #[cfg(test)]
+    pub async fn len(&self) -> usize {
+        self.blocks.read().await.by_hash.len()
     }
 }
 
@@ -259,6 +319,20 @@ mod test {
         }
     }
 
+    /// Clones `template` with a distinct merge mining hash derived from `key`, so that each one is stored under its
+    /// own entry (the way real templates are, each having a freshly generated coinbase).
+    fn with_distinct_key(template: &FinalBlockTemplateData, key: u32) -> FinalBlockTemplateData {
+        let hash: Vec<u8> = key
+            .to_le_bytes()
+            .into_iter()
+            .chain(std::iter::repeat(0u8))
+            .take(32)
+            .collect();
+        let mut template = template.clone();
+        template.aux_chain_mr = AuxChainMr::try_from(hash).unwrap();
+        template
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_block_template_repository() {
         let btr = BlockTemplateRepository::new();
@@ -273,6 +347,39 @@ mod test {
         assert!(btr.get_final_template(hash1.clone()).await.is_some());
         btr.remove_outdated().await;
         assert!(btr.get_final_template(hash1).await.is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_block_template_repository_evicts_over_the_count_cap() {
+        let btr = BlockTemplateRepository::new();
+        let block_template = create_block_template_data();
+        let overflow = 8u32;
+        let total = u32::try_from(MAX_BLOCK_TEMPLATES).unwrap().saturating_add(overflow);
+
+        for key in 0..total {
+            btr.save_final_block_template_if_key_unique(with_distinct_key(&block_template, key))
+                .await;
+        }
+
+        // Nothing is outdated yet - every template was created moments ago - so without a count cap all of them
+        // would still be resident.
+        assert_eq!(btr.len().await, MAX_BLOCK_TEMPLATES);
+
+        // The oldest entries were the ones evicted, and the newest were all kept.
+        for key in 0..overflow {
+            let hash = with_distinct_key(&block_template, key).aux_chain_mr.to_vec();
+            assert!(
+                btr.get_final_template(hash).await.is_none(),
+                "template {key} should have been evicted"
+            );
+        }
+        for key in overflow..total {
+            let hash = with_distinct_key(&block_template, key).aux_chain_mr.to_vec();
+            assert!(
+                btr.get_final_template(hash).await.is_some(),
+                "template {key} should have been retained"
+            );
+        }
     }
 
     #[test]
