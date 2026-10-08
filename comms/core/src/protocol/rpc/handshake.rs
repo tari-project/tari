@@ -107,8 +107,17 @@ where T: AsyncRead + AsyncWrite + Unpin
         self
     }
 
-    /// Server-side handshake protocol
+    /// Server-side handshake protocol: receives the client's handshake and replies with the negotiated version
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
+        let version = self.receive_client_handshake().await?;
+        self.accept_version(version).await?;
+        Ok(version)
+    }
+
+    /// The first half of the server-side handshake: receives the client's handshake and negotiates a version. If none
+    /// is supported, sends the rejection and returns `ClientNoSupportedVersion`. The acceptance is sent separately
+    /// with [Self::accept_version], so a server can register the session before the client learns it was accepted.
+    pub async fn receive_client_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
                 let msg = proto::rpc::RpcSession::decode(&mut msg.freeze())?;
@@ -117,14 +126,6 @@ where T: AsyncRead + AsyncWrite + Unpin
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
                     debug!(target: LOG_TARGET, "Local server accepted version: {}", version);
-                    let reply = proto::rpc::RpcSessionReply {
-                        session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),
-                        ..Default::default()
-                    };
-                    let span = span!(Level::INFO, "rpc::server::handshake::send_accept_version_reply");
-                    self.send_bounded(reply.to_encoded_bytes().into())
-                        .instrument(span)
-                        .await?;
                     return Ok(*version);
                 }
 
@@ -147,6 +148,19 @@ where T: AsyncRead + AsyncWrite + Unpin
                 Err(RpcHandshakeError::TimedOut)
             },
         }
+    }
+
+    /// The second half of the server-side handshake: tells the client its session was accepted with `version`, within
+    /// the timeout if one is set
+    pub async fn accept_version(&mut self, version: u32) -> Result<(), RpcHandshakeError> {
+        let reply = proto::rpc::RpcSessionReply {
+            session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(version)),
+            ..Default::default()
+        };
+        let span = span!(Level::INFO, "rpc::server::handshake::send_accept_version_reply");
+        self.send_bounded(reply.to_encoded_bytes().into())
+            .instrument(span)
+            .await
     }
 
     pub async fn reject_with_reason(&mut self, reject_reason: HandshakeRejectReason) -> Result<(), RpcHandshakeError> {

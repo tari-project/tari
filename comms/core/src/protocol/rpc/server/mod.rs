@@ -420,8 +420,9 @@ impl RateLimitedWarning {
 struct HandshakeOutcome<S> {
     protocol: ProtocolId,
     node_id: NodeId,
-    /// The service and the substream, ready to start a session; or why the session was not started
-    result: Result<(S, CanonicalFraming<Substream>), RpcServerError>,
+    /// The service, the substream and the negotiated version, ready to start a session (the acceptance is not sent
+    /// yet); or why the session was not started
+    result: Result<(S, CanonicalFraming<Substream>, u32), RpcServerError>,
 }
 
 /// What the accept loop decided before handing a substream to a handshake task
@@ -699,13 +700,12 @@ where
                     Err(err)
                 },
                 SessionDecision::Accept(service) => {
-                    // The handshake bounds the receive and the reply separately. There is deliberately no deadline
-                    // around both: one could cancel the accept reply after it was queued, leaving the client with an
-                    // accepted session whose substream is then dropped. A reply that cannot be sent in time fails as an
-                    // IO error instead.
+                    // Only the client's half of the handshake happens here. The acceptance is sent by the session task
+                    // once the session is registered (see `start_session`), so a client never learns it was accepted
+                    // before the server counts its session, and an accepted session is never dropped afterwards.
                     match Handshake::new(&mut framed)
                         .with_timeout(timeout)
-                        .perform_server_handshake()
+                        .receive_client_handshake()
                         .await
                     {
                         Ok(version) => {
@@ -713,7 +713,7 @@ where
                                 target: LOG_TARGET,
                                 "Server negotiated RPC v{version} with client node `{task_node_id}`"
                             );
-                            Ok((service, framed))
+                            Ok((service, framed, version))
                         },
                         Err(err) => Err(err.into()),
                     }
@@ -764,7 +764,7 @@ where
             node_id,
             result,
         } = outcome;
-        let (service, framed) = match result {
+        let (service, framed, version) = match result {
             Ok(accepted) => accepted,
             Err(err) => {
                 self.log_handshake_failure(&protocol, &err);
@@ -773,7 +773,7 @@ where
         };
         // The session was reserved when the handshake was accepted, so this cannot fail unless that bookkeeping is
         // wrong. The substream is dropped if it does.
-        if let Err(err) = self.start_session(protocol, &node_id, service, framed) {
+        if let Err(err) = self.start_session(protocol, &node_id, service, framed, version) {
             warn!(
                 target: LOG_TARGET,
                 "BUG: an accepted RPC handshake from peer `{node_id}` could not start its session: {err}"
@@ -879,14 +879,20 @@ where
         }
     }
 
-    /// Starts a session on a substream whose handshake has completed. Its session was reserved when the handshake was
-    /// accepted; the limits are checked again only as a defensive invariant.
+    /// Registers and starts a session on a substream whose client handshake was received with `version`. Its session
+    /// was reserved when the handshake was accepted; the limits are checked again only as a defensive invariant (if
+    /// that fails, the substream is dropped before the client was told it was accepted).
+    ///
+    /// The session task sends the acceptance as its first action. The session is registered here, on the accept loop,
+    /// before that task is spawned, so by the time the client is told it was accepted the session is already counted.
+    /// If the acceptance cannot be sent within the handshake timeout, the session ends at once and releases its slot.
     fn start_session(
         &mut self,
         protocol: ProtocolId,
         node_id: &NodeId,
         service: TSvc::Service,
-        framed: CanonicalFraming<Substream>,
+        mut framed: CanonicalFraming<Substream>,
+        version: u32,
     ) -> Result<(), RpcServerError> {
         // Its reservation was released when the handshake finished
         let num_sessions = self.new_session_possible_for(node_id, 0)?;
@@ -904,20 +910,34 @@ where
 
         let stream_id = framed.stream_id();
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(());
-        let service = ActivePeerRpcService::new(
-            self.config.clone(),
-            protocol,
-            node_id.clone(),
-            service,
-            framed,
-            self.comms_provider.clone(),
-            stop_rx,
-        );
+        let config = self.config.clone();
+        let comms_provider = self.comms_provider.clone();
+        let session_node_id = node_id.clone();
 
         let node_id_clone = node_id.clone();
         let handle = self
             .executor
             .try_spawn(async move {
+                if let Err(err) = Handshake::new(&mut framed)
+                    .with_timeout(config.handshake_timeout)
+                    .accept_version(version)
+                    .await
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Could not send the RPC handshake acceptance to `{node_id_clone}`; ending the session: {err}"
+                    );
+                    return (node_id_clone, stream_id);
+                }
+                let service = ActivePeerRpcService::new(
+                    config,
+                    protocol,
+                    session_node_id,
+                    service,
+                    framed,
+                    comms_provider,
+                    stop_rx,
+                );
                 #[cfg(feature = "metrics")]
                 let num_sessions = metrics::num_sessions(&service.protocol);
                 #[cfg(feature = "metrics")]

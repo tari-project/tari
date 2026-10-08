@@ -1327,3 +1327,42 @@ async fn culling_cannot_make_room_past_accepted_handshakes() {
     let _a = complete_held_handshake(held_a).await;
     let _b = complete_held_handshake(held_b).await;
 }
+
+/// A client is only told its session was accepted once the server counts it. With the in-memory transport the server's
+/// status query races the session's registration as closely as it can: on every one of many connects, the count read
+/// straight after `connect` returns already includes the new session.
+#[tokio::test]
+async fn a_session_is_counted_before_the_client_is_told_it_was_accepted() {
+    const NUM_SESSIONS: usize = 50;
+    let (notif_tx, notif_rx) = mpsc::channel(10);
+    let (context, _) = create_mocked_rpc_context();
+    let server = RpcServer::builder()
+        .with_maximum_sessions_per_client(NUM_SESSIONS)
+        .with_maximum_simultaneous_sessions(NUM_SESSIONS)
+        .finish();
+    let mut handle = server.get_handle();
+    let _server = task::spawn({
+        let context = context.clone();
+        async move {
+            server
+                .add_service(GreetingServer::new(GreetingService::default()))
+                .serve(notif_rx, context)
+                .await
+                .unwrap();
+        }
+    });
+    let (node_identity, peer) = connect_peer(&notif_tx, &context).await;
+
+    let mut clients = Vec::with_capacity(NUM_SESSIONS);
+    for expected in 1..=NUM_SESSIONS {
+        clients.push(connect_greeting_client(&peer).await.unwrap());
+        let counted = handle
+            .get_num_active_sessions_for(node_identity.node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            counted, expected,
+            "the client was told it was accepted before its session was counted"
+        );
+    }
+}
