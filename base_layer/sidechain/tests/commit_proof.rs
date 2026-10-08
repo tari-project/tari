@@ -2,6 +2,7 @@
 //   SPDX-License-Identifier: BSD-3-Clause
 
 use tari_common_types::types::FixedHash;
+use tari_jellyfish::JmtHashScheme;
 use tari_sidechain::{
     CommitProofElement,
     MAX_QC_SIGNATURES,
@@ -9,6 +10,7 @@ use tari_sidechain::{
     QuorumDecision,
     SidechainBlockCommitProof,
     SidechainBlockHeader,
+    jmt_hash_scheme,
 };
 
 mod support;
@@ -339,5 +341,12 @@ mod batch_verification {
             );
         });
         assert_invalid_signature(&proof);
+    }
+}
+
+#[test]
+fn every_current_protocol_version_uses_jmt_hash_scheme_v1() {
+    for protocol_version in [0, 1, 2, 3, u32::MAX] {
+        assert_eq!(jmt_hash_scheme(protocol_version), JmtHashScheme::V1);
     }
 }
