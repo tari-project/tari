@@ -46,11 +46,11 @@
 //!   key, which this instruction cannot sign, and a reply blinded by a `PreMine` key has no `alpha` in it. Nothing the
 //!   legacy instruction can sign is a term of a reply that contains `alpha`.
 //! - The device shows a review for every legacy signature - key and nonce, branch and index, and which pre-mine
-//!   signature it is (see [`legacy_signature_purpose`]) - so a second request for the same pair is visible. The indexes
-//!   shown are the full `u64`s the host sent, and the device derives from every bit of them (the high and low words are
-//!   separate BIP32 path elements), so two requests the screen tells apart are requests for different keys. When the
-//!   device derived from the index modulo `2^32`, a host could dress one key and nonce up as two requests - `i` and
-//!   `2^63 | i`, or nonces `j` and `j + 2^32`.
+//!   signature it is (see [`legacy_signature_purpose`]). The indexes shown are the full `u64`s the host sent, and the
+//!   device derives from every bit of them (the high and low words are separate BIP32 path elements), so two requests
+//!   the screen tells apart are requests for different keys. When the device derived from the index modulo `2^32`, a
+//!   host could dress one key and nonce up as two requests - `i` and `2^63 | i`, or nonces `j` and `j + 2^32`. The
+//!   review is *not* a reliable control against nonce reuse, though; see the residual below.
 //!
 //! What remains extractable is pre-mine script keys and pre-mine sender offset keys. A pre-mine output's script
 //! offset is its script key minus its sender offset key, so recovering either gives up the other.
@@ -62,10 +62,25 @@
 //! can neither choose nor redeem twice, so there is no second signature to difference against.
 //!
 //! The residual: the pre-mine flow reserves its nonces in step 2 and signs in step 3 with a file in between, so a
-//! compromised host can still ask for a second signature under one nonce index - in the same device session or
-//! across a device restart. The device deliberately keeps no record of which nonce indexes it has signed with (it
-//! stores nothing for this instruction, in RAM or in NVM). The review makes that second request visible to the user;
-//! it does not make it impossible. The exposure is contained to pre-mine outputs.
+//! compromised host can still sign twice under one nonce index - in the same device session or across a device
+//! restart. The device deliberately keeps no record of which nonce indexes it has signed with (it stores nothing for
+//! this instruction, in RAM or in NVM).
+//!
+//! It does not need the *same pair* to do it. Reusing one nonce index across **any two `PreMine` keys** leaks both,
+//! because `GetScriptOffset` hands the host linear relations between pre-mine keys with no prompt at all: step 2 gives
+//! it `R = k_A - k_S` for script key `A` and sender offset key `S`. One legacy signature under `(PreMine A, Random j)`
+//! and one under `(PreMine S, Random j)` over different challenges give `s1 - s2 = (e1 - e2)·k_A + e2·R`, so `k_A`, and
+//! `k_S` with it. Two `GetScriptOffset([A])` replies likewise give `k_S2 - k_S1`, which relates two sender offset keys.
+//! The two reviews read "Pre-mine script signature" and "Pre-mine metadata signature" - exactly what a legitimate step
+//! 3 shows - and the only tell is the same nonce index on both screens. A careful user can notice that; it is not a
+//! control to rely on.
+//!
+//! What bounds it: `alpha` stays out of reach (see above), the exposure is contained to pre-mine outputs, and those are
+//! multisig, so one leaked key share is not theft by itself.
+//!
+//! Folding the signing key's branch and index into the legacy nonce derivation would close this without any device
+//! state - a nonce index would then name a different nonce under every key - but it changes what step 2 reserves and
+//! step 3 signs with, so it belongs with the TODO below rather than in front of it.
 //!
 //! # The fix, and what gets deleted with it
 //!

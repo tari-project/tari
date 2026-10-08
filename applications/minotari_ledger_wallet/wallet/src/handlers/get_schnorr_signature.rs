@@ -101,8 +101,10 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// signatures over the same key and nonce with different challenges and solve for the private key.
 ///
 /// It survives for the pre-mine spend flow alone. `check_legacy_nonce_branches` holds it to `PreMine` keys, and
-/// every request that passes is shown to the user for approval before anything is signed, so a second request for
-/// the same key and nonce is visible.
+/// every request that passes is shown to the user for approval before anything is signed, nonce index included. That
+/// review is not a reliable control: one nonce index reused across *any* two `PreMine` keys leaks both, because
+/// `GetScriptOffset` hands the host linear relations between pre-mine keys, and the two reviews can read exactly like
+/// a legitimate step 3 - script signature then metadata signature - with only the repeated nonce index as the tell.
 ///
 /// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs, what it reached
 /// before it was narrowed to `PreMine` (`alpha`, via the script offset reply), and the TODO that deletes this handler

@@ -45,6 +45,7 @@ use minotari_ledger_wallet_common::{
         GetVersionRequest,
         GetViewKeyRequest,
         KeyReply,
+        MAX_APDU_DATA_SIZE,
         RESPONSE_VERSION,
         SchnorrReply,
         ScriptOffsetReply,
@@ -811,6 +812,35 @@ pub fn ledger_get_one_sided_metadata_signature(
             "GetOneSidedMetadataSignature: '{sender_offset_branch}' is not a sender offset key branch"
         )));
     }
+    let address_bytes = receiver_address.to_vec();
+    let request = GetOneSidedMetadataSignatureRequest::new(
+        account,
+        u64::from(network.as_byte()),
+        u64::from(txo_version),
+        sender_offset_key_index,
+        u64::from(sender_offset_branch.as_byte()),
+        value,
+        key_field(commitment_mask)?,
+        &address_bytes,
+        message,
+    )
+    .map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "Address size {} exceeds maximum u16 value",
+            address_bytes.len()
+        ))
+    })?;
+
+    // The transport writes the data length as one byte, so a longer payload would go out with a wrapped length and be
+    // refused by the device as `WrongApduLength`. Say so here instead, before the device is touched.
+    if !request.fits_in_one_apdu() {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: the request is {} bytes, more than the {MAX_APDU_DATA_SIZE} one APDU can \
+             carry; the receiver address ({} bytes) is too long to sign for on a Ledger",
+            request.encoded_len(),
+            address_bytes.len()
+        )));
+    }
     verify_ledger_application()?;
 
     // Ensure the receiver address is valid
@@ -830,25 +860,6 @@ pub fn ledger_get_one_sided_metadata_signature(
             "Processing integrated address with embedded payment ID"
         );
     }
-
-    let address_bytes = receiver_address.to_vec();
-    let request = GetOneSidedMetadataSignatureRequest::new(
-        account,
-        u64::from(network.as_byte()),
-        u64::from(txo_version),
-        sender_offset_key_index,
-        u64::from(sender_offset_branch.as_byte()),
-        value,
-        key_field(commitment_mask)?,
-        &address_bytes,
-        message,
-    )
-    .map_err(|_| {
-        LedgerDeviceError::Processing(format!(
-            "Address size {} exceeds maximum u16 value",
-            address_bytes.len()
-        ))
-    })?;
 
     match Command::from_request(&request).execute() {
         Ok(result) => {
@@ -878,5 +889,51 @@ pub fn ledger_get_one_sided_metadata_signature(
         Err(e) => Err(LedgerDeviceError::Instruction(format!(
             "GetOneSidedMetadataSignature: {e}"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::tari_address::TariAddressFeatures;
+
+    use super::*;
+
+    fn dual_address(payment_id_len: usize) -> TariAddress {
+        let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(7u64));
+        TariAddress::new_dual_address(
+            key.clone(),
+            key,
+            Network::Esmeralda,
+            TariAddressFeatures::create_one_sided_only() | TariAddressFeatures::PAYMENT_ID,
+            Some(vec![0xaa; payment_id_len]),
+        )
+        .expect("a dual address with a payment id")
+    }
+
+    /// A receiver address too long for one APDU is refused on the host, with an error that says so, before the device
+    /// is asked - not sent with a wrapped length byte for the device to answer `WrongApduLength`.
+    #[test]
+    fn a_metadata_request_longer_than_one_apdu_is_refused_on_the_host() {
+        let address = dual_address(200);
+        assert!(address.to_vec().len() > MAX_APDU_DATA_SIZE - 106);
+        let error = ledger_get_one_sided_metadata_signature(
+            1,
+            Network::Esmeralda,
+            0,
+            1_000,
+            7,
+            LedgerKeyBranch::OneSidedSenderOffset,
+            &PrivateKey::from(3u64),
+            &address,
+            &[0x42; 32],
+        )
+        .unwrap_err();
+        match error {
+            LedgerDeviceError::Processing(message) => assert!(
+                message.contains("more than the 255 one APDU can carry"),
+                "unexpected message: {message}"
+            ),
+            other => panic!("expected the host's size refusal, got {other:?}"),
+        }
     }
 }

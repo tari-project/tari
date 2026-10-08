@@ -62,7 +62,9 @@ pub use keys::{
     GetViewKeyRequest,
 };
 pub use metadata::{
+    DEFAULT_SENDER_OFFSET_BRANCH,
     GetOneSidedMetadataSignatureRequest,
+    MAX_APDU_DATA_SIZE,
     OneSidedMetadataSignatureHead,
     OneSidedMetadataSignatureTail,
     ReceiverAddressTooLong,

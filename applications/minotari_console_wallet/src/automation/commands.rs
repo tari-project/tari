@@ -959,10 +959,13 @@ pub async fn command_runner(
                     // device's nonce store is in RAM and holds eight. So they stay host indexed on the `Random`
                     // branch, and signing with them goes through `GetRawSchnorrSignatureLegacyNonce`.
                     //
-                    // These signatures therefore remain open to the two-signatures-one-nonce attack, which for
-                    // pre-mine outputs reaches the script key and the sender offset key - both on the `PreMine`
-                    // branch, the only one the legacy instruction will sign, and each shown on the device for
-                    // approval. The full cost, the scope, and the TODO that closes it live in
+                    // These signatures therefore remain open to nonce reuse, which for pre-mine outputs reaches the
+                    // script key and the sender offset key - both on the `PreMine` branch, the only one the legacy
+                    // instruction will sign. It needs no repeated pair: one nonce index reused across any two
+                    // `PreMine` keys leaks both, because the script offset relates them. The device shows each
+                    // signature for approval, nonce index included, but the two reviews can look like a legitimate
+                    // step 3; that is not a control to rely on. `alpha` stays out of reach, and pre-mine outputs are
+                    // multisig. The full cost, the scope, and the TODO that closes it live in
                     // `minotari_ledger_wallet_common::legacy_nonce`; read that before touching either of these lines.
                     let script_nonce_key = key_manager_service.get_random_key(None, Some(LedgerKeyBranch::Random))?;
                     let sender_offset_nonce =

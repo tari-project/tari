@@ -19,7 +19,13 @@
 //! had. Anything after `message` used to be ignored, which is what lets the format grow this way: hosts only enforce a
 //! minimum application version, so an older host talks to a newer application, and its payload - which stops at
 //! `message`, or carries fewer than eight bytes after it - decodes exactly as before, with the branch defaulting to
-//! `OneSidedSenderOffset` ([`DEFAULT_SENDER_OFFSET_BRANCH`]). Current hosts always send it.
+//! `OneSidedSenderOffset` ([`DEFAULT_SENDER_OFFSET_BRANCH`]).
+//!
+//! Current hosts send it only when it is *not* that default, i.e. only for the backup pre-mine spend. An ordinary
+//! one-sided send is therefore byte-identical to the old layout, and keeps the old layout's room for a receiver
+//! address: the whole payload has to fit one APDU ([`MAX_APDU_DATA_SIZE`]), because the transport writes its length
+//! as a single byte. Appending eight bytes to every request would have moved that ceiling for every send to a dual
+//! address with a long payment id.
 //!
 //! # Why the device decodes this in three steps
 //!
@@ -48,6 +54,11 @@ const FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 4 + 32;
 const ADDRESS_SIZE_SIZE: usize = 2;
 const MESSAGE_SIZE: usize = 32;
 const SENDER_OFFSET_BRANCH_SIZE: usize = 8;
+
+/// The most data one APDU can carry: `ledger-apdu` serialises the data length as a single byte (`len() as u8`), so a
+/// longer payload does not fail - its length silently wraps, and the device answers `WrongApduLength`. See
+/// [`GetOneSidedMetadataSignatureRequest::fits_in_one_apdu`].
+pub const MAX_APDU_DATA_SIZE: usize = 255;
 
 /// The `sender_offset_branch` of a payload that does not carry one: `OneSidedSenderOffset`, the only branch a host
 /// from before the field existed ever meant.
@@ -123,6 +134,26 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
     pub fn receiver_address(&self) -> &'a [u8] {
         self.receiver_address
     }
+
+    /// The encoded length: the old layout, plus the trailing branch when it is not the default.
+    pub fn encoded_len(&self) -> usize {
+        let branch = if self.sender_offset_branch == DEFAULT_SENDER_OFFSET_BRANCH {
+            0
+        } else {
+            SENDER_OFFSET_BRANCH_SIZE
+        };
+        FIXED_SIZE
+            .saturating_add(ADDRESS_SIZE_SIZE)
+            .saturating_add(self.receiver_address.len())
+            .saturating_add(MESSAGE_SIZE)
+            .saturating_add(branch)
+    }
+
+    /// Whether the encoded request fits one APDU ([`MAX_APDU_DATA_SIZE`]). A request that does not would go out with a
+    /// wrapped length byte, so the host refuses it instead of sending it.
+    pub fn fits_in_one_apdu(&self) -> bool {
+        self.encoded_len() <= MAX_APDU_DATA_SIZE
+    }
 }
 
 impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
@@ -138,8 +169,11 @@ impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
         out.write(&address_size.to_le_bytes());
         out.write(self.receiver_address);
         out.write(self.message);
-        // Appended, so that every field above keeps its offset; see the module docs.
-        write_u64(out, self.sender_offset_branch);
+        // Appended, so that every field above keeps its offset, and only when it is not the default, so that an
+        // ordinary send is the old layout byte for byte; see the module docs.
+        if self.sender_offset_branch != DEFAULT_SENDER_OFFSET_BRANCH {
+            write_u64(out, self.sender_offset_branch);
+        }
     }
 }
 
@@ -283,6 +317,7 @@ mod test {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE + 3];
         let bytes = request(&address).to_vec();
         assert_eq!(bytes.len(), FIXED_SIZE + 2 + address.len() + 32 + 8);
+        assert_eq!(bytes.len(), request(&address).encoded_len());
         // Every field keeps the offset it had before `sender_offset_branch` existed...
         assert_eq!(&bytes[24..32], &7u64.to_le_bytes());
         assert_eq!(&bytes[32..40], &1_000_000u64.to_le_bytes());
@@ -365,6 +400,20 @@ mod test {
         );
     }
 
+    /// The default branch is not sent: an ordinary send is the old layout byte for byte, so it keeps the old layout's
+    /// room for a receiver address.
+    #[test]
+    fn the_default_branch_encodes_as_the_old_layout() {
+        let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE + 3];
+        let with_branch = request(&address).to_vec();
+        let ordinary = request_on(&address, DEFAULT_SENDER_OFFSET_BRANCH);
+        let bytes = ordinary.to_vec();
+        assert_eq!(bytes.len(), FIXED_SIZE + 2 + address.len() + 32);
+        assert_eq!(bytes.len(), ordinary.encoded_len());
+        assert_eq!(bytes.as_slice(), &with_branch[..with_branch.len() - 8]);
+        assert_eq!(GetOneSidedMetadataSignatureRequest::decode(&bytes), Ok(ordinary));
+    }
+
     /// A host from before `sender_offset_branch` existed stops at the message. Its payload must decode exactly as it
     /// always did - same fields from the same offsets - with the branch defaulting to `OneSidedSenderOffset`, so an
     /// older host's ordinary one-sided send still works against this application.
@@ -399,11 +448,30 @@ mod test {
         );
     }
 
+    /// The largest address the old layout fits in one APDU - `255 - 106` = 149 bytes - still does with the default
+    /// branch, and decodes. With the `PreMine` branch it is eight bytes too long and is reported as such.
+    #[test]
+    fn the_largest_old_layout_address_still_fits_one_apdu() {
+        let largest = MAX_APDU_DATA_SIZE - (FIXED_SIZE + 2 + 32);
+        assert_eq!(largest, 149);
+        let address = vec![0xaa; largest];
+        let ordinary = request_on(&address, DEFAULT_SENDER_OFFSET_BRANCH);
+        assert!(ordinary.fits_in_one_apdu());
+        let bytes = ordinary.to_vec();
+        assert_eq!(bytes.len(), MAX_APDU_DATA_SIZE);
+        assert_eq!(GetOneSidedMetadataSignatureRequest::decode(&bytes), Ok(ordinary));
+
+        assert!(!request_on(&address, 0x09).fits_in_one_apdu());
+        assert!(request_on(&address[..largest - 8], 0x09).fits_in_one_apdu());
+        let one_more = vec![0xaa; largest + 1];
+        assert!(!request_on(&one_more, DEFAULT_SENDER_OFFSET_BRANCH).fits_in_one_apdu());
+    }
+
     /// A current host's payload carries the branch, and both decoders read it.
     #[test]
     fn a_new_layout_payload_decodes_its_branch() {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
-        for branch in [0x06, 0x09, 0x07, 0xff] {
+        for branch in [0x09, 0x07, 0x08, 0xff] {
             let bytes = request_on(&address, branch).to_vec();
             assert_eq!(
                 GetOneSidedMetadataSignatureRequest::decode(&bytes).map(|r| r.sender_offset_branch),
