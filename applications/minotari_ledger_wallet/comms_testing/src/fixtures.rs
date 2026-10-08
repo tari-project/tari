@@ -96,6 +96,16 @@ pub fn random_u64() -> u64 {
     rand::rng().next_u64()
 }
 
+/// A random account below 2^32, for anything that reaches `GetRawSchnorrSignatureLegacyNonce`.
+///
+/// The device derives from the account's low 32 bits only (its path element wraps), so the legacy instruction refuses
+/// an account of 2^32 or more - see `minotari_ledger_wallet_common::legacy_nonce::check_legacy_account`. Every other
+/// instruction still takes any `u64` account, and the scenarios for those keep drawing [`random_u64`] so that the
+/// tolerated wrap stays exercised (`vectors`' account wrap scenario pins it).
+pub fn random_account() -> u64 {
+    random_u64() & u64::from(u32::MAX)
+}
+
 /// The 32 canonical bytes of a public key.
 pub fn public_key_bytes(key: &RistrettoPublicKey) -> [u8; 32] {
     to_array_32(key.as_bytes())

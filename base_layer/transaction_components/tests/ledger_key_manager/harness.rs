@@ -121,12 +121,16 @@ impl Device {
         self.seed
     }
 
-    /// A ledger-mode key manager on a fresh random account.
+    /// A ledger-mode key manager on a fresh random account below 2^32.
     ///
     /// Random for the same reason the scenario library's inputs are: a fixed account is a question the device has
-    /// already answered, and every assertion in this suite is an equation that holds for any account.
+    /// already answered, and every assertion in this suite is an equation that holds for any account. Below 2^32
+    /// because the legacy nonce instruction refuses larger accounts (they derive the same keys as their low word -
+    /// `minotari_ledger_wallet_common::legacy_nonce::check_legacy_account`), and a wallet's account is the small
+    /// number the user entered anyway. The other instructions' tolerance of large accounts is pinned by
+    /// `comms_testing`'s vectors scenarios, not here.
     pub fn key_manager(&self) -> KeyManager {
-        self.key_manager_for(fixtures::random_u64())
+        self.key_manager_for(fixtures::random_account())
     }
 
     /// A ledger-mode key manager on `account`, bootstrapped the way the console wallet does it.

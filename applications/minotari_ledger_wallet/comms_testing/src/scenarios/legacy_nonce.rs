@@ -206,7 +206,7 @@ fn reviewed_pre_mine_signature(
 /// The key index is a small one, the shape of a pre-mine *script* key (its genesis output index), so the review must
 /// say "Pre-mine script signature". [`the_nonce_is_deterministic`] covers the sender offset shape.
 fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> ScenarioResult {
-    let account = fixtures::random_u64();
+    let account = fixtures::random_account();
 
     // The shared whitelist has to agree that this pair is allowed, or the scenario is asserting the wrong thing: a
     // pair the host also refuses would make a device rejection look like success.
@@ -245,7 +245,7 @@ fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> Sce
 /// would block rather than return, and the scenario would fail on its timeout.
 fn a_sender_offset_key_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let reply = legacy_signature(
-        fixtures::random_u64(),
+        fixtures::random_account(),
         fixtures::random_u64(),
         LedgerKeyBranch::OneSidedSenderOffset.as_byte(),
         fixtures::random_u64(),
@@ -298,7 +298,7 @@ fn a_sender_offset_key_is_refused(_context: &ScenarioContext<'_>) -> ScenarioRes
 /// A branch byte the shared enum does not name is checked too. It is refused earlier, by `branch_key_from_u64`, but
 /// it is refused with the same status word and it is the shape an attacker would try first.
 fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
-    let account = fixtures::random_u64();
+    let account = fixtures::random_account();
     let mut checked = 0usize;
     let mut whitelist_only = 0usize;
 
@@ -382,7 +382,7 @@ fn disallowed_pairs_are_refused(_context: &ScenarioContext<'_>) -> ScenarioResul
 /// under one nonce over different challenges give up the key, and the record exists to stop exactly that. The refusal
 /// goes over raw APDUs so the device's own check is what answers.
 fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
-    let account = fixtures::random_u64();
+    let account = fixtures::random_account();
     // A key index with the top bit set: the shape of a pre-mine *sender offset* key, so both reviews must say
     // "Pre-mine metadata signature".
     let key_index = fixtures::random_u64() | SENDER_OFFSET_INDEX_BIT;
@@ -423,7 +423,7 @@ fn the_nonce_is_deterministic(context: &ScenarioContext<'_>) -> ScenarioResult {
 /// here, and the cross request - the sender offset key under the script key's nonce index - is refused with
 /// `LegacyNonceReused`, before any review.
 fn the_reviewed_index_is_the_signing_index(context: &ScenarioContext<'_>) -> ScenarioResult {
-    let account = fixtures::random_u64();
+    let account = fixtures::random_account();
     let script_index = fixtures::random_u64() % 100_000;
     let sender_offset_index = SENDER_OFFSET_INDEX_BIT | script_index;
 
@@ -478,7 +478,7 @@ fn the_reviewed_index_is_the_signing_index(context: &ScenarioContext<'_>) -> Sce
 /// along that same path - so one old signature plus one new one under `j mod 2^32` would give up a key, and this
 /// application's used-nonce record knows nothing of the old one. Over raw APDUs, so the device's check answers.
 fn a_nonce_index_below_two_to_the_thirty_two_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
-    let account = fixtures::random_u64();
+    let account = fixtures::random_account();
     for nonce_index in [0, 1, (1u64 << 32) - 1, fixtures::random_u64() & 0xFFFF_FFFF] {
         let reply = legacy_signature(
             account,
