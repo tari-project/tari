@@ -152,23 +152,43 @@ struct SoftwareEphemeralNonceStore {
 /// plus a tweak the view key holder can compute, so any of them as a mask would hand the spend key to whoever
 /// supplied the key id (for example an online host forging an offline signing payload). `Zero` is no mask at all.
 ///
-/// Only the key ids a mask is actually made from are accepted: `Encrypted`, `DHCommitmentMask`, `DHEncryptedData`
-/// and `LedgerKey`.
+/// Only the key ids a mask is actually made from are accepted, and only over the keys the wallet makes them from:
+/// - `Encrypted` under the view key (every key `create_encrypted_key(_, None)` makes). An `Encrypted` under any other
+///   key is refused: an imported output's script key is `Encrypted` under the spend key, and accepting that id as a
+///   mask would publish the imported output's script private key.
+/// - `DHCommitmentMask` / `DHEncryptedData` whose private key is the view key, a ledger key, or an `Encrypted` under
+///   the view key (a sender offset key).
+/// - `LedgerKey`.
 pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
-    match key_id {
-        TariKeyId::Encrypted { .. } |
-        TariKeyId::DHCommitmentMask { .. } |
-        TariKeyId::DHEncryptedData { .. } |
-        TariKeyId::LedgerKey { .. } => Ok(()),
+    let allowed = match key_id {
+        TariKeyId::Encrypted { key, .. } => is_view_key(key.as_str()),
+        TariKeyId::DHCommitmentMask { private_key, .. } | TariKeyId::DHEncryptedData { private_key, .. } => {
+            match TariKeyId::from_str(private_key.as_str()) {
+                Ok(TariKeyId::ViewKey) | Ok(TariKeyId::LedgerKey { .. }) => true,
+                Ok(TariKeyId::Encrypted { key, .. }) => is_view_key(key.as_str()),
+                _ => false,
+            }
+        },
+        TariKeyId::LedgerKey { .. } => true,
         TariKeyId::SpendKey |
         TariKeyId::ViewKey |
         TariKeyId::Derived { .. } |
         TariKeyId::CodeTemplateAuthor |
         TariKeyId::Zero |
-        TariKeyId::LedgerEphemeralNonce { .. } => Err(KeyManagerError::KeyIdNotAMask {
+        TariKeyId::LedgerEphemeralNonce { .. } => false,
+    };
+    if allowed {
+        Ok(())
+    } else {
+        Err(KeyManagerError::KeyIdNotAMask {
             key_id: key_id.to_string(),
-        }),
+        })
     }
+}
+
+/// Whether a nested key id string names the view key.
+fn is_view_key(key_id: &str) -> bool {
+    matches!(TariKeyId::from_str(key_id), Ok(TariKeyId::ViewKey))
 }
 
 #[derive(Clone)]
@@ -2702,6 +2722,21 @@ mod tests {
             TariKeyId::Derived { key: (&mask).into() },
             TariKeyId::CodeTemplateAuthor,
             TariKeyId::Zero,
+            // An imported output's script key: a secret encrypted under the spend key
+            key_manager
+                .create_encrypted_key(PrivateKey::from(7u64), Some(TariKeyId::SpendKey))
+                .unwrap(),
+            TariKeyId::DHCommitmentMask {
+                public_key: key_manager.get_spend_key().pub_key,
+                private_key: (&TariKeyId::SpendKey).into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: key_manager.get_spend_key().pub_key,
+                private_key: (&key_manager
+                    .create_encrypted_key(PrivateKey::from(7u64), Some(TariKeyId::SpendKey))
+                    .unwrap())
+                    .into(),
+            },
         ]
     }
 
@@ -2863,5 +2898,30 @@ mod tests {
                 .encrypt_data_for_recovery(mask, None, 100, MemoField::new_empty())
                 .unwrap();
         }
+    }
+
+    /// An imported output's script key id is `Encrypted` under the spend key. Replayed as a mask it would make the
+    /// key manager publish the imported output's script private key, so it is refused.
+    #[test]
+    fn a_secret_encrypted_under_the_spend_key_is_not_a_mask() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let imported_script_key = key_manager
+            .create_encrypted_key(PrivateKey::from(7u64), Some(key_manager.get_spend_key().key_id))
+            .unwrap();
+        assert_not_a_mask(
+            key_manager.encrypt_data_for_recovery(&imported_script_key, None, 100, MemoField::new_empty()),
+            &imported_script_key,
+            "encrypt_data_for_recovery",
+        );
+        assert_not_a_mask(
+            key_manager.get_commitment(&imported_script_key, &PrivateKey::from(100u64)),
+            &imported_script_key,
+            "get_commitment",
+        );
+        // The same secret encrypted under the view key is an ordinary mask
+        let under_view_key = key_manager.create_encrypted_key(PrivateKey::from(7u64), None).unwrap();
+        key_manager
+            .get_commitment(&under_view_key, &PrivateKey::from(100u64))
+            .unwrap();
     }
 }

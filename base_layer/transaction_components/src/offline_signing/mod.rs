@@ -2122,4 +2122,58 @@ mod test {
             assert_key_id_refused(result, "inputs[0].script_key_id");
         }
     }
+
+    /// An imported output's script key id is `Encrypted` under the spend key, and the host sees it in any payload that
+    /// spends that output. Replayed as a forged output's mask or script key it must be refused; so must a `DH*` mask
+    /// over the spend key.
+    #[test]
+    fn sign_locked_transaction_refuses_key_ids_over_the_spend_key() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let good_mask = alice_key_manager.get_random_key(None, None).unwrap().key_id;
+        let good_script_key = TariKeyId::Derived {
+            key: (&good_mask).into(),
+        };
+        let imported_script_key = alice_key_manager
+            .create_encrypted_key(
+                tari_common_types::types::PrivateKey::from(7u64),
+                Some(alice_key_manager.get_spend_key().key_id),
+            )
+            .unwrap();
+        let dh_over_spend_key = TariKeyId::DHCommitmentMask {
+            public_key: alice_key_manager.get_spend_key().pub_key,
+            private_key: (&TariKeyId::SpendKey).into(),
+        };
+
+        let cases = [
+            (
+                imported_script_key.clone(),
+                good_script_key.clone(),
+                "outputs[0].commitment_mask_key_id",
+            ),
+            (
+                good_mask.clone(),
+                imported_script_key.clone(),
+                "outputs[0].script_key_id",
+            ),
+            (
+                good_mask.clone(),
+                TariKeyId::Derived {
+                    key: (&imported_script_key).into(),
+                },
+                "outputs[0].script_key_id",
+            ),
+            (dh_over_spend_key, good_script_key, "outputs[0].commitment_mask_key_id"),
+        ];
+        for (mask, script_key, field) in cases {
+            let prepared = forged_payload(&alice_key_manager, |km| output_with_key_ids(km, mask, script_key));
+            let result = sign_locked_transaction(
+                &alice_key_manager,
+                rules.consensus_constants(0).clone(),
+                Network::LocalNet,
+                prepared,
+            );
+            assert_key_id_refused(result, field);
+        }
+    }
 }

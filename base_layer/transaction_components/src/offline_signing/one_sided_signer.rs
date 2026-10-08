@@ -37,7 +37,7 @@ use crate::{
     TransactionBuilderError,
     consensus::ConsensusConstants,
     fee::recipient_output_features_and_scripts_size,
-    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, manager::require_mask_id},
     multisig::script::derive_multisig_ephemeral_pubkeys,
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
@@ -125,16 +125,12 @@ const MAX_PAYLOAD_KEY_ID_LEN: usize = 1024;
 /// from a `DH*` mask over an `Encrypted` sender offset key.
 const MAX_PAYLOAD_KEY_ID_NESTING: usize = 3;
 
-/// The key ids a commitment mask is made from. Anything else as a mask names a wallet root key (or a public tweak of
-/// one), and the signer would encrypt it into the output's recovery data.
-fn is_mask_branch(key_id: &TariKeyId) -> bool {
-    matches!(
-        key_id,
-        TariKeyId::Encrypted { .. } |
-            TariKeyId::DHCommitmentMask { .. } |
-            TariKeyId::DHEncryptedData { .. } |
-            TariKeyId::LedgerKey { .. }
-    )
+/// The key ids a commitment mask is made from, over the keys the wallet makes them from: see
+/// [`require_mask_id`]. Anything else as a mask names a wallet root key (or a public tweak of one), or a secret
+/// encrypted under the spend key (an imported output's script key), and the signer would encrypt it into the
+/// output's recovery data.
+fn is_mask_key_id(key_id: &TariKeyId) -> bool {
+    require_mask_id(key_id).is_ok()
 }
 
 /// Whether `key_id` is within the payload size and nesting limits.
@@ -164,10 +160,11 @@ fn is_within_payload_limits(key_id: &TariKeyId) -> bool {
 }
 
 fn is_allowed_mask_id(key_id: &TariKeyId) -> bool {
-    is_mask_branch(key_id) && is_within_payload_limits(key_id)
+    is_mask_key_id(key_id) && is_within_payload_limits(key_id)
 }
 
-/// A script key may be any mask key id, `Derived` over one (an ordinary wallet script key), or the spend key itself
+/// A script key may be any mask key id (see [`require_mask_id`], so an `Encrypted` under the spend key is refused here
+/// too), `Derived` over one (an ordinary wallet script key), or the spend key itself
 /// when the output's script is exactly `PushPubKey(<our public spend key>)`. That last case is how the wallet holds
 /// non-stealth outputs (for example non-stealth coinbases), and it is the same rule `WalletOutput` uses to pick the
 /// spend key as a script key. The script key only feeds the script signature (under a random nonce) and the script
@@ -178,8 +175,8 @@ fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spen
     }
     match key_id {
         TariKeyId::SpendKey => matches!(script.as_slice(), [Opcode::PushPubKey(pk)] if **pk == *public_spend_key),
-        TariKeyId::Derived { key } => TariKeyId::from_str(key.as_str()).is_ok_and(|inner| is_mask_branch(&inner)),
-        _ => is_mask_branch(key_id),
+        TariKeyId::Derived { key } => TariKeyId::from_str(key.as_str()).is_ok_and(|inner| is_mask_key_id(&inner)),
+        _ => is_mask_key_id(key_id),
     }
 }
 
@@ -189,8 +186,9 @@ fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spen
 /// The payload is only integrity-signed with the view key, so whoever holds the view key (the online host) can
 /// forge it, and the operator summary does not show key ids. A payload output whose commitment mask names the spend
 /// key would otherwise make the signer encrypt the spend key into the output's recovery data, so masks must be one
-/// of `Encrypted`, `DHCommitmentMask`, `DHEncryptedData` or `LedgerKey`. Script keys may additionally be `Derived`
-/// over one of those, or the spend key for a `PushPubKey(<our public spend key>)` script (see
+/// of `Encrypted`, `DHCommitmentMask`, `DHEncryptedData` or `LedgerKey` over the keys [`require_mask_id`] allows (an
+/// `Encrypted` under the spend key, such as an imported output's script key, is refused). Script keys may additionally
+/// be `Derived` over one of those, or the spend key for a `PushPubKey(<our public spend key>)` script (see
 /// `is_allowed_script_key_id`).
 fn check_payload_key_ids(
     inputs: &[WalletOutput],
