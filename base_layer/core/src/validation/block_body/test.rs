@@ -277,7 +277,7 @@ async fn it_allows_multiple_coinbases() {
         .with_block_height(1)
         .with_fees(0.into())
         .with_commitment_mask_id(commitment_mask_key.key_id.clone())
-        .with_encryption_key_id(TariKeyId::default())
+        .with_encryption_key_id(blockchain.km.get_random_key(None, None).unwrap().key_id)
         .with_sender_offset_key_id(TariKeyId::default())
         .with_script_key_id(TariKeyId::default())
         .with_script(push_pubkey_script(wallet_payment_address.public_spend_key()))

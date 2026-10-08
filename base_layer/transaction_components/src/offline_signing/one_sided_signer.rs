@@ -20,6 +20,8 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
+use std::str::FromStr;
+
 use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::{
@@ -115,6 +117,95 @@ pub fn withdraw_pending_output(
     .for_recipient(recipient.address.clone()))
 }
 
+/// The longest key id string a payload may carry.
+const MAX_PAYLOAD_KEY_ID_LEN: usize = 1024;
+/// How many key ids a payload key id may wrap in total (`Encrypted.key`, `DH*.private_key` and `Derived.key` each wrap
+/// one): the outer id plus a nested id at most two levels deep. The deepest key id the wallet itself produces is a
+/// multisig input's script key, `derived.dh_commitment_mask.<pk>.encrypted.<hex>.view_key`: a script key `Derived`
+/// from a `DH*` mask over an `Encrypted` sender offset key.
+const MAX_PAYLOAD_KEY_ID_NESTING: usize = 3;
+
+/// The key ids a commitment mask is made from. Anything else as a mask names a wallet root key (or a public tweak of
+/// one), and the signer would encrypt it into the output's recovery data.
+fn is_mask_branch(key_id: &TariKeyId) -> bool {
+    matches!(
+        key_id,
+        TariKeyId::Encrypted { .. } |
+            TariKeyId::DHCommitmentMask { .. } |
+            TariKeyId::DHEncryptedData { .. } |
+            TariKeyId::LedgerKey { .. }
+    )
+}
+
+/// Whether `key_id` is within the payload size and nesting limits.
+fn is_within_payload_limits(key_id: &TariKeyId) -> bool {
+    if key_id.to_string().len() > MAX_PAYLOAD_KEY_ID_LEN {
+        return false;
+    }
+    let mut current = key_id.clone();
+    let mut nesting = 0usize;
+    loop {
+        let inner = match &current {
+            TariKeyId::Derived { key } | TariKeyId::Encrypted { key, .. } => key.as_str().to_string(),
+            TariKeyId::DHCommitmentMask { private_key, .. } | TariKeyId::DHEncryptedData { private_key, .. } => {
+                private_key.as_str().to_string()
+            },
+            _ => return true,
+        };
+        nesting = nesting.saturating_add(1);
+        if nesting > MAX_PAYLOAD_KEY_ID_NESTING {
+            return false;
+        }
+        current = match TariKeyId::from_str(&inner) {
+            Ok(key_id) => key_id,
+            Err(_) => return false,
+        };
+    }
+}
+
+fn is_allowed_mask_id(key_id: &TariKeyId) -> bool {
+    is_mask_branch(key_id) && is_within_payload_limits(key_id)
+}
+
+fn is_allowed_script_key_id(key_id: &TariKeyId) -> bool {
+    if !is_within_payload_limits(key_id) {
+        return false;
+    }
+    match key_id {
+        TariKeyId::Derived { key } => TariKeyId::from_str(key.as_str()).is_ok_and(|inner| is_mask_branch(&inner)),
+        _ => is_mask_branch(key_id),
+    }
+}
+
+/// Checks the key ids of every wallet output an offline signing payload carries, before any of them reaches the
+/// builder or the key manager.
+///
+/// The payload is only integrity-signed with the view key, so whoever holds the view key (the online host) can
+/// forge it, and the operator summary does not show key ids. A payload output whose commitment mask names the spend
+/// key would otherwise make the signer encrypt the spend key into the output's recovery data.
+fn check_payload_key_ids(inputs: &[WalletOutput], outputs: &[WalletOutput]) -> Result<(), TransactionBuilderError> {
+    let lists = [("inputs", inputs), ("outputs", outputs)];
+    for (list_name, list) in lists {
+        for (i, output) in list.iter().enumerate() {
+            let mask = output.commitment_mask_key_id();
+            if !is_allowed_mask_id(mask) {
+                return Err(TransactionBuilderError::OfflinePayloadKeyIdNotAllowed {
+                    field: format!("{list_name}[{i}].commitment_mask_key_id"),
+                    key_id: mask.to_string(),
+                });
+            }
+            let script_key = output.script_key_id();
+            if !is_allowed_script_key_id(script_key) {
+                return Err(TransactionBuilderError::OfflinePayloadKeyIdNotAllowed {
+                    field: format!("{list_name}[{i}].script_key_id"),
+                    key_id: script_key.to_string(),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// This is the message containing the public data that the Receiver will send back to the Sender
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecipientSignedMessage {
@@ -134,6 +225,7 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     info: OneSidedTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
+    check_payload_key_ids(&info.inputs, &info.outputs)?;
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.fee_per_gram > MicroMinotari::zero() {
         tx_builder.with_fee_per_gram(info.fee_per_gram);
@@ -205,6 +297,7 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     mut info: OneSidedMultisigTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
+    check_payload_key_ids(&info.base.inputs, &info.base.outputs)?;
     let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.base.fee_per_gram > MicroMinotari::zero() {
@@ -359,6 +452,7 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     mut info: OneSidedTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
+    check_payload_key_ids(&info.inputs, &info.outputs)?;
     let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.fee_per_gram > MicroMinotari::zero() {

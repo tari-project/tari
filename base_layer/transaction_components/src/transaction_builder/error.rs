@@ -96,6 +96,8 @@ pub enum TransactionBuilderError {
         remainder: MicroMinotari,
         change_fee: MicroMinotari,
     },
+    #[error("Offline signing payload field `{field}` carries key id `{key_id}`, which is not allowed there")]
+    OfflinePayloadKeyIdNotAllowed { field: String, key_id: String },
     #[error("Transaction builder error: {0}")]
     Other(String),
 }

@@ -90,6 +90,11 @@ pub enum KeyManagerError {
     EncryptedDataError(#[from] EncryptedDataError),
     #[error("The commitment does not open to the value and mask")]
     InvalidMask,
+    #[error(
+        "Key id `{key_id}` cannot be used as a commitment mask or recovery key: it resolves to a wallet root key (or \
+         a public tweak of one), so using it would publish that key"
+    )]
+    KeyIdNotAMask { key_id: String },
 }
 
 impl From<RangeProofError> for KeyManagerError {

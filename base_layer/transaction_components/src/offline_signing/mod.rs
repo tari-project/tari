@@ -1702,4 +1702,284 @@ mod test {
             "Expected a view-key mismatch error, got: {err_msg}"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Payload key id checks: the payload signature is made with the view key, so the online host can forge any
+    // payload. A forged output key id must not make the signer touch the spend key.
+    // -----------------------------------------------------------------------
+
+    /// A prepared payload re-signed by the view key holder (the online host) with `forged` added to its outputs.
+    fn forged_payload(
+        alice_key_manager: &KeyManager,
+        forged: impl FnOnce(&KeyManager) -> crate::transaction_components::WalletOutput,
+    ) -> crate::offline_signing::models::PrepareOneSidedTransactionForSigningResult {
+        let rules = create_consensus_manager();
+        let alice_view_key_manager = create_view_key_manager(ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(20000), 0, alice_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(5))
+            .with_input(input)
+            .unwrap();
+
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(1000),
+            output_features: OutputFeatures::default(),
+            address: bob_address,
+            payment_id: MemoField::new_empty(),
+        }];
+        let mut prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+
+        // The host adds its output and re-signs: it holds the view key, so the payload signature still verifies.
+        prepared.info.outputs.push(forged(&alice_view_key_manager));
+        let canonical = crate::offline_signing::models::borsh_canonical_one_sided(
+            &prepared.version,
+            prepared.tx_id,
+            &prepared.info,
+        )
+        .unwrap();
+        prepared.payload_signature =
+            crate::offline_signing::offline_signer::sign_payload(&alice_view_key_manager, &canonical).unwrap();
+        prepared
+    }
+
+    /// A payload output with the given key ids, carrying a cached commitment so that no key manager call is needed
+    /// to build it.
+    fn output_with_key_ids(
+        key_manager: &KeyManager,
+        commitment_mask_key_id: TariKeyId,
+        script_key_id: TariKeyId,
+    ) -> crate::transaction_components::WalletOutput {
+        let features = OutputFeatures {
+            range_proof_type: crate::transaction_components::RangeProofType::RevealedValue,
+            ..Default::default()
+        };
+        crate::transaction_components::WalletOutput::new_from_parts(
+            Default::default(),
+            MicroMinotari(1000),
+            commitment_mask_key_id,
+            features,
+            push_pubkey_script(&key_manager.get_spend_key().pub_key),
+            ExecutionStack::default(),
+            script_key_id,
+            Default::default(),
+            Default::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            MicroMinotari(1000),
+            None,
+            MemoField::new_empty(),
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    fn assert_key_id_refused(
+        result: Result<crate::offline_signing::models::SignedOneSidedTransactionResult, crate::TransactionBuilderError>,
+        expected_field: &str,
+    ) {
+        match result {
+            Err(crate::TransactionBuilderError::OfflinePayloadKeyIdNotAllowed { field, .. }) => {
+                assert_eq!(field, expected_field)
+            },
+            Err(e) => panic!("expected the payload key id to be refused, got: {e}"),
+            Ok(_) => panic!("expected the payload key id to be refused, but the payload was signed"),
+        }
+    }
+
+    /// The GHSA attack: a forged payload output whose commitment mask is the spend key. Before the fix the signer
+    /// encrypted the spend key into the output's recovery data, which the host decrypts with the view key.
+    #[test]
+    fn sign_locked_transaction_refuses_a_spend_key_mask() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let prepared = forged_payload(&alice_key_manager, |km| {
+            let script_key = TariKeyId::Derived {
+                key: (&km.get_random_key(None, None).unwrap().key_id).into(),
+            };
+            output_with_key_ids(km, TariKeyId::SpendKey, script_key)
+        });
+
+        let result = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
+    }
+
+    /// Every root-bearing key id is refused as a payload mask, and as a payload script key.
+    #[test]
+    fn sign_locked_transaction_refuses_root_bearing_payload_key_ids() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let good_mask = alice_key_manager.get_random_key(None, None).unwrap().key_id;
+        let bad_ids = [
+            TariKeyId::SpendKey,
+            TariKeyId::ViewKey,
+            TariKeyId::CodeTemplateAuthor,
+            TariKeyId::Zero,
+            TariKeyId::Derived {
+                key: (&good_mask).into(),
+            },
+        ];
+        for bad in bad_ids {
+            let mask_bad = bad.clone();
+            let prepared = forged_payload(&alice_key_manager, |km| {
+                output_with_key_ids(km, mask_bad, TariKeyId::Derived {
+                    key: (&good_mask).into(),
+                })
+            });
+            let result = sign_locked_transaction(
+                &alice_key_manager,
+                rules.consensus_constants(0).clone(),
+                Network::LocalNet,
+                prepared,
+            );
+            assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
+
+            // `Derived` over a mask is exactly what a script key is, so it is the one root-bearing id allowed there
+            if matches!(bad, TariKeyId::Derived { .. }) {
+                continue;
+            }
+            let script_bad = bad.clone();
+            let prepared = forged_payload(&alice_key_manager, |km| {
+                output_with_key_ids(km, good_mask.clone(), script_bad)
+            });
+            let result = sign_locked_transaction(
+                &alice_key_manager,
+                rules.consensus_constants(0).clone(),
+                Network::LocalNet,
+                prepared,
+            );
+            assert_key_id_refused(result, "outputs[0].script_key_id");
+        }
+    }
+
+    /// Key ids nested too deep are refused, whether the nesting is hidden under an otherwise valid mask branch or
+    /// stacked as `Derived` script keys.
+    #[test]
+    fn sign_locked_transaction_refuses_deeply_nested_payload_key_ids() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let good_mask = alice_key_manager.get_random_key(None, None).unwrap().key_id;
+
+        // An `Encrypted` mask whose encryption key is a three-deep `Derived` chain
+        let deep_mask: TariKeyId = "encrypted.0102.derived.derived.derived.spend_key".parse().unwrap();
+        let script_key = TariKeyId::Derived {
+            key: (&good_mask).into(),
+        };
+        let prepared = forged_payload(&alice_key_manager, |km| output_with_key_ids(km, deep_mask, script_key));
+        let result = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
+
+        // A three-deep `Derived` script key
+        let deep_script_key: TariKeyId = format!("derived.derived.derived.{good_mask}").parse().unwrap();
+        let prepared = forged_payload(&alice_key_manager, |km| {
+            output_with_key_ids(km, good_mask.clone(), deep_script_key)
+        });
+        let result = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert_key_id_refused(result, "outputs[0].script_key_id");
+    }
+
+    /// A key id longer than 1 KiB is refused even when its branch and nesting are fine.
+    #[test]
+    fn sign_locked_transaction_refuses_an_oversized_payload_key_id() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let good_mask = alice_key_manager.get_random_key(None, None).unwrap().key_id;
+        let huge_mask = TariKeyId::Encrypted {
+            encrypted: vec![1u8; 600],
+            key: (&TariKeyId::ViewKey).into(),
+        };
+        let script_key = TariKeyId::Derived {
+            key: (&good_mask).into(),
+        };
+        let prepared = forged_payload(&alice_key_manager, |km| output_with_key_ids(km, huge_mask, script_key));
+        let result = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
+    }
+
+    /// Forged inputs are checked too.
+    #[test]
+    fn sign_locked_transaction_refuses_a_spend_key_input_mask() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let mut prepared = forged_payload(&alice_key_manager, |km| {
+            let mask = km.get_random_key(None, None).unwrap().key_id;
+            let script_key = TariKeyId::Derived { key: (&mask).into() };
+            output_with_key_ids(km, mask, script_key)
+        });
+        let script_key = prepared.info.inputs[0].script_key_id().clone();
+        prepared.info.inputs[0] = output_with_key_ids(&alice_key_manager, TariKeyId::SpendKey, script_key);
+        let canonical = crate::offline_signing::models::borsh_canonical_one_sided(
+            &prepared.version,
+            prepared.tx_id,
+            &prepared.info,
+        )
+        .unwrap();
+        prepared.payload_signature =
+            crate::offline_signing::offline_signer::sign_payload(&alice_key_manager, &canonical).unwrap();
+
+        let result = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            prepared,
+        );
+        assert_key_id_refused(result, "inputs[0].commitment_mask_key_id");
+    }
 }

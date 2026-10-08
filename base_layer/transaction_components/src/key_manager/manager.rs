@@ -144,6 +144,33 @@ struct SoftwareEphemeralNonceStore {
     last_handle: u64,
 }
 
+/// Refuses a key id that cannot act as a commitment mask or recovery secret.
+///
+/// A commitment mask ends up in places that publish it to the holder of the view key: it is encrypted into an
+/// output's `encrypted_data`, and a kernel or metadata signature over a mask with a known public key gives the mask
+/// away. `SpendKey`, `ViewKey` and `CodeTemplateAuthor` are wallet root keys, and `Derived { .. }` is the spend key
+/// plus a tweak the view key holder can compute, so any of them as a mask would hand the spend key to whoever
+/// supplied the key id (for example an online host forging an offline signing payload). `Zero` is no mask at all.
+///
+/// Only the key ids a mask is actually made from are accepted: `Encrypted`, `DHCommitmentMask`, `DHEncryptedData`
+/// and `LedgerKey`.
+pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
+    match key_id {
+        TariKeyId::Encrypted { .. } |
+        TariKeyId::DHCommitmentMask { .. } |
+        TariKeyId::DHEncryptedData { .. } |
+        TariKeyId::LedgerKey { .. } => Ok(()),
+        TariKeyId::SpendKey |
+        TariKeyId::ViewKey |
+        TariKeyId::Derived { .. } |
+        TariKeyId::CodeTemplateAuthor |
+        TariKeyId::Zero |
+        TariKeyId::LedgerEphemeralNonce { .. } => Err(KeyManagerError::KeyIdNotAMask {
+            key_id: key_id.to_string(),
+        }),
+    }
+}
+
 #[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
@@ -894,6 +921,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         private_key: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerError> {
+        require_mask_id(private_key)?;
         let key = self.get_private_key(private_key)?;
         Ok(CompressedCommitment::from_commitment(
             self.crypto_factories.commitment.commit(&key, value),
@@ -906,6 +934,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<(), KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let commitment_mask_key = self.get_private_key(commitment_mask_key_id)?;
         self.crypto_factories
             .range_proof
@@ -986,6 +1015,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         if self.crypto_factories.range_proof.range() < 64 &&
             value >= 1u64.shl(&self.crypto_factories.range_proof.range())
         {
@@ -1125,6 +1155,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
     ) -> Result<CompressedSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         // We cannot use an offset with a coinbase tx as this will not allow us to check the coinbase commitment and
         // because the offset function does not know if its a coinbase or not, we need to know if we need to bypass it
@@ -1162,6 +1193,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         nonce: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let offset = self.get_txo_private_kernel_offset(commitment_mask_key_id, nonce)?;
         let excess = private_key - &offset;
@@ -1173,6 +1205,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             "kernel_excess_offset",
         );
@@ -1196,6 +1229,10 @@ impl TransactionKeyManagerInterface for KeyManager {
         value: u64,
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
+        if let Some(key_id) = custom_recovery_key_id {
+            require_mask_id(key_id)?;
+        }
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id)?
         } else {
@@ -1356,6 +1393,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         // Fetched once and carried: on a ledger wallet this is a device round trip, and the sender partial
         // signature below needs the same key.
         let sender_offset = TariKeyAndId {
@@ -1416,6 +1454,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         if self.wallet_type.is_ledger() {
             let comm_and_pub_sig = self.ledger_get_one_sided_metadata_signature_wrapper(
                 txo_version,
@@ -1586,6 +1625,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let ephemeral_commitment_nonce = self.get_random_key(None, None)?;
         let (nonce_a, nonce_b) = self
             .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)?;
@@ -1658,6 +1698,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         claim_public_key: &CompressedPublicKey,
         sidechain_id: Option<&CompressedPublicKey>,
     ) -> Result<CompressedSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let mask = self.get_private_key(commitment_mask_key_id)?;
         let commitment =
             CompressedCommitment::from_commitment(self.crypto_factories.commitment.commit(&mask, &amount.into()));
@@ -1681,6 +1722,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         &self,
         commitment_mask_key_id: &TariKeyId,
     ) -> Result<TariKeyAndId, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let mask = self.get_private_key(commitment_mask_key_id)?;
         let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             HASHER_LABEL_BURN_SENDER_OFFSET,
@@ -1715,6 +1757,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let hasher =
             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
@@ -2648,5 +2691,177 @@ mod tests {
 
         assert!(key_manager.is_this_output_ours(&commitment, &matching, None).unwrap());
         assert!(!key_manager.is_this_output_ours(&commitment, &mismatched, None).unwrap());
+    }
+
+    /// Every key id that resolves to a wallet root key (or a public tweak of one), plus `Zero`.
+    fn root_bearing_key_ids(key_manager: &KeyManager) -> Vec<TariKeyId> {
+        let mask = key_manager.get_random_key(None, None).unwrap().key_id;
+        vec![
+            TariKeyId::SpendKey,
+            TariKeyId::ViewKey,
+            TariKeyId::Derived { key: (&mask).into() },
+            TariKeyId::CodeTemplateAuthor,
+            TariKeyId::Zero,
+        ]
+    }
+
+    fn assert_not_a_mask<T: std::fmt::Debug>(result: Result<T, KeyManagerError>, key_id: &TariKeyId, method: &str) {
+        match result {
+            Err(KeyManagerError::KeyIdNotAMask { key_id: refused }) => assert_eq!(refused, key_id.to_string()),
+            other => panic!("{method} accepted `{key_id}` as a mask: {other:?}"),
+        }
+    }
+
+    /// A key id naming a root key must never be used where a commitment mask or recovery secret is expected: the
+    /// mask is encrypted into the output's recovery data (readable with the view key) and signed over, so it would
+    /// hand the spend key to whoever chose the key id.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn mask_taking_methods_refuse_root_bearing_key_ids() {
+        use tari_script::script;
+
+        use crate::{
+            key_manager::TxoStage,
+            transaction_components::{KernelFeatures, TransactionKernelVersion},
+        };
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let value = PrivateKey::from(100u64);
+        let good = key_manager.get_random_key(None, None).unwrap();
+        let commitment = key_manager.get_commitment(&good.key_id, &value).unwrap();
+        let message = [0u8; 32];
+        let txo_version = TransactionOutputVersion::get_current_version();
+        let script = script!(Nop).unwrap();
+        let address = tari_common_types::tari_address::TariAddress::default();
+
+        for bad in root_bearing_key_ids(&key_manager) {
+            assert_not_a_mask(key_manager.get_commitment(&bad, &value), &bad, "get_commitment");
+            assert_not_a_mask(key_manager.verify_mask(&commitment, &bad, 100), &bad, "verify_mask");
+            assert_not_a_mask(
+                key_manager.construct_range_proof(&bad, 100, 0),
+                &bad,
+                "construct_range_proof",
+            );
+            assert_not_a_mask(
+                key_manager.encrypt_data_for_recovery(&bad, None, 100, MemoField::new_empty()),
+                &bad,
+                "encrypt_data_for_recovery (mask)",
+            );
+            assert_not_a_mask(
+                key_manager.encrypt_data_for_recovery(&good.key_id, Some(&bad), 100, MemoField::new_empty()),
+                &bad,
+                "encrypt_data_for_recovery (recovery key)",
+            );
+            assert_not_a_mask(
+                key_manager.get_receiver_partial_metadata_signature(
+                    &bad,
+                    &value,
+                    &good.pub_key,
+                    &good.pub_key,
+                    txo_version,
+                    &message,
+                    RangeProofType::RevealedValue,
+                ),
+                &bad,
+                "get_receiver_partial_metadata_signature",
+            );
+            assert_not_a_mask(
+                key_manager.get_metadata_signature(
+                    &bad,
+                    &value,
+                    &good.key_id,
+                    txo_version,
+                    &message,
+                    RangeProofType::RevealedValue,
+                ),
+                &bad,
+                "get_metadata_signature",
+            );
+            assert_not_a_mask(
+                key_manager.get_metadata_signature_user_verified(
+                    &bad,
+                    MicroMinotari::from(100),
+                    &good.key_id,
+                    txo_version,
+                    &message,
+                    RangeProofType::RevealedValue,
+                    &script,
+                    &address,
+                ),
+                &bad,
+                "get_metadata_signature_user_verified",
+            );
+            assert_not_a_mask(
+                key_manager.get_partial_txo_kernel_signature(
+                    &bad,
+                    &good.key_id,
+                    &good.pub_key,
+                    &good.pub_key,
+                    TransactionKernelVersion::get_current_version(),
+                    &message,
+                    &KernelFeatures::default(),
+                    TxoStage::Output,
+                ),
+                &bad,
+                "get_partial_txo_kernel_signature",
+            );
+            assert_not_a_mask(
+                key_manager.get_txo_kernel_signature_excess_with_offset(&bad, &good.key_id),
+                &bad,
+                "get_txo_kernel_signature_excess_with_offset",
+            );
+            assert_not_a_mask(
+                key_manager.get_txo_private_kernel_offset(&bad, &good.key_id),
+                &bad,
+                "get_txo_private_kernel_offset",
+            );
+            assert_not_a_mask(
+                key_manager.generate_burn_claim_signature(&bad, 100, &good.pub_key, None),
+                &bad,
+                "generate_burn_claim_signature",
+            );
+            assert_not_a_mask(
+                key_manager.derive_burn_sender_offset_key(&bad),
+                &bad,
+                "derive_burn_sender_offset_key",
+            );
+            assert_not_a_mask(
+                key_manager.stealth_address_script_spending_key(&bad, &good.pub_key),
+                &bad,
+                "stealth_address_script_spending_key",
+            );
+        }
+    }
+
+    /// The key ids a mask is actually made from still work as masks.
+    #[test]
+    fn mask_key_ids_are_still_accepted() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let encrypted = key_manager.get_random_key(None, None).unwrap();
+        let other = KeyManager::new_random().unwrap().get_view_key().pub_key;
+        let masks = [
+            encrypted.key_id.clone(),
+            TariKeyId::DHCommitmentMask {
+                public_key: other.clone(),
+                private_key: (&encrypted.key_id).into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: other,
+                private_key: (&encrypted.key_id).into(),
+            },
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 0,
+            },
+        ];
+        for mask in &masks {
+            super::require_mask_id(mask).unwrap();
+        }
+        // The software key manager can resolve all but the ledger key
+        for mask in masks.iter().take(3) {
+            key_manager
+                .encrypt_data_for_recovery(mask, None, 100, MemoField::new_empty())
+                .unwrap();
+        }
     }
 }
