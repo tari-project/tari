@@ -755,7 +755,11 @@ impl InnerService {
                 target: LOG_TARGET, "Trying to connect to Monerod server at: {} (entry {} of {})",
                 mask_value("monerod_url", url.as_str()), pos.saturating_add(1), self.config.monerod_url.len()
             );
-            match timeout(self.config.monerod_connection_timeout, reqwest::get(url.clone())).await {
+            let probe = self
+                .http_client
+                .get(url.clone())
+                .timeout(self.config.monerod_connection_timeout);
+            match timeout(self.config.monerod_connection_timeout, probe.send()).await {
                 // For this availability check we deliberately do not provide the body of the request if it is a POST
                 // request and turns it into an invalid GET request. This is because we are only interested in the
                 // connection. A typical response of a monerod daemon upon an invalid POST request
