@@ -88,7 +88,7 @@ mod message;
 pub use message::{Request, Response};
 
 mod error;
-pub use error::RpcError;
+pub use error::{HandshakeRejectReason, RpcError};
 
 mod handshake;
 pub use handshake::{Handshake, RpcHandshakeError};

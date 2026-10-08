@@ -95,6 +95,26 @@ impl RpcError {
         RpcError::ClientInternalError(err.to_string())
     }
 
+    /// Returns true if, while connecting, the server could not take a session right now, or the connection failed
+    /// underneath the handshake: an explicit "no sessions available" rejection, the server closing the substream, or an
+    /// IO error. None of these says the server misbehaved, and a busy server is cheap for other peers to induce, so a
+    /// caller choosing a peer for a long task (e.g. sync) should skip it and retry elsewhere rather than penalise it.
+    /// A handshake timeout, an undecodable or oversized reply, and every error after connecting are not included.
+    ///
+    /// This deliberately differs from [Self::is_caused_by_server], which other callers rely on.
+    pub fn is_handshake_unavailable(&self) -> bool {
+        matches!(
+            self,
+            RpcError::HandshakeError(
+                RpcHandshakeError::Rejected(
+                    HandshakeRejectReason::NoServerSessionsAvailable(_) |
+                        HandshakeRejectReason::NoClientSessionsAvailable(_)
+                ) | RpcHandshakeError::ServerClosedRequest |
+                    RpcHandshakeError::Io(_)
+            )
+        )
+    }
+
     /// Returns true if the server directly caused the error, otherwise false
     pub fn is_caused_by_server(&self) -> bool {
         match self {
