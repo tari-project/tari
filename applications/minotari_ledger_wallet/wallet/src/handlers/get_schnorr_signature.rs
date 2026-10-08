@@ -109,7 +109,7 @@ pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut Epheme
 /// can write the session files (including copying in a nonce an earlier session already used), gets reviews that
 /// look normal. Nothing here records a used nonce; the closure is a global host-side allowlist of issued nonce
 /// indexes, tracked separately. Nonce indexes below `2^32` are refused before the review, because they name nonces an
-/// application before `6.1.1-pre.1` derived (`LEGACY_NONCE_INDEX_FLOOR`), and so is a challenge that reduces to zero.
+/// application from before the 64-bit index split derived (`LEGACY_NONCE_INDEX_FLOOR`), and so is a challenge that reduces to zero.
 ///
 /// See `minotari_ledger_wallet_common::legacy_nonce` for the canonical account of what this costs, what it reached
 /// before it was narrowed to `PreMine` (`alpha`, via the script offset reply), and the TODO that deletes this handler
@@ -127,7 +127,7 @@ pub fn handler_get_raw_schnorr_signature_legacy_nonce(comm: &mut Comm) -> Result
     // This check is the one that counts; the host's is only there to produce a legible error. It runs before the
     // review, so a refused request never reaches the screen.
     check_legacy_nonce_branches(private_key_branch, nonce_branch).map_err(|_| AppSW::BadBranchKey)?;
-    // A nonce index below 2^32 names the nonce an application before 6.1.1-pre.1 derived for some host index, so a
+    // A nonce index below 2^32 names the nonce an application from before the 64-bit index split derived for some host index, so a
     // signature under it could be combined with an old one. Refused before the review, like the branches; see
     // `minotari_ledger_wallet_common::legacy_nonce::LEGACY_NONCE_INDEX_FLOOR`.
     check_legacy_nonce_index(request.nonce_index).map_err(|_| AppSW::BadBranchKey)?;

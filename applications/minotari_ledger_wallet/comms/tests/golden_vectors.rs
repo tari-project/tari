@@ -15,8 +15,8 @@
 //!
 //! A change to any constant below is therefore a wire format change, which needs its own spec and its own
 //! application version bump. It is never a test fix. (Example: the optional trailing `sender_offset_branch` of
-//! `GetOneSidedMetadataSignature` shipped with application `6.1.1-pre.1`, and `MIN_LEDGER_APP_VERSION` moved to
-//! `6.1.1-pre.1` with it. It is appended after `message`, and only when it is not the default `OneSidedSenderOffset`,
+//! `GetOneSidedMetadataSignature` ships with the next application release, and `MIN_LEDGER_APP_VERSION` moves to
+//! that release with it. It is appended after `message`, and only when it is not the default `OneSidedSenderOffset`,
 //! so `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` - an ordinary send - is unchanged from before it existed, and only
 //! `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE` carries it.)
 //!

@@ -244,11 +244,11 @@ fn the_allowed_pair_is_reviewed_and_signed(context: &ScenarioContext<'_>) -> Sce
 /// would block rather than return, and the scenario would fail on its timeout.
 /// Acceptance: a nonce index below `2^32` is refused with `BadBranchKey`, before any review.
 ///
-/// An application before `6.1.1-pre.1` derived from the nonce index modulo `2^32`, with a constant `0` where the high
-/// word now goes, so its nonce at host index `j` is this application's nonce at `j mod 2^32`. Signing there would let
-/// one new signature be combined with an old one. Over raw APDUs, so the device's check is what answers; a review
-/// instead would block and fail the scenario on its timeout. Only the side below `2^32` is probed here; at or above
-/// it is the accepting path every reviewed scenario in this module takes.
+/// An application from before the 64-bit index split derived from the nonce index modulo `2^32`, with a constant `0`
+/// where the high word now goes, so its nonce at host index `j` is this application's nonce at `j mod 2^32`. Signing
+/// there would let one new signature be combined with an old one. Over raw APDUs, so the device's check is what
+/// answers; a review instead would block and fail the scenario on its timeout. Only the side below `2^32` is probed
+/// here; at or above it is the accepting path every reviewed scenario in this module takes.
 fn a_nonce_index_below_2_32_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     for nonce_index in [0, fixtures::random_u64() % NONCE_INDEX_FLOOR, NONCE_INDEX_FLOOR - 1] {
         let reply = legacy_signature(

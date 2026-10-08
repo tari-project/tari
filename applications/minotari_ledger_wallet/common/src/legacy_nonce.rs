@@ -127,11 +127,11 @@
 //! reserves and step 3 signs with, so it belongs with the TODO below rather than in front of it. It would not close a
 //! re-run of step 4 under one key.
 //!
-//! One more boundary: an application before `6.1.1-pre.1` derived nonces from the index modulo `2^32`, so its nonce
-//! at host index `j` is this application's nonce at `j mod 2^32`. The legacy instruction therefore refuses a nonce
-//! index below `2^32` ([`LEGACY_NONCE_INDEX_FLOOR`]), and the host draws its nonces above it. A legacy signature from
-//! an older application can never be combined with one from this one - and an old step 2 session cannot be finished
-//! on this application, which it could not have been anyway.
+//! One more boundary: an application from before the 64-bit index split derived nonces from the index modulo `2^32`, so
+//! its nonce at host index `j` is this application's nonce at `j mod 2^32`. The legacy instruction therefore refuses a
+//! nonce index below `2^32` ([`LEGACY_NONCE_INDEX_FLOOR`]), and the host draws its nonces above it. A legacy signature
+//! from an older application can never be combined with one from this one - and an old step 2 session cannot be
+//! finished on this application, which it could not have been anyway.
 //!
 //! # The fix, and what gets deleted with it
 //!
@@ -198,10 +198,10 @@ pub fn check_legacy_nonce_branches(
 
 /// The smallest nonce index the legacy instruction will sign with: `2^32`.
 ///
-/// Before `6.1.1-pre.1` the device derived from an index modulo `2^32`, so an old application's nonce at index `j`
-/// sat at exactly the path the current application uses for the small index `j mod 2^32` (the high word element was a
-/// constant `0`). Host nonce indexes are random `u64`s, so almost every old legacy nonce is reachable that way: a host
-/// holding one old legacy signature - old step 4 output carries them - could ask for a single new signature under
+/// Before the 64-bit index split the device derived from an index modulo `2^32`, so an old application's nonce at index
+/// `j` sat at exactly the path the current application uses for the small index `j mod 2^32` (the high word element was
+/// a constant `0`). Host nonce indexes are random `u64`s, so almost every old legacy nonce is reachable that way: a
+/// host holding one old legacy signature - old step 4 output carries them - could ask for a single new signature under
 /// `(PreMine i, Random j mod 2^32)`, with an index on screen the user has never seen, and solve the two for the key.
 ///
 /// An index at or above `2^32` has a non-zero high word element, which no old application ever derived from, so a
@@ -213,7 +213,7 @@ pub const LEGACY_NONCE_INDEX_FLOOR: u64 = 1 << 32;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct LegacyNonceIndexBelowFloor;
 
-/// Check that a legacy nonce index cannot name a nonce an application before `6.1.1-pre.1` derived. See
+/// Check that a legacy nonce index cannot name a nonce an application from before the 64-bit index split derived. See
 /// [`LEGACY_NONCE_INDEX_FLOOR`]. The device refuses with `BadBranchKey` - the same status word as the branch
 /// whitelist, because it is the same kind of refusal: a nonce the legacy instruction will not sign with - before
 /// its review; the host mirrors it.

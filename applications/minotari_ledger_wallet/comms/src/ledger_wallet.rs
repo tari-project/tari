@@ -34,7 +34,11 @@ use minotari_ledger_wallet_common::codec::{CLA, Request};
 use crate::error::LedgerDeviceError;
 
 pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
-/// `6.1.1-pre.1` is the first application that:
+/// `5.7.0-pre.6` was the first application to take device issued nonce handles, so older applications cannot serve
+/// this client at all.
+///
+/// **The next application release must raise this to its own version.** The application in this tree, still at the
+/// version the last release left it, is the first that:
 ///
 /// - issues pre-mine sender offset keys on the `PreMine` branch from `GetScriptOffset`;
 /// - reads the trailing `sender_offset_branch` of `GetOneSidedMetadataSignature` (an older application ignores it and
@@ -47,11 +51,14 @@ pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
 ///   2 session file (its `Random` nonce indexes), and those files have to be redone on this application anyway: they
 ///   name a `OneSidedSenderOffset` sender offset key, which the legacy whitelist refuses.
 ///
-/// An older application answers the same `GetScriptOffset` request with a `OneSidedSenderOffset` key, which this host
-/// would name as a `PreMine` key - pre-mine step 2 would complete with a sender offset key that does not match the
-/// script offset - so it is refused here. (Before that, `5.7.0-pre.6` was the first to take device issued nonce
-/// handles.) Keep this in step with the ledger application's `version` in its `Cargo.toml`.
-pub const MIN_LEDGER_APP_VERSION: &str = "6.1.1-pre.1";
+/// Until this constant is raised, a host with these changes still connects to an older application. That pairing
+/// fails closed rather than leaking anything: the older application answers a pre-mine `GetScriptOffset` with a
+/// `OneSidedSenderOffset` key, which this host names as a `PreMine` key, so pre-mine step 2 completes with a sender
+/// offset key that does not match the script offset and step 4 is refused by the legacy whitelist - but the older
+/// application itself remains open to the no-prompt key recovery this change closes, for any host. The version bump
+/// that ships this application is what lets the wallet refuse it. Keep this in step with the ledger application's
+/// `version` in its `Cargo.toml`.
+pub const MIN_LEDGER_APP_VERSION: &str = "5.7.0-pre.6";
 
 struct HidManager {
     inner: Option<HidApi>,

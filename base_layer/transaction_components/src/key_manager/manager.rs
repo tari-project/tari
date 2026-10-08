@@ -514,7 +514,7 @@ impl KeyManager {
         check_legacy_nonce_index(nonce_index).map_err(|_| {
             KeyManagerError::LedgerError(format!(
                 "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below {LEGACY_NONCE_INDEX_FLOOR}, \
-                 where it would name a nonce an application before 6.1.1-pre.1 derived"
+                 where it would name a nonce an application from before the 64-bit index split derived"
             ))
         })?;
         // A challenge that reduces to zero would make the signature the nonce scalar itself. The device refuses it
@@ -2230,8 +2230,9 @@ mod tests {
         }
     }
 
-    /// A legacy nonce index below `2^32` names a nonce an application before `6.1.1-pre.1` derived, so the legacy arm
-    /// refuses it on any wallet, before the transport is consulted; `2^32` itself reaches the device call.
+    /// A legacy nonce index below `2^32` names a nonce an application from before the 64-bit index split derived, so
+    /// the legacy arm refuses it on any wallet, before the transport is consulted; `2^32` itself reaches the device
+    /// call.
     #[test]
     fn the_legacy_arm_refuses_a_nonce_index_below_2_32() {
         let key_manager = KeyManager::new_random().unwrap();

@@ -716,7 +716,7 @@ pub fn ledger_get_raw_schnorr_signature_legacy_nonce(
     check_legacy_nonce_index(nonce_index).map_err(|_| {
         LedgerDeviceError::Processing(format!(
             "GetRawSchnorrSignatureLegacyNonce: nonce index {nonce_index} is below {LEGACY_NONCE_INDEX_FLOOR}, where \
-             it would name a nonce an application before 6.1.1-pre.1 derived"
+             it would name a nonce an application from before the 64-bit index split derived"
         ))
     })?;
     // The device refuses a challenge that reduces to zero before its review: the signature would be the nonce itself.
