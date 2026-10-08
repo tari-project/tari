@@ -80,6 +80,12 @@ const LOG_TARGET: &str = "minotari_mm_proxy::proxy::inner";
 const TARI_CHAIN_ID: &str = "xtr";
 const BUSY_QUALIFYING: &str = "BusyQualifyingMonerodUrl";
 
+/// The backoff applied once a sweep of every configured monerod server has failed. It doubles with each consecutive
+/// failed sweep, which is what stops an upstream outage from re-sweeping the whole list on every single inbound
+/// request, and is capped low enough that a recovery is still noticed promptly.
+const MONEROD_QUALIFY_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
+const MONEROD_QUALIFY_BACKOFF_MAX: Duration = Duration::from_secs(30);
+
 /// Where the proxy is in the process of qualifying one of the configured `monerod_url` entries.
 ///
 /// All of the states are held behind one lock so that the transition out of [`MonerodState::Unqualified`] is a
@@ -91,9 +97,18 @@ pub(crate) enum MonerodState {
     /// Nothing is qualified and no sweep is running, so the next request starts one.
     Unqualified,
     /// A sweep is running; other requests wait for its result instead of starting one of their own.
-    Qualifying,
+    ///
+    /// `consecutive_failures` carries how many sweeps have already failed in a row, so that the backoff applied if
+    /// this sweep fails too keeps growing.
+    Qualifying { consecutive_failures: u32 },
     /// This server answered the last probe and is the one requests are proxied to.
     Qualified(String),
+    /// Every configured server failed the last sweep. No new sweep starts before `retry_at`, and until then
+    /// requests fail fast rather than each waiting out a `monerod_connection_timeout` of their own.
+    Failed {
+        retry_at: Instant,
+        consecutive_failures: u32,
+    },
 }
 
 /// What [`InnerService::claim_monerod_qualification`] tells its caller to do.
@@ -105,6 +120,16 @@ enum Qualification {
     Claimed,
     /// Another request is sweeping; wait for it to publish a result.
     Wait,
+    /// Every configured server failed recently, so fail this request immediately and retry after `retry_in`.
+    BackingOff { retry_in: Duration },
+}
+
+/// The backoff to apply after `consecutive_failures` sweeps have failed in a row.
+fn qualification_backoff(consecutive_failures: u32) -> Duration {
+    let doublings = consecutive_failures.saturating_sub(1).min(16);
+    MONEROD_QUALIFY_BACKOFF_INITIAL
+        .saturating_mul(2u32.saturating_pow(doublings))
+        .min(MONEROD_QUALIFY_BACKOFF_MAX)
 }
 
 /// Whether a probe response means the server can be proxied to.
@@ -643,20 +668,89 @@ impl InnerService {
     /// [`MonerodState::Qualifying`] and sweeps are properly serialised.
     fn claim_monerod_qualification(&self) -> Qualification {
         let mut state = self.monerod_state.write().expect("Write lock should not fail");
-        let decision = match &*state {
-            MonerodState::Qualified(server) => Qualification::Use(server.clone()),
-            MonerodState::Qualifying => Qualification::Wait,
-            MonerodState::Unqualified => Qualification::Claimed,
+        let (decision, consecutive_failures) = match &*state {
+            MonerodState::Qualified(server) => (Qualification::Use(server.clone()), 0),
+            MonerodState::Qualifying { .. } => (Qualification::Wait, 0),
+            MonerodState::Unqualified => (Qualification::Claimed, 0),
+            MonerodState::Failed {
+                retry_at,
+                consecutive_failures,
+            } => match retry_at.checked_duration_since(Instant::now()) {
+                Some(retry_in) if !retry_in.is_zero() => (Qualification::BackingOff { retry_in }, 0),
+                _ => (Qualification::Claimed, *consecutive_failures),
+            },
         };
         if matches!(decision, Qualification::Claimed) {
-            *state = MonerodState::Qualifying;
+            *state = MonerodState::Qualifying { consecutive_failures };
         }
         decision
+    }
+
+    /// Records the last assigned monerod server, which is where the next sweep starts from.
+    fn set_last_assigned_monerod_url(&self, server: Option<&str>) {
+        if let Some(server) = server {
+            let mut lock = self
+                .last_assigned_monerod_url
+                .write()
+                .expect("Write lock should not fail");
+            *lock = Some(server.to_string());
+        }
+    }
+
+    /// Releases the [`MonerodState::Qualifying`] claim without a qualified server and without caching a failure,
+    /// for the sweep's own error paths (a configured entry that cannot produce a URL at all).
+    fn abort_qualification(&self, last_assigned_server: Option<&str>) {
+        let mut lock = self.monerod_state.write().expect("Write lock should not fail");
+        *lock = MonerodState::Unqualified;
+        drop(lock);
+        self.set_last_assigned_monerod_url(last_assigned_server);
+        trace!(
+            target: LOG_TARGET, "Monerod status - Current: 'None', Last assigned: {}",
+            mask_value(
+                "monerod_url",
+                &self.last_assigned_monerod_url.read().expect("Read lock should not fail").clone().unwrap_or_default()
+            )
+        );
+    }
+
+    /// Caches the failure of a sweep of every configured server, with a backoff.
+    ///
+    /// Without this, each failure reset the state so that the very next inbound request re-swept every configured
+    /// entry. With the 32 default entries and the 2s default connection timeout a failing sweep takes about a
+    /// minute, while every concurrent request gave up after 2s with a `500` - which xmrig reads as a dead pool, so
+    /// it disconnects and reconnects, driving an inbound connect/error/reconnect storm for the whole outage.
+    fn record_failed_qualification(&self, first_probed: Option<&str>) {
+        let mut state = self.monerod_state.write().expect("Write lock should not fail");
+        let consecutive_failures = match &*state {
+            MonerodState::Qualifying { consecutive_failures } => consecutive_failures.saturating_add(1),
+            // Another request has already published a result; leave it be.
+            _ => return,
+        };
+        let backoff = qualification_backoff(consecutive_failures);
+        let now = Instant::now();
+        *state = MonerodState::Failed {
+            retry_at: now.checked_add(backoff).unwrap_or(now),
+            consecutive_failures,
+        };
+        drop(state);
+        self.set_last_assigned_monerod_url(first_probed);
+        warn!(
+            target: LOG_TARGET,
+            "All {} configured monerod servers failed to respond ({} consecutive sweeps); requests fail fast for \
+            the next {:.1?}",
+            self.config.monerod_url.len(), consecutive_failures, backoff
+        );
     }
 
     fn clear_current_monerod_server_lock(&self, last_assigned_server: Option<&str>, host_with_error: Option<&str>) {
         // Current
         let mut lock = self.monerod_state.write().expect("Write lock should not fail");
+        if let MonerodState::Qualifying { .. } = &*lock {
+            // A sweep is in progress and will publish its own result, so do not clobber it: another request would
+            // otherwise be free to start a second, concurrent sweep.
+            trace!(target: LOG_TARGET, "A monerod server is being qualified; leaving the state alone");
+            return;
+        }
         if let Some(host) = host_with_error
             && let MonerodState::Qualified(server) = &*lock
             // If the error was reported on a previously assigned server, we do not clear the lock. This happens on
@@ -673,13 +767,7 @@ impl InnerService {
         *lock = MonerodState::Unqualified;
         drop(lock);
         // Last assigned
-        if let Some(server) = last_assigned_server {
-            let mut lock = self
-                .last_assigned_monerod_url
-                .write()
-                .expect("Write lock should not fail");
-            *lock = Some(server.to_string());
-        }
+        self.set_last_assigned_monerod_url(last_assigned_server);
         trace!(
             target: LOG_TARGET, "Monerod status - Current: 'None', Last assigned: {}",
             mask_value(
@@ -695,12 +783,7 @@ impl InnerService {
         *lock = MonerodState::Qualified(server.to_string());
         drop(lock);
         // Last assigned
-        let mut lock = self
-            .last_assigned_monerod_url
-            .write()
-            .expect("Write lock should not fail");
-        *lock = Some(server.to_string());
-        drop(lock);
+        self.set_last_assigned_monerod_url(Some(server));
         let shown = mask_value("monerod_url", server);
         trace!(target: LOG_TARGET, "Monerod status - Current: {}, Last assigned: {}", shown, shown);
     }
@@ -739,6 +822,20 @@ impl InnerService {
                     };
                 },
                 Qualification::Claimed => return self.qualify_monerod_server(request_uri).await.map(Some),
+                Qualification::BackingOff { retry_in } => {
+                    // Fail fast with the cached failure instead of making this request - and every other request
+                    // that arrives during the outage - wait out a `monerod_connection_timeout` of its own.
+                    trace!(
+                        target: LOG_TARGET,
+                        "All monerod servers are known to be unavailable, retrying in {:.1?}, {}",
+                        retry_in, request_uri.path()
+                    );
+                    return Err(MmProxyError::ServersUnavailable(format!(
+                        "all {} configured monerod servers failed to respond, retrying in {:.1?}",
+                        self.config.monerod_url.len(),
+                        retry_in
+                    )));
+                },
                 Qualification::Wait => {
                     // Give some time for the server to be qualified
                     let time_lapsed = start_reading_lock_time.elapsed();
@@ -781,7 +878,7 @@ impl InnerService {
             .checked_rem(self.config.monerod_url.len())
             .unwrap_or(0);
         let (left, right) = self.config.monerod_url.split_at_checked(pos).ok_or_else(|| {
-            self.clear_current_monerod_server_lock(Some(self.config.monerod_url[0].as_str()), None);
+            self.abort_qualification(Some(self.config.monerod_url[0].as_str()));
             MmProxyError::ConversionError("last_used_url".to_string())
         })?;
         let left = left.to_vec();
@@ -795,7 +892,7 @@ impl InnerService {
             let url = match self.monerod_url_for(server, request_uri) {
                 Ok(url) => url,
                 Err(err) => {
-                    self.clear_current_monerod_server_lock(Some(server), None);
+                    self.abort_qualification(Some(server));
                     return Err(err);
                 },
             };
@@ -866,11 +963,11 @@ impl InnerService {
             }
         }
 
-        // Clear the "busy qualifying" state. The entry the sweep started at is recorded as the last assigned one so
-        // that the next sweep starts at the entry after it: without that, every failed sweep re-probed the same
-        // entries in the same order from the same offset, always burning the full connection timeout on whichever
-        // dead entry happened to be first.
-        self.clear_current_monerod_server_lock(first_probed.as_deref(), None);
+        // Cache the failure with a backoff, so the next inbound request does not re-sweep the whole list straight
+        // away. The entry the sweep started at is recorded as the last assigned one so that the next sweep starts
+        // at the entry after it: without that, every failed sweep re-probed the same entries in the same order from
+        // the same offset, always burning the full connection timeout on whichever dead entry happened to be first.
+        self.record_failed_qualification(first_probed.as_deref());
         Err(MmProxyError::ServersUnavailable(
             self.config
                 .monerod_url
@@ -1244,7 +1341,7 @@ mod test {
         // launching a sweep of its own.
         assert!(matches!(service.claim_monerod_qualification(), Qualification::Claimed));
         assert!(matches!(service.claim_monerod_qualification(), Qualification::Wait));
-        assert_eq!(monerod_state(&service), MonerodState::Qualifying);
+        assert!(matches!(monerod_state(&service), MonerodState::Qualifying { .. }));
     }
 
     #[tokio::test]
@@ -1257,7 +1354,7 @@ mod test {
         // to qualify this server, so the proxy then hammered a dead host without ever failing over.
         let err = service.get_monerod_url(&get_height_uri()).await.unwrap_err();
         assert!(matches!(err, MmProxyError::ServersUnavailable(_)), "{err}");
-        assert_eq!(monerod_state(&service), MonerodState::Unqualified);
+        assert!(matches!(monerod_state(&service), MonerodState::Failed { .. }));
     }
 
     #[tokio::test]
@@ -1268,7 +1365,7 @@ mod test {
 
         let err = service.get_monerod_url(&get_height_uri()).await.unwrap_err();
         assert!(matches!(err, MmProxyError::ServersUnavailable(_)), "{err}");
-        assert_eq!(monerod_state(&service), MonerodState::Unqualified);
+        assert!(matches!(monerod_state(&service), MonerodState::Failed { .. }));
     }
 
     #[tokio::test]
@@ -1281,6 +1378,87 @@ mod test {
         assert_eq!(url.as_str(), format!("{server}/get_height"));
         assert_eq!(monerod_state(&service), MonerodState::Qualified(server.clone()));
         assert_eq!(last_assigned(&service), Some(server));
+    }
+
+    #[test]
+    fn the_qualification_backoff_grows_and_is_capped() {
+        assert_eq!(qualification_backoff(0), MONEROD_QUALIFY_BACKOFF_INITIAL);
+        assert_eq!(qualification_backoff(1), MONEROD_QUALIFY_BACKOFF_INITIAL);
+        assert_eq!(
+            qualification_backoff(2),
+            MONEROD_QUALIFY_BACKOFF_INITIAL.saturating_mul(2)
+        );
+        assert_eq!(
+            qualification_backoff(3),
+            MONEROD_QUALIFY_BACKOFF_INITIAL.saturating_mul(4)
+        );
+        assert_eq!(qualification_backoff(100), MONEROD_QUALIFY_BACKOFF_MAX);
+        assert_eq!(qualification_backoff(u32::MAX), MONEROD_QUALIFY_BACKOFF_MAX);
+    }
+
+    #[tokio::test]
+    async fn a_failed_sweep_backs_off_instead_of_re_sweeping_on_every_request() {
+        let addr = refused_address().await;
+        let service = test_service(vec![format!("http://{addr}")], Duration::from_secs(5));
+        let uri = get_height_uri();
+
+        service.get_monerod_url(&uri).await.unwrap_err();
+        let state = monerod_state(&service);
+        assert!(
+            matches!(state, MonerodState::Failed {
+                consecutive_failures: 1,
+                ..
+            }),
+            "{state:?}"
+        );
+
+        // The failure is cached, so this request fails fast off the cached state. Had it swept again, the failure
+        // count would have gone to 2.
+        let err = service.get_monerod_url(&uri).await.unwrap_err();
+        assert!(matches!(err, MmProxyError::ServersUnavailable(_)), "{err}");
+        let state = monerod_state(&service);
+        assert!(
+            matches!(state, MonerodState::Failed {
+                consecutive_failures: 1,
+                ..
+            }),
+            "{state:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_sweep_is_allowed_again_once_the_backoff_has_elapsed() {
+        let addr = refused_address().await;
+        let service = test_service(vec![format!("http://{addr}")], Duration::from_secs(5));
+        let uri = get_height_uri();
+
+        // Pretend a sweep failed and its backoff window has already passed.
+        *service.monerod_state.write().unwrap() = MonerodState::Failed {
+            retry_at: Instant::now().checked_sub(Duration::from_secs(1)).unwrap(),
+            consecutive_failures: 3,
+        };
+
+        service.get_monerod_url(&uri).await.unwrap_err();
+        // The sweep ran, and the failure count carried over so the backoff keeps growing.
+        let state = monerod_state(&service);
+        assert!(
+            matches!(state, MonerodState::Failed {
+                consecutive_failures: 4,
+                ..
+            }),
+            "{state:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_sweep_in_progress_is_not_clobbered_by_a_failing_request() {
+        let service = test_service(vec!["http://127.0.0.1:18081".to_string()], Duration::from_secs(2));
+        assert!(matches!(service.claim_monerod_qualification(), Qualification::Claimed));
+
+        // A request that fails against the previously qualified server must not reset the state while a sweep is
+        // running, or a second concurrent sweep could start.
+        service.clear_current_monerod_server_lock(None, Some("127.0.0.1"));
+        assert!(matches!(monerod_state(&service), MonerodState::Qualifying { .. }));
     }
 
     #[tokio::test]
