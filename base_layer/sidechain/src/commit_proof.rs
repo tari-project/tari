@@ -31,6 +31,9 @@ pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<bool, Sidechai
 /// The JMT hash scheme a sidechain block's `command_merkle_root` was built with, selected by the header's
 /// `protocol_version`. Ootle builds the root, so this mapping must match Ootle's for every protocol version. A new
 /// scheme is a new arm here.
+///
+/// The `0..` arm deliberately maps future versions to `V1`. Once Ootle builds roots for a version under a new scheme,
+/// that version fails closed here (`RootHashMismatch`) until it is mapped, so update this arm in lockstep with Ootle.
 pub fn jmt_hash_scheme(protocol_version: u32) -> JmtHashScheme {
     match protocol_version {
         0.. => JmtHashScheme::V1,

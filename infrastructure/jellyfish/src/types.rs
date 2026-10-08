@@ -119,8 +119,13 @@ pub fn jmt_node_hash2(d1: &TreeHash, d2: &TreeHash) -> TreeHash {
 /// authenticated context (e.g. a protocol version in a signed header), never from the proof, which carries no scheme
 /// tag.
 ///
+/// The serde and borsh derives exist for configuration and storage. Never deserialize a scheme from a message supplied
+/// by a counterparty or prover and use it to verify that counterparty's proof.
+///
 /// The enum is `#[non_exhaustive]`, so a `match` on it outside this crate needs a wildcard arm. A new scheme is a new
-/// variant with its own domain version; existing variants never change. See the crate docs for the scheme table.
+/// variant with its own domain version; existing variants never change. Every variant must hash leaf and internal
+/// nodes under distinct labels: the legacy single-label `"Node"` scheme must never return as a variant, because it
+/// lets a leaf be passed off as an internal node. See the crate docs for the scheme table.
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum JmtHashScheme {
@@ -407,7 +412,8 @@ impl SparseMerkleProofExt {
             })
     }
 
-    /// Converts into a [`SparseMerkleProof`], hashing every [`NodeInProof::Leaf`] sibling under `scheme`.
+    /// Converts into a [`SparseMerkleProof`], hashing every [`NodeInProof::Leaf`] sibling under `scheme`. `scheme` must
+    /// be the one the tree that generated the proof used.
     pub fn into_compact(self, scheme: JmtHashScheme) -> SparseMerkleProof {
         SparseMerkleProof::new(
             self.leaf,

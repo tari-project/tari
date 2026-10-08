@@ -17,8 +17,11 @@
 //! supported: no live root uses it. [`jmt_node_hash`] and [`jmt_node_hash2`] still use the `"Node"` label but are
 //! general-purpose helpers (e.g. key derivation), independent of the scheme.
 //!
-//! A scheme never changes once released. A new scheme is a new variant with its own domain version, and callers gate
-//! it on their own protocol version.
+//! A store does not record its scheme: opening an existing store under a different scheme silently yields roots that
+//! verify under neither scheme.
+//!
+//! A scheme never changes once released. A new scheme is a new variant with its own domain version and distinct leaf
+//! and internal labels, and callers gate it on their own protocol version.
 //!
 //! # Version pinning
 //!
