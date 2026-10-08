@@ -167,11 +167,17 @@ fn is_allowed_mask_id(key_id: &TariKeyId) -> bool {
     is_mask_branch(key_id) && is_within_payload_limits(key_id)
 }
 
-fn is_allowed_script_key_id(key_id: &TariKeyId) -> bool {
+/// A script key may be any mask key id, `Derived` over one (an ordinary wallet script key), or the spend key itself
+/// when the output's script is exactly `PushPubKey(<our public spend key>)`. That last case is how the wallet holds
+/// non-stealth outputs (for example non-stealth coinbases), and it is the same rule `WalletOutput` uses to pick the
+/// spend key as a script key. The script key only feeds the script signature (under a random nonce) and the script
+/// offset, so the spend key here gives the host nothing a `Derived` script key would not.
+fn is_allowed_script_key_id(key_id: &TariKeyId, script: &TariScript, public_spend_key: &CompressedPublicKey) -> bool {
     if !is_within_payload_limits(key_id) {
         return false;
     }
     match key_id {
+        TariKeyId::SpendKey => matches!(script.as_slice(), [Opcode::PushPubKey(pk)] if **pk == *public_spend_key),
         TariKeyId::Derived { key } => TariKeyId::from_str(key.as_str()).is_ok_and(|inner| is_mask_branch(&inner)),
         _ => is_mask_branch(key_id),
     }
@@ -182,8 +188,15 @@ fn is_allowed_script_key_id(key_id: &TariKeyId) -> bool {
 ///
 /// The payload is only integrity-signed with the view key, so whoever holds the view key (the online host) can
 /// forge it, and the operator summary does not show key ids. A payload output whose commitment mask names the spend
-/// key would otherwise make the signer encrypt the spend key into the output's recovery data.
-fn check_payload_key_ids(inputs: &[WalletOutput], outputs: &[WalletOutput]) -> Result<(), TransactionBuilderError> {
+/// key would otherwise make the signer encrypt the spend key into the output's recovery data, so masks must be one
+/// of `Encrypted`, `DHCommitmentMask`, `DHEncryptedData` or `LedgerKey`. Script keys may additionally be `Derived`
+/// over one of those, or the spend key for a `PushPubKey(<our public spend key>)` script (see
+/// `is_allowed_script_key_id`).
+fn check_payload_key_ids(
+    inputs: &[WalletOutput],
+    outputs: &[WalletOutput],
+    public_spend_key: &CompressedPublicKey,
+) -> Result<(), TransactionBuilderError> {
     let lists = [("inputs", inputs), ("outputs", outputs)];
     for (list_name, list) in lists {
         for (i, output) in list.iter().enumerate() {
@@ -195,7 +208,7 @@ fn check_payload_key_ids(inputs: &[WalletOutput], outputs: &[WalletOutput]) -> R
                 });
             }
             let script_key = output.script_key_id();
-            if !is_allowed_script_key_id(script_key) {
+            if !is_allowed_script_key_id(script_key, output.script(), public_spend_key) {
                 return Err(TransactionBuilderError::OfflinePayloadKeyIdNotAllowed {
                     field: format!("{list_name}[{i}].script_key_id"),
                     key_id: script_key.to_string(),
@@ -225,7 +238,7 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     info: OneSidedTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
-    check_payload_key_ids(&info.inputs, &info.outputs)?;
+    check_payload_key_ids(&info.inputs, &info.outputs, &key_manager.get_spend_key().pub_key)?;
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.fee_per_gram > MicroMinotari::zero() {
         tx_builder.with_fee_per_gram(info.fee_per_gram);
@@ -297,7 +310,11 @@ pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     mut info: OneSidedMultisigTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
-    check_payload_key_ids(&info.base.inputs, &info.base.outputs)?;
+    check_payload_key_ids(
+        &info.base.inputs,
+        &info.base.outputs,
+        &key_manager.get_spend_key().pub_key,
+    )?;
     let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.base.fee_per_gram > MicroMinotari::zero() {
@@ -452,7 +469,7 @@ pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     network: Network,
     mut info: OneSidedTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
-    check_payload_key_ids(&info.inputs, &info.outputs)?;
+    check_payload_key_ids(&info.inputs, &info.outputs, &key_manager.get_spend_key().pub_key)?;
     let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.fee_per_gram > MicroMinotari::zero() {
