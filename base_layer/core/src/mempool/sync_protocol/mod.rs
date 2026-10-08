@@ -579,6 +579,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             .map(|excess| excess.get_signature().to_vec())
             .collect();
         let inventory = proto::TransactionInventory { items };
+        let num_inventory_items = inventory.items.len();
 
         // Send an inventory of items currently in this node's mempool
         debug!(
@@ -599,15 +600,26 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             missing_items.indexes.len(),
             self.peer_node_id.short_str(),
         );
+        // The peer can only be missing items we sent it, each once. Without these checks a reply naming one index up to
+        // the frame limit would make this node send that transaction over and over.
+        if missing_items.indexes.len() > num_inventory_items {
+            return Err(MempoolProtocolError::TooManyInventoryIndexes {
+                peer: self.peer_node_id.clone(),
+                count: missing_items.indexes.len(),
+                max: num_inventory_items,
+            });
+        }
+        let mut requested = HashSet::with_capacity(missing_items.indexes.len());
         let missing_txns = missing_items
             .indexes
             .iter()
+            .filter(|idx| requested.insert(**idx))
             .filter_map(|idx| transactions.get(*idx as usize).cloned())
             .collect::<Vec<_>>();
         debug!(
             target: LOG_TARGET,
             "Sending {} missing transaction(s) to peer `{}`",
-            missing_items.indexes.len(),
+            missing_txns.len(),
             self.peer_node_id.short_str(),
         );
 

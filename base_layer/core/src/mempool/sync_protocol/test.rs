@@ -1051,3 +1051,59 @@ fn an_unpacked_indexes_flood_is_rejected_before_decoding_it() {
     .unwrap_err();
     assert!(is_decode_budget_error(&err), "unexpected error: {err}");
 }
+
+/// Runs an initiator with a mempool of `num_transactions`, plays a responder that sends no transactions and replies
+/// with `indexes`, and returns the initiator's result and the transactions it sent back
+async fn initiator_answering_indexes(
+    num_transactions: usize,
+    indexes: Vec<u32>,
+) -> (Result<(), MempoolProtocolError>, Vec<proto::TransactionItem>) {
+    let (mempool, _transactions) = new_mempool_with_transactions(num_transactions).await;
+    let peer_node = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let mut peer = framing::canonical(sock_in, MAX_FRAME_SIZE);
+    let framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let initiator = task::spawn(async move {
+        MempoolPeerProtocol::new(Default::default(), framed, peer_node.node_id().clone(), mempool)
+            .start_initiator()
+            .await
+    });
+
+    let inventory: proto::TransactionInventory = read_message(&mut peer).await;
+    assert_eq!(inventory.items.len(), num_transactions);
+    write_message(&mut peer, proto::TransactionItem::empty()).await;
+    write_message(&mut peer, proto::InventoryIndexes { indexes }).await;
+
+    let result = initiator.await.unwrap();
+    let mut sent = Vec::new();
+    while let Some(Ok(frame)) = peer.next().await {
+        let item = proto::TransactionItem::decode(frame.freeze()).unwrap();
+        if item.transaction.is_none() {
+            break;
+        }
+        sent.push(item);
+    }
+    (result, sent)
+}
+
+/// A repeated index is sent once
+#[tokio::test]
+async fn the_initiator_sends_each_requested_transaction_once() {
+    let (result, sent) = initiator_answering_indexes(2, vec![1, 1]).await;
+    result.unwrap();
+    assert_eq!(sent.len(), 1);
+}
+
+/// A reply asking for more indexes than inventory items were sent is rejected, and nothing is sent
+#[tokio::test]
+async fn the_initiator_rejects_more_indexes_than_it_sent_items() {
+    let (result, sent) = initiator_answering_indexes(2, vec![0; 3]).await;
+    assert!(
+        matches!(
+            result,
+            Err(MempoolProtocolError::TooManyInventoryIndexes { count: 3, max: 2, .. })
+        ),
+        "unexpected result: {result:?}"
+    );
+    assert!(sent.is_empty());
+}
