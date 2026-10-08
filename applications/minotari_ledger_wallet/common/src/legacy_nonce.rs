@@ -71,8 +71,16 @@
 //!    (`LegacyNonceReused`, before any screen). It is RAM, so the attack now needs the user to restart the application
 //!    between the two approvals.
 //! 2. **Malicious leader re-run.** A leader sends a changed step 3 file ("please redo step 4") and the party re-signs
-//!    under the same step 2 nonces, with identical screens. The host refuses to run step 4 when its output file for the
-//!    session exists; the device record refuses it within one application run.
+//!    under the same step 2 nonces, with identical screens - or the leader makes step 4 stop after the script signature
+//!    (a bad shared secret or encrypted data), then sends a "fixed" file with a different script challenge. Step 4 now
+//!    checks all leader data and builds both challenges before the first signature, and keeps a write-ahead progress
+//!    file in the session directory: before each legacy signature it records the output, which signature, the nonce and
+//!    a hash of the challenge, and after it the signature. A later run reuses recorded signatures, may retry an
+//!    identical request (same challenge, which reproduces the signature), and refuses the whole step if any recorded
+//!    request's challenge or nonce differs from the current one. Step 4 also refuses to run once its final output file
+//!    exists, and the device record refuses a second challenge within one application run. Not covered: anyone with
+//!    write access to the session directory can delete or edit the progress file (the file-tamper residual below), and
+//!    then only the device record - one application run - stands in the way.
 //! 3. **Session file tamper.** The step 2 self file is plain JSON and unauthenticated: an attacker with write access
 //!    can point two signatures at one nonce, at an earlier session's nonce, or at another output's script key. Step 4
 //!    validates the file's shape before signing (distinct nonce ids, the expected key shapes), which refuses the first

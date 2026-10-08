@@ -1487,24 +1487,24 @@ pub async fn command_runner(
                     break;
                 }
 
-                // Outputs a previous run of this step already signed - stopped, for instance, by a full device nonce
-                // record. They are skipped below *even if the leader's step 3 file has changed since*: signing an
-                // output a second time, over a different challenge, would put two signatures under its
-                // step 2 nonces, which gives up this party's pre-mine keys. The progress file can only
-                // ever prevent a signature.
+                // Step 4's write-ahead record: every legacy signature this session has asked the device for (an
+                // intent line, written *before* the request) and every one it got back. A previous run may have
+                // stopped anywhere - a full device nonce record, a rejected review, a transport error. Signatures it
+                // got are reused, never re-requested; a request whose challenge has since changed (the leader sent a
+                // different step 3 file) refuses the whole step, because a second challenge under the same step 2
+                // nonce gives up this party's pre-mine keys. See `step_4_signature_plan`.
                 let progress_file = out_dir.join(get_file_name(SPEND_STEP_4_PROGRESS, None));
-                let mut signed = match load_step_4_progress(&progress_file, &session_info, &party_info_indexes) {
-                    Ok(signed) => signed,
+                let mut progress = match load_step_4_progress(&progress_file, &session_info, &party_info_indexes) {
+                    Ok(progress) => progress,
                     Err(e) => {
                         eprintln!("\nError: {e}\n");
                         break;
                     },
                 };
-                if !signed.is_empty() {
+                if !progress.is_empty() {
                     println!(
-                        "Resuming step 4: {} of {} outputs were already signed and will not be signed again.",
-                        signed.len(),
-                        party_info_indexes.len()
+                        "Resuming step 4 from its progress file: signatures already made will be reused, not \
+                         requested again."
                     );
                 }
 
@@ -1525,15 +1525,6 @@ pub async fn command_runner(
                     .zip(party_info_indexed.outputs_for_self.iter())
                     .enumerate()
                 {
-                    if signed.iter().any(|done| done.output_index == party_info.output_index) {
-                        println!(
-                            "  Output {} was signed by a previous run; skipping ({} of {})",
-                            party_info.output_index,
-                            i.saturating_add(1),
-                            leader_info_indexed.outputs_for_parties.len()
-                        );
-                        continue;
-                    }
                     let embedded_output = match get_embedded_pre_mine_outputs(
                         vec![party_info.output_index],
                         pre_mine_from_file.clone(),
@@ -1546,8 +1537,12 @@ pub async fn command_runner(
                         },
                     };
 
-                    // Script signature
-                    let challenge = TransactionInput::build_script_signature_challenge(
+                    // Everything the leader supplied is checked, and both challenges are built, before the device is
+                    // asked for anything. A failure on leader data between the two signatures would otherwise leave a
+                    // script signature made and the step stopped - and a "fixed" leader file could then ask for a
+                    // second script signature under the same nonce. From here on only the device or the transport can
+                    // fail between the two, and the write-ahead record covers that.
+                    let script_challenge = TransactionInput::build_script_signature_challenge(
                         TransactionInputVersion::get_current_version(),
                         &leader_info.script_signature_ephemeral_commitment,
                         &leader_info.script_signature_ephemeral_pubkey,
@@ -1556,43 +1551,6 @@ pub async fn command_runner(
                         &leader_info.total_script_key,
                         &embedded_output.commitment,
                     );
-
-                    // KNOWN, DELIBERATELY DEFERRED GAP: `script_nonce_key_id` is a host indexed nonce reserved
-                    // back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce`. The self file was
-                    // validated above, and the nonce is compared below with the public nonce stored in the same
-                    // (unauthenticated) file, which only catches edits that left that stored nonce alone. What blocks
-                    // a redirect to a used nonce is the device, which refuses to reuse a nonce index for anything but
-                    // this exact request until it restarts. See the "Residual" section of
-                    // `minotari_ledger_wallet_common::legacy_nonce` for what is still open.
-                    let script_signature = match key_manager_service.sign_with_nonce_and_challenge(
-                        &party_info.pre_mine_script_key_id,
-                        &party_info.script_nonce_key_id,
-                        &challenge,
-                    ) {
-                        Ok(signature) => signature,
-                        Err(e) => {
-                            if is_legacy_nonce_store_full(&e) {
-                                eprintln!("\n{STEP_4_STORE_FULL_MESSAGE}\n");
-                            } else {
-                                eprintln!("\nError: Script signature SignMessage error! {e}\n");
-                            }
-                            error = true;
-                            break;
-                        },
-                    };
-                    if Some(script_signature.get_compressed_public_nonce()) !=
-                        party_info.public_script_nonce_key.as_ref()
-                    {
-                        eprintln!(
-                            "\nError: the script signature for output {} was made with a nonce that is not the one \
-                             step 2 published - the step 2 self file, or the device, has changed. The signature has \
-                             already been made on the device but nothing has been written or sent; do not send \
-                             anything from this session to the leader.\n",
-                            party_info.output_index
-                        );
-                        error = true;
-                        break;
-                    }
 
                     // lets verify the script
                     let shared_secret =
@@ -1646,8 +1604,7 @@ pub async fn command_runner(
 
                     // Metadata signature. The script offset was computed in step 2, when the key manager generated
                     // the sender offset key.
-                    let script_offset = party_info.script_offset.clone();
-                    let challenge = TransactionOutput::build_metadata_signature_challenge(
+                    let metadata_challenge = TransactionOutput::build_metadata_signature_challenge(
                         TransactionOutputVersion::get_current_version(),
                         &script,
                         &leader_info.output_features,
@@ -1660,79 +1617,89 @@ pub async fn command_runner(
                         MicroMinotari::zero(),
                     );
 
-                    // KNOWN, DELIBERATELY DEFERRED GAP: `sender_offset_key_id` is the `PreMine` branch key
-                    // `get_script_offset` issued in step 2, and `sender_offset_nonce_key_id` is a host indexed nonce
-                    // reserved back in step 2, so this routes to `GetRawSchnorrSignatureLegacyNonce`.
-                    //
-                    // Two signatures under one nonce index would give up this output's sender offset private key,
-                    // and the script offset then gives up the script private key; signing this key under the script
-                    // signature's nonce would give up both at once. Against that: the self file was validated before
-                    // anything was signed (distinct nonce ids, the expected key shapes), the device refuses a second
-                    // use of a nonce index within one app run (`LegacyNonceReused`), the nonce is compared just below
-                    // with the public nonce stored in the self file (an unauthenticated file, so this only catches
-                    // edits that left the stored nonce alone), and this step never signs an output twice. A redirect
-                    // to a nonce an earlier app run used, or a compromised host that can get the user to restart the
-                    // device app between two approvals, is the residual - see
-                    // `minotari_ledger_wallet_common::legacy_nonce`. It cannot
-                    // reach `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
+                    // Both signatures are checked against the progress file before either is requested, so a leader
+                    // file whose *metadata* challenge changed is refused before a script signature is made.
+                    for (which, nonce_key_id, challenge) in [
+                        (
+                            Step4Signature::Script,
+                            &party_info.script_nonce_key_id,
+                            &script_challenge,
+                        ),
+                        (
+                            Step4Signature::Metadata,
+                            &party_info.sender_offset_nonce_key_id,
+                            &metadata_challenge,
+                        ),
+                    ] {
+                        if let Err(e) =
+                            step_4_signature_plan(&progress, party_info.output_index, which, nonce_key_id, challenge)
+                        {
+                            eprintln!("\nError: {e}\n");
+                            error = true;
+                            break;
+                        }
+                    }
+                    if error {
+                        break;
+                    }
+
+                    // KNOWN, DELIBERATELY DEFERRED GAP: both signatures use host indexed nonces reserved back in step
+                    // 2, so they route to `GetRawSchnorrSignatureLegacyNonce`. Two signatures under one of those nonces
+                    // - or the script key and the sender offset key under one - give up this output's pre-mine keys.
+                    // Against that:
+                    // - the self file was validated before anything was signed (distinct nonce ids, the expected key
+                    //   shapes);
+                    // - every leader-supplied check, and both challenges, came before the first signature (above);
+                    // - each request is written to the progress file before it is sent, and a later run refuses a
+                    //   different challenge under a nonce it has ever requested (`step_4_signature_plan`);
+                    // - the device refuses a second use of a nonce index within one app run (`LegacyNonceReused`);
+                    // - each signature's nonce is compared with the public nonce stored in the self file - an
+                    //   unauthenticated file, so this only catches edits that left the stored nonce alone.
+                    // What none of that covers - anyone with write access to the session directory can delete the
+                    // progress file or edit the self file, a redirect to a nonce an earlier app run used, a restart
+                    // between two approvals - is the residual in `minotari_ledger_wallet_common::legacy_nonce`. None of
+                    // it reaches `alpha`: a step 2 session file from before sender offsets moved to `PreMine` names a
                     // `OneSidedSenderOffset` key, which the legacy whitelist now refuses - redo step 2 for such a
                     // session. A step 2 file written with a ledger app before 6.1.1-pre.0 is invalid for a second
                     // reason too: its `Random` nonce indexes are at or above 2^32, and those now derive different
                     // keys (all 64 bits of the index count), so its public nonces no longer match. Redoing step 2
                     // draws fresh nonces, so there is no nonce reuse hazard in doing so.
-                    // `minotari_ledger_wallet_common::legacy_nonce` sets out the derivation, the scope -
-                    // pre-mine only, normal spends use device issued handles - and the TODO that closes it.
-                    let metadata_signature = match key_manager_service.sign_with_nonce_and_challenge(
-                        &party_info.sender_offset_key_id,
-                        &party_info.sender_offset_nonce_key_id,
-                        &challenge,
-                    ) {
-                        Ok(signature) => signature,
-                        Err(e) => {
-                            if is_legacy_nonce_store_full(&e) {
-                                eprintln!("\n{STEP_4_STORE_FULL_MESSAGE}\n");
-                            } else {
-                                eprintln!("\nError: Metadata signature SignMessage error! {e}\n");
-                            }
+                    for (which, key_id, nonce_key_id, expected_nonce, challenge) in [
+                        (
+                            Step4Signature::Script,
+                            &party_info.pre_mine_script_key_id,
+                            &party_info.script_nonce_key_id,
+                            party_info.public_script_nonce_key.as_ref(),
+                            &script_challenge,
+                        ),
+                        (
+                            Step4Signature::Metadata,
+                            &party_info.sender_offset_key_id,
+                            &party_info.sender_offset_nonce_key_id,
+                            party_info.public_sender_offset_nonce_key.as_ref(),
+                            &metadata_challenge,
+                        ),
+                    ] {
+                        if let Err(e) = step_4_sign(
+                            &key_manager_service,
+                            &progress_file,
+                            &session_info,
+                            &mut progress,
+                            party_info.output_index,
+                            which,
+                            key_id,
+                            nonce_key_id,
+                            expected_nonce,
+                            challenge,
+                        ) {
+                            eprintln!("\nError: {e}\n");
                             error = true;
                             break;
-                        },
-                    };
-                    if Some(metadata_signature.get_compressed_public_nonce()) !=
-                        party_info.public_sender_offset_nonce_key.as_ref()
-                    {
-                        eprintln!(
-                            "\nError: the metadata signature for output {} was made with a nonce that is not the one \
-                             step 2 published - the step 2 self file, or the device, has changed. The signature has \
-                             already been made on the device but nothing has been written or sent; do not send \
-                             anything from this session to the leader.\n",
-                            party_info.output_index
-                        );
-                        error = true;
+                        }
+                    }
+                    if error {
                         break;
                     }
-
-                    if script_signature.get_signature() == CompressedSignature::default().get_signature() ||
-                        metadata_signature.get_signature() == CompressedSignature::default().get_signature()
-                    {
-                        eprintln!(
-                            "\nError: Script and/or metadata signatures not created (index {})!\n",
-                            party_info.output_index
-                        );
-                        error = true;
-                        break;
-                    }
-
-                    // Recorded before the next output is touched, so that a run stopped from here on never signs this
-                    // output again.
-                    let done = Step4OutputsForLeader {
-                        output_index: party_info.output_index,
-                        script_signature,
-                        metadata_signature,
-                        script_offset,
-                    };
-                    append_step_4_progress(&progress_file, &session_info, &done)?;
-                    signed.push(done);
 
                     println!(
                         "  Processed {} of {} transactions",
@@ -1744,7 +1711,12 @@ pub async fn command_runner(
                     break;
                 }
 
-                let outputs_for_leader = match merge_step_4_outputs(&party_info_indexes, signed) {
+                let party_outputs = party_info_indexed
+                    .outputs_for_self
+                    .iter()
+                    .map(|output| (output.output_index, output.script_offset.clone()))
+                    .collect::<Vec<_>>();
+                let outputs_for_leader = match merge_step_4_outputs(&party_outputs, &progress) {
                     Ok(outputs) => outputs,
                     Err(e) => {
                         eprintln!("\nError: {e}\n");
@@ -4057,7 +4029,7 @@ fn write_audit_to_csv_file(
 const STEP_4_STORE_FULL_MESSAGE: &str = "The Ledger device's record of used pre-mine nonces is full (it holds one app \
                                          run's worth: 32 outputs). Progress is saved. Restart the Minotari Wallet app \
                                          on the Ledger device, then re-run this same step 4 command; it will continue \
-                                         from the next output.";
+                                         from the next signature.";
 
 /// Whether a signing error is the device refusing because its legacy used-nonce record is full.
 fn is_legacy_nonce_store_full(error: &impl std::fmt::Display) -> bool {
@@ -4084,70 +4056,294 @@ fn warn_if_step_4_needs_app_restarts(outputs: usize) {
     }
 }
 
-/// Load step 4's progress file: the outputs a previous run already signed. A missing file means nothing was signed.
+/// Which of an output's two legacy signatures a step 4 progress line is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Step4Signature {
+    Script,
+    Metadata,
+}
+
+impl std::fmt::Display for Step4Signature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Step4Signature::Script => write!(f, "script signature"),
+            Step4Signature::Metadata => write!(f, "metadata signature"),
+        }
+    }
+}
+
+/// One line of step 4's write-ahead progress file (after the session header on line 1).
 ///
-/// Line one is the session header, as in every session file; each further line is one signed output. An entry for an
-/// output that is not this party's, or a second entry for one output, is refused as a damaged or edited file - better
-/// to stop than to guess which signature is the real one.
+/// Before every legacy signature step 4 appends an `Intent` naming the output, which signature, the nonce and a hash
+/// of the challenge; after the device signs and the public nonce checks out it appends the `Signed` line. So a run
+/// that stops anywhere - a bad leader file, a rejected review, a full device record, a transport error - leaves on
+/// disk every challenge it ever asked the device to sign, and a later run can refuse to sign a *different* challenge
+/// under that nonce. See `step_4_signature_plan`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "line", rename_all = "snake_case")]
+enum Step4ProgressLine {
+    Intent {
+        output_index: usize,
+        which: Step4Signature,
+        nonce_key_id: TariKeyId,
+        /// Hex of [`step_4_challenge_hash`].
+        challenge_hash: String,
+    },
+    Signed {
+        output_index: usize,
+        which: Step4Signature,
+        signature: CompressedSignature,
+    },
+}
+
+/// What step 4 has to do for one of an output's two signatures, given the progress file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Step4SignaturePlan {
+    /// Already signed by an earlier run: use the recorded signature, do not ask the device again.
+    Reuse(Box<CompressedSignature>),
+    /// Ask the device. `write_intent` is false when an intent for this exact challenge is already on disk - a retry of
+    /// an identical request, which reproduces the same signature and so discloses nothing.
+    Sign { write_intent: bool },
+}
+
+/// The hash of a challenge that an intent line records: a domain separated Blake2b-256 under the ledger domain.
+fn step_4_challenge_hash(challenge: &[u8; 64]) -> String {
+    use blake2::Blake2b;
+    use digest::consts::U32;
+    use tari_crypto::hashing::DomainSeparatedHasher;
+    use tari_hashing::LedgerHashDomain;
+
+    DomainSeparatedHasher::<Blake2b<U32>, LedgerHashDomain>::new_with_label("pre_mine_step_4_challenge")
+        .chain(challenge)
+        .finalize()
+        .as_ref()
+        .to_vec()
+        .to_hex()
+}
+
+/// What to do for `(output_index, which)`, which signs `challenge` under `nonce_key_id`.
+///
+/// - Any recorded intent for this signature with a *different* challenge, or a different nonce, refuses the whole step:
+///   the leader's file (or the self file) changed after a signature was requested, and signing the new challenge under
+///   the same nonce would give up this party's key. Checked even when a signature is already recorded.
+/// - Otherwise a recorded signature is reused.
+/// - Otherwise an intent for this exact challenge means the request may be retried without writing a new intent.
+/// - Otherwise sign, writing the intent first.
+fn step_4_signature_plan(
+    progress: &[Step4ProgressLine],
+    output_index: usize,
+    which: Step4Signature,
+    nonce_key_id: &TariKeyId,
+    challenge: &[u8; 64],
+) -> Result<Step4SignaturePlan, String> {
+    let challenge_hash = step_4_challenge_hash(challenge);
+    let mut intended = false;
+    let mut recorded = None;
+    for line in progress {
+        match line {
+            Step4ProgressLine::Intent {
+                output_index: o,
+                which: w,
+                nonce_key_id: n,
+                challenge_hash: h,
+            } if *o == output_index && *w == which => {
+                if n != nonce_key_id || *h != challenge_hash {
+                    return Err(format!(
+                        "the {which} for output {output_index} was already requested from the device over a different \
+                         challenge or nonce - the leader's step 3 file (or your step 2 file) changed after that \
+                         signature was requested. Signing again would let the leader recover your pre-mine keys, so \
+                         step 4 refuses. Do not re-run it with this file; tell the leader the session cannot be \
+                         re-signed, and start a new session from step 1 if needed."
+                    ));
+                }
+                intended = true;
+            },
+            Step4ProgressLine::Signed {
+                output_index: o,
+                which: w,
+                signature,
+            } if *o == output_index && *w == which => recorded = Some(signature.clone()),
+            _ => {},
+        }
+    }
+    Ok(match recorded {
+        Some(signature) => Step4SignaturePlan::Reuse(Box::new(signature)),
+        None => Step4SignaturePlan::Sign {
+            write_intent: !intended,
+        },
+    })
+}
+
+/// Load step 4's progress file. A missing or empty file means nothing was requested yet.
+///
+/// Fails closed: an unparseable line (a run killed mid-write, or an edited file), a header from another session, a line
+/// for an output that is not this party's, or a signature with no intent before it refuses the step. Deleting the file
+/// is not the fix - it is the only record of which challenges the device has already signed under each nonce.
 fn load_step_4_progress(
     path: &Path,
     session_info: &PreMineSpendStep1SessionInfo,
     party_output_indexes: &[usize],
-) -> Result<Vec<Step4OutputsForLeader>, String> {
-    let describe = |e: &dyn std::fmt::Display| format!("step 4 progress file '{}': {e}", path.display());
+) -> Result<Vec<Step4ProgressLine>, String> {
+    let refuse = |what: &dyn std::fmt::Display| {
+        format!(
+            "step 4 progress file '{}': {what}. Do not delete or edit this file - it records which challenges the \
+             device has already signed under each nonce, and without it a re-run could sign a second one and give up \
+             your pre-mine keys (the device's own record only covers one app run). Contact the leader; the session \
+             may have to be restarted from step 1.",
+            path.display()
+        )
+    };
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(describe(&e)),
+        Err(e) => return Err(refuse(&e)),
     };
     let mut lines = contents.lines().filter(|line| !line.trim().is_empty());
     let Some(header) = lines.next() else {
         return Ok(Vec::new());
     };
-    let header: PreMineSpendStep1SessionInfo = serde_json::from_str(header).map_err(|e| describe(&e))?;
+    let header: PreMineSpendStep1SessionInfo = serde_json::from_str(header).map_err(|e| refuse(&e))?;
     if &header != session_info {
-        return Err(describe(&"it belongs to a different session"));
+        return Err(refuse(&"it belongs to a different session"));
     }
-    let mut signed: Vec<Step4OutputsForLeader> = Vec::new();
+    let mut progress: Vec<Step4ProgressLine> = Vec::new();
     for line in lines {
-        let output: Step4OutputsForLeader = serde_json::from_str(line).map_err(|e| describe(&e))?;
-        if !party_output_indexes.contains(&output.output_index) {
-            return Err(describe(&format!(
-                "output {} is not one of this party's",
-                output.output_index
-            )));
+        let line: Step4ProgressLine = serde_json::from_str(line).map_err(|e| refuse(&e))?;
+        let (output_index, which) = match &line {
+            Step4ProgressLine::Intent {
+                output_index, which, ..
+            } |
+            Step4ProgressLine::Signed {
+                output_index, which, ..
+            } => (*output_index, *which),
+        };
+        if !party_output_indexes.contains(&output_index) {
+            return Err(refuse(&format!("output {output_index} is not one of this party's")));
         }
-        if signed.iter().any(|done| done.output_index == output.output_index) {
-            return Err(describe(&format!("output {} is recorded twice", output.output_index)));
+        if let Step4ProgressLine::Signed { .. } = line {
+            let intended = progress.iter().any(|earlier| {
+                matches!(earlier, Step4ProgressLine::Intent { output_index: o, which: w, .. } if *o == output_index && *w == which)
+            });
+            if !intended {
+                return Err(refuse(&format!(
+                    "the {which} for output {output_index} is recorded with no request before it"
+                )));
+            }
         }
-        signed.push(output);
+        progress.push(line);
     }
-    Ok(signed)
+    Ok(progress)
 }
 
-/// Append one signed output to step 4's progress file, writing the session header first if the file is new.
+/// Append one line to step 4's progress file, writing the session header first if the file is new.
 fn append_step_4_progress(
     path: &Path,
     session_info: &PreMineSpendStep1SessionInfo,
-    output: &Step4OutputsForLeader,
+    line: &Step4ProgressLine,
 ) -> Result<(), CommandError> {
     if !path.exists() {
         write_json_object_to_file_as_line(path, true, session_info)?;
     }
-    write_json_object_to_file_as_line(path, false, output)
+    write_json_object_to_file_as_line(path, false, line)
 }
 
-/// Put the signed outputs in this party's output order for the final step 4 file, refusing if any is missing.
+/// Make one of an output's two legacy signatures, write-ahead: the intent is on disk before the device is asked, and
+/// the signature after its public nonce is checked. `expected_public_nonce` is the nonce step 2 stored.
+#[allow(clippy::too_many_arguments)]
+fn step_4_sign<K: TransactionKeyManagerInterface>(
+    key_manager: &K,
+    progress_file: &Path,
+    session_info: &PreMineSpendStep1SessionInfo,
+    progress: &mut Vec<Step4ProgressLine>,
+    output_index: usize,
+    which: Step4Signature,
+    key_id: &TariKeyId,
+    nonce_key_id: &TariKeyId,
+    expected_public_nonce: Option<&CompressedPublicKey>,
+    challenge: &[u8; 64],
+) -> Result<CompressedSignature, String> {
+    let write_intent = match step_4_signature_plan(progress, output_index, which, nonce_key_id, challenge)? {
+        Step4SignaturePlan::Reuse(signature) => return Ok(*signature),
+        Step4SignaturePlan::Sign { write_intent } => write_intent,
+    };
+    if write_intent {
+        let intent = Step4ProgressLine::Intent {
+            output_index,
+            which,
+            nonce_key_id: nonce_key_id.clone(),
+            challenge_hash: step_4_challenge_hash(challenge),
+        };
+        // If this cannot be written, nothing is signed.
+        append_step_4_progress(progress_file, session_info, &intent)
+            .map_err(|e| format!("could not record the {which} request for output {output_index}: {e}"))?;
+        progress.push(intent);
+    }
+    let signature = key_manager
+        .sign_with_nonce_and_challenge(key_id, nonce_key_id, challenge)
+        .map_err(|e| {
+            if is_legacy_nonce_store_full(&e) {
+                STEP_4_STORE_FULL_MESSAGE.to_string()
+            } else {
+                format!("{which} for output {output_index} could not be made: {e}")
+            }
+        })?;
+    if Some(signature.get_compressed_public_nonce()) != expected_public_nonce {
+        return Err(format!(
+            "the {which} for output {output_index} was made with a nonce that is not the one step 2 published - the \
+             step 2 self file, or the device, has changed. The signature has already been made on the device but \
+             nothing has been sent; do not send anything from this session to the leader."
+        ));
+    }
+    if signature.get_signature() == CompressedSignature::default().get_signature() {
+        return Err(format!("the {which} for output {output_index} was not created"));
+    }
+    let signed = Step4ProgressLine::Signed {
+        output_index,
+        which,
+        signature: signature.clone(),
+    };
+    append_step_4_progress(progress_file, session_info, &signed).map_err(|e| {
+        format!(
+            "the {which} for output {output_index} was made but could not be recorded ({e}); its request is recorded, \
+             so re-running step 4 over the same leader file will reproduce it"
+        )
+    })?;
+    progress.push(signed);
+    Ok(signature)
+}
+
+/// Build the final step 4 file's outputs, in this party's output order, from the signatures in the progress file.
+/// `party_outputs` is each output's index and the script offset step 2 computed for it. Refuses if any signature is
+/// missing.
 fn merge_step_4_outputs(
-    party_output_indexes: &[usize],
-    signed: Vec<Step4OutputsForLeader>,
+    party_outputs: &[(usize, PrivateKey)],
+    progress: &[Step4ProgressLine],
 ) -> Result<Vec<Step4OutputsForLeader>, String> {
-    let mut merged = Vec::with_capacity(party_output_indexes.len());
-    for index in party_output_indexes {
-        match signed.iter().find(|done| done.output_index == *index) {
-            Some(done) => merged.push(done.clone()),
-            None => return Err(format!("output {index} has not been signed")),
-        }
+    let find = |output_index: usize, which: Step4Signature| {
+        progress.iter().rev().find_map(|line| match line {
+            Step4ProgressLine::Signed {
+                output_index: o,
+                which: w,
+                signature,
+            } if *o == output_index && *w == which => Some(signature.clone()),
+            _ => None,
+        })
+    };
+    let mut merged = Vec::with_capacity(party_outputs.len());
+    for (output_index, script_offset) in party_outputs {
+        let (Some(script_signature), Some(metadata_signature)) = (
+            find(*output_index, Step4Signature::Script),
+            find(*output_index, Step4Signature::Metadata),
+        ) else {
+            return Err(format!("output {output_index} has not been fully signed"));
+        };
+        merged.push(Step4OutputsForLeader {
+            output_index: *output_index,
+            script_signature,
+            metadata_signature,
+            script_offset: script_offset.clone(),
+        });
     }
     Ok(merged)
 }
@@ -4256,71 +4452,162 @@ mod test {
             }
         }
 
-        fn signed(output_index: usize) -> Step4OutputsForLeader {
-            Step4OutputsForLeader {
+        fn nonce(index: u64) -> TariKeyId {
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index,
+            }
+        }
+
+        fn intent(output_index: usize, which: Step4Signature, challenge: u8) -> Step4ProgressLine {
+            Step4ProgressLine::Intent {
                 output_index,
-                ..Default::default()
+                which,
+                nonce_key_id: nonce(output_index as u64),
+                challenge_hash: step_4_challenge_hash(&[challenge; 64]),
+            }
+        }
+
+        fn signed(output_index: usize, which: Step4Signature) -> Step4ProgressLine {
+            Step4ProgressLine::Signed {
+                output_index,
+                which,
+                signature: CompressedSignature::default(),
+            }
+        }
+
+        fn write(path: &Path, lines: &[Step4ProgressLine]) {
+            for line in lines {
+                append_step_4_progress(path, &session(), line).unwrap();
             }
         }
 
         #[test]
-        fn a_missing_progress_file_means_nothing_was_signed() {
+        fn a_missing_progress_file_means_nothing_was_requested() {
             let dir = tempfile::tempdir().unwrap();
-            let loaded = load_step_4_progress(&dir.path().join("p.json"), &session(), &[1, 2]).unwrap();
-            assert!(loaded.is_empty());
-        }
-
-        /// What is appended is what is loaded back, so a resumed run skips exactly the outputs already signed.
-        #[test]
-        fn appended_outputs_load_back_and_are_skipped() {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("p.json");
-            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
-            append_step_4_progress(&path, &session(), &signed(3)).unwrap();
-            let loaded = load_step_4_progress(&path, &session(), &[3, 5, 7]).unwrap();
-            assert_eq!(loaded, vec![signed(7), signed(3)]);
-            assert!(loaded.iter().any(|done| done.output_index == 7));
-            assert!(!loaded.iter().any(|done| done.output_index == 5));
-        }
-
-        #[test]
-        fn a_progress_file_from_another_session_is_refused() {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("p.json");
-            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
-            let other = PreMineSpendStep1SessionInfo {
-                session_id: "xyz".to_string(),
-                ..Default::default()
-            };
-            assert!(load_step_4_progress(&path, &other, &[7]).is_err());
-        }
-
-        #[test]
-        fn a_duplicate_or_foreign_output_in_progress_is_refused() {
-            let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join("p.json");
-            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
-            append_step_4_progress(&path, &session(), &signed(7)).unwrap();
             assert!(
-                load_step_4_progress(&path, &session(), &[7])
-                    .unwrap_err()
-                    .contains("twice")
+                load_step_4_progress(&dir.path().join("p.json"), &session(), &[1])
+                    .unwrap()
+                    .is_empty()
             );
+        }
 
-            let path = dir.path().join("q.json");
-            append_step_4_progress(&path, &session(), &signed(9)).unwrap();
+        /// An intent and its signature are written and read back as the same lines, and the signature is reused.
+        #[test]
+        fn an_intent_then_its_signature_round_trip_and_are_reused() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("p.json");
+            let lines = [intent(7, Step4Signature::Script, 1), signed(7, Step4Signature::Script)];
+            write(&path, &lines);
+            let loaded = load_step_4_progress(&path, &session(), &[7]).unwrap();
+            assert_eq!(loaded, lines.to_vec());
+            assert_eq!(
+                step_4_signature_plan(&loaded, 7, Step4Signature::Script, &nonce(7), &[1; 64]),
+                Ok(Step4SignaturePlan::Reuse(Box::default()))
+            );
+        }
+
+        /// With only the script signature recorded, it is reused and only the metadata signature is signed.
+        #[test]
+        fn a_resume_with_only_the_script_signature_signs_only_the_metadata_signature() {
+            let progress = [intent(7, Step4Signature::Script, 1), signed(7, Step4Signature::Script)];
+            assert!(matches!(
+                step_4_signature_plan(&progress, 7, Step4Signature::Script, &nonce(7), &[1; 64]),
+                Ok(Step4SignaturePlan::Reuse(_))
+            ));
+            assert_eq!(
+                step_4_signature_plan(&progress, 7, Step4Signature::Metadata, &nonce(7), &[2; 64]),
+                Ok(Step4SignaturePlan::Sign { write_intent: true })
+            );
+        }
+
+        /// The leader's attack: a script signature requested over one challenge, the step aborted, and a "fixed" file
+        /// with a different challenge. Refused, whether or not the first signature completed.
+        #[test]
+        fn an_intent_with_a_different_challenge_is_refused() {
+            for progress in [vec![intent(7, Step4Signature::Script, 1)], vec![
+                intent(7, Step4Signature::Script, 1),
+                signed(7, Step4Signature::Script),
+            ]] {
+                let err = step_4_signature_plan(&progress, 7, Step4Signature::Script, &nonce(7), &[9; 64]).unwrap_err();
+                assert!(err.contains("output 7"), "{err}");
+                assert!(err.contains("recover your pre-mine keys"), "{err}");
+            }
+            // A different nonce for the same signature is refused too.
+            let progress = [intent(7, Step4Signature::Script, 1)];
+            assert!(step_4_signature_plan(&progress, 7, Step4Signature::Script, &nonce(8), &[1; 64]).is_err());
+        }
+
+        /// An intent with no signature and the same challenge is an identical request, so it may be retried - without
+        /// a second intent line.
+        #[test]
+        fn an_intent_with_the_same_challenge_is_retried() {
+            let progress = [intent(7, Step4Signature::Metadata, 2)];
+            assert_eq!(
+                step_4_signature_plan(&progress, 7, Step4Signature::Metadata, &nonce(7), &[2; 64]),
+                Ok(Step4SignaturePlan::Sign { write_intent: false })
+            );
+            assert_eq!(
+                step_4_signature_plan(&[], 7, Step4Signature::Metadata, &nonce(7), &[2; 64]),
+                Ok(Step4SignaturePlan::Sign { write_intent: true })
+            );
+        }
+
+        /// A run killed mid-write leaves a truncated last line; that refuses the step rather than being skipped.
+        #[test]
+        fn a_truncated_line_is_refused() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("p.json");
+            write(&path, &[intent(7, Step4Signature::Script, 1)]);
+            let mut contents = fs::read_to_string(&path).unwrap();
+            contents.push_str("{\"line\":\"signed\",\"output_ind");
+            fs::write(&path, contents).unwrap();
+            let err = load_step_4_progress(&path, &session(), &[7]).unwrap_err();
+            assert!(err.contains("Do not delete"), "{err}");
+        }
+
+        #[test]
+        fn a_foreign_output_another_session_or_a_signature_without_intent_is_refused() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("a.json");
+            write(&path, &[intent(9, Step4Signature::Script, 1)]);
             assert!(
                 load_step_4_progress(&path, &session(), &[7])
                     .unwrap_err()
                     .contains("not one of this party's")
             );
+            let other = PreMineSpendStep1SessionInfo {
+                session_id: "xyz".to_string(),
+                ..Default::default()
+            };
+            assert!(load_step_4_progress(&path, &other, &[9]).is_err());
+
+            let path = dir.path().join("b.json");
+            write(&path, &[signed(7, Step4Signature::Script)]);
+            assert!(
+                load_step_4_progress(&path, &session(), &[7])
+                    .unwrap_err()
+                    .contains("no request before it")
+            );
         }
 
         #[test]
-        fn merging_puts_outputs_in_party_order_and_needs_all_of_them() {
-            let merged = merge_step_4_outputs(&[3, 5, 7], vec![signed(7), signed(3), signed(5)]).unwrap();
-            assert_eq!(merged, vec![signed(3), signed(5), signed(7)]);
-            assert!(merge_step_4_outputs(&[3, 5], vec![signed(3)]).is_err());
+        fn merging_builds_the_final_outputs_in_party_order_and_needs_both_signatures() {
+            let progress = [
+                intent(5, Step4Signature::Script, 1),
+                signed(5, Step4Signature::Script),
+                intent(5, Step4Signature::Metadata, 2),
+                signed(5, Step4Signature::Metadata),
+                intent(3, Step4Signature::Script, 1),
+                signed(3, Step4Signature::Script),
+                intent(3, Step4Signature::Metadata, 2),
+                signed(3, Step4Signature::Metadata),
+            ];
+            let offsets = [(3, PrivateKey::from(3u64)), (5, PrivateKey::from(5u64))];
+            let merged = merge_step_4_outputs(&offsets, &progress).unwrap();
+            assert_eq!(merged.iter().map(|o| o.output_index).collect::<Vec<_>>(), vec![3, 5]);
+            assert_eq!(merged.first().unwrap().script_offset, PrivateKey::from(3u64));
+            assert!(merge_step_4_outputs(&offsets, &progress[..6]).is_err());
         }
 
         #[test]

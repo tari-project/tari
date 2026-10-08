@@ -4296,6 +4296,7 @@ name = "minotari_console_wallet"
 version = "6.1.0-pre.1"
 dependencies = [
  "anyhow",
+ "blake2 0.10.6",
  "chrono",
  "clap",
  "config",
