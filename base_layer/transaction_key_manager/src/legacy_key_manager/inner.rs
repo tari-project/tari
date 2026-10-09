@@ -528,6 +528,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
+        is_change: bool,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         self.key_manager.get_metadata_signature_user_verified(
             commitment_mask_key_id,
@@ -538,6 +539,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             range_proof_type,
             script,
             receiver_address,
+            is_change,
         )
     }
 

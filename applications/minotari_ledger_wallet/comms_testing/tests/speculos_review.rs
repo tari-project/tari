@@ -130,6 +130,7 @@ fn sign(receiver: &TariAddress) -> Result<ComAndPubSignature, LedgerDeviceError>
         VALUE,
         SENDER_OFFSET_KEY_INDEX,
         minotari_ledger_wallet_common::common_types::LedgerKeyBranch::OneSidedSenderOffset,
+        false,
         // A fixed commitment mask rather than a random one: nothing here depends on it being secret, and a
         // constant means two runs of the same scenario send the same bytes.
         &PrivateKey::from(42u64),

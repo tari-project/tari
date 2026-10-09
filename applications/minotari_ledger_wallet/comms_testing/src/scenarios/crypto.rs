@@ -63,7 +63,16 @@ use crate::{
     fixtures,
     raw::ComAndPubSigReply,
     review::ExpectedReview,
-    scenarios::{Approval, Scenario, ScenarioContext, ScenarioModule, ScenarioResult, WithContext, require},
+    scenarios::{
+        Approval,
+        Scenario,
+        ScenarioContext,
+        ScenarioError,
+        ScenarioModule,
+        ScenarioResult,
+        WithContext,
+        require,
+    },
 };
 
 pub const MODULE: ScenarioModule = ScenarioModule {
@@ -129,7 +138,7 @@ const SCENARIOS: &[Scenario] = &[
         run: the_approved_metadata_signature_verifies,
     },
     Scenario {
-        name: "a one sided metadata signature to the device's own address is signed with no review",
+        name: "change flagged as such, to the device's own address, is signed with no review",
         covers: &[
             Instruction::GetOneSidedMetadataSignature,
             Instruction::GetPublicKey,
@@ -140,8 +149,8 @@ const SCENARIOS: &[Scenario] = &[
         run: change_to_self_is_signed_without_a_review,
     },
     Scenario {
-        name: "a receiver with the device's own spend key but another view key is reviewed, and the approved \
-               signature verifies",
+        name: "a change-flagged receiver with the device's own spend key but another view key is reviewed, and the \
+               approved signature verifies",
         covers: &[
             Instruction::GetOneSidedMetadataSignature,
             Instruction::GetPublicKey,
@@ -149,6 +158,18 @@ const SCENARIOS: &[Scenario] = &[
         ],
         approval: Approval::Required,
         run: own_spend_key_with_a_foreign_view_key_is_reviewed,
+    },
+    Scenario {
+        name: "an output to the device's own address that is not flagged as change is reviewed, and the approved \
+               signature verifies",
+        covers: &[
+            Instruction::GetOneSidedMetadataSignature,
+            Instruction::GetPublicKey,
+            Instruction::GetPublicSpendKey,
+            Instruction::GetViewKey,
+        ],
+        approval: Approval::Required,
+        run: own_address_without_the_change_flag_is_reviewed,
     },
 ];
 
@@ -645,14 +666,35 @@ const REVIEW_VALUE: u64 = 12_345;
 /// sent when it is not the default, so this is exactly what a host from before the field existed sends, and the device
 /// must keep reading it as an ordinary request.
 fn the_approved_metadata_signature_verifies(context: &ScenarioContext<'_>) -> ScenarioResult {
-    for branch in [LedgerKeyBranch::OneSidedSenderOffset, LedgerKeyBranch::PreMine] {
-        approved_metadata_signature_verifies(context, branch)?;
+    for (branch, is_change) in [
+        (LedgerKeyBranch::OneSidedSenderOffset, false),
+        (LedgerKeyBranch::PreMine, false),
+        // The change flag does not silence the review of a receiver that is not this wallet's own address.
+        (LedgerKeyBranch::OneSidedSenderOffset, true),
+    ] {
+        let receiver = fixtures::published_receiver(0).map_err(super::fail)?;
+        reviewed_metadata_signature_verifies(
+            context,
+            fixtures::random_u64(),
+            branch,
+            is_change,
+            &receiver,
+            &format!("a {branch} sender offset, is_change {is_change}"),
+        )?;
     }
     Ok(())
 }
 
-fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: LedgerKeyBranch) -> ScenarioResult {
-    let account = fixtures::random_u64();
+/// Ask for a one sided metadata signature to `receiver`, answer the review the device must show by approving it, and
+/// verify the signature against what the device should have signed.
+fn reviewed_metadata_signature_verifies(
+    context: &ScenarioContext<'_>,
+    account: u64,
+    branch: LedgerKeyBranch,
+    is_change: bool,
+    receiver: &TariAddress,
+    what: &str,
+) -> ScenarioResult {
     // A `PreMine` sender offset only ever comes from pre-mine mode, with the marker (bit 63) set, and the device
     // refuses one without it.
     let sender_offset_key_index = match branch {
@@ -661,10 +703,9 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
     };
     let commitment_mask = fixtures::random_secret_key();
     let common_message = fixtures::random_bytes_32();
-    let receiver = fixtures::published_receiver(0).map_err(super::fail)?;
 
     let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
-        .context(|| format!("GetPublicKey for the {branch} sender offset key"))?;
+        .context(|| format!("GetPublicKey for the sender offset key ({what})"))?;
 
     let expected_review = ExpectedReview::one_sided_metadata_signature(REVIEW_VALUE, &receiver.to_base58(), 0);
     let (signature, review) = while_reviewing(context.approver(), &expected_review, Outcome::Approve, || {
@@ -675,29 +716,46 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
             REVIEW_VALUE,
             sender_offset_key_index,
             branch,
+            is_change,
             &commitment_mask,
-            &receiver,
+            receiver,
             &common_message,
         )
     });
-    review.context(|| format!("the device's review screen ({branch} sender offset)"))?;
-    let signature = signature.context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
+    review.context(|| format!("the device's review screen ({what})"))?;
+    let signature = signature.context(|| format!("GetOneSidedMetadataSignature ({what})"))?;
 
     verify_one_sided_metadata_signature(
-        &format!("the one sided metadata signature with a {branch} sender offset"),
+        &format!("the one sided metadata signature ({what})"),
         &signature.to_vec(),
         REVIEW_VALUE,
         &commitment_mask,
-        &receiver,
+        receiver,
         &sender_offset_public_key,
         &common_message,
     )
 }
 
+/// This device's own address for `account`: its own public view key and its own public `alpha`.
+fn own_address(account: u64) -> Result<TariAddress, ScenarioError> {
+    let public_alpha = ledger_get_public_spend_key(account).context(|| "GetPublicSpendKey".to_string())?;
+    let view_key = ledger_get_view_key(account).context(|| "GetViewKey".to_string())?;
+    TariAddress::new_dual_address(
+        CompressedPublicKey::from_secret_key(&view_key),
+        public_alpha,
+        NETWORK,
+        TariAddressFeatures::create_one_sided_only(),
+        None,
+    )
+    .context(|| "the device's own address".to_string())
+}
+
 /// Acceptance: change to the device's own address is signed with no review, and the signature verifies.
 ///
-/// The device signs without a prompt only when the receiver is its own address for the account: the spend key is its
-/// own public `alpha` and the view key its own public view key. The script it signs over is then the stealth script
+/// The device signs without a prompt only when the host flags the output as change *and* the receiver is its own
+/// address for the account: the spend key is its own public `alpha` and the view key its own public view key. An
+/// unflagged output to the same address is reviewed (`own_address_without_the_change_flag_is_reviewed`). The script it
+/// signs over is then the stealth script
 /// to `alpha`. Its output features, covenant and encrypted data reach the
 /// device as an opaque hash and are host chosen and not inspected, as they were not when change was signed raw - so
 /// an auto-approved "change" can be a burn claimable on L2 by a key the host chooses. Change is what makes the
@@ -715,16 +773,7 @@ fn change_to_self_is_signed_without_a_review(_context: &ScenarioContext<'_>) -> 
     let commitment_mask = fixtures::random_secret_key();
     let common_message = fixtures::random_bytes_32();
 
-    let public_alpha = ledger_get_public_spend_key(account).context(|| "GetPublicSpendKey".to_string())?;
-    let view_key = ledger_get_view_key(account).context(|| "GetViewKey".to_string())?;
-    let own_address = TariAddress::new_dual_address(
-        CompressedPublicKey::from_secret_key(&view_key),
-        public_alpha,
-        NETWORK,
-        TariAddressFeatures::create_one_sided_only(),
-        None,
-    )
-    .context(|| "the device's own address".to_string())?;
+    let own_address = own_address(account)?;
 
     let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
         .context(|| "GetPublicKey for the sender offset key".to_string())?;
@@ -736,6 +785,7 @@ fn change_to_self_is_signed_without_a_review(_context: &ScenarioContext<'_>) -> 
         REVIEW_VALUE,
         sender_offset_key_index,
         branch,
+        true,
         &commitment_mask,
         &own_address,
         &common_message,
@@ -761,11 +811,6 @@ fn change_to_self_is_signed_without_a_review(_context: &ScenarioContext<'_>) -> 
 /// device must not treat that as change.
 fn own_spend_key_with_a_foreign_view_key_is_reviewed(context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
-    let sender_offset_key_index = fixtures::random_u64();
-    let branch = LedgerKeyBranch::OneSidedSenderOffset;
-    let commitment_mask = fixtures::random_secret_key();
-    let common_message = fixtures::random_bytes_32();
-
     let public_alpha = ledger_get_public_spend_key(account).context(|| "GetPublicSpendKey".to_string())?;
     let receiver = TariAddress::new_dual_address(
         CompressedPublicKey::from_secret_key(&fixtures::random_secret_key()),
@@ -776,34 +821,33 @@ fn own_spend_key_with_a_foreign_view_key_is_reviewed(context: &ScenarioContext<'
     )
     .context(|| "an address with the device's spend key and a foreign view key".to_string())?;
 
-    let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
-        .context(|| "GetPublicKey for the sender offset key".to_string())?;
-
-    let expected_review = ExpectedReview::one_sided_metadata_signature(REVIEW_VALUE, &receiver.to_base58(), 0);
-    let (signature, review) = while_reviewing(context.approver(), &expected_review, Outcome::Approve, || {
-        ledger_get_one_sided_metadata_signature(
-            account,
-            receiver.network(),
-            0,
-            REVIEW_VALUE,
-            sender_offset_key_index,
-            branch,
-            &commitment_mask,
-            &receiver,
-            &common_message,
-        )
-    });
-    review.context(|| "the device's review screen for its own spend key with a foreign view key".to_string())?;
-    let signature = signature.context(|| "GetOneSidedMetadataSignature with a foreign view key".to_string())?;
-
-    verify_one_sided_metadata_signature(
-        "the one sided metadata signature to the device's spend key with a foreign view key",
-        &signature.to_vec(),
-        REVIEW_VALUE,
-        &commitment_mask,
+    // Flagged as change, so that only the view key stands between this output and auto-approval.
+    reviewed_metadata_signature_verifies(
+        context,
+        account,
+        LedgerKeyBranch::OneSidedSenderOffset,
+        true,
         &receiver,
-        &sender_offset_public_key,
-        &common_message,
+        "its own spend key with a foreign view key, flagged as change",
+    )
+}
+
+/// Acceptance: an output to the device's own address that is *not* flagged as change is reviewed, and the approved
+/// signature verifies.
+///
+/// Only the transaction builder's own change is flagged. A payment to self, a coin split, an offline payload's
+/// recipient at the wallet's own address are not, and the device must show them: they carry output features and a fee
+/// the user has not seen anywhere else.
+fn own_address_without_the_change_flag_is_reviewed(context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let receiver = own_address(account)?;
+    reviewed_metadata_signature_verifies(
+        context,
+        account,
+        LedgerKeyBranch::OneSidedSenderOffset,
+        false,
+        &receiver,
+        "its own address, not flagged as change",
     )
 }
 

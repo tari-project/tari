@@ -6,8 +6,8 @@
 //!
 //! It is the only way a `OneSidedSenderOffset` key signs anything. (`PreMine` sender offset keys, which a host can
 //! mint on demand through `get_script_offset` with a `PreMine` script key, still sign raw challenges; that belongs
-//! with the separate pre-mine issue.) Change is signed through it too, with the
-//! wallet's own address, and the device recognises its own spend key and signs that without a review.
+//! with the separate pre-mine issue.) Change is signed through it too, with the wallet's own address and the change
+//! flag, and the device signs that without a review; an unflagged output to the wallet's own address is reviewed.
 //!
 //! `GetOneSidedMetadataSignature` is the only instruction in the application that puts anything in front of a
 //! human: it shows the amount, the receiver and any payment ID, and does not answer until somebody approves or
@@ -229,18 +229,17 @@ fn device_sender_offset_key(key_manager: &KeyManager) -> TariKeyAndId {
     sender_offsets.pop().expect("one sender offset key")
 }
 
-/// Change is signed through the reviewed instruction with the wallet's own address, and the device signs it with no
-/// review: the receiver's spend key is its own `alpha`. The signature verifies, and the wire shows exactly one
-/// `GetOneSidedMetadataSignature` and no raw Schnorr signature or nonce reservation.
+/// A change-shaped output to the wallet's own address that is not flagged as change - which is everything
+/// `WalletOutputBuilder` signs; only `TransactionBuilder::build_change` sets the flag - is reviewed, like the same
+/// output to a foreign receiver. Both verify once approved, and neither involves a raw Schnorr signature or a nonce
+/// reservation. The flagged, unreviewed case is
+/// `a_send_with_change_reviews_the_recipient_and_signs_the_change_without_a_review`.
 ///
 /// The output is built the way `TransactionBuilder::build_change` builds one: the script is `PushPubKey` of the
 /// alpha derived script key generated with the commitment mask, which is the stealth script to the wallet's own
-/// address. Nothing answers a review here, so a device that showed one would leave the exchange outstanding until
-/// the read timeout and fail this test.
-///
-/// The same output to a foreign address is then reviewed, and verifies once approved.
+/// address.
 #[test]
-fn change_to_self_is_signed_without_a_review_and_a_foreign_receiver_is_reviewed() {
+fn an_unflagged_output_to_the_own_address_is_reviewed_like_a_foreign_one() {
     with_device(|device| {
         let key_manager = device.key_manager();
         let own_address = own_address(&key_manager);
@@ -255,11 +254,15 @@ fn change_to_self_is_signed_without_a_review_and_a_foreign_receiver_is_reviewed(
             .expect("encrypted data")
             .with_script_key(change_script_key.key_id.clone());
 
-        let (signed, wire) = device.watch(|| {
-            builder
-                .clone()
-                .sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
+        let expected = ExpectedReview::one_sided_metadata_signature(value, &own_address.to_base58(), 0);
+        let ((signed, review), wire) = device.watch(|| {
+            while_reviewing(device.approver(), &expected, Outcome::Approve, || {
+                builder
+                    .clone()
+                    .sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
+            })
         });
+        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
         assert_eq!(
             (
                 wire.count(Instruction::GetOneSidedMetadataSignature),
@@ -267,10 +270,10 @@ fn change_to_self_is_signed_without_a_review_and_a_foreign_receiver_is_reviewed(
                 wire.count(Instruction::GenerateEphemeralNonce),
             ),
             (1, 0, 0),
-            "change should be signed by the reviewed instruction alone: {wire:?}"
+            "the output should be signed by the reviewed instruction alone: {wire:?}"
         );
         let output = signed
-            .expect("change to the device's own address, signed with no review")
+            .expect("an approved, unflagged output to the device's own address")
             .try_build(&key_manager)
             .expect("a wallet output");
         assert_metadata_signature_verifies(&output);
@@ -410,25 +413,32 @@ fn a_send_with_change_reviews_the_recipient_and_signs_the_change_without_a_revie
     });
 }
 
-/// A `RecipientSpec::to_self` output, through `TransactionBuilder`: it and the change are both outputs to this
-/// wallet, so the device signs the whole transaction with no review at all. Nothing answers a review here. The wire
-/// shows no raw Schnorr signature and no nonce reservation, and the finalised transaction validates.
+/// A `RecipientSpec::to_self` output, through `TransactionBuilder`: it goes to this wallet's own address but is not
+/// change, so the device reviews it - the approver answers exactly that one review - while the change, flagged by
+/// `build_change`, is signed with none. A device that also put the change up for review would leave that exchange
+/// outstanding until the read timeout and fail this test. The wire shows no raw Schnorr signature and no nonce
+/// reservation, and the finalised transaction validates.
 #[test]
-fn a_to_self_output_and_its_change_are_signed_without_a_review() {
+fn a_to_self_output_is_reviewed_and_its_change_is_not() {
     with_device(|device| {
         let key_manager = device.key_manager();
+        let own_address = own_address(&key_manager);
+        let value = 12_345;
 
         let mut builder = ledger_builder(&key_manager, 1_000_000);
         builder
             .with_recipient_spec(RecipientSpec::to_self(
-                MicroMinotari(12_345),
+                MicroMinotari(value),
                 OutputFeatures::default(),
                 MemoField::new_empty(),
             ))
             .expect("the to-self output");
         builder.reserve_sender_offset_keys(&[]).expect("the sender offset keys");
 
-        let (finalized, wire) = device.watch(|| builder.build());
+        let expected = ExpectedReview::one_sided_metadata_signature(value, &own_address.to_base58(), 0);
+        let ((finalized, review), wire) =
+            device.watch(|| while_reviewing(device.approver(), &expected, Outcome::Approve, || builder.build()));
+        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
         let finalized = finalized.expect("a finalised transaction to self");
 
         assert!(

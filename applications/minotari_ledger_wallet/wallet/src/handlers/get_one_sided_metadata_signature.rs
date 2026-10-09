@@ -127,6 +127,9 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     // either branch here is safe: the nonces are drawn on the device, so there is no second signature under one
     // nonce to difference against.
     let sender_offset_branch = tail.sender_offset_branch().map_err(|_| AppSW::WrongApduLength)?;
+    // The optional trailing `is_change`, `false` when a host leaves it out. Read here, before the review, as an owned
+    // `bool`. See below for what it is allowed to do.
+    let is_change = tail.is_change().map_err(|_| AppSW::WrongApduLength)?;
     //
     // A `PreMine` sender offset only ever comes from `GetScriptOffset` in pre-mine mode, which always sets the pre-mine
     // sender offset marker; a `PreMine` index without it is a script key, and is refused here too.
@@ -144,9 +147,12 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
-    // Change to this wallet is signed without a review. That is the case when the receiver is this wallet's own
-    // address for the account: its spend key is this device's own public `alpha`, and its view key is this device's
-    // own public view key. Both are needed. The spend key alone binds the script - the device builds the standard
+    // Change to this wallet is signed without a review. That is the case when the host flags the output as the change
+    // its transaction builder made (`is_change`), *and* the receiver is this wallet's own address for the account:
+    // its spend key is this device's own public `alpha`, and its view key is this device's own public view key. A
+    // flagged output to any other address, and any unflagged output - a payment to self, a coin split, an offline
+    // payload's recipient - gets the full review. A compromised host can set the flag on whatever it likes; that is
+    // within the residual of a host that drives the device without prompts (see the changelog). Both keys are needed. The spend key alone binds the script - the device builds the standard
     // stealth script for the receiver's spend key itself, from the address and the commitment mask, and the
     // signature commits to it - but the host derives the commitment mask and encrypted data from the view key, so an
     // address with this wallet's spend key and someone else's view key gives an output locked to `alpha` that this
@@ -159,12 +165,10 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     // data. That is no worse than before, when change was signed raw with no screen at all; closing it needs these
     // fields in the clear.
     //
-    // The same rule auto-approves an explicit send to this wallet's own address, and a backup pre-mine spend to it.
-    //
     // Both comparisons are against keys this device derives, never keys the host supplied, and both of the address's
     // keys are read from the owned copy of the address, the same bytes the signature is built from after the review.
     // Each key is derived, compared and dropped in its own block, to keep the stack small.
-    let is_own_spend_key = {
+    let is_own_spend_key = is_change && {
         let own_public_alpha =
             RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?);
         match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
@@ -172,7 +176,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             Err(_) => false,
         }
     };
-    // The view key is only derived when the spend key already matched.
+    // Each key is only derived when everything before it already matched.
     let is_change_to_self = is_own_spend_key && {
         let own_public_view_key = RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(
             account,

@@ -639,6 +639,7 @@ impl KeyManager {
         commitment_mask_key_id: &TariKeyId,
         receiver_address: &TariAddress,
         metadata_signature_message_common: &[u8; 32],
+        is_change: bool,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
@@ -654,6 +655,7 @@ impl KeyManager {
                 value.into(),
                 sender_offset_key_index,
                 sender_offset_branch,
+                is_change,
                 &commitment_mask,
                 receiver_address,
                 metadata_signature_message_common,
@@ -1395,8 +1397,9 @@ impl TransactionKeyManagerInterface for KeyManager {
     }
 
     // Creates a metadata signature for the output to `receiver_address`. On a ledger wallet the device signs it
-    // through its reviewed one sided metadata signature: it shows the output for review, unless `receiver_address`
-    // is this wallet's own address - the device's own view key and spend key - which it signs without a prompt.
+    // through its reviewed one sided metadata signature: it shows the output for review, unless `is_change` is set
+    // and `receiver_address` is this wallet's own address - the device's own view key and spend key - which it signs
+    // without a prompt. Only the transaction builder's own change sets `is_change`.
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -1407,6 +1410,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
+        is_change: bool,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         if self.wallet_type.is_ledger() {
             // Fail closed for a host held sender offset key. Signed in software it would put an output on chain that
@@ -1431,6 +1435,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 commitment_mask_key_id,
                 receiver_address,
                 metadata_signature_message_common,
+                is_change,
             )?;
 
             Ok(comm_and_pub_sig)
@@ -2261,6 +2266,7 @@ mod tests {
                     RangeProofType::BulletProofPlus,
                     &script,
                     &own_address,
+                    false,
                 )
                 .unwrap_err();
             assert_eq!(err, KeyManagerError::LedgerSenderOffsetNeedsRecipient, "{script}");

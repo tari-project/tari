@@ -1088,8 +1088,8 @@ where KM: TransactionKeyManagerInterface
                 &sender_offset.key_id,
                 &spec.destination,
             )?,
-            // Signed for the wallet's own address, so that on a ledger wallet the device recognises an output to
-            // itself and signs it without a prompt. Any other output - a plain burn, an HTLC send - has a script that
+            // Signed for the wallet's own address but not flagged as change, so on a ledger wallet the device shows
+            // it for review like any other output. Any other output - a plain burn, an HTLC send - has a script that
             // is not the standard stealth script to this wallet, and a ledger wallet refuses it.
             RecipientMetadataSignature::Unverified => builder.sign_metadata_signature_user_verified(
                 &self.key_manager,
@@ -1133,8 +1133,9 @@ where KM: TransactionKeyManagerInterface
             &minimum_value_promise,
         );
 
-        // Signed for the wallet's own address: the change script is the standard stealth script to it, so on a
-        // ledger wallet the device recognises change to itself and signs it without a prompt.
+        // Signed for the wallet's own address and flagged as change: the change script is the standard stealth script
+        // to it, so on a ledger wallet the device recognises its own change and signs it without a prompt. Nothing else
+        // sets the flag.
         let metadata_sig = self.key_manager.get_metadata_signature_user_verified(
             &change_commitment_mask_key.key_id,
             amount,
@@ -1144,6 +1145,7 @@ where KM: TransactionKeyManagerInterface
             features.range_proof_type,
             &script,
             &self.own_address,
+            true,
         )?;
 
         let change_wallet_output = WalletOutput::new_current_version(
@@ -1247,6 +1249,7 @@ where KM: TransactionKeyManagerInterface
         output_pair: &mut OutputPair,
         final_fee: MicroMinotari,
         recipient_address: Option<&TariAddress>,
+        is_change: bool,
     ) -> Result<(), TransactionBuilderError> {
         let mut memo_field = output_pair.output.payment_id().clone();
         let mut need_update = false;
@@ -1295,6 +1298,7 @@ where KM: TransactionKeyManagerInterface
                     &output_pair.sender_offset_key_id,
                     memo_field,
                     recipient,
+                    is_change,
                     key_manager,
                 )?;
             } else {
@@ -1419,6 +1423,7 @@ where KM: TransactionKeyManagerInterface
                 &mut recipient.output,
                 total_fee,
                 Some(&recipient.recipient_address),
+                false,
             )?;
 
             let output = recipient.output.output.to_transaction_output()?;
@@ -1469,7 +1474,7 @@ where KM: TransactionKeyManagerInterface
         }
 
         for output in &mut self.custom_outputs {
-            Self::update_encrypted_data_and_metadata_sig(&self.key_manager, output, total_fee, None)?;
+            Self::update_encrypted_data_and_metadata_sig(&self.key_manager, output, total_fee, None, false)?;
             core_tx_builder.add_output(output.output.to_transaction_output()?);
             signature = &signature +
                 self.key_manager
@@ -1517,6 +1522,7 @@ where KM: TransactionKeyManagerInterface
                 change,
                 total_fee,
                 Some(&self.own_address),
+                true,
             )?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +

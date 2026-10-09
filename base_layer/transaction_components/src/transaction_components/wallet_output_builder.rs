@@ -233,6 +233,7 @@ impl WalletOutputBuilder {
             self.features.range_proof_type,
             script,
             receiver_address,
+            false,
         )?;
         self.metadata_signature = Some(metadata_signature);
         self.metadata_signed_by_receiver = true;

@@ -611,12 +611,15 @@ impl WalletOutput {
         Ok(())
     }
 
+    /// Replace the encrypted data and re-sign the metadata signature for `recipient_address`. `is_change` flags the
+    /// transaction builder's own change; see `get_metadata_signature_user_verified`.
     pub fn change_encrypted_data_with_verified_signature<KM: TransactionKeyManagerInterface>(
         &mut self,
         encrypted_data: EncryptedData,
         sender_offset: &TariKeyId,
         payment_id: MemoField,
         recipient_address: &TariAddress,
+        is_change: bool,
         key_manager: &KM,
     ) -> Result<(), TransactionError> {
         self.input = OnceLock::new();
@@ -641,6 +644,7 @@ impl WalletOutput {
             self.features.range_proof_type,
             &self.script,
             recipient_address,
+            is_change,
         )?;
         self.metadata_signature = metadata_sig;
         self.recalculate_hash();

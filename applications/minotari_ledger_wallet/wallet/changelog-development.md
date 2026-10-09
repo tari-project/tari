@@ -18,15 +18,20 @@ All notable changes to this project will be documented in this file. See [standa
   review. (Its script signature, script Schnorr signature and Diffie-Hellman instructions still accept it; those use
   other hash domains and cannot make a metadata signature.)
 
-  Anything to this wallet's own address - its view key and spend key both this device's own, for the account the
-  host names - is auto-approved and signed without a review: change, but also an explicit send to the wallet's own
-  address, and a backup pre-mine spend to it. An address carrying this wallet's spend key with any other view key
-  gets the full review: the host derives the output's mask and encrypted data from the view key, so such an output
-  would be locked to this wallet yet invisible to its scanner.
+  Only change the wallet built is auto-approved: the host flags its transaction builder's change output
+  (`GetOneSidedMetadataSignature` gains an optional trailing `is_change` byte), and the device signs it without a
+  review only when it is also to this wallet's own address - its view key and spend key both this device's own, for
+  the account the host names. Everything else is reviewed, including outputs to the wallet's own address that are not
+  change: payments to self, coin split and join, validator node registration and exit, offline signing payload
+  recipients and the backup pre-mine spend. A flagged output to any other address is reviewed too, as is an address
+  carrying this wallet's spend key with any other view key: the host derives the output's mask and encrypted data
+  from the view key, so such an output would be locked to this wallet yet invisible to its scanner. A host from before
+  the flag never sets it, so on this application its change is reviewed rather than refused.
 
   What this does not close, each tracked separately:
   - It does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender
-    offset key, together with the unreviewed script offset, remain a residual.
+    offset key, together with the unreviewed script offset, remain a residual. A compromised host can also set the
+    change flag on any output to the wallet's own address.
   - Auto-approved "change" is not necessarily change. The device binds the stealth script to this wallet's spend key,
     but the output features, covenant, encrypted data and minimum value promise reach it as an opaque hash and are
     host chosen and not inspected - as they were not when change was signed raw. So a host can get a no-prompt
@@ -39,11 +44,8 @@ All notable changes to this project will be documented in this file. See [standa
     `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
     offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs
     with the separate pre-mine issue.
-  - Offline signing payload recipients at this wallet's own address are signed with no prompt, with output features
-    and a fee the payload chooses (the fee can reach the amount when the payload turns off the fee-greater-than-amount
-    guard). The payload's author is the online, view-key-holding wallet - not only a compromised host.
-  - Payments to self through the wallet's own API - coin split and join, validator node registration and exit - are
-    prompt free, and the device never sees the fee of any transaction.
+  - The device never sees the fee of any transaction, and auto-approved change shows nothing at all. A summary of an
+    offline payload's fee and output features on the Ledger console wallet is a follow-up.
 
 
 ### ⚠ Upgrade notes
@@ -60,7 +62,8 @@ All notable changes to this project will be documented in this file. See [standa
   wallets sign change through `GetRawSchnorrSignature`, which this application refuses: with an older wallet on this
   application the user approves the recipient's review screen, and the send then fails on the change with
   `BadBranchKey`. A wallet from this change against an older application still works, but the older application
-  shows change for review.
+  shows change for review: it ignores the trailing `is_change` byte, which this change appends to
+  `GetOneSidedMetadataSignature` for change only, after the `sender_offset_branch` it then always sends.
 * **Not supported on a Ledger wallet:**
   - Burns, plain and L2-bound: refused by the transaction service with `NotSupported` before any input is selected. In
     the key manager a plain burn's script hits `LedgerSenderOffsetNeedsRecipient`, and an L2-bound burn's host held

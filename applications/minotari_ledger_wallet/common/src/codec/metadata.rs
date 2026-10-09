@@ -6,10 +6,11 @@
 //! # Layout
 //!
 //! `account(8) | network(8) | txo_version(8) | sender_offset_key_index(8) | value(8) | commitment_mask(32) |
-//! address_size(2) | receiver_address(address_size) | message(32) [| sender_offset_branch(8)]`
+//! address_size(2) | receiver_address(address_size) | message(32) [| sender_offset_branch(8) [| is_change(1)]]`
 //!
 //! `network`, `txo_version` and `sender_offset_branch` are bytes widened to little endian `u64`s, `address_size` is a
-//! little endian `u16`, and anything after `sender_offset_branch` is ignored.
+//! little endian `u16`, `is_change` is `0` or `1` and anything else is refused, and anything after `is_change` is
+//! ignored.
 //!
 //! `sender_offset_branch` names the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary
 //! one-sided output, `PreMine` for one whose sender offset `GetScriptOffset` issued in pre-mine mode (the backup
@@ -21,7 +22,13 @@
 //! `message`, or carries fewer than eight bytes after it - decodes exactly as before, with the branch defaulting to
 //! `OneSidedSenderOffset` ([`DEFAULT_SENDER_OFFSET_BRANCH`]).
 //!
-//! Current hosts send it only when it is *not* that default, i.e. only for the backup pre-mine spend. An ordinary
+//! `is_change` is a second optional trailing field, after the branch: the host sets it for the change output the
+//! wallet's transaction builder made, and the device auto-approves only a flagged output to the wallet's own address.
+//! A payload without it - every payload a host from before it sends - is not change, so such a host's change is
+//! reviewed rather than refused. Current hosts send it only when it is set, and then send the branch in front of it
+//! even when the branch is the default.
+//!
+//! Current hosts send the branch only when it is *not* that default (or `is_change` is set). An ordinary
 //! one-sided send is therefore byte-identical to the old layout, and keeps the old layout's room for a receiver
 //! address: the whole payload has to fit one APDU ([`MAX_APDU_DATA_SIZE`]), because the transport writes its length
 //! as a single byte. Appending eight bytes to every request would have moved that ceiling for every send to a dual
@@ -54,6 +61,7 @@ const FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 4 + 32;
 const ADDRESS_SIZE_SIZE: usize = 2;
 const MESSAGE_SIZE: usize = 32;
 const SENDER_OFFSET_BRANCH_SIZE: usize = 8;
+const IS_CHANGE_SIZE: usize = 1;
 
 /// The most data one APDU can carry: `ledger-apdu` serialises the data length as a single byte (`len() as u8`), so a
 /// longer payload does not fail - its length silently wraps, and the device answers `WrongApduLength`. See
@@ -85,6 +93,8 @@ pub struct GetOneSidedMetadataSignatureRequest<'a> {
     pub txo_version: u64,
     pub sender_offset_key_index: u64,
     pub sender_offset_branch: u64,
+    /// Whether this is the change output the wallet's transaction builder made. See the module docs.
+    pub is_change: bool,
     pub value: u64,
     pub commitment_mask: &'a [u8; 32],
     /// Private so that it can only be set through [`Self::new`], which is what guarantees the `u16` length prefix
@@ -111,6 +121,7 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
         txo_version: u64,
         sender_offset_key_index: u64,
         sender_offset_branch: u64,
+        is_change: bool,
         value: u64,
         commitment_mask: &'a [u8; 32],
         receiver_address: &'a [u8],
@@ -123,6 +134,7 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
             txo_version,
             sender_offset_key_index,
             sender_offset_branch,
+            is_change,
             value,
             commitment_mask,
             receiver_address,
@@ -135,18 +147,25 @@ impl<'a> GetOneSidedMetadataSignatureRequest<'a> {
         self.receiver_address
     }
 
-    /// The encoded length: the old layout, plus the trailing branch when it is not the default.
+    /// Whether the trailing branch is sent: when it is not the default, or when `is_change` follows it.
+    fn sends_branch(&self) -> bool {
+        self.sender_offset_branch != DEFAULT_SENDER_OFFSET_BRANCH || self.is_change
+    }
+
+    /// The encoded length: the old layout, plus the trailing branch and `is_change` when they are sent.
     pub fn encoded_len(&self) -> usize {
-        let branch = if self.sender_offset_branch == DEFAULT_SENDER_OFFSET_BRANCH {
-            0
-        } else {
+        let branch = if self.sends_branch() {
             SENDER_OFFSET_BRANCH_SIZE
+        } else {
+            0
         };
+        let is_change = if self.is_change { IS_CHANGE_SIZE } else { 0 };
         FIXED_SIZE
             .saturating_add(ADDRESS_SIZE_SIZE)
             .saturating_add(self.receiver_address.len())
             .saturating_add(MESSAGE_SIZE)
             .saturating_add(branch)
+            .saturating_add(is_change)
     }
 
     /// Whether the encoded request fits one APDU ([`MAX_APDU_DATA_SIZE`]). A request that does not would go out with a
@@ -169,10 +188,13 @@ impl Encode for GetOneSidedMetadataSignatureRequest<'_> {
         out.write(&address_size.to_le_bytes());
         out.write(self.receiver_address);
         out.write(self.message);
-        // Appended, so that every field above keeps its offset, and only when it is not the default, so that an
-        // ordinary send is the old layout byte for byte; see the module docs.
-        if self.sender_offset_branch != DEFAULT_SENDER_OFFSET_BRANCH {
+        // Appended, so that every field above keeps its offset, and only when it is needed, so that an ordinary send
+        // is the old layout byte for byte; see the module docs.
+        if self.sends_branch() {
             write_u64(out, self.sender_offset_branch);
+        }
+        if self.is_change {
+            out.write(&[1]);
         }
     }
 }
@@ -195,6 +217,7 @@ impl<'a> Decode<'a> for GetOneSidedMetadataSignatureRequest<'a> {
             txo_version: head.txo_version,
             sender_offset_key_index: head.sender_offset_key_index,
             sender_offset_branch: tail.sender_offset_branch()?,
+            is_change: tail.is_change()?,
             value: head.value,
             commitment_mask: head.commitment_mask,
             receiver_address: tail.receiver_address,
@@ -279,6 +302,23 @@ impl<'a> OneSidedMetadataSignatureTail<'a> {
         }
         reader.u64()
     }
+
+    /// The optional `is_change` after the branch, or `false` when the payload stops before it - which is every
+    /// payload a host from before the field existed sends. `0` and `1` are the only values; anything else is refused.
+    /// Bytes after it are ignored.
+    pub fn is_change(&self) -> Result<bool, DecodeError> {
+        let mut reader = Reader::at_least(self.rest, MESSAGE_SIZE)?;
+        reader.array::<MESSAGE_SIZE>()?;
+        if reader.rest.len() < SENDER_OFFSET_BRANCH_SIZE.saturating_add(IS_CHANGE_SIZE) {
+            return Ok(false);
+        }
+        reader.u64()?;
+        match reader.u8()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(DecodeError::WrongLength),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -298,12 +338,21 @@ mod test {
     }
 
     fn request_on(address: &[u8], sender_offset_branch: u64) -> GetOneSidedMetadataSignatureRequest<'_> {
+        change_request_on(address, sender_offset_branch, false)
+    }
+
+    fn change_request_on(
+        address: &[u8],
+        sender_offset_branch: u64,
+        is_change: bool,
+    ) -> GetOneSidedMetadataSignatureRequest<'_> {
         GetOneSidedMetadataSignatureRequest::new(
             1,
             0x26,
             1,
             7,
             sender_offset_branch,
+            is_change,
             1_000_000,
             &MASK,
             address,
@@ -337,11 +386,11 @@ mod test {
     fn the_host_cannot_build_an_address_its_length_prefix_cannot_hold() {
         let address = vec![0; usize::from(u16::MAX) + 1];
         assert_eq!(
-            GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, 0, &MASK, &address, &MESSAGE),
+            GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, false, 0, &MASK, &address, &MESSAGE),
             Err(ReceiverAddressTooLong)
         );
         let address = vec![0; usize::from(u16::MAX)];
-        assert!(GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, 0, &MASK, &address, &MESSAGE).is_ok());
+        assert!(GetOneSidedMetadataSignatureRequest::new(0, 0, 0, 0, 0, false, 0, &MASK, &address, &MESSAGE).is_ok());
     }
 
     /// The staging is the point of this module: each stage fails only on its own length check, so a payload that
@@ -388,16 +437,68 @@ mod test {
         assert_eq!(head.receiver_address(), Err(DecodeError::WrongLength));
     }
 
-    /// Bytes after the trailing branch are ignored.
+    /// A change request carries the branch, even the default one, and then `is_change`; both decoders read it, and
+    /// bytes after it are ignored.
     #[test]
-    fn bytes_after_the_sender_offset_branch_are_ignored() {
+    fn a_change_request_round_trips_and_bytes_after_it_are_ignored() {
+        let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
+        let change = change_request_on(&address, DEFAULT_SENDER_OFFSET_BRANCH, true);
+        let mut bytes = change.to_vec();
+        assert_eq!(bytes.len(), FIXED_SIZE + 2 + address.len() + 32 + 8 + 1);
+        assert_eq!(bytes.len(), change.encoded_len());
+        assert_eq!(
+            &bytes[bytes.len() - 9..bytes.len() - 1],
+            &DEFAULT_SENDER_OFFSET_BRANCH.to_le_bytes()
+        );
+        assert_eq!(bytes[bytes.len() - 1], 1);
+        assert_eq!(GetOneSidedMetadataSignatureRequest::decode(&bytes), Ok(change));
+
+        bytes.extend_from_slice(&[0xff; 5]);
+        assert_eq!(GetOneSidedMetadataSignatureRequest::decode(&bytes), Ok(change));
+        let tail = OneSidedMetadataSignatureHead::decode(&bytes)
+            .unwrap()
+            .receiver_address()
+            .unwrap();
+        assert_eq!(tail.is_change(), Ok(true));
+    }
+
+    /// `is_change` is `0` or `1`, and nothing else; an explicit `0` is not change.
+    #[test]
+    fn is_change_is_strict() {
         let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
         let mut bytes = request(&address).to_vec();
-        bytes.extend_from_slice(&[0xff; 5]);
+        bytes.push(0);
         assert_eq!(
             GetOneSidedMetadataSignatureRequest::decode(&bytes),
             Ok(request(&address))
         );
+        for value in [2, 0x80, 0xff] {
+            let last = bytes.len() - 1;
+            bytes[last] = value;
+            assert_eq!(
+                GetOneSidedMetadataSignatureRequest::decode(&bytes),
+                Err(DecodeError::WrongLength),
+                "is_change {value}"
+            );
+        }
+    }
+
+    /// A payload that stops at the branch - every current non-change request with a branch, and every request from a
+    /// host from before `is_change` existed - is not change.
+    #[test]
+    fn a_payload_without_is_change_is_not_change() {
+        let address = vec![0xaa; TARI_DUAL_ADDRESS_MIN_SIZE];
+        let bytes = request(&address).to_vec();
+        assert_eq!(
+            GetOneSidedMetadataSignatureRequest::decode(&bytes).map(|r| r.is_change),
+            Ok(false)
+        );
+        let old_layout = request_on(&address, DEFAULT_SENDER_OFFSET_BRANCH).to_vec();
+        let tail = OneSidedMetadataSignatureHead::decode(&old_layout)
+            .unwrap()
+            .receiver_address()
+            .unwrap();
+        assert_eq!(tail.is_change(), Ok(false));
     }
 
     /// The default branch is not sent: an ordinary send is the old layout byte for byte, so it keeps the old layout's

@@ -823,6 +823,9 @@ pub fn ledger_get_script_schnorr_signature(
 /// `sender_offset_branch` is the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary output,
 /// `PreMine` for the backup pre-mine spend, whose sender offset `GetScriptOffset` issued in pre-mine mode. The device
 /// refuses any other branch with `BadBranchKey`, before its review; that refusal is mirrored here.
+///
+/// `is_change` flags the change output the wallet's transaction builder made. The device signs a flagged output to
+/// the wallet's own address without a review; everything else, flagged or not, is reviewed.
 pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
@@ -830,6 +833,7 @@ pub fn ledger_get_one_sided_metadata_signature(
     value: u64,
     sender_offset_key_index: u64,
     sender_offset_branch: LedgerKeyBranch,
+    is_change: bool,
     commitment_mask: &PrivateKey,
     receiver_address: &TariAddress,
     message: &[u8; 32],
@@ -854,6 +858,7 @@ pub fn ledger_get_one_sided_metadata_signature(
         u64::from(txo_version),
         sender_offset_key_index,
         u64::from(sender_offset_branch.as_byte()),
+        is_change,
         value,
         key_field(commitment_mask)?,
         &address_bytes,
@@ -958,6 +963,7 @@ mod test {
             1_000,
             7,
             LedgerKeyBranch::OneSidedSenderOffset,
+            false,
             &PrivateKey::from(3u64),
             &address,
             &[0x42; 32],

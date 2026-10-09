@@ -106,6 +106,7 @@ fn metadata_request(mask: &[u8; 32], address: &[u8], message: &[u8; 32], network
             0,
             SENDER_OFFSET_KEY_INDEX,
             u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+            false,
             VALUE,
             mask,
             address,

@@ -233,10 +233,13 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ///
     /// On a ledger wallet this is the only way a `OneSidedSenderOffset` key signs a metadata signature - the device
     /// refuses it a raw signature - so such a key cannot sign an arbitrary output without review: the device shows the
-    /// amount and the receiver and signs once the user approves. Anything to this wallet's own address - its view key
-    /// and spend key both the device's own, for the account the host names - is auto-approved and signed without a
-    /// prompt: change, but also an explicit send to the wallet's own address and a backup pre-mine spend to it. An
-    /// address with this wallet's spend key and any other view key gets the full review.
+    /// amount and the receiver and signs once the user approves. Only `is_change` - set by the transaction builder for
+    /// its own change, and by nothing else - to this wallet's own address (its view key and spend key both the
+    /// device's own, for the account the host names) is auto-approved and signed without a prompt. Everything else is
+    /// reviewed: outputs to the wallet's own address that are not change (payments to self, coin split and join,
+    /// validator node registration and exit, offline payload recipients, the backup pre-mine spend), a flagged output
+    /// to any other address, and an address with this wallet's spend key and any other view key. A compromised host
+    /// can set the flag on any output to the wallet's own address.
     ///
     /// Auto-approved "change" is not necessarily change. The device binds the stealth script to this wallet's spend
     /// key, but the output features, covenant and encrypted data are host chosen and not inspected, as they were not
@@ -266,6 +269,7 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
         script: &TariScript,
         receiver_address: &TariAddress,
+        is_change: bool,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
     fn sign_message_with_spend_key(

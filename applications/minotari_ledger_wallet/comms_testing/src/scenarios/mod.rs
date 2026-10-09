@@ -378,11 +378,11 @@ mod test {
     ///
     /// One scenario library driving both frontends is affordable *because* only a few scenarios show a screen, so
     /// the list is asserted rather than assumed: the one sided metadata signature, the same to an address carrying this
-    /// device's spend key with a foreign view key (which auto-approval must not cover), and the two legacy nonce
-    /// scenarios that complete a signature (the legacy instruction prompts for every signature since it was
-    /// narrowed to `PreMine` keys). Another approval scenario is not forbidden, but it adds to what a human has to
-    /// do for every hardware run, so it should be a decision somebody made on purpose rather than one that arrived
-    /// with a merge.
+    /// device's spend key with a foreign view key and to this device's own address without the change flag (neither of
+    /// which auto-approval may cover), and the two legacy nonce scenarios that complete a signature (the legacy
+    /// instruction prompts for every signature since it was narrowed to `PreMine` keys). Another approval scenario
+    /// is not forbidden, but it adds to what a human has to do for every hardware run, so it should be a decision
+    /// somebody made on purpose rather than one that arrived with a merge.
     #[test]
     fn the_approval_scenarios_are_the_expected_ones() {
         let approving: Vec<&str> = all_scenarios()
@@ -391,8 +391,8 @@ mod test {
             .collect();
         assert_eq!(
             approving.len(),
-            4,
-            "expected four approval scenarios, found {approving:?}. Every one of these has to be answered by hand on \
+            5,
+            "expected five approval scenarios, found {approving:?}. Every one of these has to be answered by hand on \
              the hardware frontend."
         );
     }

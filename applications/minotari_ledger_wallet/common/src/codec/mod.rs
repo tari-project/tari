@@ -339,7 +339,7 @@ mod test {
             },
             Instruction::GetOneSidedMetadataSignature => || {
                 registered(
-                    &GetOneSidedMetadataSignatureRequest::new(1, 2, 3, 4, 6, 5, &KEY, &[0x22; 67], &KEY)
+                    &GetOneSidedMetadataSignatureRequest::new(1, 2, 3, 4, 6, false, 5, &KEY, &[0x22; 67], &KEY)
                         .expect("a 67 byte address fits its length prefix"),
                 )
             },
