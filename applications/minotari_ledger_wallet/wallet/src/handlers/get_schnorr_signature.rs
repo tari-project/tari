@@ -53,9 +53,10 @@ pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
 /// as `k = (s1 - s2) / (e1 - e2)`, and the host is free to ask twice.
 ///
 /// A `OneSidedSenderOffset` key is refused. A sender offset key signs an output's metadata signature, which is the
-/// point at which the device knows what a transaction pays and to whom, so it signs only through
+/// point at which the device knows what a transaction pays and to whom, so it signs a metadata signature only through
 /// `GetOneSidedMetadataSignature`, which shows the output for review (or recognises change to this wallet). Signing
-/// one here, over a challenge the host built, would sign an output nobody was shown.
+/// one here, over a challenge the host built, would sign an output nobody was shown. (The script signature, script
+/// Schnorr signature and Diffie-Hellman instructions still accept it; they use other hash domains.)
 ///
 /// Pre-mine sender offset keys (`PreMine`, at a pre-mine sender offset index) are not refused, and a host can mint
 /// them on demand on any wallet through `GetScriptOffset` with a `PreMine` script key - so a sender offset key can

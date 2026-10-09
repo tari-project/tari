@@ -3039,6 +3039,15 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<(TxId, Option<PartialBurnClaimProof>), TransactionServiceError> {
+        // A ledger device signs an output's metadata only for a device held sender offset key over the standard
+        // stealth script, which it builds itself. A plain burn's script is not that, and an L2-bound burn's sender
+        // offset key is host held, so the device could never show the user where the funds go. Refused here, before
+        // any input is selected, rather than deep inside the build.
+        if matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_)) {
+            return Err(TransactionServiceError::NotSupported(
+                "Burns are not supported on Ledger wallets".to_string(),
+            ));
+        }
         if selection_criteria.range_limit.is_some() {
             return Err(TransactionServiceError::RangeLimitError {
                 reason: "Range limit coin-join cannot be set for burn_tari".to_string(),

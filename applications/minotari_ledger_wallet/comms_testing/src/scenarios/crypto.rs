@@ -686,10 +686,11 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
 /// Acceptance: change to the device's own address is signed with no review, and the signature verifies.
 ///
 /// The device signs without a prompt only when the receiver's spend key is its own public `alpha`: the script it
-/// signs over is then the stealth script to `alpha`, so the output pays only to this wallet's spend key. Its output
-/// features, covenant and encrypted data reach the device as an opaque hash and are host chosen and not inspected,
-/// as they were not when change was signed raw. Change is what makes the auto-approval matter: every send with change
-/// signs one, and a `OneSidedSenderOffset` key may sign through nothing else.
+/// signs over is then the stealth script to `alpha`. Its output features, covenant and encrypted data reach the
+/// device as an opaque hash and are host chosen and not inspected, as they were not when change was signed raw - so
+/// an auto-approved "change" can be a burn claimable on L2 by a key the host chooses. Change is what makes the
+/// auto-approval matter: every send with change signs one, and a `OneSidedSenderOffset` key may sign a metadata
+/// signature through nothing else.
 ///
 /// Runs unattended on both frontends. A device that put a review up here would leave the exchange outstanding until
 /// the read timeout and fail the scenario - and on hardware it would ask the operator about a screen this scenario

@@ -93,6 +93,12 @@ pub enum KeyManagerError {
          whose sender offset keys are PreMine keys, is unaffected."
     )]
     LedgerSenderOffsetRawSignature,
+    #[error(
+        "On a ledger wallet an output signed for a recipient address must use a device held sender offset key, so \
+         that the device signs it. A host held sender offset key would put an output on chain the device never saw, \
+         so it is refused. Burns are not supported on a ledger wallet."
+    )]
+    LedgerHostHeldSenderOffset,
     #[error("The ephemeral nonce store lock is poisoned")]
     EphemeralNonceStorePoisoned,
     #[error("Byte array error: `{0}`")]

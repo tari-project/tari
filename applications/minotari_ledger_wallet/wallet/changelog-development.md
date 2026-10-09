@@ -14,16 +14,25 @@ All notable changes to this project will be documented in this file. See [standa
 * **A `OneSidedSenderOffset` key can no longer sign an arbitrary output without review.** `GetRawSchnorrSignature`
   now refuses `OneSidedSenderOffset` keys with `BadBranchKey`. Before this, a compromised host could have one sign any
   output's metadata signature through the raw instruction, with nothing on the screen. A `OneSidedSenderOffset` key
-  now signs only through `GetOneSidedMetadataSignature`, which shows the amount and receiver for review; change to the
-  wallet's own address is auto-approved: when the receiver's spend key is the device's own, it signs without a review.
+  now signs a metadata signature only through `GetOneSidedMetadataSignature`, which shows the amount and receiver for
+  review. (Its script signature, script Schnorr signature and Diffie-Hellman instructions still accept it; those use
+  other hash domains and cannot make a metadata signature.)
+
+  Anything whose receiver spend key is this device's own is auto-approved and signed without a review: change, but
+  also an explicit send to the wallet's own address, and a backup pre-mine spend whose receiver is the device's own
+  spend key.
 
   What this does not close, each tracked separately:
   - It does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender
     offset key, together with the unreviewed script offset, remain a residual.
-  - Auto-approved change pays only to this wallet's spend key, through the stealth script the device builds, but its
-    output features, covenant, encrypted data and minimum value promise reach the device as an opaque hash and are host
-    chosen and not inspected - as they were not when change was signed raw. A host can still get change signed with no
-    prompt that is a burn, locked by maturity or a covenant, or unrecoverable from its encrypted data.
+  - Auto-approved "change" is not necessarily change. The device binds the stealth script to this wallet's spend key,
+    but the output features, covenant, encrypted data and minimum value promise reach it as an opaque hash and are
+    host chosen and not inspected - as they were not when change was signed raw. So a host can get a no-prompt
+    signature on "change" that is a confidential burn claimable on L2 by a key the host chooses (a burned output never
+    runs its script, and the L2 claim needs only the commitment mask, which the host knows): theft, not merely loss. It
+    can equally be locked by maturity or a covenant, or unrecoverable from its encrypted data. Closing the script
+    offset residual alone would not close this: auto-approval has to see the features in the clear - a standard
+    output, no sidechain feature, an empty covenant - before it can be trusted.
   - `PreMine` sender offset keys are not refused. A host can mint them on demand on any wallet, through
     `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
     offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs
@@ -40,15 +49,23 @@ All notable changes to this project will be documented in this file. See [standa
 * **Redo pre-mine step 2.** Step 2 session files written with an older application name keys this application no
   longer signs with (a `OneSidedSenderOffset` sender offset key, and nonce indexes that older applications derived
   modulo `2^32`). Start those sessions again from step 2.
-* **Sends with change need the wallet and the application from this change together.** Older wallets sign change
-  through `GetRawSchnorrSignature`, which this application refuses, so their sends with change fail. A wallet from this
-  change against an older application still works, but the older application shows change for review.
-* **Not supported on a Ledger wallet:** outputs with no recipient address or a script other than the standard stealth
-  script (plain burns, HTLC (atomic swap) sends, and multisig deposit and withdraw, which remain software wallet
-  flows), refused with `LedgerSenderOffsetNeedsRecipient` (HTLC sends earlier, with the transaction service's
-  `NotSupported`); and aggregated (multi-party) sender metadata signatures by a `OneSidedSenderOffset` key, refused
-  with `LedgerSenderOffsetRawSignature`. L2-bound burns, HTLC claims and refunds, and the pre-mine ceremony are
-  unaffected.
+* **Sends with change need the wallet and the application from this change together - upgrade both.** Older
+  wallets sign change through `GetRawSchnorrSignature`, which this application refuses: with an older wallet on this
+  application the user approves the recipient's review screen, and the send then fails on the change with
+  `BadBranchKey`. A wallet from this change against an older application still works, but the older application
+  shows change for review.
+* **Not supported on a Ledger wallet:**
+  - Burns, plain and L2-bound: refused by the transaction service with `NotSupported` before any input is selected. In
+    the key manager a plain burn's script hits `LedgerSenderOffsetNeedsRecipient`, and an L2-bound burn's host held
+    sender offset key hits `LedgerHostHeldSenderOffset`.
+  - HTLC (atomic swap) sends: refused by the transaction service with `NotSupported` before any input is selected.
+  - Multisig deposit and withdraw, which remain software wallet flows: their scripts are not the standard stealth
+    script, so they hit `LedgerSenderOffsetNeedsRecipient`.
+  - Aggregated (multi-party) sender metadata signatures by a `OneSidedSenderOffset` key:
+    `LedgerSenderOffsetRawSignature`.
+
+  HTLC claims and refunds, and the pre-mine ceremony, are unaffected. The coinbase's host held sender offset key still
+  signs in software.
 * Key indexes are now derived from all 64 bits. Every index below `2^32` keeps its key, and no key an ordinary
   wallet re-derives after a transaction is built is above it, so ordinary sends and spends are unaffected.
 

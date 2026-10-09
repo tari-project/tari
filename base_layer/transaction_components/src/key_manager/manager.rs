@@ -1408,10 +1408,14 @@ impl TransactionKeyManagerInterface for KeyManager {
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        // Only a device held sender offset key goes to the device. A host held one - an L2-bound burn's, derived from
-        // its commitment mask - signs in software on a ledger wallet too, the way the coinbase's does, whatever its
-        // script.
-        if self.wallet_type.is_ledger() && matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+        if self.wallet_type.is_ledger() {
+            // Fail closed for a host held sender offset key. Signed in software it would put an output on chain that
+            // the device never saw - an L2-bound burn's, say, to a claim key the host chose - while the device still
+            // signs the inputs and auto-approves the change. The coinbase's host held key signs through
+            // `get_metadata_signature`, which has no address and is not affected by this.
+            if !matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+                return Err(KeyManagerError::LedgerHostHeldSenderOffset);
+            }
             // The device never sees `script`: it signs over the standard stealth script it builds itself from the
             // address and the commitment mask. Any other script would get a signature that does not verify, so it
             // is refused here instead.
@@ -1519,8 +1523,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
         match (private_key_id, nonce) {
-            // A `OneSidedSenderOffset` key signs only through the device's reviewed one sided metadata signature,
-            // never over a raw challenge. The device refuses it too; this says so legibly.
+            // A `OneSidedSenderOffset` key signs a metadata signature only through the device's reviewed one sided
+            // signature, never over a raw challenge. The device refuses it too; this says so legibly.
             //
             // A pre-mine sender offset key (`PreMine`, at a pre-mine sender offset index) is deliberately not
             // refused: the pre-mine leader's aggregated step 3 signs it here. Pre-mine signing belongs with the
@@ -2106,8 +2110,8 @@ mod tests {
     }
 
     /// A `OneSidedSenderOffset` key and a device reserved nonce are refused by the dispatch, before the device call:
-    /// such a key signs only through the device's reviewed one sided metadata signature. That is also what refuses
-    /// an aggregated sender partial metadata signature with one on a ledger wallet. A pre-mine
+    /// such a key signs a metadata signature only through the device's reviewed one sided signature. That is also what
+    /// refuses an aggregated sender partial metadata signature with one on a ledger wallet. A pre-mine
     /// sender offset key is not refused, so the pre-mine ceremony is unaffected. A host drawn nonce cannot be paired
     /// with a device held key at all.
     #[test]
@@ -2263,12 +2267,13 @@ mod tests {
         }
     }
 
-    /// A host held sender offset key - an L2-bound burn's - signs in software on a ledger wallet, whatever its script,
-    /// through the same path the fee re-sign takes (`get_metadata_signature_user_verified` with the wallet's own
-    /// address). The device is never asked: there is none here, and the signature still verifies.
+    /// A host held sender offset key - an L2-bound burn's - is refused by `get_metadata_signature_user_verified` on a
+    /// ledger wallet, which is the path the burn's fee re-sign takes. Signed in software it would put an output on
+    /// chain the device never saw. The coinbase's host held key still signs in software through
+    /// `get_metadata_signature`, which has no address; the device is never asked either way.
     #[cfg(feature = "ledger")]
     #[test]
-    fn a_ledger_wallet_signs_a_host_held_sender_offset_in_software_whatever_the_script() {
+    fn a_ledger_wallet_refuses_a_host_held_sender_offset_for_an_addressed_output() {
         use tari_common::configuration::Network;
         use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
         use tari_script::{ExecutionStack, script};
@@ -2287,13 +2292,26 @@ mod tests {
         let commitment_mask = key_manager.get_random_key(None, None).unwrap();
         let host_sender_offset = key_manager.get_random_key(None, None).unwrap();
         assert!(!matches!(host_sender_offset.key_id, TariKeyId::LedgerKey { .. }));
-
-        let output = WalletOutputBuilder::new(MicroMinotari(5_000), commitment_mask.key_id.clone())
+        let builder = WalletOutputBuilder::new(MicroMinotari(5_000), commitment_mask.key_id.clone())
             .with_script(script!(Nop).unwrap())
             .with_input_data(ExecutionStack::default())
-            .with_script_key(TariKeyId::Zero)
+            .with_script_key(TariKeyId::Zero);
+
+        let err = builder
+            .clone()
             .sign_metadata_signature_user_verified(&key_manager, &host_sender_offset.key_id, &own_address)
-            .expect("a host held sender offset key signs in software on a ledger wallet")
+            .map(|_| ())
+            .expect_err("a host held sender offset key for an addressed output on a ledger wallet");
+        assert!(
+            err.to_string()
+                .contains(&KeyManagerError::LedgerHostHeldSenderOffset.to_string()),
+            "{err}"
+        );
+
+        // The coinbase shape: no address, `get_metadata_signature`, signed in software.
+        let output = builder
+            .sign_metadata_signature(&key_manager, &host_sender_offset.key_id)
+            .expect("a host held sender offset key signs in software with no address, as the coinbase's does")
             .try_build(&key_manager)
             .unwrap();
         output

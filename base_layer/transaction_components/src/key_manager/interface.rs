@@ -231,19 +231,25 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Creates a metadata signature for the output to `receiver_address`.
     ///
-    /// On a ledger wallet this is the only way a `OneSidedSenderOffset` key signs an output - the device refuses it a
-    /// raw signature - so such a key cannot sign an arbitrary output without review: the device shows the amount and
-    /// the receiver and signs once the user approves. Change to self is auto-approved by the device - when the
-    /// receiver's spend key is the device's own, it signs without a prompt. Auto-approved change pays only to this
-    /// wallet's spend key, through the stealth script the device builds; its output features, covenant and encrypted
-    /// data are host chosen and not inspected, as they were not when change was signed raw. The device signs over the
-    /// standard stealth script for `receiver_address`, which it builds itself, so an output whose `script` is
-    /// anything else is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient
-    /// address or a custom script - plain burns and HTLC (atomic swap) sends - are not supported on a ledger
-    /// wallet.
+    /// On a ledger wallet this is the only way a `OneSidedSenderOffset` key signs a metadata signature - the device
+    /// refuses it a raw signature - so such a key cannot sign an arbitrary output without review: the device shows the
+    /// amount and the receiver and signs once the user approves. Anything whose receiver spend key is the device's
+    /// own is auto-approved and signed without a prompt: change, but also an explicit send to the wallet's own
+    /// address and a backup pre-mine spend to the device's own spend key.
     ///
-    /// A host held sender offset key (an L2-bound burn's) is signed in software on a ledger wallet too, whatever the
-    /// script, the way the coinbase's is.
+    /// Auto-approved "change" is not necessarily change. The device binds the stealth script to this wallet's spend
+    /// key, but the output features, covenant and encrypted data are host chosen and not inspected, as they were not
+    /// when change was signed raw - so it can be a burn claimable on L2 by a key the host chooses. Closing the script
+    /// offset residual alone would not close this; auto-approval has to see the features in the clear first. The device
+    /// signs over the standard stealth script for `receiver_address`, which it builds itself, so an output whose
+    /// `script` is anything else is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs
+    /// with no recipient address or a custom script - plain burns and HTLC (atomic swap) sends - are not supported
+    /// on a ledger wallet.
+    ///
+    /// A host held sender offset key is refused on a ledger wallet with
+    /// [`KeyManagerError::LedgerHostHeldSenderOffset`]: signed in software it would put an output on chain the device
+    /// never saw. Burns, plain and L2-bound, are not supported on a ledger wallet. The coinbase's host held key signs
+    /// through [`TransactionKeyManagerInterface::get_metadata_signature`] and is unaffected.
     ///
     /// This closes one path only. Outputs under a host held sender offset key, together with the unreviewed script
     /// offset, remain a residual that is tracked separately. So do `PreMine` sender offset keys: a host can mint them

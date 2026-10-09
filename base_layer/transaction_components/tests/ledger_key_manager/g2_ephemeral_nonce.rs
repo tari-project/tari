@@ -14,11 +14,12 @@
 //! `NonceStoreFull` means the handle *counter* is exhausted - 2^64 reservations - and seeing it here would be a
 //! bug, not the boundary.
 //!
-//! The last two tests are about sender offset keys, which never sign through this instruction: a device held one
-//! signs only through the reviewed one sided metadata signature (see `g4_one_sided_metadata`), so it is refused here,
-//! and `get_metadata_signature` - which has no recipient address to show - refuses it before the device is asked. A
-//! host held sender offset key, which is what coinbase outputs still carry, signs in software and never involves the
-//! device. Both are asserted on the wire.
+//! The tests at the end are about sender offset keys. A `OneSidedSenderOffset` key never signs through this
+//! instruction: it signs a metadata signature only through the reviewed one sided instruction (see
+//! `g4_one_sided_metadata`), so it is refused here, and `get_metadata_signature` - which has no recipient address to
+//! show - refuses it before the device is asked. A host held sender offset key, which is what coinbase outputs still
+//! carry, signs in software and never involves the device. Both are asserted on the wire. A pre-mine sender offset
+//! key still signs here, for the pre-mine ceremony; the last test asserts that.
 
 use minotari_ledger_wallet_common::{
     common_types::{Instruction, LedgerKeyBranch},
