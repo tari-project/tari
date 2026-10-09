@@ -12,13 +12,14 @@ All notable changes to this project will be documented in this file. See [standa
   not protect a device: the fix is in the Ledger application. Until the application is updated, do not connect the
   device to a host you do not trust.
 * **A device sender offset key can no longer sign an arbitrary output without review.** `GetRawSchnorrSignature`
-  now refuses sender offset keys - `OneSidedSenderOffset` keys, and `PreMine` keys at pre-mine sender offset indexes -
-  with `BadBranchKey`. Before this, a compromised host could have a device sender offset key sign any output's
-  metadata signature through the raw instruction, with nothing on the screen. A device sender offset key now signs
-  only through `GetOneSidedMetadataSignature`, which shows the amount and receiver for review; change to the wallet's
-  own address is auto-approved: when the receiver's spend key is the device's own, it signs without a review. This
-  does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender offset
-  key, together with the unreviewed script offset, remain a residual that is tracked separately.
+  now refuses `OneSidedSenderOffset` keys with `BadBranchKey`. Before this, a compromised host could have a device
+  sender offset key sign any output's metadata signature through the raw instruction, with nothing on the screen. A
+  `OneSidedSenderOffset` key now signs only through `GetOneSidedMetadataSignature`, which shows the amount and
+  receiver for review; change to the wallet's own address is auto-approved: when the receiver's spend key is the
+  device's own, it signs without a review. This does not by itself stop a compromised host from spending without a
+  prompt: outputs under a host held sender offset key, together with the unreviewed script offset, remain a residual
+  that is tracked separately. Pre-mine sender offset signing is unchanged - the aggregated step 3 still signs raw, and
+  step 4 through the legacy nonce instruction - and belongs with the separate pre-mine issue.
 
 
 ### ⚠ Upgrade notes
@@ -35,9 +36,9 @@ All notable changes to this project will be documented in this file. See [standa
   through `GetRawSchnorrSignature`, which this application refuses, so their sends with change fail. A wallet from this
   change against an older application still works, but the older application shows change for review.
 * **Not supported on a Ledger wallet:** outputs with no recipient address or a script other than the standard stealth
-  script - plain burns and HTLC (atomic swap) sends - and aggregated (multi-party) sender metadata signatures.
-  Multisig deposit and withdraw remain software wallet flows. L2-bound burns, and HTLC claims and refunds, still
-  work.
+  script - plain burns and HTLC (atomic swap) sends - and aggregated (multi-party) sender metadata signatures by a
+  `OneSidedSenderOffset` key, so multisig deposit and withdraw remain software wallet flows. L2-bound burns, HTLC
+  claims and refunds, and the pre-mine ceremony are unaffected.
 * Key indexes are now derived from all 64 bits. Every index below `2^32` keeps its key, and no key an ordinary
   wallet re-derives after a transaction is built is above it, so ordinary sends and spends are unaffected.
 

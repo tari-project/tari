@@ -632,9 +632,9 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
 /// `nonce_handle` must come from [`ledger_generate_ephemeral_nonce`]. The device consumes the nonce whether or not
 /// the signature succeeds, so a handle is good for exactly one call.
 ///
-/// A sender offset key - a `OneSidedSenderOffset` key, or a `PreMine` key at a pre-mine sender offset index - is
-/// refused with `BadBranchKey`: a sender offset key signs only through an instruction the device reviews. That
-/// refusal is mirrored here.
+/// A `OneSidedSenderOffset` key is refused with `BadBranchKey`: such a key signs only through
+/// [`ledger_get_one_sided_metadata_signature`], which the device reviews. That refusal is mirrored here. Pre-mine
+/// sender offset keys still sign here, for the pre-mine ceremony's aggregated step 3.
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
@@ -648,14 +648,7 @@ pub fn ledger_get_raw_schnorr_signature(
         challenge '{}'",
         account, private_key_index, private_key_branch, nonce_handle, challenge.to_hex()
     );
-    let is_sender_offset_key = match private_key_branch {
-        LedgerKeyBranch::OneSidedSenderOffset => true,
-        LedgerKeyBranch::PreMine => {
-            minotari_ledger_wallet_common::script_offset::is_pre_mine_sender_offset_index(private_key_index)
-        },
-        LedgerKeyBranch::Random | LedgerKeyBranch::Spend => false,
-    };
-    if is_sender_offset_key {
+    if private_key_branch == LedgerKeyBranch::OneSidedSenderOffset {
         return Err(LedgerDeviceError::Processing(format!(
             "GetRawSchnorrSignature: a '{private_key_branch}' sender offset key signs only through a reviewed \
              instruction"
@@ -975,23 +968,18 @@ mod test {
         }
     }
 
-    /// A raw Schnorr signature by a sender offset key is refused on the host, before the device is asked: the device
-    /// refuses it too, and a sender offset key signs only through a reviewed instruction. That covers a `PreMine` key
-    /// at a pre-mine sender offset index as well as a `OneSidedSenderOffset` key.
+    /// A raw Schnorr signature by a `OneSidedSenderOffset` key is refused on the host, before the device is asked: the
+    /// device refuses it too, and such a key signs only through the reviewed metadata signature.
     #[test]
     fn a_raw_schnorr_signature_by_a_sender_offset_key_is_refused_on_the_host() {
-        for (branch, index) in [
-            (LedgerKeyBranch::OneSidedSenderOffset, 7),
-            (LedgerKeyBranch::PreMine, 7 | (1 << 63)),
-        ] {
-            let error = ledger_get_raw_schnorr_signature(1, index, branch, 9, &[0x42; 64]).unwrap_err();
-            match error {
-                LedgerDeviceError::Processing(message) => assert!(
-                    message.contains("sender offset key signs only through a reviewed instruction"),
-                    "unexpected message: {message}"
-                ),
-                other => panic!("expected the host's branch refusal for '{branch}', got {other:?}"),
-            }
+        let error =
+            ledger_get_raw_schnorr_signature(1, 7, LedgerKeyBranch::OneSidedSenderOffset, 9, &[0x42; 64]).unwrap_err();
+        match error {
+            LedgerDeviceError::Processing(message) => assert!(
+                message.contains("sender offset key signs only through a reviewed instruction"),
+                "unexpected message: {message}"
+            ),
+            other => panic!("expected the host's branch refusal, got {other:?}"),
         }
     }
 }

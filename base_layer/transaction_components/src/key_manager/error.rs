@@ -88,9 +88,9 @@ pub enum KeyManagerError {
     )]
     LedgerSenderOffsetNeedsRecipient,
     #[error(
-        "On a ledger wallet a device held sender offset key cannot sign a raw challenge, so aggregated (multi-party) \
-         sender partial metadata signatures are not supported on a ledger wallet. Multisig deposit and withdraw are \
-         software wallet flows."
+        "On a ledger wallet a OneSidedSenderOffset key cannot sign a raw challenge, so aggregated (multi-party) \
+         sender partial metadata signatures with one are not supported on a ledger wallet. Multisig deposit and \
+         withdraw are software wallet flows; the pre-mine ceremony is unaffected."
     )]
     LedgerSenderOffsetRawSignature,
     #[error("The ephemeral nonce store lock is poisoned")]

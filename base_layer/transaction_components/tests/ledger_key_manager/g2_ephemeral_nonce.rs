@@ -21,7 +21,7 @@
 //! device. Both are asserted on the wire.
 
 use minotari_ledger_wallet_common::{
-    common_types::LedgerKeyBranch,
+    common_types::{Instruction, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_STORE_SIZE, INVALID_NONCE_HANDLE},
 };
 use minotari_ledger_wallet_comms_testing::fixtures;
@@ -31,7 +31,7 @@ use tari_script::{ExecutionStack, script};
 use tari_transaction_components::{
     MicroMinotari,
     key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError},
-    transaction_components::{RangeProofType, TransactionOutputVersion, WalletOutputBuilder},
+    transaction_components::{MemoField, RangeProofType, TransactionOutputVersion, WalletOutputBuilder},
 };
 use tari_utilities::hex::Hex;
 
@@ -250,7 +250,8 @@ fn the_ninth_reservation_evicts_the_first_and_the_store_is_not_full() {
 /// A device held sender offset key cannot sign a raw challenge, whoever asks: the key manager refuses it before the
 /// device is touched, and the device refuses it with `BadBranchKey` when the accessor is bypassed. That is the gap a
 /// compromised host would otherwise use to have a device sender offset key sign an output nobody was shown - and what
-/// refuses an aggregated sender partial metadata signature on a ledger wallet.
+/// refuses an aggregated sender partial metadata signature by a `OneSidedSenderOffset` key on a ledger wallet. The
+/// pre-mine ceremony is unaffected; see `the_pre_mine_leaders_partial_metadata_signature_reaches_the_device`.
 #[test]
 fn a_device_sender_offset_key_cannot_sign_a_raw_challenge() {
     with_device(|device| {
@@ -337,5 +338,61 @@ fn a_metadata_signature_with_no_address_is_refused_for_a_device_sender_offset_ke
             .expect("a transaction output")
             .verify_metadata_signature()
             .expect("the metadata signature over a host held sender offset key verifies");
+    });
+}
+
+/// The pre-mine leader's aggregated step 3 is unaffected: `sign_partial_as_sender_and_receiver` with the `PreMine`
+/// sender offset key `get_script_offset` issues in pre-mine mode, and a device reserved nonce, reaches the device and
+/// is signed there. Only `OneSidedSenderOffset` keys are refused a raw signature; pre-mine signing belongs with the
+/// separate pre-mine issue.
+#[test]
+fn the_pre_mine_leaders_partial_metadata_signature_reaches_the_device() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let script_key = key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::PreMine))
+            .expect("a pre-mine script key");
+        let (_offset, mut sender_offsets) = key_manager
+            .get_script_offset(std::slice::from_ref(&script_key.key_id), 1)
+            .expect("a sender offset key from the device");
+        let sender_offset = sender_offsets.pop().expect("one sender offset key");
+        assert!(
+            matches!(sender_offset.key_id, TariKeyId::LedgerKey { branch: LedgerKeyBranch::PreMine, index }
+                if minotari_ledger_wallet_common::script_offset::is_pre_mine_sender_offset_index(index)),
+            "expected a pre-mine sender offset key, got {}",
+            sender_offset.key_id
+        );
+
+        // The other parties' shares, as the leader would have collected them.
+        let other_sender_offset = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let other_ephemeral = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let commitment_mask = key_manager.get_random_key(None, None).expect("a commitment mask");
+        let builder = WalletOutputBuilder::new(MicroMinotari(5_000), commitment_mask.key_id.clone())
+            .with_script(script!(Nop).unwrap())
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .expect("encrypted data")
+            .with_script_key(TariKeyId::Zero);
+
+        let (signed, wire) = device.watch(|| {
+            builder.sign_partial_as_sender_and_receiver(
+                &key_manager,
+                &sender_offset.key_id,
+                &other_sender_offset,
+                &other_ephemeral,
+            )
+        });
+        signed.expect("the pre-mine leader's partial metadata signature");
+        let raw = wire.of(Instruction::GetRawSchnorrSignature);
+        assert_eq!(
+            raw.len(),
+            1,
+            "one raw signature by the pre-mine sender offset key: {wire:?}"
+        );
+        assert_eq!(
+            raw.first().and_then(|exchange| exchange.status),
+            Some(0x9000),
+            "the device must serve the pre-mine sender offset key's raw signature: {wire:?}"
+        );
     });
 }

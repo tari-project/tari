@@ -239,6 +239,9 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient address or a custom script -
     /// plain burns and HTLC (atomic swap) sends - are not supported on a ledger wallet.
     ///
+    /// A host held sender offset key (an L2-bound burn's) is signed in software on a ledger wallet too, whatever the
+    /// script, the way the coinbase's is.
+    ///
     /// This closes one path only. Outputs under a host held sender offset key, together with the unreviewed script
     /// offset, remain a residual that is tracked separately.
     fn get_metadata_signature_user_verified(
@@ -301,9 +304,10 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// afterwards, because on a ledger wallet only the device could recompute it and it will not. Carrying the
     /// sender offset key the same way also spares the caller a second device round trip for a key it already has.
     ///
-    /// Not supported on a ledger wallet with a device held sender offset key, which never signs a raw challenge:
-    /// refused with [`KeyManagerError::LedgerSenderOffsetRawSignature`]. Multisig deposit and withdraw are software
-    /// wallet flows.
+    /// Not supported on a ledger wallet with a `OneSidedSenderOffset` key, which never signs a raw challenge: refused
+    /// with [`KeyManagerError::LedgerSenderOffsetRawSignature`], so multisig deposit and withdraw are software wallet
+    /// flows. A pre-mine sender offset key still signs here, so the pre-mine ceremony's aggregated step 3 is
+    /// unaffected; pre-mine signing belongs with the separate pre-mine issue.
     fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce: &TariKeyAndId,

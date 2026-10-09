@@ -31,10 +31,7 @@
 //! that is the Diffie-Hellman problem - so the scenario supplies a point whose discrete log it chose, and checks
 //! `k·P = p·K` instead.
 
-use minotari_ledger_wallet_common::{
-    common_types::{Instruction, LedgerKeyBranch},
-    script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT,
-};
+use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
 use minotari_ledger_wallet_comms::accessor_methods::{
     ScriptSignatureKey,
     ledger_generate_ephemeral_nonce,
@@ -218,9 +215,7 @@ fn script_schnorr_signature_verifies(_context: &ScenarioContext<'_>) -> Scenario
 /// difference is worth.
 fn raw_schnorr_signature_verifies(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
-    // A pre-mine script key index: one in the pre-mine sender offset range is a sender offset key, which the device
-    // refuses to sign a raw challenge with.
-    let index = fixtures::random_u64() & !PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+    let index = fixtures::random_u64();
     let branch = LedgerKeyBranch::PreMine;
     let challenge = fixtures::random_challenge();
 

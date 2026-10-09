@@ -244,7 +244,9 @@ impl WalletOutputBuilder {
     /// Sign a partial multi-party metadata signature as the sender and receiver - `sender_offset_public_key_shares` and
     /// `ephemeral_pubkey_shares` from other participants are combined to enable creation of the challenge.
     ///
-    /// Not supported on a ledger wallet with a device held sender offset key, which never signs a raw challenge.
+    /// Not supported on a ledger wallet with a `OneSidedSenderOffset` key, which never signs a raw challenge (multisig
+    /// deposit and withdraw). The pre-mine leader's aggregated step 3, with a pre-mine sender offset key, is
+    /// unaffected.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     pub fn sign_partial_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(
