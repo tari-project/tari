@@ -231,7 +231,10 @@ fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offse
     !wallet_is_ledger || matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. })
 }
 
-/// Refuses a nonce key id that would give up the private key it signs with.
+/// Refuses a nonce key id that would give up the private key it signs with, and the zero signing key.
+///
+/// A `Zero` signing key makes the signature `s = r`, which hands back the private value behind the nonce id - any
+/// `Encrypted` id the caller names.
 ///
 /// A Schnorr signature is `s = r + e·k`, so anyone who knows `r` - or who holds two signatures under one `r` - can
 /// solve for `k`. The ids refused here are the ones whose private value is fixed (`Zero`, `SpendKey`, `ViewKey`,
@@ -243,6 +246,12 @@ fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offse
 /// An `Encrypted` nonce is still caller controllable - `create_encrypted_key` wraps any scalar - so it must be fresh
 /// and used once. Closing that means moving software signatures onto reserved handles and deleting the catch-all arm.
 fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
+    if *private_key_id == TariKeyId::Zero {
+        return Err(KeyManagerError::InvalidSigningKeyId {
+            key: private_key_id.to_string(),
+            reason: "the zero key cannot sign".to_string(),
+        });
+    }
     let reason = match nonce {
         TariKeyId::Zero => "the zero key is not secret",
         TariKeyId::SpendKey | TariKeyId::ViewKey | TariKeyId::CodeTemplateAuthor => {
@@ -1677,6 +1686,13 @@ impl TransactionKeyManagerInterface for KeyManager {
             _ => {
                 let private_key = self.get_private_key(private_key_id)?;
                 let private_nonce = self.get_private_key(nonce)?;
+                // A key id other than `Zero` can still resolve to zero, e.g. an `Encrypted` id wrapping it.
+                if private_key == PrivateKey::default() {
+                    return Err(KeyManagerError::InvalidSigningKeyId {
+                        key: private_key_id.to_string(),
+                        reason: "the signing key resolves to zero".to_string(),
+                    });
+                }
                 // Two distinct ids can still resolve to a degenerate value, e.g. an `Encrypted` id wrapping zero or
                 // wrapping the signing key under a different encryption key.
                 if private_nonce == PrivateKey::default() || private_nonce == private_key {
@@ -2620,7 +2636,8 @@ mod tests {
         }
     }
 
-    /// The legacy pre-mine arm takes a ledger index nonce, but never the signing key's own index.
+    /// The legacy pre-mine arm takes a ledger index nonce, but never the signing key's own index. #8098's branch
+    /// whitelist (`PreMine` key, `Random` nonce) would refuse this pair too, but later: the id check runs first.
     #[test]
     fn a_ledger_key_cannot_be_its_own_nonce() {
         let key_manager = KeyManager::new_random().unwrap();
@@ -2647,6 +2664,22 @@ mod tests {
 
         for nonce in [wraps_zero, wraps_signing_key] {
             assert_nonce_refused(&key_manager, &signing_key.key_id, &nonce);
+        }
+    }
+
+    /// A zero signing key makes the signature the nonce itself, `s = r`, which reveals whatever secret the nonce id
+    /// names. Both the `Zero` id and an `Encrypted` id wrapping zero are refused.
+    #[test]
+    fn a_zero_signing_key_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let secret = key_manager.get_random_key(None, None).unwrap();
+        let wraps_zero = key_manager.create_encrypted_key(PrivateKey::default(), None).unwrap();
+
+        for signing_key_id in [TariKeyId::Zero, wraps_zero] {
+            match key_manager.sign_with_nonce_and_challenge(&signing_key_id, &secret.key_id, &challenge(1)) {
+                Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, signing_key_id.to_string()),
+                other => panic!("expected InvalidSigningKeyId for '{signing_key_id}', got {other:?}"),
+            }
         }
     }
 
