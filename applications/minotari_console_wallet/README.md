@@ -162,6 +162,14 @@ console, or write them to a CSV file. Exports never contain private keys: the co
 of a wallet output are enough to recover the wallet's spend key, so they are not exported in any form. Use
 `export-spent-utxos` for the same listing of spent outputs.
 
+**If you used `--with-private-keys` (or the FFI `wallet_get_unspent_outputs`) in an earlier release**, that export
+permanently contains your wallet's spend key. Create a new wallet (new seed, so a new address), send all funds to
+it, stop using the old address everywhere it is published (pool payouts, exchanges and so on), and delete the old
+export files and any copies or backups of them. The address must change, not just the seed: whoever holds the spend
+key can take back any one-sided payment they send to the old address, because the payer knows that output's mask.
+Importing a leaked export into another wallet does not protect those outputs; anyone with the file can still spend
+them.
+
 ```
 minotari_console_wallet --command "export-utxos"
 minotari_console_wallet --command "export-utxos --output-file <file name>"

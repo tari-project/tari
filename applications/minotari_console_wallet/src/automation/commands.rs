@@ -3738,7 +3738,17 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
 const UTXO_CSV_HEADER: &str = r##""index","version","value","commitment","output_type","maturity","coinbase_extra","script","covenant","input_data","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise","range_proof""##;
 
 fn write_utxos_to_csv_file(utxos: &[WalletOutput], file_path: PathBuf) -> Result<(), CommandError> {
-    let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    // Owner-only on unix: the export lists every output the wallet holds.
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options
+        .open(file_path)
+        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
     writeln!(csv_file, "{UTXO_CSV_HEADER}").map_err(|e| CommandError::CSVFile(e.to_string()))?;
     for (i, utxo) in utxos.iter().enumerate() {
@@ -3752,7 +3762,9 @@ fn write_utxos_to_csv_file(utxos: &[WalletOutput], file_path: PathBuf) -> Result
             utxo.commitment().to_hex(),
             features.output_type,
             features.maturity,
-            String::from_utf8(features.coinbase_extra.to_vec()).unwrap_or_else(|_| features.coinbase_extra.to_hex()),
+            // Always hex: the coinbase extra is chosen by whoever mined the block, so raw text could break out of
+            // the quoted field or be read as a spreadsheet formula.
+            features.coinbase_extra.to_hex(),
             utxo.script().to_hex(),
             utxo.covenant().to_bytes().to_hex(),
             utxo.input_data().to_hex(),
@@ -3887,9 +3899,52 @@ mod test {
     use tari_transaction_components::{
         key_manager::{KeyManager, SecretTransactionKeyManagerInterface},
         test_helpers::{TestParams, UtxoTestParams},
+        transaction_components::CoinBaseExtra,
     };
 
     use super::*;
+
+    #[test]
+    fn utxo_csv_export_hex_encodes_coinbase_extra_and_is_owner_only() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let hostile = b"\",=1+1\n".to_vec();
+        let features = OutputFeatures {
+            coinbase_extra: CoinBaseExtra::try_from(hostile.clone()).unwrap(),
+            ..Default::default()
+        };
+        let output = TestParams::new(&key_manager)
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(1234),
+                    features,
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("utxos.csv");
+        write_utxos_to_csv_file(std::slice::from_ref(&output), path.clone()).unwrap();
+        let contents = fs::read_to_string(&path).unwrap();
+        let mut lines = contents.lines();
+        let header = lines.next().unwrap();
+        let row = lines.next().unwrap();
+        assert!(lines.next().is_none());
+
+        let fields: Vec<&str> = row.trim_matches('"').split("\",\"").collect();
+        let header_fields: Vec<&str> = header.trim_matches('"').split("\",\"").collect();
+        let column = header_fields.iter().position(|h| *h == "coinbase_extra").unwrap();
+        assert_eq!(fields.get(column), Some(&hostile.to_hex().as_str()));
+        assert_eq!(fields.len(), header_fields.len());
+        assert!(!row.contains("=1+1"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+    }
 
     #[test]
     fn utxo_csv_export_contains_no_private_keys() {
