@@ -120,6 +120,13 @@ const SCENARIOS: &[Scenario] = &[
         approval: Approval::NotNeeded,
         run: a_reserved_nonce_survives_unrelated_instructions,
     },
+    Scenario {
+        name: "a raw Schnorr signature by a OneSidedSenderOffset key is refused with BadBranchKey, and the nonce \
+               survives",
+        covers: &[Instruction::GenerateEphemeralNonce, Instruction::GetRawSchnorrSignature],
+        approval: Approval::NotNeeded,
+        run: a_sender_offset_key_cannot_sign_a_raw_challenge,
+    },
 ];
 
 /// A `GetScriptOffset` header declaring one sender offset key, no indexed script keys and one derived script key.
@@ -621,4 +628,45 @@ fn a_reserved_nonce_survives_unrelated_instructions(_context: &ScenarioContext<'
     require(signature.verify_raw_uniform(&public_key, &challenge), || {
         "a signature made with a nonce that had survived several unrelated instructions does not verify".to_string()
     })
+}
+
+/// Acceptance: `GetRawSchnorrSignature` refuses a `OneSidedSenderOffset` key with `BadBranchKey`, and the refusal
+/// leaves the reserved nonce in the store.
+///
+/// A sender offset key signs an output's metadata signature, and the device signs those only through
+/// `GetOneSidedMetadataSignature`, which shows the output for review unless it is change to the device's own
+/// address. A raw signature over a challenge the host built would let a host pay itself with nothing on the screen.
+///
+/// The positive control signs with the same handle on the `Random` branch afterwards: the refusal comes before the
+/// nonce is taken, so the handle must still be good. A device that refused by wiping the slot, or that refused
+/// everything, fails there.
+fn a_sender_offset_key_cannot_sign_a_raw_challenge(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let index = fixtures::random_u64();
+
+    let reserved = reserve_nonce(account)?;
+    let refused = sign_with_handle(
+        account,
+        index,
+        LedgerKeyBranch::OneSidedSenderOffset,
+        reserved.handle,
+        &fixtures::random_challenge(),
+    )?;
+    expect_status(
+        "a raw Schnorr signature by a OneSidedSenderOffset key",
+        &refused,
+        AppSW::BadBranchKey,
+    )?;
+
+    let reply = sign_with_handle(
+        account,
+        index,
+        LedgerKeyBranch::Random,
+        reserved.handle,
+        &fixtures::random_challenge(),
+    )?;
+    expect_ok(
+        "a signature by a Random key with the nonce the refused request named",
+        &reply,
+    )
 }

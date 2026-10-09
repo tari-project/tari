@@ -22,6 +22,7 @@ use minotari_ledger_wallet_common::{
         GetScriptSchnorrSignatureRequest,
         SchnorrReply,
     },
+    common_types::LedgerKeyBranch,
     legacy_nonce::{check_legacy_nonce_branches, check_legacy_nonce_index, legacy_signature_purpose},
     u64_to_string,
 };
@@ -50,10 +51,22 @@ pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
 /// The nonce is drawn by `GenerateEphemeralNonce` and only ever named by an opaque handle. That is the whole point
 /// of this instruction: with a host chosen nonce, two signatures over different challenges give up the private key
 /// as `k = (s1 - s2) / (e1 - e2)`, and the host is free to ask twice.
+///
+/// A `OneSidedSenderOffset` key is refused. A sender offset key signs an output's metadata signature, which is the
+/// point at which the device knows what a transaction pays and to whom, so it signs only through
+/// `GetOneSidedMetadataSignature`, which shows the output for review (or recognises change to this wallet). Signing
+/// one here, over a challenge the host built, would let a host pay itself with no screen at all.
 pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut EphemeralNonceCtx) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     let request = GetRawSchnorrSignatureRequest::decode(data).map_err(|_| invalid_data_length())?;
 
+    // Refused before the nonce is taken, so a refused request leaves the reserved nonce in the store.
+    if matches!(
+        branch_key_from_u64(request.branch)?,
+        LedgerKeyBranch::OneSidedSenderOffset
+    ) {
+        return Err(AppSW::BadBranchKey);
+    }
     // Note: `KeyType::from_branch_key` rejects the spend branch, so the host cannot point this handler at `alpha`.
     let private_key_type = KeyType::from_branch_key(request.branch)?;
 

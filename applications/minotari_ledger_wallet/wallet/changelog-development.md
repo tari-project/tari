@@ -11,6 +11,12 @@ All notable changes to this project will be documented in this file. See [standa
   host recover the wallet's root spend key without any prompt on the device. Updating the wallet software alone does
   not protect a device: the fix is in the Ledger application. Until the application is updated, do not connect the
   device to a host you do not trust.
+* **Every output a sender offset key signs is reviewed on the device.** `GetRawSchnorrSignature` now refuses a
+  `OneSidedSenderOffset` key with `BadBranchKey`, so a sender offset key signs only through
+  `GetOneSidedMetadataSignature`, which shows the amount and receiver for review. Before this, a compromised host
+  could sign an output's metadata through the raw instruction and spend the wallet's funds with no prompt. Change to
+  the wallet's own address is auto-approved: when the receiver's spend key is the device's own, it signs without a
+  review.
 
 
 ### ⚠ Upgrade notes
@@ -23,6 +29,12 @@ All notable changes to this project will be documented in this file. See [standa
 * **Redo pre-mine step 2.** Step 2 session files written with an older application name keys this application no
   longer signs with (a `OneSidedSenderOffset` sender offset key, and nonce indexes that older applications derived
   modulo `2^32`). Start those sessions again from step 2.
+* **Sends with change need the wallet and the application from this change together.** Older wallets sign change
+  through `GetRawSchnorrSignature`, which this application refuses, so their sends with change fail. A wallet from this
+  change against an older application still works, but the older application shows change for review.
+* **Not supported on a Ledger wallet:** outputs with no recipient address or a script other than the standard stealth
+  script (burns, HTLCs), and aggregated (multi-party) sender metadata signatures. Multisig deposit and withdraw remain
+  software wallet flows.
 * Key indexes are now derived from all 64 bits. Every index below `2^32` keeps its key, and no key an ordinary
   wallet re-derives after a transaction is built is above it, so ordinary sends and spends are unaffected.
 

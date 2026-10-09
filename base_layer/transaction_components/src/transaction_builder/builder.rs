@@ -1078,9 +1078,14 @@ where KM: TransactionKeyManagerInterface
                 &sender_offset.key_id,
                 &spec.destination,
             )?,
-            RecipientMetadataSignature::Unverified => {
-                builder.sign_metadata_signature(&self.key_manager, &sender_offset.key_id)?
-            },
+            // Signed for the wallet's own address, so that on a ledger wallet the device recognises an output to
+            // itself and signs it without a prompt. Any other output - a burn, an HTLC - has a script that is not the
+            // standard stealth script to this wallet, and a ledger wallet refuses it.
+            RecipientMetadataSignature::Unverified => builder.sign_metadata_signature_user_verified(
+                &self.key_manager,
+                &sender_offset.key_id,
+                &self.own_address,
+            )?,
         };
 
         Ok((builder.try_build(&self.key_manager)?, recovery_key_id))
@@ -1110,22 +1115,25 @@ where KM: TransactionKeyManagerInterface
 
         let features = OutputFeatures::default();
         let covenant = Covenant::default();
-        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
-            output_version,
-            &script,
+        let metadata_message_common = TransactionOutput::metadata_signature_message_common_from_parts(
+            &output_version,
             &features,
             &covenant,
             &encrypted_data,
             &minimum_value_promise,
         );
 
-        let metadata_sig = self.key_manager.get_metadata_signature(
+        // Signed for the wallet's own address: the change script is the standard stealth script to it, so on a
+        // ledger wallet the device recognises change to itself and signs it without a prompt.
+        let metadata_sig = self.key_manager.get_metadata_signature_user_verified(
             &change_commitment_mask_key.key_id,
-            &amount.into(),
+            amount,
             &sender_offset.key_id,
             output_version,
-            &metadata_message,
+            &metadata_message_common,
             features.range_proof_type,
+            &script,
+            &self.own_address,
         )?;
 
         let change_wallet_output = WalletOutput::new_current_version(
@@ -1494,7 +1502,12 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &mut change_output {
-            Self::update_encrypted_data_and_metadata_sig(&self.key_manager, change, total_fee, None)?;
+            Self::update_encrypted_data_and_metadata_sig(
+                &self.key_manager,
+                change,
+                total_fee,
+                Some(&self.own_address),
+            )?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self

@@ -631,6 +631,9 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
 ///
 /// `nonce_handle` must come from [`ledger_generate_ephemeral_nonce`]. The device consumes the nonce whether or not
 /// the signature succeeds, so a handle is good for exactly one call.
+///
+/// A `OneSidedSenderOffset` key is refused with `BadBranchKey`: a sender offset key signs only through
+/// [`ledger_get_one_sided_metadata_signature`], which the device reviews. That refusal is mirrored here.
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
@@ -644,6 +647,12 @@ pub fn ledger_get_raw_schnorr_signature(
         challenge '{}'",
         account, private_key_index, private_key_branch, nonce_handle, challenge.to_hex()
     );
+    if private_key_branch == LedgerKeyBranch::OneSidedSenderOffset {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignature: a '{private_key_branch}' key signs only through the reviewed one sided metadata \
+             signature"
+        )));
+    }
     verify_ledger_application()?;
 
     let request = GetRawSchnorrSignatureRequest {
@@ -955,6 +964,21 @@ mod test {
                 "unexpected message: {message}"
             ),
             other => panic!("expected the host's size refusal, got {other:?}"),
+        }
+    }
+
+    /// A raw Schnorr signature by a sender offset key is refused on the host, before the device is asked: the device
+    /// refuses it too, and a sender offset key signs only through the reviewed metadata signature.
+    #[test]
+    fn a_raw_schnorr_signature_by_a_sender_offset_key_is_refused_on_the_host() {
+        let error =
+            ledger_get_raw_schnorr_signature(1, 7, LedgerKeyBranch::OneSidedSenderOffset, 9, &[0x42; 64]).unwrap_err();
+        match error {
+            LedgerDeviceError::Processing(message) => assert!(
+                message.contains("reviewed one sided metadata signature"),
+                "unexpected message: {message}"
+            ),
+            other => panic!("expected the host's branch refusal, got {other:?}"),
         }
     }
 }

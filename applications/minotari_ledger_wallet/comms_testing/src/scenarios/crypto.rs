@@ -43,9 +43,13 @@ use minotari_ledger_wallet_comms::accessor_methods::{
     ledger_get_script_offset,
     ledger_get_script_schnorr_signature,
     ledger_get_script_signature,
+    ledger_get_view_key,
 };
 use tari_common::configuration::Network;
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::{
+    tari_address::{TariAddress, TariAddressFeatures},
+    types::{CompressedCommitment, CompressedPublicKey},
+};
 use tari_crypto::{
     commitment::HomomorphicCommitment,
     keys::PublicKey,
@@ -123,6 +127,17 @@ const SCENARIOS: &[Scenario] = &[
         covers: &[Instruction::GetOneSidedMetadataSignature, Instruction::GetPublicKey],
         approval: Approval::Required,
         run: the_approved_metadata_signature_verifies,
+    },
+    Scenario {
+        name: "a one sided metadata signature to the device's own address is signed with no review",
+        covers: &[
+            Instruction::GetOneSidedMetadataSignature,
+            Instruction::GetPublicKey,
+            Instruction::GetPublicSpendKey,
+            Instruction::GetViewKey,
+        ],
+        approval: Approval::NotNeeded,
+        run: change_to_self_is_signed_without_a_review,
     },
 ];
 
@@ -657,26 +672,101 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
     review.context(|| format!("the device's review screen ({branch} sender offset)"))?;
     let signature = signature.context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
 
-    // What the device should have signed, rebuilt from the same inputs the request carried.
-    let value = RistrettoSecretKey::from(REVIEW_VALUE);
-    let commitment = fixtures::script_commitment(&commitment_mask, &value);
+    verify_one_sided_metadata_signature(
+        &format!("the one sided metadata signature with a {branch} sender offset"),
+        &signature.to_vec(),
+        REVIEW_VALUE,
+        &commitment_mask,
+        &receiver,
+        &sender_offset_public_key,
+        &common_message,
+    )
+}
+
+/// Acceptance: change to the device's own address is signed with no review, and the signature verifies.
+///
+/// The device signs without a prompt only when the receiver's spend key is its own public `alpha`: the script it
+/// signs over is then the stealth script to `alpha`, so the output can only ever be spent by this wallet. Change is
+/// what makes that matter: every send with change signs one, and a sender offset key may sign through nothing else.
+///
+/// Runs unattended on both frontends. A device that put a review up here would leave the exchange outstanding until
+/// the read timeout and fail the scenario - and on hardware it would ask the operator about a screen this scenario
+/// does not expect. The foreign address case, which must show the review, is
+/// [`the_approved_metadata_signature_verifies`].
+fn change_to_self_is_signed_without_a_review(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let sender_offset_key_index = fixtures::random_u64();
+    let branch = LedgerKeyBranch::OneSidedSenderOffset;
+    let commitment_mask = fixtures::random_secret_key();
+    let common_message = fixtures::random_bytes_32();
+
+    let public_alpha = ledger_get_public_spend_key(account).context(|| "GetPublicSpendKey".to_string())?;
+    let view_key = ledger_get_view_key(account).context(|| "GetViewKey".to_string())?;
+    let own_address = TariAddress::new_dual_address(
+        CompressedPublicKey::from_secret_key(&view_key),
+        public_alpha,
+        NETWORK,
+        TariAddressFeatures::create_one_sided_only(),
+        None,
+    )
+    .context(|| "the device's own address".to_string())?;
+
+    let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
+        .context(|| "GetPublicKey for the sender offset key".to_string())?;
+
+    let signature = ledger_get_one_sided_metadata_signature(
+        account,
+        own_address.network(),
+        0,
+        REVIEW_VALUE,
+        sender_offset_key_index,
+        branch,
+        &commitment_mask,
+        &own_address,
+        &common_message,
+    )
+    .context(|| "GetOneSidedMetadataSignature to the device's own address".to_string())?;
+
+    verify_one_sided_metadata_signature(
+        "the one sided metadata signature to the device's own address",
+        &signature.to_vec(),
+        REVIEW_VALUE,
+        &commitment_mask,
+        &own_address,
+        &sender_offset_public_key,
+        &common_message,
+    )
+}
+
+/// Verify a one sided metadata signature against what the device should have signed, rebuilt from the same inputs
+/// the request carried: the commitment to `value`, and a message over the stealth script for `receiver`.
+fn verify_one_sided_metadata_signature(
+    what: &str,
+    body: &[u8],
+    value: u64,
+    commitment_mask: &RistrettoSecretKey,
+    receiver: &TariAddress,
+    sender_offset_public_key: &RistrettoPublicKey,
+    common_message: &[u8; 32],
+) -> ScenarioResult {
+    let commitment = fixtures::script_commitment(commitment_mask, &RistrettoSecretKey::from(value));
     let receiver_spend_key = receiver
         .public_spend_key()
         .to_public_key()
-        .context(|| "the published receiver address's spend key would not decompress".to_string())?;
-    let script = fixtures::stealth_script(&commitment_mask, &receiver_spend_key);
+        .context(|| "the receiver address's spend key would not decompress".to_string())?;
+    let script = fixtures::stealth_script(commitment_mask, &receiver_spend_key);
     let network = receiver.network().as_byte();
-    let message = fixtures::metadata_signature_message(network, &script, &common_message);
+    let message = fixtures::metadata_signature_message(network, &script, common_message);
 
     verify_com_and_pub_signature(
-        &format!("the one sided metadata signature with a {branch} sender offset"),
-        &signature.to_vec(),
+        what,
+        body,
         &commitment,
-        &sender_offset_public_key,
+        sender_offset_public_key,
         |ephemeral_commitment, ephemeral_pubkey| {
             fixtures::metadata_signature_challenge(
                 network,
-                &sender_offset_public_key,
+                sender_offset_public_key,
                 ephemeral_commitment,
                 ephemeral_pubkey,
                 &commitment,

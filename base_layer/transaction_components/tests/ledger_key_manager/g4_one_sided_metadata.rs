@@ -4,6 +4,9 @@
 //! ④ `ledger_get_one_sided_metadata_signature_wrapper`, through
 //! `WalletOutputBuilder::sign_metadata_signature_user_verified`.
 //!
+//! It is the only way a device held sender offset key signs anything. Change is signed through it too, with the
+//! wallet's own address, and the device recognises its own spend key and signs that without a review.
+//!
 //! `GetOneSidedMetadataSignature` is the only instruction in the application that puts anything in front of a
 //! human: it shows the amount, the receiver and any payment ID, and does not answer until somebody approves or
 //! rejects. So this is the one group that needs the [`Approver`](minotari_ledger_wallet_comms_testing::approver::
@@ -24,20 +27,21 @@
 //! The approver blocks on the device drawing each screen; there is no sleep and no retry anywhere in it, and this
 //! puts its timing on the merge path on purpose.
 
-use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
+use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
 use minotari_ledger_wallet_comms_testing::{
     approver::{Outcome, while_reviewing},
     fixtures,
     review::ExpectedReview,
 };
-use tari_script::{ExecutionStack, push_pubkey_script};
+use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+use tari_script::{ExecutionStack, push_pubkey_script, script};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::{TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError},
     transaction_components::{MemoField, TransactionError, WalletOutput, WalletOutputBuilder},
 };
 
-use crate::harness::{Device, with_device};
+use crate::harness::{Device, network, with_device};
 
 /// Build a one-sided output of `value` to the published receiver carrying `payment_id_length` payment ID bytes, sign
 /// its metadata on the device, and answer the review with `outcome` - asserting what it showed first.
@@ -183,6 +187,128 @@ fn a_rejected_review_signs_nothing_and_says_the_user_cancelled() {
         assert!(
             error.to_string().contains(cancelled),
             "a rejected review should surface as the user's cancellation ('{cancelled}'), got: {error}"
+        );
+    });
+}
+
+/// The wallet's own address, as `TransactionBuilder::new` builds it for change.
+fn own_address(key_manager: &KeyManager) -> TariAddress {
+    TariAddress::new_dual_address(
+        key_manager.get_view_key().pub_key,
+        key_manager.get_spend_key().pub_key,
+        network(),
+        TariAddressFeatures::create_one_sided_only(),
+        None,
+    )
+    .expect("the wallet's own address")
+}
+
+/// A device held sender offset key, issued by `get_script_offset` for an alpha derived script key.
+fn device_sender_offset_key(key_manager: &KeyManager) -> TariKeyAndId {
+    let script_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().1;
+    let (_offset, mut sender_offsets) = key_manager
+        .get_script_offset(std::slice::from_ref(&script_key.key_id), 1)
+        .expect("a sender offset key from the device");
+    sender_offsets.pop().expect("one sender offset key")
+}
+
+/// Change is signed through the reviewed instruction with the wallet's own address, and the device signs it with no
+/// review: the receiver's spend key is its own `alpha`. The signature verifies, and the wire shows exactly one
+/// `GetOneSidedMetadataSignature` and no raw Schnorr signature or nonce reservation.
+///
+/// The output is built the way `TransactionBuilder::build_change` builds one: the script is `PushPubKey` of the
+/// alpha derived script key generated with the commitment mask, which is the stealth script to the wallet's own
+/// address. Nothing answers a review here, so a device that showed one would leave the exchange outstanding until
+/// the read timeout and fail this test.
+///
+/// The same output to a foreign address is then reviewed, and verifies once approved.
+#[test]
+fn change_to_self_is_signed_without_a_review_and_a_foreign_receiver_is_reviewed() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let own_address = own_address(&key_manager);
+        let value = 12_345;
+
+        let (commitment_mask, change_script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let builder = WalletOutputBuilder::new(MicroMinotari(value), commitment_mask.key_id.clone())
+            .with_script(push_pubkey_script(&change_script_key.pub_key))
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .expect("encrypted data")
+            .with_script_key(change_script_key.key_id.clone());
+
+        let (signed, wire) = device.watch(|| {
+            builder
+                .clone()
+                .sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
+        });
+        assert_eq!(
+            (
+                wire.count(Instruction::GetOneSidedMetadataSignature),
+                wire.count(Instruction::GetRawSchnorrSignature),
+                wire.count(Instruction::GenerateEphemeralNonce),
+            ),
+            (1, 0, 0),
+            "change should be signed by the reviewed instruction alone: {wire:?}"
+        );
+        let output = signed
+            .expect("change to the device's own address, signed with no review")
+            .try_build(&key_manager)
+            .expect("a wallet output");
+        assert_metadata_signature_verifies(&output);
+
+        // The same value and commitment mask, to a foreign receiver: the stealth script to that receiver, reviewed.
+        let receiver = fixtures::published_receiver(0).unwrap_or_else(|e| panic!("{e}"));
+        let stealth_key = key_manager
+            .stealth_address_script_spending_key(&commitment_mask.key_id, receiver.public_spend_key())
+            .expect("the receiver's stealth script key");
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let builder = builder.with_script(push_pubkey_script(&stealth_key));
+        let expected = ExpectedReview::one_sided_metadata_signature(value, &receiver.to_base58(), 0);
+        let (signed, review) = while_reviewing(device.approver(), &expected, Outcome::Approve, || {
+            builder.sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &receiver)
+        });
+        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
+        let output = signed
+            .expect("an approved output to a foreign receiver")
+            .try_build(&key_manager)
+            .expect("a wallet output");
+        assert_metadata_signature_verifies(&output);
+    });
+}
+
+/// An output whose script is not the stealth script to its address - a burn's `Nop`, here - is refused by a ledger
+/// wallet before the device is asked: the device signs over the stealth script it builds itself, so any other
+/// script would get a signature that does not verify.
+#[test]
+fn an_output_with_a_custom_script_is_refused_before_the_device() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let own_address = own_address(&key_manager);
+        let commitment_mask = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let builder = WalletOutputBuilder::new(MicroMinotari(12_345), commitment_mask.key_id.clone())
+            .with_script(script!(Nop).unwrap())
+            .with_input_data(ExecutionStack::default())
+            .with_script_key(TariKeyId::Zero);
+
+        let (error, wire) = device.watch(|| {
+            builder
+                .sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
+                .map(|_| ())
+                .expect_err("a custom script on a ledger wallet")
+        });
+        assert!(
+            error
+                .to_string()
+                .contains(&KeyManagerError::LedgerSenderOffsetNeedsRecipient.to_string()),
+            "expected the key manager's refusal, got: {error}"
+        );
+        assert_eq!(
+            wire.count(Instruction::GetOneSidedMetadataSignature),
+            0,
+            "the refusal must come before the device is asked to sign: {wire:?}"
         );
     });
 }

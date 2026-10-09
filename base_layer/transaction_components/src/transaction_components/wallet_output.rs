@@ -573,6 +573,10 @@ impl WalletOutput {
         max(self.script_lock_height, self.features.maturity)
     }
 
+    /// Replace the encrypted data and re-sign the metadata signature, with no recipient address.
+    ///
+    /// On a ledger wallet a device held sender offset key is refused here: re-sign an output to a known address -
+    /// the wallet's own, for change - with [`Self::change_encrypted_data_with_verified_signature`].
     pub fn change_encrypted_data<KM: TransactionKeyManagerInterface>(
         &mut self,
         encrypted_data: EncryptedData,

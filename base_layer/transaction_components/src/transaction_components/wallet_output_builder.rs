@@ -168,6 +168,11 @@ impl WalletOutputBuilder {
         &self.encrypted_data
     }
 
+    /// Sign the metadata signature with no recipient address.
+    ///
+    /// On a ledger wallet a device held sender offset key is refused here, because the device signs only an output
+    /// it can show for review: use [`Self::sign_metadata_signature_user_verified`] with the recipient's address, or
+    /// the wallet's own address for an output to itself.
     pub fn sign_metadata_signature<KM: TransactionKeyManagerInterface>(
         mut self,
         key_manager: &KM,
@@ -238,6 +243,8 @@ impl WalletOutputBuilder {
 
     /// Sign a partial multi-party metadata signature as the sender and receiver - `sender_offset_public_key_shares` and
     /// `ephemeral_pubkey_shares` from other participants are combined to enable creation of the challenge.
+    ///
+    /// Not supported on a ledger wallet with a device held sender offset key, which never signs a raw challenge.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     pub fn sign_partial_as_sender_and_receiver<KM: TransactionKeyManagerInterface>(

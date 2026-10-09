@@ -211,7 +211,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_count: usize,
     ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError>;
 
-    // Creates a metadata signature for the output, without requiring manual user verification if on a ledger device
+    /// Creates a metadata signature for the output, with no recipient address.
+    ///
+    /// On a ledger wallet every signature by a device held sender offset key is made by the device's reviewed one
+    /// sided metadata signature, which needs the output's recipient address - so here, with none, a device held
+    /// sender offset key is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]. Sign such an output
+    /// with [`TransactionKeyManagerInterface::get_metadata_signature_user_verified`] instead, passing the wallet's
+    /// own address for change. A software held sender offset key (the coinbase builder's) still signs here, in
+    /// software, on either wallet type.
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -222,7 +229,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    // Creates a metadata signature for the output, requiring manual user verification if on a ledger device
+    /// Creates a metadata signature for the output to `receiver_address`.
+    ///
+    /// On a ledger wallet every device sender offset signature is reviewed: the device shows the amount and the
+    /// receiver and signs once the user approves. Change to self is auto-approved by the device - when the receiver's
+    /// spend key is the device's own, it signs without a prompt. The device signs over the standard stealth script
+    /// for `receiver_address`, which it builds itself, so an output whose `script` is anything else is refused with
+    /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient address or a custom script
+    /// are not supported on a ledger wallet.
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -282,6 +296,10 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// form of such a nonce is returned exactly once, by that reservation - it cannot be recovered from the handle
     /// afterwards, because on a ledger wallet only the device could recompute it and it will not. Carrying the
     /// sender offset key the same way also spares the caller a second device round trip for a key it already has.
+    ///
+    /// Not supported on a ledger wallet with a device held sender offset key, which never signs a raw challenge:
+    /// refused with [`KeyManagerError::LedgerSenderOffsetRawSignature`]. Multisig deposit and withdraw are software
+    /// wallet flows.
     fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce: &TariKeyAndId,

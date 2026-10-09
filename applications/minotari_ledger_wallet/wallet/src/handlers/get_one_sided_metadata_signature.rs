@@ -52,6 +52,7 @@ use crate::{
     branch_key_from_u64,
     AppSW,
     KeyType,
+    STATIC_SPEND_INDEX,
 };
 
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
@@ -141,62 +142,79 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
-    let mut fields = Vec::new();
-    let field_value = format!("{}", value.to_string());
-    fields.push(Field {
-        name: "Amount",
-        value: &field_value,
-    });
-    let field_value = format!("{}", receiver_address);
-    fields.push(Field {
-        name: "Receiver",
-        value: &field_value,
-    });
-
-    // Add payment ID field if present
-    let payment_id_display = if !payment_id_bytes.is_empty() {
-        format!("{} bytes", payment_id_bytes.len())
-    } else {
-        String::new()
+    // Change to this wallet is signed without a review. That is the case when the receiver's spend key is this
+    // device's own public `alpha` for the account: the script below is always the standard stealth script for the
+    // receiver's spend key - the device builds it itself from the address and the commitment mask, and the signature
+    // commits to it - so the signed output can only ever be spent with `alpha`. Nothing to review, and nothing a host
+    // could redirect.
+    //
+    // The comparison is against the `alpha` this device derives, never a key the host supplied, and the spend key is
+    // read from the owned copy of the address, the same bytes the signature is built from after the review.
+    let own_public_alpha =
+        RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?);
+    let is_change_to_self = match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+        Ok(bytes) => &bytes == own_public_alpha.as_array(),
+        Err(_) => false,
     };
 
-    if !payment_id_bytes.is_empty() {
+    if !is_change_to_self {
+        let mut fields = Vec::new();
+        let field_value = format!("{}", value.to_string());
         fields.push(Field {
-            name: "Payment ID",
-            value: &payment_id_display,
+            name: "Amount",
+            value: &field_value,
         });
-    }
+        let field_value = format!("{}", receiver_address);
+        fields.push(Field {
+            name: "Receiver",
+            value: &field_value,
+        });
 
-    let fields_array = fields.as_slice();
+        // Add payment ID field if present
+        let payment_id_display = if !payment_id_bytes.is_empty() {
+            format!("{} bytes", payment_id_bytes.len())
+        } else {
+            String::new()
+        };
 
-    #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-    {
-        let review = MultiFieldReview::new(
-            fields_array,
-            &["Review ", "Transaction"],
-            Some(&EYE),
-            "Approve",
-            Some(&VALIDATE_14),
-            "Reject",
-            Some(&CROSSMARK),
-        );
-        if !with_screen(comm, || review.show()) {
-            return Err(AppSW::UserCancelled);
+        if !payment_id_bytes.is_empty() {
+            fields.push(Field {
+                name: "Payment ID",
+                value: &payment_id_display,
+            });
         }
-    }
-    #[cfg(any(target_os = "stax", target_os = "flex"))]
-    {
-        // Load glyph from 64x64 4bpp gif file with include_gif macro. Creates an NBGL compatible glyph.
-        const TARI: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
-        // Create NBGL review. Maximum number of fields and string buffer length can be customised
-        // with constant generic parameters of NbglReview. Default values are 32 and 1024 respectively.
-        let review: NbglReview = NbglReview::new()
-            .titles("Review transaction\nto send", "", "Sign transaction\nto send")
-            .glyph(&TARI);
 
-        //
-        if !with_screen(comm, || review.show(fields_array)) {
-            return Err(AppSW::UserCancelled);
+        let fields_array = fields.as_slice();
+
+        #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+        {
+            let review = MultiFieldReview::new(
+                fields_array,
+                &["Review ", "Transaction"],
+                Some(&EYE),
+                "Approve",
+                Some(&VALIDATE_14),
+                "Reject",
+                Some(&CROSSMARK),
+            );
+            if !with_screen(comm, || review.show()) {
+                return Err(AppSW::UserCancelled);
+            }
+        }
+        #[cfg(any(target_os = "stax", target_os = "flex"))]
+        {
+            // Load glyph from 64x64 4bpp gif file with include_gif macro. Creates an NBGL compatible glyph.
+            const TARI: NbglGlyph = NbglGlyph::from_include(include_gif!("key_64x64.gif", NBGL));
+            // Create NBGL review. Maximum number of fields and string buffer length can be customised
+            // with constant generic parameters of NbglReview. Default values are 32 and 1024 respectively.
+            let review: NbglReview = NbglReview::new()
+                .titles("Review transaction\nto send", "", "Sign transaction\nto send")
+                .glyph(&TARI);
+
+            //
+            if !with_screen(comm, || review.show(fields_array)) {
+                return Err(AppSW::UserCancelled);
+            }
         }
     }
 
