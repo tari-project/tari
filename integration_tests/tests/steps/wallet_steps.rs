@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
-use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, panic, path::PathBuf, sync::Arc, time::Duration};
 
 use cucumber::{given, then, when};
 use futures::StreamExt;
@@ -49,13 +49,12 @@ use minotari_app_grpc::{
     tari_rpc,
     tari_rpc::{self as grpc, GetStateRequest, TransactionStatus, TxOutputsToSpendTransfer},
 };
-use minotari_console_wallet::{CliCommands, ExportUtxosArgs};
-use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
-use tari_common_types::{
-    transaction::LegacyTransactionStatus,
-    types::{ComAndPubSignature, CompressedPublicKey, PrivateKey, RangeProof},
+use minotari_wallet::{
+    output_manager_service::storage::database::OutputManagerDatabase,
+    storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
+    transaction_service::config::TransactionRoutingMechanism,
 };
-use tari_crypto::ristretto::pedersen::CompressedPedersenCommitment;
+use tari_common_types::transaction::LegacyTransactionStatus;
 use tari_integration_tests::{
     DEFAULT_TIMEOUT,
     SHORT_TIMEOUT,
@@ -68,22 +67,16 @@ use tari_integration_tests::{
     wait_for,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
-use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
-    MicroMinotari,
+    crypto_factories::CryptoFactories,
+    key_manager::SecretTransactionKeyManagerInterface,
     transaction_components::{
-        CoinBaseExtra,
-        EncryptedData,
-        OutputFeatures,
-        OutputType,
-        RangeProofType,
-        TransactionOutputVersion,
         UnblindedOutput,
-        covenants::Covenant,
         memo_field::{MemoField, TxType},
     },
 };
-use tari_utilities::hex::Hex;
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerWrapper;
+use tari_utilities::SafePassword;
 
 use crate::steps::{CONFIRMATION_PERIOD, cucumber_steps_log, mining_steps::create_miner};
 
@@ -2230,391 +2223,134 @@ async fn send_one_sided_stealth_transaction(
     ));
 }
 
-#[then(expr = "I import {word} unspent outputs to {word}")]
-#[allow(clippy::too_many_lines)]
-async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
-    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    if wallet_a_ps.is_running() {
-        cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill().await;
+/// Builds unblinded outputs for the outputs held by wallet `wallet_name`, entirely inside the test harness.
+///
+/// The wallets no longer export private keys (a wallet output's script key is `H("script key", mask) + alpha`, so an
+/// export would give away the spend key). To still exercise gRPC `import_utxos` end to end, the test stops the source
+/// wallet, opens its database with the test password, rebuilds its key manager from the stored seed and resolves each
+/// output's commitment mask and script private key itself. Nothing here is available to production code.
+async fn unblinded_outputs_of_wallet(world: &mut TariWorld, wallet_name: &str, spent: bool) -> Vec<UnblindedOutput> {
+    let wallet_ps = world.wallets.get_mut(wallet_name).unwrap();
+    if wallet_ps.is_running() {
+        cucumber_steps_log(format!("Stopping wallet {wallet_name}"));
+        wallet_ps.kill().await;
     }
 
-    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
+    // Same path the wallet itself uses: see `spawn_wallet`.
+    let mut config = wallet_ps.config.clone();
+    config.db_file = PathBuf::from("console_wallet.db");
+    config.set_base_path(&wallet_ps.temp_dir_path);
 
-    let mut cli = get_default_cli();
-
-    let mut path_buf = PathBuf::new();
-    path_buf.push(temp_dir_path);
-    path_buf.push("exported_utxos.csv");
-
-    let args = ExportUtxosArgs {
-        output_file: Some(path_buf.clone()),
-        with_private_keys: true,
-    };
-    cli.command2 = Some(CliCommands::ExportUtxos(args));
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(
-        world,
-        wallet_a.clone(),
-        Some(base_node.clone()),
-        seed_nodes,
-        None,
-        Some(cli),
+    let (wallet_backend, _, output_manager_backend, key_manager_backend) =
+        initialize_sqlite_database_backends(&config.db_file, SafePassword::from("test"), 1).unwrap();
+    let wallet_db = WalletDatabase::new(wallet_backend);
+    let master_seed = wallet_db.get_master_seed().unwrap().unwrap();
+    let wallet_type = wallet_db.get_wallet_type().unwrap().unwrap();
+    let key_manager = LegacyTransactionKeyManagerWrapper::new_with_legacy_storage(
+        master_seed,
+        key_manager_backend,
+        CryptoFactories::default(),
+        Arc::new(wallet_type),
     )
-    .await;
+    .await
+    .unwrap();
 
-    let exported_outputs = std::fs::File::open(path_buf).unwrap();
-    let mut reader = csv::Reader::from_reader(exported_outputs);
-
-    let mut outputs: Vec<UnblindedOutput> = vec![];
-
-    for output in reader.records() {
-        let output = output.unwrap();
-        let version = match &output[1] {
-            "V0" => TransactionOutputVersion::V0,
-            "V1" => TransactionOutputVersion::V1,
-            _ => panic!("Invalid output version"),
-        };
-        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
-        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
-        let flags = match &output[5] {
-            "Standard" => OutputType::Standard,
-            "Coinbase" => OutputType::Coinbase,
-            "Burn" => OutputType::Burn,
-            "ValidatorNodeRegistration" => OutputType::ValidatorNodeRegistration,
-            "CodeTemplateRegistration" => OutputType::CodeTemplateRegistration,
-            _ => panic!("Invalid output type"),
-        };
-        let maturity = output[6].parse::<u64>().unwrap();
-        let coinbase_extra = CoinBaseExtra::try_from(Vec::from_hex(&output[7]).unwrap()).unwrap();
-        let script = TariScript::from_hex(&output[8]).unwrap();
-        let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
-        let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
-        let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
-        let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
-        let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
-        let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
-        let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
-        let proof = if output[21].is_empty() {
-            None
-        } else {
-            Some(RangeProof::from_hex(&output[21]).unwrap())
-        };
-
-        let features =
-            OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
-        let metadata_signature = ComAndPubSignature::new(
-            ephemeral_commitment,
-            ephemeral_nonce,
-            signature_u_a,
-            signature_u_x,
-            signature_u_y,
-        );
-        let utxo = UnblindedOutput::new(
-            version,
-            value,
-            spending_key,
-            features,
-            script,
-            input_data,
-            script_private_key,
-            sender_offset_public_key,
-            metadata_signature,
-            script_lock_height,
-            covenant,
-            encrypted_data,
-            minimum_value_promise,
-            proof,
-        );
-
-        outputs.push(utxo);
-    }
-
-    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
-    let import_utxos_req = ImportUtxosRequest {
-        outputs: outputs
-            .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
-            .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: MemoField::new_open_from_string(
-            &format!("I import {wallet_a} unspent outputs to {wallet_b}"),
-            TxType::ImportedUtxoNoneRewindable,
-        )
-        .unwrap()
-        .to_bytes(),
+    let output_db = OutputManagerDatabase::new(output_manager_backend);
+    let outputs = if spent {
+        output_db.fetch_spent_outputs(&key_manager).unwrap()
+    } else {
+        output_db.fetch_all_unspent_outputs(&key_manager).unwrap()
     };
 
-    world.last_imported_tx_ids = wallet_b_client
-        .import_utxos(import_utxos_req)
-        .await
-        .unwrap()
-        .into_inner()
-        .tx_ids;
+    let mut unblinded = Vec::with_capacity(outputs.len());
+    for output in outputs {
+        let output = output.wallet_output;
+        let commitment_mask_key = key_manager.get_private_key(output.commitment_mask_key_id()).unwrap();
+        let script_private_key = key_manager.get_private_key(output.script_key_id()).unwrap();
+        unblinded.push(UnblindedOutput::new(
+            output.version(),
+            output.value(),
+            commitment_mask_key,
+            output.features().clone(),
+            output.script().clone(),
+            output.input_data().clone(),
+            script_private_key,
+            output.sender_offset_public_key().clone(),
+            output.metadata_signature().clone(),
+            output.script_lock_height(),
+            output.covenant().clone(),
+            output.encrypted_data().clone(),
+            output.minimum_value_promise(),
+            output.range_proof().clone(),
+        ));
+    }
+    unblinded
+}
+
+async fn import_outputs_into_wallet(world: &mut TariWorld, outputs: Vec<UnblindedOutput>, wallet: &str, memo: &str) {
+    assert!(!outputs.is_empty(), "no outputs to import into wallet {wallet}");
+    let mut client = create_wallet_client(world, wallet.to_string()).await.unwrap();
+    let request = ImportUtxosRequest {
+        outputs: outputs
+            .into_iter()
+            .map(|o| grpc::UnblindedOutput::try_from(o).expect("Unable to make grpc conversion"))
+            .collect(),
+        payment_id: MemoField::new_open_from_string(memo, TxType::ImportedUtxoNoneRewindable)
+            .unwrap()
+            .to_bytes(),
+    };
+    world.last_imported_tx_ids = client.import_utxos(request).await.unwrap().into_inner().tx_ids;
+}
+
+#[then(expr = "I import {word} unspent outputs to {word}")]
+async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+    let outputs = unblinded_outputs_of_wallet(world, &wallet_a, false).await;
+    let memo = format!("I import {wallet_a} unspent outputs to {wallet_b}");
+    import_outputs_into_wallet(world, outputs, &wallet_b, &memo).await;
 }
 
 #[then(expr = "I import {word} spent outputs to {word}")]
-#[allow(clippy::too_many_lines)]
 async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
-    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    if wallet_a_ps.is_running() {
-        cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill().await;
-    }
-
-    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
-
-    let mut cli = get_default_cli();
-
-    let mut path_buf = PathBuf::new();
-    path_buf.push(temp_dir_path);
-    path_buf.push("exported_utxos.csv");
-
-    let args = ExportUtxosArgs {
-        output_file: Some(path_buf.clone()),
-        with_private_keys: true,
-    };
-    cli.command2 = Some(CliCommands::ExportSpentUtxos(args));
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(
-        world,
-        wallet_a.clone(),
-        Some(base_node.clone()),
-        seed_nodes,
-        None,
-        Some(cli),
-    )
-    .await;
-
-    let exported_outputs = std::fs::File::open(path_buf).unwrap();
-    let mut reader = csv::Reader::from_reader(exported_outputs);
-
-    let mut outputs: Vec<UnblindedOutput> = vec![];
-
-    for output in reader.records() {
-        let output = output.unwrap();
-        let version = match &output[1] {
-            "V0" => TransactionOutputVersion::V0,
-            "V1" => TransactionOutputVersion::V1,
-            _ => panic!("Invalid output version"),
-        };
-        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
-        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
-        let flags = match &output[5] {
-            "Standard" => OutputType::Standard,
-            "Coinbase" => OutputType::Coinbase,
-            "Burn" => OutputType::Burn,
-            "ValidatorNodeRegistration" => OutputType::ValidatorNodeRegistration,
-            "CodeTemplateRegistration" => OutputType::CodeTemplateRegistration,
-            _ => panic!("Invalid output type"),
-        };
-        let maturity = output[6].parse::<u64>().unwrap();
-        let coinbase_extra = CoinBaseExtra::try_from(Vec::from_hex(&output[7]).unwrap()).unwrap();
-        let script = TariScript::from_hex(&output[8]).unwrap();
-        let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
-        let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
-        let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
-        let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
-        let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
-        let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
-        let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
-        let proof = if output[21].is_empty() {
-            None
-        } else {
-            Some(RangeProof::from_hex(&output[21]).unwrap())
-        };
-
-        let features =
-            OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
-        let metadata_signature = ComAndPubSignature::new(
-            ephemeral_commitment,
-            ephemeral_nonce,
-            signature_u_a,
-            signature_u_x,
-            signature_u_y,
-        );
-        let utxo = UnblindedOutput::new(
-            version,
-            value,
-            spending_key,
-            features,
-            script,
-            input_data,
-            script_private_key,
-            sender_offset_public_key,
-            metadata_signature,
-            script_lock_height,
-            covenant,
-            encrypted_data,
-            minimum_value_promise,
-            proof,
-        );
-
-        outputs.push(utxo);
-    }
-
-    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
-    let import_utxos_req = ImportUtxosRequest {
-        outputs: outputs
-            .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
-            .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: MemoField::new_open_from_string(
-            &format!("I import {wallet_a} spent outputs to {wallet_b}"),
-            TxType::ImportedUtxoNoneRewindable,
-        )
-        .unwrap()
-        .to_bytes(),
-    };
-
-    world.last_imported_tx_ids = wallet_b_client
-        .import_utxos(import_utxos_req)
-        .await
-        .unwrap()
-        .into_inner()
-        .tx_ids;
+    let outputs = unblinded_outputs_of_wallet(world, &wallet_a, true).await;
+    let memo = format!("I import {wallet_a} spent outputs to {wallet_b}");
+    import_outputs_into_wallet(world, outputs, &wallet_b, &memo).await;
 }
-#[allow(clippy::too_many_lines)]
+
 #[then(expr = "I import {word} unspent outputs as pre_mine outputs to {word}")]
 async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
-    let wallet_a_ps = world.wallets.get_mut(&wallet_a).unwrap();
-    if wallet_a_ps.is_running() {
-        cucumber_steps_log(format!("Stopping wallet {wallet_a}"));
-        wallet_a_ps.kill().await;
-    }
+    let outputs = unblinded_outputs_of_wallet(world, &wallet_a, false).await;
+    let memo = format!("I import {wallet_a} unspent outputs as pre_mine outputs to {wallet_b}");
+    import_outputs_into_wallet(world, outputs, &wallet_b, &memo).await;
+}
 
-    let temp_dir_path = wallet_a_ps.temp_dir_path.clone();
-
-    let mut cli = get_default_cli();
-
-    let mut path_buf = PathBuf::new();
-    path_buf.push(temp_dir_path);
-    path_buf.push("exported_utxos.csv");
-
-    let args = ExportUtxosArgs {
-        output_file: Some(path_buf.clone()),
-        with_private_keys: true,
-    };
-    cli.command2 = Some(CliCommands::ExportUtxos(args));
-
-    let base_node = world.wallet_connected_to_base_node.get(&wallet_a).unwrap();
-    let seed_nodes = world.base_nodes.get(base_node).unwrap().seed_nodes.clone();
-    spawn_wallet(
-        world,
-        wallet_a.clone(),
-        Some(base_node.clone()),
-        seed_nodes,
-        None,
-        Some(cli),
-    )
-    .await;
-
-    let exported_outputs = std::fs::File::open(path_buf).unwrap();
-    let mut reader = csv::Reader::from_reader(exported_outputs);
-
-    let mut outputs: Vec<UnblindedOutput> = vec![];
-
-    for output in reader.records() {
-        let output = output.unwrap();
-        let version = match &output[1] {
-            "V0" => TransactionOutputVersion::V0,
-            "V1" => TransactionOutputVersion::V1,
-            _ => panic!("Invalid output version"),
-        };
-        let value = MicroMinotari(output[2].parse::<u64>().unwrap());
-        let spending_key = PrivateKey::from_hex(&output[3]).unwrap();
-        let flags = match &output[5] {
-            "Standard" => OutputType::Standard,
-            "Coinbase" => OutputType::Coinbase,
-            "Burn" => OutputType::Burn,
-            "ValidatorNodeRegistration" => OutputType::ValidatorNodeRegistration,
-            "CodeTemplateRegistration" => OutputType::CodeTemplateRegistration,
-            _ => panic!("Invalid output type"),
-        };
-        let maturity = output[6].parse::<u64>().unwrap();
-        let coinbase_extra = CoinBaseExtra::try_from(Vec::from_hex(&output[7]).unwrap()).unwrap();
-        let script = TariScript::from_hex(&output[8]).unwrap();
-        let covenant = Covenant::from_bytes(&mut Vec::from_hex(&output[9]).unwrap().as_slice()).unwrap();
-        let input_data = ExecutionStack::from_hex(&output[10]).unwrap();
-        let script_private_key = PrivateKey::from_hex(&output[11]).unwrap();
-        let sender_offset_public_key = CompressedPublicKey::from_hex(&output[12]).unwrap();
-        let ephemeral_commitment = CompressedPedersenCommitment::from_hex(&output[13]).unwrap();
-        let ephemeral_nonce = CompressedPublicKey::from_hex(&output[14]).unwrap();
-        let signature_u_x = PrivateKey::from_hex(&output[15]).unwrap();
-        let signature_u_a = PrivateKey::from_hex(&output[16]).unwrap();
-        let signature_u_y = PrivateKey::from_hex(&output[17]).unwrap();
-        let script_lock_height = output[18].parse::<u64>().unwrap();
-        let encrypted_data = EncryptedData::from_hex(&output[19]).unwrap();
-        let minimum_value_promise = MicroMinotari(output[20].parse::<u64>().unwrap());
-        let proof = if output[21].is_empty() {
-            None
-        } else {
-            Some(RangeProof::from_hex(&output[21]).unwrap())
-        };
-
-        let features =
-            OutputFeatures::new_current_version(flags, maturity, coinbase_extra, None, RangeProofType::BulletProofPlus);
-        let metadata_signature = ComAndPubSignature::new(
-            ephemeral_commitment,
-            ephemeral_nonce,
-            signature_u_a,
-            signature_u_x,
-            signature_u_y,
+#[then(expr = "I check if last imported transactions are valid in wallet {word}")]
+async fn check_last_imported_txs_are_valid(world: &mut TariWorld, wallet: String) {
+    assert!(
+        !world.last_imported_tx_ids.is_empty(),
+        "no imported transactions to check"
+    );
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    for tx_id in world.last_imported_tx_ids.clone() {
+        wait_for!(
+            timeout: DEFAULT_TIMEOUT,
+            description: format!("imported transaction {tx_id} to be valid in wallet {wallet}"),
+            condition: async {
+                let request = GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id],
+                };
+                let response = client.get_transaction_info(request).await.unwrap().into_inner();
+                let tx_info = response.transactions.first().unwrap();
+                match tx_info.status() {
+                    TransactionStatus::Imported |
+                    TransactionStatus::MinedUnconfirmed |
+                    TransactionStatus::MinedConfirmed |
+                    TransactionStatus::OneSidedUnconfirmed |
+                    TransactionStatus::OneSidedConfirmed => Ok(true),
+                    status => Err(format!("current status: {status:?}")),
+                }
+            }
         );
-        let utxo = UnblindedOutput::new(
-            version,
-            value,
-            spending_key,
-            features,
-            script,
-            input_data,
-            script_private_key,
-            sender_offset_public_key,
-            metadata_signature,
-            script_lock_height,
-            covenant,
-            encrypted_data,
-            minimum_value_promise,
-            proof,
-        );
-
-        outputs.push(utxo);
     }
-
-    let mut wallet_b_client = create_wallet_client(world, wallet_b.clone()).await.unwrap();
-    let import_utxos_req = ImportUtxosRequest {
-        outputs: outputs
-            .iter()
-            .map(|o| grpc::UnblindedOutput::try_from(o.clone()).expect("Unable to make grpc conversion"))
-            .collect::<Vec<grpc::UnblindedOutput>>(),
-        payment_id: MemoField::new_open_from_string(
-            &format!("I import {wallet_a} unspent outputs as pre_mine outputs to {wallet_b}"),
-            TxType::ImportedUtxoNoneRewindable,
-        )
-        .unwrap()
-        .to_bytes(),
-    };
-
-    world.last_imported_tx_ids = wallet_b_client
-        .import_utxos(import_utxos_req)
-        .await
-        .unwrap()
-        .into_inner()
-        .tx_ids;
 }
 
 #[then(expr = "I check if wallet {word} has {int} transactions")]

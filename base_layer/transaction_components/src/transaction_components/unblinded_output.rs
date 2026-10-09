@@ -34,7 +34,7 @@ use tari_script::{ExecutionStack, TariScript};
 use super::{RangeProofType, TransactionOutputVersion};
 use crate::{
     MicroMinotari,
-    key_manager::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface},
+    key_manager::TransactionKeyManagerInterface,
     transaction_components::{
         EncryptedData,
         MemoField,
@@ -46,8 +46,11 @@ use crate::{
 };
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
-/// build both inputs and outputs (every input comes from an output). This is only used for import and export where
-/// serialization is important.
+/// build both inputs and outputs (every input comes from an output). This is only used to import outputs whose keys
+/// were created outside this wallet, where serialization is important.
+///
+/// There is intentionally no way to build one from a wallet's own output: a wallet's script private key is
+/// `H("script key", mask) + alpha`, so exporting the mask and script key of any of its outputs reveals the spend key.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
@@ -169,36 +172,6 @@ impl UnblindedOutput {
             key_manager,
         )?;
         Ok(wallet_output)
-    }
-
-    pub fn from_wallet_output<KM: SecretTransactionKeyManagerInterface>(
-        output: WalletOutput,
-        key_manager: &KM,
-    ) -> Result<Self, TransactionError> {
-        let commitment_mask_key = key_manager.get_private_key(output.commitment_mask_key_id())?;
-        let script_private_key = key_manager.get_private_key(output.script_key_id())?;
-        let range_proof = if output.features().range_proof_type == RangeProofType::BulletProofPlus {
-            output.range_proof().clone()
-        } else {
-            None
-        };
-        let unblinded_output = UnblindedOutput {
-            version: output.version(),
-            value: output.value(),
-            commitment_mask_key,
-            features: output.features().clone(),
-            script: output.script().clone(),
-            covenant: output.covenant().clone(),
-            input_data: output.input_data().clone(),
-            script_private_key,
-            sender_offset_public_key: output.sender_offset_public_key().clone(),
-            metadata_signature: output.metadata_signature().clone(),
-            script_lock_height: output.script_lock_height(),
-            encrypted_data: output.encrypted_data().clone(),
-            minimum_value_promise: output.minimum_value_promise(),
-            range_proof,
-        };
-        Ok(unblinded_output)
     }
 }
 

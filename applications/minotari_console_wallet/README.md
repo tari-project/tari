@@ -158,11 +158,21 @@ Clearing custom base node peer in wallet database.
 - **export-utxos**
 
 Export all the unspent transaction outputs (UTXOs) in the wallet. This can either list the UTXOs directly in the
-console, or write them to file. In the latter case the complete unblinded set of information will be exported.
+console, or write them to a CSV file. Exports never contain private keys: the commitment mask and script private key
+of a wallet output are enough to recover the wallet's spend key, so they are not exported in any form. Use
+`export-spent-utxos` for the same listing of spent outputs.
+
+**If you used `--with-private-keys` (or the FFI `wallet_get_unspent_outputs`) in an earlier release**, that export
+permanently contains your wallet's spend key. Create a new wallet (new seed, so a new address), send all funds to
+it, stop using the old address everywhere it is published (pool payouts, exchanges and so on), and delete the old
+export files and any copies or backups of them. The address must change, not just the seed: whoever holds the spend
+key can take back any one-sided payment they send to the old address, because the payer knows that output's mask.
+Importing a leaked export into another wallet does not protect those outputs; anyone with the file can still spend
+them.
 
 ```
 minotari_console_wallet --command "export-utxos"
-minotari_console_wallet --command "export-utxos --csv-file <file name>"
+minotari_console_wallet --command "export-utxos --output-file <file name>"
 ```
 
 example output - console only:
@@ -172,37 +182,28 @@ $ minotari_console_wallet --command "export-utxos"
 
 1. export-utxos
 
-1. Value: 6000 µT OutputFeatures: Flags = (empty), Maturity = 0
-2. Value: 10000 µT OutputFeatures: Flags = (empty), Maturity = 0
+1. Value: 6000 µT, Features: ..., Commitment: 22514e27..., isMultisig: false
+2. Value: 10000 µT, Features: ..., Commitment: 88f4e721..., isMultisig: false
 ...
-5229. Value: 5538.613962 T OutputFeatures: Flags = (empty), Maturity = 0
-5230. Value: 5538.616395 T OutputFeatures: Flags = (empty), Maturity = 0
 Total number of UTXOs: 5230
 Total value of UTXOs: 1268921.295856 T
 ```
 
-example output - `--csv-file` (console output):
+example output - `--output-file` (console output):
 
 ```
-$ minotari_console_wallet --command "export-utxos --csv-file utxos.csv"
+$ minotari_console_wallet --command "export-utxos --output-file utxos.csv"
 
-1. export-utxos --csv-file utxos.csv
+1. export-utxos --output-file utxos.csv
 
 Total number of UTXOs: 11
 Total value of UTXOs: 36105.165440 T
 ```
 
-example output - `--csv-file` (contents of `utxos.csv`)
-
-```
-"#","Value (uT)","Spending Key","Commitment","Flags","Maturity"
-"1","121999250","0b0ce2add569845ec8bb84256b731e644e2224580b568e75666399e868ea5701","22514e279bd7e7e0a6e45905e07323b16f6114e300bcc02f36b2baf44a17b43d","(empty)","0"
-"2","124000000","8829254b5267de26fe926f30518604abeec156740abe64b435ac6081269f2f0d","88f4e7216353032b90bee1c8b4243c3f25b357902a5cb145fda1c98316525214","(empty)","0"
-"3","125000000","295853fad02d56313920130c3a5fa3aa8be54297ee5375aa2d788f4e49f08309","72a42d2db4f8eebbc4d0074fcb04338b8caa22312ce6a68e8798c2452b52e465","(empty)","0"
-...
-"10","5513131148","a6323f62ef21c45f03c73b424d9823b1a0f44a4408be688e5f6fde6419a11407","dcec835619474a62b5cef8227481cebd5831aec515e85286f3932c8093e9d06b","COINBASE_OUTPUT","10655"
-"11","5513145680","5af45bff0f533999c94ec799aa4789260a1b989207363c33ec6ec388899ec906","7ec353f1f005637192d50104b3c5b4621d1ebdafb5c5cc078cf3f86754669352","COINBASE_OUTPUT","10649"
-```
+The CSV file has the columns `index`, `version`, `value`, `commitment`, `output_type`, `maturity`, `coinbase_extra`,
+`script`, `covenant`, `input_data`, `sender_offset_public_key`, `ephemeral_commitment`, `ephemeral_nonce`,
+`signature_u_x`, `signature_u_a`, `signature_u_y`, `script_lock_height`, `encrypted_data`, `minimum_value_promise`
+and `range_proof`.
 
 - **count-utxos**
 

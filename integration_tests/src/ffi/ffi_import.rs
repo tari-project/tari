@@ -55,8 +55,6 @@ pub type TariCovenant = c_void;
 pub type TariEncryptedOpenings = c_void;
 #[allow(dead_code)]
 pub type TariUnblindedOutput = c_void;
-#[allow(dead_code)]
-pub type TariUnblindedOutputs = c_void;
 pub type TariCompletedTransactions = c_void;
 pub type TariPendingOutboundTransactions = c_void;
 pub type TariPendingOutboundTransaction = c_void;
@@ -146,13 +144,6 @@ unsafe extern "C" {
         error_out: *mut c_int,
     ) -> *mut TariUnblindedOutput;
     pub fn tari_unblinded_output_destroy(output: *mut TariUnblindedOutput);
-    pub fn unblinded_outputs_get_length(outputs: *mut TariUnblindedOutputs, error_out: *mut c_int) -> c_uint;
-    pub fn unblinded_outputs_get_at(
-        outputs: *mut TariUnblindedOutputs,
-        position: c_uint,
-        error_out: *mut c_int,
-    ) -> *mut TariUnblindedOutput;
-    pub fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOutputs);
     pub fn wallet_import_external_utxo_as_non_rewindable(
         wallet: *mut TariWallet,
         output: *mut TariUnblindedOutput,
@@ -160,7 +151,6 @@ unsafe extern "C" {
         payment_id: *const c_char,
         error_out: *mut c_int,
     ) -> c_ulonglong;
-    pub fn wallet_get_unspent_outputs(wallet: *mut TariWallet, error_out: *mut c_int) -> *mut TariUnblindedOutputs;
     pub fn private_key_create(bytes: *mut ByteVector, error_out: *mut c_int) -> *mut TariPrivateKey;
     pub fn private_key_destroy(pk: *mut TariPrivateKey);
     pub fn private_key_get_bytes(pk: *mut TariPrivateKey, error_out: *mut c_int) -> *mut ByteVector;
