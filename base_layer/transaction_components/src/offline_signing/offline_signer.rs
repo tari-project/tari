@@ -83,7 +83,7 @@ fn payload_challenge(nonce_pub: &CompressedPublicKey, view_pub: &CompressedPubli
 ///
 /// The challenge binds the nonce public key R and view public key P so that neither
 /// can be substituted after signing.
-fn sign_payload<KM: TransactionKeyManagerInterface>(
+pub(crate) fn sign_payload<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     canonical: &[u8],
 ) -> Result<PayloadIntegritySignature, TransactionBuilderError> {
