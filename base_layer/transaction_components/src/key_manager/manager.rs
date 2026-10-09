@@ -234,7 +234,9 @@ fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offse
 /// Refuses a nonce key id that would give up the private key it signs with, and the zero signing key.
 ///
 /// A `Zero` signing key makes the signature `s = r`, which hands back the private value behind the nonce id - any
-/// `Encrypted` id the caller names.
+/// `Encrypted` id the caller names. Refusing it only removes the trivial case: a caller that mints a known signing
+/// key `x` with `create_encrypted_key` still gets `r = s - e·x`. The follow-up that moves software signatures onto
+/// reserved handles and deletes the catch-all arm closes both that and the `Encrypted` nonce case below.
 ///
 /// A Schnorr signature is `s = r + e·k`, so anyone who knows `r` - or who holds two signatures under one `r` - can
 /// solve for `k`. The ids refused here are the ones whose private value is fixed (`Zero`, `SpendKey`, `ViewKey`,

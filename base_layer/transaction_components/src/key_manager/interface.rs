@@ -256,11 +256,13 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// Signs `challenge` with `private_key_id` under `nonce`. A `Zero`, `SpendKey`, `ViewKey`, `CodeTemplateAuthor`,
     /// `Derived`, `DHCommitmentMask` or `DHEncryptedData` nonce, or one equal to the signing key, is refused with
     /// [`KeyManagerError::InvalidNonceKeyId`]. A `Zero` signing key, or one that resolves to zero, is refused with
-    /// [`KeyManagerError::InvalidSigningKeyId`], because the signature would be the nonce itself.
+    /// [`KeyManagerError::InvalidSigningKeyId`], because the signature would be the nonce itself. That only removes
+    /// the trivial case: a signing key the caller knows (minted with `create_encrypted_key`) still reveals the value
+    /// behind an `Encrypted` nonce.
     ///
     /// This does not refuse every nonce the caller could know. An `Encrypted` nonce is still caller controllable -
     /// `create_encrypted_key` wraps any scalar - so it must be fresh and used for one signature only: a known nonce,
-    /// or two signatures under one, gives up the signing key. Closing that means moving software signatures onto
+    /// or two signatures under one, gives up the signing key. Closing both means moving software signatures onto
     /// reserved handles and deleting the catch-all arm.
     fn sign_with_nonce_and_challenge(
         &self,
