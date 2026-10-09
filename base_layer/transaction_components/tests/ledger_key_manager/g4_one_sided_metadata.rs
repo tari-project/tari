@@ -42,7 +42,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError},
     test_helpers::{TestParams, UtxoTestParams, create_consensus_constants, create_consensus_manager},
-    transaction_builder::{RecipientSpec, TransactionBuilder},
+    transaction_builder::{PendingOutput, RecipientSpec, TransactionBuilder, TransactionBuilderError},
     transaction_components::{
         MemoField,
         OutputFeatures,
@@ -444,5 +444,57 @@ fn a_to_self_output_and_its_change_are_signed_without_a_review() {
             "the to-self output and the change should both be signed by the reviewed instruction: {wire:?}"
         );
         assert_transaction_validates(&finalized.transaction);
+    });
+}
+
+/// An offline signing payload's pre-built (custom) output, on a ledger wallet, is refused when it is added - before
+/// `build`, and so before the device is asked to review the recipient. This is the sequence the offline one-sided
+/// signer runs: a recipient, one reservation covering the custom output too, then the custom output with the
+/// device held sender offset key the reservation issued for it. Without the early refusal the user would approve the
+/// recipient's review and the build would then fail on the custom output's re-sign.
+#[test]
+fn a_custom_output_with_a_device_sender_offset_is_refused_before_any_review() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let receiver = fixtures::published_receiver(0).unwrap_or_else(|e| panic!("{e}"));
+        let custom_output = ledger_input(&key_manager, 5_000);
+
+        let (error, wire) = device.watch(|| {
+            let mut builder = ledger_builder(&key_manager, 1_000_000);
+            builder
+                .add_stealth_recipient(
+                    receiver.clone(),
+                    MicroMinotari(12_345),
+                    OutputFeatures::default(),
+                    MemoField::new_empty(),
+                )
+                .expect("the recipient");
+            let pending = PendingOutput::from_output(&custom_output).expect("a pending custom output");
+            let mut keys = builder
+                .reserve_sender_offset_keys(&[pending])
+                .expect("the sender offset keys");
+            let sender_offset = keys.pop().expect("the custom output's sender offset key");
+            assert!(
+                matches!(sender_offset.key_id, TariKeyId::LedgerKey { .. }),
+                "expected a device held sender offset key, got {}",
+                sender_offset.key_id
+            );
+            builder
+                .with_output(custom_output.clone(), sender_offset.key_id, None)
+                .map(|_| ())
+                .expect_err("a custom output with a device held sender offset key on a ledger wallet")
+        });
+        assert!(
+            matches!(
+                error,
+                TransactionBuilderError::KeyManagerError(KeyManagerError::LedgerSenderOffsetNeedsRecipient)
+            ),
+            "got {error:?}"
+        );
+        assert_eq!(
+            wire.count(Instruction::GetOneSidedMetadataSignature),
+            0,
+            "nothing may be put up for review before the refusal: {wire:?}"
+        );
     });
 }

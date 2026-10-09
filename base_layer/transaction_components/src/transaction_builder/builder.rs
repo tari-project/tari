@@ -527,12 +527,22 @@ where KM: TransactionKeyManagerInterface
     /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_keys`], or the caller must have registered
     /// the matching partial script offset with [`Self::with_host_derived_partial_script_offset`]; otherwise the key
     /// is never subtracted from the script offset and the transaction will not validate.
+    ///
+    /// A device held sender offset key (`TariKeyId::LedgerKey`) is refused with
+    /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]. A custom output carries no recipient address, so its
+    /// metadata signature is (re-)signed with none, which a ledger wallet refuses for a device held key - and only
+    /// inside `build`, after the user has already approved the recipients' reviews on the device. Refusing here
+    /// stops the transaction before the device is asked to review anything. A software wallet cannot sign with a
+    /// device held key at all.
     pub fn with_output(
         &mut self,
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        if matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+            return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient.into());
+        }
         let nonce = self.key_manager.get_random_key(None, None)?;
         let pair = OutputPair::new(output, nonce.key_id, sender_offset_key_id, custom_recovery_key_id);
         self.custom_outputs.push(pair);
@@ -1783,6 +1793,29 @@ mod test {
         transaction_components::{MemoField, OutputFeatures},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
+
+    /// A custom output with a device held sender offset key is refused when it is added, before `build` - and so
+    /// before a ledger device is asked to review any recipient - with the typed error the re-sign would have hit.
+    #[test]
+    fn a_custom_output_with_a_device_held_sender_offset_key_is_refused_when_added() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let output = create_test_input(MicroMinotari(5_000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        let device_held = TariKeyId::LedgerKey {
+            branch: minotari_ledger_wallet_common::common_types::LedgerKeyBranch::OneSidedSenderOffset,
+            index: 7,
+        };
+        let err = builder.with_output(output, device_held, None).map(|_| ()).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                TransactionBuilderError::KeyManagerError(KeyManagerError::LedgerSenderOffsetNeedsRecipient)
+            ),
+            "got {err:?}"
+        );
+        assert!(builder.custom_outputs.is_empty());
+    }
 
     /// A wallet address to send to that is not this wallet's own.
     fn random_address() -> TariAddress {

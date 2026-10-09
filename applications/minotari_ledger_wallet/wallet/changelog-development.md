@@ -63,6 +63,8 @@ All notable changes to this project will be documented in this file. See [standa
     script, so they hit `LedgerSenderOffsetNeedsRecipient`.
   - Aggregated (multi-party) sender metadata signatures by a `OneSidedSenderOffset` key:
     `LedgerSenderOffsetRawSignature`.
+  - Offline signing payloads that carry pre-built (custom) outputs: `LedgerSenderOffsetNeedsRecipient`, refused before
+    the device is asked to review anything.
 
   HTLC claims and refunds, and the pre-mine ceremony, are unaffected. The coinbase's host held sender offset key still
   signs in software.
