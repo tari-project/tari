@@ -126,16 +126,18 @@ fn sign(receiver: &TariAddress) -> Result<ComAndPubSignature, LedgerDeviceError>
     ledger_get_one_sided_metadata_signature(
         ACCOUNT,
         receiver.network(),
-        0,
         VALUE,
         SENDER_OFFSET_KEY_INDEX,
         minotari_ledger_wallet_common::common_types::LedgerKeyBranch::OneSidedSenderOffset,
-        false,
         // A fixed commitment mask rather than a random one: nothing here depends on it being secret, and a
         // constant means two runs of the same scenario send the same bytes.
         &PrivateKey::from(42u64),
         receiver,
-        &[7u8; 32],
+        &minotari_ledger_wallet_comms_testing::fixtures::metadata_preimage(
+            &minotari_ledger_wallet_common::metadata_output::DEFAULT_OUTPUT_FEATURES,
+            80,
+            0,
+        ),
     )
 }
 

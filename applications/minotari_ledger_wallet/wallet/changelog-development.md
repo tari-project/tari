@@ -18,35 +18,38 @@ All notable changes to this project will be documented in this file. See [standa
   review. (Its script signature, script Schnorr signature and Diffie-Hellman instructions still accept it; those use
   other hash domains and cannot make a metadata signature.)
 
-  Only change the wallet built is auto-approved: the host flags its transaction builder's change output
-  (`GetOneSidedMetadataSignature` gains an optional trailing `is_change` byte), and the device signs it without a
-  review only when it is also to this wallet's own address - its view key and spend key both this device's own, for
-  the account the host names. Everything else is reviewed, including outputs to the wallet's own address that are not
-  change: payments to self, coin split and join, validator node registration and exit, offline signing payload
-  recipients and the backup pre-mine spend. A flagged output to any other address is reviewed too, as is an address
-  carrying this wallet's spend key with any other view key: the host derives the output's mask and encrypted data
-  from the view key, so such an output would be locked to this wallet yet invisible to its scanner.
+  **The device reads what it signs.** `GetOneSidedMetadataSignature` (now instruction `0x15`, chunked) carries the
+  output's raw version, features, covenant, encrypted data and minimum value promise, and the device hashes them
+  into the metadata signature itself, instead of trusting a 32 byte hash from the host. It also builds the script
+  itself, as it always has. A host that lies about any of these fields gets a signature that verifies on no output
+  carrying the fields it publishes, because consensus recomputes the hash from the output's own fields.
+
+  The device signs without a review only an output that is change in every respect it can see: to this wallet's own
+  address - its view key and spend key both this device's own, for the account the host names - with default
+  features (a standard output, maturity 0, no coinbase data, no sidechain feature, a bullet proof range proof), an
+  empty covenant and no minimum value promise. Change, coin splits and joins and payments to self are silent.
+  Everything else is reviewed, and the review shows what is not default: the output type, a maturity, a sidechain
+  feature (with the validator node's key for a registration or exit), a minimum value promise, a revealed value range
+  proof. An address carrying this wallet's spend key with any other view key is reviewed too: the host derives the
+  output's mask and encrypted data from the view key, so such an output would be locked to this wallet yet invisible
+  to its scanner. The device refuses a covenant, a burn and a coinbase outright (`OutputNotSignable`).
+
+  This closes "change" that is really a burn claimable on L2 by a key the host chooses, a freeze behind a huge
+  maturity or a covenant, and an offline payload recipient at the wallet's own address carrying a maturity: all of
+  them are now either reviewed, with the reason shown, or refused.
 
   What this does not close, each tracked separately:
-  - It does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender
-    offset key, together with the unreviewed script offset, remain a residual. A compromised host can also set the
-    change flag on any output to the wallet's own address.
-  - Auto-approved "change" is not necessarily change. The device binds the stealth script to this wallet's spend key,
-    but the output features, covenant, encrypted data and minimum value promise reach it as an opaque hash and are
-    host chosen and not inspected - as they were not when change was signed raw. So a host can get a no-prompt
-    signature on "change" that is a confidential burn claimable on L2 by a key the host chooses (a burned output never
-    runs its script, and the L2 claim needs only the commitment mask, which the host knows): theft, not merely loss. It
-    can equally be locked by maturity or a covenant, or unrecoverable from its encrypted data. Closing the script
-    offset residual alone would not close this: auto-approval has to see the features in the clear - a standard
-    output, no sidechain feature, an empty covenant - before it can be trusted.
+  - It does not by itself stop a compromised host from spending without a prompt: the script offset the device hands
+    the host, together with an output under a host held sender offset key, remains a residual.
+  - The encrypted data is hashed but not verified: it is data only the receiver reads, and a lie there only affects
+    the receiver's recovery of the output.
+  - The device never sees the fee. An offline payload's author can set a fee up to the total recipient amount -
+    recipients at this wallet's own address count towards that cap. A summary of an offline payload's fee on the
+    Ledger console wallet is a follow-up.
   - `PreMine` sender offset keys are not refused. A host can mint them on demand on any wallet, through
     `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
     offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs
     with the separate pre-mine issue.
-  - The device never sees the fee or the output features of any transaction, and auto-approved change shows nothing
-    at all. An offline payload's author can set a fee up to the total recipient amount - recipients at this wallet's
-    own address count towards that cap - and the payload recipients' features, such as maturity, are not shown. A
-    summary of an offline payload's fee and output features on the Ledger console wallet is a follow-up.
 
 
 ### ⚠ Upgrade notes
@@ -59,12 +62,11 @@ All notable changes to this project will be documented in this file. See [standa
 * **Redo pre-mine step 2.** Step 2 session files written with an older application name keys this application no
   longer signs with (a `OneSidedSenderOffset` sender offset key, and nonce indexes that older applications derived
   modulo `2^32`). Start those sessions again from step 2.
-* **Sends with change need the wallet and the application from this change together - upgrade both.** Older
-  wallets sign change through `GetRawSchnorrSignature`, which this application refuses: with an older wallet on this
-  application the user approves the recipient's review screen, and the send then fails on the change with
-  `BadBranchKey`. A wallet from this change against an older application still works, but the older application
-  shows change for review: it ignores the trailing `is_change` byte, which this change appends to
-  `GetOneSidedMetadataSignature` for change only, after the `sender_offset_branch` it then always sends.
+* **Upgrade the wallet and the Ledger application together - neither works with the other's older version.**
+  `GetOneSidedMetadataSignature` moved from instruction `0x11`, one APDU with an opaque hash, to `0x15`, chunked with
+  the raw fields; `0x11` is retired. An older wallet on this application is refused every metadata signature
+  (`InsNotSupported`), and its change is refused on `GetRawSchnorrSignature` (`BadBranchKey`); this wallet on an older
+  application is refused every metadata signature too.
 * **Not supported on a Ledger wallet:**
   - Burns, plain and L2-bound: refused by the transaction service with `NotSupported` before any input is selected. In
     the key manager a plain burn's script hits `LedgerSenderOffsetNeedsRecipient`, and an L2-bound burn's host held
@@ -80,11 +82,10 @@ All notable changes to this project will be documented in this file. See [standa
 
   HTLC claims and refunds, and the pre-mine ceremony, are not affected by these refusals. The coinbase's host held
   sender offset key still signs in software.
-* **Outputs to the wallet's own address are now reviewed, one screen per output.** On a Ledger wallet every to-self
-  output - coin split and join, payment to self, validator node registration and exit - and every offline signing
-  payload recipient shows a review, so an N-way coin split means N prompts, and split, join and validator node flows
-  that used to run unattended now need someone at the device. The review screen shows the address and does not label
-  it as this wallet's own. Only the change the wallet's transaction builder makes is signed without a review.
+* **Outputs that are not plain change are reviewed.** Validator node registration and exit, and any output carrying a
+  maturity, a minimum value promise or a revealed value range proof, now show a review even when they go to the
+  wallet's own address; the review names what is not default. Change, coin splits and joins and payments to self with
+  default features stay silent.
 * **Withdraw multisig funds before upgrading.** A Ledger wallet that is a party to a multisig deposit made with an
   earlier wallet and application should withdraw those funds - or have a software co-signer withdraw them - before
   upgrading. The new wallet refuses the Ledger side of a multisig withdraw with `LedgerSenderOffsetNeedsRecipient`.

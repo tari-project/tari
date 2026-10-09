@@ -6,8 +6,9 @@
 //!
 //! It is the only way a `OneSidedSenderOffset` key signs anything. (`PreMine` sender offset keys, which a host can
 //! mint on demand through `get_script_offset` with a `PreMine` script key, still sign raw challenges; that belongs
-//! with the separate pre-mine issue.) Change is signed through it too, with the wallet's own address and the change
-//! flag, and the device signs that without a review; an unflagged output to the wallet's own address is reviewed.
+//! with the separate pre-mine issue.) Change is signed through it too, with the wallet's own address. The device is
+//! sent the output's raw common fields and hashes them itself, so it signs an output to the wallet's own address with
+//! default features without a review, and reviews anything else - showing what is not default.
 //!
 //! `GetOneSidedMetadataSignature` is the only instruction in the application that puts anything in front of a
 //! human: it shows the amount, the receiver and any payment ID, and does not answer until somebody approves or
@@ -30,10 +31,11 @@
 //! puts its timing on the merge path on purpose.
 
 use minotari_ledger_wallet_common::common_types::{Instruction, LedgerKeyBranch};
+use minotari_ledger_wallet_comms::accessor_methods::ledger_get_one_sided_metadata_signature;
 use minotari_ledger_wallet_comms_testing::{
     approver::{Outcome, while_reviewing},
     fixtures,
-    review::ExpectedReview,
+    review::{ExpectedReview, MATURITY_FIELD},
 };
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -44,7 +46,14 @@ use tari_script::{ExecutionStack, push_pubkey_script, script};
 use tari_transaction_components::{
     MicroMinotari,
     crypto_factories::CryptoFactories,
-    key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError},
+    key_manager::{
+        KeyManager,
+        SecretTransactionKeyManagerInterface,
+        TariKeyAndId,
+        TariKeyId,
+        TransactionKeyManagerInterface,
+        error::KeyManagerError,
+    },
     test_helpers::{TestParams, UtxoTestParams, create_consensus_constants, create_consensus_manager},
     transaction_builder::{PendingOutput, RecipientSpec, TransactionBuilder, TransactionBuilderError},
     transaction_components::{
@@ -52,6 +61,7 @@ use tari_transaction_components::{
         OutputFeatures,
         Transaction,
         TransactionError,
+        TransactionOutput,
         WalletOutput,
         WalletOutputBuilder,
     },
@@ -229,17 +239,16 @@ fn device_sender_offset_key(key_manager: &KeyManager) -> TariKeyAndId {
     sender_offsets.pop().expect("one sender offset key")
 }
 
-/// A change-shaped output to the wallet's own address that is not flagged as change - which is everything
-/// `WalletOutputBuilder` signs; only `TransactionBuilder::build_change` sets the flag - is reviewed, like the same
-/// output to a foreign receiver. Both verify once approved, and neither involves a raw Schnorr signature or a nonce
-/// reservation. The flagged, unreviewed case is
-/// `a_send_with_change_reviews_the_recipient_and_signs_the_change_without_a_review`.
+/// A change-shaped output to the wallet's own address with default features is signed with no review; the same
+/// output to a foreign receiver is reviewed. Both verify, and neither involves a raw Schnorr signature or a nonce
+/// reservation. Nothing answers a review for the first, so a device that showed one would leave the exchange
+/// outstanding until the read timeout and fail this test.
 ///
 /// The output is built the way `TransactionBuilder::build_change` builds one: the script is `PushPubKey` of the
 /// alpha derived script key generated with the commitment mask, which is the stealth script to the wallet's own
 /// address.
 #[test]
-fn an_unflagged_output_to_the_own_address_is_reviewed_like_a_foreign_one() {
+fn an_own_address_output_with_default_features_is_silent_and_a_foreign_one_is_reviewed() {
     with_device(|device| {
         let key_manager = device.key_manager();
         let own_address = own_address(&key_manager);
@@ -254,26 +263,23 @@ fn an_unflagged_output_to_the_own_address_is_reviewed_like_a_foreign_one() {
             .expect("encrypted data")
             .with_script_key(change_script_key.key_id.clone());
 
-        let expected = ExpectedReview::one_sided_metadata_signature(value, &own_address.to_base58(), 0);
-        let ((signed, review), wire) = device.watch(|| {
-            while_reviewing(device.approver(), &expected, Outcome::Approve, || {
-                builder
-                    .clone()
-                    .sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
-            })
+        let (signed, wire) = device.watch(|| {
+            builder
+                .clone()
+                .sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
         });
-        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
         assert_eq!(
             (
                 wire.count(Instruction::GetOneSidedMetadataSignature),
                 wire.count(Instruction::GetRawSchnorrSignature),
                 wire.count(Instruction::GenerateEphemeralNonce),
             ),
-            (1, 0, 0),
-            "the output should be signed by the reviewed instruction alone: {wire:?}"
+            // The head and one preimage chunk.
+            (2, 0, 0),
+            "the output should be signed by the metadata signature instruction alone: {wire:?}"
         );
         let output = signed
-            .expect("an approved, unflagged output to the device's own address")
+            .expect("an output to the device's own address, signed with no review")
             .try_build(&key_manager)
             .expect("a wallet output");
         assert_metadata_signature_verifies(&output);
@@ -295,6 +301,122 @@ fn an_unflagged_output_to_the_own_address_is_reviewed_like_a_foreign_one() {
             .try_build(&key_manager)
             .expect("a wallet output");
         assert_metadata_signature_verifies(&output);
+    });
+}
+
+/// An output to the wallet's own address with a maturity is reviewed, and the review shows the maturity: before the
+/// device read the features, it would have signed such a "change" - a freeze of the funds - silently.
+#[test]
+fn an_own_address_output_with_a_maturity_is_reviewed_showing_it() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let own_address = own_address(&key_manager);
+        let value = 12_345;
+        let maturity = 1_000_000;
+
+        let (commitment_mask, change_script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let builder = WalletOutputBuilder::new(MicroMinotari(value), commitment_mask.key_id.clone())
+            .with_features(OutputFeatures {
+                maturity,
+                ..Default::default()
+            })
+            .with_script(push_pubkey_script(&change_script_key.pub_key))
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .expect("encrypted data")
+            .with_script_key(change_script_key.key_id.clone());
+
+        let expected = ExpectedReview::one_sided_metadata_signature(value, &own_address.to_base58(), 0)
+            .with_output_field(MATURITY_FIELD, &maturity.to_string());
+        let (signed, review) = while_reviewing(device.approver(), &expected, Outcome::Approve, || {
+            builder.sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
+        });
+        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
+        let output = signed
+            .expect("an approved output with a maturity")
+            .try_build(&key_manager)
+            .expect("a wallet output");
+        assert_metadata_signature_verifies(&output);
+    });
+}
+
+/// A host that lies to the device about an output's features gets a signature that verifies on no output carrying
+/// the features it publishes.
+///
+/// The host tells the device the output has default features - which the device signs silently for the wallet's
+/// own address - and publishes it with a maturity instead. The signature verifies on the output the device was told
+/// about, and not on the one the host published, because the device hashed the fields it read and consensus hashes
+/// the published output's own.
+#[test]
+fn a_host_that_lies_about_the_features_gets_a_signature_that_does_not_verify() {
+    with_device(|device| {
+        let account = fixtures::random_u64();
+        let key_manager = device.key_manager_for(account);
+        let own_address = own_address(&key_manager);
+        let value = 12_345;
+
+        let (commitment_mask, change_script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let TariKeyId::LedgerKey { branch, index } = sender_offset.key_id else {
+            panic!("a device held sender offset key");
+        };
+        // One builder, so the two outputs differ in their features and nothing else - the encrypted data included.
+        let base = WalletOutputBuilder::new(MicroMinotari(value), commitment_mask.key_id.clone())
+            .with_script(push_pubkey_script(&change_script_key.pub_key))
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .expect("encrypted data")
+            .with_script_key(change_script_key.key_id.clone())
+            .with_sender_offset_public_key(sender_offset.pub_key.clone());
+        let shape = |features: OutputFeatures| {
+            base.clone()
+                .with_features(features)
+                .with_place_holder_metadata_signature(&key_manager, &sender_offset.key_id)
+                .expect("a placeholder signature")
+                .try_build(&key_manager)
+                .expect("a wallet output")
+                .to_transaction_output()
+                .expect("a transaction output")
+        };
+        let told = shape(OutputFeatures::default());
+        let published = shape(OutputFeatures {
+            maturity: 1_000_000,
+            ..Default::default()
+        });
+
+        let preimage = TransactionOutput::metadata_signature_message_common_preimage(
+            &told.version,
+            &told.features,
+            &told.covenant,
+            &told.encrypted_data,
+            &told.minimum_value_promise,
+        )
+        .expect("a preimage");
+        let signature = ledger_get_one_sided_metadata_signature(
+            account,
+            network(),
+            value,
+            index,
+            branch,
+            &key_manager
+                .get_private_key(&commitment_mask.key_id)
+                .expect("the commitment mask"),
+            &own_address,
+            &preimage,
+        )
+        .expect("default features to the device's own address, signed with no review");
+
+        let mut told = told;
+        told.metadata_signature = signature.clone();
+        told.verify_metadata_signature()
+            .expect("the signature verifies on the output the device was told about");
+        let mut published = published;
+        published.metadata_signature = signature;
+        assert!(
+            published.verify_metadata_signature().is_err(),
+            "the signature must not verify on an output with features the device was not shown"
+        );
     });
 }
 
@@ -406,39 +528,32 @@ fn a_send_with_change_reviews_the_recipient_and_signs_the_change_without_a_revie
             "no output may be signed through the raw instruction: {wire:?}"
         );
         assert!(
-            wire.count(Instruction::GetOneSidedMetadataSignature) >= 2,
-            "the recipient and the change should both be signed by the reviewed instruction: {wire:?}"
+            wire.count(Instruction::GetOneSidedMetadataSignature) >= 4,
+            "the recipient and the change should both be signed by the metadata signature instruction: {wire:?}"
         );
         assert_transaction_validates(&finalized.transaction);
     });
 }
 
-/// A `RecipientSpec::to_self` output, through `TransactionBuilder`: it goes to this wallet's own address but is not
-/// change, so the device reviews it - the approver answers exactly that one review - while the change, flagged by
-/// `build_change`, is signed with none. A device that also put the change up for review would leave that exchange
-/// outstanding until the read timeout and fail this test. The wire shows no raw Schnorr signature and no nonce
-/// reservation, and the finalised transaction validates.
+/// A `RecipientSpec::to_self` output, through `TransactionBuilder`: it and the change are both outputs to this wallet
+/// with default features, so the device signs the whole transaction with no review at all. Nothing answers a review
+/// here. The wire shows no raw Schnorr signature and no nonce reservation, and the finalised transaction validates.
 #[test]
-fn a_to_self_output_is_reviewed_and_its_change_is_not() {
+fn a_to_self_output_and_its_change_are_signed_without_a_review() {
     with_device(|device| {
         let key_manager = device.key_manager();
-        let own_address = own_address(&key_manager);
-        let value = 12_345;
 
         let mut builder = ledger_builder(&key_manager, 1_000_000);
         builder
             .with_recipient_spec(RecipientSpec::to_self(
-                MicroMinotari(value),
+                MicroMinotari(12_345),
                 OutputFeatures::default(),
                 MemoField::new_empty(),
             ))
             .expect("the to-self output");
         builder.reserve_sender_offset_keys(&[]).expect("the sender offset keys");
 
-        let expected = ExpectedReview::one_sided_metadata_signature(value, &own_address.to_base58(), 0);
-        let ((finalized, review), wire) =
-            device.watch(|| while_reviewing(device.approver(), &expected, Outcome::Approve, || builder.build()));
-        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
+        let (finalized, wire) = device.watch(|| builder.build());
         let finalized = finalized.expect("a finalised transaction to self");
 
         assert!(
@@ -454,8 +569,8 @@ fn a_to_self_output_is_reviewed_and_its_change_is_not() {
             "no output may be signed through the raw instruction: {wire:?}"
         );
         assert!(
-            wire.count(Instruction::GetOneSidedMetadataSignature) >= 2,
-            "the to-self output and the change should both be signed by the reviewed instruction: {wire:?}"
+            wire.count(Instruction::GetOneSidedMetadataSignature) >= 4,
+            "the to-self output and the change should both be signed by the metadata signature instruction: {wire:?}"
         );
         assert_transaction_validates(&finalized.transaction);
     });

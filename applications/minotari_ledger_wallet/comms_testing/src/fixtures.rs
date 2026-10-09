@@ -272,6 +272,69 @@ pub fn stealth_script(commitment_mask: &RistrettoSecretKey, receiver_public_spen
     script
 }
 
+/// A metadata signature preimage, built by hand: output version 0, the borsh encoded `features`, the empty covenant,
+/// `encrypted_data_size` bytes of encrypted data and `minimum_value_promise`. See
+/// `minotari_ledger_wallet_common::metadata_output` for the layout; `tari_transaction_components` checks the same
+/// layout against the real consensus types, which this crate deliberately does not depend on.
+pub fn metadata_preimage(features: &[u8], encrypted_data_size: u32, minimum_value_promise: u64) -> Vec<u8> {
+    let mut preimage = vec![0];
+    preimage.extend_from_slice(features);
+    preimage.push(0);
+    preimage.extend_from_slice(&encrypted_data_size.to_le_bytes());
+    preimage.extend(std::iter::repeat_n(
+        0x5a,
+        usize::try_from(encrypted_data_size).unwrap_or(0),
+    ));
+    preimage.extend_from_slice(&minimum_value_promise.to_le_bytes());
+    preimage
+}
+
+/// The borsh encoding of `OutputFeatures` with `output_type`, `maturity` and an optional sidechain feature's encoding,
+/// otherwise default.
+pub fn output_features(output_type: u8, maturity: u64, sidechain_feature: Option<&[u8]>) -> Vec<u8> {
+    let mut features = vec![0, output_type];
+    features.extend_from_slice(&maturity.to_le_bytes());
+    features.extend_from_slice(&0u32.to_le_bytes());
+    match sidechain_feature {
+        None => features.push(0),
+        Some(feature) => {
+            features.push(1);
+            features.extend_from_slice(feature);
+        },
+    }
+    features.push(0);
+    features
+}
+
+/// The borsh encoding of a `SideChainFeature` holding a `ValidatorNodeRegistration` for `validator_node_public_key`,
+/// with no sidechain id. The signature, claim key and epoch are arbitrary: the device only reads the shape and the
+/// validator node's key.
+pub fn validator_node_registration(validator_node_public_key: &[u8; 32]) -> Vec<u8> {
+    let key = |bytes: &[u8; 32]| {
+        let mut out = 32u32.to_le_bytes().to_vec();
+        out.extend_from_slice(bytes);
+        out
+    };
+    let mut feature = vec![0];
+    feature.extend(key(validator_node_public_key));
+    feature.extend(key(&[0x51; 32]));
+    feature.extend(key(&[0x52; 32]));
+    feature.extend(key(&[0x53; 32]));
+    feature.extend_from_slice(&9u64.to_le_bytes());
+    feature.push(0);
+    feature
+}
+
+/// The device's `common`: the raw preimage under the `metadata_message` consensus hasher.
+pub fn metadata_common(network: u8, preimage: &[u8]) -> [u8; 32] {
+    let mut digest = blake2::Blake2b::<digest::consts::U32>::default();
+    TransactionHashDomain::add_domain_separation_tag(&mut digest, format!("metadata_message.n{network}"));
+    Digest::update(&mut digest, preimage);
+    let mut common = [0u8; 32];
+    common.copy_from_slice(digest.finalize().as_slice());
+    common
+}
+
 /// The 32 byte message a metadata signature is over.
 ///
 /// A host side statement of `metadata_signature_message_from_script_and_common`: a **Blake2b-256** consensus hash

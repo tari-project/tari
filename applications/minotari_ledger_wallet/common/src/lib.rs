@@ -12,6 +12,7 @@ pub mod codec;
 pub mod common_types;
 pub mod ephemeral_nonce;
 pub mod legacy_nonce;
+pub mod metadata_output;
 pub mod script_offset;
 mod utils;
 pub use utils::{

@@ -20,13 +20,21 @@ use ledger_device_sdk::ui::{
     gadgets::{Field, MultiFieldReview, SingleMessage},
 };
 use minotari_ledger_wallet_common::{
-    codec::{Decode, OneSidedMetadataSignatureHead},
+    codec::{Decode, MetadataSignatureHeadChunk, PREIMAGE_CHUNK_SIZE},
     common_types::LedgerKeyBranch,
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
     get_public_view_key_bytes_from_tari_dual_address,
+    metadata_output::{
+        output_type_name,
+        parse_metadata_preimage,
+        MetadataPreimageError,
+        MAX_METADATA_PREIMAGE_SIZE,
+        OUTPUT_TYPE_STANDARD,
+    },
     script_offset::is_pre_mine_sender_offset_index,
     tari_dual_address_display,
+    u64_to_string,
 };
 use tari_utilities::ByteArray;
 use zeroize::Zeroizing;
@@ -57,165 +65,312 @@ use crate::{
     STATIC_VIEW_INDEX,
 };
 
-pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
+/// What `GetOneSidedMetadataSignature` has accumulated across its chunks.
+///
+/// Long lived, owned by the main loop like `ScriptOffsetCtx`, and reset by any other instruction and by any error, so
+/// a rejected or interleaved exchange cannot be resumed. Everything in here is an owned copy taken from the APDU
+/// buffer as each chunk arrived - nothing the review below shows, or the signature below commits to, is read from
+/// the APDU buffer after a screen. See `wire`.
+pub struct MetadataSignatureCtx {
+    head: Option<Head>,
+    preimage: Vec<u8>,
+    next_chunk: u8,
+}
+
+/// Chunk 0, validated and copied.
+struct Head {
+    account: u64,
+    network: u8,
+    sender_offset_key_index: u64,
+    sender_offset_key_type: KeyType,
+    value: u64,
+    commitment_mask: RistrettoSecretKey,
+    receiver_address: Vec<u8>,
+    preimage_size: usize,
+}
+
+impl MetadataSignatureCtx {
+    pub fn new() -> Self {
+        Self {
+            head: None,
+            preimage: Vec::new(),
+            next_chunk: 0,
+        }
+    }
+
+    /// Drop everything accumulated, and give the preimage's memory back.
+    pub fn reset(&mut self) {
+        self.head = None;
+        self.preimage = Vec::new();
+        self.next_chunk = 0;
+    }
+}
+
+/// `GetOneSidedMetadataSignature`: chunk 0 is the head, the chunks after it the metadata signature preimage. See
+/// `minotari_ledger_wallet_common::codec::metadata` for the layout and `minotari_ledger_wallet_common::metadata_output`
+/// for what the preimage may hold.
+///
+/// Every chunk but the last is answered with an empty `Ok`. The last is answered with the signature, after the review
+/// - or with none, for change to this wallet's own address with default features.
+pub fn handler_get_one_sided_metadata_signature(
+    comm: &mut Comm,
+    chunk_number: u8,
+    more: bool,
+    ctx: &mut MetadataSignatureCtx,
+) -> Result<(), AppSW> {
+    if chunk_number == 0 {
+        ctx.reset();
+        // The head is never the last chunk: a preimage always follows.
+        if !more {
+            return Err(AppSW::WrongP1P2);
+        }
+        let head = read_head(comm)?;
+        // Reserved up front, and fallibly: the size is bounded by `MAX_METADATA_PREIMAGE_SIZE`, but a heap that
+        // cannot hold it must refuse rather than abort the application.
+        ctx.preimage
+            .try_reserve_exact(head.preimage_size)
+            .map_err(|_| AppSW::MetadataSignatureFail)?;
+        ctx.head = Some(head);
+        ctx.next_chunk = 1;
+        return Ok(());
+    }
+
+    let preimage_size = match &ctx.head {
+        Some(head) => head.preimage_size,
+        None => return Err(AppSW::WrongP1P2),
+    };
+    if chunk_number != ctx.next_chunk {
+        return Err(AppSW::WrongP1P2);
+    }
+    {
+        let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
+        // Every chunk but the last is exactly `PREIMAGE_CHUNK_SIZE`, which bounds the number of chunks; the last
+        // carries what is left, and no chunk may run past the size the head declared.
+        let size_ok = if more {
+            data.len() == PREIMAGE_CHUNK_SIZE
+        } else {
+            !data.is_empty() && data.len() <= PREIMAGE_CHUNK_SIZE
+        };
+        let total = ctx.preimage.len().saturating_add(data.len());
+        if !size_ok || total > preimage_size || (more && total >= preimage_size) || (!more && total != preimage_size) {
+            return Err(AppSW::WrongApduLength);
+        }
+        ctx.preimage.extend_from_slice(data);
+    }
+    ctx.next_chunk = ctx.next_chunk.checked_add(1).ok_or(AppSW::WrongP1P2)?;
+    if more {
+        return Ok(());
+    }
+
+    let head = ctx.head.take().ok_or(AppSW::WrongP1P2)?;
+    let preimage = core::mem::take(&mut ctx.preimage);
+    ctx.reset();
+    sign(comm, head, preimage)
+}
+
+/// Read, validate and copy chunk 0.
+fn read_head(comm: &mut Comm) -> Result<Head, AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
+    let head = MetadataSignatureHeadChunk::decode(data).map_err(|_| AppSW::WrongApduLength)?;
 
-    // The layout has a variable length address in the middle, so the codec decodes it in stages that interleave with
-    // the checks below exactly as the hand written parser did: the status word a malformed request gets depends on
-    // which check fails first. See `minotari_ledger_wallet_common::codec::metadata`.
-    let head = OneSidedMetadataSignatureHead::decode(data).map_err(|_| AppSW::WrongApduLength)?;
-
-    let account = head.account;
     // A `u64` on the wire but a single byte in the hash label: reject rather than truncate.
     let network = u8::try_from(head.network).map_err(|_| AppSW::WrongApduLength)?;
-    let txo_version = head.txo_version;
-    let sender_offset_key_index = head.sender_offset_key_index;
-    let value_u64 = head.value;
-    let value = Minotari::new(head.value);
-
+    let preimage_size = usize::from(head.preimage_size);
+    if preimage_size == 0 || preimage_size > MAX_METADATA_PREIMAGE_SIZE {
+        return Err(AppSW::WrongApduLength);
+    }
     let commitment_mask: RistrettoSecretKey =
         get_key_from_canonical_bytes::<RistrettoSecretKey>(head.commitment_mask)?.into();
 
-    let tail = head.receiver_address().map_err(|_| AppSW::WrongApduLength)?;
-
-    // Everything read from here to the signature is an owned copy, never a borrow of `data`.
-    //
-    // `data` is the SDK's APDU buffer, and the review screen below does not leave it alone. On Stax and Flex,
-    // `NbglReview::show` polls in `ux_sync_wait` -> `nbgl_next_event_ahead` -> `Comm::next_event_ahead` ->
-    // `decode_event`, which copies *any* APDU that arrives while the screen is up into `apdu_buffer`
-    // (`ledger_device_sdk` 1.35.0, `io_legacy.rs`: `self.apdu_buffer[0..272].copy_from_slice(..)`). So a borrow of
-    // `data` read after the review reads whatever the host sent last, not what the user approved: a host could show
-    // the user receiver A, send a second APDU carrying receiver B mid-review, and have the device sign a script
-    // paying B once the user approves A.
-    //
-    // The whole address is copied, rather than only the spend key the signature needs, so that every check still
-    // runs exactly where and in the order it always has - the address checksum before the review, the spend key's
-    // canonical check after it - and a malformed request still gets the same status word from the same check. It is
-    // copied to the heap, not the stack: up to `TARI_DUAL_ADDRESS_MAX_SIZE` (323) bytes is a lot of a Ledger stack,
-    // and this handler already allocates for its review fields. The length was bounded by `receiver_address()` above,
-    // so the copy itself cannot fail on a length.
-    //
-    // `wire::with_screen` below takes `&mut Comm` so that the borrow checker refuses to compile any use of `data`,
-    // `head` or `tail` after the review.
-    let receiver_address_bytes = tail.receiver_address.to_vec();
-
-    let receiver_address = match tari_dual_address_display(&receiver_address_bytes) {
-        Ok(address) => address,
-        Err(e) => {
-            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-            {
-                SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
-            }
-
-            #[cfg(any(target_os = "stax", target_os = "flex"))]
-            {
-                NbglStatus::new()
-                    .text(&format!("Error: {:?}", e.to_string()))
-                    .show(false);
-            }
-            return Err(AppSW::MetadataSignatureFail);
-        },
-    };
-
-    // Copied for the same reason as the address: it is hashed into the signed message after the review.
-    let metadata_signature_message_common: [u8; 32] = *tail.message().map_err(|_| AppSW::WrongApduLength)?;
-
-    // The optional trailing `sender_offset_branch`, `OneSidedSenderOffset` when a host from before it existed leaves
-    // it out - see `minotari_ledger_wallet_common::codec::metadata`. An ordinary one-sided output's sender offset key
-    // is on `OneSidedSenderOffset`; the backup pre-mine spend's is on `PreMine`, because `GetScriptOffset` issues it
-    // in pre-mine mode. Nothing else is a sender offset key, and the request is refused before the review. Signing
-    // either branch here is safe: the nonces are drawn on the device, so there is no second signature under one
-    // nonce to difference against.
-    let sender_offset_branch = tail.sender_offset_branch().map_err(|_| AppSW::WrongApduLength)?;
-    // The optional trailing `is_change`, `false` when a host leaves it out. Read here, before the review, as an owned
-    // `bool`. See below for what it is allowed to do.
-    let is_change = tail.is_change().map_err(|_| AppSW::WrongApduLength)?;
-    //
-    // A `PreMine` sender offset only ever comes from `GetScriptOffset` in pre-mine mode, which always sets the pre-mine
-    // sender offset marker; a `PreMine` index without it is a script key, and is refused here too.
-    let sender_offset_key_type = match branch_key_from_u64(sender_offset_branch)? {
-        LedgerKeyBranch::OneSidedSenderOffset => KeyType::from_branch_key(sender_offset_branch)?,
+    // An ordinary one-sided output's sender offset key is on `OneSidedSenderOffset`; the backup pre-mine spend's is on
+    // `PreMine`, because `GetScriptOffset` issues it in pre-mine mode, which always sets the pre-mine sender offset
+    // marker - a `PreMine` index without it is a script key. Nothing else is a sender offset key. Signing either here
+    // is safe: the nonces are drawn on the device, so there is no second signature under one nonce to difference
+    // against.
+    let sender_offset_key_index = head.sender_offset_key_index;
+    let sender_offset_key_type = match branch_key_from_u64(head.sender_offset_branch)? {
+        LedgerKeyBranch::OneSidedSenderOffset => KeyType::from_branch_key(head.sender_offset_branch)?,
         LedgerKeyBranch::PreMine if is_pre_mine_sender_offset_index(sender_offset_key_index) => {
-            KeyType::from_branch_key(sender_offset_branch)?
+            KeyType::from_branch_key(head.sender_offset_branch)?
         },
         LedgerKeyBranch::PreMine | LedgerKeyBranch::Random | LedgerKeyBranch::Spend => {
             return Err(AppSW::BadBranchKey)
         },
     };
 
-    // Extract payment ID if present
-    let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
-        .map_err(|_| AppSW::MetadataSignatureFail)?;
+    // Copied to the heap: up to `TARI_DUAL_ADDRESS_MAX_SIZE` (323) bytes is a lot of a Ledger stack. It is the same
+    // owned copy the review shows and the signature's script is built from.
+    let receiver_address = head.receiver_address().to_vec();
+    if let Err(e) = tari_dual_address_display(&receiver_address) {
+        show_error(&format!("Error: {:?}", e.to_string()));
+        return Err(AppSW::MetadataSignatureFail);
+    }
 
-    // Change to this wallet is signed without a review. That is the case when the host flags the output as the change
-    // its transaction builder made (`is_change`), *and* the receiver is this wallet's own address for the account:
-    // its spend key is this device's own public `alpha`, and its view key is this device's own public view key. A
-    // flagged output to any other address, and any unflagged output - a payment to self, a coin split, an offline
-    // payload's recipient - gets the full review. A compromised host can set the flag on whatever it likes; that is
-    // within the residual of a host that drives the device without prompts (see the changelog). Both keys are needed. The spend key alone binds the script - the device builds the standard
-    // stealth script for the receiver's spend key itself, from the address and the commitment mask, and the
-    // signature commits to it - but the host derives the commitment mask and encrypted data from the view key, so an
-    // address with this wallet's spend key and someone else's view key gives an output locked to `alpha` that this
-    // wallet's scanner never finds. That gets the full review.
+    Ok(Head {
+        account: head.account,
+        network,
+        sender_offset_key_index,
+        sender_offset_key_type,
+        value: head.value,
+        commitment_mask,
+        receiver_address,
+        preimage_size,
+    })
+}
+
+/// Raw bytes, written to the hasher as they are, with no length prefix: the preimage already is the consensus
+/// encoding of the fields `common` is the hash of.
+struct Raw<'a>(&'a [u8]);
+
+impl BorshSerialize for Raw<'_> {
+    fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+        writer.write_all(self.0)
+    }
+}
+
+/// Parse the preimage, decide whether it needs a review, show it if it does, and sign.
+fn sign(comm: &mut Comm, head: Head, preimage: Vec<u8>) -> Result<(), AppSW> {
+    // What the device will not sign is refused before anything is shown. See
+    // `minotari_ledger_wallet_common::metadata_output` for why the whole preimage is parsed: the fields are read at
+    // the offsets a consensus decoder reads them from, so what is shown and decided on is what consensus will hold
+    // the output to.
+    let output = parse_metadata_preimage(&preimage).map_err(|e| match e {
+        MetadataPreimageError::Malformed => AppSW::MetadataSignatureFail,
+        MetadataPreimageError::CovenantNotEmpty | MetadataPreimageError::Burn | MetadataPreimageError::Coinbase => {
+            AppSW::OutputNotSignable
+        },
+    })?;
+    // `common`, from the same bytes that were just parsed. A host that sent fields other than the output's gets a
+    // signature that verifies against no output carrying the fields it published.
+    let common: [u8; 32] =
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message", head.network)
+            .chain(&Raw(&preimage))
+            .finalize()
+            .into();
+    drop(preimage);
+
+    let receiver_address = tari_dual_address_display(&head.receiver_address).map_err(|_| AppSW::MetadataSignatureFail)?;
+    let payment_id_bytes =
+        get_payment_id_bytes_from_tari_dual_address(&head.receiver_address).map_err(|_| AppSW::MetadataSignatureFail)?;
+
+    // Signed without a review only when the output is change in every respect the device can see: to this wallet's
+    // own address - its spend key this device's own public `alpha` and its view key this device's own public view key,
+    // for the account - with default features (a standard output, maturity 0, no coinbase data, no sidechain feature,
+    // a bullet proof range proof), an empty covenant and no minimum value promise. Anything else is reviewed, and the
+    // review shows what differs from that.
     //
-    // What is not inspected is everything in `metadata_signature_message_common`, which reaches the device as an
-    // opaque hash: the output features, the covenant, the encrypted data and the minimum value promise are host
-    // chosen. So "change" signed here with no prompt can be a burn - which never runs its script - claimable on L2 by
-    // a key the host chooses, or be locked by a long maturity or a covenant, or be unrecoverable from its encrypted
-    // data. That is no worse than before, when change was signed raw with no screen at all; closing it needs these
-    // fields in the clear.
+    // Both keys are needed. The spend key binds the script - the device builds the standard stealth script for it -
+    // but the host derives the commitment mask and encrypted data from the view key, so an address with this wallet's
+    // spend key and someone else's view key gives an output locked to `alpha` that this wallet's scanner never finds.
     //
-    // Both comparisons are against keys this device derives, never keys the host supplied, and both of the address's
-    // keys are read from the owned copy of the address, the same bytes the signature is built from after the review.
-    // Each key is derived, compared and dropped in its own block, to keep the stack small.
-    let is_own_spend_key = is_change && {
-        let own_public_alpha =
-            RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?);
-        match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+    // Both comparisons are against keys this device derives, never keys the host supplied, and both address keys are
+    // read from the owned copy the signature's script is built from. Each key is derived, compared and dropped in its
+    // own block, to keep the stack small, and only when everything before it matched.
+    let may_skip_review = output.may_skip_review();
+    let is_own_spend_key = may_skip_review && {
+        let own_public_alpha = RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(
+            head.account,
+            STATIC_SPEND_INDEX,
+            KeyType::Spend,
+        )?);
+        match get_public_spend_key_bytes_from_tari_dual_address(&head.receiver_address) {
             Ok(bytes) => &bytes == own_public_alpha.as_array(),
             Err(_) => false,
         }
     };
-    // Each key is only derived when everything before it already matched.
     let is_change_to_self = is_own_spend_key && {
         let own_public_view_key = RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(
-            account,
+            head.account,
             STATIC_VIEW_INDEX,
             KeyType::ViewKey,
         )?);
-        match get_public_view_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+        match get_public_view_key_bytes_from_tari_dual_address(&head.receiver_address) {
             Ok(bytes) => &bytes == own_public_view_key.as_array(),
             Err(_) => false,
         }
     };
 
     if !is_change_to_self {
-        let mut fields = Vec::new();
-        let field_value = format!("{}", value.to_string());
-        fields.push(Field {
-            name: "Amount",
-            value: &field_value,
-        });
-        let field_value = format!("{}", receiver_address);
-        fields.push(Field {
-            name: "Receiver",
-            value: &field_value,
-        });
-
-        // Add payment ID field if present
-        let payment_id_display = if !payment_id_bytes.is_empty() {
-            format!("{} bytes", payment_id_bytes.len())
+        let amount = Minotari::new(head.value).to_string();
+        let payment_id = if payment_id_bytes.is_empty() {
+            None
         } else {
-            String::new()
+            Some(format!("{} bytes", payment_id_bytes.len()))
+        };
+        let output_type = if output.output_type == OUTPUT_TYPE_STANDARD {
+            None
+        } else {
+            Some(output_type_name(output.output_type).to_string())
+        };
+        let maturity = if output.maturity == 0 {
+            None
+        } else {
+            Some(u64_to_string(output.maturity))
+        };
+        let sidechain = output.sidechain.map(|kind| kind.name().to_string());
+        let validator_node = output.validator_node_public_key.as_ref().map(hex);
+        let minimum_value_promise = if output.minimum_value_promise == 0 {
+            None
+        } else {
+            Some(Minotari::new(output.minimum_value_promise).to_string())
+        };
+        let range_proof = if output.range_proof_type == 0 {
+            None
+        } else {
+            Some("Revealed value".to_string())
         };
 
-        if !payment_id_bytes.is_empty() {
+        let mut fields = Vec::new();
+        fields.push(Field {
+            name: "Amount",
+            value: amount.as_str(),
+        });
+        fields.push(Field {
+            name: "Receiver",
+            value: receiver_address.as_str(),
+        });
+        if let Some(value) = &payment_id {
             fields.push(Field {
                 name: "Payment ID",
-                value: &payment_id_display,
+                value: value.as_str(),
             });
         }
-
+        if let Some(value) = &output_type {
+            fields.push(Field {
+                name: "Output type",
+                value: value.as_str(),
+            });
+        }
+        if let Some(value) = &maturity {
+            fields.push(Field {
+                name: "Maturity",
+                value: value.as_str(),
+            });
+        }
+        if let Some(value) = &sidechain {
+            fields.push(Field {
+                name: "Sidechain",
+                value: value.as_str(),
+            });
+        }
+        if let Some(value) = &validator_node {
+            fields.push(Field {
+                name: "Validator node",
+                value: value.as_str(),
+            });
+        }
+        if let Some(value) = &minimum_value_promise {
+            fields.push(Field {
+                name: "Min value",
+                value: value.as_str(),
+            });
+        }
+        if let Some(value) = &range_proof {
+            fields.push(Field {
+                name: "Range proof",
+                value: value.as_str(),
+            });
+        }
         let fields_array = fields.as_slice();
 
         #[cfg(not(any(target_os = "stax", target_os = "flex")))]
@@ -242,18 +397,16 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
             let review: NbglReview = NbglReview::new()
                 .titles("Review transaction\nto send", "", "Sign transaction\nto send")
                 .glyph(&TARI);
-
-            //
             if !with_screen(comm, || review.show(fields_array)) {
                 return Err(AppSW::UserCancelled);
             }
         }
     }
 
-    let value_as_private_key: RistrettoSecretKey = value_u64.into();
+    let value_as_private_key: RistrettoSecretKey = head.value.into();
 
     let sender_offset_private_key =
-        derive_from_bip32_key(account, sender_offset_key_index, sender_offset_key_type)?;
+        derive_from_bip32_key(head.account, head.sender_offset_key_index, head.sender_offset_key_type)?;
     let sender_offset_public_key = RistrettoPublicKey::from_secret_key(&sender_offset_private_key);
 
     let r_a = get_random_nonce()?;
@@ -262,35 +415,24 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let factory = PedersenCommitmentFactory::default();
 
-    let commitment = factory.commit(&commitment_mask, &value_as_private_key);
+    let commitment = factory.commit(&head.commitment_mask, &value_as_private_key);
     let ephemeral_commitment = factory.commit(&r_x, &r_a);
     let ephemeral_pubkey = RistrettoPublicKey::from_secret_key(&ephemeral_private_key);
 
     let receiver_public_spend_key: RistrettoPublicKey =
-        match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+        match get_public_spend_key_bytes_from_tari_dual_address(&head.receiver_address) {
             Ok(bytes) => get_key_from_canonical_bytes::<RistrettoPublicKey>(&bytes)?,
             Err(e) => {
-                #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-                {
-                    SingleMessage::new(&format!("Error: {:?}", e.to_string())).show_and_wait();
-                }
-                #[cfg(any(target_os = "stax", target_os = "flex"))]
-                {
-                    NbglStatus::new()
-                        .text(&format!("Error: {:?}", e.to_string()))
-                        .show(false);
-                }
+                show_error(&format!("Error: {:?}", e.to_string()));
                 return Err(AppSW::MetadataSignatureFail);
             },
         };
 
-    let script = tari_script_with_address(&commitment_mask, &receiver_public_spend_key)?;
-    let metadata_signature_message =
-        metadata_signature_message_from_script_and_common(network, &script, &metadata_signature_message_common);
+    let script = tari_script_with_address(&head.commitment_mask, &receiver_public_spend_key)?;
+    let metadata_signature_message = metadata_signature_message_from_script_and_common(head.network, &script, &common);
 
     let challenge = finalize_metadata_signature_challenge(
-        txo_version,
-        network,
+        head.network,
         &sender_offset_public_key,
         &ephemeral_commitment,
         &ephemeral_pubkey,
@@ -300,7 +442,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
 
     let metadata_signature = match CommitmentAndPublicKeySignature::sign(
         &value_as_private_key,
-        &commitment_mask,
+        &head.commitment_mask,
         &sender_offset_private_key,
         &r_a,
         &r_x,
@@ -310,19 +452,7 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     ) {
         Ok(sig) => sig,
         Err(_e) => {
-            let error_string = "Invalid challenge".to_string();
-
-            #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-            {
-                SingleMessage::new(&format!("Signing error: {}", error_string)).show_and_wait();
-            }
-
-            #[cfg(any(target_os = "stax", target_os = "flex"))]
-            {
-                NbglStatus::new()
-                    .text(&format!("Signing error: {}", error_string))
-                    .show(false);
-            }
+            show_error("Signing error: Invalid challenge");
             return Err(AppSW::MetadataSignatureFail);
         },
     };
@@ -332,8 +462,33 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     Ok(())
 }
 
+/// Show an error and wait, on either toolkit.
+fn show_error(message: &str) {
+    #[cfg(not(any(target_os = "stax", target_os = "flex")))]
+    {
+        SingleMessage::new(message).show_and_wait();
+    }
+    #[cfg(any(target_os = "stax", target_os = "flex"))]
+    {
+        NbglStatus::new().text(message).show(false);
+    }
+}
+
+/// Lower case hex, for a 32 byte key on the review screen.
+fn hex(bytes: &[u8; 32]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(64);
+    for byte in bytes {
+        for nibble in [byte >> 4, byte & 0x0f] {
+            if let Some(&digit) = DIGITS.get(usize::from(nibble)) {
+                out.push(char::from(digit));
+            }
+        }
+    }
+    out
+}
+
 fn finalize_metadata_signature_challenge(
-    _version: u64,
     network: u8,
     sender_offset_public_key: &RistrettoPublicKey,
     ephemeral_commitment: &PedersenCommitment,

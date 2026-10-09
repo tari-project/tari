@@ -491,6 +491,26 @@ impl TransactionOutput {
         }
     }
 
+    /// The preimage of [`Self::metadata_signature_message_common_from_parts`]: the borsh encodings of the five fields,
+    /// back to back, exactly as that hasher writes them. A ledger device is sent this, rather than the hash, so that it
+    /// can read the fields it is about to sign for and hash them itself; see
+    /// `minotari_ledger_wallet_common::metadata_output`.
+    pub fn metadata_signature_message_common_preimage(
+        version: &TransactionOutputVersion,
+        features: &OutputFeatures,
+        covenant: &Covenant,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: &MicroMinotari,
+    ) -> std::io::Result<Vec<u8>> {
+        let mut preimage = Vec::new();
+        BorshSerialize::serialize(version, &mut preimage)?;
+        BorshSerialize::serialize(features, &mut preimage)?;
+        BorshSerialize::serialize(covenant, &mut preimage)?;
+        BorshSerialize::serialize(encrypted_data, &mut preimage)?;
+        BorshSerialize::serialize(minimum_value_promise, &mut preimage)?;
+        Ok(preimage)
+    }
+
     pub fn metadata_signature_message_from_script_and_common(script: &TariScript, common: &[u8; 32]) -> [u8; 32] {
         // NOTE: the "metadata_message" label (TransactionHashDomain) is shared by the "common" hash (version, features,
         // covenant, encrypted data, minimum value promise) and the outer hash (script || common), two different
@@ -604,6 +624,296 @@ pub fn batch_verify_range_proofs(
 
     // An empty batch is valid
     Ok(())
+}
+
+#[cfg(test)]
+mod metadata_preimage_test {
+    //! Parity between the host's consensus encoding of the metadata signature's common fields and what a ledger device
+    //! reads and hashes from them: `minotari_ledger_wallet_common::metadata_output` walks the preimage with its own
+    //! grammar, and the device hashes the raw preimage bytes. Either drifting from the consensus types makes every
+    //! signature the device produces invalid, or worse, lets it read a field from a different offset than consensus
+    //! does - so every feature variant a ledger wallet can meet is checked here against the real types.
+
+    use blake2::Blake2b;
+    use borsh::{BorshSerialize, io};
+    use digest::consts::U32;
+    use minotari_ledger_wallet_common::metadata_output::{
+        MetadataPreimageError,
+        SideChainKind,
+        parse_metadata_preimage,
+    };
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
+    };
+    use tari_crypto::keys::SecretKey;
+    use tari_hashing::TransactionHashDomain;
+    use tari_max_size::{MaxSizeBytes, MaxSizeString};
+    use tari_utilities::ByteArray;
+
+    use super::TransactionOutput;
+    use crate::{
+        MicroMinotari,
+        consensus::DomainSeparatedConsensusHasher,
+        transaction_components::{
+            CodeTemplateRegistration,
+            EncryptedData,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputType,
+            RangeProofType,
+            SideChainFeature,
+            SideChainFeatureData,
+            TransactionOutputVersion,
+            ValidatorNodeSignature,
+            covenants::Covenant,
+            encrypted_data::MAX_ENCRYPTED_DATA_SIZE,
+            side_chain::{BuildInfo, ConfidentialOutputData, TemplateType},
+        },
+    };
+
+    /// Raw bytes, written to a borsh writer with no length prefix - what the device's hasher does with the preimage.
+    struct Raw<'a>(&'a [u8]);
+
+    impl BorshSerialize for Raw<'_> {
+        fn serialize<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
+            writer.write_all(self.0)
+        }
+    }
+
+    fn key() -> CompressedPublicKey {
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()))
+    }
+
+    fn signature() -> CompressedSignature {
+        CompressedSignature::new(key(), PrivateKey::random(&mut rand::rng()))
+    }
+
+    fn encrypted_data(size: usize) -> EncryptedData {
+        EncryptedData::from_bytes(&vec![0x5a; size]).unwrap()
+    }
+
+    fn vn_registration(sidechain_key: Option<&PrivateKey>) -> (OutputFeatures, CompressedPublicKey) {
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let claim = key();
+        let signature = ValidatorNodeSignature::sign_for_registration(&vn_key, 0x26, None, &claim, VnEpoch(9));
+        let vn_public_key = signature.public_key().clone();
+        (
+            OutputFeatures::for_validator_node_registration(signature, claim, sidechain_key, VnEpoch(9)),
+            vn_public_key,
+        )
+    }
+
+    fn code_template_registration() -> OutputFeatures {
+        let registration = CodeTemplateRegistration {
+            author_public_key: key(),
+            author_signature: signature(),
+            template_name: MaxSizeString::try_from("t".repeat(32)).unwrap(),
+            template_version: 7,
+            template_type: TemplateType::Wasm { abi_version: 3 },
+            build_info: BuildInfo {
+                repo_url: MaxSizeString::try_from("r".repeat(255)).unwrap(),
+                commit_hash: MaxSizeBytes::try_from(vec![0xc0; 32]).unwrap(),
+            },
+            binary_sha: FixedHash::zero(),
+            binary_url: MaxSizeString::try_from("b".repeat(255)).unwrap(),
+        };
+        let sidechain_id = Some(crate::transaction_components::SideChainId::new(key(), signature()));
+        OutputFeatures::new_current_version(
+            OutputType::CodeTemplateRegistration,
+            0,
+            Default::default(),
+            Some(SideChainFeature {
+                data: SideChainFeatureData::CodeTemplateRegistration(registration),
+                sidechain_id,
+            }),
+            RangeProofType::BulletProofPlus,
+        )
+    }
+
+    fn preimage(
+        version: TransactionOutputVersion,
+        features: &OutputFeatures,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: u64,
+    ) -> Vec<u8> {
+        TransactionOutput::metadata_signature_message_common_preimage(
+            &version,
+            features,
+            &Covenant::default(),
+            encrypted_data,
+            &MicroMinotari(minimum_value_promise),
+        )
+        .unwrap()
+    }
+
+    /// The device's `common`: the raw preimage under the same domain separated hasher.
+    fn device_common(preimage: &[u8]) -> [u8; 32] {
+        DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
+            .chain(&Raw(preimage))
+            .finalize()
+            .into()
+    }
+
+    /// Every feature shape a ledger wallet can meet, under both output versions, with the smallest and the largest
+    /// encrypted data: the raw preimage hashes to exactly the consensus `common`, and the shared parser reads the
+    /// fields the consensus types hold.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn the_device_reads_and_hashes_every_output_shape_as_consensus_does() {
+        let (vn_registration_plain, vn_key_plain) = vn_registration(None);
+        let (vn_registration_with_id, vn_key_with_id) = vn_registration(Some(&PrivateKey::random(&mut rand::rng())));
+        let vn_exit_signature = ValidatorNodeSignature::new(key(), signature());
+        let vn_exit_key = vn_exit_signature.public_key().clone();
+        let vn_exit = OutputFeatures::for_validator_node_exit(vn_exit_signature, None, VnEpoch(3), VnEpoch(4));
+        let confidential = OutputFeatures::new_current_version(
+            OutputType::Standard,
+            0,
+            Default::default(),
+            Some(SideChainFeature {
+                data: SideChainFeatureData::ConfidentialOutput(ConfidentialOutputData {
+                    claim_public_key: key(),
+                }),
+                sidechain_id: None,
+            }),
+            RangeProofType::BulletProofPlus,
+        );
+        let revealed = OutputFeatures {
+            range_proof_type: RangeProofType::RevealedValue,
+            ..Default::default()
+        };
+        let features_v1 = OutputFeatures {
+            version: OutputFeaturesVersion::V1,
+            ..Default::default()
+        };
+        let matured = OutputFeatures {
+            maturity: u64::MAX,
+            ..Default::default()
+        };
+
+        type Expected = (u8, u64, Option<SideChainKind>, Option<[u8; 32]>, bool);
+        let cases: Vec<(&str, OutputFeatures, Expected)> = vec![
+            ("default", OutputFeatures::default(), (0, 0, None, None, true)),
+            ("maturity", matured, (0, u64::MAX, None, None, false)),
+            ("revealed value", revealed, (0, 0, None, None, false)),
+            ("features v1", features_v1, (0, 0, None, None, false)),
+            (
+                "vn registration",
+                vn_registration_plain,
+                (
+                    3,
+                    0,
+                    Some(SideChainKind::ValidatorNodeRegistration),
+                    Some(vn_key_plain.as_bytes().try_into().unwrap()),
+                    false,
+                ),
+            ),
+            (
+                "vn registration with sidechain id",
+                vn_registration_with_id,
+                (
+                    3,
+                    0,
+                    Some(SideChainKind::ValidatorNodeRegistration),
+                    Some(vn_key_with_id.as_bytes().try_into().unwrap()),
+                    false,
+                ),
+            ),
+            (
+                "vn exit",
+                vn_exit,
+                (
+                    7,
+                    0,
+                    Some(SideChainKind::ValidatorNodeExit),
+                    Some(vn_exit_key.as_bytes().try_into().unwrap()),
+                    false,
+                ),
+            ),
+            (
+                "confidential output",
+                confidential,
+                (0, 0, Some(SideChainKind::ConfidentialOutput), None, false),
+            ),
+            (
+                "code template registration, every string at its maximum",
+                code_template_registration(),
+                (4, 0, Some(SideChainKind::CodeTemplateRegistration), None, false),
+            ),
+        ];
+
+        for version in [TransactionOutputVersion::V0, TransactionOutputVersion::V1] {
+            for encrypted_data_size in [80, MAX_ENCRYPTED_DATA_SIZE] {
+                let encrypted_data = encrypted_data(encrypted_data_size);
+                for (name, features, (output_type, maturity, sidechain, vn_key, default)) in &cases {
+                    for minimum_value_promise in [0, 1_000] {
+                        let bytes = preimage(version, features, &encrypted_data, minimum_value_promise);
+                        let consensus = TransactionOutput::metadata_signature_message_common_from_parts(
+                            &version,
+                            features,
+                            &Covenant::default(),
+                            &encrypted_data,
+                            &MicroMinotari(minimum_value_promise),
+                        );
+                        assert_eq!(device_common(&bytes), consensus, "{name}: the device's common hash");
+
+                        let parsed = parse_metadata_preimage(&bytes).unwrap_or_else(|e| panic!("{name}: {e:?}"));
+                        assert_eq!(parsed.output_version, version.as_u8(), "{name}");
+                        assert_eq!(parsed.output_type, *output_type, "{name}");
+                        assert_eq!(parsed.maturity, *maturity, "{name}");
+                        assert_eq!(parsed.sidechain, *sidechain, "{name}");
+                        assert_eq!(parsed.validator_node_public_key, *vn_key, "{name}");
+                        assert_eq!(parsed.range_proof_type, features.range_proof_type.as_byte(), "{name}");
+                        assert_eq!(parsed.has_default_features, *default, "{name}");
+                        assert_eq!(parsed.minimum_value_promise, minimum_value_promise, "{name}");
+                        assert_eq!(
+                            parsed.may_skip_review(),
+                            *default && minimum_value_promise == 0,
+                            "{name}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// A burn, a coinbase (with or without extra data) and a covenant are refused, read from the real encodings.
+    #[test]
+    fn the_device_refuses_a_burn_a_coinbase_and_a_covenant() {
+        let encrypted_data = encrypted_data(80);
+        let burn = OutputFeatures::create_burn_confidential_output(key(), Some(&PrivateKey::random(&mut rand::rng())));
+        assert_eq!(
+            parse_metadata_preimage(&preimage(TransactionOutputVersion::V0, &burn, &encrypted_data, 0)),
+            Err(MetadataPreimageError::Burn)
+        );
+        let coinbase = OutputFeatures::create_coinbase(10, None, RangeProofType::BulletProofPlus);
+        assert_eq!(
+            parse_metadata_preimage(&preimage(TransactionOutputVersion::V0, &coinbase, &encrypted_data, 0)),
+            Err(MetadataPreimageError::Coinbase)
+        );
+        let extra = OutputFeatures {
+            coinbase_extra: vec![1, 2, 3].try_into().unwrap(),
+            ..Default::default()
+        };
+        assert_eq!(
+            parse_metadata_preimage(&preimage(TransactionOutputVersion::V0, &extra, &encrypted_data, 0)),
+            Err(MetadataPreimageError::Coinbase)
+        );
+
+        let covenant = crate::covenant!(absolute_height(@uint(100))).unwrap();
+        let bytes = TransactionOutput::metadata_signature_message_common_preimage(
+            &TransactionOutputVersion::V0,
+            &OutputFeatures::default(),
+            &covenant,
+            &encrypted_data,
+            &MicroMinotari(0),
+        )
+        .unwrap();
+        assert_eq!(
+            parse_metadata_preimage(&bytes),
+            Err(MetadataPreimageError::CovenantNotEmpty)
+        );
+    }
 }
 
 #[cfg(test)]

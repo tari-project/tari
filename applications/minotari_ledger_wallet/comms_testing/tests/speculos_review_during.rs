@@ -24,8 +24,16 @@ use std::{
 };
 
 use minotari_ledger_wallet_common::{
-    codec::{ComAndPubSigReply, Decode, GetOneSidedMetadataSignatureRequest, GetPublicKeyRequest, KeyReply},
+    codec::{
+        ComAndPubSigReply,
+        Decode,
+        GetPublicKeyRequest,
+        KeyReply,
+        MetadataSignatureHeadChunk,
+        MetadataSignatureRequest,
+    },
     common_types::LedgerKeyBranch,
+    metadata_output::DEFAULT_OUTPUT_FEATURES,
 };
 use minotari_ledger_wallet_comms::ledger_wallet::Command;
 use minotari_ledger_wallet_comms_testing::{
@@ -97,23 +105,24 @@ fn wait_for_review(approver: &SpeculosApprover) {
     panic!("the review never appeared");
 }
 
-/// The request the attack sends twice, once per receiver.
-fn metadata_request(mask: &[u8; 32], address: &[u8], message: &[u8; 32], network: u8) -> Command<Vec<u8>> {
-    Command::from_request(
-        &GetOneSidedMetadataSignatureRequest::new(
-            ACCOUNT,
-            u64::from(network),
-            0,
-            SENDER_OFFSET_KEY_INDEX,
-            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
-            false,
-            VALUE,
-            mask,
-            address,
-            message,
-        )
-        .expect("a dual address fits its length prefix"),
+/// The request the attack sends twice, once per receiver and preimage: its chunks, in order.
+fn metadata_request(mask: &[u8; 32], address: &[u8], preimage: &[u8], network: u8) -> Vec<Command<Vec<u8>>> {
+    let head = MetadataSignatureHeadChunk::new(
+        ACCOUNT,
+        u64::from(network),
+        SENDER_OFFSET_KEY_INDEX,
+        u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
+        VALUE,
+        mask,
+        0,
+        address,
     )
+    .expect("a dual address fits its length prefix");
+    MetadataSignatureRequest::new(head, preimage)
+        .expect("a preimage of a sendable size")
+        .chunks()
+        .map(|chunk| Command::from_request(&chunk))
+        .collect()
 }
 
 /// Whether `reply` is a metadata signature over the stealth script for `spend_key`.
@@ -122,7 +131,7 @@ fn signs_for(
     sender_offset_public_key: &RistrettoPublicKey,
     mask: &RistrettoSecretKey,
     spend_key: &RistrettoPublicKey,
-    message: &[u8; 32],
+    preimage: &[u8],
     network: u8,
 ) -> bool {
     let reply = ComAndPubSigReply::decode(reply).expect("a 161 byte signature reply");
@@ -133,7 +142,8 @@ fn signs_for(
 
     let commitment = fixtures::script_commitment(mask, &RistrettoSecretKey::from(VALUE));
     let script = fixtures::stealth_script(mask, spend_key);
-    let message = fixtures::metadata_signature_message(network, &script, message);
+    let common = fixtures::metadata_common(network, preimage);
+    let message = fixtures::metadata_signature_message(network, &script, &common);
     let challenge = fixtures::metadata_signature_challenge(
         network,
         sender_offset_public_key,
@@ -197,10 +207,10 @@ fn a_request_sent_during_the_review_cannot_change_the_approved_receiver() {
     let network = approved.network().as_byte();
     let mask = RistrettoSecretKey::from(42u64);
     let mask_bytes: [u8; 32] = mask.as_bytes().try_into().expect("32 bytes");
-    // The two requests differ in the message as well as the receiver, so that a handler re-reading either one after
+    // The two requests differ in the preimage as well as the receiver, so that a handler re-reading either one after
     // the review is caught; see the assertions after the signature comes back.
-    let approved_message = [7u8; 32];
-    let attacker_message = [8u8; 32];
+    let approved_message = fixtures::metadata_preimage(&DEFAULT_OUTPUT_FEATURES, 80, 0);
+    let attacker_message = fixtures::metadata_preimage(&fixtures::output_features(0, 0, None), 81, 0);
 
     // The sender offset key the signature is made with, asked for over the same socket.
     let (reply, status) = exchange_raw(
@@ -216,19 +226,21 @@ fn a_request_sent_during_the_review_cannot_change_the_approved_receiver() {
         RistrettoPublicKey::from_canonical_bytes(KeyReply::decode(&reply).expect("a key reply").key)
             .expect("a valid point");
 
-    // Request A, and wait for its review to be drawn.
-    send_raw(
-        &mut stream,
-        &metadata_request(&mask_bytes, &approved.to_vec(), &approved_message, network),
-    );
+    // Request A: every chunk but the last is answered at once; the last draws the review and waits on it.
+    let request_a = metadata_request(&mask_bytes, &approved.to_vec(), &approved_message, network);
+    let (last_a, chunks_a) = request_a.split_last().expect("a head and a preimage");
+    for chunk in chunks_a {
+        let (_, status) = exchange_raw(&mut stream, chunk);
+        assert_eq!(status, STATUS_OK, "an early chunk of request A");
+    }
+    send_raw(&mut stream, last_a);
     wait_for_review(&approver);
 
-    // Request B, while A's review is on screen and A's request is still outstanding.
-    send_raw(
-        &mut stream,
-        &metadata_request(&mask_bytes, &attacker.to_vec(), &attacker_message, network),
-    );
-    std::thread::sleep(Duration::from_millis(500));
+    // Request B, chunk by chunk, while A's review is on screen and A's last chunk is still outstanding.
+    for chunk in metadata_request(&mask_bytes, &attacker.to_vec(), &attacker_message, network) {
+        send_raw(&mut stream, &chunk);
+        std::thread::sleep(Duration::from_millis(250));
+    }
 
     // The user reviews A - the screen was drawn before B arrived, so it does show A - and approves it.
     let expected = ExpectedReview::one_sided_metadata_signature(VALUE, &approved.to_base58(), 0);
@@ -245,7 +257,7 @@ fn a_request_sent_during_the_review_cannot_change_the_approved_receiver() {
     // Every combination of the two receivers and the two messages, so that the check catches a handler that
     // re-reads *either* field after the review - not just the address. Only (A, A) may verify.
     let approved_spend_key = approved.public_spend_key().to_public_key().expect("a valid spend key");
-    let signs = |spend_key: &RistrettoPublicKey, message: &[u8; 32]| {
+    let signs = |spend_key: &RistrettoPublicKey, message: &[u8]| {
         signs_for(
             &signature,
             &sender_offset_public_key,

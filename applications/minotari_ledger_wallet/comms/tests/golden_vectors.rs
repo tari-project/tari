@@ -14,12 +14,9 @@
 //! the migration and afterwards.
 //!
 //! A change to any constant below is therefore a wire format change, which needs its own spec and its own
-//! application version bump. It is never a test fix. (Example: the optional trailing `sender_offset_branch` of
-//! `GetOneSidedMetadataSignature` ships with the next application release, and `MIN_LEDGER_APP_VERSION` moves to
-//! that release with it. It is appended after `message`, and only when it is not the default `OneSidedSenderOffset`,
-//! so `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` - an ordinary send - is unchanged from before it existed, and only
-//! `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE` carries it. The optional trailing `is_change` byte after it
-//! follows the same rule: only `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_CHANGE` carries it.)
+//! application version bump. It is never a test fix. (Example: `GetOneSidedMetadataSignature` moved from one APDU
+//! carrying an opaque `common` hash, under `0x11`, to a chunked exchange carrying the hash's preimage, under `0x15`;
+//! its vectors were replaced with that change, and `0x11` is retired.)
 //!
 //! # What is covered
 //!
@@ -58,7 +55,6 @@ use minotari_ledger_wallet_common::{
         GenerateEphemeralNonceRequest,
         GetAppNameRequest,
         GetDHSharedSecretRequest,
-        GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
         GetPublicSpendKeyRequest,
         GetRawSchnorrSignatureLegacyNonceRequest,
@@ -69,6 +65,7 @@ use minotari_ledger_wallet_common::{
         GetVersionRequest,
         GetViewKeyRequest,
         KeyReply,
+        MetadataSignatureHeadChunk,
         PartialScriptKeySumChunk,
         SchnorrReply,
         ScriptKeyIndexChunk,
@@ -269,67 +266,116 @@ const GET_SCRIPT_SCHNORR_SIGNATURE_REQUEST: &str = concat!(
     "0600000000000000",                                                 // branch (OneSidedSenderOffset)
     "b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7", // message
 );
-const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST: &str = concat!(
-    "80",                                                               // cla
-    "11",                                                               // ins
-    "00",                                                               // p1
-    "00",                                                               // p2
-    "b0",                                                               // lc
-    "0102030405060708",                                                 // account
-    "2600000000000000",                                                 // network (Esmeralda, widened to u64)
-    "0100000000000000",                                                 // txo_version (widened to u64)
-    "4142434445464748",                                                 // sender_offset_key_index
+/// `GetOneSidedMetadataSignature`, chunk 0: the head, for a 366 byte preimage.
+const GET_ONE_SIDED_METADATA_SIGNATURE_0: &str = concat!(
+    "80",               // cla
+    "15",               // ins
+    "00",               // p1 (chunk 0)
+    "01",               // p2 (more)
+    "92",               // lc (146)
+    "0102030405060708", // account
+    "2600000000000000", // network (Esmeralda, widened to u64)
+    "4142434445464748", // sender_offset_key_index
+    "0600000000000000", /* sender_offset_branch
+                         * (OneSidedSenderOffset, widened to u64) */
     "87d6120000000000",                                                 // value
     "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b801", // commitment_mask
+    "6e01",                                                             // preimage_size (366, u16)
     "4600",                                                             // address_size (70, u16)
     "2605b676b11050b58e4adbd76040817cc822865ed00073fad2b0d53d72e074ce", // receiver_address (dual, 3 byte payment id)
     "66331ea3494b3fc582744b92cea35e0f230322bc68a88851713d5ba8a8ea8594",
     "4711eeeff07d",
-    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9", // message
 );
-/// `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` for the backup pre-mine spend: the same bytes with the trailing
-/// `sender_offset_branch` appended, which a host sends only when the branch is not the default `OneSidedSenderOffset`.
-const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE: &str = concat!(
-    "80",                                                               // cla
-    "11",                                                               // ins
-    "00",                                                               // p1
-    "00",                                                               // p2
-    "b8",                                                               // lc
-    "0102030405060708",                                                 // account
-    "2600000000000000",                                                 // network (Esmeralda, widened to u64)
-    "0100000000000000",                                                 // txo_version (widened to u64)
-    "4142434445464748",                                                 // sender_offset_key_index
-    "87d6120000000000",                                                 // value
-    "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b801", // commitment_mask
-    "4600",                                                             // address_size (70, u16)
-    "2605b676b11050b58e4adbd76040817cc822865ed00073fad2b0d53d72e074ce", // receiver_address (dual, 3 byte payment id)
-    "66331ea3494b3fc582744b92cea35e0f230322bc68a88851713d5ba8a8ea8594",
-    "4711eeeff07d",
-    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9", // message
-    "0900000000000000",                                                 // sender_offset_branch (PreMine, trailing)
+/// Chunk 1: the first 250 bytes of the preimage.
+const GET_ONE_SIDED_METADATA_SIGNATURE_1: &str = concat!(
+    "80", // cla
+    "15", // ins
+    "01", // p1 (chunk 1)
+    "01", // p2 (more)
+    "fa", // lc (250)
+    "00000000000000000000000000000000000050010000b9b9b9b9b9b9b9b9b9b9", /* preimage bytes 0..250: version 0, default
+           * features, no covenant, 336 bytes of
+           * encrypted data... */
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
 );
-/// `GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST` for the change output: the default `sender_offset_branch` is sent after
-/// all, because the trailing `is_change` follows it.
-const GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_CHANGE: &str = concat!(
-    "80",                                                               // cla
-    "11",                                                               // ins
-    "00",                                                               // p1
-    "00",                                                               // p2
-    "b9",                                                               // lc
-    "0102030405060708",                                                 // account
-    "2600000000000000",                                                 // network (Esmeralda, widened to u64)
-    "0100000000000000",                                                 // txo_version (widened to u64)
-    "4142434445464748",                                                 // sender_offset_key_index
+/// Chunk 2, the last: the remaining 116 bytes.
+const GET_ONE_SIDED_METADATA_SIGNATURE_2: &str = concat!(
+    "80", // cla
+    "15", // ins
+    "02", // p1 (chunk 2)
+    "00", // p2 (last)
+    "74", // lc (116)
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9", /* preimage bytes 250..366: ...the rest of
+           * the encrypted data, no minimum value
+           * promise */
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b90000000000000000",
+);
+/// `GetOneSidedMetadataSignature` for the backup pre-mine spend, chunk 0: the head, with the `PreMine` branch and a 110
+/// byte preimage.
+const GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_0: &str = concat!(
+    "80",               // cla
+    "15",               // ins
+    "00",               // p1 (chunk 0)
+    "01",               // p2 (more)
+    "92",               // lc (146)
+    "0102030405060708", // account
+    "2600000000000000", // network (Esmeralda, widened to u64)
+    "4142434445464748", // sender_offset_key_index
+    "0900000000000000", /* sender_offset_branch (PreMine, widened to
+                         * u64) */
     "87d6120000000000",                                                 // value
     "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b801", // commitment_mask
+    "6e00",                                                             // preimage_size (110, u16)
     "4600",                                                             // address_size (70, u16)
     "2605b676b11050b58e4adbd76040817cc822865ed00073fad2b0d53d72e074ce", // receiver_address (dual, 3 byte payment id)
     "66331ea3494b3fc582744b92cea35e0f230322bc68a88851713d5ba8a8ea8594",
     "4711eeeff07d",
-    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9", // message
-    "0600000000000000",                                                 /* sender_offset_branch (default, sent for
-                                                                         * is_change) */
-    "01", // is_change
+);
+/// Chunk 1, the last: the whole preimage.
+const GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_1: &str = concat!(
+    "80", // cla
+    "15", // ins
+    "01", // p1 (chunk 1)
+    "00", // p2 (last)
+    "6e", // lc (110)
+    "0000000a000000000000000000000000000050000000babababababababababa", /* preimage: version 0, maturity 10, no
+           * covenant, 80 bytes of encrypted data,
+           * minimum value promise 0x102 */
+    "babababababababababababababababababababababababababababababababa",
+    "babababababababababababababababababababababababababababababababa",
+    "babababababa0201000000000000",
+);
+/// The preimage `GET_ONE_SIDED_METADATA_SIGNATURE_*` carry: output version 0, default features, the empty covenant,
+/// 336 bytes of encrypted data, no minimum value promise.
+const METADATA_PREIMAGE: &str = concat!(
+    "00000000000000000000000000000000000050010000b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9",
+    "b9b9b9b9b9b90000000000000000",
+);
+/// The preimage `GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_*` carry: output version 0, maturity 10, the empty
+/// covenant, 80 bytes of encrypted data, a minimum value promise of 0x102.
+const METADATA_PREIMAGE_PRE_MINE: &str = concat!(
+    "0000000a000000000000000000000000000050000000babababababababababa",
+    "babababababababababababababababababababababababababababababababa",
+    "babababababababababababababababababababababababababababababababa",
+    "babababababa0201000000000000",
 );
 const GENERATE_EPHEMERAL_NONCE_REQUEST: &str = concat!(
     "80",               // cla
@@ -694,62 +740,42 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
         GET_SCRIPT_SCHNORR_SIGNATURE_REQUEST,
     ]);
 
-    // --- GetOneSidedMetadataSignature
-    device.expect(vec![unhex(COM_AND_PUB_SIG_REPLY)]);
+    // --- GetOneSidedMetadataSignature: every chunk but the last is answered with an empty `Ok`, as the device does.
+    device.expect(vec![Vec::new(), Vec::new(), unhex(COM_AND_PUB_SIG_REPLY)]);
     let signature = ledger_get_one_sided_metadata_signature(
         ACCOUNT,
         NETWORK,
-        TXO_VERSION,
         VALUE,
         SENDER_OFFSET_KEY_INDEX,
         LedgerKeyBranch::OneSidedSenderOffset,
-        false,
         &scalar(0xb8),
         &receiver_address(),
-        &[0xb9; 32],
+        &unhex(METADATA_PREIMAGE),
     )
     .unwrap();
     expected_com_and_pub(&signature);
     assert_request("GetOneSidedMetadataSignature", device.take_sent(), &[
-        GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST,
+        GET_ONE_SIDED_METADATA_SIGNATURE_0,
+        GET_ONE_SIDED_METADATA_SIGNATURE_1,
+        GET_ONE_SIDED_METADATA_SIGNATURE_2,
     ]);
 
-    device.expect(vec![unhex(COM_AND_PUB_SIG_REPLY)]);
+    device.expect(vec![Vec::new(), unhex(COM_AND_PUB_SIG_REPLY)]);
     let signature = ledger_get_one_sided_metadata_signature(
         ACCOUNT,
         NETWORK,
-        TXO_VERSION,
         VALUE,
         SENDER_OFFSET_KEY_INDEX,
         LedgerKeyBranch::PreMine,
-        false,
         &scalar(0xb8),
         &receiver_address(),
-        &[0xb9; 32],
+        &unhex(METADATA_PREIMAGE_PRE_MINE),
     )
     .unwrap();
     expected_com_and_pub(&signature);
     assert_request("GetOneSidedMetadataSignature (PreMine)", device.take_sent(), &[
-        GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE,
-    ]);
-
-    device.expect(vec![unhex(COM_AND_PUB_SIG_REPLY)]);
-    let signature = ledger_get_one_sided_metadata_signature(
-        ACCOUNT,
-        NETWORK,
-        TXO_VERSION,
-        VALUE,
-        SENDER_OFFSET_KEY_INDEX,
-        LedgerKeyBranch::OneSidedSenderOffset,
-        true,
-        &scalar(0xb8),
-        &receiver_address(),
-        &[0xb9; 32],
-    )
-    .unwrap();
-    expected_com_and_pub(&signature);
-    assert_request("GetOneSidedMetadataSignature (change)", device.take_sent(), &[
-        GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_CHANGE,
+        GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_0,
+        GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_1,
     ]);
 
     // --- GenerateEphemeralNonce
@@ -951,58 +977,47 @@ fn the_codec_reads_every_golden_request_and_writes_every_golden_reply() {
         })
     );
 
-    // --- GetOneSidedMetadataSignature
+    // --- GetOneSidedMetadataSignature: the head decodes back to the inputs, and the preimage chunks reassemble the
+    // preimage.
     let mask = key_array(&scalar(0xb8));
     let address = receiver_address().to_vec();
-    let metadata = payload(GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST);
-    assert_eq!(
-        GetOneSidedMetadataSignatureRequest::decode(&metadata),
-        Ok(GetOneSidedMetadataSignatureRequest::new(
-            ACCOUNT,
-            u64::from(NETWORK.as_byte()),
-            u64::from(TXO_VERSION),
-            SENDER_OFFSET_KEY_INDEX,
-            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
-            false,
-            VALUE,
-            &mask,
-            &address,
-            &[0xb9; 32],
-        )
-        .unwrap())
-    );
-    assert_eq!(
-        GetOneSidedMetadataSignatureRequest::decode(&payload(GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_PRE_MINE)),
-        Ok(GetOneSidedMetadataSignatureRequest::new(
-            ACCOUNT,
-            u64::from(NETWORK.as_byte()),
-            u64::from(TXO_VERSION),
-            SENDER_OFFSET_KEY_INDEX,
-            u64::from(LedgerKeyBranch::PreMine.as_byte()),
-            false,
-            VALUE,
-            &mask,
-            &address,
-            &[0xb9; 32],
-        )
-        .unwrap())
-    );
-    assert_eq!(
-        GetOneSidedMetadataSignatureRequest::decode(&payload(GET_ONE_SIDED_METADATA_SIGNATURE_REQUEST_CHANGE)),
-        Ok(GetOneSidedMetadataSignatureRequest::new(
-            ACCOUNT,
-            u64::from(NETWORK.as_byte()),
-            u64::from(TXO_VERSION),
-            SENDER_OFFSET_KEY_INDEX,
-            u64::from(LedgerKeyBranch::OneSidedSenderOffset.as_byte()),
-            true,
-            VALUE,
-            &mask,
-            &address,
-            &[0xb9; 32],
-        )
-        .unwrap())
-    );
+    for (branch, preimage, chunks) in [
+        (
+            LedgerKeyBranch::OneSidedSenderOffset,
+            unhex(METADATA_PREIMAGE),
+            &[
+                GET_ONE_SIDED_METADATA_SIGNATURE_0,
+                GET_ONE_SIDED_METADATA_SIGNATURE_1,
+                GET_ONE_SIDED_METADATA_SIGNATURE_2,
+            ][..],
+        ),
+        (
+            LedgerKeyBranch::PreMine,
+            unhex(METADATA_PREIMAGE_PRE_MINE),
+            &[
+                GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_0,
+                GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_1,
+            ][..],
+        ),
+    ] {
+        let (head, pieces) = chunks.split_first().unwrap();
+        assert_eq!(
+            MetadataSignatureHeadChunk::decode(&payload(head)),
+            Ok(MetadataSignatureHeadChunk::new(
+                ACCOUNT,
+                u64::from(NETWORK.as_byte()),
+                SENDER_OFFSET_KEY_INDEX,
+                u64::from(branch.as_byte()),
+                VALUE,
+                &mask,
+                u16::try_from(preimage.len()).unwrap(),
+                &address,
+            )
+            .unwrap())
+        );
+        let reassembled: Vec<u8> = pieces.iter().flat_map(|piece| payload(piece)).collect();
+        assert_eq!(reassembled, preimage);
+    }
 
     // --- GenerateEphemeralNonce
     assert_eq!(

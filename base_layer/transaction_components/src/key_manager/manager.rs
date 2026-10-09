@@ -101,6 +101,7 @@ use crate::{
         EncryptedData,
         KernelFeatures,
         MemoField,
+        OutputFeatures,
         RangeProofType,
         TransactionError,
         TransactionInput,
@@ -109,6 +110,7 @@ use crate::{
         TransactionKernelVersion,
         TransactionOutput,
         TransactionOutputVersion,
+        covenants::Covenant,
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             public_key_to_output_encryption_key,
@@ -633,13 +635,11 @@ impl KeyManager {
 
     fn ledger_get_one_sided_metadata_signature_wrapper(
         &self,
-        txo_version: TransactionOutputVersion,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
         receiver_address: &TariAddress,
-        metadata_signature_message_common: &[u8; 32],
-        is_change: bool,
+        metadata_signature_preimage: &[u8],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
@@ -651,27 +651,24 @@ impl KeyManager {
             let sig = ledger_get_one_sided_metadata_signature(
                 ledger.account,
                 ledger.network,
-                txo_version.as_u8(),
                 value.into(),
                 sender_offset_key_index,
                 sender_offset_branch,
-                is_change,
                 &commitment_mask,
                 receiver_address,
-                metadata_signature_message_common,
+                metadata_signature_preimage,
             )
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
             return Ok(sig);
         }
 
         trace!(target: "wallet::key_manager::ledger",
-            "Trying to get ledger metadata signature with txo_version: {:?}, value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, message: {:?}",
-            txo_version,
+            "Trying to get ledger metadata signature with value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, preimage: {:?}",
             value,
             sender_offset_key_id,
             commitment_mask_key_id,
             receiver_address,
-            metadata_signature_message_common);
+            metadata_signature_preimage);
 
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
@@ -1397,20 +1394,22 @@ impl TransactionKeyManagerInterface for KeyManager {
     }
 
     // Creates a metadata signature for the output to `receiver_address`. On a ledger wallet the device signs it
-    // through its reviewed one sided metadata signature: it shows the output for review, unless `is_change` is set
-    // and `receiver_address` is this wallet's own address - the device's own view key and spend key - which it signs
-    // without a prompt. Only the transaction builder's own change sets `is_change`.
+    // through its one sided metadata signature, from the output's raw common fields: it shows the output for review,
+    // unless it is change in every respect it can see - to this wallet's own address, with default features - which
+    // it signs without a prompt. See the trait docs.
+    #[allow(clippy::too_many_arguments)]
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: TransactionOutputVersion,
-        metadata_signature_message_common: &[u8; 32],
-        range_proof_type: RangeProofType,
+        features: &OutputFeatures,
+        covenant: &Covenant,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: MicroMinotari,
         script: &TariScript,
         receiver_address: &TariAddress,
-        is_change: bool,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         if self.wallet_type.is_ledger() {
             // Fail closed for a host held sender offset key. Signed in software it would put an output on chain that
@@ -1428,22 +1427,35 @@ impl TransactionKeyManagerInterface for KeyManager {
             if *script != push_pubkey_script(&stealth_key) {
                 return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient);
             }
+            // The device is sent the raw fields, not their hash, and hashes them itself: what it shows and decides on
+            // is what it signs. See `minotari_ledger_wallet_common::metadata_output`.
+            let preimage = TransactionOutput::metadata_signature_message_common_preimage(
+                &txo_version,
+                features,
+                covenant,
+                encrypted_data,
+                &minimum_value_promise,
+            )
+            .map_err(|e| KeyManagerError::UnexpectedError(e.to_string()))?;
             let comm_and_pub_sig = self.ledger_get_one_sided_metadata_signature_wrapper(
-                txo_version,
                 value,
                 sender_offset_key_id,
                 commitment_mask_key_id,
                 receiver_address,
-                metadata_signature_message_common,
-                is_change,
+                &preimage,
             )?;
 
             Ok(comm_and_pub_sig)
         } else {
-            let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
-                script,
-                metadata_signature_message_common,
+            let common = TransactionOutput::metadata_signature_message_common_from_parts(
+                &txo_version,
+                features,
+                covenant,
+                encrypted_data,
+                &minimum_value_promise,
             );
+            let metadata_signature_message =
+                TransactionOutput::metadata_signature_message_from_script_and_common(script, &common);
             let value = value.into();
             self.get_metadata_signature(
                 commitment_mask_key_id,
@@ -1451,7 +1463,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 sender_offset_key_id,
                 txo_version,
                 &metadata_signature_message,
-                range_proof_type,
+                features.range_proof_type,
             )
         }
     }
@@ -2262,11 +2274,12 @@ mod tests {
                     MicroMinotari(100),
                     &sender_offset,
                     TransactionOutputVersion::get_current_version(),
-                    &[1u8; 32],
-                    RangeProofType::BulletProofPlus,
+                    &crate::transaction_components::OutputFeatures::default(),
+                    &crate::transaction_components::covenants::Covenant::default(),
+                    &crate::transaction_components::EncryptedData::default(),
+                    MicroMinotari(0),
                     &script,
                     &own_address,
-                    false,
                 )
                 .unwrap_err();
             assert_eq!(err, KeyManagerError::LedgerSenderOffsetNeedsRecipient, "{script}");

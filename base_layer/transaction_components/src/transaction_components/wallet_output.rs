@@ -611,15 +611,14 @@ impl WalletOutput {
         Ok(())
     }
 
-    /// Replace the encrypted data and re-sign the metadata signature for `recipient_address`. `is_change` flags the
-    /// transaction builder's own change; see `get_metadata_signature_user_verified`.
+    /// Replace the encrypted data and re-sign the metadata signature for `recipient_address`; see
+    /// `get_metadata_signature_user_verified`.
     pub fn change_encrypted_data_with_verified_signature<KM: TransactionKeyManagerInterface>(
         &mut self,
         encrypted_data: EncryptedData,
         sender_offset: &TariKeyId,
         payment_id: MemoField,
         recipient_address: &TariAddress,
-        is_change: bool,
         key_manager: &KM,
     ) -> Result<(), TransactionError> {
         self.input = OnceLock::new();
@@ -627,24 +626,17 @@ impl WalletOutput {
         self.encrypted_data = encrypted_data;
         self.payment_id = payment_id;
         // now we have to update the metadata signature as this has changed
-        let metadata_message_common = TransactionOutput::metadata_signature_message_common_from_parts(
-            &self.version,
-            &self.features,
-            &self.covenant,
-            &self.encrypted_data,
-            &self.minimum_value_promise,
-        );
-
         let metadata_sig = key_manager.get_metadata_signature_user_verified(
             &self.commitment_mask_key_id,
             self.value,
             sender_offset,
             self.version,
-            &metadata_message_common,
-            self.features.range_proof_type,
+            &self.features,
+            &self.covenant,
+            &self.encrypted_data,
+            self.minimum_value_promise,
             &self.script,
             recipient_address,
-            is_change,
         )?;
         self.metadata_signature = metadata_sig;
         self.recalculate_hash();

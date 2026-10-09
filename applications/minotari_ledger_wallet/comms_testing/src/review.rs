@@ -214,6 +214,22 @@ pub const AMOUNT_FIELD: &str = "Amount";
 pub const RECEIVER_FIELD: &str = "Receiver";
 /// The field name the device uses for the payment ID, which it omits entirely when there is no payment ID.
 pub const PAYMENT_ID_FIELD: &str = "Payment ID";
+/// The rows the device adds to a one sided metadata signature's review when the output is not plain: each only when
+/// it differs from the default, and in this order, after `Payment ID`.
+pub const OUTPUT_TYPE_FIELD: &str = "Output type";
+pub const MATURITY_FIELD: &str = "Maturity";
+pub const SIDECHAIN_FIELD: &str = "Sidechain";
+pub const VALIDATOR_NODE_FIELD: &str = "Validator node";
+pub const MIN_VALUE_FIELD: &str = "Min value";
+pub const RANGE_PROOF_FIELD: &str = "Range proof";
+const OUTPUT_FIELDS: [&str; 6] = [
+    OUTPUT_TYPE_FIELD,
+    MATURITY_FIELD,
+    SIDECHAIN_FIELD,
+    VALIDATOR_NODE_FIELD,
+    MIN_VALUE_FIELD,
+    RANGE_PROOF_FIELD,
+];
 /// The legacy nonce review's field naming which pre-mine signature is being asked for.
 pub const PURPOSE_FIELD: &str = "Purpose";
 /// The legacy nonce review's field naming the signing key, as `"{branch} {index}"`.
@@ -252,7 +268,21 @@ impl ExpectedReview {
         } else {
             absent.push(PAYMENT_ID_FIELD.to_string());
         }
+        // A plain output: none of the rows a non-default output adds. `with_output_field` adds them back one by one.
+        absent.extend(OUTPUT_FIELDS.iter().map(|name| (*name).to_string()));
         Self { present, absent }
+    }
+
+    /// Expect one of the rows a non-default output adds - [`OUTPUT_TYPE_FIELD`] and the rest - with `value`. Call in
+    /// the order the device draws them, which is the order of the constants.
+    #[must_use]
+    pub fn with_output_field(mut self, name: &str, value: &str) -> Self {
+        self.absent.retain(|absent| absent != name);
+        self.present.push(ExpectedField {
+            name: name.to_string(),
+            value: value.to_string(),
+        });
+        self
     }
 
     /// The review `GetRawSchnorrSignatureLegacyNonce` puts up before it signs with the `key_branch` key at
@@ -817,10 +847,24 @@ mod test {
         assert_eq!(strip_page_counter_suffix("1 of "), "1 of ");
     }
 
+    /// A plain output's review asserts every row a non-default output adds absent; asking for one moves it from the
+    /// absent list to the present list, after the rows already there.
+    #[test]
+    fn the_output_rows_are_absent_unless_asked_for() {
+        let plain = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0);
+        for name in OUTPUT_FIELDS {
+            assert!(plain.absent().iter().any(|absent| absent == name), "{name}");
+        }
+        let matured = plain.with_output_field(MATURITY_FIELD, "1000");
+        assert!(!matured.absent().iter().any(|absent| absent == MATURITY_FIELD));
+        let last = matured.present().last().unwrap();
+        assert_eq!((last.name.as_str(), last.value.as_str()), (MATURITY_FIELD, "1000"));
+    }
+
     #[test]
     fn a_missing_payment_id_row_is_asserted_absent() {
         let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0);
-        assert_eq!(expected.absent(), ["Payment ID"]);
+        assert_eq!(expected.absent().first().map(String::as_str), Some("Payment ID"));
 
         // A device that grew a Payment ID row it was not asked for must fail, on both toolkits - and on BAGL the
         // label arrives as "Payment lD", so a naive comparison against "Payment ID" would miss it entirely.
@@ -842,7 +886,7 @@ mod test {
     #[test]
     fn a_present_payment_id_row_is_asserted_present() {
         let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 32);
-        assert!(expected.absent().is_empty());
+        assert!(!expected.absent().iter().any(|name| name == PAYMENT_ID_FIELD));
 
         let mut screens = nbgl_screens(RECEIVER);
         screens[1] = screens[1].replace("Reject2 of 3", "Payment ID32 bytesReject2 of 3");

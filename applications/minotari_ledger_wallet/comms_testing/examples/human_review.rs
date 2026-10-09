@@ -101,14 +101,16 @@ fn main() -> ExitCode {
         minotari_ledger_wallet_comms::accessor_methods::ledger_get_one_sided_metadata_signature(
             ACCOUNT,
             receiver.network(),
-            0,
             VALUE,
             SENDER_OFFSET_KEY_INDEX,
             minotari_ledger_wallet_common::common_types::LedgerKeyBranch::OneSidedSenderOffset,
-            false,
             &PrivateKey::from(42u64),
             &receiver,
-            &[7u8; 32],
+            &minotari_ledger_wallet_comms_testing::fixtures::metadata_preimage(
+                &minotari_ledger_wallet_common::metadata_output::DEFAULT_OUTPUT_FEATURES,
+                80,
+                0,
+            ),
         )
     });
 

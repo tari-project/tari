@@ -279,7 +279,7 @@ mod test {
             (0x08, Instruction::GetDHSharedSecret),
             (0x09, Instruction::GetRawSchnorrSignature),
             (0x10, Instruction::GetScriptSchnorrSignature),
-            (0x11, Instruction::GetOneSidedMetadataSignature),
+            (0x15, Instruction::GetOneSidedMetadataSignature),
             (0x12, Instruction::GetScriptSignatureManaged),
             (0x13, Instruction::GenerateEphemeralNonce),
             (0x14, Instruction::GetRawSchnorrSignatureLegacyNonce),
@@ -378,8 +378,8 @@ mod test {
     ///
     /// One scenario library driving both frontends is affordable *because* only a few scenarios show a screen, so
     /// the list is asserted rather than assumed: the one sided metadata signature, the same to an address carrying this
-    /// device's spend key with a foreign view key and to this device's own address without the change flag (neither of
-    /// which auto-approval may cover), and the two legacy nonce scenarios that complete a signature (the legacy
+    /// device's spend key with a foreign view key and to this device's own address with non-default features (neither
+    /// of which auto-approval may cover), and the two legacy nonce scenarios that complete a signature (the legacy
     /// instruction prompts for every signature since it was narrowed to `PreMine` keys). Another approval scenario
     /// is not forbidden, but it adds to what a human has to do for every hardware run, so it should be a decision
     /// somebody made on purpose rather than one that arrived with a merge.

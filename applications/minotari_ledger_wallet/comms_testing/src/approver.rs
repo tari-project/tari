@@ -1039,7 +1039,9 @@ mod test {
         let banner = expectation_banner(&ExpectedReview::one_sided_metadata_signature(2_500_000, receiver, 16));
         assert!(banner.contains("2.50 T"), "{banner}");
         assert!(banner.contains("16 bytes"), "{banner}");
-        assert!(!banner.contains("must NOT appear"), "{banner}");
+        // The rows a non-default output adds are asserted absent from a plain output's review.
+        assert!(banner.contains("Maturity:"), "{banner}");
+        assert!(banner.contains("must NOT appear"), "{banner}");
     }
 
     /// Every `HumanApprover` failure leaves a review outstanding on a device that nothing here can cancel, so the
