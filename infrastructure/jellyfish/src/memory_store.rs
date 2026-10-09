@@ -45,7 +45,10 @@ impl<P> MemoryTreeStore<P> {
                         }
                         if let Some(Node::Internal(internal_node)) = self.nodes.get(&key).map(TreeNode::as_node) {
                             for (nibble, child) in internal_node.children_sorted() {
-                                stack.push(key.gen_child_node_key(child.version, *nibble));
+                                // A child past the maximum path length cannot have been stored
+                                if let Ok(child_key) = key.gen_child_node_key(child.version, *nibble) {
+                                    stack.push(child_key);
+                                }
                             }
                         }
                         to_remove.insert(key);

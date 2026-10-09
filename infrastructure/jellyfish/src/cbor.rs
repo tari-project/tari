@@ -28,14 +28,15 @@
 //!
 //! # Trusted decoding
 //!
-//! The tree node types ([`NibblePath`], [`NodeKey`], [`NodeType`], [`Child`], [`InternalNode`], [`LeafNode`],
+//! The tree node types ([`NodeKey`], [`NodeType`], [`Child`], [`InternalNode`], [`LeafNode`],
 //! [`Node`], [`StaleTreeNode`] and [`TreeNode`]) are read from the node's own store on the tree's hot path, so they
-//! decode without validation: array lengths, nibble path shape and internal node invariants are not checked. Decoding
+//! decode without validation: array lengths and internal node invariants are not checked. Decoding
 //! corrupt bytes returns an error or a malformed value, never a panic. Never decode these types from untrusted input.
 //!
 //! The proof types ([`SparseMerkleLeafNode`], [`NodeInProof`] and [`SparseMerkleProofExt`]) come from provers, so
 //! they require exact definite-length arrays and reject a sibling array over [`MAX_PROOF_SIBLINGS`] from its header.
-//! [`TreeHash`] always requires 32 bytes and a standalone [`Nibble`] is range-checked.
+//! [`TreeHash`] always requires 32 bytes, a standalone [`Nibble`] is range-checked, and a [`NibblePath`] is fully
+//! checked because it must fit its inline storage.
 
 use indexmap::IndexMap;
 use minicbor::{
@@ -198,13 +199,14 @@ impl<C> Encode<C> for NibblePath {
     }
 }
 
-// Unchecked: see "Trusted decoding" in the module docs.
+// Checked even though tree nodes are trusted (see the module docs): the path must fit inline, and the remaining checks
+// are a couple of comparisons.
 impl<'b, C> Decode<'b, C> for NibblePath {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
         d.array()?;
+        let pos = d.position();
         let num_nibbles = usize::decode(d, ctx)?;
-        let bytes = d.bytes()?.to_vec();
-        Ok(NibblePath::from_parts_unchecked(num_nibbles, bytes))
+        NibblePath::try_from_parts(num_nibbles, d.bytes()?).map_err(|e| decode::Error::message(e).at(pos))
     }
 }
 
@@ -652,10 +654,10 @@ mod tests {
         for n in 0..16 {
             round_trip(&nibble(n));
         }
-        round_trip(&NibblePath::new_even(vec![]));
-        round_trip(&NibblePath::new_even(vec![0x12, 0x34]));
-        round_trip(&NibblePath::new_odd(vec![0x12, 0x30]).unwrap());
-        round_trip(&NodeKey::new(u64::MAX, NibblePath::new_odd(vec![0xa0]).unwrap()));
+        round_trip(&NibblePath::empty());
+        round_trip(&NibblePath::new_even(&[0x12, 0x34]).unwrap());
+        round_trip(&NibblePath::new_odd(&[0x12, 0x30]).unwrap());
+        round_trip(&NodeKey::new(u64::MAX, NibblePath::new_odd(&[0xa0]).unwrap()));
         round_trip(&NodeType::Leaf);
         round_trip(&NodeType::Null);
         round_trip(&NodeType::Internal { leaf_count: usize::MAX });
@@ -673,7 +675,7 @@ mod tests {
         round_trip(&StaleTreeNode::Node(NodeKey::new_empty_path(3)));
         round_trip(&StaleTreeNode::Subtree(NodeKey::new(
             3,
-            NibblePath::new_even(vec![0x12]),
+            NibblePath::new_even(&[0x12]).unwrap(),
         )));
 
         let bytes = minicbor::to_vec(TreeNode::new_v1(Node::Leaf(leaf.clone()))).unwrap();

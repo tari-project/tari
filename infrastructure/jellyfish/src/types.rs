@@ -162,9 +162,11 @@ pub const MAX_PROOF_SIBLINGS: usize = 256;
 
 /// The maximum number of nibbles in a [`NibblePath`], i.e. the nibble length of a [`LeafKey`].
 ///
-/// Enforced when a `NibblePath` is decoded and by [`NibblePath::new_odd`], but not by [`NibblePath::new_even`] or
-/// [`NibblePath::push`]. Tree traversals bound their depth independently of this cap.
+/// Enforced by every `NibblePath` constructor and by [`NibblePath::push`].
 pub const MAX_NIBBLE_PATH_LEN: usize = 64;
+
+/// The maximum number of bytes in a [`NibblePath`].
+pub const MAX_NIBBLE_PATH_BYTES: usize = MAX_NIBBLE_PATH_LEN / 2;
 
 /// A more detailed version of `SparseMerkleProof` with the only difference that all the leaf
 /// siblings are explicitly set as `SparseMerkleLeafNode` instead of its hash value.
@@ -712,17 +714,27 @@ impl fmt::LowerHex for Nibble {
 
 // SOURCE: https://github.com/aptos-labs/aptos-core/blob/1.0.4/types/src/nibble/nibble_path/mod.rs#L22
 /// NibblePath defines a path in Merkle tree in the unit of nibble (4 bits).
-#[derive(Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
-#[serde(try_from = "NibblePathRaw")]
+///
+/// A path holds at most [`MAX_NIBBLE_PATH_LEN`] nibbles, the nibble length of a [`LeafKey`], so it is stored inline and
+/// never allocates. Every constructor and [`Self::push`] enforce the cap.
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct NibblePath {
-    /// Indicates the total number of nibbles in bytes. Either `bytes.len() * 2 - 1` or
-    /// `bytes.len() * 2`.
+    /// The number of nibbles, at most [`MAX_NIBBLE_PATH_LEN`].
     // Guarantees intended ordering based on the top-to-bottom declaration order of the struct's
     // members.
+    num_nibbles: u8,
+    /// The path, 2 nibbles per byte. Every nibble past `num_nibbles` is zero, so the derived `Eq`, `Hash` and `Ord`
+    /// see only the path.
+    bytes: [u8; MAX_NIBBLE_PATH_BYTES],
+}
+
+// Same shape as the former derived `{ num_nibbles: usize, bytes: Vec<u8> }`, so stored and serialized paths are
+// unchanged.
+#[derive(Serialize)]
+#[serde(rename = "NibblePath")]
+struct NibblePathRef<'a> {
     num_nibbles: usize,
-    /// The underlying bytes that stores the path, 2 nibbles per byte. If the number of nibbles is
-    /// odd, the second half of the last byte must be 0.
-    bytes: Vec<u8>,
+    bytes: &'a [u8],
 }
 
 #[derive(Deserialize)]
@@ -731,28 +743,32 @@ struct NibblePathRaw {
     bytes: Vec<u8>,
 }
 
-impl TryFrom<NibblePathRaw> for NibblePath {
-    type Error = NibblePathError;
+impl Serialize for NibblePath {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        NibblePathRef {
+            num_nibbles: self.num_nibbles(),
+            bytes: self.bytes(),
+        }
+        .serialize(serializer)
+    }
+}
 
-    fn try_from(raw: NibblePathRaw) -> Result<Self, Self::Error> {
-        NibblePath::try_from_parts(raw.num_nibbles, raw.bytes)
+impl<'de> Deserialize<'de> for NibblePath {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = NibblePathRaw::deserialize(deserializer)?;
+        NibblePath::try_from_parts(raw.num_nibbles, &raw.bytes).map_err(serde::de::Error::custom)
     }
 }
 
 impl NibblePath {
-    /// Builds a path from trusted storage without the checks in [`Self::try_from_parts`].
-    #[cfg(feature = "minicbor")]
-    pub(crate) fn from_parts_unchecked(num_nibbles: usize, bytes: Vec<u8>) -> Self {
-        Self { num_nibbles, bytes }
-    }
-
-    /// Builds a decoded path, enforcing [`MAX_NIBBLE_PATH_LEN`], the byte length and a zero padding nibble.
-    pub(crate) fn try_from_parts(num_nibbles: usize, bytes: Vec<u8>) -> Result<Self, NibblePathError> {
+    /// Builds a path, enforcing [`MAX_NIBBLE_PATH_LEN`], the byte length and a zero padding nibble.
+    pub(crate) fn try_from_parts(num_nibbles: usize, bytes: &[u8]) -> Result<Self, NibblePathError> {
+        let too_long = NibblePathError::TooLong {
+            num_nibbles,
+            max: MAX_NIBBLE_PATH_LEN,
+        };
         if num_nibbles > MAX_NIBBLE_PATH_LEN {
-            return Err(NibblePathError::TooLong {
-                num_nibbles,
-                max: MAX_NIBBLE_PATH_LEN,
-            });
+            return Err(too_long);
         }
         if num_nibbles.div_ceil(2) != bytes.len() {
             return Err(NibblePathError::LengthMismatch {
@@ -763,7 +779,18 @@ impl NibblePath {
         if !num_nibbles.is_multiple_of(2) && bytes.last().is_some_and(|b| b & 0x0F != 0) {
             return Err(NibblePathError::NonZeroTrailingNibble);
         }
-        Ok(Self { num_nibbles, bytes })
+        let mut path = Self::empty();
+        path.bytes
+            .get_mut(..bytes.len())
+            .ok_or_else(|| too_long.clone())?
+            .copy_from_slice(bytes);
+        path.num_nibbles = u8::try_from(num_nibbles).map_err(|_| too_long)?;
+        Ok(path)
+    }
+
+    /// The number of bytes the path occupies.
+    fn num_bytes(&self) -> usize {
+        usize::from(self.num_nibbles).div_ceil(2)
     }
 }
 
@@ -779,11 +806,11 @@ impl fmt::Debug for NibblePath {
 impl fmt::Display for NibblePath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let hex_chars = self
-            .bytes
+            .bytes()
             .iter()
             .flat_map(|b| [b >> 4, b & 15])
             .filter_map(|b| char::from_digit(u32::from(b), 16))
-            .take(self.num_nibbles);
+            .take(self.num_nibbles());
 
         for ch in hex_chars {
             write!(f, "{ch}")?;
@@ -792,87 +819,80 @@ impl fmt::Display for NibblePath {
     }
 }
 
-/// Convert a vector of bytes into `NibblePath` using the lower 4 bits of each byte as nibble.
-impl FromIterator<Nibble> for NibblePath {
-    fn from_iter<I: IntoIterator<Item = Nibble>>(iter: I) -> Self {
-        let mut nibble_path = NibblePath::new_even(vec![]);
-        for nibble in iter {
-            nibble_path.push(nibble);
-        }
-        nibble_path
-    }
-}
-
 impl NibblePath {
-    /// Creates a new `NibblePath` from a vector of bytes assuming each byte has 2 nibbles.
-    ///
-    /// Does not enforce [`MAX_NIBBLE_PATH_LEN`] (that cap applies on decode and in [`Self::new_odd`]); tree traversals
-    /// bound their depth independently.
-    pub fn new_even(bytes: Vec<u8>) -> Self {
-        let num_nibbles = bytes.len().saturating_mul(2);
-        NibblePath { num_nibbles, bytes }
+    /// The empty path, i.e. the root.
+    pub const fn empty() -> Self {
+        Self {
+            num_nibbles: 0,
+            bytes: [0; MAX_NIBBLE_PATH_BYTES],
+        }
+    }
+
+    /// The full path of a leaf key's bytes, [`MAX_NIBBLE_PATH_LEN`] nibbles long.
+    pub const fn from_key_bytes(bytes: [u8; MAX_NIBBLE_PATH_BYTES]) -> Self {
+        Self { num_nibbles: 64, bytes }
+    }
+
+    /// Creates a `NibblePath` from bytes assuming each byte has 2 nibbles. Fails if the path would be longer than
+    /// [`MAX_NIBBLE_PATH_LEN`].
+    pub fn new_even(bytes: &[u8]) -> Result<Self, NibblePathError> {
+        Self::try_from_parts(bytes.len().saturating_mul(2), bytes)
     }
 
     /// Similar to `new_even()` but the bytes have one less nibble: the low nibble of the last byte is padding and
     /// must be zero.
-    pub fn new_odd(bytes: Vec<u8>) -> Result<Self, NibblePathError> {
-        let last = bytes.last().ok_or(NibblePathError::EmptyOddPath)?;
-        if last & 0x0F != 0 {
-            return Err(NibblePathError::NonZeroTrailingNibble);
+    pub fn new_odd(bytes: &[u8]) -> Result<Self, NibblePathError> {
+        if bytes.is_empty() {
+            return Err(NibblePathError::EmptyOddPath);
         }
-        let num_nibbles = bytes.len().saturating_mul(2).saturating_sub(1);
-        if num_nibbles > MAX_NIBBLE_PATH_LEN {
-            return Err(NibblePathError::TooLong {
-                num_nibbles,
-                max: MAX_NIBBLE_PATH_LEN,
-            });
-        }
-        Ok(NibblePath { num_nibbles, bytes })
+        Self::try_from_parts(bytes.len().saturating_mul(2).saturating_sub(1), bytes)
     }
 
-    /// Adds a nibble to the end of the nibble path.
-    pub fn push(&mut self, nibble: Nibble) {
-        if self.num_nibbles.is_multiple_of(2) {
-            self.bytes.push(u8::from(nibble) << 4);
-        } else if let Some(last_byte) = self.bytes.last_mut() {
-            // An odd path always has a last byte with a zero low nibble (enforced by every constructor)
-            *last_byte |= u8::from(nibble);
+    /// Adds a nibble to the end of the nibble path. Fails if the path is already [`MAX_NIBBLE_PATH_LEN`] nibbles long.
+    pub fn push(&mut self, nibble: Nibble) -> Result<(), NibblePathError> {
+        let len = usize::from(self.num_nibbles);
+        let too_long = || NibblePathError::TooLong {
+            num_nibbles: len.saturating_add(1),
+            max: MAX_NIBBLE_PATH_LEN,
+        };
+        if len >= MAX_NIBBLE_PATH_LEN {
+            return Err(too_long());
+        }
+        let byte = self.bytes.get_mut(len / 2).ok_or_else(too_long)?;
+        if len.is_multiple_of(2) {
+            *byte = u8::from(nibble) << 4;
         } else {
-            // Not reachable: an odd path has at least one byte
+            *byte |= u8::from(nibble);
         }
         self.num_nibbles = self.num_nibbles.saturating_add(1);
+        Ok(())
     }
 
     /// Pops a nibble from the end of the nibble path.
     pub fn pop(&mut self) -> Option<Nibble> {
-        let poped_nibble = if self.num_nibbles.is_multiple_of(2) {
-            self.bytes.last_mut().map(|last_byte| {
-                let nibble = *last_byte & 0x0F;
-                *last_byte &= 0xF0;
-                Nibble::from_masked(nibble)
-            })
+        let index = usize::from(self.num_nibbles).checked_sub(1)?;
+        let byte = self.bytes.get_mut(index / 2)?;
+        let nibble = if index.is_multiple_of(2) {
+            let nibble = *byte >> 4;
+            *byte = 0;
+            nibble
         } else {
-            self.bytes.pop().map(|byte| Nibble::from_masked(byte >> 4))
+            let nibble = *byte & 0x0F;
+            *byte &= 0xF0;
+            nibble
         };
-        if poped_nibble.is_some() {
-            self.num_nibbles = self.num_nibbles.saturating_sub(1);
-        }
-        poped_nibble
+        self.num_nibbles = self.num_nibbles.saturating_sub(1);
+        Some(Nibble::from_masked(nibble))
     }
 
     /// Returns the last nibble.
     pub fn last(&self) -> Option<Nibble> {
-        let last_byte = self.bytes.last()?;
-        if self.num_nibbles.is_multiple_of(2) {
-            Some(Nibble::from_masked(*last_byte))
-        } else {
-            Some(Nibble::from_masked(*last_byte >> 4))
-        }
+        self.get_nibble(usize::from(self.num_nibbles).checked_sub(1)?)
     }
 
     /// Get the i-th bit.
     fn get_bit(&self, i: usize) -> Option<bool> {
-        if i >= self.num_nibbles.saturating_mul(4) {
+        if i >= self.num_nibbles().saturating_mul(4) {
             return None;
         }
         let pos = i / 8;
@@ -882,6 +902,9 @@ impl NibblePath {
 
     /// Get the i-th nibble.
     pub fn get_nibble(&self, i: usize) -> Option<Nibble> {
+        if i >= self.num_nibbles() {
+            return None;
+        }
         Some(Nibble::from_masked(
             self.bytes.get(i / 2)? >> (if i % 2 == 1 { 0 } else { 4 }),
         ))
@@ -891,49 +914,50 @@ impl NibblePath {
     pub fn bits(&self) -> NibbleBitIterator<'_> {
         NibbleBitIterator {
             nibble_path: self,
-            pos: (0..self.num_nibbles.saturating_mul(4)),
+            pos: (0..self.num_nibbles().saturating_mul(4)),
         }
     }
 
     /// Get a nibble iterator iterates over the whole nibble path.
     pub fn nibbles(&self) -> NibbleIterator<'_> {
-        NibbleIterator::new(self, 0, self.num_nibbles)
+        NibbleIterator::new(self, 0, self.num_nibbles())
     }
 
     /// Get the total number of nibbles stored.
     pub fn num_nibbles(&self) -> usize {
-        self.num_nibbles
+        usize::from(self.num_nibbles)
     }
 
     ///  Returns `true` if the nibbles contains no elements.
     pub fn is_empty(&self) -> bool {
-        self.num_nibbles() == 0
+        self.num_nibbles == 0
     }
 
     /// Get the underlying bytes storing nibbles.
     pub fn bytes(&self) -> &[u8] {
-        &self.bytes
-    }
-
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.bytes
+        self.bytes.get(..self.num_bytes()).unwrap_or_default()
     }
 
     /// Shortens the path to its first `len` nibbles.
     pub fn truncate(&mut self, len: usize) -> Result<(), NibblePathError> {
-        if len > self.num_nibbles {
-            return Err(NibblePathError::TruncateBeyondLength {
-                len,
-                num_nibbles: self.num_nibbles,
-            });
+        let beyond = || NibblePathError::TruncateBeyondLength {
+            len,
+            num_nibbles: self.num_nibbles(),
+        };
+        if len > self.num_nibbles() {
+            return Err(beyond());
         }
-        self.num_nibbles = len;
-        self.bytes.truncate(len.div_ceil(2));
+        let num_nibbles = u8::try_from(len).map_err(|_| beyond())?;
+        let num_bytes = len.div_ceil(2);
+        if let Some(tail) = self.bytes.get_mut(num_bytes..) {
+            tail.fill(0);
+        }
         if !len.is_multiple_of(2) &&
-            let Some(last_byte) = self.bytes.last_mut()
+            let Some(last_byte) = num_bytes.checked_sub(1).and_then(|i| self.bytes.get_mut(i))
         {
             *last_byte &= 0xF0;
         }
+        self.num_nibbles = num_nibbles;
         Ok(())
     }
 }
@@ -1045,7 +1069,14 @@ impl<'a> NibbleIterator<'a> {
     /// Cut and return the range of the underlying `nibble_path` that this iterator is iterating
     /// over as a new `NibblePath`
     pub fn get_nibble_path(&self) -> NibblePath {
-        self.visited_nibbles().chain(self.remaining_nibbles()).collect()
+        let mut path = NibblePath::empty();
+        for nibble in self.visited_nibbles().chain(self.remaining_nibbles()) {
+            // Not reachable: a range of a path is never longer than the path
+            if path.push(nibble).is_err() {
+                break;
+            }
+        }
+        path
     }
 
     /// Get the number of nibbles that this iterator covers.
@@ -1081,7 +1112,7 @@ impl LeafKey {
     }
 
     pub fn as_ref(&self) -> LeafKeyRef<'_> {
-        LeafKeyRef::new(self.bytes.as_slice())
+        LeafKeyRef::new(&self.bytes)
     }
 
     pub fn iter_bits(&self) -> BitIterator<'_> {
@@ -1119,18 +1150,18 @@ pub struct LeafKeyRef<'a> {
     /// becomes unspecified.
     /// All leaf keys must be evenly distributed across their space - otherwise the tree's
     /// performance degrades.
-    pub bytes: &'a [u8],
+    pub bytes: &'a [u8; 32],
 }
 
 impl<'a> LeafKeyRef<'a> {
-    pub fn new(bytes: &'a [u8]) -> Self {
+    pub fn new(bytes: &'a [u8; 32]) -> Self {
         Self { bytes }
     }
 }
 
 impl PartialEq<LeafKey> for LeafKeyRef<'_> {
     fn eq(&self, other: &LeafKey) -> bool {
-        self.bytes == other.bytes.as_slice()
+        *self.bytes == *other.bytes
     }
 }
 
@@ -1152,7 +1183,7 @@ impl NodeKey {
 
     /// A shortcut to generate a node key consisting of a version and an empty nibble path.
     pub fn new_empty_path(version: Version) -> Self {
-        Self::new(version, NibblePath::new_even(vec![]))
+        Self::new(version, NibblePath::empty())
     }
 
     /// Gets the version.
@@ -1165,16 +1196,17 @@ impl NodeKey {
         &self.nibble_path
     }
 
-    /// Generates a child node key based on this node key.
-    pub fn gen_child_node_key(&self, version: Version, n: Nibble) -> Self {
-        let mut node_nibble_path = self.nibble_path().clone();
-        node_nibble_path.push(n);
-        Self::new(version, node_nibble_path)
+    /// Generates a child node key based on this node key. Fails if this key's path is already
+    /// [`MAX_NIBBLE_PATH_LEN`] nibbles long.
+    pub fn gen_child_node_key(&self, version: Version, n: Nibble) -> Result<Self, NibblePathError> {
+        let mut node_nibble_path = self.nibble_path;
+        node_nibble_path.push(n)?;
+        Ok(Self::new(version, node_nibble_path))
     }
 
     /// Generates parent node key at the same version based on this node key. Returns `None` for the root.
     pub fn gen_parent_node_key(&self) -> Option<Self> {
-        let mut node_nibble_path = self.nibble_path().clone();
+        let mut node_nibble_path = self.nibble_path;
         node_nibble_path.pop()?;
         Some(Self::new(self.version, node_nibble_path))
     }
@@ -1434,7 +1466,7 @@ impl InternalNode {
             let only_child_index = Nibble::from_masked(range_existence_bitmap.trailing_zeros() as u8);
             let only_child = self.child(only_child_index).ok_or(JmtStorageError::InconsistentState)?;
             if matches!(only_child.node_type, NodeType::Leaf) {
-                let only_child_node_key = node_key.gen_child_node_key(only_child.version, only_child_index);
+                let only_child_node_key = node_key.gen_child_node_key(only_child.version, only_child_index)?;
                 match tree_reader.get_node(&only_child_node_key)? {
                     Node::Leaf(leaf_node)
                         if leaf_key_has_prefix(leaf_node.leaf_key(), only_child_node_key.nibble_path()) =>
@@ -1532,7 +1564,7 @@ impl InternalNode {
                     .ok_or(JmtStorageError::InconsistentState)?
                     .version;
                 return Ok((
-                    Some(node_key.gen_child_node_key(only_child_version, only_child_index)),
+                    Some(node_key.gen_child_node_key(only_child_version, only_child_index)?),
                     siblings,
                 ));
             }
@@ -1731,6 +1763,13 @@ pub enum JmtStorageError {
     },
 }
 
+// A path past `MAX_NIBBLE_PATH_LEN` only arises from a corrupt store
+impl From<NibblePathError> for JmtStorageError {
+    fn from(_: NibblePathError) -> Self {
+        JmtStorageError::InconsistentState
+    }
+}
+
 impl From<InternalNodeError> for JmtStorageError {
     fn from(_: InternalNodeError) -> Self {
         JmtStorageError::InconsistentState
@@ -1791,19 +1830,19 @@ mod tests {
 
     #[test]
     fn it_builds_odd_nibble_paths_fallibly() {
-        assert_eq!(NibblePath::new_odd(vec![]).unwrap_err(), NibblePathError::EmptyOddPath);
+        assert_eq!(NibblePath::new_odd(&[]).unwrap_err(), NibblePathError::EmptyOddPath);
         assert_eq!(
-            NibblePath::new_odd(vec![0x12]).unwrap_err(),
+            NibblePath::new_odd(&[0x12]).unwrap_err(),
             NibblePathError::NonZeroTrailingNibble
         );
-        let path = NibblePath::new_odd(vec![0x10]).unwrap();
+        let path = NibblePath::new_odd(&[0x10]).unwrap();
         assert_eq!(path.num_nibbles(), 1);
         assert_eq!(path.last(), Some(nibble(1)));
 
-        let path = NibblePath::new_odd([vec![0x11u8; 31], vec![0x10]].concat()).unwrap();
+        let path = NibblePath::new_odd(&[vec![0x11u8; 31], vec![0x10]].concat()).unwrap();
         assert_eq!(path.num_nibbles(), 63);
         assert_eq!(
-            NibblePath::new_odd([vec![0x11u8; 32], vec![0x10]].concat()).unwrap_err(),
+            NibblePath::new_odd(&[vec![0x11u8; 32], vec![0x10]].concat()).unwrap_err(),
             NibblePathError::TooLong {
                 num_nibbles: 65,
                 max: MAX_NIBBLE_PATH_LEN
@@ -1813,17 +1852,17 @@ mod tests {
 
     #[test]
     fn it_truncates_nibble_paths_fallibly() {
-        let mut path = NibblePath::new_even(vec![0x12, 0x34]);
+        let mut path = NibblePath::new_even(&[0x12, 0x34]).unwrap();
         assert_eq!(path.truncate(5).unwrap_err(), NibblePathError::TruncateBeyondLength {
             len: 5,
             num_nibbles: 4
         });
         path.truncate(4).unwrap();
-        assert_eq!(path, NibblePath::new_even(vec![0x12, 0x34]));
+        assert_eq!(path, NibblePath::new_even(&[0x12, 0x34]).unwrap());
         // An odd length zeroes the trailing nibble
         path.truncate(3).unwrap();
         assert_eq!(path.bytes(), &[0x12, 0x30]);
-        assert_eq!(path, NibblePath::new_odd(vec![0x12, 0x30]).unwrap());
+        assert_eq!(path, NibblePath::new_odd(&[0x12, 0x30]).unwrap());
         path.truncate(0).unwrap();
         assert!(path.is_empty());
     }
@@ -1832,7 +1871,7 @@ mod tests {
     fn it_returns_no_parent_for_the_root() {
         let root = NodeKey::new_empty_path(1);
         assert_eq!(root.gen_parent_node_key(), None);
-        let child = NodeKey::new(1, NibblePath::new_odd(vec![0xa0]).unwrap());
+        let child = NodeKey::new(1, NibblePath::new_odd(&[0xa0]).unwrap());
         assert_eq!(child.gen_parent_node_key(), Some(root));
     }
 
@@ -1896,8 +1935,8 @@ mod tests {
 
     #[test]
     fn it_validates_deserialized_nibble_paths() {
-        let path: NibblePath = [1u8, 2, 3].into_iter().map(nibble).collect();
-        let json = serde_json::to_value(&path).unwrap();
+        let path = NibblePath::new_odd(&[0x12, 0x30]).unwrap();
+        let json = serde_json::to_value(path).unwrap();
         assert_eq!(serde_json::from_value::<NibblePath>(json).unwrap(), path);
 
         let bad_len = serde_json::json!({ "num_nibbles": 5, "bytes": [0x12] });
@@ -1912,14 +1951,14 @@ mod tests {
         let path = serde_json::from_value::<NibblePath>(max).unwrap();
         assert_eq!(path.num_nibbles(), MAX_NIBBLE_PATH_LEN);
 
-        let too_long = NibblePathRaw {
-            num_nibbles: 65,
-            bytes: [vec![0x11u8; 32], vec![0x10]].concat(),
-        };
-        assert_eq!(NibblePath::try_from(too_long).unwrap_err(), NibblePathError::TooLong {
-            num_nibbles: 65,
-            max: MAX_NIBBLE_PATH_LEN
-        });
+        let too_long = [vec![0x11u8; 32], vec![0x10]].concat();
+        assert_eq!(
+            NibblePath::try_from_parts(65, &too_long).unwrap_err(),
+            NibblePathError::TooLong {
+                num_nibbles: 65,
+                max: MAX_NIBBLE_PATH_LEN
+            }
+        );
         let mut bytes = vec![0x11u8; 32];
         bytes.push(0x10);
         let too_long = serde_json::json!({ "num_nibbles": 65, "bytes": bytes });
@@ -1964,8 +2003,51 @@ mod tests {
     }
 
     #[test]
+    fn it_caps_nibble_paths_at_a_leaf_key() {
+        let mut full = NibblePath::from_key_bytes([0x11; 32]);
+        assert_eq!(full.num_nibbles(), MAX_NIBBLE_PATH_LEN);
+        assert_eq!(full.push(nibble(1)).unwrap_err(), NibblePathError::TooLong {
+            num_nibbles: 65,
+            max: MAX_NIBBLE_PATH_LEN
+        });
+        NodeKey::new(1, full).gen_child_node_key(1, nibble(1)).unwrap_err();
+        NibblePath::new_even(&[0; 33]).unwrap_err();
+
+        // Built nibble by nibble, the path equals the one built from bytes
+        let mut path = NibblePath::empty();
+        for _ in 0..MAX_NIBBLE_PATH_LEN {
+            path.push(nibble(1)).unwrap();
+        }
+        assert_eq!(path, full);
+        assert_eq!(full.pop(), Some(nibble(1)));
+        assert_eq!(full.num_nibbles(), 63);
+    }
+
+    #[test]
+    fn it_keeps_nibbles_past_the_path_zero() {
+        let mut path = NibblePath::new_even(&[0x12, 0x34]).unwrap();
+        path.pop().unwrap();
+        path.pop().unwrap();
+        assert_eq!(path, NibblePath::new_even(&[0x12]).unwrap());
+        path.truncate(1).unwrap();
+        assert_eq!(path, NibblePath::new_odd(&[0x10]).unwrap());
+        assert_eq!(path.get_nibble(1), None);
+        path.push(nibble(5)).unwrap();
+        assert_eq!(path.bytes(), [0x15]);
+    }
+
+    #[test]
+    fn it_keeps_the_nibble_path_serde_format() {
+        let path = NibblePath::new_odd(&[0x12, 0x30]).unwrap();
+        assert_eq!(
+            serde_json::to_value(path).unwrap(),
+            serde_json::json!({ "num_nibbles": 3, "bytes": [0x12, 0x30] })
+        );
+    }
+
+    #[test]
     fn it_iterates_nibble_path_bits() {
-        let path: NibblePath = [0xau8, 0x5].into_iter().map(nibble).collect();
+        let path = NibblePath::new_even(&[0xa5]).unwrap();
         let bits = path.bits().collect::<Vec<_>>();
         assert_eq!(bits, [true, false, true, false, false, true, false, true]);
     }
