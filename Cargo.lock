@@ -8003,7 +8003,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "csv",
  "cucumber",
  "fs2",
  "futures 0.3.32",

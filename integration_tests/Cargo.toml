@@ -43,7 +43,6 @@ minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 anyhow = { workspace = true }
 async-trait = "0.1.50"
 chrono = { version = "0.4", default-features = false }
-csv = "1.1"
 cucumber = { version = "0.23", features = [
     "default",
     "libtest",
