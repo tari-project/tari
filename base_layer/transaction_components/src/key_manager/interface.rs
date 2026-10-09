@@ -253,6 +253,20 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
+    /// Signs `challenge` with `private_key_id` under `nonce`. A `Zero`, `SpendKey`, `ViewKey`, `CodeTemplateAuthor`,
+    /// `Derived`, `DHCommitmentMask` or `DHEncryptedData` nonce, or one equal to the signing key, is refused with
+    /// [`KeyManagerError::InvalidNonceKeyId`]. A `Zero` signing key, or one that resolves to zero, is refused with
+    /// [`KeyManagerError::InvalidSigningKeyId`], because the signature would be the nonce itself. That only removes
+    /// the trivial case: a signing key the caller knows (minted with `create_encrypted_key`) still reveals the value
+    /// behind an `Encrypted` nonce. A challenge that reduces to zero is refused with
+    /// [`KeyManagerError::ZeroChallenge`].
+    ///
+    /// This does not refuse every nonce the caller could know. An `Encrypted` nonce is still caller controllable -
+    /// `create_encrypted_key` wraps any scalar - so it must be fresh and used for one signature only: a known nonce,
+    /// or two signatures under one, gives up the signing key. The sender offset ids `get_script_offset` returns are
+    /// `Encrypted` too, and the caller also gets the script offset `o = Σscript - r`, so signing a script key under one
+    /// of them gives up that key. Closing all of this means moving software signatures onto reserved handles and
+    /// deleting the catch-all arm.
     fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
