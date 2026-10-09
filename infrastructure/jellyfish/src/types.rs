@@ -255,6 +255,7 @@ impl SparseMerkleProofExt {
         self.leaf.clone()
     }
 
+    #[cfg(feature = "minicbor")]
     pub(crate) fn leaf_ref(&self) -> Option<&SparseMerkleLeafNode> {
         self.leaf.as_ref()
     }
@@ -1337,6 +1338,7 @@ impl InternalNode {
         self.children.iter()
     }
 
+    #[cfg(feature = "minicbor")]
     pub(crate) fn num_children(&self) -> usize {
         self.children.len()
     }

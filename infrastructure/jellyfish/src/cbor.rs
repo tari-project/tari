@@ -574,14 +574,14 @@ impl<'b, C> Decode<'b, C> for SparseMerkleProofExt {
         expect_array(d, 2, "SparseMerkleProofExt")?;
         let leaf = Option::<SparseMerkleLeafNode>::decode(d, ctx)?;
         let pos = d.position();
-        let len = array_len(d, "SparseMerkleProofExt siblings")?;
-        if len > MAX_PROOF_SIBLINGS as u64 {
+        let len = usize::try_from(array_len(d, "SparseMerkleProofExt siblings")?).unwrap_or(usize::MAX);
+        if len > MAX_PROOF_SIBLINGS {
             return Err(decode::Error::message(format!(
                 "SparseMerkleProofExt has {len} siblings, max is {MAX_PROOF_SIBLINGS}"
             ))
             .at(pos));
         }
-        let mut siblings = Vec::with_capacity(MAX_PROOF_SIBLINGS);
+        let mut siblings = Vec::with_capacity(len);
         for _ in 0..len {
             siblings.push(NodeInProof::decode(d, ctx)?);
         }
