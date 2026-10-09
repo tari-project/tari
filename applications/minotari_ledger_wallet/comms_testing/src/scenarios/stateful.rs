@@ -37,7 +37,7 @@
 use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_STORE_SIZE, INVALID_NONCE_HANDLE},
-    script_offset::sender_offset_index,
+    script_offset::{PRE_MINE_SENDER_OFFSET_INDEX_BIT, sender_offset_index},
 };
 use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_key, ledger_get_public_spend_key};
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -126,6 +126,13 @@ const SCENARIOS: &[Scenario] = &[
         covers: &[Instruction::GenerateEphemeralNonce, Instruction::GetRawSchnorrSignature],
         approval: Approval::NotNeeded,
         run: a_sender_offset_key_cannot_sign_a_raw_challenge,
+    },
+    Scenario {
+        name: "a raw Schnorr signature by a PreMine sender offset key is refused with BadBranchKey, and the nonce \
+               survives",
+        covers: &[Instruction::GenerateEphemeralNonce, Instruction::GetRawSchnorrSignature],
+        approval: Approval::NotNeeded,
+        run: a_pre_mine_sender_offset_key_cannot_sign_a_raw_challenge,
     },
 ];
 
@@ -552,7 +559,8 @@ fn a_handle_is_good_for_one_signature(_context: &ScenarioContext<'_>) -> Scenari
 /// still named the nonce it was reserved for" are different claims, and only the second one is any use.
 fn a_reserved_nonce_survives_unrelated_instructions(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
-    let index = fixtures::random_u64();
+    // A pre-mine script key index, not a pre-mine sender offset index, which the device refuses to sign raw with.
+    let index = fixtures::random_u64() & !PRE_MINE_SENDER_OFFSET_INDEX_BIT;
     let branch = LedgerKeyBranch::PreMine;
     let challenge = fixtures::random_challenge();
 
@@ -635,7 +643,7 @@ fn a_reserved_nonce_survives_unrelated_instructions(_context: &ScenarioContext<'
 ///
 /// A sender offset key signs an output's metadata signature, and the device signs those only through
 /// `GetOneSidedMetadataSignature`, which shows the output for review unless it is change to the device's own
-/// address. A raw signature over a challenge the host built would let a host pay itself with nothing on the screen.
+/// address. A raw signature over a challenge the host built would sign an output nobody was shown.
 ///
 /// The positive control signs with the same handle on the `Random` branch afterwards: the refusal comes before the
 /// nonce is taken, so the handle must still be good. A device that refused by wiping the slot, or that refused
@@ -667,6 +675,44 @@ fn a_sender_offset_key_cannot_sign_a_raw_challenge(_context: &ScenarioContext<'_
     )?;
     expect_ok(
         "a signature by a Random key with the nonce the refused request named",
+        &reply,
+    )
+}
+
+/// Acceptance: `GetRawSchnorrSignature` refuses a `PreMine` key whose index is in the pre-mine sender offset range
+/// (bit 63 set) with `BadBranchKey`, and the refusal leaves the reserved nonce in the store.
+///
+/// `GetScriptOffset` issues the backup pre-mine spend's sender offset keys on `PreMine`, so they are sender offset
+/// keys like any other and sign only through a reviewed instruction. A `PreMine` script key - an index without the
+/// marker - still signs raw; the positive control signs with the same handle at that index afterwards.
+fn a_pre_mine_sender_offset_key_cannot_sign_a_raw_challenge(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let script_key_index = fixtures::random_u64() & !PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+    let sender_offset_index = script_key_index | PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+
+    let reserved = reserve_nonce(account)?;
+    let refused = sign_with_handle(
+        account,
+        sender_offset_index,
+        LedgerKeyBranch::PreMine,
+        reserved.handle,
+        &fixtures::random_challenge(),
+    )?;
+    expect_status(
+        "a raw Schnorr signature by a PreMine sender offset key",
+        &refused,
+        AppSW::BadBranchKey,
+    )?;
+
+    let reply = sign_with_handle(
+        account,
+        script_key_index,
+        LedgerKeyBranch::PreMine,
+        reserved.handle,
+        &fixtures::random_challenge(),
+    )?;
+    expect_ok(
+        "a signature by a PreMine script key with the nonce the refused request named",
         &reply,
     )
 }

@@ -213,8 +213,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Creates a metadata signature for the output, with no recipient address.
     ///
-    /// On a ledger wallet every signature by a device held sender offset key is made by the device's reviewed one
-    /// sided metadata signature, which needs the output's recipient address - so here, with none, a device held
+    /// On a ledger wallet a device held sender offset key signs only through the device's reviewed one sided
+    /// metadata signature, which needs the output's recipient address - so here, with none, a device held
     /// sender offset key is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]. Sign such an output
     /// with [`TransactionKeyManagerInterface::get_metadata_signature_user_verified`] instead, passing the wallet's
     /// own address for change. A software held sender offset key (the coinbase builder's) still signs here, in
@@ -231,12 +231,16 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Creates a metadata signature for the output to `receiver_address`.
     ///
-    /// On a ledger wallet every device sender offset signature is reviewed: the device shows the amount and the
-    /// receiver and signs once the user approves. Change to self is auto-approved by the device - when the receiver's
-    /// spend key is the device's own, it signs without a prompt. The device signs over the standard stealth script
-    /// for `receiver_address`, which it builds itself, so an output whose `script` is anything else is refused with
-    /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient address or a custom script
-    /// are not supported on a ledger wallet.
+    /// On a ledger wallet this is the only way a device held sender offset key signs an output, so such a key
+    /// cannot sign an arbitrary output without review: the device shows the amount and the receiver and signs once
+    /// the user approves. Change to self is auto-approved by the device - when the receiver's spend key is the
+    /// device's own, it signs without a prompt. The device signs over the standard stealth script for
+    /// `receiver_address`, which it builds itself, so an output whose `script` is anything else is refused with
+    /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient address or a custom script -
+    /// plain burns and HTLC (atomic swap) sends - are not supported on a ledger wallet.
+    ///
+    /// This closes one path only. Outputs under a host held sender offset key, together with the unreviewed script
+    /// offset, remain a residual that is tracked separately.
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,

@@ -249,7 +249,7 @@ fn the_ninth_reservation_evicts_the_first_and_the_store_is_not_full() {
 
 /// A device held sender offset key cannot sign a raw challenge, whoever asks: the key manager refuses it before the
 /// device is touched, and the device refuses it with `BadBranchKey` when the accessor is bypassed. That is the gap a
-/// compromised host would otherwise use to build a transaction paying itself with no screen at all - and what
+/// compromised host would otherwise use to have a device sender offset key sign an output nobody was shown - and what
 /// refuses an aggregated sender partial metadata signature on a ledger wallet.
 #[test]
 fn a_device_sender_offset_key_cannot_sign_a_raw_challenge() {

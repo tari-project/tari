@@ -2201,6 +2201,14 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
+        // A ledger device signs an output's metadata only over the standard stealth script to the receiver, which it
+        // builds itself, so it cannot sign the HTLC output's script. Refused here, before any input is selected,
+        // rather than deep inside the build. Claiming or refunding an HTLC spends it to this wallet, and still works.
+        if matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_)) {
+            return Err(TransactionServiceError::NotSupported(
+                "HTLC (atomic swap) sends are not supported on Ledger wallets".to_string(),
+            ));
+        }
         if selection_criteria.range_limit.is_some() {
             return Err(TransactionServiceError::RangeLimitError {
                 reason: "Range limit coin-join cannot be set for send_sha_atomic_swap_transaction".to_string(),

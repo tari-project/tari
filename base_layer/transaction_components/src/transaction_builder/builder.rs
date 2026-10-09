@@ -1079,8 +1079,8 @@ where KM: TransactionKeyManagerInterface
                 &spec.destination,
             )?,
             // Signed for the wallet's own address, so that on a ledger wallet the device recognises an output to
-            // itself and signs it without a prompt. Any other output - a burn, an HTLC - has a script that is not the
-            // standard stealth script to this wallet, and a ledger wallet refuses it.
+            // itself and signs it without a prompt. Any other output - a plain burn, an HTLC send - has a script that
+            // is not the standard stealth script to this wallet, and a ledger wallet refuses it.
             RecipientMetadataSignature::Unverified => builder.sign_metadata_signature_user_verified(
                 &self.key_manager,
                 &sender_offset.key_id,

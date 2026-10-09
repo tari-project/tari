@@ -1516,8 +1516,10 @@ impl TransactionKeyManagerInterface for KeyManager {
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
         match (private_key_id, nonce) {
-            // A device held sender offset key signs only through the device's reviewed one sided metadata
-            // signature, never over a raw challenge. The device refuses it too; this says so legibly.
+            // A device held sender offset key signs only through a reviewed instruction, never over a raw
+            // challenge. That is a `OneSidedSenderOffset` key, and a `PreMine` key at a pre-mine sender offset index,
+            // which `get_script_offset` issues for the backup pre-mine spend. The device refuses both too; this says
+            // so legibly.
             (
                 TariKeyId::LedgerKey {
                     branch: LedgerKeyBranch::OneSidedSenderOffset,
@@ -1525,6 +1527,15 @@ impl TransactionKeyManagerInterface for KeyManager {
                 },
                 TariKeyId::LedgerEphemeralNonce { .. },
             ) => Err(KeyManagerError::LedgerSenderOffsetRawSignature),
+            (
+                TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::PreMine,
+                    index,
+                },
+                TariKeyId::LedgerEphemeralNonce { .. },
+            ) if minotari_ledger_wallet_common::script_offset::is_pre_mine_sender_offset_index(*index) => {
+                Err(KeyManagerError::LedgerSenderOffsetRawSignature)
+            },
             (
                 TariKeyId::LedgerKey {
                     branch: private_key_branch,
@@ -2119,6 +2130,19 @@ mod tests {
             .unwrap_err();
         assert_eq!(err, KeyManagerError::LedgerSenderOffsetRawSignature);
 
+        // The backup pre-mine spend's sender offset key: `PreMine`, at an index with the sender offset marker set.
+        let err = key_manager
+            .sign_with_nonce_and_challenge(
+                &TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::PreMine,
+                    index: 7 | minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT,
+                },
+                &TariKeyId::LedgerEphemeralNonce { handle: 9 },
+                &challenge(1),
+            )
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::LedgerSenderOffsetRawSignature);
+
         let sender_offset = crate::key_manager::TariKeyAndId {
             key_id: sender_offset_key_id.clone(),
             pub_key: CompressedPublicKey::default(),
@@ -2148,19 +2172,22 @@ mod tests {
             KeyManagerError::LedgerError("Trying to access Ledger key paired to a non ledger key".to_string())
         );
 
-        // The other device branches that sign over a reserved nonce still reach the device call, which on a
-        // software wallet shows up as `InvalidWalletType`, raised at the transport boundary after every guard.
-        let err = key_manager
-            .sign_with_nonce_and_challenge(
-                &TariKeyId::LedgerKey {
-                    branch: LedgerKeyBranch::Random,
-                    index: 7,
-                },
-                &TariKeyId::LedgerEphemeralNonce { handle: 9 },
-                &challenge(1),
-            )
-            .unwrap_err();
-        assert!(matches!(err, KeyManagerError::InvalidWalletType(_)), "{err:?}");
+        // The keys that may sign over a reserved nonce - a `Random` key and a pre-mine script key - still reach the
+        // device call, which on a software wallet shows up as `InvalidWalletType`, raised at the transport boundary
+        // after every guard.
+        for (branch, index) in [(LedgerKeyBranch::Random, 7), (LedgerKeyBranch::PreMine, 7)] {
+            let err = key_manager
+                .sign_with_nonce_and_challenge(
+                    &TariKeyId::LedgerKey { branch, index },
+                    &TariKeyId::LedgerEphemeralNonce { handle: 9 },
+                    &challenge(1),
+                )
+                .unwrap_err();
+            assert!(
+                matches!(err, KeyManagerError::InvalidWalletType(_)),
+                "{branch}: {err:?}"
+            );
+        }
     }
 
     /// A ledger mode key manager whose device is never asked anything: every test using it is about a refusal that
@@ -2204,7 +2231,8 @@ mod tests {
     }
 
     /// The device signs over the standard stealth script for the address it is given, never the host's script, so
-    /// an output with any other script - a burn, an HTLC - is refused on a ledger wallet before the device is asked.
+    /// an output with any other script - a plain burn, an HTLC send - is refused on a ledger wallet before the device
+    /// is asked.
     #[cfg(feature = "ledger")]
     #[test]
     fn a_ledger_wallet_refuses_an_output_whose_script_is_not_the_stealth_script() {

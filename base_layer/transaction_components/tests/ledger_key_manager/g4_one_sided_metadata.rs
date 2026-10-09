@@ -37,8 +37,19 @@ use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
 use tari_script::{ExecutionStack, push_pubkey_script, script};
 use tari_transaction_components::{
     MicroMinotari,
+    crypto_factories::CryptoFactories,
     key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError},
-    transaction_components::{MemoField, TransactionError, WalletOutput, WalletOutputBuilder},
+    test_helpers::{TestParams, UtxoTestParams, create_consensus_constants, create_consensus_manager},
+    transaction_builder::{RecipientSpec, TransactionBuilder},
+    transaction_components::{
+        MemoField,
+        OutputFeatures,
+        Transaction,
+        TransactionError,
+        WalletOutput,
+        WalletOutputBuilder,
+    },
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 
 use crate::harness::{Device, network, with_device};
@@ -310,5 +321,126 @@ fn an_output_with_a_custom_script_is_refused_before_the_device() {
             0,
             "the refusal must come before the device is asked to sign: {wire:?}"
         );
+    });
+}
+
+/// An output this ledger wallet owns and can spend: its script key is the alpha derived key the device signs for.
+///
+/// Built through `TestParams`, whose metadata signature is made with no recipient address. A ledger wallet refuses
+/// that for a device held sender offset key, and the output being spent is only the fixture here, so it carries a
+/// host held one.
+fn ledger_input(key_manager: &KeyManager, value: u64) -> WalletOutput {
+    let mut params = TestParams::new(key_manager);
+    let host_sender_offset = key_manager.get_random_key(None, None).expect("a host key");
+    params.sender_offset_key_id = host_sender_offset.key_id;
+    params.sender_offset_key_pk = host_sender_offset.pub_key;
+    params.create_input(UtxoTestParams::with_value(MicroMinotari(value)), key_manager)
+}
+
+/// A transaction builder on `key_manager`, spending one input of `value`.
+fn ledger_builder(key_manager: &KeyManager, value: u64) -> TransactionBuilder<KeyManager> {
+    let input = ledger_input(key_manager, value);
+    let mut builder = TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), network())
+        .expect("a transaction builder");
+    builder
+        .with_fee_per_gram(MicroMinotari(5))
+        .with_input(input)
+        .expect("the input");
+    builder
+}
+
+/// The transaction is internally consistent: every metadata and script signature verifies, and the script offset is
+/// the input script keys minus the output sender offset keys.
+fn assert_transaction_validates(transaction: &Transaction) {
+    TransactionInternalConsistencyValidator::new(false, create_consensus_manager(), CryptoFactories::default())
+        .validate(transaction, None, None, u64::MAX)
+        .expect("the transaction the ledger wallet built validates");
+}
+
+/// A real send with change, through `TransactionBuilder`: the recipient's output is reviewed, and the change output
+/// - signed in `build_change` and re-signed when the final fee is written into its memo - is signed with no review.
+///
+/// The approver answers exactly one review, the recipient's. A device that also put the change up for review would
+/// leave that exchange outstanding until the read timeout and fail this test. The wire shows no raw Schnorr
+/// signature and no nonce reservation, and the finalised transaction validates.
+#[test]
+fn a_send_with_change_reviews_the_recipient_and_signs_the_change_without_a_review() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let receiver = fixtures::published_receiver(0).unwrap_or_else(|e| panic!("{e}"));
+        let value = 12_345;
+
+        let mut builder = ledger_builder(&key_manager, 1_000_000);
+        builder
+            .add_stealth_recipient(
+                receiver.clone(),
+                MicroMinotari(value),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .expect("the recipient");
+        builder.reserve_sender_offset_keys(&[]).expect("the sender offset keys");
+
+        let expected = ExpectedReview::one_sided_metadata_signature(value, &receiver.to_base58(), 0);
+        let ((finalized, review), wire) =
+            device.watch(|| while_reviewing(device.approver(), &expected, Outcome::Approve, || builder.build()));
+        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
+        let finalized = finalized.expect("a finalised send with change");
+
+        assert!(finalized.change.is_some(), "the send should have produced change");
+        assert_eq!(
+            (
+                wire.count(Instruction::GetRawSchnorrSignature),
+                wire.count(Instruction::GenerateEphemeralNonce),
+            ),
+            (0, 0),
+            "no output may be signed through the raw instruction: {wire:?}"
+        );
+        assert!(
+            wire.count(Instruction::GetOneSidedMetadataSignature) >= 2,
+            "the recipient and the change should both be signed by the reviewed instruction: {wire:?}"
+        );
+        assert_transaction_validates(&finalized.transaction);
+    });
+}
+
+/// A `RecipientSpec::to_self` output, through `TransactionBuilder`: it and the change are both outputs to this
+/// wallet, so the device signs the whole transaction with no review at all. Nothing answers a review here. The wire
+/// shows no raw Schnorr signature and no nonce reservation, and the finalised transaction validates.
+#[test]
+fn a_to_self_output_and_its_change_are_signed_without_a_review() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+
+        let mut builder = ledger_builder(&key_manager, 1_000_000);
+        builder
+            .with_recipient_spec(RecipientSpec::to_self(
+                MicroMinotari(12_345),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            ))
+            .expect("the to-self output");
+        builder.reserve_sender_offset_keys(&[]).expect("the sender offset keys");
+
+        let (finalized, wire) = device.watch(|| builder.build());
+        let finalized = finalized.expect("a finalised transaction to self");
+
+        assert!(
+            finalized.change.is_some(),
+            "the transaction should have produced change"
+        );
+        assert_eq!(
+            (
+                wire.count(Instruction::GetRawSchnorrSignature),
+                wire.count(Instruction::GenerateEphemeralNonce),
+            ),
+            (0, 0),
+            "no output may be signed through the raw instruction: {wire:?}"
+        );
+        assert!(
+            wire.count(Instruction::GetOneSidedMetadataSignature) >= 2,
+            "the to-self output and the change should both be signed by the reviewed instruction: {wire:?}"
+        );
+        assert_transaction_validates(&finalized.transaction);
     });
 }
