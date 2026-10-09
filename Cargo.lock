@@ -8035,6 +8035,7 @@ dependencies = [
  "tari_script",
  "tari_shutdown",
  "tari_transaction_components",
+ "tari_transaction_key_manager",
  "tari_utilities",
  "thiserror 2.0.21",
  "time",

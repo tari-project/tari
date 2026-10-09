@@ -61,6 +61,28 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_C to have at least 1500000 uT
 
   @critical
+  Scenario: Wallet imports unspent output
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 5
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 10
+    Then I wait for wallet WALLET_B to have at least 1000000 uT
+    Then I stop wallet WALLET_B
+    When I wait 5 seconds
+    Then I import WALLET_B unspent outputs to WALLET_C
+    Then I wait for wallet WALLET_C to have at least 1000000 uT
+    Then I stop-start wallet WALLET_C
+    Then I wait for wallet WALLET_C to have at least 1000000 uT
+    Then I check if last imported transactions are valid in wallet WALLET_C
+
+  @critical
   Scenario: Wallet has two connected miners, coinbase's are computed correctly
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes
@@ -72,6 +94,88 @@ Feature: Wallet Transactions
     When mining node MINER2 mines 3 blocks
     Then all nodes are at height 10
     Then I wait for wallet WALLET_A to have at least 20000000000 uT
+
+  Scenario: Wallet imports spent outputs that become invalidated
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 5
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 10
+    Then I wait for wallet WALLET_B to have at least 1000000 uT
+    When I send a one-sided transaction of 900000 uT from wallet WALLET_B to wallet WALLET_A at fee 100
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 15
+    When I wait for wallet WALLET_B to have at least 50000 uT
+    Then I import WALLET_B spent outputs to WALLET_C
+    Then I stop-start wallet WALLET_C
+    Then I wait for wallet WALLET_C to have less than 1 uT
+    Then I import WALLET_B unspent outputs to WALLET_C
+    Then I stop-start wallet WALLET_C
+    When I wait for wallet WALLET_C to have at least 50000 uT
+
+  Scenario: Wallet imports reorged outputs that become invalidated
+    # Chain 1
+    Given I have a base node B
+    When I have wallet WB connected to base node B
+    When I have wallet WALLET_RECEIVE_TX connected to base node B
+    When I have wallet WALLET_IMPORTED connected to base node B
+    When I have SHA3X mining node BM connected to base node B and wallet WB
+    When mining node BM mines 4 blocks with min difficulty 1 and max difficulty 50
+    Then I wait for wallet WB to have at least 1000000 uT
+    When I send a one-sided transaction of 1000000 uT from wallet WB to wallet WALLET_RECEIVE_TX at fee 100
+    Then mining node BM mines 4 blocks with min difficulty 50 and max difficulty 100
+    When node B is at height 8
+    Then I wait for wallet WALLET_RECEIVE_TX to have at least 1000000 uT
+    Then I stop wallet WALLET_RECEIVE_TX
+    When I wait 5 seconds
+    Then I import WALLET_RECEIVE_TX unspent outputs to WALLET_IMPORTED
+    Then I wait for wallet WALLET_IMPORTED to have at least 1000000 uT
+    # This triggers a validation of the imported outputs
+    Then I stop-start wallet WALLET_IMPORTED
+    # Chain 2
+    Given I have a base node C
+    When I have wallet WC connected to base node C
+    When I have SHA3X mining node CM connected to base node C and wallet WC
+    When mining node CM mines 10 blocks with min difficulty 100 and max difficulty 1000
+    # Connect chain 1 and 2
+    Then node B is at height 8
+    When node C is at height 10
+    When I have a base node SA connected to nodes B,C
+    When I have a base node SA2 connected to nodes B,C
+    When I have a base node SA3 connected to nodes B,C
+    Then node SA is at height 10
+    Then node B is at height 10
+    Then node C is at height 10
+    Then I stop-start wallet WALLET_IMPORTED
+    Then I wait for wallet WALLET_IMPORTED to have less than 1 uT
+
+  @critical
+  Scenario: Wallet imports pre_mine UTXO
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    When I have wallet WALLET_B connected to all seed nodes
+    When I have wallet WALLET_C connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_A
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 5
+    Then I wait for wallet WALLET_A to have at least 10000000000 uT
+    When I send a one-sided transaction of 1000000 uT from wallet WALLET_A to wallet WALLET_B at fee 100
+    When mining node MINER mines 6 blocks
+    Then all nodes are at height 11
+    Then I wait for wallet WALLET_B to have at least 1000000 uT
+    Then I stop wallet WALLET_B
+    Then I import WALLET_B unspent outputs as pre_mine outputs to WALLET_C
+    Then I wait for wallet WALLET_C to have at least 1000000 uT
+    When I send a one-sided transaction of 500000 uT from wallet WALLET_C to wallet WALLET_A at fee 100
+    When mining node MINER mines 6 blocks
+    Then all nodes are at height 17
+    Then I wait for wallet WALLET_C to have at least 400000 uT
 
   Scenario: Wallet should display all transactions made
     Given I have a seed node NODE

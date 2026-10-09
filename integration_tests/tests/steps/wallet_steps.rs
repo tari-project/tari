@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
-use std::{convert::TryFrom, panic, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, panic, path::PathBuf, sync::Arc, time::Duration};
 
 use cucumber::{given, then, when};
 use futures::StreamExt;
@@ -37,6 +37,7 @@ use grpc::{
     GetIdentityRequest,
     GetTransactionInfoRequest,
     GetTransactionPayRefsRequest,
+    ImportUtxosRequest,
     PaymentRecipient,
     ReplaceByFeeRequest,
     SendShaAtomicSwapRequest,
@@ -48,7 +49,11 @@ use minotari_app_grpc::{
     tari_rpc,
     tari_rpc::{self as grpc, GetStateRequest, TransactionStatus, TxOutputsToSpendTransfer},
 };
-use minotari_wallet::transaction_service::config::TransactionRoutingMechanism;
+use minotari_wallet::{
+    output_manager_service::storage::database::OutputManagerDatabase,
+    storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
+    transaction_service::config::TransactionRoutingMechanism,
+};
 use tari_common_types::transaction::LegacyTransactionStatus;
 use tari_integration_tests::{
     DEFAULT_TIMEOUT,
@@ -62,7 +67,16 @@ use tari_integration_tests::{
     wait_for,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
-use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
+use tari_transaction_components::{
+    crypto_factories::CryptoFactories,
+    key_manager::SecretTransactionKeyManagerInterface,
+    transaction_components::{
+        UnblindedOutput,
+        memo_field::{MemoField, TxType},
+    },
+};
+use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerWrapper;
+use tari_utilities::SafePassword;
 
 use crate::steps::{CONFIRMATION_PERIOD, cucumber_steps_log, mining_steps::create_miner};
 
@@ -2207,6 +2221,136 @@ async fn send_one_sided_stealth_transaction(
         "One sided stealth transaction with amount {amount} from {sender} to {receiver} at fee {fee_per_gram} \
          succeeded"
     ));
+}
+
+/// Builds unblinded outputs for the outputs held by wallet `wallet_name`, entirely inside the test harness.
+///
+/// The wallets no longer export private keys (a wallet output's script key is `H("script key", mask) + alpha`, so an
+/// export would give away the spend key). To still exercise gRPC `import_utxos` end to end, the test stops the source
+/// wallet, opens its database with the test password, rebuilds its key manager from the stored seed and resolves each
+/// output's commitment mask and script private key itself. Nothing here is available to production code.
+async fn unblinded_outputs_of_wallet(world: &mut TariWorld, wallet_name: &str, spent: bool) -> Vec<UnblindedOutput> {
+    let wallet_ps = world.wallets.get_mut(wallet_name).unwrap();
+    if wallet_ps.is_running() {
+        cucumber_steps_log(format!("Stopping wallet {wallet_name}"));
+        wallet_ps.kill().await;
+    }
+
+    // Same path the wallet itself uses: see `spawn_wallet`.
+    let mut config = wallet_ps.config.clone();
+    config.db_file = PathBuf::from("console_wallet.db");
+    config.set_base_path(&wallet_ps.temp_dir_path);
+
+    let (wallet_backend, _, output_manager_backend, key_manager_backend) =
+        initialize_sqlite_database_backends(&config.db_file, SafePassword::from("test"), 1).unwrap();
+    let wallet_db = WalletDatabase::new(wallet_backend);
+    let master_seed = wallet_db.get_master_seed().unwrap().unwrap();
+    let wallet_type = wallet_db.get_wallet_type().unwrap().unwrap();
+    let key_manager = LegacyTransactionKeyManagerWrapper::new_with_legacy_storage(
+        master_seed,
+        key_manager_backend,
+        CryptoFactories::default(),
+        Arc::new(wallet_type),
+    )
+    .await
+    .unwrap();
+
+    let output_db = OutputManagerDatabase::new(output_manager_backend);
+    let outputs = if spent {
+        output_db.fetch_spent_outputs(&key_manager).unwrap()
+    } else {
+        output_db.fetch_all_unspent_outputs(&key_manager).unwrap()
+    };
+
+    let mut unblinded = Vec::with_capacity(outputs.len());
+    for output in outputs {
+        let output = output.wallet_output;
+        let commitment_mask_key = key_manager.get_private_key(output.commitment_mask_key_id()).unwrap();
+        let script_private_key = key_manager.get_private_key(output.script_key_id()).unwrap();
+        unblinded.push(UnblindedOutput::new(
+            output.version(),
+            output.value(),
+            commitment_mask_key,
+            output.features().clone(),
+            output.script().clone(),
+            output.input_data().clone(),
+            script_private_key,
+            output.sender_offset_public_key().clone(),
+            output.metadata_signature().clone(),
+            output.script_lock_height(),
+            output.covenant().clone(),
+            output.encrypted_data().clone(),
+            output.minimum_value_promise(),
+            output.range_proof().clone(),
+        ));
+    }
+    unblinded
+}
+
+async fn import_outputs_into_wallet(world: &mut TariWorld, outputs: Vec<UnblindedOutput>, wallet: &str, memo: &str) {
+    assert!(!outputs.is_empty(), "no outputs to import into wallet {wallet}");
+    let mut client = create_wallet_client(world, wallet.to_string()).await.unwrap();
+    let request = ImportUtxosRequest {
+        outputs: outputs
+            .into_iter()
+            .map(|o| grpc::UnblindedOutput::try_from(o).expect("Unable to make grpc conversion"))
+            .collect(),
+        payment_id: MemoField::new_open_from_string(memo, TxType::ImportedUtxoNoneRewindable)
+            .unwrap()
+            .to_bytes(),
+    };
+    world.last_imported_tx_ids = client.import_utxos(request).await.unwrap().into_inner().tx_ids;
+}
+
+#[then(expr = "I import {word} unspent outputs to {word}")]
+async fn import_wallet_unspent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+    let outputs = unblinded_outputs_of_wallet(world, &wallet_a, false).await;
+    let memo = format!("I import {wallet_a} unspent outputs to {wallet_b}");
+    import_outputs_into_wallet(world, outputs, &wallet_b, &memo).await;
+}
+
+#[then(expr = "I import {word} spent outputs to {word}")]
+async fn import_wallet_spent_outputs(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+    let outputs = unblinded_outputs_of_wallet(world, &wallet_a, true).await;
+    let memo = format!("I import {wallet_a} spent outputs to {wallet_b}");
+    import_outputs_into_wallet(world, outputs, &wallet_b, &memo).await;
+}
+
+#[then(expr = "I import {word} unspent outputs as pre_mine outputs to {word}")]
+async fn import_unspent_outputs_as_pre_mine(world: &mut TariWorld, wallet_a: String, wallet_b: String) {
+    let outputs = unblinded_outputs_of_wallet(world, &wallet_a, false).await;
+    let memo = format!("I import {wallet_a} unspent outputs as pre_mine outputs to {wallet_b}");
+    import_outputs_into_wallet(world, outputs, &wallet_b, &memo).await;
+}
+
+#[then(expr = "I check if last imported transactions are valid in wallet {word}")]
+async fn check_last_imported_txs_are_valid(world: &mut TariWorld, wallet: String) {
+    assert!(
+        !world.last_imported_tx_ids.is_empty(),
+        "no imported transactions to check"
+    );
+    let mut client = create_wallet_client(world, wallet.clone()).await.unwrap();
+    for tx_id in world.last_imported_tx_ids.clone() {
+        wait_for!(
+            timeout: DEFAULT_TIMEOUT,
+            description: format!("imported transaction {tx_id} to be valid in wallet {wallet}"),
+            condition: async {
+                let request = GetTransactionInfoRequest {
+                    transaction_ids: vec![tx_id],
+                };
+                let response = client.get_transaction_info(request).await.unwrap().into_inner();
+                let tx_info = response.transactions.first().unwrap();
+                match tx_info.status() {
+                    TransactionStatus::Imported |
+                    TransactionStatus::MinedUnconfirmed |
+                    TransactionStatus::MinedConfirmed |
+                    TransactionStatus::OneSidedUnconfirmed |
+                    TransactionStatus::OneSidedConfirmed => Ok(true),
+                    status => Err(format!("current status: {status:?}")),
+                }
+            }
+        );
+    }
 }
 
 #[then(expr = "I check if wallet {word} has {int} transactions")]
