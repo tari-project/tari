@@ -1342,10 +1342,10 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
-        // A device held sender offset key signs only through the device's reviewed one sided metadata signature,
-        // which needs the recipient's address, and there is none here. Refused before the device is touched. Every
-        // sender offset key `get_script_offset` issues on a ledger wallet is device held; what is left for this path
-        // there is a software sender offset key, which the coinbase builder still mints.
+        // The key manager signs a device held sender offset key only through the device's reviewed one sided
+        // metadata signature, which needs the recipient's address, and there is none here. Refused before the device is
+        // touched. Every sender offset key `get_script_offset` issues on a ledger wallet is device held; what
+        // is left for this path there is a software sender offset key, which the coinbase builder still mints.
         if self.wallet_type.is_ledger() && matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
             return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient);
         }
@@ -2107,7 +2107,7 @@ mod tests {
 
     /// A `OneSidedSenderOffset` key and a device reserved nonce are refused by the dispatch, before the device call:
     /// such a key signs only through the device's reviewed one sided metadata signature. That is also what refuses
-    /// an aggregated sender partial metadata signature (multisig deposit and withdraw) on a ledger wallet. A pre-mine
+    /// an aggregated sender partial metadata signature with one on a ledger wallet. A pre-mine
     /// sender offset key is not refused, so the pre-mine ceremony is unaffected. A host drawn nonce cannot be paired
     /// with a device held key at all.
     #[test]

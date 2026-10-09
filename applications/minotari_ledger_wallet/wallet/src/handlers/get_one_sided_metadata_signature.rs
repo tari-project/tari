@@ -145,8 +145,11 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     // Change to this wallet is signed without a review. That is the case when the receiver's spend key is this
     // device's own public `alpha` for the account: the script below is always the standard stealth script for the
     // receiver's spend key - the device builds it itself from the address and the commitment mask, and the signature
-    // commits to it - so the signed output can only ever be spent with `alpha`. Nothing to review, and nothing a host
-    // could redirect.
+    // commits to it - so the signed output pays only to this wallet's spend key. What is not inspected is everything
+    // in `metadata_signature_message_common`, which reaches the device as an opaque hash: the output features, the
+    // covenant, the encrypted data and the minimum value promise are host chosen, so a host can still get change
+    // signed with no prompt that is, say, a burn, locked by a long maturity or a covenant, or not recoverable from its
+    // encrypted data. That is no worse than before, when change was signed raw with no screen at all.
     //
     // The comparison is against the `alpha` this device derives, never a key the host supplied, and the spend key is
     // read from the owned copy of the address, the same bytes the signature is built from after the review.

@@ -11,15 +11,23 @@ All notable changes to this project will be documented in this file. See [standa
   host recover the wallet's root spend key without any prompt on the device. Updating the wallet software alone does
   not protect a device: the fix is in the Ledger application. Until the application is updated, do not connect the
   device to a host you do not trust.
-* **A device sender offset key can no longer sign an arbitrary output without review.** `GetRawSchnorrSignature`
-  now refuses `OneSidedSenderOffset` keys with `BadBranchKey`. Before this, a compromised host could have a device
-  sender offset key sign any output's metadata signature through the raw instruction, with nothing on the screen. A
-  `OneSidedSenderOffset` key now signs only through `GetOneSidedMetadataSignature`, which shows the amount and
-  receiver for review; change to the wallet's own address is auto-approved: when the receiver's spend key is the
-  device's own, it signs without a review. This does not by itself stop a compromised host from spending without a
-  prompt: outputs under a host held sender offset key, together with the unreviewed script offset, remain a residual
-  that is tracked separately. Pre-mine sender offset signing is unchanged - the aggregated step 3 still signs raw, and
-  step 4 through the legacy nonce instruction - and belongs with the separate pre-mine issue.
+* **A `OneSidedSenderOffset` key can no longer sign an arbitrary output without review.** `GetRawSchnorrSignature`
+  now refuses `OneSidedSenderOffset` keys with `BadBranchKey`. Before this, a compromised host could have one sign any
+  output's metadata signature through the raw instruction, with nothing on the screen. A `OneSidedSenderOffset` key
+  now signs only through `GetOneSidedMetadataSignature`, which shows the amount and receiver for review; change to the
+  wallet's own address is auto-approved: when the receiver's spend key is the device's own, it signs without a review.
+
+  What this does not close, each tracked separately:
+  - It does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender
+    offset key, together with the unreviewed script offset, remain a residual.
+  - Auto-approved change pays only to this wallet's spend key, through the stealth script the device builds, but its
+    output features, covenant, encrypted data and minimum value promise reach the device as an opaque hash and are host
+    chosen and not inspected - as they were not when change was signed raw. A host can still get change signed with no
+    prompt that is a burn, locked by maturity or a covenant, or unrecoverable from its encrypted data.
+  - `PreMine` sender offset keys are not refused. A host can mint them on demand on any wallet, through
+    `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
+    offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs
+    with the separate pre-mine issue.
 
 
 ### ⚠ Upgrade notes
@@ -36,9 +44,11 @@ All notable changes to this project will be documented in this file. See [standa
   through `GetRawSchnorrSignature`, which this application refuses, so their sends with change fail. A wallet from this
   change against an older application still works, but the older application shows change for review.
 * **Not supported on a Ledger wallet:** outputs with no recipient address or a script other than the standard stealth
-  script - plain burns and HTLC (atomic swap) sends - and aggregated (multi-party) sender metadata signatures by a
-  `OneSidedSenderOffset` key, so multisig deposit and withdraw remain software wallet flows. L2-bound burns, HTLC
-  claims and refunds, and the pre-mine ceremony are unaffected.
+  script (plain burns, HTLC (atomic swap) sends, and multisig deposit and withdraw, which remain software wallet
+  flows), refused with `LedgerSenderOffsetNeedsRecipient` (HTLC sends earlier, with the transaction service's
+  `NotSupported`); and aggregated (multi-party) sender metadata signatures by a `OneSidedSenderOffset` key, refused
+  with `LedgerSenderOffsetRawSignature`. L2-bound burns, HTLC claims and refunds, and the pre-mine ceremony are
+  unaffected.
 * Key indexes are now derived from all 64 bits. Every index below `2^32` keeps its key, and no key an ordinary
   wallet re-derives after a transaction is built is above it, so ordinary sends and spends are unaffected.
 

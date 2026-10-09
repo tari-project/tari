@@ -213,8 +213,8 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Creates a metadata signature for the output, with no recipient address.
     ///
-    /// On a ledger wallet a device held sender offset key signs only through the device's reviewed one sided
-    /// metadata signature, which needs the output's recipient address - so here, with none, a device held
+    /// On a ledger wallet the key manager signs a device held sender offset key only through the device's reviewed
+    /// one sided metadata signature, which needs the output's recipient address - so here, with none, a device held
     /// sender offset key is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]. Sign such an output
     /// with [`TransactionKeyManagerInterface::get_metadata_signature_user_verified`] instead, passing the wallet's
     /// own address for change. A software held sender offset key (the coinbase builder's) still signs here, in
@@ -231,19 +231,24 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     /// Creates a metadata signature for the output to `receiver_address`.
     ///
-    /// On a ledger wallet this is the only way a device held sender offset key signs an output, so such a key
-    /// cannot sign an arbitrary output without review: the device shows the amount and the receiver and signs once
-    /// the user approves. Change to self is auto-approved by the device - when the receiver's spend key is the
-    /// device's own, it signs without a prompt. The device signs over the standard stealth script for
-    /// `receiver_address`, which it builds itself, so an output whose `script` is anything else is refused with
-    /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient address or a custom script -
-    /// plain burns and HTLC (atomic swap) sends - are not supported on a ledger wallet.
+    /// On a ledger wallet this is the only way a `OneSidedSenderOffset` key signs an output - the device refuses it a
+    /// raw signature - so such a key cannot sign an arbitrary output without review: the device shows the amount and
+    /// the receiver and signs once the user approves. Change to self is auto-approved by the device - when the
+    /// receiver's spend key is the device's own, it signs without a prompt. Auto-approved change pays only to this
+    /// wallet's spend key, through the stealth script the device builds; its output features, covenant and encrypted
+    /// data are host chosen and not inspected, as they were not when change was signed raw. The device signs over the
+    /// standard stealth script for `receiver_address`, which it builds itself, so an output whose `script` is
+    /// anything else is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs with no recipient
+    /// address or a custom script - plain burns and HTLC (atomic swap) sends - are not supported on a ledger
+    /// wallet.
     ///
     /// A host held sender offset key (an L2-bound burn's) is signed in software on a ledger wallet too, whatever the
     /// script, the way the coinbase's is.
     ///
     /// This closes one path only. Outputs under a host held sender offset key, together with the unreviewed script
-    /// offset, remain a residual that is tracked separately.
+    /// offset, remain a residual that is tracked separately. So do `PreMine` sender offset keys: a host can mint them
+    /// on demand on any wallet, through [`TransactionKeyManagerInterface::get_script_offset`] with a `PreMine`
+    /// script key, and they still sign raw challenges with no review - that belongs with the separate pre-mine issue.
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -305,9 +310,9 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// sender offset key the same way also spares the caller a second device round trip for a key it already has.
     ///
     /// Not supported on a ledger wallet with a `OneSidedSenderOffset` key, which never signs a raw challenge: refused
-    /// with [`KeyManagerError::LedgerSenderOffsetRawSignature`], so multisig deposit and withdraw are software wallet
-    /// flows. A pre-mine sender offset key still signs here, so the pre-mine ceremony's aggregated step 3 is
-    /// unaffected; pre-mine signing belongs with the separate pre-mine issue.
+    /// with [`KeyManagerError::LedgerSenderOffsetRawSignature`]. A pre-mine sender offset key still signs here, so the
+    /// pre-mine ceremony's aggregated step 3 is unaffected; pre-mine signing belongs with the separate pre-mine
+    /// issue.
     fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce: &TariKeyAndId,

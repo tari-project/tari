@@ -57,8 +57,10 @@ pub type RistrettoSchnorr = SchnorrSignature<SchnorrSigChallenge>;
 /// `GetOneSidedMetadataSignature`, which shows the output for review (or recognises change to this wallet). Signing
 /// one here, over a challenge the host built, would sign an output nobody was shown.
 ///
-/// Pre-mine sender offset keys (`PreMine`, at a pre-mine sender offset index) are not refused: the pre-mine
-/// ceremony's aggregated step 3 signs them here, and their signing belongs with the separate pre-mine issue.
+/// Pre-mine sender offset keys (`PreMine`, at a pre-mine sender offset index) are not refused, and a host can mint
+/// them on demand on any wallet through `GetScriptOffset` with a `PreMine` script key - so a sender offset key can
+/// still sign here with no review. The pre-mine ceremony's aggregated step 3 relies on it; closing it belongs with the
+/// separate pre-mine issue.
 pub fn handler_get_raw_schnorr_signature(comm: &mut Comm, nonce_ctx: &mut EphemeralNonceCtx) -> Result<(), AppSW> {
     let data = comm.get_data().map_err(|_| AppSW::WrongApduLength)?;
     let request = GetRawSchnorrSignatureRequest::decode(data).map_err(|_| invalid_data_length())?;

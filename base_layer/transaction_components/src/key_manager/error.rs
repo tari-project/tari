@@ -83,14 +83,14 @@ pub enum KeyManagerError {
     #[error(
         "On a ledger wallet a device held sender offset key signs a metadata signature only through the device's \
          reviewed one sided metadata signature, which needs the output's recipient address and the standard stealth \
-         script for it. Outputs with no recipient address, or with any other script, are not supported on a ledger \
-         wallet."
+         script for it. Outputs with no recipient address, or with any other script (plain burns, HTLC sends, \
+         multisig deposit and withdraw), are not supported on a ledger wallet."
     )]
     LedgerSenderOffsetNeedsRecipient,
     #[error(
         "On a ledger wallet a OneSidedSenderOffset key cannot sign a raw challenge, so aggregated (multi-party) \
-         sender partial metadata signatures with one are not supported on a ledger wallet. Multisig deposit and \
-         withdraw are software wallet flows; the pre-mine ceremony is unaffected."
+         sender partial metadata signatures with one are not supported on a ledger wallet. The pre-mine ceremony, \
+         whose sender offset keys are PreMine keys, is unaffected."
     )]
     LedgerSenderOffsetRawSignature,
     #[error("The ephemeral nonce store lock is poisoned")]

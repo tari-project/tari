@@ -4,7 +4,9 @@
 //! ④ `ledger_get_one_sided_metadata_signature_wrapper`, through
 //! `WalletOutputBuilder::sign_metadata_signature_user_verified`.
 //!
-//! It is the only way a device held sender offset key signs anything. Change is signed through it too, with the
+//! It is the only way a `OneSidedSenderOffset` key signs anything. (`PreMine` sender offset keys, which a host can
+//! mint on demand through `get_script_offset` with a `PreMine` script key, still sign raw challenges; that belongs
+//! with the separate pre-mine issue.) Change is signed through it too, with the
 //! wallet's own address, and the device recognises its own spend key and signs that without a review.
 //!
 //! `GetOneSidedMetadataSignature` is the only instruction in the application that puts anything in front of a

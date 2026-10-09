@@ -634,7 +634,9 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
 ///
 /// A `OneSidedSenderOffset` key is refused with `BadBranchKey`: such a key signs only through
 /// [`ledger_get_one_sided_metadata_signature`], which the device reviews. That refusal is mirrored here. Pre-mine
-/// sender offset keys still sign here, for the pre-mine ceremony's aggregated step 3.
+/// sender offset keys still sign here with no review - the pre-mine ceremony's aggregated step 3 relies on it - and a
+/// host can mint them on demand on any wallet through `GetScriptOffset` with a `PreMine` script key; that belongs
+/// with the separate pre-mine issue.
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
