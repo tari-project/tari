@@ -82,6 +82,11 @@ pub enum KeyManagerError {
     UnknownEphemeralNonce { handle: u64 },
     #[error("The ephemeral nonce store lock is poisoned")]
     EphemeralNonceStorePoisoned,
+    #[error(
+        "Key id `{nonce}` cannot be used as a signing nonce: {reason}. A nonce the caller can compute or has used \
+         before gives up the private key that signed with it."
+    )]
+    InvalidNonceKeyId { nonce: String, reason: String },
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]

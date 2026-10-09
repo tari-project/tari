@@ -231,6 +231,35 @@ fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offse
     !wallet_is_ledger || matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. })
 }
 
+/// Refuses a nonce key id that would give up the private key it signs with.
+///
+/// A Schnorr signature is `s = r + e·k`, so anyone who knows `r` - or who holds two signatures under one `r` - can
+/// solve for `k`. The ids refused here are the ones whose private value is fixed (`Zero`, `SpendKey`, `ViewKey`,
+/// `CodeTemplateAuthor`), derived from another key that may be signed with again (`Derived`), a shared secret with
+/// whoever chose the public key (`DHCommitmentMask`, `DHEncryptedData` - the caller picks that public key, so it can
+/// always compute the nonce, whatever the inner key is), or the signing key itself. What is left is a reserved
+/// ephemeral nonce, a ledger index nonce (only the deprecated pre-mine arm accepts one) and an `Encrypted` key.
+fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
+    let reason = match nonce {
+        TariKeyId::Zero => "the zero key is not secret",
+        TariKeyId::SpendKey | TariKeyId::ViewKey | TariKeyId::CodeTemplateAuthor => {
+            "a wallet master key is a long lived signing key, not a nonce"
+        },
+        TariKeyId::Derived { .. } => "a derived key is a deterministic signing key, not a nonce",
+        TariKeyId::DHCommitmentMask { .. } | TariKeyId::DHEncryptedData { .. } => {
+            "a Diffie-Hellman key is shared with the holder of its public key"
+        },
+        _ if nonce == private_key_id => "the nonce is the signing key",
+        TariKeyId::Encrypted { .. } | TariKeyId::LedgerKey { .. } | TariKeyId::LedgerEphemeralNonce { .. } => {
+            return Ok(());
+        },
+    };
+    Err(KeyManagerError::InvalidNonceKeyId {
+        nonce: nonce.to_string(),
+        reason: reason.to_string(),
+    })
+}
+
 impl KeyManager {
     pub fn new_with_crypto_factories(
         crypto_factories: CryptoFactories,
@@ -1590,6 +1619,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         nonce: &TariKeyId,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
+        refuse_degenerate_nonce(private_key_id, nonce)?;
         match (private_key_id, nonce) {
             (
                 TariKeyId::LedgerKey {
@@ -1644,6 +1674,14 @@ impl TransactionKeyManagerInterface for KeyManager {
             _ => {
                 let private_key = self.get_private_key(private_key_id)?;
                 let private_nonce = self.get_private_key(nonce)?;
+                // Two distinct ids can still resolve to a degenerate value, e.g. an `Encrypted` id wrapping zero or
+                // wrapping the signing key under a different encryption key.
+                if private_nonce == PrivateKey::default() || private_nonce == private_key {
+                    return Err(KeyManagerError::InvalidNonceKeyId {
+                        nonce: nonce.to_string(),
+                        reason: "the nonce resolves to zero or to the signing key".to_string(),
+                    });
+                }
                 let signature = UncompressedSignature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
 
                 Ok(CompressedSignature::new_from_schnorr(signature))
@@ -2535,6 +2573,99 @@ mod tests {
             },
             (other, _) => panic!("expected UnknownEphemeralNonce, got {other:?}"),
         }
+    }
+
+    fn assert_nonce_refused(key_manager: &KeyManager, private_key_id: &TariKeyId, nonce: &TariKeyId) {
+        match key_manager.sign_with_nonce_and_challenge(private_key_id, nonce, &challenge(1)) {
+            Err(KeyManagerError::InvalidNonceKeyId { nonce: refused, .. }) => assert_eq!(refused, nonce.to_string()),
+            other => panic!("expected InvalidNonceKeyId for nonce '{nonce}', got {other:?}"),
+        }
+    }
+
+    /// `s = r + e·k`, so a nonce the caller knows - zero, a master key, a key derived from one, a Diffie-Hellman
+    /// secret it can compute from the public key it chose, or the signing key itself - turns one signature into the
+    /// signing key. Every such id is refused before anything is signed.
+    #[test]
+    fn a_degenerate_nonce_key_id_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let other_public_key = key_manager.get_random_key(None, None).unwrap().pub_key;
+
+        let mut degenerate = vec![
+            TariKeyId::Zero,
+            TariKeyId::SpendKey,
+            TariKeyId::ViewKey,
+            TariKeyId::CodeTemplateAuthor,
+        ];
+        for inner in [TariKeyId::SpendKey, TariKeyId::Zero, signing_key.key_id.clone()] {
+            degenerate.push(TariKeyId::Derived { key: (&inner).into() });
+            degenerate.push(TariKeyId::DHCommitmentMask {
+                public_key: other_public_key.clone(),
+                private_key: (&inner).into(),
+            });
+            degenerate.push(TariKeyId::DHEncryptedData {
+                public_key: other_public_key.clone(),
+                private_key: (&inner).into(),
+            });
+        }
+
+        for signing_key_id in [signing_key.key_id.clone(), TariKeyId::SpendKey, TariKeyId::ViewKey] {
+            for nonce in &degenerate {
+                assert_nonce_refused(&key_manager, &signing_key_id, nonce);
+            }
+            assert_nonce_refused(&key_manager, &signing_key_id, &signing_key_id);
+        }
+    }
+
+    /// The legacy pre-mine arm takes a ledger index nonce, but never the signing key's own index.
+    #[test]
+    fn a_ledger_key_cannot_be_its_own_nonce() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let key = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: 7,
+        };
+        assert_nonce_refused(&key_manager, &key, &key);
+    }
+
+    /// Two different `Encrypted` ids can wrap the same scalar, so the id check alone does not catch a nonce that is
+    /// zero or the signing key. The resolved values are checked too.
+    #[test]
+    fn an_encrypted_nonce_wrapping_zero_or_the_signing_key_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let signing_private_key = key_manager.get_private_key(&signing_key.key_id).unwrap();
+
+        let wraps_zero = key_manager.create_encrypted_key(PrivateKey::default(), None).unwrap();
+        let wraps_signing_key = key_manager
+            .create_encrypted_key(signing_private_key, Some(TariKeyId::SpendKey))
+            .unwrap();
+        assert_ne!(wraps_signing_key, signing_key.key_id);
+
+        for nonce in [wraps_zero, wraps_signing_key] {
+            assert_nonce_refused(&key_manager, &signing_key.key_id, &nonce);
+        }
+    }
+
+    /// A fresh `Encrypted` nonce - what the offline signer's payload signature uses - still signs and verifies.
+    #[test]
+    fn a_fresh_encrypted_nonce_signs_and_verifies() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let view_key = key_manager.get_view_key();
+        let nonce = key_manager.get_random_key(None, None).unwrap();
+
+        let challenge = challenge(1);
+        let signature = key_manager
+            .sign_with_nonce_and_challenge(&view_key.key_id, &nonce.key_id, &challenge)
+            .unwrap();
+
+        assert_eq!(signature.get_compressed_public_nonce(), &nonce.pub_key);
+        assert!(
+            signature
+                .to_schnorr_signature()
+                .unwrap()
+                .verify_raw_uniform(&view_key.pub_key.to_public_key().unwrap(), &challenge)
+        );
     }
 
     /// Handles are issued, never chosen, so a handle the key manager never handed out names nothing.
