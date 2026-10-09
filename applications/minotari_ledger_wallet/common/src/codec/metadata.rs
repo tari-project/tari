@@ -24,9 +24,10 @@
 //!
 //! `is_change` is a second optional trailing field, after the branch: the host sets it for the change output the
 //! wallet's transaction builder made, and the device auto-approves only a flagged output to the wallet's own address.
-//! A payload without it - every payload a host from before it sends - is not change, so such a host's change is
-//! reviewed rather than refused. Current hosts send it only when it is set, and then send the branch in front of it
-//! even when the branch is the default.
+//! A payload without it is not change: a host that signs change through this instruction but does not send the flag
+//! (an intermediate build, say) has its change reviewed rather than auto-approved. (Released hosts from before the
+//! flag sign change through `GetRawSchnorrSignature`, which refuses it, and have to be upgraded.) Current hosts send it
+//! only when it is set, and then send the branch in front of it even when the branch is the default.
 //!
 //! Current hosts send the branch only when it is *not* that default (or `is_change` is set). An ordinary
 //! one-sided send is therefore byte-identical to the old layout, and keeps the old layout's room for a receiver

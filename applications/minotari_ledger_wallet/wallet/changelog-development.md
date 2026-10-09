@@ -25,8 +25,7 @@ All notable changes to this project will be documented in this file. See [standa
   change: payments to self, coin split and join, validator node registration and exit, offline signing payload
   recipients and the backup pre-mine spend. A flagged output to any other address is reviewed too, as is an address
   carrying this wallet's spend key with any other view key: the host derives the output's mask and encrypted data
-  from the view key, so such an output would be locked to this wallet yet invisible to its scanner. A host from before
-  the flag never sets it, so on this application its change is reviewed rather than refused.
+  from the view key, so such an output would be locked to this wallet yet invisible to its scanner.
 
   What this does not close, each tracked separately:
   - It does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender
@@ -44,8 +43,10 @@ All notable changes to this project will be documented in this file. See [standa
     `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
     offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs
     with the separate pre-mine issue.
-  - The device never sees the fee of any transaction, and auto-approved change shows nothing at all. A summary of an
-    offline payload's fee and output features on the Ledger console wallet is a follow-up.
+  - The device never sees the fee or the output features of any transaction, and auto-approved change shows nothing
+    at all. An offline payload's author can set a fee up to the total recipient amount - recipients at this wallet's
+    own address count towards that cap - and the payload recipients' features, such as maturity, are not shown. A
+    summary of an offline payload's fee and output features on the Ledger console wallet is a follow-up.
 
 
 ### ⚠ Upgrade notes
@@ -77,8 +78,13 @@ All notable changes to this project will be documented in this file. See [standa
   - Offline signing payloads that carry pre-built (custom) outputs: `LedgerSenderOffsetNeedsRecipient`, refused before
     the device is asked to review anything.
 
-  HTLC claims and refunds, and the pre-mine ceremony, are unaffected. The coinbase's host held sender offset key still
-  signs in software.
+  HTLC claims and refunds, and the pre-mine ceremony, are not affected by these refusals. The coinbase's host held
+  sender offset key still signs in software.
+* **Outputs to the wallet's own address are now reviewed, one screen per output.** On a Ledger wallet every to-self
+  output - coin split and join, payment to self, validator node registration and exit - and every offline signing
+  payload recipient shows a review, so an N-way coin split means N prompts, and split, join and validator node flows
+  that used to run unattended now need someone at the device. The review screen shows the address and does not label
+  it as this wallet's own. Only the change the wallet's transaction builder makes is signed without a review.
 * **Withdraw multisig funds before upgrading.** A Ledger wallet that is a party to a multisig deposit made with an
   earlier wallet and application should withdraw those funds - or have a software co-signer withdraw them - before
   upgrading. The new wallet refuses the Ledger side of a multisig withdraw with `LedgerSenderOffsetNeedsRecipient`.

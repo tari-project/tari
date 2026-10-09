@@ -2203,7 +2203,7 @@ where
     ) -> Result<Box<(TxId, CompressedPublicKey, TransactionOutput)>, TransactionServiceError> {
         // A ledger device signs an output's metadata only over the standard stealth script to the receiver, which it
         // builds itself, so it cannot sign the HTLC output's script. Refused here, before any input is selected,
-        // rather than deep inside the build. Claiming or refunding an HTLC spends it to this wallet, and still works.
+        // rather than deep inside the build. Claiming or refunding an HTLC is not affected by this refusal.
         if matches!(*self.resources.wallet_type, LegacyWalletType::Ledger(_)) {
             return Err(TransactionServiceError::NotSupported(
                 "HTLC (atomic swap) sends are not supported on Ledger wallets".to_string(),
