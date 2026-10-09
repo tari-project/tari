@@ -17,10 +17,13 @@ borsh = { workspace = true }
 digest = "0.10"
 thiserror = { workspace = true }
 indexmap = { version = "2.6", features = ["serde"] }
+minicbor = { version = "2.3", default-features = false, features = ["alloc"], optional = true }
 
 [features]
 # In-memory `TreeStore` for tests and tooling. Not for production use.
 memory-store = []
+# Native minicbor `Encode`/`Decode`/`CborLen` for the tree, node and proof types.
+minicbor = ["dep:minicbor"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

@@ -255,6 +255,10 @@ impl SparseMerkleProofExt {
         self.leaf.clone()
     }
 
+    pub(crate) fn leaf_ref(&self) -> Option<&SparseMerkleLeafNode> {
+        self.leaf.as_ref()
+    }
+
     /// Returns the list of siblings in this proof. Untrusted until a `verify_*` method returns `Ok` against an
     /// authenticated root.
     pub fn siblings(&self) -> &[NodeInProof] {
@@ -730,7 +734,13 @@ impl TryFrom<NibblePathRaw> for NibblePath {
     type Error = NibblePathError;
 
     fn try_from(raw: NibblePathRaw) -> Result<Self, Self::Error> {
-        let NibblePathRaw { num_nibbles, bytes } = raw;
+        NibblePath::try_from_parts(raw.num_nibbles, raw.bytes)
+    }
+}
+
+impl NibblePath {
+    /// Builds a decoded path, enforcing [`MAX_NIBBLE_PATH_LEN`], the byte length and a zero padding nibble.
+    pub(crate) fn try_from_parts(num_nibbles: usize, bytes: Vec<u8>) -> Result<Self, NibblePathError> {
         if num_nibbles > MAX_NIBBLE_PATH_LEN {
             return Err(NibblePathError::TooLong {
                 num_nibbles,
@@ -1309,6 +1319,10 @@ impl InternalNode {
         // tmp.sort_by_key(|(nibble, _)| **nibble);
         // tmp.into_iter()
         self.children.iter()
+    }
+
+    pub(crate) fn num_children(&self) -> usize {
+        self.children.len()
     }
 
     pub fn into_children(self) -> Children {
