@@ -121,8 +121,6 @@ struct TariPendingOutboundTransactions;
 
 struct TariSeedWords;
 
-struct TariUnblindedOutputs;
-
 struct TariWallet;
 
 /**
@@ -143,8 +141,11 @@ struct TransactionSendStatus;
 
 /**
  * An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
- * build both inputs and outputs (every input comes from an output). This is only used for import and export where
- * serialization is important.
+ * build both inputs and outputs (every input comes from an output). This is only used to import outputs whose keys
+ * were created outside this wallet, where serialization is important.
+ *
+ * There is intentionally no way to build one from a wallet's own output: a wallet's script private key is
+ * `H("script key", mask) + alpha`, so exporting the mask and script key of any of its outputs reveals the spend key.
  */
 struct UnblindedOutput;
 
@@ -1254,79 +1255,6 @@ char *tari_unblinded_output_to_json(TariUnblindedOutput *output,
  */
 TariUnblindedOutput *create_tari_unblinded_output_from_json(const char *output_json,
                                                             int *error_out);
-
-/**
- * -------------------------------------------------------------------------------------------- ///
- * ----------------------------------- TariUnblindedOutputs ------------------------------------///
- * Gets the length of TariUnblindedOutputs
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputs
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `c_uint` - Returns number of elements in, zero if any pointer is null.
- *
- * # Safety
- * None
- */
-unsigned int unblinded_outputs_get_length(struct TariUnblindedOutputs *outputs,
-                                          int *error_out);
-
-/**
- * Gets a TariUnblindedOutput from TariUnblindedOutputs at position
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputs
- * `position` - The integer position
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
- * TariUnblindedOutputs is null or position is invalid
- *
- * # Safety
- * The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutputs to prevent a
- * memory leak
- */
-TariUnblindedOutput *unblinded_outputs_get_at(struct TariUnblindedOutputs *outputs,
-                                              unsigned int position,
-                                              int *error_out);
-
-/**
- * Frees memory for a TariUnblindedOutputs
- *
- * ## Arguments
- * `outputs` - The pointer to a TariUnblindedOutputs
- *
- * ## Returns
- * `()` - Does not return a value, equivalent to void in C
- *
- * # Safety
- * None
- */
-void unblinded_outputs_destroy(struct TariUnblindedOutputs *outputs);
-
-/**
- * Get the TariUnblindedOutputs from a TariWallet
- *
- * ## Arguments
- * `wallet` - The TariWallet pointer
- * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
- * as an out parameter. Returns a null pointer if any pointer argument is null.
- *
- * ## Returns
- * `*mut TariUnblindedOutputs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut() if
- * wallet is null
- *
- * # Safety
- * The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutput to prevent a
- * memory leak
- */
-struct TariUnblindedOutputs *wallet_get_unspent_outputs(struct TariWallet *wallet,
-                                                        int *error_out);
 
 /**
  * Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable

@@ -100,7 +100,6 @@ use tari_transaction_components::{
         TransactionKernel,
         TransactionOutput,
         TransactionOutputVersion,
-        UnblindedOutput,
         WalletOutput,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
@@ -1929,39 +1928,22 @@ pub async fn command_runner(
             },
             ExportUtxos(args) => match output_service.get_unspent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
-                        Vec::with_capacity(utxos.len());
-                    for output in utxos {
-                        let unblinded =
-                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)?;
-                        unblinded_utxos.push((unblinded, output.commitment));
-                    }
-                    let count = unblinded_utxos.len();
-                    let sum: MicroMinotari = unblinded_utxos.iter().map(|utxo| utxo.0.value).sum();
+                    let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
+                    let count = utxos.len();
+                    let sum: MicroMinotari = utxos.iter().map(|utxo| utxo.value()).sum();
                     if let Some(file) = args.output_file {
-                        if let Err(e) = write_utxos_to_csv_file(unblinded_utxos, file, args.with_private_keys) {
+                        if let Err(e) = write_utxos_to_csv_file(&utxos, file) {
                             eprintln!("ExportUtxos error! {e}");
                         }
                     } else {
-                        for (i, utxo) in unblinded_utxos.iter().enumerate() {
+                        for (i, utxo) in utxos.iter().enumerate() {
                             println!(
-                                "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}, Commitment: {}, \
-                                 isMultisig: {}",
+                                "{}. Value: {}, Features: {}, Commitment: {}, isMultisig: {}",
                                 i.saturating_add(1),
-                                utxo.0.value,
-                                if args.with_private_keys {
-                                    utxo.0.commitment_mask_key.to_hex()
-                                } else {
-                                    "*hidden*".to_string()
-                                },
-                                if args.with_private_keys {
-                                    utxo.0.script_private_key.to_hex()
-                                } else {
-                                    "*hidden*".to_string()
-                                },
-                                utxo.0.features,
-                                utxo.1.to_hex(),
-                                is_multisig_utxo(&utxo.0.script)
+                                utxo.value(),
+                                utxo.features(),
+                                utxo.commitment().to_hex(),
+                                is_multisig_utxo(utxo.script())
                             );
                         }
                     }
@@ -2000,36 +1982,21 @@ pub async fn command_runner(
             },
             ExportSpentUtxos(args) => match output_service.get_spent_outputs().await {
                 Ok(utxos) => {
-                    let mut unblinded_utxos: Vec<(UnblindedOutput, CompressedCommitment)> =
-                        Vec::with_capacity(utxos.len());
-                    for output in utxos {
-                        let unblinded =
-                            UnblindedOutput::from_wallet_output(output.wallet_output, &wallet.key_manager_service)?;
-                        unblinded_utxos.push((unblinded, output.commitment));
-                    }
-                    let count = unblinded_utxos.len();
-                    let sum: MicroMinotari = unblinded_utxos.iter().map(|utxo| utxo.0.value).sum();
+                    let utxos: Vec<WalletOutput> = utxos.into_iter().map(|v| v.wallet_output).collect();
+                    let count = utxos.len();
+                    let sum: MicroMinotari = utxos.iter().map(|utxo| utxo.value()).sum();
                     if let Some(file) = args.output_file {
-                        if let Err(e) = write_utxos_to_csv_file(unblinded_utxos, file, args.with_private_keys) {
+                        if let Err(e) = write_utxos_to_csv_file(&utxos, file) {
                             eprintln!("ExportSpentUtxos error! {e}");
                         }
                     } else {
-                        for (i, utxo) in unblinded_utxos.iter().enumerate() {
+                        for (i, utxo) in utxos.iter().enumerate() {
                             println!(
-                                "{}. Value: {}, Spending Key: {:?}, Script Key: {:?}, Features: {}",
+                                "{}. Value: {}, Features: {}, Commitment: {}",
                                 i.saturating_add(1),
-                                utxo.0.value,
-                                if args.with_private_keys {
-                                    utxo.0.commitment_mask_key.to_hex()
-                                } else {
-                                    "*hidden*".to_string()
-                                },
-                                if args.with_private_keys {
-                                    utxo.0.script_private_key.to_hex()
-                                } else {
-                                    "*hidden*".to_string()
-                                },
-                                utxo.0.features
+                                utxo.value(),
+                                utxo.features(),
+                                utxo.commitment().to_hex()
                             );
                         }
                     }
@@ -3765,56 +3732,51 @@ fn get_all_embedded_pre_mine_outputs() -> Result<Vec<TransactionOutput>, Command
     Ok(utxos)
 }
 
-fn write_utxos_to_csv_file(
-    utxos: Vec<(UnblindedOutput, CompressedCommitment)>,
-    file_path: PathBuf,
-    with_private_keys: bool,
-) -> Result<(), CommandError> {
+/// The header row written by [write_utxos_to_csv_file]. There are deliberately no commitment mask or script private
+/// key columns: a wallet output's script key is `H("script key", mask) + alpha`, so those two values from any single
+/// row would give away the wallet's spend key.
+const UTXO_CSV_HEADER: &str = r##""index","version","value","commitment","output_type","maturity","coinbase_extra","script","covenant","input_data","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise","range_proof""##;
+
+fn write_utxos_to_csv_file(utxos: &[WalletOutput], file_path: PathBuf) -> Result<(), CommandError> {
     let file = File::create(file_path).map_err(|e| CommandError::CSVFile(e.to_string()))?;
     let mut csv_file = LineWriter::new(file);
-    writeln!(
-        csv_file,
-        r##""index","version","value","spending_key","commitment","output_type","maturity","coinbase_extra","script","covenant","input_data","script_private_key","sender_offset_public_key","ephemeral_commitment","ephemeral_nonce","signature_u_x","signature_u_a","signature_u_y","script_lock_height","encrypted_data","minimum_value_promise","range_proof""##
-    )
-        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
-    for (i, (utxo, commitment)) in utxos.iter().enumerate() {
+    writeln!(csv_file, "{UTXO_CSV_HEADER}").map_err(|e| CommandError::CSVFile(e.to_string()))?;
+    for (i, utxo) in utxos.iter().enumerate() {
+        let features = utxo.features();
         writeln!(
             csv_file,
-            r##""{}","V{}","{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
+            r##""{}","V{}","{}","{}","{:?}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}","{}""##,
             i.saturating_add(1),
-            utxo.version.as_u8(),
-            utxo.value.0,
-            if with_private_keys { utxo.commitment_mask_key.to_hex() } else { "*hidden*".to_string() },
-            commitment.to_hex(),
-            utxo.features.output_type,
-            utxo.features.maturity,
-            String::from_utf8(utxo.features.coinbase_extra.to_vec())
-                .unwrap_or_else(|_| utxo.features.coinbase_extra.to_hex()),
-            utxo.script.to_hex(),
-            utxo.covenant.to_bytes().to_hex(),
-            utxo.input_data.to_hex(),
-            if with_private_keys { utxo.script_private_key.to_hex() } else { "*hidden*".to_string() },
-            utxo.sender_offset_public_key.to_hex(),
-            utxo.metadata_signature.ephemeral_commitment().to_hex(),
-            utxo.metadata_signature.ephemeral_pubkey().to_hex(),
-            utxo.metadata_signature.u_x().to_hex(),
-            utxo.metadata_signature.u_a().to_hex(),
-            utxo.metadata_signature.u_y().to_hex(),
-            utxo.script_lock_height,
-            utxo.encrypted_data.to_byte_vec().to_hex(),
-            utxo.minimum_value_promise.as_u64(),
-            if let Some(proof) = utxo.range_proof.clone() {
+            utxo.version().as_u8(),
+            utxo.value().0,
+            utxo.commitment().to_hex(),
+            features.output_type,
+            features.maturity,
+            String::from_utf8(features.coinbase_extra.to_vec()).unwrap_or_else(|_| features.coinbase_extra.to_hex()),
+            utxo.script().to_hex(),
+            utxo.covenant().to_bytes().to_hex(),
+            utxo.input_data().to_hex(),
+            utxo.sender_offset_public_key().to_hex(),
+            utxo.metadata_signature().ephemeral_commitment().to_hex(),
+            utxo.metadata_signature().ephemeral_pubkey().to_hex(),
+            utxo.metadata_signature().u_x().to_hex(),
+            utxo.metadata_signature().u_a().to_hex(),
+            utxo.metadata_signature().u_y().to_hex(),
+            utxo.script_lock_height(),
+            utxo.encrypted_data().to_byte_vec().to_hex(),
+            utxo.minimum_value_promise().as_u64(),
+            if let Some(proof) = utxo.range_proof() {
                 proof.to_hex()
             } else {
                 "".to_string()
             },
         )
-            .map_err(|e| CommandError::CSVFile(e.to_string()))?;
+        .map_err(|e| CommandError::CSVFile(e.to_string()))?;
         debug!(
             target: LOG_TARGET,
-            "UTXO {} exported: {:?}",
+            "UTXO {} exported: {}",
             i.saturating_add(1),
-            utxo
+            utxo.commitment().to_hex()
         );
     }
     Ok(())
@@ -3922,7 +3884,50 @@ fn write_audit_to_csv_file(
 
 #[cfg(test)]
 mod test {
+    use tari_transaction_components::{
+        key_manager::{KeyManager, SecretTransactionKeyManagerInterface},
+        test_helpers::{TestParams, UtxoTestParams},
+    };
+
     use super::*;
+
+    #[test]
+    fn utxo_csv_export_contains_no_private_keys() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let output = TestParams::new(&key_manager)
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(1234),
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+        let mask = key_manager.get_private_key(output.commitment_mask_key_id()).unwrap();
+        let script_private_key = key_manager.get_private_key(output.script_key_id()).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("utxos.csv");
+        write_utxos_to_csv_file(std::slice::from_ref(&output), path.clone()).unwrap();
+        let contents = fs::read_to_string(path).unwrap();
+        let mut lines = contents.lines();
+        let header = lines.next().unwrap();
+        let row = lines.next().unwrap();
+        assert!(lines.next().is_none());
+
+        assert_eq!(header, UTXO_CSV_HEADER);
+        assert!(!header.contains("spending_key"));
+        assert!(!header.contains("mask"));
+        assert!(!header.contains("private"));
+
+        assert_eq!(row.split("\",\"").count(), header.split("\",\"").count());
+        assert!(row.contains(&output.commitment().to_hex()));
+        assert!(row.starts_with("\"1\",\"V0\",\"1234\","));
+        // Either scalar, together with the other, gives away the wallet's spend key; neither may appear at all.
+        assert!(!row.contains(&mask.to_hex()));
+        assert!(!row.contains(&script_private_key.to_hex()));
+        assert!(!row.contains("*hidden*"));
+    }
 
     #[test]
     fn random_alphanumeric_is_the_requested_length_and_not_repeated() {
