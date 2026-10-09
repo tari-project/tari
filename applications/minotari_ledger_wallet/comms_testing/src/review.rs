@@ -51,8 +51,12 @@
 //!   and Speculos' nearest is `8027080606411e0000`, so no font matches and the glyph is dropped from the event.
 //! * `'I'` is reported as `'l'` in both faces.
 //!
-//! [`UiToolkit::Bagl`] therefore compares against [`as_bagl_reports`] - the expected text with those two
-//! substitutions applied - and this is written down here rather than hidden in an `assert` so that whoever bumps
+//! The faces matter because a review row draws its **name in the bold face and its value in the regular one**, so an
+//! `'S'` survives in a field name (`Sidechain`, measured on `nanosplus`) and vanishes in a value.
+//!
+//! [`UiToolkit::Bagl`] therefore compares values against [`as_bagl_reports`] and names against
+//! [`as_bagl_bold_reports`] - the expected text with the substitutions of its face applied - and this is written down
+//! here rather than hidden in an `assert` so that whoever bumps
 //! the SDK or the Speculos digest can re-derive it. To do so: dump the SDK's `OPEN_SANS_REGULAR_11PX_CHARS` and
 //! `OPEN_SANS_EXTRABOLD_11PX_CHARS` from `src/ui/fonts/opensans.rs` and feed each bitmap to
 //! `speculos.mcu.ocr.OCR.find_char_from_bitmap` inside the Speculos container.
@@ -152,6 +156,14 @@ impl UiToolkit {
             UiToolkit::Nbgl => text.to_string(),
         }
     }
+
+    /// [`Self::as_reported`] for a field *name*, which BAGL draws in the bold face: there only `'I'` is misread.
+    pub fn as_reported_name(self, text: &str) -> String {
+        match self {
+            UiToolkit::Bagl => as_bagl_bold_reports(text),
+            UiToolkit::Nbgl => text.to_string(),
+        }
+    }
 }
 
 /// The text Speculos' BAGL pixel reconstruction will report, given the text the device drew.
@@ -168,6 +180,12 @@ pub fn as_bagl_reports(text: &str) -> String {
         .filter(|c| *c != 'S')
         .map(|c| if c == 'I' { 'l' } else { c })
         .collect()
+}
+
+/// [`as_bagl_reports`] for the bold face, which review rows draw their names in: `'S'` is recognised there, and only
+/// `'I'` becomes `'l'`.
+pub fn as_bagl_bold_reports(text: &str) -> String {
+    text.chars().map(|c| if c == 'I' { 'l' } else { c }).collect()
 }
 
 /// One row of the review screen.
@@ -367,7 +385,7 @@ impl ExpectedReview {
             .map(|field| {
                 format!(
                     "{}{}",
-                    toolkit.as_reported(&field.name),
+                    toolkit.as_reported_name(&field.name),
                     toolkit.as_reported(&field.value)
                 )
             })
@@ -408,8 +426,8 @@ impl ExpectedReview {
         let names: Vec<String> = self
             .present
             .iter()
-            .map(|field| toolkit.as_reported(&field.name))
-            .chain(self.absent.iter().map(|name| toolkit.as_reported(name)))
+            .map(|field| toolkit.as_reported_name(&field.name))
+            .chain(self.absent.iter().map(|name| toolkit.as_reported_name(name)))
             .collect();
         let review = review_text(toolkit, screens, &names);
         let expected = self.as_expected_text(toolkit);
@@ -431,7 +449,7 @@ impl ExpectedReview {
         // The equality above is the assertion; everything from here down exists to say *which* field went wrong,
         // because a diff of two four-hundred character strings is not a diagnosis.
         for field in &self.present {
-            let name = toolkit.as_reported(&field.name);
+            let name = toolkit.as_reported_name(&field.name);
             let value = toolkit.as_reported(&field.value);
             if !review.contains(&name) {
                 problems.push(format!("'{}' does not appear on the review at all", field.name));
@@ -450,7 +468,7 @@ impl ExpectedReview {
         }
 
         for name in &self.absent {
-            let reported = toolkit.as_reported(name);
+            let reported = toolkit.as_reported_name(name);
             if review.contains(&reported) {
                 problems.push(format!(
                     "'{name}' must not appear on this review, but it does: {:?}",
@@ -723,6 +741,33 @@ mod test {
         let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0);
         let screens = bagl_screens(&as_bagl_reports(RECEIVER));
         expected.check(UiToolkit::Bagl, &screens).unwrap();
+    }
+
+    /// The validator node registration review as `nanosplus` reported it: the `'S'` of the bold `Sidechain` name
+    /// survives, and the value's regular face `'S'` (here in `Sidechain proof`) does not.
+    #[test]
+    fn a_bagl_field_name_keeps_its_s_and_a_value_loses_it() {
+        let key = "41ee03357b17c5eb1a3ce58ab81fa744a408c5bdc7bf8e06eb5ba6e2bb47ab82";
+        let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0)
+            .with_output_field(OUTPUT_TYPE_FIELD, "Sidechain proof")
+            .with_output_field(SIDECHAIN_FIELD, "VN registration")
+            .with_output_field(VALIDATOR_NODE_FIELD, key);
+        let mut screens = bagl_screens(&as_bagl_reports(RECEIVER));
+        let approve = screens.pop().unwrap();
+        screens.extend([
+            "Output typeidechain proof".to_string(),
+            "SidechainVN registration".to_string(),
+            format!("Validator node (1/2){}", &key[..50]),
+            format!("Validator node (2/2){}", &key[50..]),
+            approve,
+        ]);
+        expected.check(UiToolkit::Bagl, &screens).unwrap();
+
+        // And the bold name is compared with its `'S'`: a device that drew `idechain` as the name fails.
+        screens[5] = "idechainVN registration".to_string();
+        expected
+            .check(UiToolkit::Bagl, &screens)
+            .expect_err("a field name missing its 'S' must fail");
     }
 
     /// Acceptance criterion 3, without a device: a wrong expected address must fail.

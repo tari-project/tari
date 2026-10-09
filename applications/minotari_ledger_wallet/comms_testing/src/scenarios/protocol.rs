@@ -186,14 +186,16 @@ fn a_wrong_class_byte_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResu
 ///
 /// The probe bytes are chosen to bracket the real set rather than to be far away from it: `0x00` is below it,
 /// `0x0a` sits in the gap between `GetRawSchnorrSignature` (`0x09`) and `GetScriptSchnorrSignature` (`0x10`) - the
-/// instruction numbering has a hole there, and a hole is where an off-by-one in a dispatch table lands - and `0x15`
-/// is one past the highest. Each is checked against `Instruction::from_byte` first, so that a future instruction
-/// taking one of these numbers turns into a legible failure here rather than a confusing one.
+/// instruction numbering has a hole there, and a hole is where an off-by-one in a dispatch table lands - `0x11`,
+/// which carried the single APDU, opaque hash `GetOneSidedMetadataSignature` and is retired so that an old host's
+/// request is refused rather than misread as a chunk of its successor, and `0x16`, one past the highest. Each is
+/// checked against `Instruction::from_byte` first, so that a future instruction taking one of these numbers turns
+/// into a legible failure here rather than a confusing one.
 fn an_unknown_instruction_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let valid = valid_public_key_request(account);
 
-    for ins in [0x00u8, 0x0a, 0x15, 0xff] {
+    for ins in [0x00u8, 0x0a, 0x11, 0x16, 0xff] {
         require(Instruction::from_byte(ins).is_none(), || {
             format!("{ins:#04x} is now a real instruction; pick a byte that is not")
         })?;
