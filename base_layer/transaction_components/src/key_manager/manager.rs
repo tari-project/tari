@@ -239,6 +239,9 @@ fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offse
 /// whoever chose the public key (`DHCommitmentMask`, `DHEncryptedData` - the caller picks that public key, so it can
 /// always compute the nonce, whatever the inner key is), or the signing key itself. What is left is a reserved
 /// ephemeral nonce, a ledger index nonce (only the deprecated pre-mine arm accepts one) and an `Encrypted` key.
+///
+/// An `Encrypted` nonce is still caller controllable - `create_encrypted_key` wraps any scalar - so it must be fresh
+/// and used once. Closing that means moving software signatures onto reserved handles and deleting the catch-all arm.
 fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
     let reason = match nonce {
         TariKeyId::Zero => "the zero key is not secret",

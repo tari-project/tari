@@ -253,9 +253,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_pub_key: Option<&CompressedPublicKey>,
     ) -> Result<CompressedCheckSigSchnorrSignature, KeyManagerError>;
 
-    /// Signs `challenge` with `private_key_id` under `nonce`. A nonce whose private value the caller could know -
-    /// `Zero`, a wallet master key, a `Derived` or Diffie-Hellman key, or the signing key itself - is refused with
-    /// [`KeyManagerError::InvalidNonceKeyId`], because one signature under it gives up the signing key.
+    /// Signs `challenge` with `private_key_id` under `nonce`. A `Zero`, `SpendKey`, `ViewKey`, `CodeTemplateAuthor`,
+    /// `Derived`, `DHCommitmentMask` or `DHEncryptedData` nonce, or one equal to the signing key, is refused with
+    /// [`KeyManagerError::InvalidNonceKeyId`].
+    ///
+    /// This does not refuse every nonce the caller could know. An `Encrypted` nonce is still caller controllable -
+    /// `create_encrypted_key` wraps any scalar - so it must be fresh and used for one signature only: a known nonce,
+    /// or two signatures under one, gives up the signing key. Closing that means moving software signatures onto
+    /// reserved handles and deleting the catch-all arm.
     fn sign_with_nonce_and_challenge(
         &self,
         private_key_id: &TariKeyId,
