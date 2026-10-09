@@ -66,6 +66,9 @@ All notable changes to this project will be documented in this file. See [standa
 
   HTLC claims and refunds, and the pre-mine ceremony, are unaffected. The coinbase's host held sender offset key still
   signs in software.
+* **Withdraw multisig funds before upgrading.** A Ledger wallet that is a party to a multisig deposit made with an
+  earlier wallet and application should withdraw those funds - or have a software co-signer withdraw them - before
+  upgrading. The new wallet refuses the Ledger side of a multisig withdraw with `LedgerSenderOffsetNeedsRecipient`.
 * Key indexes are now derived from all 64 bits. Every index below `2^32` keeps its key, and no key an ordinary
   wallet re-derives after a transaction is built is above it, so ordinary sends and spends are unaffected.
 
