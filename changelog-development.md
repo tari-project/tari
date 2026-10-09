@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.2.0-pre.0](https://github.com/tari-project/tari/compare/v6.1.0-pre.1...v6.2.0-pre.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **jellyfish:** native minicbor encoding, inline NibblePath and bitmap InternalNode children (#8101)
+* **wallet:** remove private-key UTXO export, which leaked the spend key (#8102)
+* **jellyfish:** make the JMT hash scheme an explicit parameter (#8096)
+* **jellyfish:** remove public-API panics, bound traversal, check store integrity (#8094)
+
+### Features
+
+* **jellyfish:** make the JMT hash scheme an explicit parameter ([#8096](https://github.com/tari-project/tari/issues/8096)) ([29c9caa](https://github.com/tari-project/tari/commit/29c9caac9813a7c88cc267ba7d53268a6e8e0b03))
+* **jellyfish:** native minicbor encoding, inline NibblePath and bitmap InternalNode children ([#8101](https://github.com/tari-project/tari/issues/8101)) ([0f21a29](https://github.com/tari-project/tari/commit/0f21a29cb867cf665776862bba115966a4029136))
+
+
+### Bug Fixes
+
+* bound protobuf decode on every peer-reachable path ([#8095](https://github.com/tari-project/tari/issues/8095)) ([89f9ebd](https://github.com/tari-project/tari/commit/89f9ebd61648e5a44059ad65ee9a1d195f61266f))
+* **jellyfish:** reject non-monotonic versions in batch_put_value_set ([#8092](https://github.com/tari-project/tari/issues/8092)) ([109da2b](https://github.com/tari-project/tari/commit/109da2bf1fcd85fcf8405fb6d0567aff5c8da314))
+* **jellyfish:** remove public-API panics, bound traversal, check store integrity ([#8094](https://github.com/tari-project/tari/issues/8094)) ([faa66c8](https://github.com/tari-project/tari/commit/faa66c89e4c24033302ede227df8fe96aa36531c))
+* **key_manager:** refuse degenerate nonces ([#8103](https://github.com/tari-project/tari/issues/8103)) ([6495266](https://github.com/tari-project/tari/commit/649526689842ef2017a255f39d4dd4c386969e10)), closes [#8099](https://github.com/tari-project/tari/issues/8099)
+* **ledger:** keep alpha out of reach of the legacy host-indexed nonce instruction ([#8098](https://github.com/tari-project/tari/issues/8098)) ([74d1bcb](https://github.com/tari-project/tari/commit/74d1bcb737a548d827ac908caf4d2fbd64216f60))
+* refuse root-bearing key ids as commitment masks and in offline signing payloads ([#8099](https://github.com/tari-project/tari/issues/8099)) ([7cc4d55](https://github.com/tari-project/tari/commit/7cc4d551a218fc226fea79bd231cc6ddc0c9235f))
+* refuse to sign offline transactions that leave no change output ([#8093](https://github.com/tari-project/tari/issues/8093)) ([b2e27cb](https://github.com/tari-project/tari/commit/b2e27cba0bb1518e50b8de1c7a7d52f1796ef432))
+* **wallet:** remove private-key UTXO export, which leaked the spend key ([#8102](https://github.com/tari-project/tari/issues/8102)) ([d74e2b4](https://github.com/tari-project/tari/commit/d74e2b42c787db46c9f313162e8b3390c6d04636)), closes [/github.com/tari-project/tari/pull/8102#discussion_r4229267983](https://github.com/tari-project//github.com/tari-project/tari/pull/8102/issues/discussion_r4229267983) [/github.com/tari-project/tari/pull/8102#discussion_r4229267993](https://github.com/tari-project//github.com/tari-project/tari/pull/8102/issues/discussion_r4229267993)
+
 ## [6.1.0-pre.1](https://github.com/tari-project/tari/compare/v6.1.0-pre.0...v6.1.0-pre.1) (2026-10-07)
 
 
