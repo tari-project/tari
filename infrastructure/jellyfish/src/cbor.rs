@@ -30,7 +30,8 @@
 //!
 //! The tree node types ([`NodeKey`], [`NodeType`], [`Child`], [`InternalNode`], [`LeafNode`],
 //! [`Node`], [`StaleTreeNode`] and [`TreeNode`]) are read from the node's own store on the tree's hot path, so they
-//! decode without validation: array lengths and internal node invariants are not checked. Decoding
+//! decode without validation: array lengths and internal node invariants are not checked, except that internal node
+//! children must be in strictly ascending nibble order, which [`Children`] relies on. Decoding
 //! corrupt bytes returns an error or a malformed value, never a panic. Never decode these types from untrusted input.
 //!
 //! The proof types ([`SparseMerkleLeafNode`], [`NodeInProof`] and [`SparseMerkleProofExt`]) come from provers, so
@@ -38,7 +39,6 @@
 //! [`TreeHash`] always requires 32 bytes, a standalone [`Nibble`] is range-checked, and a [`NibblePath`] is fully
 //! checked because it must fit its inline storage.
 
-use indexmap::IndexMap;
 use minicbor::{
     CborLen,
     Decode,
@@ -51,6 +51,7 @@ use minicbor::{
 
 use crate::{
     Child,
+    Children,
     InternalNode,
     LeafKey,
     LeafNode,
@@ -343,13 +344,17 @@ impl<'b, C> Decode<'b, C> for InternalNode {
         let len = d
             .map()?
             .ok_or_else(|| decode::Error::message("InternalNode: expected a definite-length map").at(pos))?;
-        // The cap only bounds the allocation; a longer map fails on end of input or is truncated.
-        let mut children = IndexMap::with_capacity(MAX_CHILDREN);
+        let mut children = Children::with_capacity(usize::try_from(len).unwrap_or(MAX_CHILDREN));
         for _ in 0..len {
+            let nibble_pos = d.position();
             let nibble = Nibble::from_masked(d.u8()?);
-            children.insert(nibble, Child::decode(d, ctx)?);
+            // The one structural check: `Children` relies on its nibbles ascending
+            children.push(nibble, Child::decode(d, ctx)?).map_err(|_| {
+                decode::Error::message("InternalNode children must be in strictly ascending nibble order")
+                    .at(nibble_pos)
+            })?;
         }
-        Ok(InternalNode::from_sorted_children_unchecked(children))
+        Ok(InternalNode::from_children_unchecked(children))
     }
 }
 
@@ -758,6 +763,19 @@ mod tests {
         e.array(MAX_PROOF_SIBLINGS as u64 + 1).unwrap();
         // The header alone is rejected, before any sibling is read
         assert!(decode_err::<SparseMerkleProofExt>(&buf).contains("max is 256"));
+    }
+
+    #[test]
+    fn rejects_unsorted_internal_node_children() {
+        let child = Child::try_new(hash(1), 1, NodeType::Leaf).unwrap();
+        let mut buf = Vec::new();
+        let mut e = Encoder::new(&mut buf);
+        e.map(2).unwrap();
+        e.u8(4).unwrap();
+        child.encode(&mut e, &mut ()).unwrap();
+        e.u8(4).unwrap();
+        child.encode(&mut e, &mut ()).unwrap();
+        assert!(decode_err::<InternalNode>(&buf).contains("ascending"));
     }
 
     #[test]

@@ -85,7 +85,6 @@ use std::{fmt, fmt::Display, ops::Range};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use digest::consts;
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use tari_crypto::hash_domain;
 use tari_hashing::layer2::{TariDomainHasher, tari_hasher32};
@@ -1271,9 +1270,191 @@ impl Child {
     }
 }
 
-/// [`Children`] is just a collection of children belonging to a [`InternalNode`], indexed from 0 to
-/// 15, inclusive.
-pub(crate) type Children = IndexMap<Nibble, Child>;
+/// The children of an [`InternalNode`], indexed by nibble (0 to 15, inclusive) and always in ascending nibble order.
+///
+/// A bitmap of the occupied nibbles plus one `Child` per set bit, so it needs one allocation, no hashing and no
+/// sorting. A child's position is the number of occupied nibbles below it.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Children {
+    /// Bit `n` is set when there is a child at nibble `n`.
+    bitmap: u16,
+    /// One child per set bit of `bitmap`, in ascending nibble order.
+    children: Vec<Child>,
+}
+
+impl Children {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
+        Self {
+            bitmap: 0,
+            children: Vec::with_capacity(capacity.min(16)),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.children.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.children.is_empty()
+    }
+
+    /// Bit `n` is set when there is a child at nibble `n`.
+    pub fn bitmap(&self) -> u16 {
+        self.bitmap
+    }
+
+    fn bit(n: Nibble) -> u16 {
+        1u16 << u8::from(n)
+    }
+
+    /// The position of nibble `n` in `children`, whether or not it is occupied.
+    fn position(&self, n: Nibble) -> usize {
+        // At most 15 bits are counted
+        (self.bitmap & Self::bit(n).wrapping_sub(1)).count_ones() as usize
+    }
+
+    pub fn contains(&self, n: Nibble) -> bool {
+        self.bitmap & Self::bit(n) != 0
+    }
+
+    /// Gets the child at nibble `n`.
+    pub fn get(&self, n: Nibble) -> Option<&Child> {
+        if !self.contains(n) {
+            return None;
+        }
+        self.children.get(self.position(n))
+    }
+
+    /// Sets the child at nibble `n`, returning the child it replaced.
+    pub fn insert(&mut self, n: Nibble, child: Child) -> Option<Child> {
+        let position = self.position(n);
+        if self.contains(n) {
+            return self
+                .children
+                .get_mut(position)
+                .map(|slot| core::mem::replace(slot, child));
+        }
+        self.bitmap |= Self::bit(n);
+        self.children.insert(position, child);
+        None
+    }
+
+    /// Appends a child above every existing nibble, as decoding a stored node does. Returns the child back if `n` is
+    /// not above them.
+    pub fn push(&mut self, n: Nibble, child: Child) -> Result<(), Child> {
+        if self.bitmap >> u8::from(n) != 0 {
+            return Err(child);
+        }
+        self.bitmap |= Self::bit(n);
+        self.children.push(child);
+        Ok(())
+    }
+
+    /// Removes the child at nibble `n`.
+    pub fn remove(&mut self, n: Nibble) -> Option<Child> {
+        if !self.contains(n) {
+            return None;
+        }
+        let position = self.position(n);
+        self.bitmap &= !Self::bit(n);
+        (position < self.children.len()).then(|| self.children.remove(position))
+    }
+
+    /// The occupied nibbles in ascending order.
+    pub fn nibbles(&self) -> ChildNibbles {
+        ChildNibbles(self.bitmap)
+    }
+
+    /// The children in ascending nibble order.
+    pub fn iter(&self) -> impl Iterator<Item = (Nibble, &Child)> {
+        self.nibbles().zip(&self.children)
+    }
+
+    /// The children in ascending nibble order, without their nibbles.
+    pub fn values(&self) -> core::slice::Iter<'_, Child> {
+        self.children.iter()
+    }
+}
+
+impl FromIterator<(Nibble, Child)> for Children {
+    fn from_iter<I: IntoIterator<Item = (Nibble, Child)>>(iter: I) -> Self {
+        let mut children = Self::new();
+        for (n, child) in iter {
+            children.insert(n, child);
+        }
+        children
+    }
+}
+
+impl IntoIterator for Children {
+    type IntoIter = core::iter::Zip<ChildNibbles, std::vec::IntoIter<Child>>;
+    type Item = (Nibble, Child);
+
+    fn into_iter(self) -> Self::IntoIter {
+        ChildNibbles(self.bitmap).zip(self.children)
+    }
+}
+
+/// Iterates the occupied nibbles of [`Children`] in ascending order.
+#[derive(Clone, Debug)]
+pub struct ChildNibbles(u16);
+
+impl Iterator for ChildNibbles {
+    type Item = Nibble;
+
+    fn next(&mut self) -> Option<Nibble> {
+        if self.0 == 0 {
+            return None;
+        }
+        let lowest = u8::try_from(self.0.trailing_zeros()).ok()?;
+        // Clears the lowest set bit
+        self.0 &= self.0.wrapping_sub(1);
+        Some(Nibble::from_masked(lowest))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = self.0.count_ones() as usize;
+        (n, Some(n))
+    }
+}
+
+impl ExactSizeIterator for ChildNibbles {}
+
+// Serialized as a map from nibble to child, so nodes stored through serde decode unchanged.
+impl Serialize for Children {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_map(self.iter())
+    }
+}
+
+impl<'de> Deserialize<'de> for Children {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct ChildrenVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for ChildrenVisitor {
+            type Value = Children;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "a map from nibble to child")
+            }
+
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                // A repeated nibble replaces the earlier child
+                let mut children = Children::with_capacity(map.size_hint().unwrap_or(0));
+                while let Some((n, child)) = map.next_entry()? {
+                    children.insert(n, child);
+                }
+                Ok(children)
+            }
+        }
+
+        deserializer.deserialize_map(ChildrenVisitor)
+    }
+}
 
 /// Represents a 4-level subtree with 16 children at the bottom level. Theoretically, this reduces
 /// IOPS to query a tree by 4x since we compress 4 levels in a standard Merkle tree into 1 node.
@@ -1315,7 +1496,7 @@ impl InternalNode {
     ///
     /// Rejects a `Null` child, no children, and a single leaf child (which the tree always collapses into the leaf
     /// itself, and which would hash identically to it). A single internal child is allowed.
-    pub fn try_new(mut children: Children) -> Result<Self, InternalNodeError> {
+    pub fn try_new(children: Children) -> Result<Self, InternalNodeError> {
         let mut leaf_count = 0usize;
         for child in children.values() {
             if matches!(child.node_type, NodeType::Null) {
@@ -1330,14 +1511,12 @@ impl InternalNode {
             Some(child) if children.len() == 1 && child.is_leaf() => return Err(InternalNodeError::SingleLeafChild),
             Some(_) => {},
         }
-        children.sort_keys();
         Ok(Self { children, leaf_count })
     }
 
-    /// Builds a node from trusted storage without the checks in [`Self::try_new`]. `children` must already be in
-    /// ascending nibble order.
+    /// Builds a node from trusted storage without the checks in [`Self::try_new`].
     #[cfg(feature = "minicbor")]
-    pub(crate) fn from_sorted_children_unchecked(children: Children) -> Self {
+    pub(crate) fn from_children_unchecked(children: Children) -> Self {
         let leaf_count = children
             .values()
             .fold(0usize, |acc, child| acc.saturating_add(child.leaf_count()));
@@ -1363,11 +1542,13 @@ impl InternalNode {
         )
     }
 
-    pub fn children_sorted(&self) -> impl Iterator<Item = (&Nibble, &Child)> {
-        // let mut tmp = self.children.iter().collect::<Vec<_>>();
-        // tmp.sort_by_key(|(nibble, _)| **nibble);
-        // tmp.into_iter()
+    /// The children in ascending nibble order.
+    pub fn children_sorted(&self) -> impl Iterator<Item = (Nibble, &Child)> {
         self.children.iter()
+    }
+
+    pub fn children(&self) -> &Children {
+        &self.children
     }
 
     #[cfg(feature = "minicbor")]
@@ -1381,20 +1562,18 @@ impl InternalNode {
 
     /// Gets the `n`-th child.
     pub fn child(&self, n: Nibble) -> Option<&Child> {
-        self.children.get(&n)
+        self.children.get(n)
     }
 
     /// Generates `existence_bitmap` and `leaf_bitmap` as a pair of `u16`s: child at index `i`
     /// exists if `existence_bitmap[i]` is set; child at index `i` is leaf node if
     /// `leaf_bitmap[i]` is set.
     pub fn generate_bitmaps(&self) -> (u16, u16) {
-        let mut existence_bitmap = 0;
+        let existence_bitmap = self.children.bitmap();
         let mut leaf_bitmap = 0;
-        for (nibble, child) in &self.children {
-            let i = u8::from(*nibble);
-            existence_bitmap |= 1u16 << i;
+        for (nibble, child) in self.children.iter() {
             if child.is_leaf() {
-                leaf_bitmap |= 1u16 << i;
+                leaf_bitmap |= 1u16 << u8::from(nibble);
             }
         }
         // `leaf_bitmap` must be a subset of `existence_bitmap`.
@@ -1902,7 +2081,7 @@ mod tests {
         assert_eq!(node.leaf_count(), 2);
         let node = InternalNode::try_new(children(vec![(4, leaf_child()), (2, leaf_child())])).unwrap();
         assert_eq!(node.leaf_count(), 2);
-        assert_eq!(node.children_sorted().map(|(n, _)| u8::from(*n)).collect::<Vec<_>>(), [
+        assert_eq!(node.children_sorted().map(|(n, _)| u8::from(n)).collect::<Vec<_>>(), [
             2, 4
         ]);
     }
@@ -2042,6 +2221,48 @@ mod tests {
         assert_eq!(
             serde_json::to_value(path).unwrap(),
             serde_json::json!({ "num_nibbles": 3, "bytes": [0x12, 0x30] })
+        );
+    }
+
+    #[test]
+    fn it_keeps_children_in_nibble_order() {
+        let mut children = children(vec![(9, internal_child(2)), (3, leaf_child()), (12, leaf_child())]);
+        assert_eq!(children.bitmap(), 1 << 3 | 1 << 9 | 1 << 12);
+        assert_eq!(children.nibbles().map(u8::from).collect::<Vec<_>>(), [3, 9, 12]);
+        assert_eq!(children.get(nibble(9)), Some(&internal_child(2)));
+        assert_eq!(children.get(nibble(4)), None);
+
+        assert_eq!(children.insert(nibble(9), leaf_child()), Some(internal_child(2)));
+        assert_eq!(children.insert(nibble(0), internal_child(5)), None);
+        assert_eq!(children.remove(nibble(3)), Some(leaf_child()));
+        assert_eq!(children.remove(nibble(3)), None);
+        assert_eq!(
+            children
+                .clone()
+                .into_iter()
+                .map(|(n, c)| (u8::from(n), c))
+                .collect::<Vec<_>>(),
+            [(0, internal_child(5)), (9, leaf_child()), (12, leaf_child())]
+        );
+
+        // `push` only appends above every occupied nibble
+        children.push(nibble(12), leaf_child()).unwrap_err();
+        children.push(nibble(1), leaf_child()).unwrap_err();
+        children.push(nibble(15), leaf_child()).unwrap();
+        assert_eq!(children.len(), 4);
+    }
+
+    #[test]
+    fn it_keeps_the_internal_node_serde_format() {
+        let node = InternalNode::try_new(children(vec![(3, leaf_child()), (1, internal_child(2))])).unwrap();
+        let json = serde_json::to_value(&node).unwrap();
+        let child_json = |c: &Child| serde_json::to_value(c).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "children": { "1": child_json(&internal_child(2)), "3": child_json(&leaf_child()) },
+                "leaf_count": 3
+            })
         );
     }
 

@@ -265,7 +265,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     if let Some(child) = child_option {
                         new_created_children.push((child_nibble, child));
                     } else {
-                        old_children.swap_remove(&child_nibble);
+                        old_children.remove(child_nibble);
                     }
                 }
 
@@ -275,7 +275,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 if old_children.len() <= 1 && new_created_children.len() <= 1 {
                     if let Some((new_nibble, new_child)) = new_created_children.first() {
                         if let Some((old_nibble, _old_child)) = old_children.iter().next() {
-                            if old_nibble == new_nibble && new_child.is_leaf() {
+                            if old_nibble == *new_nibble && new_child.is_leaf() {
                                 return Ok(Some(new_child.clone()));
                             }
                         } else if new_child.is_leaf() {
@@ -286,7 +286,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     } else if let Some((old_child_nibble, old_child)) = old_children.iter().next() {
                         if old_child.is_leaf() {
                             let old_child_node_key =
-                                node_key.gen_child_node_key(old_child.version, *old_child_nibble)?;
+                                node_key.gen_child_node_key(old_child.version, old_child_nibble)?;
                             // The parent records a leaf here, so anything else (or a leaf stored under a path its key
                             // does not start with) is a corrupt store and must not be lifted into the new tree
                             let old_child_node = match self.reader.get_node(&old_child_node_key)? {
@@ -676,7 +676,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 Node::Internal(internal_node) => {
                     for (child_nibble, child) in internal_node.children_sorted() {
                         stack.push((
-                            key.gen_child_node_key(child.version, *child_nibble)?,
+                            key.gen_child_node_key(child.version, child_nibble)?,
                             Some(child.is_leaf()),
                         ));
                     }
