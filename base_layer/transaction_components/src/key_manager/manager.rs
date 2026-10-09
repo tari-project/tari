@@ -246,7 +246,9 @@ fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offse
 /// ephemeral nonce, a ledger index nonce (only the deprecated pre-mine arm accepts one) and an `Encrypted` key.
 ///
 /// An `Encrypted` nonce is still caller controllable - `create_encrypted_key` wraps any scalar - so it must be fresh
-/// and used once. Closing that means moving software signatures onto reserved handles and deleting the catch-all arm.
+/// and used once. The sender offset ids `get_script_offset` returns are `Encrypted` too, and the caller also gets the
+/// script offset `o = Σscript - r`, so signing a script key under one of them gives up that key. Closing these means
+/// moving software signatures onto reserved handles and deleting the catch-all arm.
 fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
     if *private_key_id == TariKeyId::Zero {
         return Err(KeyManagerError::InvalidSigningKeyId {
@@ -623,15 +625,8 @@ impl KeyManager {
                  where it would name a nonce an application from before the 64-bit index split derived"
             ))
         })?;
-        // A challenge that reduces to zero would make the signature the nonce scalar itself. The device refuses it
-        // before its review; this mirrors it.
-        if legacy_challenge_is_zero(challenge) {
-            return Err(KeyManagerError::LedgerError(
-                "GetRawSchnorrSignatureLegacyNonce: the challenge reduces to zero, so the signature would be the \
-                 nonce itself"
-                    .to_string(),
-            ));
-        }
+        // A challenge that reduces to zero is refused at the top of `sign_with_nonce_and_challenge`, before any arm,
+        // which mirrors the device's refusal before its review.
 
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
@@ -1634,6 +1629,9 @@ impl TransactionKeyManagerInterface for KeyManager {
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
         refuse_degenerate_nonce(private_key_id, nonce)?;
+        if challenge_is_zero(challenge) {
+            return Err(KeyManagerError::ZeroChallenge);
+        }
         match (private_key_id, nonce) {
             (
                 TariKeyId::LedgerKey {
@@ -1678,6 +1676,13 @@ impl TransactionKeyManagerInterface for KeyManager {
                     ));
                 }
                 let private_key = self.get_private_key(private_key_id)?;
+                // Checked before the nonce is taken, so that a refused call does not burn the handle.
+                if private_key == PrivateKey::default() {
+                    return Err(KeyManagerError::InvalidSigningKeyId {
+                        key: private_key_id.to_string(),
+                        reason: "the signing key resolves to zero".to_string(),
+                    });
+                }
                 // Consume before signing, so that no path out of here - including one a later change adds - can
                 // leave the nonce available for a second challenge.
                 let private_nonce = self.take_software_ephemeral_nonce(*handle)?;
@@ -1977,9 +1982,9 @@ fn ledger_sender_offset_key(sender_offset_key_id: &TariKeyId) -> Result<(u64, Le
     }
 }
 
-/// Whether a legacy nonce challenge reduces to the zero scalar, which the device refuses: `s = r + e·k` would then be
-/// the nonce `r` itself.
-fn legacy_challenge_is_zero(challenge: &[u8; 64]) -> bool {
+/// Whether a challenge reduces to the zero scalar: `s = r + e·k` would then be the nonce `r` itself. The device refuses
+/// it on the legacy instruction, and `sign_with_nonce_and_challenge` refuses it on every arm.
+fn challenge_is_zero(challenge: &[u8; 64]) -> bool {
     <PrivateKey as tari_crypto::keys::SecretKey>::from_uniform_bytes(challenge)
         .map_or(true, |e| e == PrivateKey::default())
 }
@@ -2009,9 +2014,9 @@ mod tests {
     use super::{
         LEGACY_NONCE_INDEX_FLOOR,
         MAX_SOFTWARE_EPHEMERAL_NONCES,
+        challenge_is_zero,
         ledger_random_index,
         ledger_sender_offset_key,
-        legacy_challenge_is_zero,
         sender_offset_key_takes_a_reserved_nonce,
     };
     use crate::{
@@ -2433,19 +2438,20 @@ mod tests {
         }
     }
 
-    /// A challenge that reduces to zero - the zero bytes, or the group order padded to 64 bytes - is refused by the
-    /// legacy arm before the transport is consulted; any other challenge reaches the device call.
+    /// A challenge that reduces to zero - the zero bytes, or the group order padded to 64 bytes - is refused before
+    /// any arm, so the legacy arm, the software catch-all and the reserved nonce arm all refuse it before signing or
+    /// consulting the transport.
     #[test]
-    fn the_legacy_arm_refuses_a_challenge_that_reduces_to_zero() {
+    fn a_challenge_that_reduces_to_zero_is_refused_on_every_arm() {
         // The Ristretto group order, little endian, padded to the 64 bytes `from_uniform_bytes` reduces.
         let mut order = [0u8; 64];
         order[..32].copy_from_slice(&[
             0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
         ]);
-        assert!(legacy_challenge_is_zero(&[0u8; 64]));
-        assert!(legacy_challenge_is_zero(&order));
-        assert!(!legacy_challenge_is_zero(&challenge(1)));
+        assert!(challenge_is_zero(&[0u8; 64]));
+        assert!(challenge_is_zero(&order));
+        assert!(!challenge_is_zero(&challenge(1)));
 
         let key_manager = KeyManager::new_random().unwrap();
         let private_key_id = TariKeyId::LedgerKey {
@@ -2456,17 +2462,28 @@ mod tests {
             branch: LedgerKeyBranch::Random,
             index: LEGACY_NONCE_INDEX_FLOOR | 9,
         };
+        let software_key = key_manager.get_random_key(None, None).unwrap();
+        let software_nonce = key_manager.get_random_key(None, None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
         for zero in [[0u8; 64], order] {
-            match key_manager
-                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &zero)
-                .unwrap_err()
-            {
-                KeyManagerError::LedgerError(message) => {
-                    assert!(message.contains("reduces to zero"), "unexpected message: {message}")
-                },
-                other => panic!("a zero challenge was not refused: {other:?}"),
+            for (signing_key_id, nonce_id) in [
+                (&private_key_id, &nonce),
+                (&software_key.key_id, &software_nonce.key_id),
+                (&software_key.key_id, &reserved_nonce.key_id),
+            ] {
+                assert_eq!(
+                    key_manager.sign_with_nonce_and_challenge(signing_key_id, nonce_id, &zero),
+                    Err(KeyManagerError::ZeroChallenge),
+                    "a zero challenge was not refused for '{signing_key_id}' under '{nonce_id}'"
+                );
             }
         }
+        // The refusal did not consume the reserved nonce.
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&software_key.key_id, &reserved_nonce.key_id, &challenge(1))
+                .is_ok()
+        );
     }
 
     /// `get_random_key` draws ledger `Random` keys - legacy nonces - at or above `2^32`, and `PreMine` keys - script
@@ -2683,6 +2700,27 @@ mod tests {
                 other => panic!("expected InvalidSigningKeyId for '{signing_key_id}', got {other:?}"),
             }
         }
+    }
+
+    /// The reserved nonce arm refuses a signing key that resolves to zero too, and does so before taking the nonce,
+    /// so the handle is still good for a real key afterwards.
+    #[test]
+    fn a_zero_signing_key_does_not_burn_a_reserved_nonce() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let wraps_zero = key_manager.create_encrypted_key(PrivateKey::default(), None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        match key_manager.sign_with_nonce_and_challenge(&wraps_zero, &reserved_nonce.key_id, &challenge(1)) {
+            Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, wraps_zero.to_string()),
+            other => panic!("expected InvalidSigningKeyId, got {other:?}"),
+        }
+
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(1))
+                .is_ok()
+        );
     }
 
     /// A fresh `Encrypted` nonce - what the offline signer's payload signature uses - still signs and verifies.

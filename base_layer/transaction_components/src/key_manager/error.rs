@@ -89,6 +89,8 @@ pub enum KeyManagerError {
     InvalidNonceKeyId { nonce: String, reason: String },
     #[error("Key id `{key}` cannot be used as a signing key: {reason}")]
     InvalidSigningKeyId { key: String, reason: String },
+    #[error("The challenge reduces to zero, so the signature would be the nonce itself")]
+    ZeroChallenge,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]
