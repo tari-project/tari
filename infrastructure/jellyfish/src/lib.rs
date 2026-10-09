@@ -26,8 +26,8 @@
 //! # Encoding
 //!
 //! Tree, node and proof types implement serde and borsh. The `minicbor` feature adds native minicbor `Encode`,
-//! `Decode` and `CborLen` impls with a compact array-based format, documented in `src/cbor.rs`. Decoding applies the
-//! same validation as the serde and borsh impls.
+//! `Decode` and `CborLen` impls with a compact array-based format, documented in `src/cbor.rs`. Proof types are
+//! validated on decode. Tree node types are not, for speed, and must only be decoded from trusted storage.
 //!
 //! # Version pinning
 //!

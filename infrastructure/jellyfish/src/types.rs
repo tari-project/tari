@@ -739,6 +739,12 @@ impl TryFrom<NibblePathRaw> for NibblePath {
 }
 
 impl NibblePath {
+    /// Builds a path from trusted storage without the checks in [`Self::try_from_parts`].
+    #[cfg(feature = "minicbor")]
+    pub(crate) fn from_parts_unchecked(num_nibbles: usize, bytes: Vec<u8>) -> Self {
+        Self { num_nibbles, bytes }
+    }
+
     /// Builds a decoded path, enforcing [`MAX_NIBBLE_PATH_LEN`], the byte length and a zero padding nibble.
     pub(crate) fn try_from_parts(num_nibbles: usize, bytes: Vec<u8>) -> Result<Self, NibblePathError> {
         if num_nibbles > MAX_NIBBLE_PATH_LEN {
@@ -1293,6 +1299,16 @@ impl InternalNode {
         }
         children.sort_keys();
         Ok(Self { children, leaf_count })
+    }
+
+    /// Builds a node from trusted storage without the checks in [`Self::try_new`]. `children` must already be in
+    /// ascending nibble order.
+    #[cfg(feature = "minicbor")]
+    pub(crate) fn from_sorted_children_unchecked(children: Children) -> Self {
+        let leaf_count = children
+            .values()
+            .fold(0usize, |acc, child| acc.saturating_add(child.leaf_count()));
+        Self { children, leaf_count }
     }
 
     pub fn leaf_count(&self) -> usize {

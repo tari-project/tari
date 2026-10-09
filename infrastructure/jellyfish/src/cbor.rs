@@ -24,8 +24,18 @@
 //! | [`NodeInProof`] | `[0, leaf]`, `[1, hash]` |
 //! | [`SparseMerkleProofExt`] | `[leaf / null, [sibling, ...]]`, at most [`MAX_PROOF_SIBLINGS`] siblings |
 //!
-//! An [`InternalNode`]'s leaf count is recomputed from its children rather than stored. Decoding applies the same
-//! checks as the serde and borsh impls (nibble range, nibble path shape, internal node children, sibling count).
+//! An [`InternalNode`]'s leaf count is recomputed from its children rather than stored.
+//!
+//! # Trusted decoding
+//!
+//! The tree node types ([`NibblePath`], [`NodeKey`], [`NodeType`], [`Child`], [`InternalNode`], [`LeafNode`],
+//! [`Node`], [`StaleTreeNode`] and [`TreeNode`]) are read from the node's own store on the tree's hot path, so they
+//! decode without validation: array lengths, nibble path shape and internal node invariants are not checked. Decoding
+//! corrupt bytes returns an error or a malformed value, never a panic. Never decode these types from untrusted input.
+//!
+//! The proof types ([`SparseMerkleLeafNode`], [`NodeInProof`] and [`SparseMerkleProofExt`]) come from provers, so
+//! they require exact definite-length arrays and reject a sibling array over [`MAX_PROOF_SIBLINGS`] from its header.
+//! [`TreeHash`] always requires 32 bytes and a standalone [`Nibble`] is range-checked.
 
 use indexmap::IndexMap;
 use minicbor::{
@@ -84,6 +94,12 @@ fn variant(d: &mut Decoder<'_>, what: &'static str) -> Result<(u64, u32), decode
         return Err(decode::Error::message(format!("{what}: missing variant index")).at(d.position()));
     }
     Ok((len, d.u32()?))
+}
+
+/// Reads a flat enum's array header, without checking its length, and returns the variant index.
+fn variant_unchecked(d: &mut Decoder<'_>) -> Result<u32, decode::Error> {
+    d.array()?;
+    d.u32()
 }
 
 fn check_variant_len(actual: u64, expected: u64, what: &'static str, pos: usize) -> Result<(), decode::Error> {
@@ -182,13 +198,13 @@ impl<C> Encode<C> for NibblePath {
     }
 }
 
+// Unchecked: see "Trusted decoding" in the module docs.
 impl<'b, C> Decode<'b, C> for NibblePath {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
-        expect_array(d, 2, "NibblePath")?;
-        let pos = d.position();
+        d.array()?;
         let num_nibbles = usize::decode(d, ctx)?;
         let bytes = d.bytes()?.to_vec();
-        NibblePath::try_from_parts(num_nibbles, bytes).map_err(|e| decode::Error::message(e).at(pos))
+        Ok(NibblePath::from_parts_unchecked(num_nibbles, bytes))
     }
 }
 
@@ -214,7 +230,7 @@ impl<C> Encode<C> for NodeKey {
 
 impl<'b, C> Decode<'b, C> for NodeKey {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
-        expect_array(d, 2, "NodeKey")?;
+        d.array()?;
         let version = d.u64()?;
         let nibble_path = NibblePath::decode(d, ctx)?;
         Ok(NodeKey::new(version, nibble_path))
@@ -255,22 +271,12 @@ impl<C> Encode<C> for NodeType {
 impl<'b, C> Decode<'b, C> for NodeType {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
         let pos = d.position();
-        let (len, index) = variant(d, "NodeType")?;
-        match index {
-            0 => {
-                check_variant_len(len, 1, "NodeType::Leaf", pos)?;
-                Ok(NodeType::Leaf)
-            },
-            1 => {
-                check_variant_len(len, 1, "NodeType::Null", pos)?;
-                Ok(NodeType::Null)
-            },
-            2 => {
-                check_variant_len(len, 2, "NodeType::Internal", pos)?;
-                Ok(NodeType::Internal {
-                    leaf_count: usize::decode(d, ctx)?,
-                })
-            },
+        match variant_unchecked(d)? {
+            0 => Ok(NodeType::Leaf),
+            1 => Ok(NodeType::Null),
+            2 => Ok(NodeType::Internal {
+                leaf_count: usize::decode(d, ctx)?,
+            }),
             i => Err(unknown_variant(i, pos)),
         }
     }
@@ -297,12 +303,12 @@ impl<C> Encode<C> for Child {
 
 impl<'b, C> Decode<'b, C> for Child {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
-        expect_array(d, 3, "Child")?;
-        let pos = d.position();
-        let hash = TreeHash::decode(d, ctx)?;
-        let version = d.u64()?;
-        let node_type = NodeType::decode(d, ctx)?;
-        Child::try_new(hash, version, node_type).map_err(|e| decode::Error::message(e).at(pos))
+        d.array()?;
+        Ok(Child {
+            hash: TreeHash::decode(d, ctx)?,
+            version: d.u64()?,
+            node_type: NodeType::decode(d, ctx)?,
+        })
     }
 }
 
@@ -335,26 +341,13 @@ impl<'b, C> Decode<'b, C> for InternalNode {
         let len = d
             .map()?
             .ok_or_else(|| decode::Error::message("InternalNode: expected a definite-length map").at(pos))?;
-        if len > MAX_CHILDREN as u64 {
-            return Err(
-                decode::Error::message(format!("InternalNode has {len} children, max is {MAX_CHILDREN}")).at(pos),
-            );
-        }
+        // The cap only bounds the allocation; a longer map fails on end of input or is truncated.
         let mut children = IndexMap::with_capacity(MAX_CHILDREN);
-        let mut prev = None;
         for _ in 0..len {
-            let nibble_pos = d.position();
-            let nibble = Nibble::decode(d, ctx)?;
-            if prev.is_some_and(|p| nibble <= p) {
-                return Err(
-                    decode::Error::message("InternalNode children must be in strictly ascending nibble order")
-                        .at(nibble_pos),
-                );
-            }
-            prev = Some(nibble);
+            let nibble = Nibble::from_masked(d.u8()?);
             children.insert(nibble, Child::decode(d, ctx)?);
         }
-        InternalNode::try_new(children).map_err(|e| decode::Error::message(e).at(pos))
+        Ok(InternalNode::from_sorted_children_unchecked(children))
     }
 }
 
@@ -382,7 +375,7 @@ impl<C, P: Encode<C>> Encode<C> for LeafNode<P> {
 
 impl<'b, C, P: Decode<'b, C>> Decode<'b, C> for LeafNode<P> {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
-        expect_array(d, 4, "LeafNode")?;
+        d.array()?;
         let leaf_key = LeafKey::decode(d, ctx)?;
         let value_hash = TreeHash::decode(d, ctx)?;
         let payload = P::decode(d, ctx)?;
@@ -425,20 +418,10 @@ impl<C, P: Encode<C>> Encode<C> for Node<P> {
 impl<'b, C, P: Decode<'b, C>> Decode<'b, C> for Node<P> {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
         let pos = d.position();
-        let (len, index) = variant(d, "Node")?;
-        match index {
-            0 => {
-                check_variant_len(len, 2, "Node::Internal", pos)?;
-                Ok(Node::Internal(InternalNode::decode(d, ctx)?))
-            },
-            1 => {
-                check_variant_len(len, 2, "Node::Leaf", pos)?;
-                Ok(Node::Leaf(LeafNode::decode(d, ctx)?))
-            },
-            2 => {
-                check_variant_len(len, 1, "Node::Null", pos)?;
-                Ok(Node::Null)
-            },
+        match variant_unchecked(d)? {
+            0 => Ok(Node::Internal(InternalNode::decode(d, ctx)?)),
+            1 => Ok(Node::Leaf(LeafNode::decode(d, ctx)?)),
+            2 => Ok(Node::Null),
             i => Err(unknown_variant(i, pos)),
         }
     }
@@ -469,9 +452,7 @@ impl<C> Encode<C> for StaleTreeNode {
 impl<'b, C> Decode<'b, C> for StaleTreeNode {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
         let pos = d.position();
-        let (len, index) = variant(d, "StaleTreeNode")?;
-        check_variant_len(len, 2, "StaleTreeNode", pos)?;
-        match index {
+        match variant_unchecked(d)? {
             0 => Ok(StaleTreeNode::Node(NodeKey::decode(d, ctx)?)),
             1 => Ok(StaleTreeNode::Subtree(NodeKey::decode(d, ctx)?)),
             i => Err(unknown_variant(i, pos)),
@@ -499,12 +480,8 @@ impl<C, P: Encode<C>> Encode<C> for TreeNode<P> {
 impl<'b, C, P: Decode<'b, C>> Decode<'b, C> for TreeNode<P> {
     fn decode(d: &mut Decoder<'b>, ctx: &mut C) -> Result<Self, decode::Error> {
         let pos = d.position();
-        let (len, index) = variant(d, "TreeNode")?;
-        match index {
-            0 => {
-                check_variant_len(len, 2, "TreeNode::V1", pos)?;
-                Ok(TreeNode::V1(Node::decode(d, ctx)?))
-            },
+        match variant_unchecked(d)? {
+            0 => Ok(TreeNode::V1(Node::decode(d, ctx)?)),
             i => Err(unknown_variant(i, pos)),
         }
     }
@@ -628,7 +605,6 @@ impl<C> CborLen<C> for SparseMerkleProofExt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MAX_NIBBLE_PATH_LEN;
 
     fn hash(b: u8) -> TreeHash {
         TreeHash::new([b; 32])
@@ -738,86 +714,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_nibble_path() {
-        let encode = |num_nibbles: usize, bytes: Vec<u8>| {
-            let mut buf = Vec::new();
-            let mut e = Encoder::new(&mut buf);
-            e.array(2)
-                .unwrap()
-                .u64(num_nibbles as u64)
-                .unwrap()
-                .bytes(&bytes)
-                .unwrap();
-            buf
-        };
-        decode_err::<NibblePath>(&encode(3, vec![0x12]));
-        decode_err::<NibblePath>(&encode(3, vec![0x12, 0x34]));
-        let too_long = MAX_NIBBLE_PATH_LEN + 1;
-        decode_err::<NibblePath>(&encode(too_long, vec![0; too_long.div_ceil(2)]));
-        assert_eq!(
-            minicbor::decode::<NibblePath>(&encode(MAX_NIBBLE_PATH_LEN, vec![0x11; 32]))
-                .unwrap()
-                .num_nibbles(),
-            MAX_NIBBLE_PATH_LEN
-        );
-    }
-
-    #[test]
-    fn rejects_wrong_array_length() {
+    fn rejects_wrong_proof_array_length() {
         let mut buf = Vec::new();
         let mut e = Encoder::new(&mut buf);
-        e.array(3).unwrap().u64(1).unwrap();
-        NibblePath::new_even(vec![]).encode(&mut e, &mut ()).unwrap();
+        e.array(3).unwrap();
+        hash(1).encode(&mut e, &mut ()).unwrap();
+        hash(2).encode(&mut e, &mut ()).unwrap();
         e.u8(0).unwrap();
-        assert!(decode_err::<NodeKey>(&buf).contains("expected an array of 2"));
+        assert!(decode_err::<SparseMerkleLeafNode>(&buf).contains("expected an array of 2"));
 
         let mut buf = Vec::new();
-        Encoder::new(&mut buf).begin_array().unwrap().u64(1).unwrap();
-        assert!(decode_err::<NodeKey>(&buf).contains("definite-length"));
+        Encoder::new(&mut buf).begin_array().unwrap();
+        assert!(decode_err::<SparseMerkleLeafNode>(&buf).contains("definite-length"));
     }
 
     #[test]
-    fn rejects_invalid_internal_node() {
+    fn internal_node_leaf_count_is_recomputed() {
         let child = |node_type| Child {
             hash: hash(1),
             version: 1,
             node_type,
         };
-        let encode = |entries: &[(u8, Child)]| {
-            let mut buf = Vec::new();
-            let mut e = Encoder::new(&mut buf);
-            e.map(entries.len() as u64).unwrap();
-            for (n, c) in entries {
-                e.u8(*n).unwrap();
-                c.encode(&mut e, &mut ()).unwrap();
-            }
-            buf
-        };
-
-        // No children, a single leaf child, a Null child
-        decode_err::<InternalNode>(&encode(&[]));
-        decode_err::<InternalNode>(&encode(&[(0, child(NodeType::Leaf))]));
-        decode_err::<InternalNode>(&encode(&[(0, child(NodeType::Leaf)), (1, child(NodeType::Null))]));
-        // Unsorted and duplicate nibbles
-        let err = decode_err::<InternalNode>(&encode(&[(1, child(NodeType::Leaf)), (0, child(NodeType::Leaf))]));
-        assert!(err.contains("ascending"), "{err}");
-        decode_err::<InternalNode>(&encode(&[(1, child(NodeType::Leaf)), (1, child(NodeType::Leaf))]));
-        // Leaf count overflow
-        decode_err::<InternalNode>(&encode(&[
-            (0, child(NodeType::Internal { leaf_count: usize::MAX })),
-            (1, child(NodeType::Leaf)),
-        ]));
-        // Too many children is rejected from the header alone
         let mut buf = Vec::new();
-        Encoder::new(&mut buf).map(17).unwrap();
-        assert!(decode_err::<InternalNode>(&buf).contains("max is 16"));
-
-        // Leaf count is recomputed
-        let node: InternalNode = minicbor::decode(&encode(&[
-            (2, child(NodeType::Internal { leaf_count: 5 })),
-            (9, child(NodeType::Leaf)),
-        ]))
-        .unwrap();
+        let mut e = Encoder::new(&mut buf);
+        e.map(2).unwrap();
+        e.u8(2).unwrap();
+        child(NodeType::Internal { leaf_count: 5 })
+            .encode(&mut e, &mut ())
+            .unwrap();
+        e.u8(9).unwrap();
+        child(NodeType::Leaf).encode(&mut e, &mut ()).unwrap();
+        let node: InternalNode = minicbor::decode(&buf).unwrap();
         assert_eq!(node.leaf_count(), 6);
     }
 
