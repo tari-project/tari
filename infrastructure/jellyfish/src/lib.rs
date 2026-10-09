@@ -23,6 +23,12 @@
 //! A scheme never changes once released. A new scheme is a new variant with its own domain version and distinct leaf
 //! and internal labels, and callers gate it on their own protocol version.
 //!
+//! # Encoding
+//!
+//! Tree, node and proof types implement serde and borsh. The `minicbor` feature adds native minicbor `Encode`,
+//! `Decode` and `CborLen` impls with a compact array-based format, documented in `src/cbor.rs`. Proof types are
+//! validated on decode. Tree node types are not, for speed, and must only be decoded from trusted storage.
+//!
 //! # Version pinning
 //!
 //! `command_merkle_root` in a sidechain block header is built by Ootle and verified by `tari_sidechain` in this
@@ -47,5 +53,7 @@ mod store;
 pub use store::*;
 
 mod bit_iter;
+#[cfg(feature = "minicbor")]
+mod cbor;
 #[cfg(any(test, feature = "memory-store"))]
 pub mod memory_store;

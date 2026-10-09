@@ -95,7 +95,6 @@ use super::{
         JmtStorageError,
         LeafKey,
         LeafNode,
-        MAX_NIBBLE_PATH_LEN,
         Nibble,
         NibblePath,
         Node,
@@ -266,7 +265,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     if let Some(child) = child_option {
                         new_created_children.push((child_nibble, child));
                     } else {
-                        old_children.swap_remove(&child_nibble);
+                        old_children.remove(child_nibble);
                     }
                 }
 
@@ -276,7 +275,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 if old_children.len() <= 1 && new_created_children.len() <= 1 {
                     if let Some((new_nibble, new_child)) = new_created_children.first() {
                         if let Some((old_nibble, _old_child)) = old_children.iter().next() {
-                            if old_nibble == new_nibble && new_child.is_leaf() {
+                            if old_nibble == *new_nibble && new_child.is_leaf() {
                                 return Ok(Some(new_child.clone()));
                             }
                         } else if new_child.is_leaf() {
@@ -286,7 +285,8 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                         }
                     } else if let Some((old_child_nibble, old_child)) = old_children.iter().next() {
                         if old_child.is_leaf() {
-                            let old_child_node_key = node_key.gen_child_node_key(old_child.version, *old_child_nibble);
+                            let old_child_node_key =
+                                node_key.gen_child_node_key(old_child.version, old_child_nibble)?;
                             // The parent records a leaf here, so anything else (or a leaf stored under a path its key
                             // does not start with) is a corrupt store and must not be lifted into the new tree
                             let old_child_node = match self.reader.get_node(&old_child_node_key)? {
@@ -309,7 +309,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
 
                 let mut new_children = old_children;
                 for (child_index, new_child_node) in new_created_children {
-                    let new_child_node_key = node_key.gen_child_node_key(version, child_index);
+                    let new_child_node_key = node_key.gen_child_node_key(version, child_index)?;
                     new_children.insert(
                         child_index,
                         Child::try_new(new_child_node.hash(self.scheme), version, new_child_node.node_type())?,
@@ -353,7 +353,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
 
         let new_child_node_option = match child {
             Some(child) => self.batch_insert_at(
-                &node_key.gen_child_node_key(child.version, child_index),
+                &node_key.gen_child_node_key(child.version, child_index)?,
                 version,
                 kvs.get(left..=right)
                     .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
@@ -362,7 +362,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 batch,
             )?,
             None => self.batch_update_subtree(
-                &node_key.gen_child_node_key(version, child_index),
+                &node_key.gen_child_node_key(version, child_index)?,
                 version,
                 kvs.get(left..=right)
                     .ok_or(JmtStorageError::UnexpectedError("Out of bounds".to_string()))?,
@@ -417,7 +417,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     .0
                     .get_nibble(depth)
                     .ok_or(JmtStorageError::IndexNotFound)?;
-                let child_node_key = node_key.gen_child_node_key(version, child_index);
+                let child_node_key = node_key.gen_child_node_key(version, child_index)?;
                 if let Some(new_child_node) = if existing_leaf_bucket == child_index {
                     isolated_existing_leaf = false;
                     self.batch_update_subtree_with_existing_leaf(
@@ -455,7 +455,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     children
                         .into_iter()
                         .map(|(child_index, new_child_node)| {
-                            let new_child_node_key = node_key.gen_child_node_key(version, child_index);
+                            let new_child_node_key = node_key.gen_child_node_key(version, child_index)?;
                             let result = (
                                 child_index,
                                 Child::try_new(new_child_node.hash(self.scheme), version, new_child_node.node_type())?,
@@ -497,7 +497,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     .0
                     .get_nibble(depth)
                     .ok_or(JmtStorageError::IndexNotFound)?;
-                let child_node_key = node_key.gen_child_node_key(version, child_index);
+                let child_node_key = node_key.gen_child_node_key(version, child_index)?;
                 if let Some(new_child_node) = self.batch_update_subtree(
                     &child_node_key,
                     version,
@@ -518,7 +518,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                     children
                         .into_iter()
                         .map(|(child_index, new_child_node)| {
-                            let new_child_node_key = node_key.gen_child_node_key(version, child_index);
+                            let new_child_node_key = node_key.gen_child_node_key(version, child_index)?;
                             let result = (
                                 child_index,
                                 Child::try_new(new_child_node.hash(self.scheme), version, new_child_node.node_type())?,
@@ -551,7 +551,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         // Empty tree just returns proof with no sibling hash.
         let mut next_node_key = NodeKey::new_empty_path(version);
         let mut siblings = vec![];
-        let nibble_path = NibblePath::new_even(key.bytes.to_vec());
+        let nibble_path = NibblePath::from_key_bytes(*key.bytes);
         let mut nibble_iter = nibble_path.nibbles();
         // The kind the parent's `Child` entry records for `next_node_key` (`None` at the root)
         let mut expected_leaf = None;
@@ -668,9 +668,6 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
         let mut out_keys = vec![];
         let mut stack = vec![(key, None)];
         while let Some((key, expected_leaf)) = stack.pop() {
-            if key.nibble_path().num_nibbles() > MAX_NIBBLE_PATH_LEN {
-                return Err(JmtStorageError::InconsistentState);
-            }
             let node = self.reader.get_node(&key)?;
             if expected_leaf.is_some_and(|expected_leaf: bool| expected_leaf != node.is_leaf()) {
                 return Err(JmtStorageError::InconsistentState);
@@ -679,7 +676,7 @@ impl<'a, R: 'a + TreeStoreReader<P>, P: Clone> JellyfishMerkleTree<'a, R, P> {
                 Node::Internal(internal_node) => {
                     for (child_nibble, child) in internal_node.children_sorted() {
                         stack.push((
-                            key.gen_child_node_key(child.version, *child_nibble),
+                            key.gen_child_node_key(child.version, child_nibble)?,
                             Some(child.is_leaf()),
                         ));
                     }
@@ -902,7 +899,9 @@ mod tests {
     }
 
     fn leaf_node_key(key: &LeafKey) -> NodeKey {
-        NodeKey::new_empty_path(1).gen_child_node_key(1, key.get_nibble(0).unwrap())
+        NodeKey::new_empty_path(1)
+            .gen_child_node_key(1, key.get_nibble(0).unwrap())
+            .unwrap()
     }
 
     #[test]
@@ -1325,7 +1324,7 @@ mod tests {
         let keys = three_level_keys();
         let root = NodeKey::new_empty_path(1);
         // The internal node under the root, on the path shared by the first two keys
-        let internal = root.gen_child_node_key(1, keys[0].get_nibble(0).unwrap());
+        let internal = root.gen_child_node_key(1, keys[0].get_nibble(0).unwrap()).unwrap();
         for stale_first in [root.clone(), internal] {
             let mut mem = MemoryTreeStore::<()>::new();
             let values = keys.map(|k| (k, Some((jmt_node_hash(&10), ()))));
