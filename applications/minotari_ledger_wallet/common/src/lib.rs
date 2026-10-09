@@ -20,6 +20,7 @@ pub use utils::{
     address_has_payment_id,
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
+    get_public_view_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
     u64_to_string,
 };

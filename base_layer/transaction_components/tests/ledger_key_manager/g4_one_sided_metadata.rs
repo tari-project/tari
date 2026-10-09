@@ -35,7 +35,11 @@ use minotari_ledger_wallet_comms_testing::{
     fixtures,
     review::ExpectedReview,
 };
-use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+use tari_common_types::{
+    tari_address::{TariAddress, TariAddressFeatures},
+    types::{CompressedPublicKey, PrivateKey},
+};
+use tari_crypto::keys::SecretKey;
 use tari_script::{ExecutionStack, push_pubkey_script, script};
 use tari_transaction_components::{
     MicroMinotari,
@@ -496,5 +500,47 @@ fn a_custom_output_with_a_device_sender_offset_is_refused_before_any_review() {
             0,
             "nothing may be put up for review before the refusal: {wire:?}"
         );
+    });
+}
+
+/// An address carrying this wallet's own spend key but another view key is not change: the device shows the full
+/// review, and the approved signature verifies. The host derives the output's commitment mask and encrypted data from
+/// the view key, so such an output would be locked to this wallet yet invisible to its scanner.
+#[test]
+fn own_spend_key_with_a_foreign_view_key_is_reviewed() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let receiver = TariAddress::new_dual_address(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            key_manager.get_spend_key().pub_key,
+            network(),
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .expect("an address with this wallet's spend key and a foreign view key");
+        let value = 12_345;
+
+        let (commitment_mask, _) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let stealth_key = key_manager
+            .stealth_address_script_spending_key(&commitment_mask.key_id, receiver.public_spend_key())
+            .expect("the stealth script key");
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let builder = WalletOutputBuilder::new(MicroMinotari(value), commitment_mask.key_id.clone())
+            .with_script(push_pubkey_script(&stealth_key))
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .expect("encrypted data")
+            .with_script_key(TariKeyId::Zero);
+
+        let expected = ExpectedReview::one_sided_metadata_signature(value, &receiver.to_base58(), 0);
+        let (signed, review) = while_reviewing(device.approver(), &expected, Outcome::Approve, || {
+            builder.sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &receiver)
+        });
+        review.unwrap_or_else(|e| panic!("the device's review of {}: {e}", expected.summary()));
+        let output = signed
+            .expect("an approved output to this wallet's spend key with a foreign view key")
+            .try_build(&key_manager)
+            .expect("a wallet output");
+        assert_metadata_signature_verifies(&output);
     });
 }

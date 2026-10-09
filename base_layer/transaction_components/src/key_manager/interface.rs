@@ -233,9 +233,10 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     ///
     /// On a ledger wallet this is the only way a `OneSidedSenderOffset` key signs a metadata signature - the device
     /// refuses it a raw signature - so such a key cannot sign an arbitrary output without review: the device shows the
-    /// amount and the receiver and signs once the user approves. Anything whose receiver spend key is the device's
-    /// own is auto-approved and signed without a prompt: change, but also an explicit send to the wallet's own
-    /// address and a backup pre-mine spend to the device's own spend key.
+    /// amount and the receiver and signs once the user approves. Anything to this wallet's own address - its view key
+    /// and spend key both the device's own, for the account the host names - is auto-approved and signed without a
+    /// prompt: change, but also an explicit send to the wallet's own address and a backup pre-mine spend to it. An
+    /// address with this wallet's spend key and any other view key gets the full review.
     ///
     /// Auto-approved "change" is not necessarily change. The device binds the stealth script to this wallet's spend
     /// key, but the output features, covenant and encrypted data are host chosen and not inspected, as they were not

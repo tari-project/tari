@@ -18,9 +18,11 @@ All notable changes to this project will be documented in this file. See [standa
   review. (Its script signature, script Schnorr signature and Diffie-Hellman instructions still accept it; those use
   other hash domains and cannot make a metadata signature.)
 
-  Anything whose receiver spend key is this device's own is auto-approved and signed without a review: change, but
-  also an explicit send to the wallet's own address, and a backup pre-mine spend whose receiver is the device's own
-  spend key.
+  Anything to this wallet's own address - its view key and spend key both this device's own, for the account the
+  host names - is auto-approved and signed without a review: change, but also an explicit send to the wallet's own
+  address, and a backup pre-mine spend to it. An address carrying this wallet's spend key with any other view key
+  gets the full review: the host derives the output's mask and encrypted data from the view key, so such an output
+  would be locked to this wallet yet invisible to its scanner.
 
   What this does not close, each tracked separately:
   - It does not by itself stop a compromised host from spending without a prompt: outputs under a host held sender
@@ -37,6 +39,11 @@ All notable changes to this project will be documented in this file. See [standa
     `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
     offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs
     with the separate pre-mine issue.
+  - Offline signing payload recipients at this wallet's own address are signed with no prompt, with output features
+    and a fee the payload chooses (the fee can reach the amount when the payload turns off the fee-greater-than-amount
+    guard). The payload's author is the online, view-key-holding wallet - not only a compromised host.
+  - Payments to self through the wallet's own API - coin split and join, validator node registration and exit - are
+    prompt free, and the device never sees the fee of any transaction.
 
 
 ### ⚠ Upgrade notes
@@ -59,8 +66,9 @@ All notable changes to this project will be documented in this file. See [standa
     the key manager a plain burn's script hits `LedgerSenderOffsetNeedsRecipient`, and an L2-bound burn's host held
     sender offset key hits `LedgerHostHeldSenderOffset`.
   - HTLC (atomic swap) sends: refused by the transaction service with `NotSupported` before any input is selected.
-  - Multisig deposit and withdraw, which remain software wallet flows: their scripts are not the standard stealth
-    script, so they hit `LedgerSenderOffsetNeedsRecipient`.
+  - Multisig deposit and withdraw, which remain software wallet flows, both hit `LedgerSenderOffsetNeedsRecipient`:
+    the deposit because its script is not the standard stealth script, the withdraw because its output, although it is
+    the standard stealth script to the recipient, is signed with no recipient address.
   - Aggregated (multi-party) sender metadata signatures by a `OneSidedSenderOffset` key:
     `LedgerSenderOffsetRawSignature`.
   - Offline signing payloads that carry pre-built (custom) outputs: `LedgerSenderOffsetNeedsRecipient`, refused before

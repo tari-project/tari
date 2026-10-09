@@ -24,6 +24,7 @@ use minotari_ledger_wallet_common::{
     common_types::LedgerKeyBranch,
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
+    get_public_view_key_bytes_from_tari_dual_address,
     script_offset::is_pre_mine_sender_offset_index,
     tari_dual_address_display,
 };
@@ -53,6 +54,7 @@ use crate::{
     AppSW,
     KeyType,
     STATIC_SPEND_INDEX,
+    STATIC_VIEW_INDEX,
 };
 
 pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), AppSW> {
@@ -142,26 +144,45 @@ pub fn handler_get_one_sided_metadata_signature(comm: &mut Comm) -> Result<(), A
     let payment_id_bytes = get_payment_id_bytes_from_tari_dual_address(&receiver_address_bytes)
         .map_err(|_| AppSW::MetadataSignatureFail)?;
 
-    // Change to this wallet is signed without a review. That is the case when the receiver's spend key is this
-    // device's own public `alpha` for the account: the script below is always the standard stealth script for the
-    // receiver's spend key - the device builds it itself from the address and the commitment mask, and the signature
-    // commits to it - so the script is bound to this wallet's spend key. What is not inspected is everything in
-    // `metadata_signature_message_common`, which reaches the device as an opaque hash: the output features, the
-    // covenant, the encrypted data and the minimum value promise are host chosen. So "change" signed here with no
-    // prompt can be a burn - which never runs its script - claimable on L2 by a key the host chooses, or be locked by
-    // a long maturity or a covenant, or be unrecoverable from its encrypted data. That is no worse than before, when
-    // change was signed raw with no screen at all; closing it needs these fields in the clear.
+    // Change to this wallet is signed without a review. That is the case when the receiver is this wallet's own
+    // address for the account: its spend key is this device's own public `alpha`, and its view key is this device's
+    // own public view key. Both are needed. The spend key alone binds the script - the device builds the standard
+    // stealth script for the receiver's spend key itself, from the address and the commitment mask, and the
+    // signature commits to it - but the host derives the commitment mask and encrypted data from the view key, so an
+    // address with this wallet's spend key and someone else's view key gives an output locked to `alpha` that this
+    // wallet's scanner never finds. That gets the full review.
     //
-    // The same rule auto-approves an explicit send to this wallet's own address, and a backup pre-mine spend whose
-    // receiver is this device's own spend key.
+    // What is not inspected is everything in `metadata_signature_message_common`, which reaches the device as an
+    // opaque hash: the output features, the covenant, the encrypted data and the minimum value promise are host
+    // chosen. So "change" signed here with no prompt can be a burn - which never runs its script - claimable on L2 by
+    // a key the host chooses, or be locked by a long maturity or a covenant, or be unrecoverable from its encrypted
+    // data. That is no worse than before, when change was signed raw with no screen at all; closing it needs these
+    // fields in the clear.
     //
-    // The comparison is against the `alpha` this device derives, never a key the host supplied, and the spend key is
-    // read from the owned copy of the address, the same bytes the signature is built from after the review.
-    let own_public_alpha =
-        RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?);
-    let is_change_to_self = match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
-        Ok(bytes) => &bytes == own_public_alpha.as_array(),
-        Err(_) => false,
+    // The same rule auto-approves an explicit send to this wallet's own address, and a backup pre-mine spend to it.
+    //
+    // Both comparisons are against keys this device derives, never keys the host supplied, and both of the address's
+    // keys are read from the owned copy of the address, the same bytes the signature is built from after the review.
+    // Each key is derived, compared and dropped in its own block, to keep the stack small.
+    let is_own_spend_key = {
+        let own_public_alpha =
+            RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(account, STATIC_SPEND_INDEX, KeyType::Spend)?);
+        match get_public_spend_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+            Ok(bytes) => &bytes == own_public_alpha.as_array(),
+            Err(_) => false,
+        }
+    };
+    // The view key is only derived when the spend key already matched.
+    let is_change_to_self = is_own_spend_key && {
+        let own_public_view_key = RistrettoPublicKey::from_secret_key(&derive_from_bip32_key(
+            account,
+            STATIC_VIEW_INDEX,
+            KeyType::ViewKey,
+        )?);
+        match get_public_view_key_bytes_from_tari_dual_address(&receiver_address_bytes) {
+            Ok(bytes) => &bytes == own_public_view_key.as_array(),
+            Err(_) => false,
+        }
     };
 
     if !is_change_to_self {

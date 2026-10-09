@@ -83,8 +83,8 @@ pub enum KeyManagerError {
     #[error(
         "On a ledger wallet a device held sender offset key signs a metadata signature only through the device's \
          reviewed one sided metadata signature, which needs the output's recipient address and the standard stealth \
-         script for it. Outputs with no recipient address, or with any other script (plain burns, HTLC sends, \
-         multisig deposit and withdraw), are not supported on a ledger wallet."
+         script for it. Outputs signed with no recipient address (a multisig withdraw, custom outputs) or with any \
+         other script (plain burns, HTLC sends, a multisig deposit) are not supported on a ledger wallet."
     )]
     LedgerSenderOffsetNeedsRecipient,
     #[error(

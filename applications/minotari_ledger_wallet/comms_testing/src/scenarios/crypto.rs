@@ -139,6 +139,17 @@ const SCENARIOS: &[Scenario] = &[
         approval: Approval::NotNeeded,
         run: change_to_self_is_signed_without_a_review,
     },
+    Scenario {
+        name: "a receiver with the device's own spend key but another view key is reviewed, and the approved \
+               signature verifies",
+        covers: &[
+            Instruction::GetOneSidedMetadataSignature,
+            Instruction::GetPublicKey,
+            Instruction::GetPublicSpendKey,
+        ],
+        approval: Approval::Required,
+        run: own_spend_key_with_a_foreign_view_key_is_reviewed,
+    },
 ];
 
 /// The networks the managed script signature scenario signs under.
@@ -685,8 +696,9 @@ fn approved_metadata_signature_verifies(context: &ScenarioContext<'_>, branch: L
 
 /// Acceptance: change to the device's own address is signed with no review, and the signature verifies.
 ///
-/// The device signs without a prompt only when the receiver's spend key is its own public `alpha`: the script it
-/// signs over is then the stealth script to `alpha`. Its output features, covenant and encrypted data reach the
+/// The device signs without a prompt only when the receiver is its own address for the account: the spend key is its
+/// own public `alpha` and the view key its own public view key. The script it signs over is then the stealth script
+/// to `alpha`. Its output features, covenant and encrypted data reach the
 /// device as an opaque hash and are host chosen and not inspected, as they were not when change was signed raw - so
 /// an auto-approved "change" can be a burn claimable on L2 by a key the host chooses. Change is what makes the
 /// auto-approval matter: every send with change signs one, and a `OneSidedSenderOffset` key may sign a metadata
@@ -736,6 +748,60 @@ fn change_to_self_is_signed_without_a_review(_context: &ScenarioContext<'_>) -> 
         REVIEW_VALUE,
         &commitment_mask,
         &own_address,
+        &sender_offset_public_key,
+        &common_message,
+    )
+}
+
+/// Acceptance: a receiver carrying the device's own spend key but some other view key gets the full review, and the
+/// approved signature verifies.
+///
+/// The spend key alone would bind the script to `alpha`, but the host derives the output's commitment mask and
+/// encrypted data from the view key, so such an output is locked to this wallet and invisible to its scanner. The
+/// device must not treat that as change.
+fn own_spend_key_with_a_foreign_view_key_is_reviewed(context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let sender_offset_key_index = fixtures::random_u64();
+    let branch = LedgerKeyBranch::OneSidedSenderOffset;
+    let commitment_mask = fixtures::random_secret_key();
+    let common_message = fixtures::random_bytes_32();
+
+    let public_alpha = ledger_get_public_spend_key(account).context(|| "GetPublicSpendKey".to_string())?;
+    let receiver = TariAddress::new_dual_address(
+        CompressedPublicKey::from_secret_key(&fixtures::random_secret_key()),
+        public_alpha,
+        NETWORK,
+        TariAddressFeatures::create_one_sided_only(),
+        None,
+    )
+    .context(|| "an address with the device's spend key and a foreign view key".to_string())?;
+
+    let sender_offset_public_key = ledger_get_public_key(account, sender_offset_key_index, branch)
+        .context(|| "GetPublicKey for the sender offset key".to_string())?;
+
+    let expected_review = ExpectedReview::one_sided_metadata_signature(REVIEW_VALUE, &receiver.to_base58(), 0);
+    let (signature, review) = while_reviewing(context.approver(), &expected_review, Outcome::Approve, || {
+        ledger_get_one_sided_metadata_signature(
+            account,
+            receiver.network(),
+            0,
+            REVIEW_VALUE,
+            sender_offset_key_index,
+            branch,
+            &commitment_mask,
+            &receiver,
+            &common_message,
+        )
+    });
+    review.context(|| "the device's review screen for its own spend key with a foreign view key".to_string())?;
+    let signature = signature.context(|| "GetOneSidedMetadataSignature with a foreign view key".to_string())?;
+
+    verify_one_sided_metadata_signature(
+        "the one sided metadata signature to the device's spend key with a foreign view key",
+        &signature.to_vec(),
+        REVIEW_VALUE,
+        &commitment_mask,
+        &receiver,
         &sender_offset_public_key,
         &common_message,
     )

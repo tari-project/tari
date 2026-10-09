@@ -1396,7 +1396,7 @@ impl TransactionKeyManagerInterface for KeyManager {
 
     // Creates a metadata signature for the output to `receiver_address`. On a ledger wallet the device signs it
     // through its reviewed one sided metadata signature: it shows the output for review, unless `receiver_address`
-    // carries the device's own spend key (change to self), which it signs without a prompt.
+    // is this wallet's own address - the device's own view key and spend key - which it signs without a prompt.
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
