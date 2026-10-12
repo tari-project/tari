@@ -104,7 +104,7 @@ impl Step2OutputsForSelf {
         if self.script_nonce_key_id == self.sender_offset_nonce_key_id {
             return Err(format!(
                 "output {output}: the script nonce and the sender offset nonce are the same key ({})",
-                self.script_nonce_key_id
+                self.script_nonce_key_id.redacted()
             ));
         }
         for (what, nonce) in [
@@ -119,7 +119,8 @@ impl Step2OutputsForSelf {
                 TariKeyId::Encrypted { .. } => {},
                 other => {
                     return Err(format!(
-                        "output {output}: the {what} is not a Random nonce key ({other})"
+                        "output {output}: the {what} is not a Random nonce key ({})",
+                        other.redacted()
                     ));
                 },
             }
@@ -131,7 +132,8 @@ impl Step2OutputsForSelf {
             } if !is_pre_mine_sender_offset_index(*index) && u64::try_from(output).ok() == Some(*index) => {},
             other => {
                 return Err(format!(
-                    "output {output}: the pre-mine script key is not the pre-mine key at this output's index ({other})"
+                    "output {output}: the pre-mine script key is not the pre-mine key at this output's index ({})",
+                    other.redacted()
                 ));
             },
         }
@@ -143,7 +145,8 @@ impl Step2OutputsForSelf {
             TariKeyId::Encrypted { .. } => {},
             other => {
                 return Err(format!(
-                    "output {output}: the sender offset key is not a pre-mine sender offset key ({other})"
+                    "output {output}: the sender offset key is not a pre-mine sender offset key ({})",
+                    other.redacted()
                 ));
             },
         }
@@ -173,15 +176,17 @@ pub(crate) fn check_self_file_key_ids(outputs: &[Step2OutputsForSelf]) -> Result
             // `TariKeyId` is not `Hash`; its string form is its canonical encoding.
             if !nonces.insert(nonce.to_string()) {
                 return Err(format!(
-                    "output {}: nonce {nonce} is named more than once in the file",
-                    output.output_index
+                    "output {}: nonce {} is named more than once in the file",
+                    output.output_index,
+                    nonce.redacted()
                 ));
             }
         }
         if !sender_offsets.insert(output.sender_offset_key_id.to_string()) {
             return Err(format!(
                 "output {}: sender offset key {} is named more than once in the file",
-                output.output_index, output.sender_offset_key_id
+                output.output_index,
+                output.sender_offset_key_id.redacted()
             ));
         }
     }

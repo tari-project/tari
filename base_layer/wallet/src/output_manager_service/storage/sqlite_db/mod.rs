@@ -40,7 +40,7 @@ use tari_crypto::tari_utilities::{ByteArray, hex::Hex};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::TariKeyId,
+    key_manager::{TariKeyId, redact_key_id_string},
     transaction_components::{OutputType, TransactionOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::{LegacyTariKeyId, LegacyTransactionKeyManagerInterface};
@@ -1798,12 +1798,13 @@ impl KnownOneSidedPaymentScriptSql {
                 let legacy = LegacyTariKeyId::from_str(&self.private_key).map_err(|e| {
                     error!(
                         target: LOG_TARGET,
-                        "Could not create spending key id({}) from stored string ({e})",self.private_key
+                        "Could not create spending key id({}) from stored string ({e})",
+                        redact_key_id_string(&self.private_key)
                     );
                     OutputManagerStorageError::ConversionError {
                         reason: format!(
                             "Spending key id({}) could not be converted from string ({e})",
-                            self.private_key
+                            redact_key_id_string(&self.private_key)
                         ),
                     }
                 })?;

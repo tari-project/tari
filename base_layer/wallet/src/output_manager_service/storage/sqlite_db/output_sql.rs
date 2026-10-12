@@ -53,7 +53,7 @@ use tari_crypto::tari_utilities::ByteArray;
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::TariKeyId,
+    key_manager::{TariKeyId, redact_key_id_string},
     transaction_components::{
         EncryptedData,
         MemoField,
@@ -1203,12 +1203,13 @@ impl OutputSql {
                 let legacy = LegacyTariKeyId::from_str(&self.spending_key).map_err(|e| {
                     error!(
                         target: LOG_TARGET,
-                        "Could not create spending key id({}) from stored string ({e})",self.spending_key
+                        "Could not create spending key id({}) from stored string ({e})",
+                        redact_key_id_string(&self.spending_key)
                     );
                     OutputManagerStorageError::ConversionError {
                         reason: format!(
                             "Spending key id({}) could not be converted from string ({e})",
-                            self.spending_key
+                            redact_key_id_string(&self.spending_key)
                         ),
                     }
                 })?;
@@ -1222,12 +1223,13 @@ impl OutputSql {
                 let legacy = LegacyTariKeyId::from_str(&self.script_private_key).map_err(|e| {
                     error!(
                         target: LOG_TARGET,
-                        "Could not create script private key id({}) from stored string ({e})",self.script_private_key
+                        "Could not create script private key id({}) from stored string ({e})",
+                        redact_key_id_string(&self.script_private_key)
                     );
                     OutputManagerStorageError::ConversionError {
                         reason: format!(
                             "Could not create script private key id({}) from stored string ({e})",
-                            self.script_private_key
+                            redact_key_id_string(&self.script_private_key)
                         ),
                     }
                 })?;
