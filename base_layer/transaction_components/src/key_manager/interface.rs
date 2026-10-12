@@ -358,6 +358,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// sidechain (`None` for the default L2 chain that has no deployment key); it is bound into the
     /// signature challenge so the proof cannot be replayed to claim the burn on a different
     /// sidechain/application that shares this claim mechanism (see tari-ootle#445).
+    ///
+    /// The proof is signed with the burned output's commitment mask `k`, and the verifier fixes that: the Ootle
+    /// wallet (`validate_burn_claim_ownership_proof` in tari-ootle's `wallet/crypto`) checks it against
+    /// `C - v·H = k·G`, the commitment minus its revealed value, not against a key carried with the proof. Signing
+    /// with a spend-derived key instead would make every claim fail. The mask is not a spend-grade secret - the
+    /// burner knows it - so this proof does not decide who may claim. The Ootle engine (`claim_burn`) does: it
+    /// requires the claim transaction to be signed by the `claim_public_key` named in the L1 burn output's features,
+    /// and the claimed funds are locked to that key.
     fn generate_burn_claim_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
