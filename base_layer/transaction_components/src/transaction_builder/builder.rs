@@ -1747,13 +1747,20 @@ fn surface_device_key_limit(e: KeyManagerError) -> TransactionBuilderError {
     }
 }
 
-/// Refuse a recipient whose address is too long for a ledger device's metadata signature request: see
-/// [`MAX_METADATA_SIGNATURE_ADDRESS_SIZE`]. Outputs to the wallet itself are signed for its own address, which always
-/// fits, so only the recipients the device reviews are checked.
+/// Refuse a recipient a ledger device cannot sign for: a single address, which has no view key, or an address too
+/// long for its metadata signature request - see [`MAX_METADATA_SIGNATURE_ADDRESS_SIZE`]. Outputs to the wallet itself
+/// are signed for its own address, which always fits, so only the recipients the device reviews are checked.
 fn check_recipient_addresses_fit_the_device(specs: &[RecipientSpec]) -> Result<(), TransactionBuilderError> {
     for spec in specs {
         if spec.metadata_signature != RecipientMetadataSignature::UserVerified {
             continue;
+        }
+        // The device signs for a dual address only: it needs the view key. Refused here rather than inside `build`,
+        // after the recipients before this one had been approved.
+        if let TariAddress::Single(_) = spec.destination {
+            return Err(TransactionBuilderError::RecipientAddressNotDualForDevice {
+                address: spec.destination.to_base58(),
+            });
         }
         let size = spec.destination.to_vec().len();
         if size > MAX_METADATA_SIGNATURE_ADDRESS_SIZE {
@@ -2445,14 +2452,6 @@ mod test {
         assert_validates(&finalized.transaction);
     }
 
-    /// A ledger device derives every sender offset key of a transaction in one exchange, so it caps how many it
-    /// will make. That has to reach the caller as an output limit, not as a key manager error - let alone a status
-    /// word - because the actionable fact is "this transaction has too many outputs for a ledger".
-    ///
-    /// The key manager side of this is covered by
-    /// `key_manager::manager::tests::get_script_offset_refuses_more_sender_offset_keys_than_the_device_will_derive`;
-    /// a ledger key manager cannot be constructed at all without the `ledger` feature, so the translation is
-    /// exercised on its own here.
     /// A recipient whose address is longer than a ledger device's metadata signature request can carry is refused
     /// with a typed error; one at the limit, and a long address on an output to self, are not.
     #[test]
@@ -2494,6 +2493,43 @@ mod test {
         check_recipient_addresses_fit_the_device(&[to_self]).unwrap();
     }
 
+    /// A single address recipient is refused up front on a ledger wallet, even after a dual address one, rather than
+    /// failing inside `build` after the first recipient's review was approved.
+    #[test]
+    fn a_single_address_recipient_is_refused_for_the_device() {
+        let dual = RecipientSpec::stealth(
+            TariAddress::new_dual_address_with_default_features(
+                CompressedPublicKey::default(),
+                CompressedPublicKey::default(),
+                Network::LocalNet,
+            )
+            .unwrap(),
+            MicroMinotari(1),
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        );
+        let single = RecipientSpec::stealth(
+            TariAddress::new_single_address_with_interactive_only(CompressedPublicKey::default(), Network::LocalNet)
+                .unwrap(),
+            MicroMinotari(1),
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        );
+        check_recipient_addresses_fit_the_device(std::slice::from_ref(&dual)).unwrap();
+        match check_recipient_addresses_fit_the_device(&[dual, single]) {
+            Err(TransactionBuilderError::RecipientAddressNotDualForDevice { .. }) => {},
+            other => panic!("expected RecipientAddressNotDualForDevice, got {other:?}"),
+        }
+    }
+
+    /// A ledger device derives every sender offset key of a transaction in one exchange, so it caps how many it
+    /// will make. That has to reach the caller as an output limit, not as a key manager error - let alone a status
+    /// word - because the actionable fact is "this transaction has too many outputs for a ledger".
+    ///
+    /// The key manager side of this is covered by
+    /// `key_manager::manager::tests::get_script_offset_refuses_more_sender_offset_keys_than_the_device_will_derive`;
+    /// a ledger key manager cannot be constructed at all without the `ledger` feature, so the translation is
+    /// exercised on its own here.
     #[test]
     fn the_device_key_limit_surfaces_as_an_output_limit() {
         let max = usize::try_from(MAX_SENDER_OFFSET_KEYS).unwrap();
