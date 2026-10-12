@@ -1539,6 +1539,11 @@ impl TransactionKeyManagerInterface for KeyManager {
             if !matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
                 return Err(KeyManagerError::LedgerHostHeldSenderOffset);
             }
+            // The device always signs with a random value nonce `r_a`. A RevealedValue output needs `r_a = 0` to pass
+            // its balance check, so its signature would be rejected on chain; refuse it here instead.
+            if features.range_proof_type != RangeProofType::BulletProofPlus {
+                return Err(KeyManagerError::LedgerRevealedValueUnsupported);
+            }
             // The device never sees `script`: it signs over the standard stealth script it builds itself from the
             // address and the commitment mask. Any other script would get a signature that does not verify, so it
             // is refused here instead.
@@ -2430,6 +2435,56 @@ mod tests {
                 .unwrap_err();
             assert_eq!(err, KeyManagerError::LedgerSenderOffsetNeedsRecipient, "{script}");
         }
+    }
+
+    /// The device signs every one sided metadata signature with a random value nonce, which a RevealedValue
+    /// output's balance check refuses. Such an output is refused on a ledger wallet before the device is asked, even
+    /// with the right sender offset branch and the standard stealth script.
+    #[cfg(feature = "ledger")]
+    #[test]
+    fn a_ledger_wallet_refuses_a_revealed_value_output() {
+        use tari_common::configuration::Network;
+        use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+        use tari_script::push_pubkey_script;
+
+        use crate::transaction_components::OutputFeatures;
+
+        let key_manager = ledger_key_manager_without_a_device();
+        let own_address = TariAddress::new_dual_address(
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let stealth_key = key_manager
+            .stealth_address_script_spending_key(&commitment_mask.key_id, own_address.public_spend_key())
+            .unwrap();
+        let features = OutputFeatures {
+            range_proof_type: RangeProofType::RevealedValue,
+            ..Default::default()
+        };
+
+        let err = key_manager
+            .get_metadata_signature_user_verified(
+                &commitment_mask.key_id,
+                MicroMinotari(100),
+                &TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::OneSidedSenderOffset,
+                    index: 7,
+                },
+                TransactionOutputVersion::get_current_version(),
+                &features,
+                &crate::transaction_components::covenants::Covenant::default(),
+                &crate::transaction_components::EncryptedData::default(),
+                MicroMinotari(100),
+                &push_pubkey_script(&stealth_key),
+                &own_address,
+            )
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::LedgerRevealedValueUnsupported);
     }
 
     /// A host held sender offset key - an L2-bound burn's - is refused by `get_metadata_signature_user_verified` on a
