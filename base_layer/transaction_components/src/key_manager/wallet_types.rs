@@ -123,29 +123,23 @@ impl Display for WalletType {
     }
 }
 
+/// A view-only wallet: it holds the public spend key and the private view key, never the private spend key.
+///
+/// Older versions had a `private_spend_key: Option<PrivateKey>` field, always `None` in practice. A stored JSON
+/// `ViewWallet` that still has it decodes (serde ignores the unknown field, dropping any value in it), and older
+/// versions read the new form because a missing `Option` field decodes as `None`. A non-self-describing format such as
+/// bincode would not tolerate the change; the wallets that store a `WalletType` (minotari-cli) store it as JSON.
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ViewWallet {
     public_spend_key: CompressedPublicKey,
-    private_spend_key: Option<PrivateKey>,
     view_key: PrivateKey,
     birthday: Option<u16>,
 }
 
 impl ViewWallet {
-    pub fn new_with_spend_key(private_spend_key: PrivateKey, view_key: PrivateKey, birthday: Option<u16>) -> Self {
-        let public_spend_key = CompressedPublicKey::from_secret_key(&private_spend_key);
-        Self {
-            public_spend_key,
-            private_spend_key: Some(private_spend_key),
-            view_key,
-            birthday,
-        }
-    }
-
     pub fn new(public_spend_key: CompressedPublicKey, view_key: PrivateKey, birthday: Option<u16>) -> Self {
         Self {
             public_spend_key,
-            private_spend_key: None,
             view_key,
             birthday,
         }
@@ -153,10 +147,6 @@ impl ViewWallet {
 
     pub fn public_spend_key(&self) -> &CompressedPublicKey {
         &self.public_spend_key
-    }
-
-    pub fn private_spend_key(&self) -> Option<&PrivateKey> {
-        self.private_spend_key.as_ref()
     }
 
     pub fn view_key(&self) -> &PrivateKey {
@@ -316,4 +306,41 @@ fn derive_private_key(seed: &CipherSeed, branch_seed: String, account: u64) -> R
 
     let s = PrivateKey::from_uniform_bytes(derive_key.as_slice())?;
     Ok(s)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// A `ViewWallet` stored before the `private_spend_key` field was removed still decodes, whether the field is
+    /// `null` or (from the removed `new_with_spend_key`) holds a key, which is dropped. The new form has no such
+    /// field, and is what an older version reads with the field missing.
+    #[test]
+    fn a_stored_view_wallet_decodes_without_its_spend_key() {
+        let private_spend_key = PrivateKey::random(&mut rand::rng());
+        let public_spend_key = CompressedPublicKey::from_secret_key(&private_spend_key);
+        let view_key = PrivateKey::random(&mut rand::rng());
+        let wallet = WalletType::ViewWallet(ViewWallet::new(public_spend_key.clone(), view_key.clone(), Some(7)));
+
+        let json = serde_json::to_string(&wallet).unwrap();
+        assert!(!json.contains("private_spend_key"), "{json}");
+
+        for old_value in [
+            serde_json::Value::Null,
+            serde_json::to_value(&private_spend_key).unwrap(),
+        ] {
+            let old = serde_json::json!({
+                "ViewWallet": {
+                    "public_spend_key": serde_json::to_value(&public_spend_key).unwrap(),
+                    "private_spend_key": old_value,
+                    "view_key": serde_json::to_value(&view_key).unwrap(),
+                    "birthday": 7,
+                }
+            });
+            let decoded: WalletType = serde_json::from_value(old).unwrap();
+            assert_eq!(decoded, wallet);
+            assert_eq!(decoded.get_private_spend_key(), None);
+            assert_eq!(decoded.get_public_spend_key(), public_spend_key);
+        }
+    }
 }
