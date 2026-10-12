@@ -208,6 +208,65 @@ impl TariKeyId {
     pub fn is_ledger_key(&self) -> bool {
         matches!(self, TariKeyId::LedgerKey { .. } | TariKeyId::Derived { .. })
     }
+
+    /// The key id's string form for error and log messages, with every `Encrypted` ciphertext (at any nesting
+    /// level) replaced by its length: `encrypted.[72 bytes].view_key`. The ciphertext is readable by anyone holding
+    /// the key it is encrypted under, so it does not belong in a message. Use `Display` for persistence; this form
+    /// does not parse.
+    pub fn redacted(&self) -> String {
+        redact_key_id_string(&self.to_string())
+    }
+}
+
+/// [`TariKeyId::redacted`] for a key id string, which need not be valid: every `encrypted.<hex>` payload is replaced
+/// by its length in bytes (half its hex length). The rest of the string is kept as is.
+pub fn redact_key_id_string(id: &str) -> String {
+    let mut redacted = String::with_capacity(id.len());
+    let mut rest = id;
+    loop {
+        let Some((branch, tail)) = rest.split_once('.') else {
+            redacted.push_str(rest);
+            return redacted;
+        };
+        match branch {
+            ENCRYPTED_BRANCH => {
+                let (payload, key) = match tail.split_once('.') {
+                    Some((payload, key)) => (payload, Some(key)),
+                    None => (tail, None),
+                };
+                redacted.push_str(&format!("{ENCRYPTED_BRANCH}.[{} bytes]", payload.len() / 2));
+                match key {
+                    Some(key) => {
+                        redacted.push('.');
+                        rest = key;
+                    },
+                    None => return redacted,
+                }
+            },
+            DERIVED_KEY_BRANCH => {
+                redacted.push_str(DERIVED_KEY_BRANCH);
+                redacted.push('.');
+                rest = tail;
+            },
+            DH_COMMITMENT_MASK_BRANCH | DH_ENCRYPTED_DATA_BRANCH => match tail.split_once('.') {
+                Some((public_key, private_key)) => {
+                    redacted.push_str(branch);
+                    redacted.push('.');
+                    redacted.push_str(public_key);
+                    redacted.push('.');
+                    rest = private_key;
+                },
+                None => {
+                    redacted.push_str(rest);
+                    return redacted;
+                },
+            },
+            _ => {
+                redacted.push_str(rest);
+                return redacted;
+            },
+        }
+    }
 }
 
 impl FromStr for TariKeyId {
@@ -1081,6 +1140,51 @@ mod tests {
         assert!(TariKeyId::from_str(&derived(MAX_KEY_ID_NESTING + 1)).is_err());
         // A very long chain is rejected quickly, without recursing
         assert!(TariKeyId::from_str(&derived(200_000)).is_err());
+    }
+
+    /// `redacted` hides every `Encrypted` ciphertext, at any nesting level, and leaves the rest of the key id as it
+    /// is, so an error message says which key without carrying anything the view key holder could decrypt.
+    #[test]
+    fn redacted_hides_encrypted_payloads_only() {
+        let encrypted = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: "view_key".into(),
+        };
+        assert_eq!(encrypted.redacted(), "encrypted.[72 bytes].view_key");
+
+        let nested = TariKeyId::Derived {
+            key: format!("dh_commitment_mask.{PK}.{encrypted}").into(),
+        };
+        assert_eq!(
+            nested.redacted(),
+            format!("derived.dh_commitment_mask.{PK}.encrypted.[72 bytes].view_key")
+        );
+        let double = TariKeyId::Encrypted {
+            encrypted: vec![1, 2, 3],
+            key: SerializedKeyString::from(&encrypted),
+        };
+        assert_eq!(double.redacted(), "encrypted.[3 bytes].encrypted.[72 bytes].view_key");
+        assert!(!double.redacted().contains("ab"), "{}", double.redacted());
+
+        // Key ids with no ciphertext come out exactly as `Display` writes them
+        for key_id in valid_key_ids() {
+            if !key_id.to_string().contains(ENCRYPTED_BRANCH) {
+                assert_eq!(key_id.redacted(), key_id.to_string());
+            }
+        }
+
+        // Malformed strings are redacted too, and not echoed past the payload
+        assert_eq!(redact_key_id_string("encrypted.abcd"), "encrypted.[2 bytes]");
+        assert_eq!(
+            redact_key_id_string("derived.encrypted.0011.x.y"),
+            "derived.encrypted.[2 bytes].x.y"
+        );
+        assert_eq!(
+            redact_key_id_string("dh_encrypted_data.nothex"),
+            "dh_encrypted_data.nothex"
+        );
+        // `Display` still carries the payload, for persistence
+        assert!(encrypted.to_string().contains(&"ab".repeat(72)));
     }
 
     /// A key id longer than `MAX_KEY_ID_LENGTH` is refused by `FromStr` and every decoder, before it is walked.

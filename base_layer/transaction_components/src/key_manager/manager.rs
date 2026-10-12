@@ -191,11 +191,11 @@ pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
 /// The longest key id string an error message echoes in full.
 const MAX_ECHOED_KEY_ID_CHARS: usize = 128;
 
-/// A key id's string form for an error message, cut to its first 128 characters (followed by `…(<total> chars)`)
-/// when longer. Key ids in refusals can come from an untrusted payload of up to megabytes, which must not be echoed
-/// whole into a terminal or log.
+/// A key id's [redacted](TariKeyId::redacted) string form for an error message, cut to its first 128 characters
+/// (followed by `…(<total> chars)`) when longer. Key ids in refusals can come from an untrusted payload of up to
+/// megabytes, which must not be echoed whole into a terminal or log.
 pub fn truncated_key_id(key_id: &TariKeyId) -> String {
-    let full = key_id.to_string();
+    let full = key_id.redacted();
     let total = full.chars().count();
     if total <= MAX_ECHOED_KEY_ID_CHARS {
         return full;
@@ -210,7 +210,7 @@ pub fn truncated_key_id(key_id: &TariKeyId) -> String {
 /// That is bounded rather than avoided: `MAX_KEY_ID_NESTING` caps the levels and `MAX_KEY_ID_LENGTH` the string each
 /// level re-checks, so one key id costs at most a few kilobytes of parsing however it was built.
 fn parse_inner_key_id(inner: &SerializedKeyString, outer: &TariKeyId) -> Result<TariKeyId, KeyManagerError> {
-    TariKeyId::from_str(inner.as_str()).map_err(|_| KeyManagerError::InvalidKeyId(outer.to_string()))
+    TariKeyId::from_str(inner.as_str()).map_err(|_| KeyManagerError::InvalidKeyId(outer.redacted()))
 }
 
 /// Whether a nested key id string names the view key.
@@ -248,7 +248,7 @@ pub struct KeyManager {
 fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
     if *private_key_id == TariKeyId::Zero {
         return Err(KeyManagerError::InvalidSigningKeyId {
-            key: private_key_id.to_string(),
+            key: private_key_id.redacted(),
             reason: "the zero key cannot sign".to_string(),
         });
     }
@@ -267,7 +267,7 @@ fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Res
         },
     };
     Err(KeyManagerError::InvalidNonceKeyId {
-        nonce: nonce.to_string(),
+        nonce: nonce.redacted(),
         reason: reason.to_string(),
     })
 }
@@ -388,7 +388,8 @@ impl KeyManager {
                 },
                 _ => {
                     return Err(KeyManagerError::LedgerError(format!(
-                        "Ledger does not support the following key id {script_key_id}"
+                        "Ledger does not support the following key id {}",
+                        script_key_id.redacted()
                     )));
                 },
             };
@@ -409,9 +410,9 @@ impl KeyManager {
         trace!(target: "wallet::key_manager::ledger",
             "Trying to get ledger signature with tx_version: {:?}, script key:{}, value: {:?}, commitment_mask: {}, script_message: {:?}",
             txi_version,
-            script_key_id,
+            script_key_id.redacted(),
             value.to_vec(),
-            commitment_mask_key_id,
+            commitment_mask_key_id.redacted(),
             script_message);
 
         Err(KeyManagerError::InvalidWalletType(
@@ -521,7 +522,7 @@ impl KeyManager {
 
         trace!(target: "wallet::key_manager::ledger",
             "Trying to get ledger script offset with script_key_ids: {:?}, sender_offset_count: {}",
-            script_key_ids,
+            script_key_ids.iter().map(|k| k.redacted()).collect::<Vec<_>>(),
             sender_offset_count);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
@@ -773,8 +774,8 @@ impl KeyManager {
         trace!(target: "wallet::key_manager::ledger",
             "Trying to get ledger metadata signature with value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, preimage: {:?}",
             value,
-            sender_offset_key_id,
-            commitment_mask_key_id,
+            sender_offset_key_id.redacted(),
+            commitment_mask_key_id.redacted(),
             receiver_address,
             metadata_signature_preimage);
 
@@ -1728,7 +1729,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 // Checked before the nonce is taken, so that a refused call does not burn the handle.
                 if private_key == PrivateKey::default() {
                     return Err(KeyManagerError::InvalidSigningKeyId {
-                        key: private_key_id.to_string(),
+                        key: private_key_id.redacted(),
                         reason: "the signing key resolves to zero".to_string(),
                     });
                 }
@@ -1745,7 +1746,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 // A key id other than `Zero` can still resolve to zero, e.g. an `Encrypted` id wrapping it.
                 if private_key == PrivateKey::default() {
                     return Err(KeyManagerError::InvalidSigningKeyId {
-                        key: private_key_id.to_string(),
+                        key: private_key_id.redacted(),
                         reason: "the signing key resolves to zero".to_string(),
                     });
                 }
@@ -1753,7 +1754,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 // wrapping the signing key under a different encryption key.
                 if private_nonce == PrivateKey::default() || private_nonce == private_key {
                     return Err(KeyManagerError::InvalidNonceKeyId {
-                        nonce: nonce.to_string(),
+                        nonce: nonce.redacted(),
                         reason: "the nonce resolves to zero or to the signing key".to_string(),
                     });
                 }
@@ -2070,7 +2071,7 @@ mod tests {
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerInterface,
             error::KeyManagerError,
-            key_id::TariKeyId,
+            key_id::{SerializedKeyString, TariKeyId},
         },
         transaction_components::{EncryptedData, MemoField, RangeProofType, TransactionOutputVersion},
     };
@@ -2861,7 +2862,7 @@ mod tests {
 
     fn assert_nonce_refused(key_manager: &KeyManager, private_key_id: &TariKeyId, nonce: &TariKeyId) {
         match key_manager.sign_with_nonce_and_challenge(private_key_id, nonce, &challenge(1)) {
-            Err(KeyManagerError::InvalidNonceKeyId { nonce: refused, .. }) => assert_eq!(refused, nonce.to_string()),
+            Err(KeyManagerError::InvalidNonceKeyId { nonce: refused, .. }) => assert_eq!(refused, nonce.redacted()),
             other => panic!("expected InvalidNonceKeyId for nonce '{nonce}', got {other:?}"),
         }
     }
@@ -2942,7 +2943,7 @@ mod tests {
 
         for signing_key_id in [TariKeyId::Zero, wraps_zero] {
             match key_manager.sign_with_nonce_and_challenge(&signing_key_id, &secret.key_id, &challenge(1)) {
-                Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, signing_key_id.to_string()),
+                Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, signing_key_id.redacted()),
                 other => panic!("expected InvalidSigningKeyId for '{signing_key_id}', got {other:?}"),
             }
         }
@@ -2957,7 +2958,7 @@ mod tests {
         let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
 
         match key_manager.sign_with_nonce_and_challenge(&wraps_zero, &reserved_nonce.key_id, &challenge(1)) {
-            Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, wraps_zero.to_string()),
+            Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, wraps_zero.redacted()),
             other => panic!("expected InvalidSigningKeyId, got {other:?}"),
         }
 
@@ -3398,16 +3399,52 @@ mod tests {
             .unwrap();
     }
 
+    /// A key id whose inner key id does not parse is refused with the key id redacted: the ciphertext of an
+    /// `Encrypted` id is readable by the view key holder and does not belong in an error message.
+    #[test]
+    fn an_unresolvable_key_id_is_reported_redacted() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let encrypted = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: "bogus".into(),
+        };
+        let derived = TariKeyId::Derived {
+            key: SerializedKeyString::from(format!("encrypted.{}.bogus", "ab".repeat(72))),
+        };
+        for key_id in [encrypted, derived] {
+            match key_manager.get_private_key(&key_id) {
+                Err(KeyManagerError::InvalidKeyId(message)) => {
+                    assert_eq!(message, key_id.redacted());
+                    assert!(message.contains("[72 bytes]"), "{message}");
+                    assert!(!message.contains("abab"), "{message}");
+                },
+                other => panic!("expected InvalidKeyId, got {other:?}"),
+            }
+            match key_manager.get_public_key_at_key_id(&key_id) {
+                Err(KeyManagerError::InvalidKeyId(message)) => assert_eq!(message, key_id.redacted()),
+                other => panic!("expected InvalidKeyId, got {other:?}"),
+            }
+        }
+    }
+
     #[test]
     fn truncated_key_id_bounds_long_ids() {
         assert_eq!(super::truncated_key_id(&TariKeyId::SpendKey), "spend_key");
-        let long = TariKeyId::Encrypted {
+        // An encrypted payload is redacted before the length is counted, so it never reaches the message
+        let encrypted = TariKeyId::Encrypted {
             encrypted: vec![0xab; 600],
             key: (&TariKeyId::SpendKey).into(),
         };
-        let total = long.to_string().len();
+        assert_eq!(super::truncated_key_id(&encrypted), "encrypted.[600 bytes].spend_key");
+        // A key id built in code is not length checked; a long one is cut
+        let long = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 3],
+            key: format!("{}spend_key", "derived.".repeat(40)).into(),
+        };
+        let total = long.redacted().len();
+        assert!(total > 128);
         let truncated = super::truncated_key_id(&long);
-        assert!(truncated.starts_with(&long.to_string()[..128]));
+        assert!(truncated.starts_with(&long.redacted()[..128]));
         assert!(truncated.ends_with(&format!("…({total} chars)")));
         assert_eq!(
             truncated.chars().count(),

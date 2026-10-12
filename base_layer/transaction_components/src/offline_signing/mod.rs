@@ -1954,9 +1954,8 @@ mod test {
         match result {
             Err(crate::TransactionBuilderError::OfflinePayloadKeyIdNotAllowed { field, key_id }) => {
                 assert_eq!(field, "outputs[0].commitment_mask_key_id");
-                // The refused id is echoed truncated, not as the 1200+ characters the payload carried
-                assert!(key_id.chars().count() < 160, "key id not truncated: {key_id}");
-                assert!(key_id.ends_with(" chars)"), "key id not truncated: {key_id}");
+                // The refused id is echoed redacted, not as the 1200+ characters of ciphertext the payload carried
+                assert_eq!(key_id, "encrypted.[600 bytes].view_key");
             },
             Err(e) => panic!("expected the payload key id to be refused, got: {e}"),
             Ok(_) => panic!("expected the payload key id to be refused, but the payload was signed"),
