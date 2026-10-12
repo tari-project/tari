@@ -89,7 +89,7 @@ pub const LEDGER_EPHEMERAL_NONCE_BRANCH: &str = "ledger_ephemeral_nonce";
 /// Display/parse form: `"code-template-author"`
 pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
-#[derive(Default, Clone, Debug, Serialize, Eq, PartialEq, borsh::BorshSerialize)]
+#[derive(Default, Clone, Serialize, Eq, PartialEq, borsh::BorshSerialize)]
 /// Identifiers for different logical key types used by Tari components.
 ///
 /// A `TariKeyId` is an enum that captures the purpose and derivation context of a
@@ -106,6 +106,9 @@ pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 /// - Hex-encoded fields use lowercase hex in `Display` and accept case-insensitive hex in `FromStr`.
 ///
 /// See individual variants for details and examples.
+///
+/// `Debug` writes the [redacted](TariKeyId::redacted) form, so a key id inside any struct that is debug printed
+/// (a wallet output in a log line, an error) does not carry an `Encrypted` ciphertext with it.
 ///
 /// The serde and borsh decoders are generated from the [`ValidatedDecode`] implementation below and must not be
 /// derived: they accept exactly the values whose string form `FromStr` accepts, so a key id decoded from JSON (for
@@ -548,6 +551,12 @@ impl ValidatedDecode for TariKeyId {
 
 impl_validated_decode!(TariKeyId);
 
+impl fmt::Debug for TariKeyId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.redacted())
+    }
+}
+
 impl fmt::Display for TariKeyId {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -582,7 +591,8 @@ impl fmt::Display for TariKeyId {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
+/// `Debug` writes the redacted form (see [`TariKeyId::redacted`]); `Display` writes the string as stored.
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct SerializedKeyString {
     inner: String,
 }
@@ -602,6 +612,12 @@ impl From<String> for SerializedKeyString {
 impl From<&str> for SerializedKeyString {
     fn from(inner: &str) -> Self {
         Self { inner: inner.into() }
+    }
+}
+
+impl fmt::Debug for SerializedKeyString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", redact_key_id_string(&self.inner))
     }
 }
 
@@ -1187,6 +1203,38 @@ mod tests {
         );
         // `Display` still carries the payload, for persistence
         assert!(encrypted.to_string().contains(&"ab".repeat(72)));
+    }
+
+    /// `Debug` is the redacted form, for the key id itself, for its nested string, and for a key id inside a
+    /// debug printed container, so a `{:?}` in a log line never carries a ciphertext.
+    #[test]
+    fn debug_hides_encrypted_payloads() {
+        let payload = "ab".repeat(72);
+        let encrypted = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: "view_key".into(),
+        };
+        let derived = TariKeyId::Derived {
+            key: SerializedKeyString::from(&encrypted),
+        };
+        let dh = TariKeyId::DHCommitmentMask {
+            public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+            private_key: SerializedKeyString::from(&encrypted),
+        };
+        assert_eq!(format!("{encrypted:?}"), "encrypted.[72 bytes].view_key");
+        assert_eq!(format!("{derived:?}"), "derived.encrypted.[72 bytes].view_key");
+        assert_eq!(
+            format!("{dh:?}"),
+            format!("dh_commitment_mask.{PK}.encrypted.[72 bytes].view_key")
+        );
+        assert_eq!(
+            format!("{:?}", SerializedKeyString::from(&encrypted)),
+            "encrypted.[72 bytes].view_key"
+        );
+        let in_container = format!("{:?}", (Some(&encrypted), vec![derived.clone(), dh.clone()]));
+        assert!(!in_container.contains(&payload), "{in_container}");
+        // Key ids without a ciphertext debug print as their string form
+        assert_eq!(format!("{:?}", TariKeyId::SpendKey), "spend_key");
     }
 
     /// A key id longer than `MAX_KEY_ID_LENGTH` is refused by `FromStr` and every decoder, before it is walked.

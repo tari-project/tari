@@ -44,6 +44,7 @@ use tari_transaction_components::{
         TariKeyId,
         TransactionKeyManagerInterface,
         error::KeyManagerError,
+        redact_key_id_string,
     },
     transaction_components::{EncryptedData, MemoField},
 };
@@ -97,7 +98,8 @@ impl KeyManagerBranch {
 // Private Key Calculation:
 // The encrypted bytes are decrypted using the provided key string, which is used as a decryption key or derivation
 // path.
-#[derive(Default, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+/// `Debug` writes the string form with every `Encrypted` ciphertext replaced by its length, like `TariKeyId`'s.
+#[derive(Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum LegacyTariKeyId {
     Managed {
         branch: String,
@@ -216,6 +218,12 @@ impl FromStr for LegacyTariKeyId {
     }
 }
 
+impl fmt::Debug for LegacyTariKeyId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", redact_key_id_string(&self.to_string()))
+    }
+}
+
 impl fmt::Display for LegacyTariKeyId {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -250,7 +258,8 @@ pub struct LegacyTariKeyAndId {
     pub key_id: LegacyTariKeyId,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+/// `Debug` writes the string with every `Encrypted` ciphertext replaced by its length.
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LegacySerializedKeyString {
     inner: String,
 }
@@ -270,6 +279,12 @@ impl From<String> for LegacySerializedKeyString {
 impl From<&str> for LegacySerializedKeyString {
     fn from(inner: &str) -> Self {
         Self { inner: inner.into() }
+    }
+}
+
+impl fmt::Debug for LegacySerializedKeyString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", redact_key_id_string(&self.inner))
     }
 }
 
@@ -320,4 +335,28 @@ pub trait TransactionKeyManagerBackend: Clone + Send + Sync {
 pub struct KeyManagerState {
     pub branch_seed: String,
     pub primary_key_index: u64,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// A legacy key id debug prints like a current one: its string form, with the ciphertext replaced by its length.
+    #[test]
+    fn legacy_key_id_debug_hides_encrypted_payloads() {
+        let encrypted = LegacyTariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: LegacySerializedKeyString::from("managed.comms.0"),
+        };
+        assert_eq!(format!("{encrypted:?}"), "encrypted.[72 bytes].managed.comms.0");
+        let derived = LegacyTariKeyId::Derived {
+            key: LegacySerializedKeyString::from(encrypted.to_string()),
+        };
+        assert_eq!(format!("{derived:?}"), "derived.encrypted.[72 bytes].managed.comms.0");
+        assert_eq!(
+            format!("{:?}", LegacySerializedKeyString::from(encrypted.to_string())),
+            "encrypted.[72 bytes].managed.comms.0"
+        );
+        assert!(!format!("{:?}", vec![encrypted, derived]).contains(&"ab".repeat(72)));
+    }
 }
