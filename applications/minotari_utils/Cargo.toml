@@ -16,7 +16,7 @@ path = "src/main.rs"
 tari_core = { workspace = true }
 
 lmdb-zero = "0.4.4"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled", "fallible_uint"] }
 
 clap = { version = "4.0", features = ["derive", "env"] }
 serde = { workspace = true, features = ["derive"] }
