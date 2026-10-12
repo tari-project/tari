@@ -324,10 +324,20 @@ impl FromStr for TariKeyId {
 /// a commitment mask key, and the legacy conversion adds `derived.derived.*`.
 pub const MAX_KEY_ID_NESTING: usize = 16;
 
-/// Checks that `id` is a valid key id string, including every nested key id and the nesting depth
-/// ([`MAX_KEY_ID_NESTING`]). `TariKeyId::from_str` and the serde and borsh decoders all apply it. A nested key id is
-/// always the tail of the string, so this walks it in a loop rather than recursing.
+/// The longest key id string, in bytes. The key manager parses the nested key id again at every level it resolves,
+/// so this and [`MAX_KEY_ID_NESTING`] together bound the work one key id can cause. Real key ids are a few hundred
+/// bytes at most: the longest is a Diffie-Hellman key (a 64 character public key) over an `Encrypted` key (a 72 byte,
+/// 144 character ciphertext), wrapped in `derived.` once or twice.
+pub const MAX_KEY_ID_LENGTH: usize = 1024;
+
+/// Checks that `id` is a valid key id string, including every nested key id, the nesting depth
+/// ([`MAX_KEY_ID_NESTING`]) and the length ([`MAX_KEY_ID_LENGTH`]). `TariKeyId::from_str` and the serde and borsh
+/// decoders all apply it. A nested key id is always the tail of the string, so this walks it in a loop rather than
+/// recursing.
 fn check_key_string(id: &str) -> Result<(), String> {
+    if id.len() > MAX_KEY_ID_LENGTH {
+        return Err(format!("Key id is longer than {MAX_KEY_ID_LENGTH} bytes"));
+    }
     let mut rest = id;
     let mut nesting = 0usize;
     loop {
@@ -1071,5 +1081,38 @@ mod tests {
         assert!(TariKeyId::from_str(&derived(MAX_KEY_ID_NESTING + 1)).is_err());
         // A very long chain is rejected quickly, without recursing
         assert!(TariKeyId::from_str(&derived(200_000)).is_err());
+    }
+
+    /// A key id longer than `MAX_KEY_ID_LENGTH` is refused by `FromStr` and every decoder, before it is walked.
+    #[test]
+    fn key_id_length_is_capped() {
+        // `encrypted.` + 2 hex characters per byte + `.spend_key`
+        let encrypted = |bytes: usize| TariKeyId::Encrypted {
+            encrypted: vec![0xab; bytes],
+            key: "spend_key".into(),
+        };
+        let at_cap = encrypted(502);
+        assert_eq!(at_cap.to_string().len(), MAX_KEY_ID_LENGTH);
+        assert_eq!(TariKeyId::from_str(&at_cap.to_string()).unwrap(), at_cap);
+        let json = serde_json::to_string(&at_cap).unwrap();
+        assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), at_cap);
+        assert_eq!(
+            TariKeyId::try_from_slice(&borsh::to_vec(&at_cap).unwrap()).unwrap(),
+            at_cap
+        );
+
+        let over_cap = encrypted(503);
+        assert!(over_cap.to_string().len() > MAX_KEY_ID_LENGTH);
+        assert_eq!(
+            TariKeyId::from_str(&over_cap.to_string()).unwrap_err(),
+            format!("Key id is longer than {MAX_KEY_ID_LENGTH} bytes")
+        );
+        assert_all_decoders_reject(&over_cap);
+
+        // The cap is checked before anything else, so a long string of garbage gets the same answer
+        assert_eq!(
+            TariKeyId::from_str(&"x".repeat(100_000)).unwrap_err(),
+            format!("Key id is longer than {MAX_KEY_ID_LENGTH} bytes")
+        );
     }
 }

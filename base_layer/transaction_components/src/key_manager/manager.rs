@@ -94,7 +94,7 @@ use crate::{
         TxoStage,
         error::KeyManagerError,
         interface::TransactionKeyManagerInterface,
-        key_id::{TariKeyAndId, TariKeyId},
+        key_id::{SerializedKeyString, TariKeyAndId, TariKeyId},
         wallet_types::WalletType,
     },
     transaction_components::{
@@ -202,6 +202,15 @@ pub fn truncated_key_id(key_id: &TariKeyId) -> String {
     }
     let head: String = full.chars().take(MAX_ECHOED_KEY_ID_CHARS).collect();
     format!("{head}…({total} chars)")
+}
+
+/// Parses the key id that `outer` wraps.
+///
+/// A wrapping key id holds the key id it wraps as a string, so a resolver parses it again at every level it walks.
+/// That is bounded rather than avoided: `MAX_KEY_ID_NESTING` caps the levels and `MAX_KEY_ID_LENGTH` the string each
+/// level re-checks, so one key id costs at most a few kilobytes of parsing however it was built.
+fn parse_inner_key_id(inner: &SerializedKeyString, outer: &TariKeyId) -> Result<TariKeyId, KeyManagerError> {
+    TariKeyId::from_str(inner.as_str()).map_err(|_| KeyManagerError::InvalidKeyId(outer.to_string()))
 }
 
 /// Whether a nested key id string names the view key.
@@ -372,8 +381,7 @@ impl KeyManager {
                     index: *index,
                 },
                 TariKeyId::Derived { key: key_str } => {
-                    let key = TariKeyId::from_str(key_str.to_string().as_str())
-                        .map_err(|_| KeyManagerError::InvalidKeyId(script_key_id.to_string()))?;
+                    let key = parse_inner_key_id(key_str, script_key_id)?;
                     ScriptSignatureKey::Derived {
                         branch_key: self.get_private_key(&key)?,
                     }
@@ -476,8 +484,7 @@ impl KeyManager {
                         script_key_indexes.push((*branch, *index));
                     },
                     TariKeyId::Derived { key } => {
-                        let key_id = TariKeyId::from_str(key.to_string().as_str())
-                            .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                        let key_id = parse_inner_key_id(key, script_key_id)?;
                         // Note: If the derived key is a TariKeyId::Managed, but not allowed in
                         //       'self.get_private_key(...)' this will error.
                         let k = self.get_private_key(&key_id)?;
@@ -878,8 +885,7 @@ impl TransactionKeyManagerInterface for KeyManager {
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
         match key_id {
             TariKeyId::Derived { key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(key, key_id)?;
                 let public_alpha = self.get_spend_key().pub_key;
                 let branch_key = self.get_private_key(&key)?;
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
@@ -910,8 +916,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
 
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)?;
@@ -921,16 +926,14 @@ impl TransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
 
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
                 Ok(CompressedPublicKey::from_secret_key(&encryption_private_key))
             },
             TariKeyId::Encrypted { encrypted, key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(key, key_id)?;
                 let private_key = self.decrypt_encrypted_key(encrypted, key)?;
                 Ok(CompressedPublicKey::from_secret_key(&private_key))
             },
@@ -1916,8 +1919,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
             TariKeyId::SpendKey => self.get_private_spend_key(),
             TariKeyId::ViewKey => Ok(self.get_private_view_key()),
             TariKeyId::Derived { key } => {
-                let inner_key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                let inner_key = parse_inner_key_id(key, key_id)?;
                 let commitment_mask = self.get_private_key(&inner_key)?;
                 let spend_key = self.get_private_spend_key()?;
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
@@ -1955,8 +1957,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(private_key.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)?;
                 Ok(commitment_mask_private_key)
@@ -1965,15 +1966,13 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(private_key.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let commitment_mask_private_key = public_key_to_output_encryption_key(&shared_secret)?;
                 Ok(commitment_mask_private_key)
             },
             TariKeyId::Encrypted { encrypted, key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                let key = parse_inner_key_id(key, key_id)?;
                 let private_key = self.decrypt_encrypted_key(encrypted, key)?;
                 Ok(private_key)
             },
