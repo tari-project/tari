@@ -223,55 +223,34 @@ impl TariKeyId {
     }
 }
 
-/// [`TariKeyId::redacted`] for a key id string, which need not be valid: every `encrypted.<hex>` payload is replaced
-/// by its length in bytes (half its hex length). The rest of the string is kept as is.
+/// [`TariKeyId::redacted`] for a key id string, which need not be valid. It looks at each dot separated segment on
+/// its own, so a malformed string is redacted as thoroughly as a valid one:
+/// - the segment after any `encrypted` segment is replaced by its length in bytes (half its hex length), whatever it
+///   holds;
+/// - any other segment of 32 or more hex characters is replaced the same way, except a 64 character public key right
+///   after a `dh_commitment_mask` or `dh_encrypted_data` segment, which is public and is kept.
+///
+/// Every other segment is kept as is. A valid key id never has a long hex segment anywhere else, so for one this only
+/// ever replaces `Encrypted` ciphertexts.
 pub fn redact_key_id_string(id: &str) -> String {
     let mut redacted = String::with_capacity(id.len());
-    let mut rest = id;
-    loop {
-        let Some((branch, tail)) = rest.split_once('.') else {
-            redacted.push_str(rest);
-            return redacted;
-        };
-        match branch {
-            ENCRYPTED_BRANCH => {
-                let (payload, key) = match tail.split_once('.') {
-                    Some((payload, key)) => (payload, Some(key)),
-                    None => (tail, None),
-                };
-                redacted.push_str(&format!("{ENCRYPTED_BRANCH}.[{} bytes]", payload.len() / 2));
-                match key {
-                    Some(key) => {
-                        redacted.push('.');
-                        rest = key;
-                    },
-                    None => return redacted,
-                }
-            },
-            DERIVED_KEY_BRANCH => {
-                redacted.push_str(DERIVED_KEY_BRANCH);
-                redacted.push('.');
-                rest = tail;
-            },
-            DH_COMMITMENT_MASK_BRANCH | DH_ENCRYPTED_DATA_BRANCH => match tail.split_once('.') {
-                Some((public_key, private_key)) => {
-                    redacted.push_str(branch);
-                    redacted.push('.');
-                    redacted.push_str(public_key);
-                    redacted.push('.');
-                    rest = private_key;
-                },
-                None => {
-                    redacted.push_str(rest);
-                    return redacted;
-                },
-            },
-            _ => {
-                redacted.push_str(rest);
-                return redacted;
-            },
+    let mut previous = "";
+    for (i, segment) in id.split('.').enumerate() {
+        if i > 0 {
+            redacted.push('.');
         }
+        let is_hex = !segment.is_empty() && segment.chars().all(|c| c.is_ascii_hexdigit());
+        let after_dh_branch = previous == DH_COMMITMENT_MASK_BRANCH || previous == DH_ENCRYPTED_DATA_BRANCH;
+        if previous == ENCRYPTED_BRANCH || (is_hex && segment.len() >= 32 && !(after_dh_branch && segment.len() == 64))
+        {
+            redacted.push_str(&format!("[{} bytes]", segment.len() / 2));
+        } else {
+            redacted.push_str(segment);
+        }
+        // A replaced `encrypted` segment does not make the one after it a payload too
+        previous = if previous == ENCRYPTED_BRANCH { "" } else { segment };
     }
+    redacted
 }
 
 impl FromStr for TariKeyId {
@@ -1191,7 +1170,42 @@ mod tests {
             }
         }
 
-        // Malformed strings are redacted too, and not echoed past the payload
+        // Malformed strings are redacted too: an `encrypted` payload anywhere, and any long hex segment
+        let hex = "ab".repeat(72);
+        for malformed in [
+            format!("foo.encrypted.{hex}.x"),
+            format!("derived.foo.encrypted.{hex}.view_key"),
+            format!("dh_commitment_mask.encrypted.{hex}.view_key"),
+            format!("dh_commitment_mask.{hex}.view_key"),
+            hex.clone(),
+            format!("bogus.{hex}"),
+            format!("bogus.{hex}.zero"),
+            format!("ledger_key.{hex}"),
+            format!("derived.{hex}"),
+        ] {
+            let redacted = redact_key_id_string(&malformed);
+            assert!(!redacted.contains("abab"), "{malformed} -> {redacted}");
+            assert!(redacted.contains("[72 bytes]"), "{malformed} -> {redacted}");
+        }
+        assert_eq!(
+            redact_key_id_string(&format!("foo.encrypted.{hex}.x")),
+            "foo.encrypted.[72 bytes].x"
+        );
+        assert_eq!(
+            redact_key_id_string(&format!("bogus.{hex}.zero")),
+            "bogus.[72 bytes].zero"
+        );
+        // The payload is replaced even when it is not hex
+        assert_eq!(
+            redact_key_id_string("encrypted.not-hex.zero"),
+            "encrypted.[3 bytes].zero"
+        );
+        // A public key in its slot is kept; short hex and ordinary words are not touched
+        assert_eq!(
+            redact_key_id_string(&format!("dh_encrypted_data.{PK}.view_key")),
+            format!("dh_encrypted_data.{PK}.view_key")
+        );
+        assert_eq!(redact_key_id_string("ledger_key.Random.42"), "ledger_key.Random.42");
         assert_eq!(redact_key_id_string("encrypted.abcd"), "encrypted.[2 bytes]");
         assert_eq!(
             redact_key_id_string("derived.encrypted.0011.x.y"),
