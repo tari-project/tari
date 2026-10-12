@@ -714,7 +714,8 @@ impl ConnectivityManagerActor {
         let mut connections = self
             .pool
             .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
-        // Strong handles pin a connection — skip them even when they appear idle.
+        // Strong handles pin a connection — skip them even when they appear idle. A pinned connection that is write
+        // stalled is still closed by its yamux worker once the stall reaches WRITE_STALL_TIMEOUT.
         connections.retain(|conn| !conn.is_strongly_held());
         connections.truncate(excess_connections);
         let mut nodes_to_remove = Vec::new();
@@ -725,10 +726,11 @@ impl ConnectivityManagerActor {
 
             debug!(
                 target: LOG_TARGET,
-                "({}) Disconnecting '{}' because connection was inactive ({} handles)",
+                "({}) Disconnecting '{}' because connection was inactive ({} handles, write stalled for {:.0?})",
                 task_id,
                 conn.peer_node_id().short_str(),
-                conn.handle_count()
+                conn.handle_count(),
+                conn.write_stalled_for().unwrap_or_default()
             );
             match disconnect_with_timeout(
                 conn,

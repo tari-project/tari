@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::IntCounter;
+use tari_metrics::{Histogram, HistogramOpts, IntCounter, IntGauge};
 
 pub static TOTAL_BYTES_READ: Lazy<IntCounter> = Lazy::new(|| {
     tari_metrics::register_int_counter("comms::substream::total_bytes_read", "The total inbound bytes").unwrap()
@@ -38,3 +38,57 @@ pub static INBOUND_SUBSTREAMS_DROPPED: Lazy<IntCounter> = Lazy::new(|| {
     )
     .unwrap()
 });
+
+pub static QUEUED_INBOUND_SUBSTREAMS: Lazy<IntGauge> = Lazy::new(|| {
+    tari_metrics::register_int_gauge(
+        "comms::substream::queued_inbound",
+        "The number of inbound substreams waiting to be accepted, across all connections",
+    )
+    .unwrap()
+});
+
+/// The number of connections whose socket has not accepted a write for at least `WRITE_STALL_REPORT_AFTER`
+pub fn write_stalled_connections() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "comms::multiplexing::write_stalled_connections",
+            "The number of connections whose socket has not accepted a write for at least 30 seconds",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
+
+/// The duration, in seconds, of write stalls that lasted at least `WRITE_STALL_REPORT_AFTER`
+pub fn write_stall_duration() -> Histogram {
+    static METER: Lazy<Histogram> = Lazy::new(|| {
+        let opts = HistogramOpts::new(
+            "comms::multiplexing::write_stall_duration",
+            "The duration in seconds of write stalls that lasted at least 30 seconds",
+        )
+        .buckets(vec![30.0, 45.0, 60.0, 90.0, 120.0, 180.0]);
+        let histogram = Histogram::with_opts(opts).unwrap();
+        tari_metrics::register(histogram.clone()).unwrap();
+        histogram
+    });
+
+    METER.clone()
+}
+
+/// The number of inbound substreams reset per connection because too many were waiting to be accepted, observed when
+/// the connection closes
+pub fn inbound_dropped_per_connection() -> Histogram {
+    static METER: Lazy<Histogram> = Lazy::new(|| {
+        let opts = HistogramOpts::new(
+            "comms::multiplexing::inbound_dropped_per_connection",
+            "The number of inbound substreams reset per connection because too many were waiting to be accepted",
+        )
+        .buckets(vec![0.0, 1.0, 10.0, 100.0, 1000.0, 10000.0]);
+        let histogram = Histogram::with_opts(opts).unwrap();
+        tari_metrics::register(histogram.clone()).unwrap();
+        histogram
+    });
+
+    METER.clone()
+}

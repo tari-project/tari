@@ -187,6 +187,11 @@ impl<TSocket> NoiseSocket<TSocket> {
         self.state.get_remote_static()
     }
 
+    /// Returns the underlying transport socket
+    pub fn get_ref(&self) -> &TSocket {
+        &self.socket
+    }
+
     /// Get the remote static key as a CommsPublicKey
     pub fn get_remote_public_key(&self) -> Option<CommsPublicKey> {
         self.get_remote_static()

@@ -20,7 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryInto, time::Instant};
+use std::{
+    cmp,
+    collections::HashMap,
+    convert::TryInto,
+    time::{Duration, Instant},
+};
 
 use futures::StreamExt;
 use log::*;
@@ -42,11 +47,18 @@ use crate::{
 };
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 const NUM_FETCH_PEERS: u32 = 100;
+/// The time to wait before syncing again from a peer whose sync failed, unless `on_connect_resync_ttl` is shorter. A
+/// peer that keeps reconnecting is not retried on every connection, and a transient failure is still retried.
+const FAILED_SYNC_BACKOFF: Duration = Duration::from_secs(5 * 60);
+
+/// The longest a peer is left unsynced after a sync. A larger `on_connect_resync_ttl` is treated as this, so that a
+/// huge TTL means "not for a week" rather than overflowing, and every entry expires, which keeps `prev_synced` bounded.
+const MAX_RESYNC_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
 #[derive(Debug)]
 pub(super) struct OnConnect {
     context: NetworkDiscoveryContext,
-    /// Peers synced from, and when. A peer is synced from again once `on_connect_resync_ttl` has passed.
+    /// Peers synced from, or whose sync failed, and the time from which they may be synced from again
     pub(super) prev_synced: HashMap<NodeId, Instant>,
 }
 
@@ -58,20 +70,34 @@ impl OnConnect {
         }
     }
 
-    /// Returns true if peers were synced from `node_id` within the last `on_connect_resync_ttl`.
+    /// Returns true if peers were synced from `node_id` within the last `on_connect_resync_ttl`, or a sync from it
+    /// failed within the last `FAILED_SYNC_BACKOFF`.
     pub(super) fn is_recently_synced(&self, node_id: &NodeId, now: Instant) -> bool {
-        let ttl = self.config().network_discovery.on_connect_resync_ttl;
         self.prev_synced
             .get(node_id)
-            .is_some_and(|synced_at| now.saturating_duration_since(*synced_at) < ttl)
+            .is_some_and(|resync_from| now < *resync_from)
     }
 
-    /// Records a sync from `node_id`, forgetting entries that have expired so the map stays bounded.
+    /// Records a sync from `node_id`, which is not synced from again for `on_connect_resync_ttl`.
     pub(super) fn mark_synced(&mut self, node_id: NodeId, now: Instant) {
         let ttl = self.config().network_discovery.on_connect_resync_ttl;
+        self.mark_until(node_id, now, ttl);
+    }
+
+    /// Records a failed sync from `node_id`, which is not synced from again for `FAILED_SYNC_BACKOFF`, or
+    /// `on_connect_resync_ttl` if that is shorter.
+    pub(super) fn mark_sync_failed(&mut self, node_id: NodeId, now: Instant) {
+        let ttl = self.config().network_discovery.on_connect_resync_ttl;
+        self.mark_until(node_id, now, cmp::min(FAILED_SYNC_BACKOFF, ttl));
+    }
+
+    /// Records that `node_id` is not synced from for `duration`, forgetting entries that have expired so the map stays
+    /// bounded.
+    fn mark_until(&mut self, node_id: NodeId, now: Instant, duration: Duration) {
+        self.prev_synced.retain(|_, resync_from| now < *resync_from);
+        let duration = duration.min(MAX_RESYNC_TTL);
         self.prev_synced
-            .retain(|_, synced_at| now.saturating_duration_since(*synced_at) < ttl);
-        self.prev_synced.insert(node_id, now);
+            .insert(node_id, now.checked_add(duration).unwrap_or(now));
     }
 
     pub async fn next_event(&mut self) -> StateEvent {
@@ -110,9 +136,10 @@ impl OnConnect {
 
     /// Syncs peers from a newly connected peer. Returns an event if the state machine must stop.
     ///
-    /// The peer is marked as synced before the sync, so that it is not synced from twice at once, and unmarked if the
-    /// sync fails, so that a transient failure does not block a retry for `on_connect_resync_ttl`. A peer that sent
-    /// invalid peer data is banned and stays marked.
+    /// The peer is marked as synced before the sync, so that it is not synced from twice at once. If the sync fails it
+    /// is marked for `FAILED_SYNC_BACKOFF` instead, so that a transient failure does not block a retry for
+    /// `on_connect_resync_ttl`, while a peer that keeps reconnecting is not synced from on every connection. A peer
+    /// that sent invalid peer data is banned and stays marked.
     pub(super) async fn sync_from(&mut self, conn: PeerConnection) -> Option<StateEvent> {
         self.mark_synced(conn.peer_node_id().clone(), Instant::now());
 
@@ -142,7 +169,7 @@ impl OnConnect {
                     conn.peer_node_id(),
                     err
                 );
-                self.prev_synced.remove(conn.peer_node_id());
+                self.mark_sync_failed(conn.peer_node_id().clone(), Instant::now());
             },
         }
         None

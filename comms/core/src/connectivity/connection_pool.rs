@@ -167,10 +167,26 @@ impl ConnectionPool {
             .unwrap_or(ConnectionStatus::NotConnected)
     }
 
+    /// Returns the connections, inbound and outbound, that may be reaped: connections older than `min_age` that look
+    /// idle, and write-stalled connections whatever their age and use. A stalled connection's substream and handle
+    /// counts say nothing about whether it is useful, and the data yamux holds for it is not freed until it closes.
+    /// Write-stalled connections come first.
     pub fn get_inactive_outbound_connections_mut(&mut self, min_age: Duration) -> Vec<&mut PeerConnection> {
-        self.filter_connections_mut(|conn| {
-            conn.age() > min_age && conn.handle_count() <= 1 && conn.substream_count() < 3
-        })
+        // The stall state changes while this runs, so it is read once per connection
+        let mut stalled = Vec::new();
+        let mut idle = Vec::new();
+        for conn in self.connections.values_mut().filter_map(|c| c.connection_mut()) {
+            let is_idle = conn.age() > min_age && conn.handle_count() <= 1 && conn.substream_count() < 3;
+            if conn.is_write_stalled() {
+                stalled.push(conn);
+            } else if is_idle {
+                idle.push(conn);
+            } else {
+                // Busy and not stalled: not reapable
+            }
+        }
+        stalled.extend(idle);
+        stalled
     }
 
     pub(in crate::connectivity) fn filter_drain<P>(&mut self, mut predicate: P) -> Vec<PeerConnectionState>
@@ -189,15 +205,6 @@ impl ConnectionPool {
             .values()
             .filter(|c| (predicate)(c))
             .filter_map(|c| c.connection())
-            .collect()
-    }
-
-    fn filter_connections_mut<P>(&mut self, mut predicate: P) -> Vec<&mut PeerConnection>
-    where P: FnMut(&PeerConnection) -> bool {
-        self.connections
-            .values_mut()
-            .filter_map(|c| c.connection_mut())
-            .filter(|c| (predicate)(c))
             .collect()
     }
 
@@ -272,5 +279,71 @@ impl ConnectionPool {
     pub(in crate::connectivity) fn count_filtered<P>(&self, mut predicate: P) -> usize
     where P: FnMut(&PeerConnectionState) -> bool {
         self.connections.values().filter(|c| (predicate)(c)).count()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{
+        peer_manager::NodeId,
+        test_utils::{mocks::create_dummy_peer_connection, node_id},
+    };
+
+    #[test]
+    fn a_write_stalled_connection_is_reapable_even_if_it_looks_busy() {
+        let mut pool = ConnectionPool::new();
+        let (busy, _busy_requests) = create_dummy_peer_connection(node_id::random());
+        let (stalled, _stalled_requests) = create_dummy_peer_connection(node_id::random());
+        // Both are young and have extra handles, so neither looks idle
+        let _busy_handle = busy.clone();
+        let _stalled_handle = stalled.clone();
+        let stalled_node_id = stalled.peer_node_id().clone();
+        pool.insert_connection(busy);
+        pool.insert_connection(stalled.clone());
+
+        let min_age = Duration::from_secs(60 * 60);
+        assert!(pool.get_inactive_outbound_connections_mut(min_age).is_empty());
+
+        // A short wait is normal backpressure
+        stalled
+            .write_stall()
+            .set_stalled_since(tokio::time::Instant::now() - Duration::from_secs(1));
+        assert!(pool.get_inactive_outbound_connections_mut(min_age).is_empty());
+
+        stalled
+            .write_stall()
+            .set_stalled_since(tokio::time::Instant::now() - Duration::from_secs(31));
+        let reapable = pool
+            .get_inactive_outbound_connections_mut(min_age)
+            .into_iter()
+            .map(|conn| conn.peer_node_id().clone())
+            .collect::<Vec<NodeId>>();
+        assert_eq!(reapable, vec![stalled_node_id]);
+    }
+
+    #[test]
+    fn write_stalled_connections_are_reaped_first() {
+        let mut pool = ConnectionPool::new();
+        let mut stalled_node_ids = Vec::new();
+        let mut handles = Vec::new();
+        for i in 0..6 {
+            let (conn, requests) = create_dummy_peer_connection(node_id::random());
+            if i % 2 == 1 {
+                conn.write_stall()
+                    .set_stalled_since(tokio::time::Instant::now() - Duration::from_secs(60));
+                stalled_node_ids.push(conn.peer_node_id().clone());
+            }
+            handles.push(requests);
+            pool.insert_connection(conn);
+        }
+
+        // Every connection is older than zero and idle, so all are reapable, stalled ones first
+        std::thread::sleep(Duration::from_millis(1));
+        let reapable = pool.get_inactive_outbound_connections_mut(Duration::ZERO);
+        assert_eq!(reapable.len(), 6);
+        for conn in reapable.iter().take(stalled_node_ids.len()) {
+            assert!(stalled_node_ids.contains(conn.peer_node_id()));
+        }
     }
 }
