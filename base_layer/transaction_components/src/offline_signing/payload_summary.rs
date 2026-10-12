@@ -439,7 +439,7 @@ mod test {
         let output = WalletOutput::new(
             Default::default(),
             amount,
-            TariKeyId::Zero,
+            key_manager.get_random_key(None, None).unwrap().key_id,
             OutputFeatures::default(),
             push_pubkey_script(&destination),
             ExecutionStack::default(),
@@ -484,7 +484,7 @@ mod test {
             WalletOutput::new(
                 Default::default(),
                 MicroMinotari::from(value),
-                TariKeyId::Zero,
+                key_manager.get_random_key(None, None).unwrap().key_id,
                 OutputFeatures::default(),
                 push_pubkey_script(&key_manager.get_spend_key().pub_key),
                 ExecutionStack::default(),
@@ -527,7 +527,7 @@ mod test {
             WalletOutput::new(
                 Default::default(),
                 MicroMinotari::from(value),
-                TariKeyId::Zero,
+                key_manager.get_random_key(None, None).unwrap().key_id,
                 OutputFeatures::default(),
                 push_pubkey_script(&key_manager.get_spend_key().pub_key),
                 ExecutionStack::default(),

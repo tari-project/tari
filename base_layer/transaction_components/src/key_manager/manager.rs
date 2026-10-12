@@ -146,6 +146,69 @@ struct SoftwareEphemeralNonceStore {
     last_handle: u64,
 }
 
+/// Refuses a key id that cannot act as a commitment mask or recovery secret.
+///
+/// A commitment mask ends up in places that publish it to the holder of the view key: it is encrypted into an
+/// output's `encrypted_data`, and a kernel or metadata signature over a mask with a known public key gives the mask
+/// away. `SpendKey`, `ViewKey` and `CodeTemplateAuthor` are wallet root keys, and `Derived { .. }` is the spend key
+/// plus a tweak the view key holder can compute, so any of them as a mask would hand the spend key to whoever
+/// supplied the key id (for example an online host forging an offline signing payload). `Zero` is no mask at all.
+///
+/// Only the key ids a mask is actually made from are accepted, and only over the keys the wallet makes them from:
+/// - `Encrypted` under the view key (every key `create_encrypted_key(_, None)` makes). An `Encrypted` under any other
+///   key is refused: an imported output's script key is `Encrypted` under the spend key, and accepting that id as a
+///   mask would publish the imported output's script private key.
+/// - `DHCommitmentMask` / `DHEncryptedData` whose private key is the view key, a ledger key, or an `Encrypted` under
+///   the view key (a sender offset key).
+/// - `LedgerKey`.
+pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
+    let allowed = match key_id {
+        TariKeyId::Encrypted { key, .. } => is_view_key(key.as_str()),
+        TariKeyId::DHCommitmentMask { private_key, .. } | TariKeyId::DHEncryptedData { private_key, .. } => {
+            match TariKeyId::from_str(private_key.as_str()) {
+                Ok(TariKeyId::ViewKey) | Ok(TariKeyId::LedgerKey { .. }) => true,
+                Ok(TariKeyId::Encrypted { key, .. }) => is_view_key(key.as_str()),
+                _ => false,
+            }
+        },
+        TariKeyId::LedgerKey { .. } => true,
+        TariKeyId::SpendKey |
+        TariKeyId::ViewKey |
+        TariKeyId::Derived { .. } |
+        TariKeyId::CodeTemplateAuthor |
+        TariKeyId::Zero |
+        TariKeyId::LedgerEphemeralNonce { .. } => false,
+    };
+    if allowed {
+        Ok(())
+    } else {
+        Err(KeyManagerError::KeyIdNotAMask {
+            key_id: truncated_key_id(key_id),
+        })
+    }
+}
+
+/// The longest key id string an error message echoes in full.
+const MAX_ECHOED_KEY_ID_CHARS: usize = 128;
+
+/// A key id's string form for an error message, cut to its first 128 characters (followed by `…(<total> chars)`)
+/// when longer. Key ids in refusals can come from an untrusted payload of up to megabytes, which must not be echoed
+/// whole into a terminal or log.
+pub fn truncated_key_id(key_id: &TariKeyId) -> String {
+    let full = key_id.to_string();
+    let total = full.chars().count();
+    if total <= MAX_ECHOED_KEY_ID_CHARS {
+        return full;
+    }
+    let head: String = full.chars().take(MAX_ECHOED_KEY_ID_CHARS).collect();
+    format!("{head}…({total} chars)")
+}
+
+/// Whether a nested key id string names the view key.
+fn is_view_key(key_id: &str) -> bool {
+    matches!(TariKeyId::from_str(key_id), Ok(TariKeyId::ViewKey))
+}
+
 #[derive(Clone)]
 pub struct KeyManager {
     crypto_factories: CryptoFactories,
@@ -153,6 +216,51 @@ pub struct KeyManager {
     /// Shared across clones on purpose: a nonce reserved through one handle to the key manager has to be signable
     /// through another, because the wrappers hand out clones freely.
     software_ephemeral_nonces: Arc<Mutex<SoftwareEphemeralNonceStore>>,
+}
+
+/// Refuses a nonce key id that would give up the private key it signs with, and the zero signing key.
+///
+/// A `Zero` signing key makes the signature `s = r`, which hands back the private value behind the nonce id - any
+/// `Encrypted` id the caller names. Refusing it only removes the trivial case: a caller that mints a known signing
+/// key `x` with `create_encrypted_key` still gets `r = s - e·x`. The follow-up that moves software signatures onto
+/// reserved handles and deletes the catch-all arm closes both that and the `Encrypted` nonce case below.
+///
+/// A Schnorr signature is `s = r + e·k`, so anyone who knows `r` - or who holds two signatures under one `r` - can
+/// solve for `k`. The ids refused here are the ones whose private value is fixed (`Zero`, `SpendKey`, `ViewKey`,
+/// `CodeTemplateAuthor`), derived from another key that may be signed with again (`Derived`), a shared secret with
+/// whoever chose the public key (`DHCommitmentMask`, `DHEncryptedData` - the caller picks that public key, so it can
+/// always compute the nonce, whatever the inner key is), or the signing key itself. What is left is a reserved
+/// ephemeral nonce, a ledger index nonce (only the deprecated pre-mine arm accepts one) and an `Encrypted` key.
+///
+/// An `Encrypted` nonce is still caller controllable - `create_encrypted_key` wraps any scalar - so it must be fresh
+/// and used once. The sender offset ids `get_script_offset` returns are `Encrypted` too, and the caller also gets the
+/// script offset `o = Σscript - r`, so signing a script key under one of them gives up that key. Closing these means
+/// moving software signatures onto reserved handles and deleting the catch-all arm.
+fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
+    if *private_key_id == TariKeyId::Zero {
+        return Err(KeyManagerError::InvalidSigningKeyId {
+            key: private_key_id.to_string(),
+            reason: "the zero key cannot sign".to_string(),
+        });
+    }
+    let reason = match nonce {
+        TariKeyId::Zero => "the zero key is not secret",
+        TariKeyId::SpendKey | TariKeyId::ViewKey | TariKeyId::CodeTemplateAuthor => {
+            "a wallet master key is a long lived signing key, not a nonce"
+        },
+        TariKeyId::Derived { .. } => "a derived key is a deterministic signing key, not a nonce",
+        TariKeyId::DHCommitmentMask { .. } | TariKeyId::DHEncryptedData { .. } => {
+            "a Diffie-Hellman key is shared with the holder of its public key"
+        },
+        _ if nonce == private_key_id => "the nonce is the signing key",
+        TariKeyId::Encrypted { .. } | TariKeyId::LedgerKey { .. } | TariKeyId::LedgerEphemeralNonce { .. } => {
+            return Ok(());
+        },
+    };
+    Err(KeyManagerError::InvalidNonceKeyId {
+        nonce: nonce.to_string(),
+        reason: reason.to_string(),
+    })
 }
 
 impl KeyManager {
@@ -504,15 +612,8 @@ impl KeyManager {
                  where it would name a nonce an application from before the 64-bit index split derived"
             ))
         })?;
-        // A challenge that reduces to zero would make the signature the nonce scalar itself. The device refuses it
-        // before its review; this mirrors it.
-        if legacy_challenge_is_zero(challenge) {
-            return Err(KeyManagerError::LedgerError(
-                "GetRawSchnorrSignatureLegacyNonce: the challenge reduces to zero, so the signature would be the \
-                 nonce itself"
-                    .to_string(),
-            ));
-        }
+        // A challenge that reduces to zero is refused at the top of `sign_with_nonce_and_challenge`, before any arm,
+        // which mirrors the device's refusal before its review.
 
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
@@ -878,6 +979,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         private_key: &TariKeyId,
         value: &PrivateKey,
     ) -> Result<CompressedCommitment, KeyManagerError> {
+        require_mask_id(private_key)?;
         let key = self.get_private_key(private_key)?;
         Ok(CompressedCommitment::from_commitment(
             self.crypto_factories.commitment.commit(&key, value),
@@ -890,6 +992,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         value: u64,
     ) -> Result<(), KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let commitment_mask_key = self.get_private_key(commitment_mask_key_id)?;
         self.crypto_factories
             .range_proof
@@ -970,6 +1073,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         value: u64,
         min_value: u64,
     ) -> Result<RangeProof, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         if self.crypto_factories.range_proof.range() < 64 &&
             value >= 1u64.shl(&self.crypto_factories.range_proof.range())
         {
@@ -1109,6 +1213,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         kernel_features: &KernelFeatures,
         txo_type: TxoStage,
     ) -> Result<CompressedSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         // We cannot use an offset with a coinbase tx as this will not allow us to check the coinbase commitment and
         // because the offset function does not know if its a coinbase or not, we need to know if we need to bypass it
@@ -1146,6 +1251,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         nonce: &TariKeyId,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let offset = self.get_txo_private_kernel_offset(commitment_mask_key_id, nonce)?;
         let excess = private_key - &offset;
@@ -1157,6 +1263,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         nonce_id: &TariKeyId,
     ) -> Result<PrivateKey, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             "kernel_excess_offset",
         );
@@ -1180,6 +1287,10 @@ impl TransactionKeyManagerInterface for KeyManager {
         value: u64,
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
+        if let Some(key_id) = custom_recovery_key_id {
+            require_mask_id(key_id)?;
+        }
         let recovery_key = if let Some(key_id) = custom_recovery_key_id {
             self.get_private_key(key_id)?
         } else {
@@ -1349,6 +1460,8 @@ impl TransactionKeyManagerInterface for KeyManager {
             return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient);
         }
 
+        require_mask_id(commitment_mask_key_id)?;
+        // Fetched once and carried: the sender partial signature below needs the same key.
         let sender_offset = TariKeyAndId {
             pub_key: self.get_public_key_at_key_id(sender_offset_key_id)?,
             key_id: sender_offset_key_id.clone(),
@@ -1411,6 +1524,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         if self.wallet_type.is_ledger() {
             // Fail closed for a host held sender offset key. Signed in software it would put an output on chain that
             // the device never saw - an L2-bound burn's, say, to a claim key the host chose - while the device still
@@ -1539,6 +1653,10 @@ impl TransactionKeyManagerInterface for KeyManager {
         nonce: &TariKeyId,
         challenge: &[u8; 64],
     ) -> Result<CompressedSignature, KeyManagerError> {
+        refuse_degenerate_nonce(private_key_id, nonce)?;
+        if challenge_is_zero(challenge) {
+            return Err(KeyManagerError::ZeroChallenge);
+        }
         match (private_key_id, nonce) {
             // A `OneSidedSenderOffset` key signs a metadata signature only through the device's reviewed one sided
             // signature, never over a raw challenge. The device refuses it too; this says so legibly.
@@ -1596,6 +1714,13 @@ impl TransactionKeyManagerInterface for KeyManager {
                     ));
                 }
                 let private_key = self.get_private_key(private_key_id)?;
+                // Checked before the nonce is taken, so that a refused call does not burn the handle.
+                if private_key == PrivateKey::default() {
+                    return Err(KeyManagerError::InvalidSigningKeyId {
+                        key: private_key_id.to_string(),
+                        reason: "the signing key resolves to zero".to_string(),
+                    });
+                }
                 // Consume before signing, so that no path out of here - including one a later change adds - can
                 // leave the nonce available for a second challenge.
                 let private_nonce = self.take_software_ephemeral_nonce(*handle)?;
@@ -1606,6 +1731,21 @@ impl TransactionKeyManagerInterface for KeyManager {
             _ => {
                 let private_key = self.get_private_key(private_key_id)?;
                 let private_nonce = self.get_private_key(nonce)?;
+                // A key id other than `Zero` can still resolve to zero, e.g. an `Encrypted` id wrapping it.
+                if private_key == PrivateKey::default() {
+                    return Err(KeyManagerError::InvalidSigningKeyId {
+                        key: private_key_id.to_string(),
+                        reason: "the signing key resolves to zero".to_string(),
+                    });
+                }
+                // Two distinct ids can still resolve to a degenerate value, e.g. an `Encrypted` id wrapping zero or
+                // wrapping the signing key under a different encryption key.
+                if private_nonce == PrivateKey::default() || private_nonce == private_key {
+                    return Err(KeyManagerError::InvalidNonceKeyId {
+                        nonce: nonce.to_string(),
+                        reason: "the nonce resolves to zero or to the signing key".to_string(),
+                    });
+                }
                 let signature = UncompressedSignature::sign_raw_uniform(&private_key, private_nonce, challenge)?;
 
                 Ok(CompressedSignature::new_from_schnorr(signature))
@@ -1623,6 +1763,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let ephemeral_commitment_nonce = self.get_random_key(None, None)?;
         let (nonce_a, nonce_b) = self
             .get_metadata_signature_ephemeral_private_key_pair(&ephemeral_commitment_nonce.key_id, range_proof_type)?;
@@ -1695,6 +1836,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         claim_public_key: &CompressedPublicKey,
         sidechain_id: Option<&CompressedPublicKey>,
     ) -> Result<CompressedSignature, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let mask = self.get_private_key(commitment_mask_key_id)?;
         let commitment =
             CompressedCommitment::from_commitment(self.crypto_factories.commitment.commit(&mask, &amount.into()));
@@ -1718,6 +1860,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         &self,
         commitment_mask_key_id: &TariKeyId,
     ) -> Result<TariKeyAndId, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let mask = self.get_private_key(commitment_mask_key_id)?;
         let hash = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
             HASHER_LABEL_BURN_SENDER_OFFSET,
@@ -1752,6 +1895,7 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment_mask_key_id: &TariKeyId,
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        require_mask_id(commitment_mask_key_id)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let hasher =
             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
@@ -1876,9 +2020,9 @@ fn ledger_sender_offset_key(sender_offset_key_id: &TariKeyId) -> Result<(u64, Le
     }
 }
 
-/// Whether a legacy nonce challenge reduces to the zero scalar, which the device refuses: `s = r + e·k` would then be
-/// the nonce `r` itself.
-fn legacy_challenge_is_zero(challenge: &[u8; 64]) -> bool {
+/// Whether a challenge reduces to the zero scalar: `s = r + e·k` would then be the nonce `r` itself. The device refuses
+/// it on the legacy instruction, and `sign_with_nonce_and_challenge` refuses it on every arm.
+fn challenge_is_zero(challenge: &[u8; 64]) -> bool {
     <PrivateKey as tari_crypto::keys::SecretKey>::from_uniform_bytes(challenge)
         .map_or(true, |e| e == PrivateKey::default())
 }
@@ -1908,9 +2052,9 @@ mod tests {
     use super::{
         LEGACY_NONCE_INDEX_FLOOR,
         MAX_SOFTWARE_EPHEMERAL_NONCES,
+        challenge_is_zero,
         ledger_random_index,
         ledger_sender_offset_key,
-        legacy_challenge_is_zero,
     };
     use crate::{
         MicroMinotari,
@@ -2483,19 +2627,20 @@ mod tests {
         }
     }
 
-    /// A challenge that reduces to zero - the zero bytes, or the group order padded to 64 bytes - is refused by the
-    /// legacy arm before the transport is consulted; any other challenge reaches the device call.
+    /// A challenge that reduces to zero - the zero bytes, or the group order padded to 64 bytes - is refused before
+    /// any arm, so the legacy arm, the software catch-all and the reserved nonce arm all refuse it before signing or
+    /// consulting the transport.
     #[test]
-    fn the_legacy_arm_refuses_a_challenge_that_reduces_to_zero() {
+    fn a_challenge_that_reduces_to_zero_is_refused_on_every_arm() {
         // The Ristretto group order, little endian, padded to the 64 bytes `from_uniform_bytes` reduces.
         let mut order = [0u8; 64];
         order[..32].copy_from_slice(&[
             0xed, 0xd3, 0xf5, 0x5c, 0x1a, 0x63, 0x12, 0x58, 0xd6, 0x9c, 0xf7, 0xa2, 0xde, 0xf9, 0xde, 0x14, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x10,
         ]);
-        assert!(legacy_challenge_is_zero(&[0u8; 64]));
-        assert!(legacy_challenge_is_zero(&order));
-        assert!(!legacy_challenge_is_zero(&challenge(1)));
+        assert!(challenge_is_zero(&[0u8; 64]));
+        assert!(challenge_is_zero(&order));
+        assert!(!challenge_is_zero(&challenge(1)));
 
         let key_manager = KeyManager::new_random().unwrap();
         let private_key_id = TariKeyId::LedgerKey {
@@ -2506,17 +2651,28 @@ mod tests {
             branch: LedgerKeyBranch::Random,
             index: LEGACY_NONCE_INDEX_FLOOR | 9,
         };
+        let software_key = key_manager.get_random_key(None, None).unwrap();
+        let software_nonce = key_manager.get_random_key(None, None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
         for zero in [[0u8; 64], order] {
-            match key_manager
-                .sign_with_nonce_and_challenge(&private_key_id, &nonce, &zero)
-                .unwrap_err()
-            {
-                KeyManagerError::LedgerError(message) => {
-                    assert!(message.contains("reduces to zero"), "unexpected message: {message}")
-                },
-                other => panic!("a zero challenge was not refused: {other:?}"),
+            for (signing_key_id, nonce_id) in [
+                (&private_key_id, &nonce),
+                (&software_key.key_id, &software_nonce.key_id),
+                (&software_key.key_id, &reserved_nonce.key_id),
+            ] {
+                assert_eq!(
+                    key_manager.sign_with_nonce_and_challenge(signing_key_id, nonce_id, &zero),
+                    Err(KeyManagerError::ZeroChallenge),
+                    "a zero challenge was not refused for '{signing_key_id}' under '{nonce_id}'"
+                );
             }
         }
+        // The refusal did not consume the reserved nonce.
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&software_key.key_id, &reserved_nonce.key_id, &challenge(1))
+                .is_ok()
+        );
     }
 
     /// `get_random_key` draws ledger `Random` keys - legacy nonces - at or above `2^32`, and `PreMine` keys - script
@@ -2644,6 +2800,137 @@ mod tests {
             },
             (other, _) => panic!("expected UnknownEphemeralNonce, got {other:?}"),
         }
+    }
+
+    fn assert_nonce_refused(key_manager: &KeyManager, private_key_id: &TariKeyId, nonce: &TariKeyId) {
+        match key_manager.sign_with_nonce_and_challenge(private_key_id, nonce, &challenge(1)) {
+            Err(KeyManagerError::InvalidNonceKeyId { nonce: refused, .. }) => assert_eq!(refused, nonce.to_string()),
+            other => panic!("expected InvalidNonceKeyId for nonce '{nonce}', got {other:?}"),
+        }
+    }
+
+    /// `s = r + e·k`, so a nonce the caller knows - zero, a master key, a key derived from one, a Diffie-Hellman
+    /// secret it can compute from the public key it chose, or the signing key itself - turns one signature into the
+    /// signing key. Every such id is refused before anything is signed.
+    #[test]
+    fn a_degenerate_nonce_key_id_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let other_public_key = key_manager.get_random_key(None, None).unwrap().pub_key;
+
+        let mut degenerate = vec![
+            TariKeyId::Zero,
+            TariKeyId::SpendKey,
+            TariKeyId::ViewKey,
+            TariKeyId::CodeTemplateAuthor,
+        ];
+        for inner in [TariKeyId::SpendKey, TariKeyId::Zero, signing_key.key_id.clone()] {
+            degenerate.push(TariKeyId::Derived { key: (&inner).into() });
+            degenerate.push(TariKeyId::DHCommitmentMask {
+                public_key: other_public_key.clone(),
+                private_key: (&inner).into(),
+            });
+            degenerate.push(TariKeyId::DHEncryptedData {
+                public_key: other_public_key.clone(),
+                private_key: (&inner).into(),
+            });
+        }
+
+        for signing_key_id in [signing_key.key_id.clone(), TariKeyId::SpendKey, TariKeyId::ViewKey] {
+            for nonce in &degenerate {
+                assert_nonce_refused(&key_manager, &signing_key_id, nonce);
+            }
+            assert_nonce_refused(&key_manager, &signing_key_id, &signing_key_id);
+        }
+    }
+
+    /// The legacy pre-mine arm takes a ledger index nonce, but never the signing key's own index. #8098's branch
+    /// whitelist (`PreMine` key, `Random` nonce) would refuse this pair too, but later: the id check runs first.
+    #[test]
+    fn a_ledger_key_cannot_be_its_own_nonce() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let key = TariKeyId::LedgerKey {
+            branch: LedgerKeyBranch::PreMine,
+            index: 7,
+        };
+        assert_nonce_refused(&key_manager, &key, &key);
+    }
+
+    /// Two different `Encrypted` ids can wrap the same scalar, so the id check alone does not catch a nonce that is
+    /// zero or the signing key. The resolved values are checked too.
+    #[test]
+    fn an_encrypted_nonce_wrapping_zero_or_the_signing_key_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        let signing_private_key = key_manager.get_private_key(&signing_key.key_id).unwrap();
+
+        let wraps_zero = key_manager.create_encrypted_key(PrivateKey::default(), None).unwrap();
+        let wraps_signing_key = key_manager
+            .create_encrypted_key(signing_private_key, Some(TariKeyId::SpendKey))
+            .unwrap();
+        assert_ne!(wraps_signing_key, signing_key.key_id);
+
+        for nonce in [wraps_zero, wraps_signing_key] {
+            assert_nonce_refused(&key_manager, &signing_key.key_id, &nonce);
+        }
+    }
+
+    /// A zero signing key makes the signature the nonce itself, `s = r`, which reveals whatever secret the nonce id
+    /// names. Both the `Zero` id and an `Encrypted` id wrapping zero are refused.
+    #[test]
+    fn a_zero_signing_key_is_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let secret = key_manager.get_random_key(None, None).unwrap();
+        let wraps_zero = key_manager.create_encrypted_key(PrivateKey::default(), None).unwrap();
+
+        for signing_key_id in [TariKeyId::Zero, wraps_zero] {
+            match key_manager.sign_with_nonce_and_challenge(&signing_key_id, &secret.key_id, &challenge(1)) {
+                Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, signing_key_id.to_string()),
+                other => panic!("expected InvalidSigningKeyId for '{signing_key_id}', got {other:?}"),
+            }
+        }
+    }
+
+    /// The reserved nonce arm refuses a signing key that resolves to zero too, and does so before taking the nonce,
+    /// so the handle is still good for a real key afterwards.
+    #[test]
+    fn a_zero_signing_key_does_not_burn_a_reserved_nonce() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let wraps_zero = key_manager.create_encrypted_key(PrivateKey::default(), None).unwrap();
+        let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
+
+        match key_manager.sign_with_nonce_and_challenge(&wraps_zero, &reserved_nonce.key_id, &challenge(1)) {
+            Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, wraps_zero.to_string()),
+            other => panic!("expected InvalidSigningKeyId, got {other:?}"),
+        }
+
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+        assert!(
+            key_manager
+                .sign_with_nonce_and_challenge(&signing_key.key_id, &reserved_nonce.key_id, &challenge(1))
+                .is_ok()
+        );
+    }
+
+    /// A fresh `Encrypted` nonce - what the offline signer's payload signature uses - still signs and verifies.
+    #[test]
+    fn a_fresh_encrypted_nonce_signs_and_verifies() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let view_key = key_manager.get_view_key();
+        let nonce = key_manager.get_random_key(None, None).unwrap();
+
+        let challenge = challenge(1);
+        let signature = key_manager
+            .sign_with_nonce_and_challenge(&view_key.key_id, &nonce.key_id, &challenge)
+            .unwrap();
+
+        assert_eq!(signature.get_compressed_public_nonce(), &nonce.pub_key);
+        assert!(
+            signature
+                .to_schnorr_signature()
+                .unwrap()
+                .verify_raw_uniform(&view_key.pub_key.to_public_key().unwrap(), &challenge)
+        );
     }
 
     /// Handles are issued, never chosen, so a handle the key manager never handed out names nothing.
@@ -2836,5 +3123,243 @@ mod tests {
 
         assert!(key_manager.is_this_output_ours(&commitment, &matching, None).unwrap());
         assert!(!key_manager.is_this_output_ours(&commitment, &mismatched, None).unwrap());
+    }
+
+    /// Every key id that resolves to a wallet root key (or a public tweak of one), plus `Zero`.
+    fn root_bearing_key_ids(key_manager: &KeyManager) -> Vec<TariKeyId> {
+        let mask = key_manager.get_random_key(None, None).unwrap().key_id;
+        vec![
+            TariKeyId::SpendKey,
+            TariKeyId::ViewKey,
+            TariKeyId::Derived { key: (&mask).into() },
+            TariKeyId::CodeTemplateAuthor,
+            TariKeyId::Zero,
+            // An imported output's script key: a secret encrypted under the spend key
+            key_manager
+                .create_encrypted_key(PrivateKey::from(7u64), Some(TariKeyId::SpendKey))
+                .unwrap(),
+            TariKeyId::DHCommitmentMask {
+                public_key: key_manager.get_spend_key().pub_key,
+                private_key: (&TariKeyId::SpendKey).into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: key_manager.get_spend_key().pub_key,
+                private_key: (&key_manager
+                    .create_encrypted_key(PrivateKey::from(7u64), Some(TariKeyId::SpendKey))
+                    .unwrap())
+                    .into(),
+            },
+        ]
+    }
+
+    fn assert_not_a_mask<T: std::fmt::Debug>(result: Result<T, KeyManagerError>, key_id: &TariKeyId, method: &str) {
+        match result {
+            Err(KeyManagerError::KeyIdNotAMask { key_id: refused }) => {
+                assert_eq!(refused, super::truncated_key_id(key_id))
+            },
+            other => panic!("{method} accepted `{key_id}` as a mask: {other:?}"),
+        }
+    }
+
+    /// A key id naming a root key must never be used where a commitment mask or recovery secret is expected: the
+    /// mask is encrypted into the output's recovery data (readable with the view key) and signed over, so it would
+    /// hand the spend key to whoever chose the key id.
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn mask_taking_methods_refuse_root_bearing_key_ids() {
+        use tari_script::script;
+
+        use crate::{
+            key_manager::TxoStage,
+            transaction_components::{KernelFeatures, TransactionKernelVersion},
+        };
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let value = PrivateKey::from(100u64);
+        let good = key_manager.get_random_key(None, None).unwrap();
+        let commitment = key_manager.get_commitment(&good.key_id, &value).unwrap();
+        let message = [0u8; 32];
+        let txo_version = TransactionOutputVersion::get_current_version();
+        let script = script!(Nop).unwrap();
+        let address = tari_common_types::tari_address::TariAddress::default();
+
+        for bad in root_bearing_key_ids(&key_manager) {
+            assert_not_a_mask(key_manager.get_commitment(&bad, &value), &bad, "get_commitment");
+            assert_not_a_mask(key_manager.verify_mask(&commitment, &bad, 100), &bad, "verify_mask");
+            assert_not_a_mask(
+                key_manager.construct_range_proof(&bad, 100, 0),
+                &bad,
+                "construct_range_proof",
+            );
+            assert_not_a_mask(
+                key_manager.encrypt_data_for_recovery(&bad, None, 100, MemoField::new_empty()),
+                &bad,
+                "encrypt_data_for_recovery (mask)",
+            );
+            assert_not_a_mask(
+                key_manager.encrypt_data_for_recovery(&good.key_id, Some(&bad), 100, MemoField::new_empty()),
+                &bad,
+                "encrypt_data_for_recovery (recovery key)",
+            );
+            assert_not_a_mask(
+                key_manager.get_receiver_partial_metadata_signature(
+                    &bad,
+                    &value,
+                    &good.pub_key,
+                    &good.pub_key,
+                    txo_version,
+                    &message,
+                    RangeProofType::RevealedValue,
+                ),
+                &bad,
+                "get_receiver_partial_metadata_signature",
+            );
+            assert_not_a_mask(
+                key_manager.get_metadata_signature(
+                    &bad,
+                    &value,
+                    &good.key_id,
+                    txo_version,
+                    &message,
+                    RangeProofType::RevealedValue,
+                ),
+                &bad,
+                "get_metadata_signature",
+            );
+            assert_not_a_mask(
+                key_manager.get_metadata_signature_user_verified(
+                    &bad,
+                    MicroMinotari::from(100),
+                    &good.key_id,
+                    txo_version,
+                    &crate::transaction_components::OutputFeatures::default(),
+                    &crate::transaction_components::covenants::Covenant::default(),
+                    &EncryptedData::default(),
+                    MicroMinotari::zero(),
+                    &script,
+                    &address,
+                ),
+                &bad,
+                "get_metadata_signature_user_verified",
+            );
+            assert_not_a_mask(
+                key_manager.get_partial_txo_kernel_signature(
+                    &bad,
+                    &good.key_id,
+                    &good.pub_key,
+                    &good.pub_key,
+                    TransactionKernelVersion::get_current_version(),
+                    &message,
+                    &KernelFeatures::default(),
+                    TxoStage::Output,
+                ),
+                &bad,
+                "get_partial_txo_kernel_signature",
+            );
+            assert_not_a_mask(
+                key_manager.get_txo_kernel_signature_excess_with_offset(&bad, &good.key_id),
+                &bad,
+                "get_txo_kernel_signature_excess_with_offset",
+            );
+            assert_not_a_mask(
+                key_manager.get_txo_private_kernel_offset(&bad, &good.key_id),
+                &bad,
+                "get_txo_private_kernel_offset",
+            );
+            assert_not_a_mask(
+                key_manager.generate_burn_claim_signature(&bad, 100, &good.pub_key, None),
+                &bad,
+                "generate_burn_claim_signature",
+            );
+            assert_not_a_mask(
+                key_manager.derive_burn_sender_offset_key(&bad),
+                &bad,
+                "derive_burn_sender_offset_key",
+            );
+            assert_not_a_mask(
+                key_manager.stealth_address_script_spending_key(&bad, &good.pub_key),
+                &bad,
+                "stealth_address_script_spending_key",
+            );
+        }
+    }
+
+    /// The key ids a mask is actually made from still work as masks.
+    #[test]
+    fn mask_key_ids_are_still_accepted() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let encrypted = key_manager.get_random_key(None, None).unwrap();
+        let other = KeyManager::new_random().unwrap().get_view_key().pub_key;
+        let masks = [
+            encrypted.key_id.clone(),
+            TariKeyId::DHCommitmentMask {
+                public_key: other.clone(),
+                private_key: (&encrypted.key_id).into(),
+            },
+            TariKeyId::DHEncryptedData {
+                public_key: other,
+                private_key: (&encrypted.key_id).into(),
+            },
+            TariKeyId::LedgerKey {
+                branch: LedgerKeyBranch::Random,
+                index: 0,
+            },
+        ];
+        for mask in &masks {
+            super::require_mask_id(mask).unwrap();
+        }
+        // The software key manager can resolve all but the ledger key
+        for mask in masks.iter().take(3) {
+            key_manager
+                .encrypt_data_for_recovery(mask, None, 100, MemoField::new_empty())
+                .unwrap();
+        }
+    }
+
+    /// An imported output's script key id is `Encrypted` under the spend key. Replayed as a mask it would make the
+    /// key manager publish the imported output's script private key, so it is refused.
+    #[test]
+    fn a_secret_encrypted_under_the_spend_key_is_not_a_mask() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let imported_script_key = key_manager
+            .create_encrypted_key(PrivateKey::from(7u64), Some(key_manager.get_spend_key().key_id))
+            .unwrap();
+        assert_not_a_mask(
+            key_manager.encrypt_data_for_recovery(&imported_script_key, None, 100, MemoField::new_empty()),
+            &imported_script_key,
+            "encrypt_data_for_recovery",
+        );
+        assert_not_a_mask(
+            key_manager.get_commitment(&imported_script_key, &PrivateKey::from(100u64)),
+            &imported_script_key,
+            "get_commitment",
+        );
+        // The same secret encrypted under the view key is an ordinary mask
+        let under_view_key = key_manager.create_encrypted_key(PrivateKey::from(7u64), None).unwrap();
+        key_manager
+            .get_commitment(&under_view_key, &PrivateKey::from(100u64))
+            .unwrap();
+    }
+
+    #[test]
+    fn truncated_key_id_bounds_long_ids() {
+        assert_eq!(super::truncated_key_id(&TariKeyId::SpendKey), "spend_key");
+        let long = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 600],
+            key: (&TariKeyId::SpendKey).into(),
+        };
+        let total = long.to_string().len();
+        let truncated = super::truncated_key_id(&long);
+        assert!(truncated.starts_with(&long.to_string()[..128]));
+        assert!(truncated.ends_with(&format!("…({total} chars)")));
+        assert_eq!(
+            truncated.chars().count(),
+            128 + format!("…({total} chars)").chars().count()
+        );
+        // and the refusal carries the truncated form
+        match super::require_mask_id(&long) {
+            Err(KeyManagerError::KeyIdNotAMask { key_id }) => assert_eq!(key_id, truncated),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
     }
 }

@@ -101,6 +101,15 @@ pub enum KeyManagerError {
     LedgerHostHeldSenderOffset,
     #[error("The ephemeral nonce store lock is poisoned")]
     EphemeralNonceStorePoisoned,
+    #[error(
+        "Key id `{nonce}` cannot be used as a signing nonce: {reason}. A nonce the caller can compute or has used \
+         before gives up the private key that signed with it."
+    )]
+    InvalidNonceKeyId { nonce: String, reason: String },
+    #[error("Key id `{key}` cannot be used as a signing key: {reason}")]
+    InvalidSigningKeyId { key: String, reason: String },
+    #[error("The challenge reduces to zero, so the signature would be the nonce itself")]
+    ZeroChallenge,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(String),
     #[error("Invalid range proof: `{0}`")]
@@ -109,6 +118,11 @@ pub enum KeyManagerError {
     EncryptedDataError(#[from] EncryptedDataError),
     #[error("The commitment does not open to the value and mask")]
     InvalidMask,
+    #[error(
+        "Key id `{key_id}` cannot be used as a commitment mask or recovery key: it resolves to a wallet root key (or \
+         a public tweak of one), so using it would publish that key"
+    )]
+    KeyIdNotAMask { key_id: String },
 }
 
 impl From<RangeProofError> for KeyManagerError {

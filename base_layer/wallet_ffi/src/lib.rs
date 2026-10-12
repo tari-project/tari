@@ -205,7 +205,6 @@ pub type TariCovenant = tari_transaction_components::transaction_components::cov
 pub type TariEncryptedOpenings = tari_transaction_components::transaction_components::EncryptedData;
 pub type TariComAndPubSignature = ComAndPubSignature;
 pub type TariUnblindedOutput = UnblindedOutput;
-pub struct TariUnblindedOutputs(Vec<UnblindedOutput>);
 
 /// A minimal configuration for the Tari wallet db
 #[derive(Clone)]
@@ -2797,165 +2796,6 @@ pub unsafe extern "C" fn create_tari_unblinded_output_from_json(
                 error!(target: LOG_TARGET, "Error creating a output from json: {e:?}");
 
                 *error_out = LibWalletError::from(HexError::HexConversionError {}).code;
-                ptr::null_mut()
-            },
-        }
-    }
-}
-
-/// -------------------------------------------------------------------------------------------- ///
-/// ----------------------------------- TariUnblindedOutputs ------------------------------------///
-/// Gets the length of TariUnblindedOutputs
-///
-/// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `c_uint` - Returns number of elements in, zero if any pointer is null.
-///
-/// # Safety
-/// None
-// casting here is okay the length of the array wont go over u32
-#[allow(clippy::cast_possible_truncation)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unblinded_outputs_get_length(
-    outputs: *mut TariUnblindedOutputs,
-    error_out: *mut c_int,
-) -> c_uint {
-    unsafe {
-        if error_out.is_null() {
-            return 0;
-        }
-        *error_out = 0;
-
-        let mut len = 0;
-        if outputs.is_null() {
-            *error_out = LibWalletError::from(InterfaceError::NullError("outputs".to_string())).code;
-        } else {
-            len = (*outputs).0.len();
-        }
-        len as c_uint
-    }
-}
-
-/// Gets a TariUnblindedOutput from TariUnblindedOutputs at position
-///
-/// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
-/// `position` - The integer position
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariUnblindedOutput` - Returns a TariUnblindedOutput, note that it returns ptr::null_mut() if
-/// TariUnblindedOutputs is null or position is invalid
-///
-/// # Safety
-/// The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutputs to prevent a
-/// memory leak
-// converting between here is fine as its used to clamp the array to length
-#[allow(clippy::cast_possible_wrap)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unblinded_outputs_get_at(
-    outputs: *mut TariUnblindedOutputs,
-    position: c_uint,
-    error_out: *mut c_int,
-) -> *mut TariUnblindedOutput {
-    unsafe {
-        if error_out.is_null() {
-            return ptr::null_mut();
-        }
-        *error_out = 0;
-
-        if outputs.is_null() {
-            *error_out = LibWalletError::from(InterfaceError::NullError("outputs".to_string())).code;
-            return ptr::null_mut();
-        }
-        let len = (unblinded_outputs_get_length(outputs, error_out) as c_int).saturating_sub(1);
-        if len < 0 || position > len as c_uint {
-            *error_out = LibWalletError::from(InterfaceError::PositionInvalidError).code;
-            return ptr::null_mut();
-        }
-        Box::into_raw(Box::new((&(*outputs).0)[position as usize].clone()))
-    }
-}
-
-/// Frees memory for a TariUnblindedOutputs
-///
-/// ## Arguments
-/// `outputs` - The pointer to a TariUnblindedOutputs
-///
-/// ## Returns
-/// `()` - Does not return a value, equivalent to void in C
-///
-/// # Safety
-/// None
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unblinded_outputs_destroy(outputs: *mut TariUnblindedOutputs) {
-    unsafe {
-        if !outputs.is_null() {
-            drop(Box::from_raw(outputs))
-        }
-    }
-}
-
-/// Get the TariUnblindedOutputs from a TariWallet
-///
-/// ## Arguments
-/// `wallet` - The TariWallet pointer
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter. Returns a null pointer if any pointer argument is null.
-///
-/// ## Returns
-/// `*mut TariUnblindedOutputs` - returns the unspent unblinded outputs, note that it returns ptr::null_mut() if
-/// wallet is null
-///
-/// # Safety
-/// The ```unblinded_outputs_destroy``` method must be called when finished with a TariUnblindedOutput to prevent a
-/// memory leak
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn wallet_get_unspent_outputs(
-    wallet: *mut TariWallet,
-    error_out: *mut c_int,
-) -> *mut TariUnblindedOutputs {
-    unsafe {
-        if error_out.is_null() {
-            return ptr::null_mut();
-        }
-        *error_out = 0;
-
-        let mut outputs = Vec::new();
-        if wallet.is_null() {
-            *error_out = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
-            return ptr::null_mut();
-        }
-
-        let received_outputs = (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.output_manager_service.get_unspent_outputs());
-        match received_outputs {
-            Ok(rec_outputs) => {
-                for output in rec_outputs {
-                    let unblinded = UnblindedOutput::from_wallet_output(
-                        output.wallet_output,
-                        &(*wallet).wallet.key_manager_service,
-                    );
-                    match unblinded {
-                        Ok(uo) => {
-                            outputs.push(uo);
-                        },
-                        Err(e) => {
-                            *error_out = LibWalletError::from(WalletError::TransactionError(e)).code;
-                            return ptr::null_mut();
-                        },
-                    }
-                }
-                Box::into_raw(Box::new(TariUnblindedOutputs(outputs)))
-            },
-            Err(e) => {
-                *error_out = LibWalletError::from(WalletError::OutputManagerError(e)).code;
                 ptr::null_mut()
             },
         }
@@ -10329,6 +10169,19 @@ mod test {
     #[cfg(not(any(tari_target_network_mainnet, tari_target_network_nextnet)))]
     const NETWORK_STRING: &str = "localnet";
 
+    /// The FFI must not offer a way to export the wallet's own outputs as unblinded outputs: their commitment mask and
+    /// script private key together give away the wallet's spend key. `wallet.h` is regenerated from this crate by
+    /// `build.rs`, so it lists exactly the exported symbols. Importing externally created outputs stays.
+    #[test]
+    fn ffi_does_not_export_the_wallets_unblinded_outputs() {
+        let header = include_str!("../wallet.h");
+        assert!(!header.contains("wallet_get_unspent_outputs"));
+        assert!(!header.contains("TariUnblindedOutputs"));
+        assert!(!header.contains("unblinded_outputs_get_at"));
+        assert!(header.contains("wallet_import_external_utxo_as_non_rewindable"));
+        assert!(header.contains("create_tari_unblinded_output"));
+    }
+
     /// The cancellation reason reaches FFI clients as its discriminant; `InvalidEncryptedValue` is 10 and round-trips
     /// back to the same reason.
     #[test]
@@ -13107,31 +12960,6 @@ mod test {
             assert_eq!(outputs.len(), 2);
             destroy_tari_vector(outputs_vec);
 
-            let unspent_outputs_ptr = wallet_get_unspent_outputs(wallet_ptr, error_ptr);
-            let unblinded_output_ptr_1 = unblinded_outputs_get_at(unspent_outputs_ptr, 0, error_ptr);
-            let range_proof_ptr_1 = range_proof_get(unblinded_output_ptr_1, error_ptr);
-            let unblinded_output_ptr_2 = unblinded_outputs_get_at(unspent_outputs_ptr, 1, error_ptr);
-            let range_proof_ptr_2 = range_proof_get(unblinded_output_ptr_2, error_ptr);
-
-            assert_eq!(
-                (*tari_utxo_ptr_1).commitment_mask_key,
-                (*unblinded_output_ptr_1).commitment_mask_key
-            );
-            assert_eq!(
-                (*tari_utxo_ptr_1).encrypted_data,
-                (*unblinded_output_ptr_1).encrypted_data
-            );
-            assert_eq!((*proof_ptr_1).0, (*range_proof_ptr_1).0);
-            assert_eq!(
-                (*tari_utxo_ptr_2).commitment_mask_key,
-                (*unblinded_output_ptr_2).commitment_mask_key
-            );
-            assert_eq!(
-                (*tari_utxo_ptr_2).encrypted_data,
-                (*unblinded_output_ptr_2).encrypted_data
-            );
-            assert_eq!((*proof_ptr_2).0, (*range_proof_ptr_2).0);
-
             // Cleanup
             string_destroy(script_ptr_1 as *mut c_char);
             string_destroy(input_data_ptr_1 as *mut c_char);
@@ -13143,8 +12971,6 @@ mod test {
             range_proof_destroy(proof_ptr_1);
             let _spending_key = Box::from_raw(spending_key_ptr_1);
             tari_unblinded_output_destroy(tari_utxo_ptr_1);
-            range_proof_destroy(range_proof_ptr_1);
-            tari_unblinded_output_destroy(unblinded_output_ptr_1);
 
             string_destroy(script_ptr_2 as *mut c_char);
             string_destroy(input_data_ptr_2 as *mut c_char);
@@ -13156,12 +12982,9 @@ mod test {
             range_proof_destroy(proof_ptr_2);
             let _spending_key = Box::from_raw(spending_key_ptr_2);
             tari_unblinded_output_destroy(tari_utxo_ptr_2);
-            range_proof_destroy(range_proof_ptr_2);
-            tari_unblinded_output_destroy(unblinded_output_ptr_2);
 
             string_destroy(message_ptr as *mut c_char);
             let _source_address = Box::from_raw(source_address_ptr);
-            unblinded_outputs_destroy(unspent_outputs_ptr);
 
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
 

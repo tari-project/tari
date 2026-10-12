@@ -503,11 +503,12 @@ pub struct WhoisArgs {
     pub public_key: UniPublicKey,
 }
 
+/// Exports carry no private keys. A wallet output's script key is `H("script key", mask) + alpha`, so exporting the
+/// commitment mask and script private key of even one output would hand over the wallet's spend key.
 #[derive(Debug, Args, Clone)]
 pub struct ExportUtxosArgs {
     #[clap(short, long)]
     pub output_file: Option<PathBuf>,
-    pub with_private_keys: bool,
 }
 
 #[derive(Debug, Args, Clone)]
