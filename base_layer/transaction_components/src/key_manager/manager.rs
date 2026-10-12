@@ -81,7 +81,7 @@ use tari_crypto::{
     ristretto::bulletproofs_plus::{RistrettoExtendedMask, RistrettoExtendedWitness},
 };
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain, ZeroizingFinalize};
-use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript};
+use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript, push_pubkey_script};
 use tari_utilities::{ByteArray, Hidden, hex::Hex};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -101,6 +101,7 @@ use crate::{
         EncryptedData,
         KernelFeatures,
         MemoField,
+        OutputFeatures,
         RangeProofType,
         TransactionError,
         TransactionInput,
@@ -109,6 +110,7 @@ use crate::{
         TransactionKernelVersion,
         TransactionOutput,
         TransactionOutputVersion,
+        covenants::Covenant,
         one_sided::{
             diffie_hellman_stealth_domain_hasher,
             public_key_to_output_encryption_key,
@@ -214,21 +216,6 @@ pub struct KeyManager {
     /// Shared across clones on purpose: a nonce reserved through one handle to the key manager has to be signable
     /// through another, because the wrappers hand out clones freely.
     software_ephemeral_nonces: Arc<Mutex<SoftwareEphemeralNonceStore>>,
-}
-
-/// Whether the sender half of a metadata signature can be signed with a reserved ephemeral nonce.
-///
-/// `sign_with_nonce_and_challenge` only pairs a nonce with a key that is held by the same side. On a ledger wallet
-/// `reserve_ephemeral_nonce` returns a *device* nonce, so it pairs with a device held sender offset key - which is
-/// every key `get_script_offset` issues, and therefore every sender offset key a ledger wallet spends - and with
-/// nothing else. A software sender offset key on a ledger wallet (the coinbase builder still mints its own) keeps
-/// the host drawn nonce it has always had, because both a device nonce and a software store nonce are refused
-/// against it.
-///
-/// On a software wallet everything is host held, so a reserved nonce always pairs, and it is strictly better than a
-/// host drawn one: it can only be signed with once.
-fn sender_offset_key_takes_a_reserved_nonce(wallet_is_ledger: bool, sender_offset_key_id: &TariKeyId) -> bool {
-    !wallet_is_ledger || matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. })
 }
 
 /// Refuses a nonce key id that would give up the private key it signs with, and the zero signing key.
@@ -749,12 +736,11 @@ impl KeyManager {
 
     fn ledger_get_one_sided_metadata_signature_wrapper(
         &self,
-        txo_version: TransactionOutputVersion,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         commitment_mask_key_id: &TariKeyId,
         receiver_address: &TariAddress,
-        metadata_signature_message_common: &[u8; 32],
+        metadata_signature_preimage: &[u8],
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         #[cfg(feature = "ledger")]
         if let Some(ledger) = self.wallet_type.get_ledger_details() {
@@ -766,26 +752,24 @@ impl KeyManager {
             let sig = ledger_get_one_sided_metadata_signature(
                 ledger.account,
                 ledger.network,
-                txo_version.as_u8(),
                 value.into(),
                 sender_offset_key_index,
                 sender_offset_branch,
                 &commitment_mask,
                 receiver_address,
-                metadata_signature_message_common,
+                metadata_signature_preimage,
             )
             .map_err(|e| KeyManagerError::LedgerError(e.to_string()))?;
             return Ok(sig);
         }
 
         trace!(target: "wallet::key_manager::ledger",
-            "Trying to get ledger metadata signature with txo_version: {:?}, value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, message: {:?}",
-            txo_version,
+            "Trying to get ledger metadata signature with value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, preimage: {:?}",
             value,
             sender_offset_key_id,
             commitment_mask_key_id,
             receiver_address,
-            metadata_signature_message_common);
+            metadata_signature_preimage);
 
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
@@ -1455,7 +1439,8 @@ impl TransactionKeyManagerInterface for KeyManager {
         }
     }
 
-    // Creates a metadata signature for the output without requiring manual user verification on a ledger device
+    // Creates a metadata signature for the output. On a ledger wallet a device held sender offset key is refused:
+    // see `get_metadata_signature_user_verified`.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     fn get_metadata_signature(
@@ -1467,28 +1452,33 @@ impl TransactionKeyManagerInterface for KeyManager {
         metadata_signature_message: &[u8; 32],
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
+        // The key manager signs a device held sender offset key only through the device's reviewed one sided
+        // metadata signature, which needs the recipient's address, and there is none here. Refused before the device is
+        // touched. Every sender offset key `get_script_offset` issues on a ledger wallet is device held; what
+        // is left for this path there is a software sender offset key, which the coinbase builder still mints.
+        if self.wallet_type.is_ledger() && matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+            return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient);
+        }
+
         require_mask_id(commitment_mask_key_id)?;
-        // Fetched once and carried: on a ledger wallet this is a device round trip, and the sender partial
-        // signature below needs the same key.
+        // Fetched once and carried: the sender partial signature below needs the same key.
         let sender_offset = TariKeyAndId {
             pub_key: self.get_public_key_at_key_id(sender_offset_key_id)?,
             key_id: sender_offset_key_id.clone(),
         };
 
-        // Reserved, not chosen. Since sender offset keys moved into `get_script_offset` a ledger wallet's are
-        // device held, and a device held key can only be signed against a device held nonce - a host drawn one is
-        // refused by `sign_with_nonce_and_challenge`, which is what broke every send that produces a change
-        // output. See `sender_offset_key_takes_a_reserved_nonce` for the pairs that are and are not allowed.
+        // Reserved, not chosen, wherever the reservation pairs with the key. On a software wallet everything is host
+        // held, so a reserved nonce always pairs, and it is strictly better than a host drawn one: it can only be
+        // signed with once. On a ledger wallet the sender offset key here is a software one, and a reserved nonce
+        // is a device nonce that cannot sign for it, so it keeps the host drawn nonce it has always had.
         //
         // The public nonce is not recoverable from a reservation handle, so the `TariKeyAndId` is carried all the
-        // way to the challenge rather than looked up again. The reserve sits after the device round trip above so
-        // that the window in which a later failure abandons the reservation is as narrow as it can be.
-        let ephemeral_nonce =
-            if sender_offset_key_takes_a_reserved_nonce(self.wallet_type.is_ledger(), &sender_offset.key_id) {
-                self.reserve_ephemeral_nonce()?
-            } else {
-                self.get_random_key(None, None)?
-            };
+        // way to the challenge rather than looked up again.
+        let ephemeral_nonce = if self.wallet_type.is_ledger() {
+            self.get_random_key(None, None)?
+        } else {
+            self.reserve_ephemeral_nonce()?
+        };
 
         let receiver_partial_metadata_signature = self.get_receiver_partial_metadata_signature(
             commitment_mask_key_id,
@@ -1516,35 +1506,70 @@ impl TransactionKeyManagerInterface for KeyManager {
         Ok(metadata_signature)
     }
 
-    // Creates a metadata signature for the output requiring manual user verification on a ledger device
+    // Creates a metadata signature for the output to `receiver_address`. On a ledger wallet the device signs it
+    // through its one sided metadata signature, from the output's raw common fields: it shows the output for review,
+    // unless it is change in every respect it can see - to this wallet's own address, with default features - which
+    // it signs without a prompt. See the trait docs.
+    #[allow(clippy::too_many_arguments)]
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: TransactionOutputVersion,
-        metadata_signature_message_common: &[u8; 32],
-        range_proof_type: RangeProofType,
+        features: &OutputFeatures,
+        covenant: &Covenant,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: MicroMinotari,
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError> {
         require_mask_id(commitment_mask_key_id)?;
         if self.wallet_type.is_ledger() {
+            // Fail closed for a host held sender offset key. Signed in software it would put an output on chain that
+            // the device never saw - an L2-bound burn's, say, to a claim key the host chose - while the device still
+            // signs the inputs and auto-approves the change. The coinbase's host held key signs through
+            // `get_metadata_signature`, which has no address and is not affected by this.
+            if !matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+                return Err(KeyManagerError::LedgerHostHeldSenderOffset);
+            }
+            // The device never sees `script`: it signs over the standard stealth script it builds itself from the
+            // address and the commitment mask. Any other script would get a signature that does not verify, so it
+            // is refused here instead.
+            let stealth_key =
+                self.stealth_address_script_spending_key(commitment_mask_key_id, receiver_address.public_spend_key())?;
+            if *script != push_pubkey_script(&stealth_key) {
+                return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient);
+            }
+            // The device is sent the raw fields, not their hash, and hashes them itself: what it shows and decides on
+            // is what it signs. See `minotari_ledger_wallet_common::metadata_output`.
+            let preimage = TransactionOutput::metadata_signature_message_common_preimage(
+                &txo_version,
+                features,
+                covenant,
+                encrypted_data,
+                &minimum_value_promise,
+            )
+            .map_err(|e| KeyManagerError::UnexpectedError(e.to_string()))?;
             let comm_and_pub_sig = self.ledger_get_one_sided_metadata_signature_wrapper(
-                txo_version,
                 value,
                 sender_offset_key_id,
                 commitment_mask_key_id,
                 receiver_address,
-                metadata_signature_message_common,
+                &preimage,
             )?;
 
             Ok(comm_and_pub_sig)
         } else {
-            let metadata_signature_message = TransactionOutput::metadata_signature_message_from_script_and_common(
-                script,
-                metadata_signature_message_common,
+            let common = TransactionOutput::metadata_signature_message_common_from_parts(
+                &txo_version,
+                features,
+                covenant,
+                encrypted_data,
+                &minimum_value_promise,
             );
+            let metadata_signature_message =
+                TransactionOutput::metadata_signature_message_from_script_and_common(script, &common);
             let value = value.into();
             self.get_metadata_signature(
                 commitment_mask_key_id,
@@ -1552,7 +1577,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 sender_offset_key_id,
                 txo_version,
                 &metadata_signature_message,
-                range_proof_type,
+                features.range_proof_type,
             )
         }
     }
@@ -1633,6 +1658,19 @@ impl TransactionKeyManagerInterface for KeyManager {
             return Err(KeyManagerError::ZeroChallenge);
         }
         match (private_key_id, nonce) {
+            // A `OneSidedSenderOffset` key signs a metadata signature only through the device's reviewed one sided
+            // signature, never over a raw challenge. The device refuses it too; this says so legibly.
+            //
+            // A pre-mine sender offset key (`PreMine`, at a pre-mine sender offset index) is deliberately not
+            // refused: the pre-mine leader's aggregated step 3 signs it here. Pre-mine signing belongs with the
+            // separate pre-mine issue.
+            (
+                TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::OneSidedSenderOffset,
+                    ..
+                },
+                TariKeyId::LedgerEphemeralNonce { .. },
+            ) => Err(KeyManagerError::LedgerSenderOffsetRawSignature),
             (
                 TariKeyId::LedgerKey {
                     branch: private_key_branch,
@@ -2017,7 +2055,6 @@ mod tests {
         challenge_is_zero,
         ledger_random_index,
         ledger_sender_offset_key,
-        sender_offset_key_takes_a_reserved_nonce,
     };
     use crate::{
         MicroMinotari,
@@ -2233,13 +2270,13 @@ mod tests {
         }
     }
 
-    /// The pair `get_metadata_signature` hands to `sign_with_nonce_and_challenge` on a ledger wallet: a device held
-    /// sender offset key - every sender offset key is device held since they moved into `get_script_offset` - and a
-    /// device reserved nonce. It has to reach the device call rather than being turned away by the dispatch. On a
-    /// software wallet "reached the device call" shows up as `InvalidWalletType`, which is raised at the transport
-    /// boundary, after every guard.
+    /// A `OneSidedSenderOffset` key and a device reserved nonce are refused by the dispatch, before the device call:
+    /// such a key signs a metadata signature only through the device's reviewed one sided signature. That is also what
+    /// refuses an aggregated sender partial metadata signature with one on a ledger wallet. A pre-mine
+    /// sender offset key is not refused, so the pre-mine ceremony is unaffected. A host drawn nonce cannot be paired
+    /// with a device held key at all.
     #[test]
-    fn a_ledger_sender_offset_key_and_a_reserved_nonce_reach_the_ledger_call() {
+    fn a_ledger_sender_offset_key_cannot_sign_a_raw_challenge() {
         let key_manager = KeyManager::new_random().unwrap();
         let sender_offset_key_id = TariKeyId::LedgerKey {
             branch: LedgerKeyBranch::OneSidedSenderOffset,
@@ -2253,15 +2290,28 @@ mod tests {
                 &challenge(1),
             )
             .unwrap_err();
-        match err {
-            KeyManagerError::InvalidWalletType(message) => {
-                assert!(message.contains("non-Ledger wallet"), "unexpected message: {message}");
-            },
-            other => panic!("the change output's signing pair was turned away before the device call: {other:?}"),
-        }
+        assert_eq!(err, KeyManagerError::LedgerSenderOffsetRawSignature);
 
-        // The regression this guards: a host drawn nonce cannot be paired with a device held key at all, so a
-        // signing path that reaches for one breaks every send that produces a change output.
+        let sender_offset = crate::key_manager::TariKeyAndId {
+            key_id: sender_offset_key_id.clone(),
+            pub_key: CompressedPublicKey::default(),
+        };
+        let nonce = crate::key_manager::TariKeyAndId {
+            key_id: TariKeyId::LedgerEphemeralNonce { handle: 9 },
+            pub_key: CompressedPublicKey::default(),
+        };
+        let err = key_manager
+            .get_sender_partial_metadata_signature(
+                &nonce,
+                &sender_offset,
+                &CompressedCommitment::default(),
+                &CompressedCommitment::default(),
+                TransactionOutputVersion::get_current_version(),
+                &[1u8; 32],
+            )
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::LedgerSenderOffsetRawSignature);
+
         let host_drawn_nonce = key_manager.get_random_key(None, None).unwrap();
         let err = key_manager
             .sign_with_nonce_and_challenge(&sender_offset_key_id, &host_drawn_nonce.key_id, &challenge(1))
@@ -2270,34 +2320,173 @@ mod tests {
             err,
             KeyManagerError::LedgerError("Trying to access Ledger key paired to a non ledger key".to_string())
         );
+
+        // The keys that may sign over a reserved nonce still reach the device call, which on a software wallet shows
+        // up as `InvalidWalletType`, raised at the transport boundary after every guard: a `Random` key, a pre-mine
+        // script key, and a pre-mine sender offset key - the pre-mine leader's aggregated step 3 signs with the last.
+        let pre_mine_sender_offset_index =
+            7 | minotari_ledger_wallet_common::script_offset::PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+        for (branch, index) in [
+            (LedgerKeyBranch::Random, 7),
+            (LedgerKeyBranch::PreMine, 7),
+            (LedgerKeyBranch::PreMine, pre_mine_sender_offset_index),
+        ] {
+            let err = key_manager
+                .sign_with_nonce_and_challenge(
+                    &TariKeyId::LedgerKey { branch, index },
+                    &TariKeyId::LedgerEphemeralNonce { handle: 9 },
+                    &challenge(1),
+                )
+                .unwrap_err();
+            assert!(
+                matches!(err, KeyManagerError::InvalidWalletType(_)),
+                "{branch}: {err:?}"
+            );
+        }
     }
 
-    /// A reserved nonce is only usable against a key held by the same side. On a ledger wallet that means the
-    /// device held sender offset keys `get_script_offset` issues - and only those: the coinbase builder still mints
-    /// a software sender offset key, and pairing a device nonce with it would break coinbases the way a host nonce
-    /// broke change outputs. A software wallet has no such split.
+    /// A ledger mode key manager whose device is never asked anything: every test using it is about a refusal that
+    /// has to come before the transport.
+    #[cfg(feature = "ledger")]
+    fn ledger_key_manager_without_a_device() -> KeyManager {
+        use tari_common::configuration::Network;
+
+        use crate::key_manager::wallet_types::{LedgerWallet, WalletType};
+
+        let ledger = LedgerWallet::new(
+            1,
+            Network::LocalNet,
+            CompressedPublicKey::from_secret_key(&PrivateKey::from(5u64)),
+            PrivateKey::from(6u64),
+        );
+        KeyManager::new(WalletType::Ledger(ledger)).unwrap()
+    }
+
+    /// On a ledger wallet `get_metadata_signature` has no recipient address, so it cannot reach the device's reviewed
+    /// instruction, and a device held sender offset key is refused rather than signed over a raw challenge.
+    #[cfg(feature = "ledger")]
     #[test]
-    fn only_a_key_held_by_the_nonces_issuer_takes_a_reserved_nonce() {
-        let device_held = TariKeyId::LedgerKey {
+    fn a_ledger_wallet_refuses_a_device_sender_offset_key_with_no_address() {
+        let key_manager = ledger_key_manager_without_a_device();
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let err = key_manager
+            .get_metadata_signature(
+                &commitment_mask.key_id,
+                &MicroMinotari(100).into(),
+                &TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::OneSidedSenderOffset,
+                    index: 7,
+                },
+                TransactionOutputVersion::get_current_version(),
+                &[1u8; 32],
+                RangeProofType::BulletProofPlus,
+            )
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::LedgerSenderOffsetNeedsRecipient);
+    }
+
+    /// The device signs over the standard stealth script for the address it is given, never the host's script, so
+    /// an output with any other script - a plain burn, an HTLC send - is refused on a ledger wallet before the device
+    /// is asked.
+    #[cfg(feature = "ledger")]
+    #[test]
+    fn a_ledger_wallet_refuses_an_output_whose_script_is_not_the_stealth_script() {
+        use tari_common::configuration::Network;
+        use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+        use tari_script::{push_pubkey_script, script};
+
+        let key_manager = ledger_key_manager_without_a_device();
+        let own_address = TariAddress::new_dual_address(
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = TariKeyId::LedgerKey {
             branch: LedgerKeyBranch::OneSidedSenderOffset,
             index: 7,
         };
-        // What the coinbase builder mints: `get_random_key(None, None)` never returns a device key.
-        let host_held = KeyManager::new_random()
-            .unwrap()
-            .get_random_key(None, None)
-            .unwrap()
-            .key_id;
+        let other_key = CompressedPublicKey::from_secret_key(&PrivateKey::from(8u64));
 
-        assert!(sender_offset_key_takes_a_reserved_nonce(true, &device_held));
-        assert!(!sender_offset_key_takes_a_reserved_nonce(true, &host_held));
-        assert!(sender_offset_key_takes_a_reserved_nonce(false, &host_held));
+        for script in [script!(Nop).unwrap(), push_pubkey_script(&other_key)] {
+            let err = key_manager
+                .get_metadata_signature_user_verified(
+                    &commitment_mask.key_id,
+                    MicroMinotari(100),
+                    &sender_offset,
+                    TransactionOutputVersion::get_current_version(),
+                    &crate::transaction_components::OutputFeatures::default(),
+                    &crate::transaction_components::covenants::Covenant::default(),
+                    &crate::transaction_components::EncryptedData::default(),
+                    MicroMinotari(0),
+                    &script,
+                    &own_address,
+                )
+                .unwrap_err();
+            assert_eq!(err, KeyManagerError::LedgerSenderOffsetNeedsRecipient, "{script}");
+        }
     }
 
-    /// So `get_metadata_signature` - the signing path change outputs, self payments and HTLC claims take - must
-    /// draw its nonce from `reserve_ephemeral_nonce` and never from `get_random_key`. Only a software wallet can be
-    /// exercised here, so this asserts the shape rather than the device call: exactly one reservation is taken
-    /// across the call, and it is spent rather than abandoned.
+    /// A host held sender offset key - an L2-bound burn's - is refused by `get_metadata_signature_user_verified` on a
+    /// ledger wallet, which is the path the burn's fee re-sign takes. Signed in software it would put an output on
+    /// chain the device never saw. The coinbase's host held key still signs in software through
+    /// `get_metadata_signature`, which has no address; the device is never asked either way.
+    #[cfg(feature = "ledger")]
+    #[test]
+    fn a_ledger_wallet_refuses_a_host_held_sender_offset_for_an_addressed_output() {
+        use tari_common::configuration::Network;
+        use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+        use tari_script::{ExecutionStack, script};
+
+        use crate::transaction_components::WalletOutputBuilder;
+
+        let key_manager = ledger_key_manager_without_a_device();
+        let own_address = TariAddress::new_dual_address(
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let host_sender_offset = key_manager.get_random_key(None, None).unwrap();
+        assert!(!matches!(host_sender_offset.key_id, TariKeyId::LedgerKey { .. }));
+        let builder = WalletOutputBuilder::new(MicroMinotari(5_000), commitment_mask.key_id.clone())
+            .with_script(script!(Nop).unwrap())
+            .with_input_data(ExecutionStack::default())
+            .with_script_key(TariKeyId::Zero);
+
+        let err = builder
+            .clone()
+            .sign_metadata_signature_user_verified(&key_manager, &host_sender_offset.key_id, &own_address)
+            .map(|_| ())
+            .expect_err("a host held sender offset key for an addressed output on a ledger wallet");
+        assert!(
+            err.to_string()
+                .contains(&KeyManagerError::LedgerHostHeldSenderOffset.to_string()),
+            "{err}"
+        );
+
+        // The coinbase shape: no address, `get_metadata_signature`, signed in software.
+        let output = builder
+            .sign_metadata_signature(&key_manager, &host_sender_offset.key_id)
+            .expect("a host held sender offset key signs in software with no address, as the coinbase's does")
+            .try_build(&key_manager)
+            .unwrap();
+        output
+            .to_transaction_output()
+            .unwrap()
+            .verify_metadata_signature()
+            .expect("the software signature verifies");
+    }
+
+    /// On a software wallet `get_metadata_signature` must draw its nonce from `reserve_ephemeral_nonce` and never
+    /// from `get_random_key`: exactly one reservation is taken across the call, and it is spent rather than
+    /// abandoned.
     #[test]
     fn get_metadata_signature_signs_with_a_reserved_ephemeral_nonce() {
         let key_manager = KeyManager::new_random().unwrap();
@@ -3043,8 +3232,10 @@ mod tests {
                     MicroMinotari::from(100),
                     &good.key_id,
                     txo_version,
-                    &message,
-                    RangeProofType::RevealedValue,
+                    &crate::transaction_components::OutputFeatures::default(),
+                    &crate::transaction_components::covenants::Covenant::default(),
+                    &EncryptedData::default(),
+                    MicroMinotari::zero(),
                     &script,
                     &address,
                 ),

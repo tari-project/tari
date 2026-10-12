@@ -12,6 +12,7 @@ pub mod codec;
 pub mod common_types;
 pub mod ephemeral_nonce;
 pub mod legacy_nonce;
+pub mod metadata_output;
 pub mod script_offset;
 mod utils;
 pub use utils::{
@@ -20,6 +21,7 @@ pub use utils::{
     address_has_payment_id,
     get_payment_id_bytes_from_tari_dual_address,
     get_public_spend_key_bytes_from_tari_dual_address,
+    get_public_view_key_bytes_from_tari_dual_address,
     tari_dual_address_display,
     u64_to_string,
 };

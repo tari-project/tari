@@ -32,6 +32,8 @@ pub enum AppSW {
     ScriptOffsetNoDeviceScriptKeys = 0xB010,
     NonceStoreFull = 0xB011,
     NonceHandleInvalid = 0xB012,
+    /// `GetOneSidedMetadataSignature` for an output the device will not sign: a covenant, a burn or a coinbase.
+    OutputNotSignable = 0xB013,
     // The two below are not this application's to choose: the device returns `ledger_device_sdk`'s own
     // `StatusWords` values for them (see `AppSW` in `wallet/src/main.rs`, which defines these two from
     // `StatusWords` rather than from here). A value written here that the SDK disagrees with is not a cosmetic
@@ -68,6 +70,7 @@ impl TryFrom<u16> for AppSW {
             0xB010 => Ok(AppSW::ScriptOffsetNoDeviceScriptKeys),
             0xB011 => Ok(AppSW::NonceStoreFull),
             0xB012 => Ok(AppSW::NonceHandleInvalid),
+            0xB013 => Ok(AppSW::OutputNotSignable),
             0x6e03 => Ok(AppSW::WrongApduLength),
             0x6985 => Ok(AppSW::UserCancelled),
             0x9000 => Ok(AppSW::Ok),
@@ -95,7 +98,9 @@ pub enum Instruction {
     GetDHSharedSecret = 0x08,
     GetRawSchnorrSignature = 0x09,
     GetScriptSchnorrSignature = 0x10,
-    GetOneSidedMetadataSignature = 0x11,
+    // 0x11 is retired: it carried `GetOneSidedMetadataSignature` with an opaque `common` hash, in one APDU. Do not
+    // reuse it - a host from before the change must be refused, not read in a new layout. See `codec::metadata`.
+    GetOneSidedMetadataSignature = 0x15,
     GetScriptSignatureManaged = 0x12,
     GenerateEphemeralNonce = 0x13,
     // TODO: Delete together with `handler_get_raw_schnorr_signature_legacy_nonce`, once the pre-mine spend flow no
@@ -120,7 +125,7 @@ impl Instruction {
             0x08 => Some(Instruction::GetDHSharedSecret),
             0x09 => Some(Instruction::GetRawSchnorrSignature),
             0x10 => Some(Instruction::GetScriptSchnorrSignature),
-            0x11 => Some(Instruction::GetOneSidedMetadataSignature),
+            0x15 => Some(Instruction::GetOneSidedMetadataSignature),
             0x12 => Some(Instruction::GetScriptSignatureManaged),
             0x13 => Some(Instruction::GenerateEphemeralNonce),
             0x14 => Some(Instruction::GetRawSchnorrSignatureLegacyNonce),
@@ -211,6 +216,7 @@ mod test {
             (0xB010, AppSW::ScriptOffsetNoDeviceScriptKeys),
             (0xB011, AppSW::NonceStoreFull),
             (0xB012, AppSW::NonceHandleInvalid),
+            (0xB013, AppSW::OutputNotSignable),
             (0x6e03, AppSW::WrongApduLength),
             (0x6985, AppSW::UserCancelled),
             (0x9000, AppSW::Ok),
@@ -269,6 +275,9 @@ mod test {
                 AppSW::NonceHandleInvalid => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
+                AppSW::OutputNotSignable => {
+                    assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
+                },
                 AppSW::WrongApduLength => {
                     assert_eq!(AppSW::try_from(*value).unwrap(), *expected_app_sw);
                 },
@@ -295,7 +304,7 @@ mod test {
             (0x08, Instruction::GetDHSharedSecret),
             (0x09, Instruction::GetRawSchnorrSignature),
             (0x10, Instruction::GetScriptSchnorrSignature),
-            (0x11, Instruction::GetOneSidedMetadataSignature),
+            (0x15, Instruction::GetOneSidedMetadataSignature),
             (0x12, Instruction::GetScriptSignatureManaged),
             (0x13, Instruction::GenerateEphemeralNonce),
             (0x14, Instruction::GetRawSchnorrSignatureLegacyNonce),
@@ -361,5 +370,7 @@ mod test {
                 },
             }
         }
+        // Retired: the single APDU, opaque hash `GetOneSidedMetadataSignature`.
+        assert_eq!(Instruction::from_byte(0x11), None);
     }
 }

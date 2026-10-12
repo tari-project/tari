@@ -131,6 +131,20 @@ const SCENARIOS: &[Scenario] = &[
         run: a_chunk_number_above_the_maximum_is_refused,
     },
     Scenario {
+        name: "a metadata signature for a covenant, a burn or a coinbase is refused with OutputNotSignable, before \
+               any review, and its chunks must come in order",
+        covers: &[Instruction::GetOneSidedMetadataSignature],
+        approval: Approval::NotNeeded,
+        run: an_output_the_device_will_not_sign_is_refused,
+    },
+    Scenario {
+        name: "a metadata signature's preimage chunks must add up to the size its head declares, and any other \
+               instruction between its chunks ends the exchange",
+        covers: &[Instruction::GetOneSidedMetadataSignature, Instruction::GetPublicKey],
+        approval: Approval::NotNeeded,
+        run: metadata_signature_chunks_are_checked,
+    },
+    Scenario {
         name: "a script offset header the device would not blind is refused, on both sides of the sum",
         covers: &[Instruction::GetScriptOffset],
         approval: Approval::NotNeeded,
@@ -179,14 +193,16 @@ fn a_wrong_class_byte_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResu
 ///
 /// The probe bytes are chosen to bracket the real set rather than to be far away from it: `0x00` is below it,
 /// `0x0a` sits in the gap between `GetRawSchnorrSignature` (`0x09`) and `GetScriptSchnorrSignature` (`0x10`) - the
-/// instruction numbering has a hole there, and a hole is where an off-by-one in a dispatch table lands - and `0x15`
-/// is one past the highest. Each is checked against `Instruction::from_byte` first, so that a future instruction
-/// taking one of these numbers turns into a legible failure here rather than a confusing one.
+/// instruction numbering has a hole there, and a hole is where an off-by-one in a dispatch table lands - `0x11`,
+/// which carried the single APDU, opaque hash `GetOneSidedMetadataSignature` and is retired so that an old host's
+/// request is refused rather than misread as a chunk of its successor, and `0x16`, one past the highest. Each is
+/// checked against `Instruction::from_byte` first, so that a future instruction taking one of these numbers turns
+/// into a legible failure here rather than a confusing one.
 fn an_unknown_instruction_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     let account = fixtures::random_u64();
     let valid = valid_public_key_request(account);
 
-    for ins in [0x00u8, 0x0a, 0x15, 0xff] {
+    for ins in [0x00u8, 0x0a, 0x11, 0x16, 0xff] {
         require(Instruction::from_byte(ins).is_none(), || {
             format!("{ins:#04x} is now a real instruction; pick a byte that is not")
         })?;
@@ -258,11 +274,32 @@ fn bad_p1_p2_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
     Ok(())
 }
 
-/// The smallest `GetOneSidedMetadataSignature` payload the device will look at, from the handler's own comment:
-/// `account(8) + network(8) + txo_version(8) + sender_offset_key_index(8) + value(8) + commitment_mask(32) +
-/// address_size(2) + min_address(67) + message(32)`, less the two bytes the device has always been short by. The
-/// trailing `sender_offset_branch` is optional and does not count towards it.
-const METADATA_SIGNATURE_MINIMUM: usize = 171;
+/// A `GetOneSidedMetadataSignature` head, chunk 0, for `receiver`, with the account the chunk prepends: `account(8) +
+/// network(8) + sender_offset_key_index(8) + sender_offset_branch(8) + value(8) + commitment_mask(32) +
+/// preimage_size(2) + address_size(2) + receiver_address`.
+fn metadata_head(
+    account: u64,
+    index: u64,
+    branch: LedgerKeyBranch,
+    preimage_size: u16,
+    receiver: &[u8],
+) -> raw::RawRequest {
+    raw::chunk(
+        account,
+        Instruction::GetOneSidedMetadataSignature,
+        0,
+        true,
+        payload::one_sided_metadata_signature_head(
+            0x26,
+            index,
+            branch,
+            12_345,
+            &fixtures::random_scalar_bytes(),
+            preimage_size,
+            receiver,
+        ),
+    )
+}
 
 /// The marker bit of a pre-mine sender offset key index, restated rather than imported so that a device that moved it
 /// would be caught.
@@ -343,19 +380,32 @@ fn a_wrong_length_payload_is_refused(_context: &ScenarioContext<'_>) -> Scenario
         )?;
     }
 
-    // `GetOneSidedMetadataSignature`, one byte below the size at which the handler will even look at the fields.
-    let reply = raw::command(
+    // `GetOneSidedMetadataSignature`'s head, one byte short of the address it declares, and one byte past it.
+    let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
+    let head = metadata_head(
         account,
-        Instruction::GetOneSidedMetadataSignature,
-        vec![0u8; METADATA_SIGNATURE_MINIMUM.saturating_sub(9)],
-    )
-    .send()
-    .context(|| "a short GetOneSidedMetadataSignature".to_string())?;
-    expect_status(
-        &format!("a GetOneSidedMetadataSignature one byte below its {METADATA_SIGNATURE_MINIMUM} byte minimum"),
-        &reply,
-        AppSW::WrongApduLength,
-    )
+        fixtures::random_u64(),
+        LedgerKeyBranch::OneSidedSenderOffset,
+        110,
+        &receiver,
+    );
+    for length in [head.data.len() - 1, head.data.len() + 1] {
+        let mut data = head.data.clone();
+        data.resize(length, 0);
+        // The account is already in `data`, so the chunk is rebuilt without prepending it again.
+        let reply = raw::RawRequest { data, ..head.clone() }
+            .send()
+            .context(|| format!("a {length} byte GetOneSidedMetadataSignature head"))?;
+        expect_status(
+            &format!(
+                "a {length} byte GetOneSidedMetadataSignature head, which must be {}",
+                head.data.len()
+            ),
+            &reply,
+            AppSW::WrongApduLength,
+        )?;
+    }
+    Ok(())
 }
 
 /// Acceptance: `LedgerKeyBranch::Spend` is refused wherever the host can name a branch.
@@ -405,8 +455,7 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
     }
 
     // `GetOneSidedMetadataSignature`'s sender offset key may be on `OneSidedSenderOffset` or `PreMine` and nothing
-    // else. Both refusals come before the review, so this stays unattended; a device that drew the review instead
-    // would block here until the scenario timed out.
+    // else. The head carries the branch, and is refused before any preimage is sent, so this stays unattended.
     let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
     // So is a `PreMine` sender offset without the pre-mine sender offset marker: those are script key indexes.
     for (branch, index) in [
@@ -414,22 +463,9 @@ fn the_spend_branch_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult
         (LedgerKeyBranch::Random, index),
         (LedgerKeyBranch::PreMine, index & !SENDER_OFFSET_INDEX_BIT),
     ] {
-        let reply = raw::command(
-            account,
-            Instruction::GetOneSidedMetadataSignature,
-            payload::one_sided_metadata_signature(
-                0x26,
-                0,
-                index,
-                branch,
-                12_345,
-                &fixtures::random_scalar_bytes(),
-                &receiver,
-                &fixtures::random_bytes_32(),
-            ),
-        )
-        .send()
-        .context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
+        let reply = metadata_head(account, index, branch, 110, &receiver)
+            .send()
+            .context(|| format!("GetOneSidedMetadataSignature with a {branch} sender offset"))?;
         expect_status(
             &format!("GetOneSidedMetadataSignature with a {branch} sender offset key"),
             &reply,
@@ -601,5 +637,174 @@ fn an_unblindable_header_is_refused(_context: &ScenarioContext<'_>) -> ScenarioR
     expect_ok(
         &format!("a GetScriptOffset header asking for exactly MAX_SENDER_OFFSET_KEYS ({MAX_SENDER_OFFSET_KEYS})"),
         &reply,
+    )
+}
+
+/// Acceptance: a `GetOneSidedMetadataSignature` whose preimage is a covenant, a burn or a coinbase is refused with
+/// `OutputNotSignable` once its last chunk arrives, before any review is drawn; a preimage that is not one is refused
+/// with `MetadataSignatureFail`; and a preimage chunk that does not follow its head in order is `WrongP1P2`.
+///
+/// The accessor refuses all of these on the host, so they go over raw APDUs - the device's copy of each rule is the
+/// one that counts. None of them reaches the review, so this stays unattended.
+fn an_output_the_device_will_not_sign_is_refused(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
+
+    let mut covenant = fixtures::metadata_preimage(&fixtures::output_features(0, 0, None), 80, 0);
+    // The covenant's varint length, right after the 16 bytes of default features.
+    covenant[17] = 1;
+    let mut coinbase_extra = fixtures::output_features(0, 0, None);
+    coinbase_extra.splice(10..14, [1, 0, 0, 0, 0xab]);
+    let cases = [
+        ("a covenant", covenant, AppSW::OutputNotSignable),
+        (
+            "a burn",
+            fixtures::metadata_preimage(&fixtures::output_features(2, 0, None), 80, 0),
+            AppSW::OutputNotSignable,
+        ),
+        (
+            "a coinbase",
+            fixtures::metadata_preimage(&fixtures::output_features(1, 0, None), 80, 0),
+            AppSW::OutputNotSignable,
+        ),
+        (
+            "coinbase extra data",
+            fixtures::metadata_preimage(&coinbase_extra, 80, 0),
+            AppSW::OutputNotSignable,
+        ),
+        (
+            "a preimage that is not one",
+            vec![0u8; 50],
+            AppSW::MetadataSignatureFail,
+        ),
+    ];
+    for (what, preimage, expected) in cases {
+        let size = u16::try_from(preimage.len()).map_err(|e| super::fail(e.to_string()))?;
+        let head = metadata_head(
+            account,
+            fixtures::random_u64(),
+            LedgerKeyBranch::OneSidedSenderOffset,
+            size,
+            &receiver,
+        )
+        .send()
+        .context(|| format!("the head for {what}"))?;
+        expect_ok(&format!("the head for {what}"), &head)?;
+        let reply = raw::chunk(account, Instruction::GetOneSidedMetadataSignature, 1, false, preimage)
+            .send()
+            .context(|| format!("the preimage of {what}"))?;
+        expect_status(&format!("a metadata signature for {what}"), &reply, expected)?;
+    }
+
+    // A preimage chunk with no head before it.
+    let orphan = raw::chunk(
+        account,
+        Instruction::GetOneSidedMetadataSignature,
+        1,
+        false,
+        fixtures::metadata_preimage(&fixtures::output_features(0, 0, None), 80, 0),
+    )
+    .send()
+    .context(|| "a preimage chunk with no head".to_string())?;
+    expect_status("a preimage chunk with no head before it", &orphan, AppSW::WrongP1P2)?;
+
+    // A head, then a chunk numbered 2 where 1 was due.
+    let head = metadata_head(
+        account,
+        fixtures::random_u64(),
+        LedgerKeyBranch::OneSidedSenderOffset,
+        110,
+        &receiver,
+    )
+    .send()
+    .context(|| "a head".to_string())?;
+    expect_ok("a head", &head)?;
+    let skipped = raw::chunk(
+        account,
+        Instruction::GetOneSidedMetadataSignature,
+        2,
+        false,
+        fixtures::metadata_preimage(&fixtures::output_features(0, 0, None), 80, 0),
+    )
+    .send()
+    .context(|| "a preimage chunk out of order".to_string())?;
+    expect_status(
+        "a preimage chunk numbered 2 straight after the head",
+        &skipped,
+        AppSW::WrongP1P2,
+    )
+}
+
+/// Acceptance: the device holds a `GetOneSidedMetadataSignature`'s preimage chunks to the size its head declared, and
+/// forgets the exchange when any other instruction arrives between its chunks.
+///
+/// * A chunk marked "more" must be exactly `PREIMAGE_CHUNK_SIZE` bytes: a short one is `WrongApduLength`.
+/// * Chunks that add up to more than the declared size are `WrongApduLength`.
+/// * A `GetPublicKey` between the head and chunk 1 resets the exchange, so the chunk 1 that follows has no head and is
+///   `WrongP1P2` - a host cannot interleave another request and then carry on with the one it interrupted.
+///
+/// Every case is refused before a review is drawn, so this stays unattended.
+fn metadata_signature_chunks_are_checked(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
+    let branch = LedgerKeyBranch::OneSidedSenderOffset;
+    let chunk = |number: u8, more: bool, length: usize| {
+        raw::chunk(
+            account,
+            Instruction::GetOneSidedMetadataSignature,
+            number,
+            more,
+            vec![0u8; length],
+        )
+    };
+
+    // (a) A non-last chunk shorter than PREIMAGE_CHUNK_SIZE.
+    let head = metadata_head(account, fixtures::random_u64(), branch, 400, &receiver)
+        .send()
+        .context(|| "the head before a short chunk".to_string())?;
+    expect_ok("the head before a short chunk", &head)?;
+    let reply = chunk(1, true, 100)
+        .send()
+        .context(|| "a 100 byte non-last preimage chunk".to_string())?;
+    expect_status(
+        "a non-last preimage chunk of 100 bytes, where every chunk but the last must be 250",
+        &reply,
+        AppSW::WrongApduLength,
+    )?;
+
+    // (b) Chunks that add up to more than the declared size.
+    let head = metadata_head(account, fixtures::random_u64(), branch, 300, &receiver)
+        .send()
+        .context(|| "the head before an oversized preimage".to_string())?;
+    expect_ok("the head before an oversized preimage", &head)?;
+    let first = chunk(1, true, 250)
+        .send()
+        .context(|| "the first chunk of an oversized preimage".to_string())?;
+    expect_ok("the first 250 bytes of a 300 byte preimage", &first)?;
+    let reply = chunk(2, false, 100)
+        .send()
+        .context(|| "the last chunk of an oversized preimage".to_string())?;
+    expect_status(
+        "preimage chunks adding up to 350 bytes, where the head declared 300",
+        &reply,
+        AppSW::WrongApduLength,
+    )?;
+
+    // (c) Another instruction between the head and chunk 1.
+    let head = metadata_head(account, fixtures::random_u64(), branch, 110, &receiver)
+        .send()
+        .context(|| "the head before an interleaved instruction".to_string())?;
+    expect_ok("the head before an interleaved instruction", &head)?;
+    let interleaved = valid_public_key_request(account)
+        .send()
+        .context(|| "a GetPublicKey between the head and chunk 1".to_string())?;
+    expect_ok("a GetPublicKey between the head and chunk 1", &interleaved)?;
+    let reply = chunk(1, false, 110)
+        .send()
+        .context(|| "chunk 1 after an interleaved instruction".to_string())?;
+    expect_status(
+        "chunk 1 after another instruction ended the exchange its head started",
+        &reply,
+        AppSW::WrongP1P2,
     )
 }

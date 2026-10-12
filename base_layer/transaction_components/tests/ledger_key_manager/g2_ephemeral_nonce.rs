@@ -14,9 +14,12 @@
 //! `NonceStoreFull` means the handle *counter* is exhausted - 2^64 reservations - and seeing it here would be a
 //! bug, not the boundary.
 //!
-//! The last test is the fix itself (d60b8d8f0). `get_metadata_signature` - the path change outputs take - must sign
-//! a device held sender offset key with a device reserved nonce, and must *not* reserve one for a host held sender
-//! offset key, which is what coinbase and burn outputs still carry. Both halves are asserted on the wire.
+//! The tests at the end are about sender offset keys. A `OneSidedSenderOffset` key never signs through this
+//! instruction: it signs a metadata signature only through the reviewed one sided instruction (see
+//! `g4_one_sided_metadata`), so it is refused here, and `get_metadata_signature` - which has no recipient address to
+//! show - refuses it before the device is asked. A host held sender offset key, which is what coinbase outputs still
+//! carry, signs in software and never involves the device. Both are asserted on the wire. A pre-mine sender offset
+//! key still signs here, for the pre-mine ceremony; the last test asserts that.
 
 use minotari_ledger_wallet_common::{
     common_types::{Instruction, LedgerKeyBranch},
@@ -28,9 +31,8 @@ use tari_crypto::keys::SecretKey;
 use tari_script::{ExecutionStack, script};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface},
-    test_helpers::{TestParams, UtxoTestParams},
-    transaction_components::WalletOutputBuilder,
+    key_manager::{KeyManager, TariKeyAndId, TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError},
+    transaction_components::{MemoField, RangeProofType, TransactionOutputVersion, WalletOutputBuilder},
 };
 use tari_utilities::hex::Hex;
 
@@ -133,9 +135,9 @@ fn a_nonce_reserved_in_one_call_is_spent_in_a_later_one_across_unrelated_calls()
 
         // Only now, the handle reserved before all of that.
         let signature = key_manager
-            .sign_with_nonce_and_challenge(&sender_offset.key_id, &reserved.key_id, &challenge)
+            .sign_with_nonce_and_challenge(&random_key.key_id, &reserved.key_id, &challenge)
             .expect("a signature with a nonce reserved before several unrelated calls");
-        assert_signed_with(&signature, &sender_offset.pub_key, &reserved, &challenge);
+        assert_signed_with(&signature, &random_key.pub_key, &reserved, &challenge);
     });
 }
 
@@ -246,50 +248,74 @@ fn the_ninth_reservation_evicts_the_first_and_the_store_is_not_full() {
     });
 }
 
-/// `get_metadata_signature` reserves exactly one device nonce for a device held sender offset key and spends it -
-/// and reserves none for a host held one. Both outputs' metadata signatures verify as transaction outputs.
-///
-/// The first half is the change output path through `crate::test_helpers`, which is how the rest of the codebase
-/// builds an output: `TestParams::new` takes its sender offset key from `get_script_offset`, and `create_output`
-/// signs the metadata with it. Before the fix that path drew a host nonce for a device key, which the key manager
-/// refuses, and every send with change failed.
-///
-/// The second half is what the fix must *not* have changed. The coinbase builder still mints a software sender
-/// offset key, and a device nonce cannot sign against one, so the key manager has to keep drawing a host nonce for
-/// it - asserted here as a signature that verifies and a wire that never saw `GenerateEphemeralNonce` or anything
-/// else.
+/// A device held sender offset key cannot sign a raw challenge, whoever asks: the key manager refuses it before the
+/// device is touched, and the device refuses it with `BadBranchKey` when the accessor is bypassed. That is the gap a
+/// compromised host would otherwise use to have a device sender offset key sign an output nobody was shown - and what
+/// refuses an aggregated sender partial metadata signature by a `OneSidedSenderOffset` key on a ledger wallet. The
+/// pre-mine ceremony is unaffected; see `the_pre_mine_leaders_partial_metadata_signature_reaches_the_device`.
 #[test]
-fn a_metadata_signature_reserves_a_device_nonce_only_for_a_device_sender_offset_key() {
+fn a_device_sender_offset_key_cannot_sign_a_raw_challenge() {
     with_device(|device| {
         let key_manager = device.key_manager();
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let reserved = key_manager.reserve_ephemeral_nonce().expect("GenerateEphemeralNonce");
 
-        let params = TestParams::new(&key_manager);
-        assert!(
-            matches!(params.sender_offset_key_id, TariKeyId::LedgerKey {
-                branch: LedgerKeyBranch::OneSidedSenderOffset,
-                ..
-            }),
-            "TestParams on a ledger wallet should carry a device held sender offset key, got {}",
-            params.sender_offset_key_id
-        );
-        let (output, wire) = device.watch(|| {
-            params
-                .create_output(UtxoTestParams::with_value(MicroMinotari(5_000)), &key_manager)
-                .expect("a change-shaped output with a device held sender offset key")
+        let (error, wire) = device.watch(|| {
+            key_manager
+                .sign_with_nonce_and_challenge(&sender_offset.key_id, &reserved.key_id, &fixtures::random_challenge())
+                .expect_err("a raw signature by a device held sender offset key")
         });
-        assert_eq!(
-            (
-                wire.count(Instruction::GenerateEphemeralNonce),
-                wire.count(Instruction::GetRawSchnorrSignature)
-            ),
-            (1, 1),
-            "signing one metadata signature should reserve exactly one device nonce and spend it: {wire:?}"
+        assert_eq!(error, KeyManagerError::LedgerSenderOffsetRawSignature);
+        assert!(
+            wire.is_empty(),
+            "the refusal must come before the device is asked: {wire:?}"
         );
-        output
-            .to_transaction_output()
-            .expect("a transaction output")
-            .verify_metadata_signature()
-            .expect("the metadata signature over a device held sender offset key verifies");
+
+        // The refusal left the reservation alone, so it still signs for a key that may sign raw.
+        let key = key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::Random))
+            .expect("a device key");
+        let challenge = fixtures::random_challenge();
+        let signature = key_manager
+            .sign_with_nonce_and_challenge(&key.key_id, &reserved.key_id, &challenge)
+            .expect("the reservation the refused request named");
+        assert_signed_with(&signature, &key.pub_key, &reserved, &challenge);
+    });
+}
+
+/// `get_metadata_signature` refuses a device held sender offset key before the device is asked - it has no recipient
+/// address for the device to show - and signs a host held one in software, never involving the device.
+///
+/// On a ledger wallet change is signed through the reviewed path instead, with the wallet's own address; see
+/// `g4_one_sided_metadata`.
+///
+/// The second half is the coinbase shape. The coinbase builder still mints a software sender offset key, and the key
+/// manager has to keep signing it in software - asserted here as a signature that verifies and a wire that never saw
+/// `GenerateEphemeralNonce` or anything else.
+#[test]
+fn a_metadata_signature_with_no_address_is_refused_for_a_device_sender_offset_key() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let sender_offset = device_sender_offset_key(&key_manager);
+        let commitment_mask = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
+
+        let (error, wire) = device.watch(|| {
+            key_manager
+                .get_metadata_signature(
+                    &commitment_mask.key_id,
+                    &MicroMinotari(5_000).into(),
+                    &sender_offset.key_id,
+                    TransactionOutputVersion::get_current_version(),
+                    &fixtures::random_bytes_32(),
+                    RangeProofType::BulletProofPlus,
+                )
+                .expect_err("a metadata signature with no address over a device held sender offset key")
+        });
+        assert_eq!(error, KeyManagerError::LedgerSenderOffsetNeedsRecipient);
+        assert!(
+            wire.is_empty(),
+            "the refusal must come before the device is asked: {wire:?}"
+        );
 
         // The coinbase shape: a sender offset key the host holds.
         let host_sender_offset = key_manager.get_random_key(None, None).expect("a host key");
@@ -313,5 +339,61 @@ fn a_metadata_signature_reserves_a_device_nonce_only_for_a_device_sender_offset_
             .expect("a transaction output")
             .verify_metadata_signature()
             .expect("the metadata signature over a host held sender offset key verifies");
+    });
+}
+
+/// The pre-mine leader's aggregated step 3 is unaffected: `sign_partial_as_sender_and_receiver` with the `PreMine`
+/// sender offset key `get_script_offset` issues in pre-mine mode, and a device reserved nonce, reaches the device and
+/// is signed there. Only `OneSidedSenderOffset` keys are refused a raw signature; pre-mine signing belongs with the
+/// separate pre-mine issue.
+#[test]
+fn the_pre_mine_leaders_partial_metadata_signature_reaches_the_device() {
+    with_device(|device| {
+        let key_manager = device.key_manager();
+        let script_key = key_manager
+            .get_random_key(None, Some(LedgerKeyBranch::PreMine))
+            .expect("a pre-mine script key");
+        let (_offset, mut sender_offsets) = key_manager
+            .get_script_offset(std::slice::from_ref(&script_key.key_id), 1)
+            .expect("a sender offset key from the device");
+        let sender_offset = sender_offsets.pop().expect("one sender offset key");
+        assert!(
+            matches!(sender_offset.key_id, TariKeyId::LedgerKey { branch: LedgerKeyBranch::PreMine, index }
+                if minotari_ledger_wallet_common::script_offset::is_pre_mine_sender_offset_index(index)),
+            "expected a pre-mine sender offset key, got {}",
+            sender_offset.key_id
+        );
+
+        // The other parties' shares, as the leader would have collected them.
+        let other_sender_offset = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let other_ephemeral = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let commitment_mask = key_manager.get_random_key(None, None).expect("a commitment mask");
+        let builder = WalletOutputBuilder::new(MicroMinotari(5_000), commitment_mask.key_id.clone())
+            .with_script(script!(Nop).unwrap())
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .expect("encrypted data")
+            .with_script_key(TariKeyId::Zero);
+
+        let (signed, wire) = device.watch(|| {
+            builder.sign_partial_as_sender_and_receiver(
+                &key_manager,
+                &sender_offset.key_id,
+                &other_sender_offset,
+                &other_ephemeral,
+            )
+        });
+        signed.expect("the pre-mine leader's partial metadata signature");
+        let raw = wire.of(Instruction::GetRawSchnorrSignature);
+        assert_eq!(
+            raw.len(),
+            1,
+            "one raw signature by the pre-mine sender offset key: {wire:?}"
+        );
+        assert_eq!(
+            raw.first().and_then(|exchange| exchange.status),
+            Some(0x9000),
+            "the device must serve the pre-mine sender offset key's raw signature: {wire:?}"
+        );
     });
 }

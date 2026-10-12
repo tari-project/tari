@@ -4,6 +4,7 @@
 use std::{fmt, fmt::Debug};
 
 use log::*;
+use minotari_ledger_wallet_common::codec::MAX_METADATA_SIGNATURE_ADDRESS_SIZE;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -50,7 +51,6 @@ use crate::{
         OutputFeatures,
         TransactionKernel,
         TransactionKernelVersion,
-        TransactionOutput,
         TransactionOutputVersion,
         WalletOutput,
         WalletOutputBuilder,
@@ -416,6 +416,15 @@ where KM: TransactionKeyManagerInterface
         if sender_offset_keys.len() != count {
             return Err(TransactionBuilderError::SenderOffsetKeyPoolExhausted);
         }
+        // Device held sender offset keys mean a ledger wallet, which reviews each recipient as `build` signs it. A
+        // recipient whose address the device cannot be sent would only fail there - after the user had approved the
+        // recipients before it - so every one is checked now, before the device is asked to review anything.
+        if sender_offset_keys
+            .iter()
+            .any(|key| matches!(key.key_id, TariKeyId::LedgerKey { .. }))
+        {
+            check_recipient_addresses_fit_the_device(&self.recipient_specs)?;
+        }
         self.partial_script_offset = &self.partial_script_offset + partial_offset;
 
         // The caller's keys come off the end, so the pool keeps the spec keys at the front in spec order.
@@ -527,12 +536,22 @@ where KM: TransactionKeyManagerInterface
     /// `sender_offset_key_id` must come from [`Self::reserve_sender_offset_keys`], or the caller must have registered
     /// the matching partial script offset with [`Self::with_host_derived_partial_script_offset`]; otherwise the key
     /// is never subtracted from the script offset and the transaction will not validate.
+    ///
+    /// A device held sender offset key (`TariKeyId::LedgerKey`) is refused with
+    /// [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]. A custom output carries no recipient address, so its
+    /// metadata signature is (re-)signed with none, which a ledger wallet refuses for a device held key - and only
+    /// inside `build`, after the user has already approved the recipients' reviews on the device. Refusing here
+    /// stops the transaction before the device is asked to review anything. A software wallet cannot sign with a
+    /// device held key at all.
     pub fn with_output(
         &mut self,
         output: WalletOutput,
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        if matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+            return Err(KeyManagerError::LedgerSenderOffsetNeedsRecipient.into());
+        }
         let nonce = self.key_manager.get_random_key(None, None)?;
         let pair = OutputPair::new(output, nonce.key_id, sender_offset_key_id, custom_recovery_key_id);
         self.custom_outputs.push(pair);
@@ -1078,9 +1097,15 @@ where KM: TransactionKeyManagerInterface
                 &sender_offset.key_id,
                 &spec.destination,
             )?,
-            RecipientMetadataSignature::Unverified => {
-                builder.sign_metadata_signature(&self.key_manager, &sender_offset.key_id)?
-            },
+            // Signed for the wallet's own address, so on a ledger wallet the device signs an output to itself with
+            // default features silently, and reviews one with any other features. Any other output - a plain burn, an
+            // HTLC send - has a script that is not the standard stealth script to this wallet, and a ledger
+            // wallet refuses it.
+            RecipientMetadataSignature::Unverified => builder.sign_metadata_signature_user_verified(
+                &self.key_manager,
+                &sender_offset.key_id,
+                &self.own_address,
+            )?,
         };
 
         Ok((builder.try_build(&self.key_manager)?, recovery_key_id))
@@ -1110,22 +1135,19 @@ where KM: TransactionKeyManagerInterface
 
         let features = OutputFeatures::default();
         let covenant = Covenant::default();
-        let metadata_message = TransactionOutput::metadata_signature_message_from_parts(
+        // Signed for the wallet's own address: the change script is the standard stealth script to it and its features
+        // are the default, so on a ledger wallet the device recognises its own change and signs it without a prompt.
+        let metadata_sig = self.key_manager.get_metadata_signature_user_verified(
+            &change_commitment_mask_key.key_id,
+            amount,
+            &sender_offset.key_id,
             output_version,
-            &script,
             &features,
             &covenant,
             &encrypted_data,
-            &minimum_value_promise,
-        );
-
-        let metadata_sig = self.key_manager.get_metadata_signature(
-            &change_commitment_mask_key.key_id,
-            &amount.into(),
-            &sender_offset.key_id,
-            output_version,
-            &metadata_message,
-            features.range_proof_type,
+            minimum_value_promise,
+            &script,
+            &self.own_address,
         )?;
 
         let change_wallet_output = WalletOutput::new_current_version(
@@ -1494,7 +1516,12 @@ where KM: TransactionKeyManagerInterface
         }
 
         if let Some(change) = &mut change_output {
-            Self::update_encrypted_data_and_metadata_sig(&self.key_manager, change, total_fee, None)?;
+            Self::update_encrypted_data_and_metadata_sig(
+                &self.key_manager,
+                change,
+                total_fee,
+                Some(&self.own_address),
+            )?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
@@ -1720,6 +1747,33 @@ fn surface_device_key_limit(e: KeyManagerError) -> TransactionBuilderError {
     }
 }
 
+/// Refuse a recipient a ledger device cannot sign for: a single address, which has no view key, or an address too
+/// long for its metadata signature request - see [`MAX_METADATA_SIGNATURE_ADDRESS_SIZE`]. Outputs to the wallet itself
+/// are signed for its own address, which always fits, so only the recipients the device reviews are checked.
+fn check_recipient_addresses_fit_the_device(specs: &[RecipientSpec]) -> Result<(), TransactionBuilderError> {
+    for spec in specs {
+        if spec.metadata_signature != RecipientMetadataSignature::UserVerified {
+            continue;
+        }
+        // The device signs for a dual address only: it needs the view key. Refused here rather than inside `build`,
+        // after the recipients before this one had been approved.
+        if let TariAddress::Single(_) = spec.destination {
+            return Err(TransactionBuilderError::RecipientAddressNotDualForDevice {
+                address: spec.destination.to_base58(),
+            });
+        }
+        let size = spec.destination.to_vec().len();
+        if size > MAX_METADATA_SIGNATURE_ADDRESS_SIZE {
+            return Err(TransactionBuilderError::RecipientAddressTooLongForDevice {
+                address: spec.destination.to_base58(),
+                size,
+                max: MAX_METADATA_SIGNATURE_ADDRESS_SIZE,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Adds two fee amounts, returning an overflow error rather than wrapping.
 fn add_fee(fee: MicroMinotari, extra: MicroMinotari) -> Result<MicroMinotari, TransactionBuilderError> {
     fee.checked_add(extra)
@@ -1770,6 +1824,29 @@ mod test {
         transaction_components::{MemoField, OutputFeatures},
         validation::transaction::TransactionInternalConsistencyValidator,
     };
+
+    /// A custom output with a device held sender offset key is refused when it is added, before `build` - and so
+    /// before a ledger device is asked to review any recipient - with the typed error the re-sign would have hit.
+    #[test]
+    fn a_custom_output_with_a_device_held_sender_offset_key_is_refused_when_added() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let output = create_test_input(MicroMinotari(5_000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        let device_held = TariKeyId::LedgerKey {
+            branch: minotari_ledger_wallet_common::common_types::LedgerKeyBranch::OneSidedSenderOffset,
+            index: 7,
+        };
+        let err = builder.with_output(output, device_held, None).map(|_| ()).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                TransactionBuilderError::KeyManagerError(KeyManagerError::LedgerSenderOffsetNeedsRecipient)
+            ),
+            "got {err:?}"
+        );
+        assert!(builder.custom_outputs.is_empty());
+    }
 
     /// A wallet address to send to that is not this wallet's own.
     fn random_address() -> TariAddress {
@@ -2373,6 +2450,76 @@ mod test {
 
         let finalized = builder.build().unwrap();
         assert_validates(&finalized.transaction);
+    }
+
+    /// A recipient whose address is longer than a ledger device's metadata signature request can carry is refused
+    /// with a typed error; one at the limit, and a long address on an output to self, are not.
+    #[test]
+    fn a_recipient_address_too_long_for_the_device_is_refused() {
+        let address = |payment_id_length: usize| {
+            TariAddress::new_dual_address(
+                CompressedPublicKey::default(),
+                CompressedPublicKey::default(),
+                Network::LocalNet,
+                TariAddressFeatures::default(),
+                Some(vec![7; payment_id_length]),
+            )
+            .unwrap()
+        };
+        let spec = |payment_id_length: usize| {
+            RecipientSpec::stealth(
+                address(payment_id_length),
+                MicroMinotari(1),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+        };
+        assert_eq!(address(112).to_vec().len(), MAX_METADATA_SIGNATURE_ADDRESS_SIZE);
+        check_recipient_addresses_fit_the_device(&[spec(0), spec(112)]).unwrap();
+        match check_recipient_addresses_fit_the_device(&[spec(0), spec(113)]) {
+            Err(TransactionBuilderError::RecipientAddressTooLongForDevice { size, max, .. }) => {
+                assert_eq!(
+                    (size, max),
+                    (
+                        MAX_METADATA_SIGNATURE_ADDRESS_SIZE + 1,
+                        MAX_METADATA_SIGNATURE_ADDRESS_SIZE
+                    )
+                );
+            },
+            other => panic!("expected RecipientAddressTooLongForDevice, got {other:?}"),
+        }
+        let mut to_self = RecipientSpec::to_self(MicroMinotari(1), OutputFeatures::default(), MemoField::new_empty());
+        to_self.destination = address(113);
+        check_recipient_addresses_fit_the_device(&[to_self]).unwrap();
+    }
+
+    /// A single address recipient is refused up front on a ledger wallet, even after a dual address one, rather than
+    /// failing inside `build` after the first recipient's review was approved.
+    #[test]
+    fn a_single_address_recipient_is_refused_for_the_device() {
+        let dual = RecipientSpec::stealth(
+            TariAddress::new_dual_address_with_default_features(
+                CompressedPublicKey::default(),
+                CompressedPublicKey::default(),
+                Network::LocalNet,
+            )
+            .unwrap(),
+            MicroMinotari(1),
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        );
+        let single = RecipientSpec::stealth(
+            TariAddress::new_single_address_with_interactive_only(CompressedPublicKey::default(), Network::LocalNet)
+                .unwrap(),
+            MicroMinotari(1),
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        );
+        check_recipient_addresses_fit_the_device(std::slice::from_ref(&dual)).unwrap();
+        match check_recipient_addresses_fit_the_device(&[dual, single]) {
+            Err(TransactionBuilderError::RecipientAddressNotDualForDevice { .. }) => {},
+            other => panic!("expected RecipientAddressNotDualForDevice, got {other:?}"),
+        }
     }
 
     /// A ledger device derives every sender offset key of a transaction in one exchange, so it caps how many it

@@ -34,7 +34,6 @@ use minotari_ledger_wallet_common::{
         GenerateEphemeralNonceRequest,
         GetAppNameRequest,
         GetDHSharedSecretRequest,
-        GetOneSidedMetadataSignatureRequest,
         GetPublicKeyRequest,
         GetPublicSpendKeyRequest,
         GetRawSchnorrSignatureLegacyNonceRequest,
@@ -46,6 +45,8 @@ use minotari_ledger_wallet_common::{
         GetViewKeyRequest,
         KeyReply,
         MAX_APDU_DATA_SIZE,
+        MetadataSignatureHeadChunk,
+        MetadataSignatureRequest,
         RESPONSE_VERSION,
         SchnorrReply,
         ScriptOffsetReply,
@@ -61,6 +62,7 @@ use minotari_ledger_wallet_common::{
         check_legacy_nonce_branches,
         check_legacy_nonce_index,
     },
+    metadata_output::parse_metadata_preimage,
     script_offset::{
         SCRIPT_OFFSET_REPLY_SIZE,
         check_indexed_script_key_index,
@@ -629,8 +631,16 @@ pub fn ledger_generate_ephemeral_nonce(account: u64) -> Result<(u64, CompressedP
 
 ///  Get the raw schnorr signature from the ledger device, using a nonce the device reserved earlier.
 ///
-/// `nonce_handle` must come from [`ledger_generate_ephemeral_nonce`]. The device consumes the nonce whether or not
-/// the signature succeeds, so a handle is good for exactly one call.
+/// `nonce_handle` must come from [`ledger_generate_ephemeral_nonce`]. The device consumes the nonce in any request
+/// that reaches signing, whether or not the signature succeeds, so a handle is good for one signature. A request it
+/// refuses on its arguments - a branch it will not sign with, such as `Spend` or `OneSidedSenderOffset` - is refused
+/// before the nonce is taken, and leaves it in the store.
+///
+/// A `OneSidedSenderOffset` key is refused with `BadBranchKey`: such a key signs a metadata signature only through
+/// [`ledger_get_one_sided_metadata_signature`], which the device reviews. That refusal is mirrored here. Pre-mine
+/// sender offset keys still sign here with no review - the pre-mine ceremony's aggregated step 3 relies on it - and a
+/// host can mint them on demand on any wallet through `GetScriptOffset` with a `PreMine` script key; that belongs
+/// with the separate pre-mine issue.
 pub fn ledger_get_raw_schnorr_signature(
     account: u64,
     private_key_index: u64,
@@ -644,6 +654,12 @@ pub fn ledger_get_raw_schnorr_signature(
         challenge '{}'",
         account, private_key_index, private_key_branch, nonce_handle, challenge.to_hex()
     );
+    if private_key_branch == LedgerKeyBranch::OneSidedSenderOffset {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetRawSchnorrSignature: a '{private_key_branch}' sender offset key signs a metadata signature only \
+             through a reviewed instruction"
+        )));
+    }
     verify_ledger_application()?;
 
     let request = GetRawSchnorrSignatureRequest {
@@ -806,24 +822,33 @@ pub fn ledger_get_script_schnorr_signature(
 
 /// Get the one sided metadata signature
 ///
+/// `preimage` is the preimage of the metadata signature's `common` message: the borsh encodings of the output's
+/// version, features, covenant, encrypted data and minimum value promise, back to back
+/// (`TransactionOutput::metadata_signature_message_common_preimage`). The device reads the fields from it, hashes it
+/// itself, and builds the script from `receiver_address` itself, so what it shows - and whether it shows anything - is
+/// decided on what it signs. See `minotari_ledger_wallet_common::metadata_output`.
+///
 /// `sender_offset_branch` is the branch the sender offset key is on: `OneSidedSenderOffset` for an ordinary output,
-/// `PreMine` for the backup pre-mine spend, whose sender offset `GetScriptOffset` issued in pre-mine mode. The device
-/// refuses any other branch with `BadBranchKey`, before its review; that refusal is mirrored here.
+/// `PreMine` for the backup pre-mine spend, whose sender offset `GetScriptOffset` issued in pre-mine mode.
+///
+/// The device refuses, before any review, a branch that is not a sender offset branch (`BadBranchKey`), and an output
+/// with a covenant, a burn or a coinbase (`OutputNotSignable`); both refusals are mirrored here, before the device is
+/// asked.
+#[allow(clippy::too_many_arguments)]
 pub fn ledger_get_one_sided_metadata_signature(
     account: u64,
     network: Network,
-    txo_version: u8,
     value: u64,
     sender_offset_key_index: u64,
     sender_offset_branch: LedgerKeyBranch,
     commitment_mask: &PrivateKey,
     receiver_address: &TariAddress,
-    message: &[u8; 32],
+    preimage: &[u8],
 ) -> Result<ComAndPubSignature, LedgerDeviceError> {
     debug!(
         target: LOG_TARGET,
-        "ledger_get_one_sided_metadata_signature: account '{}', message '{}'",
-        account, message.to_hex()
+        "ledger_get_one_sided_metadata_signature: account '{}', preimage '{}'",
+        account, preimage.to_vec().to_hex()
     );
     if !matches!(
         sender_offset_branch,
@@ -833,17 +858,26 @@ pub fn ledger_get_one_sided_metadata_signature(
             "GetOneSidedMetadataSignature: '{sender_offset_branch}' is not a sender offset key branch"
         )));
     }
+    parse_metadata_preimage(preimage).map_err(|e| {
+        LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: the device does not sign this output ({e:?})"
+        ))
+    })?;
+    if let TariAddress::Single(_) = receiver_address {
+        return Err(LedgerDeviceError::Processing(
+            "Receiver address must be a Dual address".to_string(),
+        ));
+    }
     let address_bytes = receiver_address.to_vec();
-    let request = GetOneSidedMetadataSignatureRequest::new(
+    let head = MetadataSignatureHeadChunk::new(
         account,
         u64::from(network.as_byte()),
-        u64::from(txo_version),
         sender_offset_key_index,
         u64::from(sender_offset_branch.as_byte()),
         value,
         key_field(commitment_mask)?,
+        0,
         &address_bytes,
-        message,
     )
     .map_err(|_| {
         LedgerDeviceError::Processing(format!(
@@ -851,66 +885,68 @@ pub fn ledger_get_one_sided_metadata_signature(
             address_bytes.len()
         ))
     })?;
+    let request = MetadataSignatureRequest::new(head, preimage).map_err(|_| {
+        LedgerDeviceError::Processing(format!(
+            "GetOneSidedMetadataSignature: a preimage of {} bytes cannot be sent",
+            preimage.len()
+        ))
+    })?;
 
-    // The transport writes the data length as one byte, so a longer payload would go out with a wrapped length and be
+    // The transport writes the data length as one byte, so a longer head would go out with a wrapped length and be
     // refused by the device as `WrongApduLength`. Say so here instead, before the device is touched.
-    if !request.fits_in_one_apdu() {
+    if !request.head.fits_in_one_apdu() {
         return Err(LedgerDeviceError::Processing(format!(
             "GetOneSidedMetadataSignature: the request is {} bytes, more than the {MAX_APDU_DATA_SIZE} one APDU can \
              carry; the receiver address ({} bytes) is too long to sign for on a Ledger",
-            request.encoded_len(),
+            request.head.encoded_len(),
             address_bytes.len()
         )));
     }
     verify_ledger_application()?;
 
-    // Ensure the receiver address is valid
-    if let TariAddress::Single(_) = receiver_address {
-        return Err(LedgerDeviceError::Processing(
-            "Receiver address must be a Dual address".to_string(),
-        ));
+    let mut result = None;
+    for chunk in request.chunks() {
+        let answer = Command::from_request(&chunk)
+            .execute()
+            .map_err(|e| LedgerDeviceError::Instruction(format!("GetOneSidedMetadataSignature: {e}")))?;
+        if answer.retcode() == AppSW::UserCancelled as u16 {
+            return Err(LedgerDeviceError::UserCancelled);
+        }
+        // An application from before the chunked layout does not serve its instruction byte at all, and refuses the
+        // head. Say that the application needs updating rather than reporting a refused chunk.
+        if chunk.chunk_number == 0 && answer.retcode() == AppSW::InsNotSupported as u16 {
+            return Err(LedgerDeviceError::ApplicationOutdated(
+                "it does not serve the chunked GetOneSidedMetadataSignature".to_string(),
+            ));
+        }
+        // Every chunk but the last is answered with an empty `Ok`; a refusal ends the exchange.
+        if chunk.more && answer.retcode() != AppSW::Ok as u16 {
+            return Err(LedgerDeviceError::Processing(format!(
+                "GetOneSidedMetadataSignature: chunk {} refused ({:?})",
+                chunk.chunk_number,
+                AppSW::try_from(answer.retcode())
+            )));
+        }
+        result = Some(answer);
     }
-
-    // Check for integrated address support
-    if receiver_address
-        .features()
-        .contains(tari_common_types::tari_address::TariAddressFeatures::PAYMENT_ID)
-    {
-        debug!(
-            target: LOG_TARGET,
-            "Processing integrated address with embedded payment ID"
-        );
-    }
-
-    match Command::from_request(&request).execute() {
-        Ok(result) => {
-            if result.retcode() == AppSW::UserCancelled as u16 {
-                return Err(LedgerDeviceError::UserCancelled);
-            }
-            let Ok(reply) = ComAndPubSigReply::decode(result.data()) else {
-                return Err(LedgerDeviceError::Processing(format!(
-                    "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
-                    result.data().len(),
-                    result
-                )));
-            };
-            Ok(ComAndPubSignature::new(
-                CompressedCommitment::from_canonical_bytes(reply.ephemeral_commitment)
-                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                CompressedPublicKey::from_canonical_bytes(reply.ephemeral_pubkey)
-                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(reply.u_a)
-                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(reply.u_x)
-                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-                PrivateKey::from_canonical_bytes(reply.u_y)
-                    .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
-            ))
-        },
-        Err(e) => Err(LedgerDeviceError::Instruction(format!(
-            "GetOneSidedMetadataSignature: {e}"
-        ))),
-    }
+    let result =
+        result.ok_or_else(|| LedgerDeviceError::Processing("GetOneSidedMetadataSignature: No result".to_string()))?;
+    let Ok(reply) = ComAndPubSigReply::decode(result.data()) else {
+        return Err(LedgerDeviceError::Processing(format!(
+            "'get_one_sided_metadata_signature' insufficient data - expected 161 got {} bytes ({:?})",
+            result.data().len(),
+            AppSW::try_from(result.retcode())
+        )));
+    };
+    Ok(ComAndPubSignature::new(
+        CompressedCommitment::from_canonical_bytes(reply.ephemeral_commitment)
+            .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+        CompressedPublicKey::from_canonical_bytes(reply.ephemeral_pubkey)
+            .map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+        PrivateKey::from_canonical_bytes(reply.u_a).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+        PrivateKey::from_canonical_bytes(reply.u_x).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+        PrivateKey::from_canonical_bytes(reply.u_y).map_err(|e| LedgerDeviceError::ConversionError(e.to_string()))?,
+    ))
 }
 
 #[cfg(test)]
@@ -931,22 +967,33 @@ mod test {
         .expect("a dual address with a payment id")
     }
 
+    /// A metadata signature preimage: output version 0, `features`, the empty covenant, 80 bytes of encrypted data and
+    /// no minimum value promise.
+    fn preimage(features: &[u8]) -> Vec<u8> {
+        let mut preimage = vec![0];
+        preimage.extend_from_slice(features);
+        preimage.push(0);
+        preimage.extend_from_slice(&80u32.to_le_bytes());
+        preimage.extend_from_slice(&[0x5a; 80]);
+        preimage.extend_from_slice(&0u64.to_le_bytes());
+        preimage
+    }
+
     /// A receiver address too long for one APDU is refused on the host, with an error that says so, before the device
     /// is asked - not sent with a wrapped length byte for the device to answer `WrongApduLength`.
     #[test]
     fn a_metadata_request_longer_than_one_apdu_is_refused_on_the_host() {
         let address = dual_address(200);
-        assert!(address.to_vec().len() > MAX_APDU_DATA_SIZE - 106);
+        assert!(address.to_vec().len() > MAX_APDU_DATA_SIZE - 76);
         let error = ledger_get_one_sided_metadata_signature(
             1,
             Network::Esmeralda,
-            0,
             1_000,
             7,
             LedgerKeyBranch::OneSidedSenderOffset,
             &PrivateKey::from(3u64),
             &address,
-            &[0x42; 32],
+            &preimage(&[0; 16]),
         )
         .unwrap_err();
         match error {
@@ -955,6 +1002,59 @@ mod test {
                 "unexpected message: {message}"
             ),
             other => panic!("expected the host's size refusal, got {other:?}"),
+        }
+    }
+
+    /// What the device refuses - a covenant, a burn, a coinbase - is refused on the host too, before the device is
+    /// asked, and so is a preimage that is not one.
+    #[test]
+    fn an_output_the_device_will_not_sign_is_refused_on_the_host() {
+        let address = dual_address(0);
+        let mut burn = [0u8; 16];
+        burn[1] = 2;
+        let mut covenant = preimage(&[0; 16]);
+        // The covenant's varint length, after the version and the 16 bytes of default features.
+        if let Some(length) = covenant.get_mut(17) {
+            *length = 1;
+        }
+        for (what, preimage) in [
+            ("burn", preimage(&burn)),
+            ("covenant", covenant),
+            ("malformed", vec![0; 10]),
+        ] {
+            let error = ledger_get_one_sided_metadata_signature(
+                1,
+                Network::Esmeralda,
+                1_000,
+                7,
+                LedgerKeyBranch::OneSidedSenderOffset,
+                &PrivateKey::from(3u64),
+                &address,
+                &preimage,
+            )
+            .unwrap_err();
+            match error {
+                LedgerDeviceError::Processing(message) => assert!(
+                    message.contains("the device does not sign this output"),
+                    "{what}: unexpected message: {message}"
+                ),
+                other => panic!("{what}: expected the host's refusal, got {other:?}"),
+            }
+        }
+    }
+
+    /// A raw Schnorr signature by a `OneSidedSenderOffset` key is refused on the host, before the device is asked: the
+    /// device refuses it too, and such a key signs a metadata signature only through the reviewed instruction.
+    #[test]
+    fn a_raw_schnorr_signature_by_a_sender_offset_key_is_refused_on_the_host() {
+        let error =
+            ledger_get_raw_schnorr_signature(1, 7, LedgerKeyBranch::OneSidedSenderOffset, 9, &[0x42; 64]).unwrap_err();
+        match error {
+            LedgerDeviceError::Processing(message) => assert!(
+                message.contains("only through a reviewed instruction"),
+                "unexpected message: {message}"
+            ),
+            other => panic!("expected the host's branch refusal, got {other:?}"),
         }
     }
 }

@@ -98,6 +98,17 @@ pub fn get_public_spend_key_bytes_from_tari_dual_address(address_bytes: &[u8]) -
     Ok(public_spend_key_bytes)
 }
 
+/// Get the public view key bytes from a serialized Tari dual address
+pub fn get_public_view_key_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Result<[u8; 32], String> {
+    if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
+        return Err("Invalid address size".to_string());
+    }
+    validate_checksum(address_bytes)?;
+    let mut public_view_key_bytes = [0u8; 32];
+    public_view_key_bytes.copy_from_slice(address_bytes.get(2..34).expect("Length is checked"));
+    Ok(public_view_key_bytes)
+}
+
 /// Extract payment ID bytes from integrated address, if present
 pub fn get_payment_id_bytes_from_tari_dual_address(address_bytes: &[u8]) -> Result<Vec<u8>, String> {
     if address_bytes.len() < TARI_DUAL_ADDRESS_MIN_SIZE || address_bytes.len() > TARI_DUAL_ADDRESS_MAX_SIZE {
@@ -221,6 +232,12 @@ mod tests {
         // Set some test data
         address[0] = 0x01; // Network/version
         address[1] = 0x02; // Features
+        // Public view key at positions 2..34
+        if let Some(view_key) = address.get_mut(2..34) {
+            for (i, byte) in view_key.iter_mut().enumerate() {
+                *byte = 0x40 + u8::try_from(i).expect("index within u8 range");
+            }
+        }
         // Public spend key at positions 34..66
         for i in 34..66 {
             if i < address.len() {
@@ -331,5 +348,21 @@ mod tests {
         for (i, &byte) in spend_key.iter().enumerate() {
             assert_eq!(byte, u8::try_from(i).expect("index within u8 range"));
         }
+    }
+
+    #[test]
+    fn test_public_view_key_extraction() {
+        let address = create_test_address(TARI_DUAL_ADDRESS_MIN_SIZE);
+        let view_key = get_public_view_key_bytes_from_tari_dual_address(&address).unwrap();
+        for (i, &byte) in view_key.iter().enumerate() {
+            assert_eq!(byte, 0x40 + u8::try_from(i).expect("index within u8 range"));
+        }
+
+        let mut corrupted = address.clone();
+        if let Some(byte) = corrupted.get_mut(2) {
+            *byte ^= 1;
+        }
+        assert!(get_public_view_key_bytes_from_tari_dual_address(&corrupted).is_err());
+        assert!(get_public_view_key_bytes_from_tari_dual_address(&address[..TARI_DUAL_ADDRESS_MIN_SIZE - 1]).is_err());
     }
 }

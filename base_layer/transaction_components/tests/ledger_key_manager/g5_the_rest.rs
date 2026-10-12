@@ -119,7 +119,12 @@ fn a_device_key_id_names_the_same_public_key_every_time() {
 fn a_derived_script_key_signs_a_transaction_input_that_verifies() {
     with_device(|device| {
         let key_manager = device.key_manager();
-        let params = TestParams::new(&key_manager);
+        let mut params = TestParams::new(&key_manager);
+        // The output being spent is only the fixture here. Its metadata signature is signed with no recipient address,
+        // which a ledger wallet refuses for a device held sender offset key, so the fixture carries a host held one.
+        let host_sender_offset = key_manager.get_random_key(None, None).expect("a host key");
+        params.sender_offset_key_id = host_sender_offset.key_id;
+        params.sender_offset_key_pk = host_sender_offset.pub_key;
         let output = params.create_input(UtxoTestParams::with_value(MicroMinotari(7_000)), &key_manager);
 
         let (input, wire) = device.watch(|| output.to_transaction_input(&key_manager).expect("a transaction input"));

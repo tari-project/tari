@@ -51,8 +51,12 @@
 //!   and Speculos' nearest is `8027080606411e0000`, so no font matches and the glyph is dropped from the event.
 //! * `'I'` is reported as `'l'` in both faces.
 //!
-//! [`UiToolkit::Bagl`] therefore compares against [`as_bagl_reports`] - the expected text with those two
-//! substitutions applied - and this is written down here rather than hidden in an `assert` so that whoever bumps
+//! The faces matter because a review row draws its **name in the bold face and its value in the regular one**, so an
+//! `'S'` survives in a field name (`Sidechain`, measured on `nanosplus`) and vanishes in a value.
+//!
+//! [`UiToolkit::Bagl`] therefore compares values against [`as_bagl_reports`] and names against
+//! [`as_bagl_bold_reports`] - the expected text with the substitutions of its face applied - and this is written down
+//! here rather than hidden in an `assert` so that whoever bumps
 //! the SDK or the Speculos digest can re-derive it. To do so: dump the SDK's `OPEN_SANS_REGULAR_11PX_CHARS` and
 //! `OPEN_SANS_EXTRABOLD_11PX_CHARS` from `src/ui/fonts/opensans.rs` and feed each bitmap to
 //! `speculos.mcu.ocr.OCR.find_char_from_bitmap` inside the Speculos container.
@@ -152,6 +156,14 @@ impl UiToolkit {
             UiToolkit::Nbgl => text.to_string(),
         }
     }
+
+    /// [`Self::as_reported`] for a field *name*, which BAGL draws in the bold face: there only `'I'` is misread.
+    pub fn as_reported_name(self, text: &str) -> String {
+        match self {
+            UiToolkit::Bagl => as_bagl_bold_reports(text),
+            UiToolkit::Nbgl => text.to_string(),
+        }
+    }
 }
 
 /// The text Speculos' BAGL pixel reconstruction will report, given the text the device drew.
@@ -168,6 +180,17 @@ pub fn as_bagl_reports(text: &str) -> String {
         .filter(|c| *c != 'S')
         .map(|c| if c == 'I' { 'l' } else { c })
         .collect()
+}
+
+/// [`as_bagl_reports`] for the bold face, which review rows draw their names in: `'S'` is recognised there, and only
+/// `'I'` becomes `'l'`.
+pub fn as_bagl_bold_reports(text: &str) -> String {
+    text.chars().map(|c| if c == 'I' { 'l' } else { c }).collect()
+}
+
+/// The value the device shows in the [`MATURITY_FIELD`] row for a maturity of `height`.
+pub fn maturity_value(height: u64) -> String {
+    format!("block {height}")
 }
 
 /// One row of the review screen.
@@ -214,6 +237,23 @@ pub const AMOUNT_FIELD: &str = "Amount";
 pub const RECEIVER_FIELD: &str = "Receiver";
 /// The field name the device uses for the payment ID, which it omits entirely when there is no payment ID.
 pub const PAYMENT_ID_FIELD: &str = "Payment ID";
+/// The rows the device adds to a one sided metadata signature's review when the output is not plain: each only when
+/// it differs from the default, and in this order, after `Payment ID`.
+pub const OUTPUT_TYPE_FIELD: &str = "Output type";
+/// The output's maturity, an absolute block height; its value is [`maturity_value`].
+pub const MATURITY_FIELD: &str = "Locked until";
+pub const SIDECHAIN_FIELD: &str = "Sidechain";
+pub const VALIDATOR_NODE_FIELD: &str = "Validator node";
+pub const MIN_VALUE_FIELD: &str = "Min value";
+pub const RANGE_PROOF_FIELD: &str = "Range proof";
+const OUTPUT_FIELDS: [&str; 6] = [
+    OUTPUT_TYPE_FIELD,
+    MATURITY_FIELD,
+    SIDECHAIN_FIELD,
+    VALIDATOR_NODE_FIELD,
+    MIN_VALUE_FIELD,
+    RANGE_PROOF_FIELD,
+];
 /// The legacy nonce review's field naming which pre-mine signature is being asked for.
 pub const PURPOSE_FIELD: &str = "Purpose";
 /// The legacy nonce review's field naming the signing key, as `"{branch} {index}"`.
@@ -252,7 +292,21 @@ impl ExpectedReview {
         } else {
             absent.push(PAYMENT_ID_FIELD.to_string());
         }
+        // A plain output: none of the rows a non-default output adds. `with_output_field` adds them back one by one.
+        absent.extend(OUTPUT_FIELDS.iter().map(|name| (*name).to_string()));
         Self { present, absent }
+    }
+
+    /// Expect one of the rows a non-default output adds - [`OUTPUT_TYPE_FIELD`] and the rest - with `value`. Call in
+    /// the order the device draws them, which is the order of the constants.
+    #[must_use]
+    pub fn with_output_field(mut self, name: &str, value: &str) -> Self {
+        self.absent.retain(|absent| absent != name);
+        self.present.push(ExpectedField {
+            name: name.to_string(),
+            value: value.to_string(),
+        });
+        self
     }
 
     /// The review `GetRawSchnorrSignatureLegacyNonce` puts up before it signs with the `key_branch` key at
@@ -337,7 +391,7 @@ impl ExpectedReview {
             .map(|field| {
                 format!(
                     "{}{}",
-                    toolkit.as_reported(&field.name),
+                    toolkit.as_reported_name(&field.name),
                     toolkit.as_reported(&field.value)
                 )
             })
@@ -378,8 +432,8 @@ impl ExpectedReview {
         let names: Vec<String> = self
             .present
             .iter()
-            .map(|field| toolkit.as_reported(&field.name))
-            .chain(self.absent.iter().map(|name| toolkit.as_reported(name)))
+            .map(|field| toolkit.as_reported_name(&field.name))
+            .chain(self.absent.iter().map(|name| toolkit.as_reported_name(name)))
             .collect();
         let review = review_text(toolkit, screens, &names);
         let expected = self.as_expected_text(toolkit);
@@ -401,7 +455,7 @@ impl ExpectedReview {
         // The equality above is the assertion; everything from here down exists to say *which* field went wrong,
         // because a diff of two four-hundred character strings is not a diagnosis.
         for field in &self.present {
-            let name = toolkit.as_reported(&field.name);
+            let name = toolkit.as_reported_name(&field.name);
             let value = toolkit.as_reported(&field.value);
             if !review.contains(&name) {
                 problems.push(format!("'{}' does not appear on the review at all", field.name));
@@ -420,7 +474,7 @@ impl ExpectedReview {
         }
 
         for name in &self.absent {
-            let reported = toolkit.as_reported(name);
+            let reported = toolkit.as_reported_name(name);
             if review.contains(&reported) {
                 problems.push(format!(
                     "'{name}' must not appear on this review, but it does: {:?}",
@@ -695,6 +749,33 @@ mod test {
         expected.check(UiToolkit::Bagl, &screens).unwrap();
     }
 
+    /// The validator node registration review as `nanosplus` reported it: the `'S'` of the bold `Sidechain` name
+    /// survives, and the value's regular face `'S'` (here in `Sidechain proof`) does not.
+    #[test]
+    fn a_bagl_field_name_keeps_its_s_and_a_value_loses_it() {
+        let key = "41ee03357b17c5eb1a3ce58ab81fa744a408c5bdc7bf8e06eb5ba6e2bb47ab82";
+        let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0)
+            .with_output_field(OUTPUT_TYPE_FIELD, "Sidechain proof")
+            .with_output_field(SIDECHAIN_FIELD, "VN registration")
+            .with_output_field(VALIDATOR_NODE_FIELD, key);
+        let mut screens = bagl_screens(&as_bagl_reports(RECEIVER));
+        let approve = screens.pop().unwrap();
+        screens.extend([
+            "Output typeidechain proof".to_string(),
+            "SidechainVN registration".to_string(),
+            format!("Validator node (1/2){}", &key[..50]),
+            format!("Validator node (2/2){}", &key[50..]),
+            approve,
+        ]);
+        expected.check(UiToolkit::Bagl, &screens).unwrap();
+
+        // And the bold name is compared with its `'S'`: a device that drew `idechain` as the name fails.
+        screens[5] = "idechainVN registration".to_string();
+        expected
+            .check(UiToolkit::Bagl, &screens)
+            .expect_err("a field name missing its 'S' must fail");
+    }
+
     /// Acceptance criterion 3, without a device: a wrong expected address must fail.
     ///
     /// The device tests cover the same thing against a live simulator, but this one runs on every `cargo test`, so
@@ -817,10 +898,27 @@ mod test {
         assert_eq!(strip_page_counter_suffix("1 of "), "1 of ");
     }
 
+    /// A plain output's review asserts every row a non-default output adds absent; asking for one moves it from the
+    /// absent list to the present list, after the rows already there.
+    #[test]
+    fn the_output_rows_are_absent_unless_asked_for() {
+        let plain = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0);
+        for name in OUTPUT_FIELDS {
+            assert!(plain.absent().iter().any(|absent| absent == name), "{name}");
+        }
+        let matured = plain.with_output_field(MATURITY_FIELD, &maturity_value(1000));
+        assert!(!matured.absent().iter().any(|absent| absent == MATURITY_FIELD));
+        let last = matured.present().last().unwrap();
+        assert_eq!(
+            (last.name.as_str(), last.value.as_str()),
+            (MATURITY_FIELD, "block 1000")
+        );
+    }
+
     #[test]
     fn a_missing_payment_id_row_is_asserted_absent() {
         let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 0);
-        assert_eq!(expected.absent(), ["Payment ID"]);
+        assert_eq!(expected.absent().first().map(String::as_str), Some("Payment ID"));
 
         // A device that grew a Payment ID row it was not asked for must fail, on both toolkits - and on BAGL the
         // label arrives as "Payment lD", so a naive comparison against "Payment ID" would miss it entirely.
@@ -842,7 +940,7 @@ mod test {
     #[test]
     fn a_present_payment_id_row_is_asserted_present() {
         let expected = ExpectedReview::one_sided_metadata_signature(12_345, RECEIVER, 32);
-        assert!(expected.absent().is_empty());
+        assert!(!expected.absent().iter().any(|name| name == PAYMENT_ID_FIELD));
 
         let mut screens = nbgl_screens(RECEIVER);
         screens[1] = screens[1].replace("Reject2 of 3", "Payment ID32 bytesReject2 of 3");

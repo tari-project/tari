@@ -30,7 +30,7 @@ use app_ui::menu::ui_menu_main;
 use handlers::{
     get_dh_shared_secret::handler_get_dh_shared_secret,
     get_ephemeral_nonce::{handler_generate_ephemeral_nonce, EphemeralNonceCtx},
-    get_one_sided_metadata_signature::handler_get_one_sided_metadata_signature,
+    get_one_sided_metadata_signature::{handler_get_one_sided_metadata_signature, MetadataSignatureCtx},
     get_public_key::handler_get_public_key,
     get_public_spend_key::handler_get_public_spend_key,
     get_schnorr_signature::{
@@ -79,6 +79,7 @@ pub enum AppSW {
     ScriptOffsetNoDeviceScriptKeys = AppSWMapping::ScriptOffsetNoDeviceScriptKeys as u16,
     NonceStoreFull = AppSWMapping::NonceStoreFull as u16,
     NonceHandleInvalid = AppSWMapping::NonceHandleInvalid as u16,
+    OutputNotSignable = AppSWMapping::OutputNotSignable as u16,
     WrongApduLength = StatusWords::BadLen as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     UserCancelled = StatusWords::UserCancelled as u16, // See ledger-device-rust-sdk/ledger_device_sdk/src/io.rs:16
     Ok = AppSWMapping::Ok as u16,
@@ -123,7 +124,7 @@ pub enum Instruction {
     GetRawSchnorrSignature,
     GetRawSchnorrSignatureLegacyNonce,
     GetScriptSchnorrSignature,
-    GetOneSidedMetadataSignature,
+    GetOneSidedMetadataSignature { chunk_number: u8, more: bool },
     GenerateEphemeralNonce,
 }
 
@@ -211,7 +212,12 @@ impl TryFrom<ApduHeader> for Instruction {
             },
             (InstructionMapping::GenerateEphemeralNonce, 0, 0) => Ok(Instruction::GenerateEphemeralNonce),
             (InstructionMapping::GetScriptSchnorrSignature, 0, 0) => Ok(Instruction::GetScriptSchnorrSignature),
-            (InstructionMapping::GetOneSidedMetadataSignature, 0, 0) => Ok(Instruction::GetOneSidedMetadataSignature),
+            (InstructionMapping::GetOneSidedMetadataSignature, 0..=MAX_PAYLOADS, CHUNK_LAST | CHUNK_MORE) => {
+                Ok(Instruction::GetOneSidedMetadataSignature {
+                    chunk_number: value.p1,
+                    more: value.p2 == CHUNK_MORE,
+                })
+            },
             (InstructionMapping::GetScriptSchnorrSignature, _, _) => Err(AppSW::WrongP1P2),
             (_, _, _) => Err(AppSW::InsNotSupported),
         }
@@ -237,8 +243,9 @@ fn show_status_and_home_if_needed(
     // `GetRawSchnorrSignatureLegacyNonce` shows a review too, so it needs the same redraw. Its refusals all come
     // before the review, with other status words, and leave the home screen up.
     let (show_status, _status_type) = match (ins, status) {
+        // Only the last chunk of `GetOneSidedMetadataSignature` can have shown a review.
         (
-            Instruction::GetOneSidedMetadataSignature | Instruction::GetRawSchnorrSignatureLegacyNonce,
+            Instruction::GetOneSidedMetadataSignature { more: false, .. } | Instruction::GetRawSchnorrSignatureLegacyNonce,
             AppSW::Deny | AppSW::Ok | AppSW::UserCancelled,
         ) => (true, StatusType::Transaction),
         (_, _) => (false, StatusType::Transaction),
@@ -266,6 +273,10 @@ extern "C" fn sample_main() {
     // and spent by a later one, so unrelated instructions in between must leave it alone. Entries only ever leave
     // this store by being consumed, or by the store itself going away when the application exits.
     let mut nonce_ctx = EphemeralNonceCtx::new();
+
+    // Accumulates a `GetOneSidedMetadataSignature` across its chunks, and like `offset_ctx` is destroyed by anything
+    // that is not the next chunk of it, so that a rejected or interleaved exchange cannot be resumed.
+    let mut metadata_ctx = MetadataSignatureCtx::new();
 
     #[cfg(any(target_os = "stax", target_os = "flex"))]
     let mut home = {
@@ -296,14 +307,18 @@ extern "C" fn sample_main() {
         if !matches!(ins, Instruction::GetScriptOffset { .. }) {
             offset_ctx.reset();
         }
+        if !matches!(ins, Instruction::GetOneSidedMetadataSignature { .. }) {
+            metadata_ctx.reset();
+        }
 
-        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx, &mut nonce_ctx) {
+        let _status = match handle_apdu(&mut comm, ins, &mut offset_ctx, &mut nonce_ctx, &mut metadata_ctx) {
             Ok(()) => {
                 comm.reply_ok();
                 AppSW::Ok
             },
             Err(sw) => {
                 offset_ctx.reset();
+                metadata_ctx.reset();
                 comm.reply(sw.clone());
                 sw
             },
@@ -319,6 +334,7 @@ fn handle_apdu(
     ins: Instruction,
     offset_ctx: &mut ScriptOffsetCtx,
     nonce_ctx: &mut EphemeralNonceCtx,
+    metadata_ctx: &mut MetadataSignatureCtx,
 ) -> Result<(), AppSW> {
     match ins {
         Instruction::GetVersion => handler_get_version(comm),
@@ -343,7 +359,9 @@ fn handle_apdu(
         Instruction::GetRawSchnorrSignature => handler_get_raw_schnorr_signature(comm, nonce_ctx),
         Instruction::GetRawSchnorrSignatureLegacyNonce => handler_get_raw_schnorr_signature_legacy_nonce(comm),
         Instruction::GetScriptSchnorrSignature => handler_get_script_schnorr_signature(comm),
-        Instruction::GetOneSidedMetadataSignature => handler_get_one_sided_metadata_signature(comm),
+        Instruction::GetOneSidedMetadataSignature { chunk_number, more } => {
+            handler_get_one_sided_metadata_signature(comm, chunk_number, more, metadata_ctx)
+        },
         Instruction::GenerateEphemeralNonce => handler_generate_ephemeral_nonce(comm, nonce_ctx),
     }
 }

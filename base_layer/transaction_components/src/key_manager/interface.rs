@@ -45,10 +45,12 @@ use crate::{
         EncryptedData,
         KernelFeatures,
         MemoField,
+        OutputFeatures,
         RangeProofType,
         TransactionInputVersion,
         TransactionKernelVersion,
         TransactionOutputVersion,
+        covenants::Covenant,
     },
 };
 
@@ -211,7 +213,14 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         sender_offset_count: usize,
     ) -> Result<(PrivateKey, Vec<TariKeyAndId>), KeyManagerError>;
 
-    // Creates a metadata signature for the output, without requiring manual user verification if on a ledger device
+    /// Creates a metadata signature for the output, with no recipient address.
+    ///
+    /// On a ledger wallet the key manager signs a device held sender offset key only through the device's reviewed
+    /// one sided metadata signature, which needs the output's recipient address - so here, with none, a device held
+    /// sender offset key is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]. Sign such an output
+    /// with [`TransactionKeyManagerInterface::get_metadata_signature_user_verified`] instead, passing the wallet's
+    /// own address for change. A software held sender offset key (the coinbase builder's) still signs here, in
+    /// software, on either wallet type.
     fn get_metadata_signature(
         &self,
         commitment_mask_key_id: &TariKeyId,
@@ -222,15 +231,49 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         range_proof_type: RangeProofType,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
 
-    // Creates a metadata signature for the output, requiring manual user verification if on a ledger device
+    /// Creates a metadata signature for the output to `receiver_address`, with the output's raw common fields.
+    ///
+    /// On a ledger wallet this is the only way a `OneSidedSenderOffset` key signs a metadata signature - the device
+    /// refuses it a raw signature. The device is sent the raw fields, not their hash: it reads them, hashes them itself
+    /// and builds the script from `receiver_address` itself, so a host that lies about any of them gets a signature
+    /// that verifies on no output carrying the fields it publishes. See
+    /// `minotari_ledger_wallet_common::metadata_output`.
+    ///
+    /// The device signs without a review only an output that is change in every respect it can see: to this wallet's
+    /// own address (its view key and spend key both the device's own, for the account the host names), with default
+    /// features (a standard output, maturity 0, no sidechain feature), an empty covenant and no minimum value promise.
+    /// Change and the wallet's own to-self outputs - coin split and join, payments to self - are signed silently.
+    /// Everything else is reviewed, and the review shows what differs: the output type (a validator node registration
+    /// or exit, say), a maturity, a sidechain feature, a minimum value promise. The device refuses a covenant, a burn
+    /// and a coinbase outright.
+    ///
+    /// The device signs over the standard stealth script for `receiver_address`, which it builds itself, so an output
+    /// whose `script` is anything else is refused with [`KeyManagerError::LedgerSenderOffsetNeedsRecipient`]: outputs
+    /// with no recipient address or a custom script - plain burns and HTLC (atomic swap) sends - are not supported on
+    /// a ledger wallet.
+    ///
+    /// A host held sender offset key is refused on a ledger wallet with
+    /// [`KeyManagerError::LedgerHostHeldSenderOffset`]: signed in software it would put an output on chain the device
+    /// never saw. Burns, plain and L2-bound, are not supported on a ledger wallet. The coinbase's host held key signs
+    /// through [`TransactionKeyManagerInterface::get_metadata_signature`] and is unaffected.
+    ///
+    /// What remains open, each tracked separately: the script offset the device hands the host, which together with an
+    /// output under a host held sender offset key can still move funds without a prompt; the encrypted data, which the
+    /// device hashes but does not verify (a lie there only affects the receiver's recovery of the output); the fee,
+    /// which the device never sees; and `PreMine` sender offset keys, which a host can mint on demand on any wallet
+    /// through [`TransactionKeyManagerInterface::get_script_offset`] with a `PreMine` script key and which still sign
+    /// raw challenges with no review - that belongs with the separate pre-mine issue.
+    #[allow(clippy::too_many_arguments)]
     fn get_metadata_signature_user_verified(
         &self,
         commitment_mask_key_id: &TariKeyId,
         value: MicroMinotari,
         sender_offset_key_id: &TariKeyId,
         txo_version: TransactionOutputVersion,
-        metadata_signature_message_common: &[u8; 32],
-        range_proof_type: RangeProofType,
+        features: &OutputFeatures,
+        covenant: &Covenant,
+        encrypted_data: &EncryptedData,
+        minimum_value_promise: MicroMinotari,
         script: &TariScript,
         receiver_address: &TariAddress,
     ) -> Result<ComAndPubSignature, KeyManagerError>;
@@ -296,6 +339,11 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// form of such a nonce is returned exactly once, by that reservation - it cannot be recovered from the handle
     /// afterwards, because on a ledger wallet only the device could recompute it and it will not. Carrying the
     /// sender offset key the same way also spares the caller a second device round trip for a key it already has.
+    ///
+    /// Not supported on a ledger wallet with a `OneSidedSenderOffset` key, which never signs a raw challenge: refused
+    /// with [`KeyManagerError::LedgerSenderOffsetRawSignature`]. A pre-mine sender offset key still signs here, so the
+    /// pre-mine ceremony's aggregated step 3 is unaffected; pre-mine signing belongs with the separate pre-mine
+    /// issue.
     fn get_sender_partial_metadata_signature(
         &self,
         ephemeral_private_nonce: &TariKeyAndId,

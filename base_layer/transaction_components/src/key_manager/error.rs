@@ -80,6 +80,25 @@ pub enum KeyManagerError {
          under one nonce give up the private key."
     )]
     UnknownEphemeralNonce { handle: u64 },
+    #[error(
+        "On a ledger wallet a device held sender offset key signs a metadata signature only through the device's \
+         reviewed one sided metadata signature, which needs the output's recipient address and the standard stealth \
+         script for it. Outputs signed with no recipient address (a multisig withdraw, custom outputs) or with any \
+         other script (plain burns, HTLC sends, a multisig deposit) are not supported on a ledger wallet."
+    )]
+    LedgerSenderOffsetNeedsRecipient,
+    #[error(
+        "On a ledger wallet a OneSidedSenderOffset key cannot sign a raw challenge, so aggregated (multi-party) \
+         sender partial metadata signatures with one are not supported on a ledger wallet. The pre-mine ceremony, \
+         whose sender offset keys are PreMine keys, is unaffected."
+    )]
+    LedgerSenderOffsetRawSignature,
+    #[error(
+        "On a ledger wallet an output signed for a recipient address must use a device held sender offset key, so \
+         that the device signs it. A host held sender offset key would put an output on chain the device never saw, \
+         so it is refused. Burns are not supported on a ledger wallet."
+    )]
+    LedgerHostHeldSenderOffset,
     #[error("The ephemeral nonce store lock is poisoned")]
     EphemeralNonceStorePoisoned,
     #[error(

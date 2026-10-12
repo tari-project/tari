@@ -97,7 +97,9 @@ pub enum RecipientScriptKey {
 pub enum RecipientMetadataSignature {
     /// Signed with the destination address shown to the user on a ledger device.
     UserVerified,
-    /// Signed without user verification, for outputs the wallet sends to itself or burns.
+    /// Signed for the wallet's own address, for outputs the wallet sends to itself. On a ledger wallet the device
+    /// signs such an output without a review when its features are the default, its covenant is empty and its
+    /// minimum value promise is zero, and reviews it otherwise, showing what is not default. A burn is refused.
     Unverified,
 }
 
@@ -140,8 +142,9 @@ impl RecipientSpec {
         }
     }
 
-    /// An output the wallet sends to itself: its own commitment mask and script key, and no user verification
-    /// because there is no counterparty address to verify.
+    /// An output the wallet sends to itself: its own commitment mask and script key, signed for the wallet's own
+    /// address. On a ledger wallet the device signs it without a review when its features are the default (and its
+    /// covenant empty and minimum value promise zero), and reviews it otherwise, showing what is not default.
     pub fn to_self(amount: MicroMinotari, features: OutputFeatures, memo: MemoField) -> Self {
         Self {
             destination: TariAddress::default(),

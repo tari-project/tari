@@ -37,7 +37,7 @@
 use minotari_ledger_wallet_common::{
     common_types::{AppSW, Instruction, LedgerKeyBranch},
     ephemeral_nonce::{EPHEMERAL_NONCE_STORE_SIZE, INVALID_NONCE_HANDLE},
-    script_offset::sender_offset_index,
+    script_offset::{PRE_MINE_SENDER_OFFSET_INDEX_BIT, sender_offset_index},
 };
 use minotari_ledger_wallet_comms::accessor_methods::{ledger_get_public_key, ledger_get_public_spend_key};
 use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
@@ -119,6 +119,23 @@ const SCENARIOS: &[Scenario] = &[
         ],
         approval: Approval::NotNeeded,
         run: a_reserved_nonce_survives_unrelated_instructions,
+    },
+    Scenario {
+        name: "a raw Schnorr signature by a OneSidedSenderOffset key is refused with BadBranchKey, and the nonce \
+               survives",
+        covers: &[Instruction::GenerateEphemeralNonce, Instruction::GetRawSchnorrSignature],
+        approval: Approval::NotNeeded,
+        run: a_sender_offset_key_cannot_sign_a_raw_challenge,
+    },
+    Scenario {
+        name: "a raw Schnorr signature by a PreMine sender offset key is still served, for the pre-mine ceremony",
+        covers: &[
+            Instruction::GenerateEphemeralNonce,
+            Instruction::GetRawSchnorrSignature,
+            Instruction::GetPublicKey,
+        ],
+        approval: Approval::NotNeeded,
+        run: a_pre_mine_sender_offset_key_still_signs_a_raw_challenge,
     },
 ];
 
@@ -621,4 +638,78 @@ fn a_reserved_nonce_survives_unrelated_instructions(_context: &ScenarioContext<'
     require(signature.verify_raw_uniform(&public_key, &challenge), || {
         "a signature made with a nonce that had survived several unrelated instructions does not verify".to_string()
     })
+}
+
+/// Acceptance: `GetRawSchnorrSignature` refuses a `OneSidedSenderOffset` key with `BadBranchKey`, and the refusal
+/// leaves the reserved nonce in the store.
+///
+/// A sender offset key signs an output's metadata signature, and the device signs those only through
+/// `GetOneSidedMetadataSignature`, which shows the output for review unless it is change to the device's own
+/// address. A raw signature over a challenge the host built would sign an output nobody was shown.
+///
+/// The positive control signs with the same handle on the `Random` branch afterwards: the refusal comes before the
+/// nonce is taken, so the handle must still be good. A device that refused by wiping the slot, or that refused
+/// everything, fails there.
+fn a_sender_offset_key_cannot_sign_a_raw_challenge(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let index = fixtures::random_u64();
+
+    let reserved = reserve_nonce(account)?;
+    let refused = sign_with_handle(
+        account,
+        index,
+        LedgerKeyBranch::OneSidedSenderOffset,
+        reserved.handle,
+        &fixtures::random_challenge(),
+    )?;
+    expect_status(
+        "a raw Schnorr signature by a OneSidedSenderOffset key",
+        &refused,
+        AppSW::BadBranchKey,
+    )?;
+
+    let reply = sign_with_handle(
+        account,
+        index,
+        LedgerKeyBranch::Random,
+        reserved.handle,
+        &fixtures::random_challenge(),
+    )?;
+    expect_ok(
+        "a signature by a Random key with the nonce the refused request named",
+        &reply,
+    )
+}
+
+/// Acceptance: `GetRawSchnorrSignature` still signs with a `PreMine` key at a pre-mine sender offset index (bit 63
+/// set), and the signature verifies against that key and the reserved nonce.
+///
+/// Only `OneSidedSenderOffset` keys are refused here. The pre-mine leader's aggregated step 3 signs its `PreMine`
+/// sender offset key through this instruction, and pre-mine signing belongs with the separate pre-mine issue - so a
+/// device that refused this key too would break the pre-mine ceremony.
+fn a_pre_mine_sender_offset_key_still_signs_a_raw_challenge(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let index = fixtures::random_u64() | PRE_MINE_SENDER_OFFSET_INDEX_BIT;
+    let branch = LedgerKeyBranch::PreMine;
+    let challenge = fixtures::random_challenge();
+
+    let reserved = reserve_nonce(account)?;
+    let reply = sign_with_handle(account, index, branch, reserved.handle, &challenge)?;
+    expect_ok("a raw Schnorr signature by a PreMine sender offset key", &reply)?;
+
+    let parsed = SchnorrReply::parse(&reply.data).map_err(fail)?;
+    let public_key = ledger_get_public_key(account, index, branch).context(|| "GetPublicKey".to_string())?;
+    let signature = tari_common_types::types::CompressedSignature::new(
+        tari_common_types::types::CompressedPublicKey::new(&parsed.public_nonce),
+        fixtures::secret_key_from_bytes("the signature", &parsed.signature).map_err(fail)?,
+    )
+    .to_schnorr_signature()
+    .context(|| "the device's compressed signature would not decompress".to_string())?;
+    require(
+        signature.verify_raw_uniform(&public_key, &challenge) && parsed.public_nonce == reserved.public_nonce,
+        || {
+            "the PreMine sender offset key's raw signature does not verify against its key and the reserved nonce"
+                .to_string()
+        },
+    )
 }
