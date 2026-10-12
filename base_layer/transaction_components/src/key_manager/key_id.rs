@@ -190,9 +190,11 @@ pub enum TariKeyId {
     /// gave it. On a Ledger wallet the private nonce lives on the device and never crosses the wire; on a software
     /// wallet it lives in the key manager's in-memory store.
     ///
-    /// The handle is issued, never chosen: a caller can echo back a handle it was given, but cannot name a nonce it
-    /// was never told about. Signing with the nonce consumes it, so a handle is good for exactly one signature -
-    /// two signatures over different challenges under one nonce give up the private key that signed them.
+    /// The handle is issued, never chosen. A software wallet issues random 64-bit handles, so a caller can echo back
+    /// a handle it was given but cannot guess one it was never told about. The Ledger device counts its handles from
+    /// one, so on a ledger wallet a handle can be guessed. Either way, signing with the nonce consumes it, so a
+    /// handle is good for exactly one signature - two signatures over different challenges under one nonce give up
+    /// the private key that signed them.
     ///
     /// String form: `ledger_ephemeral_nonce.<handle>`
     ///

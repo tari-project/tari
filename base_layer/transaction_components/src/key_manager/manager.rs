@@ -138,12 +138,17 @@ const MAX_SOFTWARE_EPHEMERAL_NONCES: usize = 1024;
 /// It exists so that there is exactly one reserve-then-sign call pattern regardless of wallet type: without it the
 /// multi-party flows would only ever exercise device-issued handles on hardware nobody runs in CI. It mirrors the
 /// device's eviction policy for the same reason, so the two cannot fail differently under the same abuse.
+///
+/// Unlike the device, it issues random handles rather than counting: the store is shared by every clone of the key
+/// manager in the process, and a counted handle would let one flow guess the next handle and consume another flow's
+/// nonce.
 #[derive(Default)]
 struct SoftwareEphemeralNonceStore {
-    nonces: HashMap<u64, PrivateKey>,
-    /// The last handle issued. Handles are never reused, and zero is never issued, so a handle that has been signed
-    /// with cannot be resurrected by a later reservation landing on the same value.
-    last_handle: u64,
+    /// Reserved nonces by handle, each with the reservation number it was reserved under, so the oldest can be
+    /// evicted.
+    nonces: HashMap<u64, (u64, PrivateKey)>,
+    /// How many reservations have been made. Only orders the entries for eviction; it is never part of a handle.
+    reservations: u64,
 }
 
 /// Refuses a key id that cannot act as a commitment mask or recovery secret.
@@ -664,25 +669,32 @@ impl KeyManager {
         let pub_key = CompressedPublicKey::from_secret_key(&private_nonce);
 
         let mut store = self.lock_software_ephemeral_nonces()?;
-        // Handles are issued from a strictly increasing counter and zero is never issued, so a consumed handle is
-        // dead for good rather than something a later reservation can land on again. Exhausting the counter is the
-        // only condition here that refuses, because re-issuing a handle is the only one that would be unsafe.
-        if store.last_handle == u64::MAX {
-            return Err(KeyManagerError::EphemeralNonceHandlesExhausted);
-        }
         // A full store evicts its oldest entry instead of refusing, so that reservations abandoned by a failure
         // between reserving and signing are reclaimed rather than wedging the wallet for the life of the process.
-        // The lowest handle is the oldest reservation. See
-        // `minotari_ledger_wallet_common::ephemeral_nonce::EphemeralNonceStore::insert` for why this is safe.
-        if store.nonces.len() >= MAX_SOFTWARE_EPHEMERAL_NONCES &&
-            let Some(oldest) = store.nonces.keys().min().copied()
-        {
-            // Dropping the evicted nonce zeroizes it.
-            drop(store.nonces.remove(&oldest));
+        // See `minotari_ledger_wallet_common::ephemeral_nonce::EphemeralNonceStore::insert` for why this is safe.
+        if store.nonces.len() >= MAX_SOFTWARE_EPHEMERAL_NONCES {
+            let mut oldest = None;
+            for (handle, (reservation, _)) in &store.nonces {
+                if oldest.is_none_or(|(_, oldest_reservation)| *reservation < oldest_reservation) {
+                    oldest = Some((*handle, *reservation));
+                }
+            }
+            if let Some((handle, _)) = oldest {
+                // Dropping the evicted nonce zeroizes it.
+                drop(store.nonces.remove(&handle));
+            }
         }
-        let handle = store.last_handle.saturating_add(1);
-        store.last_handle = handle;
-        store.nonces.insert(handle, private_nonce);
+        // A random 64-bit handle, so no other caller can name it without being told it. Zero is never issued, and a
+        // handle still in the store is never issued twice. A consumed handle could in principle be drawn again, but
+        // only with probability 2^-64 per reservation, so a handle that has been signed with stays dead in practice.
+        let mut rng = rand::rng();
+        let mut handle = rng.next_u64();
+        while handle == 0 || store.nonces.contains_key(&handle) {
+            handle = rng.next_u64();
+        }
+        let reservation = store.reservations;
+        store.reservations = reservation.saturating_add(1);
+        store.nonces.insert(handle, (reservation, private_nonce));
 
         Ok(TariKeyAndId {
             key_id: TariKeyId::LedgerEphemeralNonce { handle },
@@ -697,6 +709,7 @@ impl KeyManager {
         self.lock_software_ephemeral_nonces()?
             .nonces
             .remove(&handle)
+            .map(|(_, nonce)| nonce)
             .ok_or(KeyManagerError::UnknownEphemeralNonce { handle })
     }
 
@@ -2551,9 +2564,9 @@ mod tests {
         let commitment_mask_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
         let sender_offset = key_manager.get_random_key(None, None).unwrap();
 
-        // Handles are issued from a strictly increasing counter, so bracketing the call counts the reservations it
-        // made.
-        let before = ephemeral_nonce_handle(&key_manager.reserve_ephemeral_nonce().unwrap().key_id);
+        // An outstanding reservation of the caller's own, which the call must leave alone
+        let outstanding = key_manager.reserve_ephemeral_nonce().unwrap();
+        let reservations_before = key_manager.lock_software_ephemeral_nonces().unwrap().reservations;
         key_manager
             .get_metadata_signature(
                 &commitment_mask_key.key_id,
@@ -2564,24 +2577,16 @@ mod tests {
                 RangeProofType::BulletProofPlus,
             )
             .unwrap();
-        let after = ephemeral_nonce_handle(&key_manager.reserve_ephemeral_nonce().unwrap().key_id);
 
-        let used = before.saturating_add(1);
+        let store = key_manager.lock_software_ephemeral_nonces().unwrap();
         assert_eq!(
-            after,
-            used.saturating_add(1),
+            store.reservations,
+            reservations_before.saturating_add(1),
             "get_metadata_signature did not reserve exactly one ephemeral nonce"
         );
-
         // ...and it signed with that reservation rather than leaving it behind: signing is what consumes it.
-        let err = key_manager
-            .sign_with_nonce_and_challenge(
-                &sender_offset.key_id,
-                &TariKeyId::LedgerEphemeralNonce { handle: used },
-                &challenge(1),
-            )
-            .unwrap_err();
-        assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle: used });
+        let handles: Vec<u64> = store.nonces.keys().copied().collect();
+        assert_eq!(handles, vec![ephemeral_nonce_handle(&outstanding.key_id)]);
     }
 
     /// The pre-mine spend flow signs its script signature with its `PreMine` script key and its metadata signature
@@ -3006,6 +3011,61 @@ mod tests {
                 )
                 .unwrap_err();
             assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle });
+        }
+    }
+
+    /// Software handles are random, not counted, so a flow that knows its own handle cannot work out another
+    /// flow's: the handles around one it was given name nothing, and neither do small values.
+    #[test]
+    fn software_nonce_handles_cannot_be_guessed_from_a_neighbour() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+
+        let mut handles = Vec::new();
+        for _ in 0..16 {
+            match key_manager.reserve_ephemeral_nonce().unwrap().key_id {
+                TariKeyId::LedgerEphemeralNonce { handle } => handles.push(handle),
+                other => panic!("expected an ephemeral nonce handle, got {other}"),
+            }
+        }
+        for handle in &handles {
+            assert_ne!(*handle, 0);
+        }
+        // Each handle appears once, and no two are consecutive (each pair is consecutive with probability 2^-63)
+        let mut sorted = handles.clone();
+        sorted.sort_unstable();
+        for pair in sorted.windows(2) {
+            if let [low, high] = pair {
+                assert!(high.saturating_sub(*low) > 1, "{low} and {high}");
+            }
+        }
+
+        let mine = *handles.first().expect("reserved 16");
+        for guess in [mine.wrapping_add(1), mine.wrapping_sub(1), 1, 2, 16, 17] {
+            if handles.contains(&guess) {
+                continue;
+            }
+            let err = key_manager
+                .sign_with_nonce_and_challenge(
+                    &signing_key.key_id,
+                    &TariKeyId::LedgerEphemeralNonce { handle: guess },
+                    &challenge(1),
+                )
+                .unwrap_err();
+            assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle: guess });
+        }
+        // The guesses consumed nothing: every reservation is still good for its one signature
+        for (i, handle) in handles.iter().enumerate() {
+            let i = u8::try_from(i).expect("16 handles");
+            assert!(
+                key_manager
+                    .sign_with_nonce_and_challenge(
+                        &signing_key.key_id,
+                        &TariKeyId::LedgerEphemeralNonce { handle: *handle },
+                        &challenge(i.saturating_add(2)),
+                    )
+                    .is_ok()
+            );
         }
     }
 
