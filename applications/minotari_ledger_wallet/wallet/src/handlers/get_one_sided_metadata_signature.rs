@@ -305,7 +305,8 @@ fn sign(comm: &mut Comm, head: Head, preimage: Vec<u8>) -> Result<(), AppSW> {
         let maturity = if output.maturity == 0 {
             None
         } else {
-            Some(u64_to_string(output.maturity))
+            // An absolute block height, not a duration: say so, rather than show a bare number.
+            Some(format!("block {}", u64_to_string(output.maturity)))
         };
         let sidechain = output.sidechain.map(|kind| kind.name().to_string());
         let validator_node = output.validator_node_public_key.as_ref().map(hex);
@@ -343,7 +344,7 @@ fn sign(comm: &mut Comm, head: Head, preimage: Vec<u8>) -> Result<(), AppSW> {
         }
         if let Some(value) = &maturity {
             fields.push(Field {
-                name: "Maturity",
+                name: "Locked until",
                 value: value.as_str(),
             });
         }

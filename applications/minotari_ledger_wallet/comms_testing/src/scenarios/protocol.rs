@@ -138,6 +138,13 @@ const SCENARIOS: &[Scenario] = &[
         run: an_output_the_device_will_not_sign_is_refused,
     },
     Scenario {
+        name: "a metadata signature's preimage chunks must add up to the size its head declares, and any other \
+               instruction between its chunks ends the exchange",
+        covers: &[Instruction::GetOneSidedMetadataSignature, Instruction::GetPublicKey],
+        approval: Approval::NotNeeded,
+        run: metadata_signature_chunks_are_checked,
+    },
+    Scenario {
         name: "a script offset header the device would not blind is refused, on both sides of the sum",
         covers: &[Instruction::GetScriptOffset],
         approval: Approval::NotNeeded,
@@ -724,6 +731,80 @@ fn an_output_the_device_will_not_sign_is_refused(_context: &ScenarioContext<'_>)
     expect_status(
         "a preimage chunk numbered 2 straight after the head",
         &skipped,
+        AppSW::WrongP1P2,
+    )
+}
+
+/// Acceptance: the device holds a `GetOneSidedMetadataSignature`'s preimage chunks to the size its head declared, and
+/// forgets the exchange when any other instruction arrives between its chunks.
+///
+/// * A chunk marked "more" must be exactly `PREIMAGE_CHUNK_SIZE` bytes: a short one is `WrongApduLength`.
+/// * Chunks that add up to more than the declared size are `WrongApduLength`.
+/// * A `GetPublicKey` between the head and chunk 1 resets the exchange, so the chunk 1 that follows has no head and is
+///   `WrongP1P2` - a host cannot interleave another request and then carry on with the one it interrupted.
+///
+/// Every case is refused before a review is drawn, so this stays unattended.
+fn metadata_signature_chunks_are_checked(_context: &ScenarioContext<'_>) -> ScenarioResult {
+    let account = fixtures::random_u64();
+    let receiver = fixtures::published_receiver(0).map_err(super::fail)?.to_vec();
+    let branch = LedgerKeyBranch::OneSidedSenderOffset;
+    let chunk = |number: u8, more: bool, length: usize| {
+        raw::chunk(
+            account,
+            Instruction::GetOneSidedMetadataSignature,
+            number,
+            more,
+            vec![0u8; length],
+        )
+    };
+
+    // (a) A non-last chunk shorter than PREIMAGE_CHUNK_SIZE.
+    let head = metadata_head(account, fixtures::random_u64(), branch, 400, &receiver)
+        .send()
+        .context(|| "the head before a short chunk".to_string())?;
+    expect_ok("the head before a short chunk", &head)?;
+    let reply = chunk(1, true, 100)
+        .send()
+        .context(|| "a 100 byte non-last preimage chunk".to_string())?;
+    expect_status(
+        "a non-last preimage chunk of 100 bytes, where every chunk but the last must be 250",
+        &reply,
+        AppSW::WrongApduLength,
+    )?;
+
+    // (b) Chunks that add up to more than the declared size.
+    let head = metadata_head(account, fixtures::random_u64(), branch, 300, &receiver)
+        .send()
+        .context(|| "the head before an oversized preimage".to_string())?;
+    expect_ok("the head before an oversized preimage", &head)?;
+    let first = chunk(1, true, 250)
+        .send()
+        .context(|| "the first chunk of an oversized preimage".to_string())?;
+    expect_ok("the first 250 bytes of a 300 byte preimage", &first)?;
+    let reply = chunk(2, false, 100)
+        .send()
+        .context(|| "the last chunk of an oversized preimage".to_string())?;
+    expect_status(
+        "preimage chunks adding up to 350 bytes, where the head declared 300",
+        &reply,
+        AppSW::WrongApduLength,
+    )?;
+
+    // (c) Another instruction between the head and chunk 1.
+    let head = metadata_head(account, fixtures::random_u64(), branch, 110, &receiver)
+        .send()
+        .context(|| "the head before an interleaved instruction".to_string())?;
+    expect_ok("the head before an interleaved instruction", &head)?;
+    let interleaved = valid_public_key_request(account)
+        .send()
+        .context(|| "a GetPublicKey between the head and chunk 1".to_string())?;
+    expect_ok("a GetPublicKey between the head and chunk 1", &interleaved)?;
+    let reply = chunk(1, false, 110)
+        .send()
+        .context(|| "chunk 1 after an interleaved instruction".to_string())?;
+    expect_status(
+        "chunk 1 after another instruction ended the exchange its head started",
+        &reply,
         AppSW::WrongP1P2,
     )
 }

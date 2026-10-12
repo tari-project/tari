@@ -85,6 +85,11 @@ pub enum TransactionBuilderError {
          exchange, so it is limited to {max} outputs including change"
     )]
     TooManyOutputsForDevice { requested: usize, max: usize },
+    #[error(
+        "The recipient address {address} is {size} bytes, but the ledger device can review a receiver address of at \
+         most {max} bytes (a payment ID of at most 112 bytes); nothing was sent to the device for review"
+    )]
+    RecipientAddressTooLongForDevice { address: String, size: usize, max: usize },
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
     #[error(

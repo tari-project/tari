@@ -747,7 +747,11 @@ mod metadata_preimage_test {
         .unwrap()
     }
 
-    /// The device's `common`: the raw preimage under the same domain separated hasher.
+    /// The raw preimage under the host's `metadata_message` hasher, as the device hashes it. This is the host's hasher,
+    /// not the device's: comparing it with the consensus `common` proves that the preimage is byte for byte what
+    /// consensus hashes, and the parse checks prove the parser reads it correctly. That the device's own hasher
+    /// agrees is covered where the device signs - the Speculos scenarios and the key manager suite verify its
+    /// signatures against the consensus message.
     fn device_common(preimage: &[u8]) -> [u8; 32] {
         DomainSeparatedConsensusHasher::<TransactionHashDomain, Blake2b<U32>>::new("metadata_message")
             .chain(&Raw(preimage))

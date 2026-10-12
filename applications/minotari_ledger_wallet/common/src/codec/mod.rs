@@ -63,6 +63,7 @@ pub use keys::{
 };
 pub use metadata::{
     MAX_APDU_DATA_SIZE,
+    MAX_METADATA_SIGNATURE_ADDRESS_SIZE,
     MetadataSignatureChunk,
     MetadataSignatureChunkBody,
     MetadataSignatureHeadChunk,

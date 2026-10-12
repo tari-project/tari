@@ -35,7 +35,7 @@ use minotari_ledger_wallet_comms::accessor_methods::ledger_get_one_sided_metadat
 use minotari_ledger_wallet_comms_testing::{
     approver::{Outcome, while_reviewing},
     fixtures,
-    review::{ExpectedReview, MATURITY_FIELD},
+    review::{ExpectedReview, MATURITY_FIELD, maturity_value},
 };
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -328,7 +328,7 @@ fn an_own_address_output_with_a_maturity_is_reviewed_showing_it() {
             .with_script_key(change_script_key.key_id.clone());
 
         let expected = ExpectedReview::one_sided_metadata_signature(value, &own_address.to_base58(), 0)
-            .with_output_field(MATURITY_FIELD, &maturity.to_string());
+            .with_output_field(MATURITY_FIELD, &maturity_value(maturity));
         let (signed, review) = while_reviewing(device.approver(), &expected, Outcome::Approve, || {
             builder.sign_metadata_signature_user_verified(&key_manager, &sender_offset.key_id, &own_address)
         });

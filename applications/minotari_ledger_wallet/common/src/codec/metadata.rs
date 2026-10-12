@@ -40,6 +40,10 @@ const HEAD_FIXED_SIZE: usize = ACCOUNT_SIZE + 8 * 4 + 32 + 2 + 2;
 /// longer payload does not fail - its length silently wraps, and the device answers `WrongApduLength`.
 pub const MAX_APDU_DATA_SIZE: usize = 255;
 
+/// The longest receiver address a head can carry in one APDU: 179 bytes, which is a dual address with up to 112 bytes
+/// of payment ID. A host checks a transaction's recipients against it before the device reviews any of them.
+pub const MAX_METADATA_SIGNATURE_ADDRESS_SIZE: usize = MAX_APDU_DATA_SIZE - HEAD_FIXED_SIZE;
+
 /// The size of every preimage chunk but the last, which carries what is left.
 pub const PREIMAGE_CHUNK_SIZE: usize = 250;
 
@@ -336,7 +340,7 @@ mod test {
     /// The largest address that fits the head in one APDU.
     #[test]
     fn the_largest_address_that_fits_one_apdu() {
-        let largest = MAX_APDU_DATA_SIZE - HEAD_FIXED_SIZE;
+        let largest = MAX_METADATA_SIGNATURE_ADDRESS_SIZE;
         assert_eq!(largest, 179);
         assert!(head(&vec![0xaa; largest]).fits_in_one_apdu());
         assert!(!head(&vec![0xaa; largest + 1]).fits_in_one_apdu());

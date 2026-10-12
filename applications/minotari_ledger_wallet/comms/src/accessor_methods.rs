@@ -912,6 +912,13 @@ pub fn ledger_get_one_sided_metadata_signature(
         if answer.retcode() == AppSW::UserCancelled as u16 {
             return Err(LedgerDeviceError::UserCancelled);
         }
+        // An application from before the chunked layout does not serve its instruction byte at all, and refuses the
+        // head. Say that the application needs updating rather than reporting a refused chunk.
+        if chunk.chunk_number == 0 && answer.retcode() == AppSW::InsNotSupported as u16 {
+            return Err(LedgerDeviceError::ApplicationOutdated(
+                "it does not serve the chunked GetOneSidedMetadataSignature".to_string(),
+            ));
+        }
         // Every chunk but the last is answered with an empty `Ok`; a refusal ends the exchange.
         if chunk.more && answer.retcode() != AppSW::Ok as u16 {
             return Err(LedgerDeviceError::Processing(format!(

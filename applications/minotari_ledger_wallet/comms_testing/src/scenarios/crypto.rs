@@ -65,7 +65,14 @@ use crate::{
     approver::{Outcome, while_reviewing},
     fixtures,
     raw::ComAndPubSigReply,
-    review::{ExpectedReview, MATURITY_FIELD, OUTPUT_TYPE_FIELD, SIDECHAIN_FIELD, VALIDATOR_NODE_FIELD},
+    review::{
+        ExpectedReview,
+        MATURITY_FIELD,
+        OUTPUT_TYPE_FIELD,
+        SIDECHAIN_FIELD,
+        VALIDATOR_NODE_FIELD,
+        maturity_value,
+    },
     scenarios::{
         Approval,
         Scenario,
@@ -837,7 +844,9 @@ fn own_address_with_non_default_features_is_reviewed(context: &ScenarioContext<'
         LedgerKeyBranch::OneSidedSenderOffset,
         &receiver,
         &fixtures::metadata_preimage(&fixtures::output_features(0, maturity, None), 80, 0),
-        &base.clone().with_output_field(MATURITY_FIELD, &maturity.to_string()),
+        &base
+            .clone()
+            .with_output_field(MATURITY_FIELD, &maturity_value(maturity)),
         "its own address, with a maturity",
     )?;
 

@@ -1040,7 +1040,7 @@ mod test {
         assert!(banner.contains("2.50 T"), "{banner}");
         assert!(banner.contains("16 bytes"), "{banner}");
         // The rows a non-default output adds are asserted absent from a plain output's review.
-        assert!(banner.contains("Maturity:"), "{banner}");
+        assert!(banner.contains("Locked until:"), "{banner}");
         assert!(banner.contains("must NOT appear"), "{banner}");
     }
 

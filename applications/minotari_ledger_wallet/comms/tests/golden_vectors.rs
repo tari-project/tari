@@ -74,7 +74,7 @@ use minotari_ledger_wallet_common::{
         ScriptSignatureCommon,
         TextReply,
     },
-    common_types::{Instruction, LedgerKeyBranch},
+    common_types::{AppSW, Instruction, LedgerKeyBranch},
 };
 use minotari_ledger_wallet_comms::{
     accessor_methods::{
@@ -527,6 +527,8 @@ const RESPONSE_VERSION: u8 = 2;
 struct GoldenDevice {
     sent: Mutex<Vec<APDUCommand<Vec<u8>>>>,
     replies: Mutex<VecDeque<Vec<u8>>>,
+    /// The status word of the next queued reply, if it is not `Ok`.
+    status: Mutex<Option<u16>>,
     keys: Mutex<HashMap<Vec<u8>, RistrettoSecretKey>>,
 }
 
@@ -535,6 +537,7 @@ impl GoldenDevice {
         Self {
             sent: Mutex::new(Vec::new()),
             replies: Mutex::new(VecDeque::new()),
+            status: Mutex::new(None),
             keys: Mutex::new(HashMap::new()),
         }
     }
@@ -601,11 +604,15 @@ impl LedgerTransport for GoldenDevice {
     fn exchange(&self, command: &APDUCommand<Vec<u8>>) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
         self.sent.lock().unwrap().push(command.clone());
         let queued = self.replies.lock().unwrap().pop_front();
+        let mut status = STATUS_OK;
         let mut data = match queued {
-            Some(reply) => reply,
+            Some(reply) => {
+                status = self.status.lock().unwrap().take().unwrap_or(STATUS_OK);
+                reply
+            },
             None => self.verification_reply(command),
         };
-        data.extend_from_slice(&STATUS_OK.to_be_bytes());
+        data.extend_from_slice(&status.to_be_bytes());
         APDUAnswer::from_answer(data).map_err(|e| LedgerDeviceError::TransportExchange(e.to_string()))
     }
 }
@@ -777,6 +784,27 @@ fn every_instruction_is_byte_identical_to_its_golden_vector() {
         GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_0,
         GET_ONE_SIDED_METADATA_SIGNATURE_PRE_MINE_1,
     ]);
+
+    // An application from before the chunked layout refuses the head as an unknown instruction: that is reported as
+    // an application that needs updating, not as a refused chunk.
+    device.expect(vec![Vec::new()]);
+    *device.status.lock().unwrap() = Some(AppSW::InsNotSupported as u16);
+    let error = ledger_get_one_sided_metadata_signature(
+        ACCOUNT,
+        NETWORK,
+        VALUE,
+        SENDER_OFFSET_KEY_INDEX,
+        LedgerKeyBranch::OneSidedSenderOffset,
+        &scalar(0xb8),
+        &receiver_address(),
+        &unhex(METADATA_PREIMAGE),
+    )
+    .expect_err("an old application refuses the head");
+    assert!(
+        matches!(error, LedgerDeviceError::ApplicationOutdated(_)),
+        "an old application must be reported as one: {error:?}"
+    );
+    assert_eq!(device.take_sent().len(), 1, "nothing may follow a refused head");
 
     // --- GenerateEphemeralNonce
     device.expect(vec![unhex(EPHEMERAL_NONCE_REPLY)]);

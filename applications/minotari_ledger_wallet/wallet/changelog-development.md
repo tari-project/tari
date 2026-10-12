@@ -43,9 +43,13 @@ All notable changes to this project will be documented in this file. See [standa
     the host, together with an output under a host held sender offset key, remains a residual.
   - The encrypted data is hashed but not verified: it is data only the receiver reads, and a lie there only affects
     the receiver's recovery of the output.
-  - The device never sees the fee. An offline payload's author can set a fee up to the total recipient amount -
-    recipients at this wallet's own address count towards that cap. A summary of an offline payload's fee on the
-    Ledger console wallet is a follow-up.
+  - The device never sees the fee, and an output to this wallet's own address with default features is signed with no
+    prompt. The only bound on the fee is the host's `prevent_fee_gt_amount` check, and the "amount sent" it compares
+    against includes those silent own-address outputs. So an offline signing payload's author, or an API caller -
+    a multi-recipient transfer with an output to self, or a coin split or join - can raise the fee up to the total
+    of the outputs, own-address ones included, with nothing on the device to show it; `fee_per_gram` is not bounded
+    on gRPC. A payload author who mines can collect that fee. A host-side fee cap, and a summary of an offline
+    payload's fee on the Ledger console wallet, are the follow-up.
   - `PreMine` sender offset keys are not refused. A host can mint them on demand on any wallet, through
     `GetScriptOffset` with a `PreMine` script key, and they still sign raw challenges with no review. Pre-mine sender
     offset signing - the aggregated step 3 raw, step 4 through the legacy nonce instruction - is unchanged and belongs

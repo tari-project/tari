@@ -4,6 +4,7 @@
 use std::{fmt, fmt::Debug};
 
 use log::*;
+use minotari_ledger_wallet_common::codec::MAX_METADATA_SIGNATURE_ADDRESS_SIZE;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -414,6 +415,15 @@ where KM: TransactionKeyManagerInterface
             .map_err(surface_device_key_limit)?;
         if sender_offset_keys.len() != count {
             return Err(TransactionBuilderError::SenderOffsetKeyPoolExhausted);
+        }
+        // Device held sender offset keys mean a ledger wallet, which reviews each recipient as `build` signs it. A
+        // recipient whose address the device cannot be sent would only fail there - after the user had approved the
+        // recipients before it - so every one is checked now, before the device is asked to review anything.
+        if sender_offset_keys
+            .iter()
+            .any(|key| matches!(key.key_id, TariKeyId::LedgerKey { .. }))
+        {
+            check_recipient_addresses_fit_the_device(&self.recipient_specs)?;
         }
         self.partial_script_offset = &self.partial_script_offset + partial_offset;
 
@@ -1737,6 +1747,26 @@ fn surface_device_key_limit(e: KeyManagerError) -> TransactionBuilderError {
     }
 }
 
+/// Refuse a recipient whose address is too long for a ledger device's metadata signature request: see
+/// [`MAX_METADATA_SIGNATURE_ADDRESS_SIZE`]. Outputs to the wallet itself are signed for its own address, which always
+/// fits, so only the recipients the device reviews are checked.
+fn check_recipient_addresses_fit_the_device(specs: &[RecipientSpec]) -> Result<(), TransactionBuilderError> {
+    for spec in specs {
+        if spec.metadata_signature != RecipientMetadataSignature::UserVerified {
+            continue;
+        }
+        let size = spec.destination.to_vec().len();
+        if size > MAX_METADATA_SIGNATURE_ADDRESS_SIZE {
+            return Err(TransactionBuilderError::RecipientAddressTooLongForDevice {
+                address: spec.destination.to_base58(),
+                size,
+                max: MAX_METADATA_SIGNATURE_ADDRESS_SIZE,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Adds two fee amounts, returning an overflow error rather than wrapping.
 fn add_fee(fee: MicroMinotari, extra: MicroMinotari) -> Result<MicroMinotari, TransactionBuilderError> {
     fee.checked_add(extra)
@@ -2423,6 +2453,47 @@ mod test {
     /// `key_manager::manager::tests::get_script_offset_refuses_more_sender_offset_keys_than_the_device_will_derive`;
     /// a ledger key manager cannot be constructed at all without the `ledger` feature, so the translation is
     /// exercised on its own here.
+    /// A recipient whose address is longer than a ledger device's metadata signature request can carry is refused
+    /// with a typed error; one at the limit, and a long address on an output to self, are not.
+    #[test]
+    fn a_recipient_address_too_long_for_the_device_is_refused() {
+        let address = |payment_id_length: usize| {
+            TariAddress::new_dual_address(
+                CompressedPublicKey::default(),
+                CompressedPublicKey::default(),
+                Network::LocalNet,
+                TariAddressFeatures::default(),
+                Some(vec![7; payment_id_length]),
+            )
+            .unwrap()
+        };
+        let spec = |payment_id_length: usize| {
+            RecipientSpec::stealth(
+                address(payment_id_length),
+                MicroMinotari(1),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+        };
+        assert_eq!(address(112).to_vec().len(), MAX_METADATA_SIGNATURE_ADDRESS_SIZE);
+        check_recipient_addresses_fit_the_device(&[spec(0), spec(112)]).unwrap();
+        match check_recipient_addresses_fit_the_device(&[spec(0), spec(113)]) {
+            Err(TransactionBuilderError::RecipientAddressTooLongForDevice { size, max, .. }) => {
+                assert_eq!(
+                    (size, max),
+                    (
+                        MAX_METADATA_SIGNATURE_ADDRESS_SIZE + 1,
+                        MAX_METADATA_SIGNATURE_ADDRESS_SIZE
+                    )
+                );
+            },
+            other => panic!("expected RecipientAddressTooLongForDevice, got {other:?}"),
+        }
+        let mut to_self = RecipientSpec::to_self(MicroMinotari(1), OutputFeatures::default(), MemoField::new_empty());
+        to_self.destination = address(113);
+        check_recipient_addresses_fit_the_device(&[to_self]).unwrap();
+    }
+
     #[test]
     fn the_device_key_limit_surfaces_as_an_output_limit() {
         let max = usize::try_from(MAX_SENDER_OFFSET_KEYS).unwrap();

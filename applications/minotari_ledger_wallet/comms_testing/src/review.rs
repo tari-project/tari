@@ -188,6 +188,11 @@ pub fn as_bagl_bold_reports(text: &str) -> String {
     text.chars().map(|c| if c == 'I' { 'l' } else { c }).collect()
 }
 
+/// The value the device shows in the [`MATURITY_FIELD`] row for a maturity of `height`.
+pub fn maturity_value(height: u64) -> String {
+    format!("block {height}")
+}
+
 /// One row of the review screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedField {
@@ -235,7 +240,8 @@ pub const PAYMENT_ID_FIELD: &str = "Payment ID";
 /// The rows the device adds to a one sided metadata signature's review when the output is not plain: each only when
 /// it differs from the default, and in this order, after `Payment ID`.
 pub const OUTPUT_TYPE_FIELD: &str = "Output type";
-pub const MATURITY_FIELD: &str = "Maturity";
+/// The output's maturity, an absolute block height; its value is [`maturity_value`].
+pub const MATURITY_FIELD: &str = "Locked until";
 pub const SIDECHAIN_FIELD: &str = "Sidechain";
 pub const VALIDATOR_NODE_FIELD: &str = "Validator node";
 pub const MIN_VALUE_FIELD: &str = "Min value";
@@ -900,10 +906,13 @@ mod test {
         for name in OUTPUT_FIELDS {
             assert!(plain.absent().iter().any(|absent| absent == name), "{name}");
         }
-        let matured = plain.with_output_field(MATURITY_FIELD, "1000");
+        let matured = plain.with_output_field(MATURITY_FIELD, &maturity_value(1000));
         assert!(!matured.absent().iter().any(|absent| absent == MATURITY_FIELD));
         let last = matured.present().last().unwrap();
-        assert_eq!((last.name.as_str(), last.value.as_str()), (MATURITY_FIELD, "1000"));
+        assert_eq!(
+            (last.name.as_str(), last.value.as_str()),
+            (MATURITY_FIELD, "block 1000")
+        );
     }
 
     #[test]

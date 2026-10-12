@@ -56,6 +56,9 @@ pub enum LedgerDeviceError {
     NotSupported,
     #[error("User cancelled the transaction")]
     UserCancelled,
+    /// The Ledger application does not serve an instruction this wallet needs: it is older than the wallet.
+    #[error("The MinoTari Ledger application is too old for this wallet ({0}); update the Ledger application")]
+    ApplicationOutdated(String),
 }
 
 impl From<ByteArrayError> for LedgerDeviceError {
