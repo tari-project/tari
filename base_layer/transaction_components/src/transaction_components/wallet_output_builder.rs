@@ -19,7 +19,8 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use derivative::Derivative;
+use std::fmt;
+
 use tari_common_types::{
     tari_address::TariAddress,
     types::{ComAndPubSignature, CompressedPublicKey},
@@ -41,8 +42,7 @@ use crate::{
     },
 };
 
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
+#[derive(Clone)]
 pub struct WalletOutputBuilder {
     version: TransactionOutputVersion,
     value: MicroMinotari,
@@ -61,6 +61,30 @@ pub struct WalletOutputBuilder {
     custom_recovery_key_id: Option<TariKeyId>,
     minimum_value_promise: MicroMinotari,
     payment_id: MemoField,
+}
+
+impl fmt::Debug for WalletOutputBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WalletOutputBuilder")
+            .field("version", &self.version)
+            .field("value", &self.value)
+            .field("commitment_mask_key_id", &self.commitment_mask_key_id)
+            .field("features", &self.features)
+            .field("script", &self.script)
+            .field("script_lock_height", &self.script_lock_height)
+            .field("covenant", &self.covenant)
+            .field("input_data", &self.input_data)
+            .field("script_key_id", &self.script_key_id)
+            .field("sender_offset_public_key", &self.sender_offset_public_key)
+            .field("metadata_signature", &self.metadata_signature)
+            .field("metadata_signed_by_receiver", &self.metadata_signed_by_receiver)
+            .field("metadata_signed_by_sender", &self.metadata_signed_by_sender)
+            .field("encrypted_data", &self.encrypted_data)
+            .field("custom_recovery_key_id", &self.custom_recovery_key_id)
+            .field("minimum_value_promise", &self.minimum_value_promise)
+            .field("payment_id", &self.payment_id)
+            .finish()
+    }
 }
 
 #[allow(dead_code)]

@@ -8287,7 +8287,6 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "decimal-rs",
- "derivative",
  "digest 0.10.7",
  "hex",
  "integer-encoding",
