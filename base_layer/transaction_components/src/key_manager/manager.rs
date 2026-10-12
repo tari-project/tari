@@ -83,7 +83,7 @@ use tari_crypto::{
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain, ZeroizingFinalize};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript, push_pubkey_script};
 use tari_utilities::{ByteArray, Hidden, hex::Hex};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use crate::{
     MicroMinotari,
@@ -784,12 +784,15 @@ impl KeyManager {
     }
 
     fn decrypt_encrypted_key(&self, bytes: &[u8], decryption_key: TariKeyId) -> Result<PrivateKey, KeyManagerError> {
-        let mut private_decryption_key = self.get_private_key(&decryption_key)?.to_vec();
+        // Both plain copies of key material here - the decryption key and the decrypted scalar - are wiped when
+        // they go out of scope, including on the error paths.
+        let private_decryption_key = Zeroizing::new(self.get_private_key(&decryption_key)?.to_vec());
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_decryption_key));
-        private_decryption_key.zeroize();
-        let decrypted_bytes = decrypt_bytes_integral_nonce(&cipher, domain, bytes)
-            .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?;
+        let decrypted_bytes = Zeroizing::new(
+            decrypt_bytes_integral_nonce(&cipher, domain, bytes)
+                .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?,
+        );
         let pvt_key = PrivateKey::from_vec(&decrypted_bytes)?;
         Ok(pvt_key)
     }
