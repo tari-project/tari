@@ -20,13 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, ops::RangeInclusive};
+use std::{
+    cmp,
+    net::SocketAddr,
+    ops::RangeInclusive,
+    pin::Pin,
+    sync::{Arc, Mutex, MutexGuard},
+    task::{Context, Poll, Waker},
+    time::{Duration, Instant},
+};
 
-use futures::{SinkExt, channel::mpsc};
+use futures::{SinkExt, Stream, StreamExt, channel::mpsc};
 use log::*;
 use minotari_app_grpc::tari_rpc;
 use tari_core::{base_node::LocalNodeCommsInterface, iterators::NonOverlappingIntegerPairIter};
 use tari_node_components::blocks::HistoricalBlock;
+use tokio::{
+    sync::{Notify, OwnedSemaphorePermit, Semaphore},
+    time,
+};
 use tonic::Status;
 
 use crate::grpc::base_node_grpc_server::obscure_error_if_true;
@@ -41,6 +53,73 @@ pub const GET_BLOCKS_MAX_HEIGHTS: usize = 1000;
 // The number of blocks to request from the base node at a time. This is to reduce the number of
 // requests to the base node, but if you'd like to stream directly, this can be set to 1.
 pub const GET_BLOCKS_PAGE_SIZE: usize = 10;
+
+/// The most GetBlocks streams a node serves at once. A request over this fails straight away with RESOURCE_EXHAUSTED,
+/// so that clients back off instead of piling up streams. Each stream holds at most about one page of hydrated blocks
+/// plus the blocks in its response channel and the one being sent, i.e. `GET_BLOCKS_PAGE_SIZE + GET_BLOCKS_CHANNEL_SIZE
+/// + 2` (13) blocks.
+pub const GET_BLOCKS_MAX_CONCURRENT_STREAMS: usize = 8;
+
+/// The number of blocks buffered in a GetBlocks response channel. The channel holds at most this plus one, because each
+/// sender has a slot of its own. Kept small: the stream task already holds the rest of the page it is sending.
+pub const GET_BLOCKS_CHANNEL_SIZE: usize = 1;
+
+/// The least time between two warnings of the same kind about GetBlocks clients
+const GET_BLOCKS_WARN_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Limits a kind of warning to one per [GET_BLOCKS_WARN_INTERVAL], so that a flood of requests cannot flood the log.
+/// The warnings suppressed in between are counted and reported with the next one.
+#[derive(Debug, Default)]
+pub struct WarnLimiter {
+    /// When the last warning was logged, and how many were suppressed since
+    state: Mutex<(Option<Instant>, u64)>,
+}
+
+impl WarnLimiter {
+    /// Returns the number of warnings suppressed since the last one if a warning may be logged now, otherwise `None`
+    pub fn should_warn(&self) -> Option<u64> {
+        self.should_warn_at(Instant::now())
+    }
+
+    fn should_warn_at(&self, now: Instant) -> Option<u64> {
+        let mut state = match self.state.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let (last_warning, num_suppressed) = &mut *state;
+        let may_warn = last_warning.is_none_or(|last| now.saturating_duration_since(last) >= GET_BLOCKS_WARN_INTERVAL);
+        if may_warn {
+            *last_warning = Some(now);
+            let suppressed = *num_suppressed;
+            *num_suppressed = 0;
+            Some(suppressed)
+        } else {
+            *num_suppressed = num_suppressed.saturating_add(1);
+            None
+        }
+    }
+}
+
+/// Formats a client's address for logging
+pub fn display_client_addr(remote_addr: Option<SocketAddr>) -> String {
+    remote_addr
+        .map(|addr| addr.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// The longest a GetBlocks stream waits for the client to take a block. A client that stays connected but stops
+/// reading would otherwise hold its stream slot forever, and enough of them would lock every other client out.
+pub const GET_BLOCKS_SEND_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Reserves one of the GetBlocks stream slots in `slots`. The slot is released when the returned permit is dropped.
+#[allow(clippy::result_large_err)]
+pub fn try_reserve_get_blocks_slot(slots: &Arc<Semaphore>) -> Result<OwnedSemaphorePermit, Status> {
+    slots.clone().try_acquire_owned().map_err(|_| {
+        Status::resource_exhausted(format!(
+            "The node is already serving {GET_BLOCKS_MAX_CONCURRENT_STREAMS} GetBlocks streams. Try again later."
+        ))
+    })
+}
 
 /// Groups an ascending, sorted list of block heights into maximal runs of consecutive heights.
 ///
@@ -129,25 +208,201 @@ pub fn height_pages(sorted_heights: &[u64], page_size: usize) -> Result<Vec<(u64
     Ok(pages)
 }
 
+/// The GetBlocks response stream
+pub type GetBlocksStream = GetBlocksResponse;
+
+/// What a GetBlocks stream task and its response stream share
+struct GetBlocksState {
+    /// The blocks waiting for the client. `None` once the stream task has cut the stream off, which drops the blocks
+    /// that were still queued, or once the channel has ended.
+    blocks: Option<mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>>,
+    /// The error that ends the response, if the stream task cut the stream off
+    final_error: Option<Status>,
+    /// The response stream's waker, woken when the stream task cuts the stream off
+    waker: Option<Waker>,
+    /// The number of items the stream task has sent, or is sending, that the response has not taken yet
+    num_queued: usize,
+}
+
+fn lock_state(state: &Mutex<GetBlocksState>) -> MutexGuard<'_, GetBlocksState> {
+    match state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// The response stream of a GetBlocks call: every block the stream task sends, then the error it cut the stream off
+/// with, if any. Without that error a client would see a cut-off response end as if it were complete.
+pub struct GetBlocksResponse {
+    state: Arc<Mutex<GetBlocksState>>,
+    /// Notified whenever the response takes an item, ends or is dropped
+    progress: Arc<Notify>,
+}
+
+impl Stream for GetBlocksResponse {
+    type Item = Result<tari_rpc::HistoricalBlock, Status>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut state = lock_state(&self.state);
+        if let Some(blocks) = state.blocks.as_mut() {
+            match blocks.poll_next_unpin(cx) {
+                Poll::Ready(Some(item)) => {
+                    state.num_queued = state.num_queued.saturating_sub(1);
+                    self.progress.notify_one();
+                    return Poll::Ready(Some(item));
+                },
+                Poll::Ready(None) => {
+                    state.blocks = None;
+                    self.progress.notify_one();
+                },
+                Poll::Pending => {
+                    state.waker = Some(cx.waker().clone());
+                    return Poll::Pending;
+                },
+            }
+        }
+        Poll::Ready(state.final_error.take().map(Err))
+    }
+}
+
+impl Drop for GetBlocksResponse {
+    /// Drops the receiver, so that the stream task sees that the client is gone
+    fn drop(&mut self) {
+        let blocks = lock_state(&self.state).blocks.take();
+        drop(blocks);
+        self.progress.notify_one();
+    }
+}
+
+/// Lets a GetBlocks stream task track and cut off its stream
+pub struct GetBlocksCutOff {
+    state: Arc<Mutex<GetBlocksState>>,
+    progress: Arc<Notify>,
+}
+
+impl GetBlocksCutOff {
+    /// Records that the stream task is about to send an item
+    fn add_queued(&self) {
+        let mut state = lock_state(&self.state);
+        state.num_queued = state.num_queued.saturating_add(1);
+    }
+
+    /// Returns true once the response holds nothing for the client: it has taken every item, ended or was dropped
+    fn is_drained(&self) -> bool {
+        let state = lock_state(&self.state);
+        state.blocks.is_none() || state.num_queued == 0
+    }
+
+    /// Waits until the response has taken every item sent. A client that does not take an item for
+    /// [GET_BLOCKS_SEND_TIMEOUT] has the stream cut off, which drops the items still queued. Returns true if the stream
+    /// was cut off.
+    async fn wait_until_drained(self) -> bool {
+        loop {
+            if self.is_drained() {
+                return false;
+            }
+            // A notification sent since the check above is kept, so none is missed
+            if time::timeout(GET_BLOCKS_SEND_TIMEOUT, self.progress.notified())
+                .await
+                .is_err()
+            {
+                self.cut_off(Status::deadline_exceeded(format!(
+                    "The client did not read a block within {GET_BLOCKS_SEND_TIMEOUT:.0?}"
+                )));
+                return true;
+            }
+        }
+    }
+
+    /// Ends the response with `error` after the blocks already queued, once the stream task has dropped its sender
+    fn end_with_error(&self, error: Status) {
+        lock_state(&self.state).final_error = Some(error);
+    }
+
+    /// Ends the response with `error`. The blocks still queued for the client are dropped straight away, so a client
+    /// that has stopped reading does not keep them in memory.
+    pub fn cut_off(self, error: Status) {
+        let mut state = lock_state(&self.state);
+        let blocks = state.blocks.take();
+        state.final_error = Some(error);
+        let waker = state.waker.take();
+        drop(state);
+        drop(blocks);
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+}
+
+/// Creates the channel for a GetBlocks stream: the sender and cut-off handle for the stream task, and the response
+/// stream for the client
+pub fn get_blocks_channel(
+    buffer: usize,
+) -> (
+    mpsc::Sender<Result<tari_rpc::HistoricalBlock, Status>>,
+    GetBlocksCutOff,
+    GetBlocksResponse,
+) {
+    let (tx, rx) = mpsc::channel(buffer);
+    let state = Arc::new(Mutex::new(GetBlocksState {
+        blocks: Some(rx),
+        final_error: None,
+        waker: None,
+        num_queued: 0,
+    }));
+    let progress = Arc::new(Notify::new());
+    let cut_off = GetBlocksCutOff {
+        state: state.clone(),
+        progress: progress.clone(),
+    };
+    (tx, cut_off, GetBlocksResponse { state, progress })
+}
+
 /// Fetches each page of blocks in turn and streams them to the client.
 ///
 /// Returns as soon as the receiver is gone, i.e. the client has cancelled the request or disconnected. Without that
 /// early return the task would keep hydrating every remaining page from the database only to discard it, which is
 /// what allowed a client that repeatedly timed out to accumulate work on the node.
+///
+/// If a page cannot be fetched, the response ends with an error status after the blocks already queued. If the client
+/// does not take a block within [GET_BLOCKS_SEND_TIMEOUT], the stream is cut off with an error status, which also drops
+/// the blocks still queued for the client (see [GetBlocksCutOff]). After the last block is sent, or a page fetch
+/// failed, this waits until the client has taken every block, under the same timeout, so that `_slot`, the caller's
+/// GetBlocks stream slot, is held for as long as blocks are queued for the client. The slot is released when this
+/// returns or is dropped. Cut-offs are logged with `remote_addr`, at most one warning per [GET_BLOCKS_WARN_INTERVAL]
+/// across streams sharing `cut_off_warnings`.
+#[allow(clippy::too_many_arguments)]
 pub async fn stream_blocks(
     mut handler: LocalNodeCommsInterface,
     pages: Vec<(u64, u64)>,
     mut tx: mpsc::Sender<Result<tari_rpc::HistoricalBlock, Status>>,
+    cut_off: GetBlocksCutOff,
     report_error_flag: bool,
+    _slot: OwnedSemaphorePermit,
+    remote_addr: Option<SocketAddr>,
+    cut_off_warnings: Arc<WarnLimiter>,
 ) {
     for (start, end) in pages {
+        // A client that went away is otherwise only noticed when a block is sent, after the page was fetched
+        if tx.is_closed() {
+            debug!(
+                target: LOG_TARGET,
+                "[get_blocks] Request was cancelled, not fetching blocks #{start} - #{end}"
+            );
+            return;
+        }
         let blocks = match handler.get_blocks(start..=end, false).await {
             Err(err) => {
                 warn!(
                     target: LOG_TARGET,
                     "Error communicating with local base node: {err:?}"
                 );
-                return;
+                // The client still gets the blocks already queued, then this error
+                cut_off.end_with_error(obscure_error_if_true(
+                    report_error_flag,
+                    Status::internal(format!("Could not fetch blocks #{start} - #{end}: {err}")),
+                ));
+                break;
             },
             Ok(data) => data,
         };
@@ -164,14 +419,44 @@ pub async fn stream_blocks(
                     Status::internal(format!("Could not provide block: {err}")),
                 )
             });
-            if tx.send(result).await.is_err() {
-                warn!(
-                    target: LOG_TARGET,
-                    "[get_blocks] Request was cancelled while sending a response"
-                );
-                return;
+            cut_off.add_queued();
+            match time::timeout(GET_BLOCKS_SEND_TIMEOUT, tx.send(result)).await {
+                Ok(Ok(())) => {},
+                Ok(Err(_)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[get_blocks] Request was cancelled while sending a response"
+                    );
+                    return;
+                },
+                Err(_) => {
+                    cut_off.cut_off(Status::deadline_exceeded(format!(
+                        "The client did not read a block within {GET_BLOCKS_SEND_TIMEOUT:.0?}"
+                    )));
+                    warn_cut_off(remote_addr, &cut_off_warnings);
+                    return;
+                },
             }
         }
+    }
+
+    // Close the channel so the response can end, then hold the slot until the client has taken the queued blocks
+    drop(tx);
+    if cut_off.wait_until_drained().await {
+        warn_cut_off(remote_addr, &cut_off_warnings);
+    }
+}
+
+/// Logs that a GetBlocks stream was cut off because its client did not read, rate-limited by `cut_off_warnings`
+fn warn_cut_off(remote_addr: Option<SocketAddr>, cut_off_warnings: &WarnLimiter) {
+    // A suppressed warning is counted and reported with the next one
+    if let Some(num_suppressed) = cut_off_warnings.should_warn() {
+        let client = display_client_addr(remote_addr);
+        warn!(
+            target: LOG_TARGET,
+            "[get_blocks] Client {client} did not take a block within {GET_BLOCKS_SEND_TIMEOUT:.0?}. Ended its stream \
+             and dropped the blocks queued for it ({num_suppressed} similar warning(s) suppressed)."
+        );
     }
 }
 
@@ -296,6 +581,11 @@ mod test {
         mock_node_service_with_tip(Some(0))
     }
 
+    /// A GetBlocks stream slot that is not shared with any other test
+    fn slot() -> OwnedSemaphorePermit {
+        Arc::new(Semaphore::new(1)).try_acquire_owned().unwrap()
+    }
+
     #[tokio::test]
     async fn resolve_requested_heights_defaults_to_the_tip() {
         let (handler, _requested) = mock_node_service_with_tip(Some(1234));
@@ -341,12 +631,22 @@ mod test {
         // not hydrate the 100_000 blocks between them
         let (handler, requested) = mock_node_service();
         let pages = height_pages(&[500, 100_500], GET_BLOCKS_PAGE_SIZE).unwrap();
-        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let (tx, cut_off, rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
 
-        stream_blocks(handler, pages, tx, true).await;
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot(),
+            None,
+            Arc::default(),
+        ));
+        let streamed = rx.collect::<Vec<_>>().await;
+        streaming.await.unwrap();
 
         assert_eq!(*requested.lock().unwrap(), vec![500..=500, 100_500..=100_500]);
-        let streamed = rx.collect::<Vec<_>>().await;
         assert_eq!(streamed.len(), 2);
     }
 
@@ -355,9 +655,18 @@ mod test {
         let (handler, requested) = mock_node_service();
         let heights = (10u64..=34).collect::<Vec<_>>();
         let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
-        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let (tx, cut_off, rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
 
-        task::spawn(stream_blocks(handler, pages, tx, true));
+        task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot(),
+            None,
+            Arc::default(),
+        ));
 
         let streamed = rx.collect::<Vec<_>>().await;
         assert_eq!(streamed.len(), heights.len());
@@ -365,19 +674,426 @@ mod test {
     }
 
     #[tokio::test]
-    async fn stream_blocks_stops_fetching_once_the_client_is_gone() {
-        // Simulate a client that cancelled the request before any response could be sent: the very first send fails,
-        // so only the first page may ever be fetched no matter how many pages were queued.
+    async fn a_cancelled_stream_stops_before_the_next_page_fetch() {
+        // A client that cancelled the request before any response could be sent: no page is fetched for it, rather
+        // than one page that is only found to be unwanted when its first block is sent
         let (handler, requested) = mock_node_service();
         let heights = (1u64..=100).collect::<Vec<_>>();
         let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
         assert_eq!(pages.len(), 10);
-        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let (tx, cut_off, rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
         drop(rx);
 
-        stream_blocks(handler, pages, tx, true).await;
+        stream_blocks(handler, pages, tx, cut_off, true, slot(), None, Arc::default()).await;
 
+        assert!(requested.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn warnings_are_limited_to_one_per_interval() {
+        let limiter = WarnLimiter::default();
+        let start = Instant::now();
+        assert_eq!(limiter.should_warn_at(start), Some(0));
+        assert_eq!(limiter.should_warn_at(start + Duration::from_secs(1)), None);
+        assert_eq!(limiter.should_warn_at(start + Duration::from_secs(2)), None);
+        // The next warning reports how many were suppressed
+        assert_eq!(limiter.should_warn_at(start + GET_BLOCKS_WARN_INTERVAL), Some(2));
+        assert_eq!(limiter.should_warn_at(start + GET_BLOCKS_WARN_INTERVAL), None);
+    }
+
+    /// A stream whose client is not reading holds about one page: the rest of the page it is sending, the response
+    /// channel and the block being sent
+    #[tokio::test]
+    async fn a_stream_holds_about_one_page_for_a_client_that_is_not_reading() {
+        let (handler, requested) = mock_node_service();
+        let heights = (1u64..=100).collect::<Vec<_>>();
+        let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_CHANNEL_SIZE);
+
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot(),
+            None,
+            Arc::default(),
+        ));
+        for _ in 0..100 {
+            task::yield_now().await;
+        }
+
+        // Only the first page was fetched, and only the channel and the send in progress hold its converted blocks
         assert_eq!(*requested.lock().unwrap(), vec![1..=10]);
+        let num_queued = lock_state(&response.state).num_queued;
+        assert!(num_queued >= 1);
+        assert!(num_queued <= GET_BLOCKS_CHANNEL_SIZE + 2, "{num_queued} blocks queued");
+        streaming.abort();
+    }
+
+    #[test]
+    fn the_request_over_the_stream_cap_gets_resource_exhausted() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let held = (0..GET_BLOCKS_MAX_CONCURRENT_STREAMS)
+            .map(|_| try_reserve_get_blocks_slot(&slots).unwrap())
+            .collect::<Vec<_>>();
+        let err = try_reserve_get_blocks_slot(&slots).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::ResourceExhausted);
+
+        drop(held);
+        assert!(try_reserve_get_blocks_slot(&slots).is_ok());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_slot_is_released_when_the_client_has_read_a_complete_stream() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let (handler, _requested) = mock_node_service();
+        let pages = height_pages(&[1, 2, 3], GET_BLOCKS_PAGE_SIZE).unwrap();
+        let (tx, cut_off, rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS - 1);
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+
+        // Read to the end, keeping the response alive as a server does until it has sent the end of the stream
+        let mut rx = rx;
+        let mut num_read = 0usize;
+        while let Some(item) = rx.next().await {
+            assert!(item.is_ok());
+            num_read = num_read.saturating_add(1);
+        }
+        assert_eq!(num_read, 3);
+        // Time is paused, so a stream still waiting for the client would not end within this second
+        time::timeout(Duration::from_secs(1), streaming)
+            .await
+            .expect("the slot was not released once the client had read everything")
+            .unwrap();
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_completed_stream_holds_its_slot_until_the_client_reads_the_queued_blocks() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let (handler, requested) = mock_node_service();
+        let pages = height_pages(&[1, 2, 3], GET_BLOCKS_PAGE_SIZE).unwrap();
+        // Every block fits in the channel, so the stream task sends them all without waiting
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+        while requested.lock().unwrap().is_empty() {
+            task::yield_now().await;
+        }
+        time::sleep(GET_BLOCKS_SEND_TIMEOUT / 2).await;
+        assert!(!streaming.is_finished());
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS - 1);
+
+        // The client never reads, so the queued blocks are dropped and the slot is released after the timeout
+        time::timeout(GET_BLOCKS_SEND_TIMEOUT, streaming)
+            .await
+            .expect("the stream did not give up on a client that is not reading")
+            .unwrap();
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+        assert!(lock_state(&response.state).blocks.is_none());
+        let responses = response.collect::<Vec<_>>().await;
+        assert_eq!(responses.len(), 1);
+        assert_eq!(
+            responses.last().unwrap().as_ref().unwrap_err().code(),
+            tonic::Code::DeadlineExceeded
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_completed_stream_releases_its_slot_when_the_response_is_dropped() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let (handler, requested) = mock_node_service();
+        let pages = height_pages(&[1, 2, 3], GET_BLOCKS_PAGE_SIZE).unwrap();
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+        while requested.lock().unwrap().is_empty() {
+            task::yield_now().await;
+        }
+        time::sleep(Duration::from_secs(1)).await;
+        assert!(!streaming.is_finished());
+
+        drop(response);
+        time::timeout(Duration::from_secs(1), streaming)
+            .await
+            .expect("the slot was not released when the response was dropped")
+            .unwrap();
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+    }
+
+    #[tokio::test]
+    async fn a_slot_is_released_when_a_stream_errors() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        // A base node that is gone, so fetching the first page fails
+        let (request_tx, _request_rx) = reply_channel::unbounded();
+        let (block_tx, _block_rx) = reply_channel::unbounded();
+        let (block_event_tx, _block_event_rx) = broadcast::channel(1);
+        let handler = LocalNodeCommsInterface::new(request_tx, block_tx, block_event_tx);
+        drop(_request_rx);
+        let pages = height_pages(&[1, 2, 3], GET_BLOCKS_PAGE_SIZE).unwrap();
+        let (tx, cut_off, rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        stream_blocks(handler, pages, tx, cut_off, true, slot, None, Arc::default()).await;
+
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+        let responses = rx.collect::<Vec<_>>().await;
+        assert_eq!(responses.len(), 1);
+        assert!(responses.iter().all(|r| r.is_err()));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_slot_is_released_when_the_client_stops_reading() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let (handler, requested) = mock_node_service();
+        let heights = (1u64..=100).collect::<Vec<_>>();
+        let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
+        // The client keeps the receiver but never reads, so the stream waits on a full channel
+        let (tx, cut_off, _rx) = get_blocks_channel(1);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+        while requested.lock().unwrap().is_empty() {
+            task::yield_now().await;
+        }
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS - 1);
+
+        // Time is paused and advances once every task is idle, so this returns once the send has timed out
+        time::timeout(GET_BLOCKS_SEND_TIMEOUT * 2, streaming)
+            .await
+            .expect("the stream did not give up on a client that stopped reading")
+            .unwrap();
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+        assert_eq!(*requested.lock().unwrap(), vec![1..=10]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stream_cut_off_by_the_send_timeout_drops_the_queued_blocks_and_ends_with_an_error() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let (handler, _requested) = mock_node_service();
+        let heights = (1u64..=100).collect::<Vec<_>>();
+        let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
+        // The client never reads, so the stream fills the channel and waits
+        let (tx, cut_off, response) = get_blocks_channel(1);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+        time::timeout(GET_BLOCKS_SEND_TIMEOUT * 2, streaming)
+            .await
+            .expect("the send did not time out")
+            .unwrap();
+
+        // The queued blocks were dropped without the response being polled, and the slot is free
+        assert!(lock_state(&response.state).blocks.is_none());
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+
+        let responses = response.collect::<Vec<_>>().await;
+        assert_eq!(responses.len(), 1);
+        let err = responses.last().unwrap().as_ref().unwrap_err();
+        assert_eq!(err.code(), tonic::Code::DeadlineExceeded);
+    }
+
+    #[tokio::test]
+    async fn a_waiting_response_is_woken_when_the_stream_is_cut_off() {
+        let (_tx, cut_off, mut response) = get_blocks_channel(1);
+        let next = task::spawn(async move { response.next().await });
+        task::yield_now().await;
+        assert!(!next.is_finished());
+
+        cut_off.cut_off(Status::deadline_exceeded("test"));
+
+        let item = time::timeout(Duration::from_secs(10), next)
+            .await
+            .expect("the waiting response was not woken")
+            .unwrap();
+        assert_eq!(item.unwrap().unwrap_err().code(), tonic::Code::DeadlineExceeded);
+    }
+
+    /// A mock base node that serves the first page and then fails, so the second page fetch fails
+    fn mock_node_service_failing_after_one_page() -> LocalNodeCommsInterface {
+        let (request_tx, mut request_rx) = reply_channel::unbounded();
+        let (block_tx, _block_rx) = reply_channel::unbounded();
+        let (block_event_tx, _block_event_rx) = broadcast::channel(1);
+        task::spawn(async move {
+            if let Some(request) = request_rx.next().await {
+                let (request, reply) = request.split();
+                let response = match request {
+                    NodeCommsRequest::FetchMatchingBlocks { range, .. } => {
+                        Ok(NodeCommsResponse::HistoricalBlocks(range.map(stub_block).collect()))
+                    },
+                    _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+                };
+                let _result = reply.send(response);
+            }
+            // Dropping the request receiver fails every later request
+        });
+        LocalNodeCommsInterface::new(request_tx, block_tx, block_event_tx)
+    }
+
+    #[tokio::test]
+    async fn a_page_fetch_error_ends_the_stream_with_an_error_after_the_queued_blocks() {
+        let handler = mock_node_service_failing_after_one_page();
+        let pages = height_pages(&[1, 2, 3, 20], GET_BLOCKS_PAGE_SIZE).unwrap();
+        assert_eq!(pages.len(), 2);
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot(),
+            None,
+            Arc::default(),
+        ));
+        let responses = response.collect::<Vec<_>>().await;
+        streaming.await.unwrap();
+
+        assert_eq!(responses.len(), 4);
+        assert!(responses.iter().take(3).all(|r| r.is_ok()));
+        let err = responses.last().unwrap().as_ref().unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Internal);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_client_that_is_not_reading_after_a_page_fetch_error_is_cut_off() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let handler = mock_node_service_failing_after_one_page();
+        let pages = height_pages(&[1, 2, 3, 20], GET_BLOCKS_PAGE_SIZE).unwrap();
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+        time::sleep(GET_BLOCKS_SEND_TIMEOUT / 2).await;
+        assert!(!streaming.is_finished());
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS - 1);
+
+        time::timeout(GET_BLOCKS_SEND_TIMEOUT, streaming)
+            .await
+            .expect("the stream did not give up on a client that is not reading")
+            .unwrap();
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
+        assert!(lock_state(&response.state).blocks.is_none());
+        let responses = response.collect::<Vec<_>>().await;
+        assert_eq!(responses.len(), 1);
+        assert_eq!(
+            responses.last().unwrap().as_ref().unwrap_err().code(),
+            tonic::Code::DeadlineExceeded
+        );
+    }
+
+    #[tokio::test]
+    async fn a_complete_stream_ends_without_an_error() {
+        let (handler, _requested) = mock_node_service();
+        let pages = height_pages(&[1, 2, 3], GET_BLOCKS_PAGE_SIZE).unwrap();
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
+
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot(),
+            None,
+            Arc::default(),
+        ));
+        let responses = response.collect::<Vec<_>>().await;
+        streaming.await.unwrap();
+
+        assert_eq!(responses.len(), 3);
+        assert!(responses.iter().all(|r| r.is_ok()));
+    }
+
+    #[tokio::test]
+    async fn a_slot_is_released_when_a_stream_is_dropped() {
+        let slots = Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS));
+        let (handler, requested) = mock_node_service();
+        let heights = (1u64..=100).collect::<Vec<_>>();
+        let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
+        // The client never reads, so the stream waits on a full channel
+        let (tx, cut_off, _rx) = get_blocks_channel(1);
+
+        let slot = try_reserve_get_blocks_slot(&slots).unwrap();
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot,
+            None,
+            Arc::default(),
+        ));
+        while requested.lock().unwrap().is_empty() {
+            task::yield_now().await;
+        }
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS - 1);
+
+        streaming.abort();
+        assert!(streaming.await.unwrap_err().is_cancelled());
+        assert_eq!(slots.available_permits(), GET_BLOCKS_MAX_CONCURRENT_STREAMS);
     }
 
     #[tokio::test]
@@ -386,9 +1102,18 @@ mod test {
         let (handler, requested) = mock_node_service();
         let heights = (1u64..=100).collect::<Vec<_>>();
         let pages = height_pages(&heights, GET_BLOCKS_PAGE_SIZE).unwrap();
-        let (tx, mut rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let (tx, cut_off, mut rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
 
-        let streaming = task::spawn(stream_blocks(handler, pages, tx, true));
+        let streaming = task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            true,
+            slot(),
+            None,
+            Arc::default(),
+        ));
         for _ in 0..GET_BLOCKS_PAGE_SIZE {
             assert!(rx.next().await.is_some());
         }
@@ -406,9 +1131,9 @@ mod test {
     #[tokio::test]
     async fn stream_blocks_with_no_pages_fetches_nothing() {
         let (handler, requested) = mock_node_service();
-        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        let (tx, cut_off, rx) = get_blocks_channel(GET_BLOCKS_PAGE_SIZE);
 
-        stream_blocks(handler, Vec::new(), tx, true).await;
+        stream_blocks(handler, Vec::new(), tx, cut_off, true, slot(), None, Arc::default()).await;
 
         assert!(requested.lock().unwrap().is_empty());
         assert!(rx.collect::<Vec<_>>().await.is_empty());

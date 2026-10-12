@@ -24,6 +24,7 @@ use std::{
     cmp,
     convert::{TryFrom, TryInto},
     str::FromStr,
+    sync::Arc,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -90,7 +91,7 @@ use tari_transaction_components::{
     },
 };
 use tari_utilities::{ByteArray, hex::Hex, message_format::MessageFormat};
-use tokio::task;
+use tokio::{sync::Semaphore, task};
 use tonic::{Request, Response, Status};
 
 use crate::{
@@ -98,13 +99,20 @@ use crate::{
     builder::BaseNodeContext,
     grpc::{
         blocks::{
+            GET_BLOCKS_CHANNEL_SIZE,
+            GET_BLOCKS_MAX_CONCURRENT_STREAMS,
             GET_BLOCKS_PAGE_SIZE,
+            GetBlocksStream,
+            WarnLimiter,
             block_fees,
             block_heights,
             block_size,
+            display_client_addr,
+            get_blocks_channel,
             height_pages,
             resolve_requested_heights,
             stream_blocks,
+            try_reserve_get_blocks_slot,
         },
         data_cache::DataCache,
         hash_rate::{HashRateMovingAverage, NANOS_PER_UNIT, display_u_decimal_value},
@@ -146,6 +154,12 @@ pub struct BaseNodeGrpcServer {
     tari_pulse: Option<TariPulseHandle>,
     config: BaseNodeConfig,
     data_cache: DataCache,
+    /// One permit per GetBlocks stream that may be served at once
+    get_blocks_slots: Arc<Semaphore>,
+    /// Limits the warnings about GetBlocks requests rejected because every stream slot is taken
+    get_blocks_rejected_warnings: WarnLimiter,
+    /// Limits the warnings about GetBlocks streams cut off because their client did not read
+    get_blocks_cut_off_warnings: Arc<WarnLimiter>,
 }
 
 impl BaseNodeGrpcServer {
@@ -163,6 +177,9 @@ impl BaseNodeGrpcServer {
             tari_pulse: ctx.tari_pulse(),
             config,
             data_cache: DataCache::new(),
+            get_blocks_slots: Arc::new(Semaphore::new(GET_BLOCKS_MAX_CONCURRENT_STREAMS)),
+            get_blocks_rejected_warnings: WarnLimiter::default(),
+            get_blocks_cut_off_warnings: Arc::default(),
         }
     }
 
@@ -411,7 +428,7 @@ impl BaseNodeGrpcServer {}
 impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type FetchMatchingUtxosStream = mpsc::Receiver<Result<tari_rpc::FetchMatchingUtxosResponse, Status>>;
     type GetActiveValidatorNodesStream = mpsc::Receiver<Result<tari_rpc::GetActiveValidatorNodesResponse, Status>>;
-    type GetBlocksStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type GetBlocksStream = GetBlocksStream;
     type GetMempoolTransactionsStream = mpsc::Receiver<Result<tari_rpc::GetMempoolTransactionsResponse, Status>>;
     type GetNetworkDifficultyStream = mpsc::Receiver<Result<tari_rpc::NetworkDifficultyResponse, Status>>;
     type GetPeersStream = mpsc::Receiver<Result<tari_rpc::GetPeersResponse, Status>>;
@@ -2223,8 +2240,30 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         request: Request<tari_rpc::GetBlocksRequest>,
     ) -> Result<Response<Self::GetBlocksStream>, Status> {
         self.check_method_enabled(GrpcMethod::GetBlocks)?;
+        let remote_addr = request.remote_addr();
+        // Held by the stream task for as long as it runs
+        let slot = match try_reserve_get_blocks_slot(&self.get_blocks_slots) {
+            Ok(slot) => slot,
+            Err(status) => {
+                if let Some(num_suppressed) = self.get_blocks_rejected_warnings.should_warn() {
+                    warn!(
+                        target: LOG_TARGET,
+                        "[get_blocks] Rejected a request from {}: all {GET_BLOCKS_MAX_CONCURRENT_STREAMS} stream slots \
+                         are taken ({num_suppressed} similar warning(s) suppressed)",
+                        display_client_addr(remote_addr)
+                    );
+                }
+                return Err(status);
+            },
+        };
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
+        trace!(
+            target: LOG_TARGET,
+            "[get_blocks] Serving {} height(s) to {}",
+            request.heights.len(),
+            display_client_addr(remote_addr)
+        );
         trace!(
             target: LOG_TARGET,
             "Incoming GRPC request for GetBlocks: {:?}", request.heights
@@ -2239,11 +2278,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .map_err(|e| obscure_error_if_true(report_error_flag, Status::invalid_argument(e)))?;
 
         let handler = self.node_service.clone();
-        let (tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
-        task::spawn(stream_blocks(handler, pages, tx, report_error_flag));
+        let (tx, cut_off, response) = get_blocks_channel(GET_BLOCKS_CHANNEL_SIZE);
+        task::spawn(stream_blocks(
+            handler,
+            pages,
+            tx,
+            cut_off,
+            report_error_flag,
+            slot,
+            remote_addr,
+            self.get_blocks_cut_off_warnings.clone(),
+        ));
 
         trace!(target: LOG_TARGET, "Sending GetBlocks response stream to client");
-        Ok(Response::new(rx))
+        Ok(Response::new(response))
     }
 
     async fn get_tip_info(
