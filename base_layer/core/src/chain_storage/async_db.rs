@@ -255,6 +255,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     //---------------------------------- Headers --------------------------------------------//
     make_async_fn!(fetch_header(height: u64) -> Option<BlockHeader>, "fetch_header");
 
+    make_async_fn!(
+        fetch_header_pair(first_height: u64, second_height: u64) -> (Option<BlockHeader>, Option<BlockHeader>),
+        "fetch_header_pair"
+    );
+
     make_async_fn!(fetch_chain_header(height: u64) -> ChainHeader, "fetch_chain_header");
 
     make_async_fn!(fetch_chain_headers<T: RangeBounds<u64>>(bounds: T) -> Vec<ChainHeader>, "fetch_chain_headers");

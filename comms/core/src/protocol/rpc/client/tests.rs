@@ -46,6 +46,13 @@ use crate::{
 };
 
 async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectionMockState, Shutdown) {
+    setup_with_service(num_concurrent_sessions, GreetingService::default()).await
+}
+
+async fn setup_with_service(
+    num_concurrent_sessions: usize,
+    service: GreetingService,
+) -> (PeerConnection, PeerConnectionMockState, Shutdown) {
     let (conn1, conn1_state, conn2, conn2_state) = new_peer_connection_mock_pair().await;
     let (notif_tx, notif_rx) = mpsc::channel(1);
     let shutdown = Shutdown::new();
@@ -55,7 +62,7 @@ async fn setup(num_concurrent_sessions: usize) -> (PeerConnection, PeerConnectio
         RpcServer::builder()
             .with_maximum_simultaneous_sessions(num_concurrent_sessions)
             .finish()
-            .add_service(GreetingServer::new(GreetingService::default()))
+            .add_service(GreetingServer::new(service))
             .serve(notif_rx, context),
     );
 
@@ -347,5 +354,86 @@ mod max_response_size {
             .await
             .unwrap();
         assert_eq!(resp.greeting, "Sawubona Ruby");
+    }
+}
+
+mod buffered_response_bytes {
+    use std::time::Duration;
+
+    use super::*;
+    use crate::protocol::rpc::client::{RPC_CLIENT_MAX_BUFFERED_RESPONSE_BYTES, RpcClientBuilder};
+
+    const MIB: usize = 1024 * 1024;
+
+    /// A caller that stops reading slows the server down at the byte budget, well before the stream buffer is full
+    #[tokio::test]
+    async fn a_slow_caller_slows_the_server_down() {
+        const ITEM_SIZE: usize = 2 * MIB;
+        const NUM_ITEMS: usize = 60;
+        let service = GreetingService::default();
+        let (mut conn, _, _shutdown) = setup_with_service(1, service.clone()).await;
+        let mut client = conn
+            .connect_rpc_using_builder(RpcClientBuilder::<GreetingClient>::new().with_stream_buffer_size(100))
+            .await
+            .unwrap();
+        let mut stream = client
+            .slow_stream(SlowStreamRequest {
+                num_items: u32::try_from(NUM_ITEMS).unwrap(),
+                item_size: u32::try_from(ITEM_SIZE).unwrap(),
+                delay_ms: 0,
+            })
+            .await
+            .unwrap();
+
+        // Read one item, then stop reading
+        let first = stream.next().await.unwrap().unwrap();
+        assert_eq!(first.len(), ITEM_SIZE);
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let num_sent = service.slow_stream_items_sent();
+        // The client buffers at most the budget plus one item. The rest of what the server sent is held by the server
+        // (one queued, one prefetched and one being written) or in the substream's flow control window.
+        const MAX_BUFFERED_ITEMS: usize = RPC_CLIENT_MAX_BUFFERED_RESPONSE_BYTES / ITEM_SIZE + 1;
+        const MAX_IN_FLIGHT_ITEMS: usize = 3 + 16 * MIB / ITEM_SIZE;
+        assert!(
+            num_sent <= 1 + MAX_BUFFERED_ITEMS + MAX_IN_FLIGHT_ITEMS,
+            "the server sent {num_sent} items to a caller that stopped reading"
+        );
+        assert!(num_sent >= MAX_BUFFERED_ITEMS, "the server sent only {num_sent} items");
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            service.slow_stream_items_sent(),
+            num_sent,
+            "the server was not held back"
+        );
+
+        // Reading again lets the rest through
+        let mut num_received = 1usize;
+        while let Some(item) = stream.next().await {
+            assert_eq!(item.unwrap().len(), ITEM_SIZE);
+            num_received = num_received.saturating_add(1);
+        }
+        assert_eq!(num_received, NUM_ITEMS);
+    }
+
+    #[tokio::test]
+    async fn items_that_fill_the_budget_still_stream() {
+        let (mut conn, _, _shutdown) = setup(1).await;
+        let mut client = conn
+            .connect_rpc_using_builder(RpcClientBuilder::<GreetingClient>::new())
+            .await
+            .unwrap();
+        // Each item is a fifth of the budget, so the budget, not the stream buffer size, is what holds them back
+        let items = client
+            .slow_stream(SlowStreamRequest {
+                num_items: 10,
+                item_size: u32::try_from(RPC_CLIENT_MAX_BUFFERED_RESPONSE_BYTES / 5).unwrap(),
+                delay_ms: 0,
+            })
+            .await
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(items.len(), 10);
+        assert!(items.iter().all(|r| r.is_ok()));
     }
 }

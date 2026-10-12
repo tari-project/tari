@@ -27,12 +27,15 @@ use std::{
 };
 
 use log::*;
+use prost::Message;
 use tari_common_types::types::FixedHash;
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
     utils,
+    utils::mpsc::ChannelByteBudget,
 };
+use tari_node_components::blocks::BlockHeader;
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{Mutex, mpsc},
@@ -45,7 +48,6 @@ use crate::base_node::metrics;
 use crate::{
     base_node::{
         LocalNodeCommsInterface,
-        comms_interface::{BlockEvent, BlockEvent::BlockSyncRewind},
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
             rpc::{
@@ -54,7 +56,7 @@ use crate::{
             },
         },
     },
-    chain_storage::{BlockAddResult, BlockchainBackend, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -70,16 +72,25 @@ use crate::{
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
 
+/// The byte budget of one `sync_blocks` session. It counts the blocks queued for the RPC server and the last block the
+/// server took, and the next block is fetched only while that is below this. So a session holds at most this plus two
+/// blocks: the block being fetched, and the block the RPC server is still writing while it holds the next one
+/// prefetched. Typical mainnet blocks still fill the whole `block_batch_size` queue.
+const SYNC_BLOCKS_MAX_BUFFERED_BYTES: usize = 16 * 1024 * 1024;
+
 pub struct BaseNodeSyncRpcService<B> {
     db: AsyncBlockchainDb<B>,
     active_sessions: Mutex<Vec<Weak<NodeId>>>,
-    base_node_service: LocalNodeCommsInterface,
-    /// Number of blocks to load and push to the stream before loading the next batch
+    /// The most blocks queued for the RPC server per `sync_blocks` session
     block_batch_size: usize,
+    /// The most bytes of blocks buffered per `sync_blocks` session (see [SYNC_BLOCKS_MAX_BUFFERED_BYTES])
+    max_buffered_block_bytes: usize,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
-    pub fn new(db: AsyncBlockchainDb<B>, base_node_service: LocalNodeCommsInterface, block_batch_size: usize) -> Self {
+    /// `_base_node_service` is no longer used: reorgs during block sync are detected from the chain itself. It is kept
+    /// so that callers do not change.
+    pub fn new(db: AsyncBlockchainDb<B>, _base_node_service: LocalNodeCommsInterface, block_batch_size: usize) -> Self {
         if block_batch_size == 0 {
             warn!(
                 target: LOG_TARGET,
@@ -89,9 +100,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
         Self {
             db,
             active_sessions: Mutex::new(Vec::new()),
-            base_node_service,
             block_batch_size: cmp::max(block_batch_size, 1),
+            max_buffered_block_bytes: SYNC_BLOCKS_MAX_BUFFERED_BYTES,
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn with_max_buffered_block_bytes(mut self, max_bytes: usize) -> Self {
+        self.max_buffered_block_bytes = max_bytes;
+        self
     }
 
     #[inline]
@@ -119,6 +136,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     }
 }
 
+/// Returns true if the chain whose headers at the fetched block's height and at the end height are `header_at_height`
+/// and `end_header` has the fetched block at its height and the requested end block at the end height. Both headers
+/// must come from the same chain state; the fetched block is then an ancestor of the requested end block.
+pub(super) fn is_on_requested_chain(
+    block_hash: &FixedHash,
+    header_at_height: Option<&BlockHeader>,
+    end_header: Option<&BlockHeader>,
+    end_hash: &FixedHash,
+) -> bool {
+    header_at_height.is_some_and(|header| header.hash() == *block_hash) &&
+        end_header.is_some_and(|header| header.hash() == *end_hash)
+}
+
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
     #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
@@ -129,7 +159,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
-        let mut block_event_stream = self.base_node_service.get_block_event_stream();
 
         let db = self.db();
         let hash = message
@@ -156,10 +185,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             )));
         }
 
-        let hash = message
+        let hash: FixedHash = message
             .end_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
+        let end_hash = hash;
         if db.fetch_block_by_hash(hash, true).await.is_err() {
             return Err(RpcStatus::not_found("Requested end block sync hash was not found"));
         }
@@ -184,58 +214,30 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(self.block_batch_size);
+        let max_buffered_bytes = self.max_buffered_block_bytes;
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
-        let iter =
-            NonOverlappingIntegerPairIter::new(start_height, end_height.saturating_add(1), self.block_batch_size)
-                .map_err(|e| RpcStatus::bad_request(&e))?;
         task::spawn(
             async move {
                 // Move token into this task
                 let peer_node_id = session_token;
-                for (start, end) in iter {
+                // Blocks are fetched one at a time, so that the bytes buffered for this session can be checked before
+                // each block is fetched
+                let mut buffered = ChannelByteBudget::new(max_buffered_bytes);
+                // Reorgs are detected from the chain itself, not from block events, which can arrive late, be lost
+                // or announce a reorg that leaves the requested chain intact: after each block is fetched, the headers
+                // at its height and at the end height are read together, from one chain state. If that chain has the
+                // fetched block at its height and the requested end block at the end height, the fetched block is an
+                // ancestor of the requested end block (blocks are hash-linked), so it is on the chain the peer asked
+                // for, whatever reorgs happened in between. Reorgs above the end height do not affect the blocks
+                // served.
+                for height in start_height..=end_height {
                     if tx.is_closed() {
                         break;
                     }
 
-                    // Check for reorgs during sync
-                    while let Ok(block_event) = block_event_stream.try_recv() {
-                        if let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { removed, .. }) |  BlockSyncRewind(removed)  =
-                            &*block_event
-                        {
-                            //add BlockSyncRewind(Vec<Arc<ChainBlock>>),
-                            if let Some(reorg_block) = removed
-                                .iter()
-                                // If the reorg happens before the end height of sync we let the peer know that the chain they are syncing with has changed
-                                .find(|block| block.height() <= end_height)
-                            {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Block reorg/rewind detected at height {} during sync, letting the sync peer {} know.",
-                                    reorg_block.height(),
-                                    peer_node_id
-                                );
-                                let _result = tx
-                                    .send(Err(RpcStatus::conflict(&format!(
-                                        "Reorg at height {} detected",
-                                        reorg_block.height()
-                                    ))))
-                                    .await;
-                                return;
-                            }
-                        }
-                    }
-
-                    debug!(
-                        target: LOG_TARGET,
-                        "Sending blocks #{start} - #{end} to '{peer_node_id}'"
-                    );
-                    let blocks = db
-                        .fetch_blocks(start..=end, true)
-                        .await
-                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
-
-                    if tx.is_closed() {
+                    // Ensure task stops if the peer prematurely stops their RPC session
+                    if buffered.wait_for_room(&tx).await.is_err() {
                         debug!(
                             target: LOG_TARGET,
                             "Block sync session for peer '{peer_node_id}' terminated early"
@@ -243,33 +245,64 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         break;
                     }
 
-                    match blocks {
-                        Ok(blocks) if blocks.is_empty() => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Sending block #{height} to '{peer_node_id}'"
+                    );
+                    let block = match db.fetch_block(height, true).await {
+                        Ok(block) => block,
+                        // The height was at or below the tip when the session started, so a missing block means the
+                        // chain was rewound
+                        Err(err) if err.is_value_not_found() || matches!(err, ChainStorageError::InvalidQuery(_)) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Block #{height} is gone during sync ({err}), letting the sync peer {peer_node_id} know."
+                            );
+                            let _result = tx
+                                .send(Err(RpcStatus::conflict(&format!("Block #{height} is no longer on the chain"))))
+                                .await;
                             break;
-                        },
-                        Ok(blocks) => {
-                            let blocks = blocks.into_iter().map(|hb| {
-                                let block = hb.into_block();
-                                proto::base_node::BlockBodyResponse::try_from(block).map_err(|e| {
-                                    log::error!(target: LOG_TARGET, "Internal error: {e}");
-                                    RpcStatus::general_default()
-                                })
-                            });
-
-                            // Ensure task stops if the peer prematurely stops their RPC session
-                            if utils::mpsc::send_all(&tx, blocks).await.is_err() {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Block sync session for peer '{peer_node_id}' terminated early"
-                                );
-                                break;
-                            }
                         },
                         Err(err) => {
-                            let _result = tx.send(Err(err)).await;
+                            let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
                             break;
                         },
+                    };
+                    let (header_at_height, end_header) = match db.fetch_header_pair(height, end_height).await {
+                        Ok(headers) => headers,
+                        Err(err) => {
+                            let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
+                            break;
+                        },
+                    };
+                    if !is_on_requested_chain(block.hash(), header_at_height.as_ref(), end_header.as_ref(), &end_hash) {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Block #{height} is no longer an ancestor of the requested end block #{end_height} during \
+                             sync, letting the sync peer {peer_node_id} know that the chain has changed."
+                        );
+                        let _result = tx
+                            .send(Err(RpcStatus::conflict("Reorg detected: the requested end block is no longer on the chain")))
+                            .await;
+                        break;
                     }
+                    let response = match proto::base_node::BlockBodyResponse::try_from(block.into_block()) {
+                        Ok(response) => response,
+                        Err(e) => {
+                            log::error!(target: LOG_TARGET, "Internal error: {e}");
+                            let _result = tx.send(Err(RpcStatus::general_default())).await;
+                            break;
+                        },
+                    };
+                    let num_bytes = response.encoded_len();
+                    if tx.send(Ok(response)).await.is_err() {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Block sync session for peer '{peer_node_id}' terminated early"
+                        );
+                        break;
+                    }
+                    buffered.record_sent(num_bytes);
                 }
 
                 #[cfg(feature = "metrics")]
