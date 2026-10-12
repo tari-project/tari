@@ -69,7 +69,10 @@ use minotari_wallet::{
     },
 };
 use rand::Rng;
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use tari_common_sqlite::{
+    DbProfile,
+    connection::{DbConnection, DbConnectionUrl},
+};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     seeds::cipher_seed::CipherSeed,
@@ -177,7 +180,12 @@ async fn setup_transaction_service(
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), cipher.clone());
     let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone());
 
-    let connection = DbConnection::connect_url(&DbConnectionUrl::MemoryShared(random_string(8)), Some(5)).unwrap();
+    let connection = DbConnection::connect_url(
+        &DbConnectionUrl::MemoryShared(random_string(8)),
+        Some(5),
+        DbProfile::KeyMaterial,
+    )
+    .unwrap();
     let cipher = CipherSeed::random();
     let mut key = [0u8; size_of::<Key>()];
     rand::rng().fill_bytes(&mut key);

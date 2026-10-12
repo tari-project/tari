@@ -22,7 +22,7 @@
 
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_sqlite::{error::SqliteStorageError, util::retry::DbLockedError};
 use tari_common_types::{seeds::error::MnemonicError, tari_address::TariAddressError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
@@ -232,6 +232,15 @@ pub enum OutputManagerStorageError {
     SqliteStorageError(#[from] SqliteStorageError),
     #[error("Encryption error: `{0}`")]
     EncryptedOpeningsError(#[from] EncryptedDataError),
+}
+
+impl DbLockedError for OutputManagerStorageError {
+    fn diesel_error(&self) -> Option<&DieselError> {
+        match self {
+            OutputManagerStorageError::DieselError(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 impl From<HexError> for OutputManagerStorageError {

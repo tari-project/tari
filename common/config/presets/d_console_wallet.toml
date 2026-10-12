@@ -284,7 +284,7 @@ event_channel_size = 3500
 #memory.listener_address = "/memory/0"
 
 [wallet.p2p.dht]
-# The `DbConnectionUrl` for the Dht database. Default: In-memory database
+# The `DbConnectionUrl` for the Dht database. Default: `dht.sqlite` under the data directory. `:memory:` is accepted only with a single connection and is lost on restart.
 database_url = "data/wallet/dht.db"
 # The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
 num_neighbouring_nodes = 5

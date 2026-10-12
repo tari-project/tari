@@ -25,7 +25,7 @@ use std::{io, path::PathBuf};
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
-use tari_common_sqlite::error::SqliteStorageError;
+use tari_common_sqlite::{error::SqliteStorageError, util::retry::DbLockedError};
 use tari_common_types::{
     tari_address::TariAddressError,
     transaction::{TransactionConversionError, TransactionDirectionError, TxId},
@@ -320,6 +320,15 @@ pub enum TransactionStorageError {
     CoinbaseNotSupported,
     #[error("Failed to calculate transaction fee: {0}")]
     FailedToCalculateTransactionFee(String),
+}
+
+impl DbLockedError for TransactionStorageError {
+    fn diesel_error(&self) -> Option<&DieselError> {
+        match self {
+            TransactionStorageError::DieselError(e) => Some(e),
+            _ => None,
+        }
+    }
 }
 
 impl From<ByteArrayError> for TransactionStorageError {

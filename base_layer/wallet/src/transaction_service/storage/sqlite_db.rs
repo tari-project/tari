@@ -3168,7 +3168,7 @@ mod test {
     use rand::Rng;
     use tari_common::configuration::Network;
     use tari_common_sqlite::{
-        PRAGMA_BUSY_TIMEOUT,
+        DbProfile,
         sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
     };
     use tari_common_types::{
@@ -3777,7 +3777,7 @@ mod test {
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, PRAGMA_BUSY_TIMEOUT);
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, DbProfile::KeyMaterial).unwrap();
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
@@ -3931,7 +3931,7 @@ mod test {
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
-        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, true, true, PRAGMA_BUSY_TIMEOUT);
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, DbProfile::KeyMaterial).unwrap();
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
 
@@ -4056,7 +4056,7 @@ mod test {
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
         // Note: For this test the connection pool is setup with a pool size of 2; a pooled connection must go out
         // of scope to be released once obtained otherwise subsequent calls to obtain a pooled connection will fail .
-        let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, true, true, PRAGMA_BUSY_TIMEOUT);
+        let mut pool = SqliteConnectionPool::new(db_path.clone(), 2, DbProfile::KeyMaterial).unwrap();
         pool.create_pool()
             .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
         let mut conn = pool

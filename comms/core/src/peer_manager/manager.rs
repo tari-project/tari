@@ -888,7 +888,10 @@ pub fn create_peer_address_source_with_claim(
 mod test {
     #![allow(clippy::indexing_slicing)]
     use chrono::{DateTime, Utc};
-    use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+    use tari_common_sqlite::{
+        DbProfile,
+        connection::{DbConnection, DbConnectionUrl},
+    };
 
     use super::*;
     use crate::{
@@ -914,9 +917,14 @@ mod test {
     fn create_contended_peer_manager() -> (PeerManager, DbConnection, tempfile::TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();
         let db_url = DbConnectionUrl::File(temp_dir.path().join("contended_peers.db"));
-        let db_connection =
-            DbConnection::connect_and_migrate_with_busy_timeout(&db_url, MIGRATIONS, Some(6), Duration::from_secs(5))
-                .unwrap();
+        let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
+            &db_url,
+            MIGRATIONS,
+            Some(6),
+            DbProfile::Cache,
+            Duration::from_secs(5),
+        )
+        .unwrap();
         let peers_db = PeerDatabaseSql::new(
             db_connection.clone(),
             &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),

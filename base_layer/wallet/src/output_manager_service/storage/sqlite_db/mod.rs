@@ -1053,17 +1053,20 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     return Err(OutputManagerStorageError::UnexpectedResult(msg));
                 }
 
+                // The change outputs are inserted in the same transaction as the encumbrance, so a failed attempt
+                // leaves nothing behind and `retry_db` can run the closure again.
+                for co in outputs_to_receive {
+                    let new_output = NewOutputSql::new(
+                        co.clone(),
+                        Some(OutputStatus::ShortTermEncumberedToBeReceived),
+                        Some(tx_id),
+                    )?;
+                    new_output.commit(conn)?;
+                }
+
                 Ok(())
             })?;
 
-            for co in outputs_to_receive {
-                let new_output = NewOutputSql::new(
-                    co.clone(),
-                    Some(OutputStatus::ShortTermEncumberedToBeReceived),
-                    Some(tx_id),
-                )?;
-                new_output.commit(&mut conn)?;
-            }
             if start.elapsed().as_millis() > 0 {
                 trace!(
                     target: LOG_TARGET,
@@ -1871,9 +1874,24 @@ pub struct CoinBucket {
 mod test {
     #![allow(clippy::indexing_slicing)]
 
-    use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use diesel::{
+        Connection,
+        RunQueryDsl,
+        SqliteConnection,
+        connection::SimpleConnection,
+        declare_sql_function,
+        sql_query,
+        sql_types::Integer,
+    };
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::Rng;
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use tari_common_types::transaction::TxId;
     use tari_script::script;
     use tari_test_utils::random;
     use tari_transaction_components::{
@@ -1884,10 +1902,15 @@ mod test {
     };
     use tempfile::tempdir;
 
-    use crate::output_manager_service::storage::{
-        OutputSource,
-        models::DbWalletOutput,
-        sqlite_db::{OutputStatus, UpdateOutput, new_output_sql::NewOutputSql, output_sql::OutputSql},
+    use super::OutputManagerSqliteDatabase;
+    use crate::{
+        output_manager_service::storage::{
+            OutputSource,
+            database::OutputManagerBackend,
+            models::DbWalletOutput,
+            sqlite_db::{OutputStatus, UpdateOutput, new_output_sql::NewOutputSql, output_sql::OutputSql},
+        },
+        storage::sqlite_utilities::run_migration_and_create_sqlite_memory_connection,
     };
 
     pub fn make_input(val: MicroMinotari, key_manager: &KeyManager) -> (TransactionInput, WalletOutput) {
@@ -1904,6 +1927,65 @@ mod test {
         let input = wallet_output.to_transaction_input(key_manager).unwrap();
 
         (input, wallet_output)
+    }
+
+    #[declare_sql_function]
+    extern "SQL" {
+        fn fail_once() -> Integer;
+    }
+
+    /// `short_term_encumber_outputs` runs under `retry_db`, which re-runs the whole closure after a lock error. The
+    /// change outputs used to be inserted after the encumbrance transaction had committed, so a lock error on that
+    /// insert made the retry see its own encumbrance and fail with `OutputAlreadySpent`. A temp trigger fails the
+    /// first change-output insert with SQLite's "database is locked" message to hit exactly that point.
+    #[tokio::test]
+    async fn short_term_encumber_outputs_is_retry_safe() {
+        let connection = run_migration_and_create_sqlite_memory_connection().unwrap();
+        let db = OutputManagerSqliteDatabase::new(connection.clone());
+        let key_manager = KeyManager::new_random().unwrap();
+
+        let make_output = |status| {
+            let (_, uo) = make_input(MicroMinotari::from(100 + rand::rng().next_u64() % 1000), &key_manager);
+            let uo = DbWalletOutput::from_wallet_output(uo, None, OutputSource::Standard, None, None);
+            (uo.clone(), NewOutputSql::new(uo, Some(status), None).unwrap())
+        };
+        let mut to_send = Vec::new();
+        let calls = Arc::new(AtomicUsize::new(0));
+        {
+            // The in-memory wallet pool has one connection, so the function and trigger registered here are on the
+            // connection `short_term_encumber_outputs` gets.
+            let mut conn = connection.get_pooled_connection().unwrap();
+            for _ in 0..2 {
+                let (output, new_output) = make_output(OutputStatus::Unspent);
+                new_output.commit(&mut conn).unwrap();
+                to_send.push(output);
+            }
+            let trigger_calls = calls.clone();
+            fail_once_utils::register_nondeterministic_impl(&conn, move || {
+                i32::from(trigger_calls.fetch_add(1, Ordering::SeqCst) == 0)
+            })
+            .unwrap();
+            conn.batch_execute(
+                "CREATE TEMP TRIGGER fail_first_change_output BEFORE INSERT ON outputs WHEN fail_once() BEGIN SELECT \
+                 RAISE(ABORT, 'database is locked'); END;",
+            )
+            .unwrap();
+        }
+        let (change, _) = make_output(OutputStatus::Unspent);
+
+        let tx_id = TxId::from(42u64);
+        db.short_term_encumber_outputs(tx_id, &to_send, &[change]).unwrap();
+        // One failed attempt, one successful retry.
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        let mut conn = connection.get_pooled_connection().unwrap();
+        let spent = OutputSql::index_status(vec![OutputStatus::ShortTermEncumberedToBeSpent], &mut conn).unwrap();
+        assert_eq!(spent.len(), 2);
+        assert!(spent.iter().all(|o| o.spent_in_tx_id == Some(42)));
+        let received = OutputSql::index_status(vec![OutputStatus::ShortTermEncumberedToBeReceived], &mut conn).unwrap();
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0].received_in_tx_id, Some(42));
+        assert_eq!(OutputSql::index(&mut conn).unwrap().len(), 3);
     }
 
     #[allow(clippy::too_many_lines)]
