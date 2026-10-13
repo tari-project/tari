@@ -41,7 +41,7 @@ mod utils;
 
 mod http;
 mod xmrig_proxy;
-use std::{process, sync::Arc};
+use std::{process, sync::Arc, time::Duration};
 
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
@@ -84,6 +84,16 @@ use crate::{cli::Cli, grpc::readiness_grpc_server::ReadinessGrpcServer};
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 const GRPC_HEALTH_OVERALL_SERVICE_NAME: &str = "";
+
+/// How often the main gRPC server sends an HTTP/2 PING on each client connection, whether or not the connection has
+/// open requests. A client that has gone away, or whose connection is half-open, is found by the missing ack.
+const GRPC_HTTP2_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+/// How long the main gRPC server waits for the ack of an HTTP/2 keepalive PING before it closes the connection and
+/// frees its HTTP/2 and hyper buffers.
+const GRPC_HTTP2_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(20);
+/// Idle time before the OS starts sending TCP keepalive probes on accepted gRPC sockets. This catches half-open TCP
+/// connections, for example behind a NAT that dropped its mapping, below the HTTP/2 layer.
+const GRPC_TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 
 pub async fn run_base_node(
     shutdown: Shutdown,
@@ -359,11 +369,14 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
     let service = InterceptedService::new(sized_server, auth);
 
-    let mut server_builder = if let Some(identity) = tls_identity {
-        Server::builder().tls_config(ServerTlsConfig::new().identity(identity))?
-    } else {
-        Server::builder()
-    };
+    let mut server_builder = grpc_server_builder(
+        GRPC_HTTP2_KEEPALIVE_INTERVAL,
+        GRPC_HTTP2_KEEPALIVE_TIMEOUT,
+        GRPC_TCP_KEEPALIVE,
+    );
+    if let Some(identity) = tls_identity {
+        server_builder = server_builder.tls_config(ServerTlsConfig::new().identity(identity))?;
+    }
 
     if let Some(state_machine_handle) = health_state_machine {
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
@@ -390,6 +403,20 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
+}
+
+/// Creates the builder for the main gRPC server with HTTP/2 and TCP keepalives enabled, so that dead and half-open
+/// client connections are closed instead of being held forever. TLS, when enabled, is added on top of this builder.
+/// The durations are parameters so that tests can use short values.
+fn grpc_server_builder(
+    http2_keepalive_interval: Duration,
+    http2_keepalive_timeout: Duration,
+    tcp_keepalive: Duration,
+) -> Server {
+    Server::builder()
+        .http2_keepalive_interval(Some(http2_keepalive_interval))
+        .http2_keepalive_timeout(Some(http2_keepalive_timeout))
+        .tcp_keepalive(Some(tcp_keepalive))
 }
 
 fn spawn_grpc_health_updater(
@@ -457,13 +484,22 @@ async fn prepare_grpc_params(
 
 #[cfg(test)]
 mod tests {
+    use std::{net::SocketAddr, time::Duration};
+
+    use futures::FutureExt;
     use minotari_app_grpc::tari_rpc::base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME;
     use tari_core::base_node::state_machine_service::states::{
         StateInfo,
         StatusInfo,
         events_and_states::ListeningInfo,
     };
-    use tonic::{Code, Request};
+    use tari_shutdown::Shutdown;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        time::Instant,
+    };
+    use tonic::{Code, Request, transport::server::TcpIncoming};
     use tonic_health::{
         ServingStatus,
         pb::{HealthCheckRequest, health_check_response, health_server::Health},
@@ -549,5 +585,143 @@ mod tests {
         )
         .await;
         assert_health_status(&health_service, BASE_NODE_GRPC_SERVICE_NAME, ServingStatus::Serving).await;
+    }
+
+    const HTTP2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    const FRAME_TYPE_SETTINGS: u8 = 0x4;
+    const FRAME_TYPE_PING: u8 = 0x6;
+    const FLAG_ACK: u8 = 0x1;
+
+    /// What a raw HTTP/2 test client saw before it stopped reading.
+    struct ClientOutcome {
+        pings_received: usize,
+        closed_by_server: bool,
+    }
+
+    /// Starts a gRPC server built by `grpc_server_builder` with short keepalive durations on a local port.
+    async fn start_keepalive_test_server(
+        http2_keepalive_interval: Duration,
+        http2_keepalive_timeout: Duration,
+        shutdown: &Shutdown,
+    ) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (_health_reporter, health_service) = tonic_health::server::health_reporter();
+        let signal = shutdown.to_signal();
+        tokio::spawn(async move {
+            super::grpc_server_builder(
+                http2_keepalive_interval,
+                http2_keepalive_timeout,
+                Duration::from_secs(60),
+            )
+            .add_service(health_service)
+            .serve_with_incoming_shutdown(TcpIncoming::from(listener), signal.map(|_| ()))
+            .await
+            .unwrap();
+        });
+        address
+    }
+
+    fn frame(frame_type: u8, flags: u8, payload: &[u8]) -> Vec<u8> {
+        let length = u32::try_from(payload.len()).unwrap().to_be_bytes();
+        let mut bytes = vec![length[1], length[2], length[3], frame_type, flags, 0, 0, 0, 0];
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+
+    /// Reads one HTTP/2 frame. Returns `None` once the server has closed the connection.
+    async fn read_frame(stream: &mut TcpStream) -> Option<(u8, u8, Vec<u8>)> {
+        let mut header = [0u8; 9];
+        if stream.read_exact(&mut header).await.is_err() {
+            return None;
+        }
+        let length = usize::from(header[0]) << 16 | usize::from(header[1]) << 8 | usize::from(header[2]);
+        let mut payload = vec![0u8; length];
+        if stream.read_exact(&mut payload).await.is_err() {
+            return None;
+        }
+        Some((header[3], header[4], payload))
+    }
+
+    /// Opens a raw HTTP/2 connection and reads frames until the server closes it or `run_for` passes. SETTINGS are
+    /// always acked; keepalive PINGs are acked only when `answer_pings` is set.
+    async fn run_raw_http2_client(address: SocketAddr, answer_pings: bool, run_for: Duration) -> ClientOutcome {
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        stream.write_all(HTTP2_PREFACE).await.unwrap();
+        stream.write_all(&frame(FRAME_TYPE_SETTINGS, 0, &[])).await.unwrap();
+
+        let mut outcome = ClientOutcome {
+            pings_received: 0,
+            closed_by_server: false,
+        };
+        let deadline = Instant::now().checked_add(run_for).unwrap();
+        loop {
+            let next = match tokio::time::timeout_at(deadline, read_frame(&mut stream)).await {
+                Ok(next) => next,
+                Err(_elapsed) => return outcome,
+            };
+            let Some((frame_type, flags, payload)) = next else {
+                outcome.closed_by_server = true;
+                return outcome;
+            };
+            if frame_type == FRAME_TYPE_SETTINGS && flags & FLAG_ACK == 0 {
+                stream
+                    .write_all(&frame(FRAME_TYPE_SETTINGS, FLAG_ACK, &[]))
+                    .await
+                    .unwrap();
+            }
+            if frame_type == FRAME_TYPE_PING && flags & FLAG_ACK == 0 {
+                outcome.pings_received = outcome.pings_received.saturating_add(1);
+                if answer_pings {
+                    // A write can fail only if the server already closed the connection, which the next read reports
+                    let _ignore = stream.write_all(&frame(FRAME_TYPE_PING, FLAG_ACK, &payload)).await;
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn grpc_server_closes_connection_that_does_not_ack_keepalive_pings() {
+        let interval = Duration::from_secs(1);
+        let ack_timeout = Duration::from_secs(1);
+        let slack = Duration::from_secs(3);
+        let shutdown = Shutdown::new();
+        let address = start_keepalive_test_server(interval, ack_timeout, &shutdown).await;
+
+        let started = Instant::now();
+        let outcome = run_raw_http2_client(address, false, interval + ack_timeout + slack).await;
+
+        assert!(outcome.pings_received >= 1, "server never sent a keepalive PING");
+        assert!(
+            outcome.closed_by_server,
+            "server kept a connection that does not ack keepalive PINGs open for {:?}",
+            started.elapsed()
+        );
+        assert!(
+            started.elapsed() >= interval,
+            "connection closed before the first keepalive PING was due"
+        );
+    }
+
+    #[tokio::test]
+    async fn grpc_server_keeps_connection_that_acks_keepalive_pings() {
+        let interval = Duration::from_secs(1);
+        let ack_timeout = Duration::from_secs(1);
+        let shutdown = Shutdown::new();
+        let address = start_keepalive_test_server(interval, ack_timeout, &shutdown).await;
+
+        // Long enough for the silent client in the test above to be disconnected twice over
+        let run_for = (interval + ack_timeout) * 2;
+        let outcome = run_raw_http2_client(address, true, run_for).await;
+
+        assert!(
+            outcome.pings_received >= 2,
+            "expected repeated keepalive PINGs, got {}",
+            outcome.pings_received
+        );
+        assert!(
+            !outcome.closed_by_server,
+            "server closed a connection that acks keepalive PINGs"
+        );
     }
 }
