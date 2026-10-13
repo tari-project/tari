@@ -89,7 +89,7 @@ pub const LEDGER_EPHEMERAL_NONCE_BRANCH: &str = "ledger_ephemeral_nonce";
 /// Display/parse form: `"code-template-author"`
 pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 
-#[derive(Default, Clone, Debug, Serialize, Eq, PartialEq, borsh::BorshSerialize)]
+#[derive(Default, Clone, Serialize, Eq, PartialEq, borsh::BorshSerialize)]
 /// Identifiers for different logical key types used by Tari components.
 ///
 /// A `TariKeyId` is an enum that captures the purpose and derivation context of a
@@ -106,6 +106,9 @@ pub const CODE_TEMPLATE_AUTHOR: &str = "code-template-author";
 /// - Hex-encoded fields use lowercase hex in `Display` and accept case-insensitive hex in `FromStr`.
 ///
 /// See individual variants for details and examples.
+///
+/// `Debug` writes the [redacted](TariKeyId::redacted) form, so a key id inside any struct that is debug printed
+/// (a wallet output in a log line, an error) does not carry an `Encrypted` ciphertext with it.
 ///
 /// The serde and borsh decoders are generated from the [`ValidatedDecode`] implementation below and must not be
 /// derived: they accept exactly the values whose string form `FromStr` accepts, so a key id decoded from JSON (for
@@ -190,9 +193,11 @@ pub enum TariKeyId {
     /// gave it. On a Ledger wallet the private nonce lives on the device and never crosses the wire; on a software
     /// wallet it lives in the key manager's in-memory store.
     ///
-    /// The handle is issued, never chosen: a caller can echo back a handle it was given, but cannot name a nonce it
-    /// was never told about. Signing with the nonce consumes it, so a handle is good for exactly one signature -
-    /// two signatures over different challenges under one nonce give up the private key that signed them.
+    /// The handle is issued, never chosen. A software wallet issues random 64-bit handles, so a caller can echo back
+    /// a handle it was given but cannot guess one it was never told about. The Ledger device counts its handles from
+    /// one, so on a ledger wallet a handle can be guessed. Either way, signing with the nonce consumes it, so a
+    /// handle is good for exactly one signature - two signatures over different challenges under one nonce give up
+    /// the private key that signed them.
     ///
     /// String form: `ledger_ephemeral_nonce.<handle>`
     ///
@@ -208,6 +213,44 @@ impl TariKeyId {
     pub fn is_ledger_key(&self) -> bool {
         matches!(self, TariKeyId::LedgerKey { .. } | TariKeyId::Derived { .. })
     }
+
+    /// The key id's string form for error and log messages, with every `Encrypted` ciphertext (at any nesting
+    /// level) replaced by its length: `encrypted.[72 bytes].view_key`. The ciphertext is readable by anyone holding
+    /// the key it is encrypted under, so it does not belong in a message. Use `Display` for persistence; this form
+    /// does not parse.
+    pub fn redacted(&self) -> String {
+        redact_key_id_string(&self.to_string())
+    }
+}
+
+/// [`TariKeyId::redacted`] for a key id string, which need not be valid. It looks at each dot separated segment on
+/// its own, so a malformed string is redacted as thoroughly as a valid one:
+/// - the segment after any `encrypted` segment is replaced by its length in bytes (half its hex length), whatever it
+///   holds;
+/// - any other segment of 32 or more hex characters is replaced the same way, except a 64 character public key right
+///   after a `dh_commitment_mask` or `dh_encrypted_data` segment, which is public and is kept.
+///
+/// Every other segment is kept as is. A valid key id never has a long hex segment anywhere else, so for one this only
+/// ever replaces `Encrypted` ciphertexts.
+pub fn redact_key_id_string(id: &str) -> String {
+    let mut redacted = String::with_capacity(id.len());
+    let mut previous = "";
+    for (i, segment) in id.split('.').enumerate() {
+        if i > 0 {
+            redacted.push('.');
+        }
+        let is_hex = !segment.is_empty() && segment.chars().all(|c| c.is_ascii_hexdigit());
+        let after_dh_branch = previous == DH_COMMITMENT_MASK_BRANCH || previous == DH_ENCRYPTED_DATA_BRANCH;
+        if previous == ENCRYPTED_BRANCH || (is_hex && segment.len() >= 32 && !(after_dh_branch && segment.len() == 64))
+        {
+            redacted.push_str(&format!("[{} bytes]", segment.len() / 2));
+        } else {
+            redacted.push_str(segment);
+        }
+        // A replaced `encrypted` segment does not make the one after it a payload too
+        previous = if previous == ENCRYPTED_BRANCH { "" } else { segment };
+    }
+    redacted
 }
 
 impl FromStr for TariKeyId {
@@ -324,10 +367,20 @@ impl FromStr for TariKeyId {
 /// a commitment mask key, and the legacy conversion adds `derived.derived.*`.
 pub const MAX_KEY_ID_NESTING: usize = 16;
 
-/// Checks that `id` is a valid key id string, including every nested key id and the nesting depth
-/// ([`MAX_KEY_ID_NESTING`]). `TariKeyId::from_str` and the serde and borsh decoders all apply it. A nested key id is
-/// always the tail of the string, so this walks it in a loop rather than recursing.
+/// The longest key id string, in bytes. The key manager parses the nested key id again at every level it resolves,
+/// so this and [`MAX_KEY_ID_NESTING`] together bound the work one key id can cause. Real key ids are a few hundred
+/// bytes at most: the longest is a Diffie-Hellman key (a 64 character public key) over an `Encrypted` key (a 72 byte,
+/// 144 character ciphertext), wrapped in `derived.` once or twice.
+pub const MAX_KEY_ID_LENGTH: usize = 1024;
+
+/// Checks that `id` is a valid key id string, including every nested key id, the nesting depth
+/// ([`MAX_KEY_ID_NESTING`]) and the length ([`MAX_KEY_ID_LENGTH`]). `TariKeyId::from_str` and the serde and borsh
+/// decoders all apply it. A nested key id is always the tail of the string, so this walks it in a loop rather than
+/// recursing.
 fn check_key_string(id: &str) -> Result<(), String> {
+    if id.len() > MAX_KEY_ID_LENGTH {
+        return Err(format!("Key id is longer than {MAX_KEY_ID_LENGTH} bytes"));
+    }
     let mut rest = id;
     let mut nesting = 0usize;
     loop {
@@ -477,6 +530,12 @@ impl ValidatedDecode for TariKeyId {
 
 impl_validated_decode!(TariKeyId);
 
+impl fmt::Debug for TariKeyId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.redacted())
+    }
+}
+
 impl fmt::Display for TariKeyId {
     // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -511,7 +570,8 @@ impl fmt::Display for TariKeyId {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
+/// `Debug` writes the redacted form (see [`TariKeyId::redacted`]); `Display` writes the string as stored.
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct SerializedKeyString {
     inner: String,
 }
@@ -531,6 +591,12 @@ impl From<String> for SerializedKeyString {
 impl From<&str> for SerializedKeyString {
     fn from(inner: &str) -> Self {
         Self { inner: inner.into() }
+    }
+}
+
+impl fmt::Debug for SerializedKeyString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", redact_key_id_string(&self.inner))
     }
 }
 
@@ -1071,5 +1137,150 @@ mod tests {
         assert!(TariKeyId::from_str(&derived(MAX_KEY_ID_NESTING + 1)).is_err());
         // A very long chain is rejected quickly, without recursing
         assert!(TariKeyId::from_str(&derived(200_000)).is_err());
+    }
+
+    /// `redacted` hides every `Encrypted` ciphertext, at any nesting level, and leaves the rest of the key id as it
+    /// is, so an error message says which key without carrying anything the view key holder could decrypt.
+    #[test]
+    fn redacted_hides_encrypted_payloads_only() {
+        let encrypted = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: "view_key".into(),
+        };
+        assert_eq!(encrypted.redacted(), "encrypted.[72 bytes].view_key");
+
+        let nested = TariKeyId::Derived {
+            key: format!("dh_commitment_mask.{PK}.{encrypted}").into(),
+        };
+        assert_eq!(
+            nested.redacted(),
+            format!("derived.dh_commitment_mask.{PK}.encrypted.[72 bytes].view_key")
+        );
+        let double = TariKeyId::Encrypted {
+            encrypted: vec![1, 2, 3],
+            key: SerializedKeyString::from(&encrypted),
+        };
+        assert_eq!(double.redacted(), "encrypted.[3 bytes].encrypted.[72 bytes].view_key");
+        assert!(!double.redacted().contains("ab"), "{}", double.redacted());
+
+        // Key ids with no ciphertext come out exactly as `Display` writes them
+        for key_id in valid_key_ids() {
+            if !key_id.to_string().contains(ENCRYPTED_BRANCH) {
+                assert_eq!(key_id.redacted(), key_id.to_string());
+            }
+        }
+
+        // Malformed strings are redacted too: an `encrypted` payload anywhere, and any long hex segment
+        let hex = "ab".repeat(72);
+        for malformed in [
+            format!("foo.encrypted.{hex}.x"),
+            format!("derived.foo.encrypted.{hex}.view_key"),
+            format!("dh_commitment_mask.encrypted.{hex}.view_key"),
+            format!("dh_commitment_mask.{hex}.view_key"),
+            hex.clone(),
+            format!("bogus.{hex}"),
+            format!("bogus.{hex}.zero"),
+            format!("ledger_key.{hex}"),
+            format!("derived.{hex}"),
+        ] {
+            let redacted = redact_key_id_string(&malformed);
+            assert!(!redacted.contains("abab"), "{malformed} -> {redacted}");
+            assert!(redacted.contains("[72 bytes]"), "{malformed} -> {redacted}");
+        }
+        assert_eq!(
+            redact_key_id_string(&format!("foo.encrypted.{hex}.x")),
+            "foo.encrypted.[72 bytes].x"
+        );
+        assert_eq!(
+            redact_key_id_string(&format!("bogus.{hex}.zero")),
+            "bogus.[72 bytes].zero"
+        );
+        // The payload is replaced even when it is not hex
+        assert_eq!(
+            redact_key_id_string("encrypted.not-hex.zero"),
+            "encrypted.[3 bytes].zero"
+        );
+        // A public key in its slot is kept; short hex and ordinary words are not touched
+        assert_eq!(
+            redact_key_id_string(&format!("dh_encrypted_data.{PK}.view_key")),
+            format!("dh_encrypted_data.{PK}.view_key")
+        );
+        assert_eq!(redact_key_id_string("ledger_key.Random.42"), "ledger_key.Random.42");
+        assert_eq!(redact_key_id_string("encrypted.abcd"), "encrypted.[2 bytes]");
+        assert_eq!(
+            redact_key_id_string("derived.encrypted.0011.x.y"),
+            "derived.encrypted.[2 bytes].x.y"
+        );
+        assert_eq!(
+            redact_key_id_string("dh_encrypted_data.nothex"),
+            "dh_encrypted_data.nothex"
+        );
+        // `Display` still carries the payload, for persistence
+        assert!(encrypted.to_string().contains(&"ab".repeat(72)));
+    }
+
+    /// `Debug` is the redacted form, for the key id itself, for its nested string, and for a key id inside a
+    /// debug printed container, so a `{:?}` in a log line never carries a ciphertext.
+    #[test]
+    fn debug_hides_encrypted_payloads() {
+        let payload = "ab".repeat(72);
+        let encrypted = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: "view_key".into(),
+        };
+        let derived = TariKeyId::Derived {
+            key: SerializedKeyString::from(&encrypted),
+        };
+        let dh = TariKeyId::DHCommitmentMask {
+            public_key: CompressedPublicKey::from_hex(PK).unwrap(),
+            private_key: SerializedKeyString::from(&encrypted),
+        };
+        assert_eq!(format!("{encrypted:?}"), "encrypted.[72 bytes].view_key");
+        assert_eq!(format!("{derived:?}"), "derived.encrypted.[72 bytes].view_key");
+        assert_eq!(
+            format!("{dh:?}"),
+            format!("dh_commitment_mask.{PK}.encrypted.[72 bytes].view_key")
+        );
+        assert_eq!(
+            format!("{:?}", SerializedKeyString::from(&encrypted)),
+            "encrypted.[72 bytes].view_key"
+        );
+        let in_container = format!("{:?}", (Some(&encrypted), vec![derived.clone(), dh.clone()]));
+        assert!(!in_container.contains(&payload), "{in_container}");
+        // Key ids without a ciphertext debug print as their string form
+        assert_eq!(format!("{:?}", TariKeyId::SpendKey), "spend_key");
+    }
+
+    /// A key id longer than `MAX_KEY_ID_LENGTH` is refused by `FromStr` and every decoder, before it is walked.
+    #[test]
+    fn key_id_length_is_capped() {
+        // `encrypted.` + 2 hex characters per byte + `.spend_key`
+        let encrypted = |bytes: usize| TariKeyId::Encrypted {
+            encrypted: vec![0xab; bytes],
+            key: "spend_key".into(),
+        };
+        let at_cap = encrypted(502);
+        assert_eq!(at_cap.to_string().len(), MAX_KEY_ID_LENGTH);
+        assert_eq!(TariKeyId::from_str(&at_cap.to_string()).unwrap(), at_cap);
+        let json = serde_json::to_string(&at_cap).unwrap();
+        assert_eq!(serde_json::from_str::<TariKeyId>(&json).unwrap(), at_cap);
+        assert_eq!(
+            TariKeyId::try_from_slice(&borsh::to_vec(&at_cap).unwrap()).unwrap(),
+            at_cap
+        );
+
+        let over_cap = encrypted(503);
+        assert!(over_cap.to_string().len() > MAX_KEY_ID_LENGTH);
+        assert_eq!(
+            TariKeyId::from_str(&over_cap.to_string()).unwrap_err(),
+            format!("Key id is longer than {MAX_KEY_ID_LENGTH} bytes")
+        );
+        assert_all_decoders_reject(&over_cap);
+
+        // The cap is checked before anything else, so a long string of garbage gets the same answer
+        assert_eq!(
+            TariKeyId::from_str(&"x".repeat(100_000)).unwrap_err(),
+            format!("Key id is longer than {MAX_KEY_ID_LENGTH} bytes")
+        );
     }
 }

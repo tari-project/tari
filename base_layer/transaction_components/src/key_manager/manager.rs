@@ -83,7 +83,7 @@ use tari_crypto::{
 use tari_hashing::{KeyManagerTransactionsHashDomain, WalletMessageSigningDomain, ZeroizingFinalize};
 use tari_script::{CheckSigSchnorrSignature, CompressedCheckSigSchnorrSignature, TariScript, push_pubkey_script};
 use tari_utilities::{ByteArray, Hidden, hex::Hex};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use crate::{
     MicroMinotari,
@@ -94,7 +94,7 @@ use crate::{
         TxoStage,
         error::KeyManagerError,
         interface::TransactionKeyManagerInterface,
-        key_id::{TariKeyAndId, TariKeyId},
+        key_id::{SerializedKeyString, TariKeyAndId, TariKeyId},
         wallet_types::WalletType,
     },
     transaction_components::{
@@ -138,12 +138,17 @@ const MAX_SOFTWARE_EPHEMERAL_NONCES: usize = 1024;
 /// It exists so that there is exactly one reserve-then-sign call pattern regardless of wallet type: without it the
 /// multi-party flows would only ever exercise device-issued handles on hardware nobody runs in CI. It mirrors the
 /// device's eviction policy for the same reason, so the two cannot fail differently under the same abuse.
+///
+/// Unlike the device, it issues random handles rather than counting: the store is shared by every clone of the key
+/// manager in the process, and a counted handle would let one flow guess the next handle and consume another flow's
+/// nonce.
 #[derive(Default)]
 struct SoftwareEphemeralNonceStore {
-    nonces: HashMap<u64, PrivateKey>,
-    /// The last handle issued. Handles are never reused, and zero is never issued, so a handle that has been signed
-    /// with cannot be resurrected by a later reservation landing on the same value.
-    last_handle: u64,
+    /// Reserved nonces by handle, each with the reservation number it was reserved under, so the oldest can be
+    /// evicted.
+    nonces: HashMap<u64, (u64, PrivateKey)>,
+    /// How many reservations have been made. Only orders the entries for eviction; it is never part of a handle.
+    reservations: u64,
 }
 
 /// Refuses a key id that cannot act as a commitment mask or recovery secret.
@@ -191,17 +196,26 @@ pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
 /// The longest key id string an error message echoes in full.
 const MAX_ECHOED_KEY_ID_CHARS: usize = 128;
 
-/// A key id's string form for an error message, cut to its first 128 characters (followed by `…(<total> chars)`)
-/// when longer. Key ids in refusals can come from an untrusted payload of up to megabytes, which must not be echoed
-/// whole into a terminal or log.
+/// A key id's [redacted](TariKeyId::redacted) string form for an error message, cut to its first 128 characters
+/// (followed by `…(<total> chars)`) when longer. Key ids in refusals can come from an untrusted payload of up to
+/// megabytes, which must not be echoed whole into a terminal or log.
 pub fn truncated_key_id(key_id: &TariKeyId) -> String {
-    let full = key_id.to_string();
+    let full = key_id.redacted();
     let total = full.chars().count();
     if total <= MAX_ECHOED_KEY_ID_CHARS {
         return full;
     }
     let head: String = full.chars().take(MAX_ECHOED_KEY_ID_CHARS).collect();
     format!("{head}…({total} chars)")
+}
+
+/// Parses the key id that `outer` wraps.
+///
+/// A wrapping key id holds the key id it wraps as a string, so a resolver parses it again at every level it walks.
+/// That is bounded rather than avoided: `MAX_KEY_ID_NESTING` caps the levels and `MAX_KEY_ID_LENGTH` the string each
+/// level re-checks, so one key id costs at most a few kilobytes of parsing however it was built.
+fn parse_inner_key_id(inner: &SerializedKeyString, outer: &TariKeyId) -> Result<TariKeyId, KeyManagerError> {
+    TariKeyId::from_str(inner.as_str()).map_err(|_| KeyManagerError::InvalidKeyId(outer.redacted()))
 }
 
 /// Whether a nested key id string names the view key.
@@ -239,7 +253,7 @@ pub struct KeyManager {
 fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Result<(), KeyManagerError> {
     if *private_key_id == TariKeyId::Zero {
         return Err(KeyManagerError::InvalidSigningKeyId {
-            key: private_key_id.to_string(),
+            key: private_key_id.redacted(),
             reason: "the zero key cannot sign".to_string(),
         });
     }
@@ -258,7 +272,7 @@ fn refuse_degenerate_nonce(private_key_id: &TariKeyId, nonce: &TariKeyId) -> Res
         },
     };
     Err(KeyManagerError::InvalidNonceKeyId {
-        nonce: nonce.to_string(),
+        nonce: nonce.redacted(),
         reason: reason.to_string(),
     })
 }
@@ -372,15 +386,15 @@ impl KeyManager {
                     index: *index,
                 },
                 TariKeyId::Derived { key: key_str } => {
-                    let key = TariKeyId::from_str(key_str.to_string().as_str())
-                        .map_err(|_| KeyManagerError::InvalidKeyId(script_key_id.to_string()))?;
+                    let key = parse_inner_key_id(key_str, script_key_id)?;
                     ScriptSignatureKey::Derived {
                         branch_key: self.get_private_key(&key)?,
                     }
                 },
                 _ => {
                     return Err(KeyManagerError::LedgerError(format!(
-                        "Ledger does not support the following key id {script_key_id}"
+                        "Ledger does not support the following key id {}",
+                        script_key_id.redacted()
                     )));
                 },
             };
@@ -401,9 +415,9 @@ impl KeyManager {
         trace!(target: "wallet::key_manager::ledger",
             "Trying to get ledger signature with tx_version: {:?}, script key:{}, value: {:?}, commitment_mask: {}, script_message: {:?}",
             txi_version,
-            script_key_id,
+            script_key_id.redacted(),
             value.to_vec(),
-            commitment_mask_key_id,
+            commitment_mask_key_id.redacted(),
             script_message);
 
         Err(KeyManagerError::InvalidWalletType(
@@ -476,8 +490,7 @@ impl KeyManager {
                         script_key_indexes.push((*branch, *index));
                     },
                     TariKeyId::Derived { key } => {
-                        let key_id = TariKeyId::from_str(key.to_string().as_str())
-                            .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                        let key_id = parse_inner_key_id(key, script_key_id)?;
                         // Note: If the derived key is a TariKeyId::Managed, but not allowed in
                         //       'self.get_private_key(...)' this will error.
                         let k = self.get_private_key(&key_id)?;
@@ -514,7 +527,7 @@ impl KeyManager {
 
         trace!(target: "wallet::key_manager::ledger",
             "Trying to get ledger script offset with script_key_ids: {:?}, sender_offset_count: {}",
-            script_key_ids,
+            script_key_ids.iter().map(|k| k.redacted()).collect::<Vec<_>>(),
             sender_offset_count);
         Err(KeyManagerError::InvalidWalletType(
             "Trying to access Ledger key on non-Ledger wallet".to_string(),
@@ -656,25 +669,32 @@ impl KeyManager {
         let pub_key = CompressedPublicKey::from_secret_key(&private_nonce);
 
         let mut store = self.lock_software_ephemeral_nonces()?;
-        // Handles are issued from a strictly increasing counter and zero is never issued, so a consumed handle is
-        // dead for good rather than something a later reservation can land on again. Exhausting the counter is the
-        // only condition here that refuses, because re-issuing a handle is the only one that would be unsafe.
-        if store.last_handle == u64::MAX {
-            return Err(KeyManagerError::EphemeralNonceHandlesExhausted);
-        }
         // A full store evicts its oldest entry instead of refusing, so that reservations abandoned by a failure
         // between reserving and signing are reclaimed rather than wedging the wallet for the life of the process.
-        // The lowest handle is the oldest reservation. See
-        // `minotari_ledger_wallet_common::ephemeral_nonce::EphemeralNonceStore::insert` for why this is safe.
-        if store.nonces.len() >= MAX_SOFTWARE_EPHEMERAL_NONCES &&
-            let Some(oldest) = store.nonces.keys().min().copied()
-        {
-            // Dropping the evicted nonce zeroizes it.
-            drop(store.nonces.remove(&oldest));
+        // See `minotari_ledger_wallet_common::ephemeral_nonce::EphemeralNonceStore::insert` for why this is safe.
+        if store.nonces.len() >= MAX_SOFTWARE_EPHEMERAL_NONCES {
+            let mut oldest = None;
+            for (handle, (reservation, _)) in &store.nonces {
+                if oldest.is_none_or(|(_, oldest_reservation)| *reservation < oldest_reservation) {
+                    oldest = Some((*handle, *reservation));
+                }
+            }
+            if let Some((handle, _)) = oldest {
+                // Dropping the evicted nonce zeroizes it.
+                drop(store.nonces.remove(&handle));
+            }
         }
-        let handle = store.last_handle.saturating_add(1);
-        store.last_handle = handle;
-        store.nonces.insert(handle, private_nonce);
+        // A random 64-bit handle, so no other caller can name it without being told it. Zero is never issued, and a
+        // handle still in the store is never issued twice. A consumed handle could in principle be drawn again, but
+        // only with probability 2^-64 per reservation, so a handle that has been signed with stays dead in practice.
+        let mut rng = rand::rng();
+        let mut handle = rng.next_u64();
+        while handle == 0 || store.nonces.contains_key(&handle) {
+            handle = rng.next_u64();
+        }
+        let reservation = store.reservations;
+        store.reservations = reservation.saturating_add(1);
+        store.nonces.insert(handle, (reservation, private_nonce));
 
         Ok(TariKeyAndId {
             key_id: TariKeyId::LedgerEphemeralNonce { handle },
@@ -689,6 +709,7 @@ impl KeyManager {
         self.lock_software_ephemeral_nonces()?
             .nonces
             .remove(&handle)
+            .map(|(_, nonce)| nonce)
             .ok_or(KeyManagerError::UnknownEphemeralNonce { handle })
     }
 
@@ -766,8 +787,8 @@ impl KeyManager {
         trace!(target: "wallet::key_manager::ledger",
             "Trying to get ledger metadata signature with value:{}, sender_offset_key_id: {}, commitment_mask_key_id: {}, receiver_address: {}, preimage: {:?}",
             value,
-            sender_offset_key_id,
-            commitment_mask_key_id,
+            sender_offset_key_id.redacted(),
+            commitment_mask_key_id.redacted(),
             receiver_address,
             metadata_signature_preimage);
 
@@ -777,12 +798,15 @@ impl KeyManager {
     }
 
     fn decrypt_encrypted_key(&self, bytes: &[u8], decryption_key: TariKeyId) -> Result<PrivateKey, KeyManagerError> {
-        let mut private_decryption_key = self.get_private_key(&decryption_key)?.to_vec();
+        // Both plain copies of key material here - the decryption key and the decrypted scalar - are wiped when
+        // they go out of scope, including on the error paths.
+        let private_decryption_key = Zeroizing::new(self.get_private_key(&decryption_key)?.to_vec());
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_decryption_key));
-        private_decryption_key.zeroize();
-        let decrypted_bytes = decrypt_bytes_integral_nonce(&cipher, domain, bytes)
-            .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?;
+        let decrypted_bytes = Zeroizing::new(
+            decrypt_bytes_integral_nonce(&cipher, domain, bytes)
+                .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?,
+        );
         let pvt_key = PrivateKey::from_vec(&decrypted_bytes)?;
         Ok(pvt_key)
     }
@@ -878,8 +902,7 @@ impl TransactionKeyManagerInterface for KeyManager {
     fn get_public_key_at_key_id(&self, key_id: &TariKeyId) -> Result<CompressedPublicKey, KeyManagerError> {
         match key_id {
             TariKeyId::Derived { key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(key, key_id)?;
                 let public_alpha = self.get_spend_key().pub_key;
                 let branch_key = self.get_private_key(&key)?;
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
@@ -910,8 +933,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
 
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)?;
@@ -921,16 +943,14 @@ impl TransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
 
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let encryption_private_key = public_key_to_output_encryption_key(&shared_secret)?;
                 Ok(CompressedPublicKey::from_secret_key(&encryption_private_key))
             },
             TariKeyId::Encrypted { encrypted, key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key_id.to_string()))?;
+                let key = parse_inner_key_id(key, key_id)?;
                 let private_key = self.decrypt_encrypted_key(encrypted, key)?;
                 Ok(CompressedPublicKey::from_secret_key(&private_key))
             },
@@ -1533,6 +1553,11 @@ impl TransactionKeyManagerInterface for KeyManager {
             if !matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
                 return Err(KeyManagerError::LedgerHostHeldSenderOffset);
             }
+            // The device always signs with a random value nonce `r_a`. A RevealedValue output needs `r_a = 0` to pass
+            // its balance check, so its signature would be rejected on chain; refuse it here instead.
+            if features.range_proof_type != RangeProofType::BulletProofPlus {
+                return Err(KeyManagerError::LedgerRevealedValueUnsupported);
+            }
             // The device never sees `script`: it signs over the standard stealth script it builds itself from the
             // address and the commitment mask. Any other script would get a signature that does not verify, so it
             // is refused here instead.
@@ -1717,7 +1742,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 // Checked before the nonce is taken, so that a refused call does not burn the handle.
                 if private_key == PrivateKey::default() {
                     return Err(KeyManagerError::InvalidSigningKeyId {
-                        key: private_key_id.to_string(),
+                        key: private_key_id.redacted(),
                         reason: "the signing key resolves to zero".to_string(),
                     });
                 }
@@ -1734,7 +1759,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 // A key id other than `Zero` can still resolve to zero, e.g. an `Encrypted` id wrapping it.
                 if private_key == PrivateKey::default() {
                     return Err(KeyManagerError::InvalidSigningKeyId {
-                        key: private_key_id.to_string(),
+                        key: private_key_id.redacted(),
                         reason: "the signing key resolves to zero".to_string(),
                     });
                 }
@@ -1742,7 +1767,7 @@ impl TransactionKeyManagerInterface for KeyManager {
                 // wrapping the signing key under a different encryption key.
                 if private_nonce == PrivateKey::default() || private_nonce == private_key {
                     return Err(KeyManagerError::InvalidNonceKeyId {
-                        nonce: nonce.to_string(),
+                        nonce: nonce.redacted(),
                         reason: "the nonce resolves to zero or to the signing key".to_string(),
                     });
                 }
@@ -1916,8 +1941,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
             TariKeyId::SpendKey => self.get_private_spend_key(),
             TariKeyId::ViewKey => Ok(self.get_private_view_key()),
             TariKeyId::Derived { key } => {
-                let inner_key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                let inner_key = parse_inner_key_id(key, key_id)?;
                 let commitment_mask = self.get_private_key(&inner_key)?;
                 let spend_key = self.get_private_spend_key()?;
                 let hasher = DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label(
@@ -1955,8 +1979,7 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(private_key.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let commitment_mask_private_key = public_key_to_output_spending_key(&shared_secret)?;
                 Ok(commitment_mask_private_key)
@@ -1965,15 +1988,13 @@ impl SecretTransactionKeyManagerInterface for KeyManager {
                 public_key,
                 private_key,
             } => {
-                let key = TariKeyId::from_str(private_key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(private_key.to_string()))?;
+                let key = parse_inner_key_id(private_key, key_id)?;
                 let shared_secret = self.get_diffie_hellman_shared_secret(&key, public_key)?;
                 let commitment_mask_private_key = public_key_to_output_encryption_key(&shared_secret)?;
                 Ok(commitment_mask_private_key)
             },
             TariKeyId::Encrypted { encrypted, key } => {
-                let key = TariKeyId::from_str(key.to_string().as_str())
-                    .map_err(|_| KeyManagerError::InvalidKeyId(key.to_string()))?;
+                let key = parse_inner_key_id(key, key_id)?;
                 let private_key = self.decrypt_encrypted_key(encrypted, key)?;
                 Ok(private_key)
             },
@@ -2063,7 +2084,7 @@ mod tests {
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerInterface,
             error::KeyManagerError,
-            key_id::TariKeyId,
+            key_id::{SerializedKeyString, TariKeyId},
         },
         transaction_components::{EncryptedData, MemoField, RangeProofType, TransactionOutputVersion},
     };
@@ -2430,6 +2451,56 @@ mod tests {
         }
     }
 
+    /// The device signs every one sided metadata signature with a random value nonce, which a RevealedValue
+    /// output's balance check refuses. Such an output is refused on a ledger wallet before the device is asked, even
+    /// with the right sender offset branch and the standard stealth script.
+    #[cfg(feature = "ledger")]
+    #[test]
+    fn a_ledger_wallet_refuses_a_revealed_value_output() {
+        use tari_common::configuration::Network;
+        use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+        use tari_script::push_pubkey_script;
+
+        use crate::transaction_components::OutputFeatures;
+
+        let key_manager = ledger_key_manager_without_a_device();
+        let own_address = TariAddress::new_dual_address(
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let commitment_mask = key_manager.get_random_key(None, None).unwrap();
+        let stealth_key = key_manager
+            .stealth_address_script_spending_key(&commitment_mask.key_id, own_address.public_spend_key())
+            .unwrap();
+        let features = OutputFeatures {
+            range_proof_type: RangeProofType::RevealedValue,
+            ..Default::default()
+        };
+
+        let err = key_manager
+            .get_metadata_signature_user_verified(
+                &commitment_mask.key_id,
+                MicroMinotari(100),
+                &TariKeyId::LedgerKey {
+                    branch: LedgerKeyBranch::OneSidedSenderOffset,
+                    index: 7,
+                },
+                TransactionOutputVersion::get_current_version(),
+                &features,
+                &crate::transaction_components::covenants::Covenant::default(),
+                &crate::transaction_components::EncryptedData::default(),
+                MicroMinotari(100),
+                &push_pubkey_script(&stealth_key),
+                &own_address,
+            )
+            .unwrap_err();
+        assert_eq!(err, KeyManagerError::LedgerRevealedValueUnsupported);
+    }
+
     /// A host held sender offset key - an L2-bound burn's - is refused by `get_metadata_signature_user_verified` on a
     /// ledger wallet, which is the path the burn's fee re-sign takes. Signed in software it would put an output on
     /// chain the device never saw. The coinbase's host held key still signs in software through
@@ -2493,9 +2564,9 @@ mod tests {
         let commitment_mask_key = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
         let sender_offset = key_manager.get_random_key(None, None).unwrap();
 
-        // Handles are issued from a strictly increasing counter, so bracketing the call counts the reservations it
-        // made.
-        let before = ephemeral_nonce_handle(&key_manager.reserve_ephemeral_nonce().unwrap().key_id);
+        // An outstanding reservation of the caller's own, which the call must leave alone
+        let outstanding = key_manager.reserve_ephemeral_nonce().unwrap();
+        let reservations_before = key_manager.lock_software_ephemeral_nonces().unwrap().reservations;
         key_manager
             .get_metadata_signature(
                 &commitment_mask_key.key_id,
@@ -2506,24 +2577,16 @@ mod tests {
                 RangeProofType::BulletProofPlus,
             )
             .unwrap();
-        let after = ephemeral_nonce_handle(&key_manager.reserve_ephemeral_nonce().unwrap().key_id);
 
-        let used = before.saturating_add(1);
+        let store = key_manager.lock_software_ephemeral_nonces().unwrap();
         assert_eq!(
-            after,
-            used.saturating_add(1),
+            store.reservations,
+            reservations_before.saturating_add(1),
             "get_metadata_signature did not reserve exactly one ephemeral nonce"
         );
-
         // ...and it signed with that reservation rather than leaving it behind: signing is what consumes it.
-        let err = key_manager
-            .sign_with_nonce_and_challenge(
-                &sender_offset.key_id,
-                &TariKeyId::LedgerEphemeralNonce { handle: used },
-                &challenge(1),
-            )
-            .unwrap_err();
-        assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle: used });
+        let handles: Vec<u64> = store.nonces.keys().copied().collect();
+        assert_eq!(handles, vec![ephemeral_nonce_handle(&outstanding.key_id)]);
     }
 
     /// The pre-mine spend flow signs its script signature with its `PreMine` script key and its metadata signature
@@ -2804,7 +2867,7 @@ mod tests {
 
     fn assert_nonce_refused(key_manager: &KeyManager, private_key_id: &TariKeyId, nonce: &TariKeyId) {
         match key_manager.sign_with_nonce_and_challenge(private_key_id, nonce, &challenge(1)) {
-            Err(KeyManagerError::InvalidNonceKeyId { nonce: refused, .. }) => assert_eq!(refused, nonce.to_string()),
+            Err(KeyManagerError::InvalidNonceKeyId { nonce: refused, .. }) => assert_eq!(refused, nonce.redacted()),
             other => panic!("expected InvalidNonceKeyId for nonce '{nonce}', got {other:?}"),
         }
     }
@@ -2885,7 +2948,7 @@ mod tests {
 
         for signing_key_id in [TariKeyId::Zero, wraps_zero] {
             match key_manager.sign_with_nonce_and_challenge(&signing_key_id, &secret.key_id, &challenge(1)) {
-                Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, signing_key_id.to_string()),
+                Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, signing_key_id.redacted()),
                 other => panic!("expected InvalidSigningKeyId for '{signing_key_id}', got {other:?}"),
             }
         }
@@ -2900,7 +2963,7 @@ mod tests {
         let reserved_nonce = key_manager.reserve_ephemeral_nonce().unwrap();
 
         match key_manager.sign_with_nonce_and_challenge(&wraps_zero, &reserved_nonce.key_id, &challenge(1)) {
-            Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, wraps_zero.to_string()),
+            Err(KeyManagerError::InvalidSigningKeyId { key, .. }) => assert_eq!(key, wraps_zero.redacted()),
             other => panic!("expected InvalidSigningKeyId, got {other:?}"),
         }
 
@@ -2948,6 +3011,61 @@ mod tests {
                 )
                 .unwrap_err();
             assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle });
+        }
+    }
+
+    /// Software handles are random, not counted, so a flow that knows its own handle cannot work out another
+    /// flow's: the handles around one it was given name nothing, and neither do small values.
+    #[test]
+    fn software_nonce_handles_cannot_be_guessed_from_a_neighbour() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let signing_key = key_manager.get_random_key(None, None).unwrap();
+
+        let mut handles = Vec::new();
+        for _ in 0..16 {
+            match key_manager.reserve_ephemeral_nonce().unwrap().key_id {
+                TariKeyId::LedgerEphemeralNonce { handle } => handles.push(handle),
+                other => panic!("expected an ephemeral nonce handle, got {other}"),
+            }
+        }
+        for handle in &handles {
+            assert_ne!(*handle, 0);
+        }
+        // Each handle appears once, and no two are consecutive (each pair is consecutive with probability 2^-63)
+        let mut sorted = handles.clone();
+        sorted.sort_unstable();
+        for pair in sorted.windows(2) {
+            if let [low, high] = pair {
+                assert!(high.saturating_sub(*low) > 1, "{low} and {high}");
+            }
+        }
+
+        let mine = *handles.first().expect("reserved 16");
+        for guess in [mine.wrapping_add(1), mine.wrapping_sub(1), 1, 2, 16, 17] {
+            if handles.contains(&guess) {
+                continue;
+            }
+            let err = key_manager
+                .sign_with_nonce_and_challenge(
+                    &signing_key.key_id,
+                    &TariKeyId::LedgerEphemeralNonce { handle: guess },
+                    &challenge(1),
+                )
+                .unwrap_err();
+            assert_eq!(err, KeyManagerError::UnknownEphemeralNonce { handle: guess });
+        }
+        // The guesses consumed nothing: every reservation is still good for its one signature
+        for (i, handle) in handles.iter().enumerate() {
+            let i = u8::try_from(i).expect("16 handles");
+            assert!(
+                key_manager
+                    .sign_with_nonce_and_challenge(
+                        &signing_key.key_id,
+                        &TariKeyId::LedgerEphemeralNonce { handle: *handle },
+                        &challenge(i.saturating_add(2)),
+                    )
+                    .is_ok()
+            );
         }
     }
 
@@ -3341,16 +3459,52 @@ mod tests {
             .unwrap();
     }
 
+    /// A key id whose inner key id does not parse is refused with the key id redacted: the ciphertext of an
+    /// `Encrypted` id is readable by the view key holder and does not belong in an error message.
+    #[test]
+    fn an_unresolvable_key_id_is_reported_redacted() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let encrypted = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 72],
+            key: "bogus".into(),
+        };
+        let derived = TariKeyId::Derived {
+            key: SerializedKeyString::from(format!("encrypted.{}.bogus", "ab".repeat(72))),
+        };
+        for key_id in [encrypted, derived] {
+            match key_manager.get_private_key(&key_id) {
+                Err(KeyManagerError::InvalidKeyId(message)) => {
+                    assert_eq!(message, key_id.redacted());
+                    assert!(message.contains("[72 bytes]"), "{message}");
+                    assert!(!message.contains("abab"), "{message}");
+                },
+                other => panic!("expected InvalidKeyId, got {other:?}"),
+            }
+            match key_manager.get_public_key_at_key_id(&key_id) {
+                Err(KeyManagerError::InvalidKeyId(message)) => assert_eq!(message, key_id.redacted()),
+                other => panic!("expected InvalidKeyId, got {other:?}"),
+            }
+        }
+    }
+
     #[test]
     fn truncated_key_id_bounds_long_ids() {
         assert_eq!(super::truncated_key_id(&TariKeyId::SpendKey), "spend_key");
-        let long = TariKeyId::Encrypted {
+        // An encrypted payload is redacted before the length is counted, so it never reaches the message
+        let encrypted = TariKeyId::Encrypted {
             encrypted: vec![0xab; 600],
             key: (&TariKeyId::SpendKey).into(),
         };
-        let total = long.to_string().len();
+        assert_eq!(super::truncated_key_id(&encrypted), "encrypted.[600 bytes].spend_key");
+        // A key id built in code is not length checked; a long one is cut
+        let long = TariKeyId::Encrypted {
+            encrypted: vec![0xab; 3],
+            key: format!("{}spend_key", "derived.".repeat(40)).into(),
+        };
+        let total = long.redacted().len();
+        assert!(total > 128);
         let truncated = super::truncated_key_id(&long);
-        assert!(truncated.starts_with(&long.to_string()[..128]));
+        assert!(truncated.starts_with(&long.redacted()[..128]));
         assert!(truncated.ends_with(&format!("…({total} chars)")));
         assert_eq!(
             truncated.chars().count(),

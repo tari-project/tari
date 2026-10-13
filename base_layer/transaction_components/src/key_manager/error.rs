@@ -69,12 +69,6 @@ pub enum KeyManagerError {
     )]
     TooManySenderOffsetKeys { requested: usize, max: usize },
     #[error(
-        "The ephemeral nonce handle counter is exhausted. This is not a full store - a full store evicts its oldest \
-         entry - it is the one case that must refuse, because re-issuing a handle that an earlier nonce still answers \
-         to would allow that nonce to be signed with twice."
-    )]
-    EphemeralNonceHandlesExhausted,
-    #[error(
         "Ephemeral nonce handle `{handle}` was never issued, has already been signed with, or was evicted to make \
          room for a newer reservation. A nonce may only ever be used once: two signatures over different challenges \
          under one nonce give up the private key."
@@ -99,6 +93,12 @@ pub enum KeyManagerError {
          so it is refused. Burns are not supported on a ledger wallet."
     )]
     LedgerHostHeldSenderOffset,
+    #[error(
+        "On a ledger wallet an output signed for a recipient address must use a BulletProofPlus range proof. The \
+         device signs with a random value nonce, which a RevealedValue output's balance check refuses, so the output \
+         would be rejected by consensus."
+    )]
+    LedgerRevealedValueUnsupported,
     #[error("The ephemeral nonce store lock is poisoned")]
     EphemeralNonceStorePoisoned,
     #[error(
