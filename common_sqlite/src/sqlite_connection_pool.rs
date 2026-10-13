@@ -243,7 +243,7 @@ impl SqliteConnectionPool {
         if let Some(pool) = self.pool.take() {
             let state = format!("{:?}", pool.state());
             if self.connection_options.profile() == DbProfile::KeyMaterial && !self.is_in_memory() {
-                truncate_wal(&pool, &self.db_path);
+                truncate_wal(&pool, &self.db_path, self.connection_options.get_busy_timeout());
             }
             drop(pool);
             return Some(state);
@@ -252,8 +252,10 @@ impl SqliteConnectionPool {
     }
 }
 
-/// Best-effort `PRAGMA wal_checkpoint(TRUNCATE)` on an idle connection of `pool`, without waiting on any lock.
-fn truncate_wal(pool: &Pool<ConnectionManager<SqliteConnection>>, db_path: &str) {
+/// Best-effort `PRAGMA wal_checkpoint(TRUNCATE)` on an idle connection of `pool`, without waiting on any lock. The
+/// connection's `busy_timeout` is set back to `busy_timeout` afterwards, because another clone of the pool may still be
+/// using it.
+fn truncate_wal(pool: &Pool<ConnectionManager<SqliteConnection>>, db_path: &str, busy_timeout: Duration) {
     let Some(mut conn) = pool.try_get() else {
         debug!(target: LOG_TARGET, "No idle connection to checkpoint {} on cleanup", db_path);
         return;
@@ -279,6 +281,12 @@ fn truncate_wal(pool: &Pool<ConnectionManager<SqliteConnection>>, db_path: &str)
             debug!(target: LOG_TARGET, "WAL checkpoint on cleanup of {} failed: {}", db_path, e);
         },
     }
+    if let Err(e) = conn.batch_execute(&format!("PRAGMA busy_timeout = {};", busy_timeout.as_millis())) {
+        warn!(
+            target: LOG_TARGET,
+            "Could not restore busy_timeout on {} after the cleanup checkpoint: {}", db_path, e
+        );
+    }
 }
 
 /// Make the database's directory and files safe to open, before the first connection is opened. A co-tenant with only
@@ -296,21 +304,18 @@ fn prepare_database_path(path: &Path, profile: DbProfile) -> Result<(), SqliteSt
     // SAFETY: geteuid has no preconditions and cannot fail.
     let euid = unsafe { libc::geteuid() };
 
-    if let Some(parent) = path.parent() &&
-        !parent.as_os_str().is_empty()
-    {
-        if parent.exists() {
-            restrict_existing_dir(parent, profile, euid)?;
-        } else {
-            DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(parent)
-                .map_err(|source| SqliteStorageError::FilePermissions {
-                    path: parent.to_path_buf(),
-                    source,
-                })?;
-        }
+    let parent = database_dir(path);
+    if parent.exists() {
+        restrict_existing_dir(parent, profile, euid)?;
+    } else {
+        DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(parent)
+            .map_err(|source| SqliteStorageError::FilePermissions {
+                path: parent.to_path_buf(),
+                source,
+            })?;
     }
 
     secure_database_file(path, true, euid)?;
@@ -320,6 +325,16 @@ fn prepare_database_path(path: &Path, profile: DbProfile) -> Result<(), SqliteSt
         secure_database_file(&PathBuf::from(sidecar), false, euid)?;
     }
     Ok(())
+}
+
+/// The directory that holds the database file. A bare file name ("wallet.db") has an empty parent: it lives in the
+/// current directory, which gets the same checks as any other.
+#[cfg(unix)]
+fn database_dir(path: &Path) -> &Path {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    }
 }
 
 /// Handle an existing parent directory:
@@ -739,6 +754,29 @@ mod test {
             matches!(err, SqliteStorageError::InMemoryPoolSize(2)),
             "unexpected error: {err:?}"
         );
+    }
+
+    #[test]
+    fn cleanup_restores_busy_timeout_for_other_pool_clones() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut pool = SqliteConnectionPool::new(temp_db_path(&dir, "wallet.db"), 1, DbProfile::KeyMaterial).unwrap();
+        pool.create_pool().unwrap();
+        let other = pool.clone();
+        // Make the one connection exist and go idle, so `cleanup` checkpoints on it.
+        drop(pool.get_pooled_connection().unwrap());
+
+        assert!(pool.cleanup().is_some());
+
+        let mut conn = other.get_pooled_connection().unwrap();
+        assert_eq!(query_int(&mut conn, "PRAGMA busy_timeout;"), 60_000);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bare_file_name_is_checked_in_the_current_directory() {
+        assert_eq!(database_dir(Path::new("wallet.db")), Path::new("."));
+        assert_eq!(database_dir(Path::new("data/wallet.db")), Path::new("data"));
+        assert_eq!(database_dir(Path::new("/tmp/wallet.db")), Path::new("/tmp"));
     }
 
     #[test]
