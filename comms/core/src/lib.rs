@@ -24,7 +24,7 @@ pub use peer_manager::{NodeIdentity, OrNotFound, PeerManager};
 pub mod framing;
 
 mod multiplexing;
-pub use multiplexing::Substream;
+pub use multiplexing::{Substream, YamuxControlError};
 
 mod noise;
 mod proto;

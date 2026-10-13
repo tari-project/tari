@@ -56,7 +56,7 @@ use crate::{
     Minimized,
     framing,
     framing::CanonicalFraming,
-    multiplexing::{Control, IncomingSubstreams, Substream, Yamux, YamuxControlError},
+    multiplexing::{Control, IncomingSubstreams, Substream, WriteStall, Yamux, YamuxControlError},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
     utils::atomic_ref_counter::AtomicRefCounter,
@@ -88,7 +88,7 @@ pub fn create(
     let (peer_tx, peer_rx) = mpsc::channel(1);
     let id = ID_COUNTER.fetch_add(1, Ordering::SeqCst); // Monotonic
     let substream_counter = connection.substream_counter();
-    let peer_conn = PeerConnection::new(
+    let mut peer_conn = PeerConnection::new(
         id,
         peer_tx,
         peer_node_id.clone(),
@@ -97,6 +97,7 @@ pub fn create(
         direction,
         substream_counter,
     );
+    peer_conn.write_stall = connection.write_stall();
     let peer_actor = PeerConnectionActor::new(
         id,
         peer_node_id,
@@ -181,6 +182,8 @@ pub struct PeerConnection {
     /// True for handles that contribute to `strong_counter`. Mutated only by [`Clone::clone`],
     /// [`PeerConnection::clone_weak`], [`PeerConnection::clone_strong`], and [`Drop`].
     is_strong: bool,
+    /// Published by the connection's yamux worker: when writes to the socket started waiting
+    write_stall: WriteStall,
 }
 
 impl PeerConnection {
@@ -211,6 +214,7 @@ impl PeerConnection {
             // [`PeerConnection::clone_strong`] when they need reap protection.
             strong_counter: Arc::new(AtomicUsize::new(0)),
             is_strong: false,
+            write_stall: WriteStall::default(),
         }
     }
 
@@ -249,6 +253,7 @@ impl PeerConnection {
             rpc_session_states: self.rpc_session_states.clone(),
             strong_counter: self.strong_counter.clone(),
             is_strong: true,
+            write_stall: self.write_stall.clone(),
         }
     }
 
@@ -270,6 +275,7 @@ impl PeerConnection {
             rpc_session_states: self.rpc_session_states.clone(),
             strong_counter: self.strong_counter.clone(),
             is_strong: false,
+            write_stall: self.write_stall.clone(),
         }
     }
 
@@ -331,6 +337,23 @@ impl PeerConnection {
 
     pub fn handle_count(&self) -> usize {
         Arc::strong_count(&self.handle_counter)
+    }
+
+    /// Returns true if the peer has not accepted data on this connection for at least 30 seconds. The connection's
+    /// yamux worker closes it once the stall reaches 120 seconds.
+    pub fn is_write_stalled(&self) -> bool {
+        self.write_stall.is_stalled()
+    }
+
+    /// Returns how long writes on this connection have been waiting for the peer, or `None` if none are waiting
+    pub fn write_stalled_for(&self) -> Option<Duration> {
+        self.write_stall.stalled_for()
+    }
+
+    /// Returns the write-stall state shared with this connection's yamux worker
+    #[cfg(test)]
+    pub(crate) fn write_stall(&self) -> &WriteStall {
+        &self.write_stall
     }
 
     pub async fn open_substream(
@@ -544,6 +567,7 @@ impl Clone for PeerConnection {
             rpc_session_states: self.rpc_session_states.clone(),
             strong_counter: self.strong_counter.clone(),
             is_strong: self.is_strong,
+            write_stall: self.write_stall.clone(),
         }
     }
 }

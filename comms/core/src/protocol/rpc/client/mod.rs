@@ -84,9 +84,16 @@ use crate::{
     },
     stream_id,
     stream_id::StreamId,
+    utils::mpsc::ChannelByteBudget,
 };
 
 const LOG_TARGET: &str = "comms::rpc::client";
+
+/// The most response bytes buffered for the caller of one request. Once this much is waiting, the client stops reading
+/// the substream until the caller takes a response, so that yamux flow control slows the server down. The stream
+/// buffer size (a number of responses) and the per-response size cap apply as well. One response is always read when
+/// nothing is buffered, so a request holds at most this plus one response of up to the frame size.
+const RPC_CLIENT_MAX_BUFFERED_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct RpcClient {
@@ -282,7 +289,8 @@ impl<TClient> RpcClientBuilder<TClient> {
 
     /// Set the number of streamed responses that are buffered for the caller before the client stops reading from
     /// the substream. A larger buffer lets the server keep sending while the caller processes earlier responses.
-    /// Values below 1 are treated as 1.
+    /// Values below 1 are treated as 1. The client also stops reading once 32 MiB of responses are buffered, however
+    /// many responses that is.
     /// Default: 5
     pub fn with_stream_buffer_size(mut self, size: usize) -> Self {
         self.config.stream_buffer_size = size;
@@ -782,6 +790,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         // Watched while waiting for each frame, so an explicit `close()` interrupts a stream that is waiting on a slow
         // frame rather than taking effect only once the next frame arrives.
         let mut close_signal = self.shutdown_signal.clone();
+        let mut buffered = ChannelByteBudget::new(RPC_CLIENT_MAX_BUFFERED_RESPONSE_BYTES);
         loop {
             // Only an explicit `close()` cuts a stream short. When the last client handle is dropped
             // (`ShutdownReason::Dropped`) the stream is still being read by its `ClientStreaming` receiver, so let it
@@ -803,7 +812,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             // or if the peer connection has been terminated (e.g., peer was banned)
             let resp_result = {
                 let stream_id = self.stream_id();
-                let resp_fut = self.read_response(request_id);
+                // Only read the next response once the caller has room for it. `wait_for_room` only fails once the
+                // caller has dropped the receiver, and then `closed_fut` below resolves, so this never waits forever.
+                let buffered = &mut buffered;
+                let response_tx_ref = &response_tx;
+                let read_fut = self.read_response(request_id);
+                let resp_fut = async move {
+                    if buffered.wait_for_room(response_tx_ref).await.is_err() {
+                        future::pending::<()>().await;
+                    }
+                    read_fut.await
+                };
                 tokio::pin!(resp_fut);
                 let closed_fut = response_tx.closed();
                 tokio::pin!(closed_fut);
@@ -934,7 +953,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         self.premature_close(request_id, method).await?;
                         break;
                     } else {
-                        let _result = response_tx.send(Ok(resp)).await;
+                        let num_bytes = resp.payload.len();
+                        if response_tx.send(Ok(resp)).await.is_ok() {
+                            buffered.record_sent(num_bytes);
+                        }
                     }
                     if is_finished {
                         break;

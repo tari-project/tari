@@ -61,7 +61,7 @@ use crate::{
         wire_mode::{LIVENESS_WIRE_MODE, WireMode},
     },
     multiaddr::Multiaddr,
-    multiplexing::Yamux,
+    multiplexing::{WriteStallSocket, Yamux},
     noise::NoiseConfig,
     peer_manager::NodeIdentity,
     protocol::ProtocolId,
@@ -353,8 +353,9 @@ where
         );
 
         let timer = Instant::now();
+        // Write stalls are measured on the transport, under noise
         let mut noise_socket = noise_config
-            .upgrade_socket(socket, CONNECTION_DIRECTION)
+            .upgrade_socket(WriteStallSocket::new(socket), CONNECTION_DIRECTION)
             .await
             .map_err(|err| {
                 debug!(
@@ -417,8 +418,14 @@ where
             Some(valid_peer_identity.claim.features),
             Some(valid_peer_identity.metadata.user_agent.clone()),
         );
-        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION, peer_connection_info)
-            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
+        let write_stall = noise_socket.get_ref().write_stall();
+        let muxer = Yamux::upgrade_connection_with_write_stall(
+            noise_socket,
+            CONNECTION_DIRECTION,
+            peer_connection_info,
+            write_stall,
+        )
+        .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         let conn = peer_connection::create(
             muxer,

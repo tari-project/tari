@@ -29,5 +29,5 @@ mod error;
 mod yamux;
 pub use self::{
     error::YamuxControlError,
-    yamux::{Control, IncomingSubstreams, Substream, Yamux},
+    yamux::{Control, IncomingSubstreams, Substream, WriteStall, WriteStallSocket, Yamux},
 };

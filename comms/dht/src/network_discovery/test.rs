@@ -709,10 +709,13 @@ mod rebootstrap {
         );
     }
 
-    /// A failed sync unmarks the peer, so that its next connection is synced from again.
+    /// A failed sync backs the peer off for 5 minutes, rather than syncing from it on every reconnect or blocking a
+    /// retry for the whole resync TTL.
     #[tokio::test]
-    async fn a_failed_on_connect_sync_does_not_block_a_retry() {
+    async fn a_failed_on_connect_sync_is_retried_after_a_backoff() {
+        const BACKOFF: Duration = Duration::from_secs(5 * 60);
         let (context, _mock, _events) = context(None);
+        assert!(context.config.network_discovery.on_connect_resync_ttl > BACKOFF);
         let mut on_connect = OnConnect::new(context);
         let node_id = NodeId::from_public_key(make_node_identity().public_key());
         // A connection that is already closed, so the sync fails at once
@@ -720,8 +723,47 @@ mod rebootstrap {
             create_dummy_peer_connection_with_direction(node_id.clone(), ConnectionDirection::Inbound);
         drop(requests);
 
+        let before = Instant::now();
         assert!(on_connect.sync_from(conn).await.is_none());
-        assert!(!on_connect.is_recently_synced(&node_id, Instant::now()));
+        let after = Instant::now();
+        assert!(on_connect.is_recently_synced(&node_id, after));
+        assert!(on_connect.is_recently_synced(&node_id, before + BACKOFF - Duration::from_secs(1)));
+        assert!(!on_connect.is_recently_synced(&node_id, after + BACKOFF));
+    }
+
+    /// A TTL too large to add to an `Instant` means the peer is not synced from for a week, not that it is synced from
+    /// on every connect
+    #[tokio::test]
+    async fn a_huge_resync_ttl_keeps_the_peer_marked() {
+        let (mut context, _mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.on_connect_resync_ttl = Duration::MAX;
+        context.config = Arc::new(config);
+        let mut on_connect = OnConnect::new(context);
+        let node_id = NodeId::from_public_key(make_node_identity().public_key());
+
+        let now = Instant::now();
+        on_connect.mark_synced(node_id.clone(), now);
+        assert!(on_connect.is_recently_synced(&node_id, now));
+        assert!(on_connect.is_recently_synced(&node_id, now + Duration::from_secs(60 * 60 * 24)));
+        // The TTL is capped at a week, so the entry expires
+        assert!(!on_connect.is_recently_synced(&node_id, now + Duration::from_secs(7 * 60 * 60 * 24)));
+    }
+
+    /// The backoff after a failed sync is never longer than the resync TTL after a successful one
+    #[tokio::test]
+    async fn the_failed_sync_backoff_is_capped_at_the_resync_ttl() {
+        let (mut context, _mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.on_connect_resync_ttl = Duration::from_secs(60);
+        context.config = Arc::new(config);
+        let mut on_connect = OnConnect::new(context);
+        let node_id = NodeId::from_public_key(make_node_identity().public_key());
+
+        let now = Instant::now();
+        on_connect.mark_sync_failed(node_id.clone(), now);
+        assert!(on_connect.is_recently_synced(&node_id, now + Duration::from_secs(59)));
+        assert!(!on_connect.is_recently_synced(&node_id, now + Duration::from_secs(60)));
     }
 
     /// Discovering bans a peer it dialled for an RPC failure, but not a peer it was already connected to.

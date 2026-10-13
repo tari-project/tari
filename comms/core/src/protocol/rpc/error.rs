@@ -28,6 +28,7 @@ use thiserror::Error;
 use super::{RpcStatus, handshake::RpcHandshakeError, server::RpcServerError};
 use crate::{
     PeerConnectionError,
+    YamuxControlError,
     connectivity::ConnectivityError,
     decode_budget::DecodeBudgetExceeded,
     peer_manager::PeerManagerError,
@@ -97,8 +98,10 @@ impl RpcError {
 
     /// Returns true if, while connecting, the server could not take a session right now, or the connection failed
     /// underneath the handshake: an explicit "no sessions available" rejection, the server closing the substream, or an
-    /// IO error. None of these says the server misbehaved, and a busy server is cheap for other peers to induce, so a
-    /// caller choosing a peer for a long task (e.g. sync) should skip it and retry elsewhere rather than penalise it.
+    /// IO error. Also true when our own connection refused to open the substream because too many are open on it, which
+    /// is a local limit. None of these says the server misbehaved, and a busy server is cheap for other peers to
+    /// induce, so a caller choosing a peer for a long task (e.g. sync) should skip it and retry elsewhere rather than
+    /// penalise it.
     /// A handshake timeout, an undecodable or oversized reply, and every error after connecting are not included.
     ///
     /// This deliberately differs from [Self::is_caused_by_server], which other callers rely on.
@@ -111,7 +114,9 @@ impl RpcError {
                         HandshakeRejectReason::NoClientSessionsAvailable(_)
                 ) | RpcHandshakeError::ServerClosedRequest |
                     RpcHandshakeError::Io(_)
-            )
+            ) | RpcError::PeerConnectionError(PeerConnectionError::YamuxControlError(
+                YamuxControlError::TooManyStreams
+            ))
         )
     }
 

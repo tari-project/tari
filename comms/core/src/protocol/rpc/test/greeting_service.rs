@@ -81,6 +81,8 @@ pub trait GreetingRpc: Send + Sync + 'static {
 pub struct GreetingService {
     greetings: Vec<String>,
     call_count: Arc<AtomicUsize>,
+    /// The number of items `slow_stream` has handed to the RPC server
+    slow_stream_items_sent: Arc<AtomicUsize>,
 }
 
 impl GreetingService {
@@ -91,11 +93,16 @@ impl GreetingService {
         Self {
             greetings: greetings.iter().map(ToString::to_string).collect(),
             call_count: Default::default(),
+            slow_stream_items_sent: Default::default(),
         }
     }
 
     pub fn call_count(&self) -> usize {
         self.call_count.load(Ordering::SeqCst)
+    }
+
+    pub fn slow_stream_items_sent(&self) -> usize {
+        self.slow_stream_items_sent.load(Ordering::SeqCst)
     }
 
     fn inc_call_count(&self) {
@@ -180,6 +187,7 @@ impl GreetingRpc for GreetingService {
 
         let (tx, rx) = mpsc::channel(1);
         let item = std::iter::repeat_n(0u8, item_size as usize).collect::<Vec<_>>();
+        let items_sent = self.slow_stream_items_sent.clone();
         tokio::spawn(async move {
             for i in 0..num_items {
                 time::sleep(Duration::from_millis(delay_ms)).await;
@@ -193,6 +201,7 @@ impl GreetingRpc for GreetingService {
                     log::info!("stream was interrupted");
                     break;
                 }
+                items_sent.fetch_add(1, Ordering::SeqCst);
             }
         });
 

@@ -32,6 +32,10 @@ pub enum YamuxControlError {
     ConnectionError(String),
     #[error("Yamux connection closed")]
     ConnectionClosed,
+    /// The local connection refused to open a substream because too many are open. This is a local limit, not
+    /// something the peer did.
+    #[error("Too many substreams are open on the connection")]
+    TooManyStreams,
     #[error("Yamux request send error: {0}")]
     RequestSendError(String),
     #[error("Yamux request send error: {0}")]
@@ -42,6 +46,7 @@ impl From<ConnectionError> for YamuxControlError {
     fn from(err: ConnectionError) -> Self {
         match err {
             ConnectionError::Closed => Self::ConnectionClosed,
+            ConnectionError::TooManyStreams => Self::TooManyStreams,
             _ => Self::ConnectionError(err.to_string()),
         }
     }

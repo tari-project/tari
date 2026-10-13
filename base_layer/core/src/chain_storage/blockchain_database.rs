@@ -1493,6 +1493,25 @@ where B: BlockchainBackend
         }
     }
 
+    /// Returns the block headers at two heights, read under one read lock so that both come from the same chain.
+    pub fn fetch_header_pair(
+        &self,
+        first_height: u64,
+        second_height: u64,
+    ) -> Result<(Option<BlockHeader>, Option<BlockHeader>), ChainStorageError> {
+        let db = self.db_read_access()?;
+        let mut headers = [None, None];
+        for (header, height) in headers.iter_mut().zip([first_height, second_height]) {
+            *header = match fetch_header(&*db, height) {
+                Ok(found) => Some(found),
+                Err(err) if err.is_value_not_found() => None,
+                Err(err) => return Err(err),
+            };
+        }
+        let [first, second] = headers;
+        Ok((first, second))
+    }
+
     /// Returns the block header at the given block height.
     pub fn fetch_chain_header(&self, height: u64) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;

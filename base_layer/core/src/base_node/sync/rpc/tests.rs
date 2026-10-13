@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::StreamExt;
+use prost::Message;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::{RpcStatusCode, mock::RpcRequestMock};
 use tari_node_components::blocks::ChainBlock;
@@ -37,7 +38,7 @@ use tari_transaction_components::{
 use tari_utilities::ByteArray;
 use tokio::sync::broadcast;
 
-use super::BaseNodeSyncRpcService;
+use super::{BaseNodeSyncRpcService, service::is_on_requested_chain};
 use crate::{
     base_node::{
         BaseNodeSyncService,
@@ -55,6 +56,7 @@ use crate::{
         blockchain::{
             TempDatabase,
             TestBlockchain,
+            create_chained_blocks,
             create_main_chain,
             create_main_chain_with_range_proof_type,
             create_new_blockchain,
@@ -221,19 +223,89 @@ mod sync_blocks {
         }
     }
 
+    /// The bytes a session counts (the blocks queued and the last block taken) stay within its byte budget plus one
+    /// block, however many blocks the batch size allows. The RPC server may also hold one older block while it writes
+    /// it.
     #[tokio::test]
-    async fn it_sends_conflict_on_reorg() {
+    async fn it_buffers_at_most_the_byte_budget_plus_one_block() {
+        const BLOCK_BATCH_SIZE: usize = 10;
+        let (service, db, rpc_request_mock) = setup_with_block_batch_size(BLOCK_BATCH_SIZE);
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
+        // Stream B2 to B31
+        let num_blocks = 30usize;
+        let sizes = (2..=num_blocks as u64 + 1)
+            .map(|height| {
+                let block = db.fetch_block(height, true).unwrap().into_block();
+                proto::base_node::BlockBodyResponse::try_from(block)
+                    .unwrap()
+                    .encoded_len()
+            })
+            .collect::<Vec<_>>();
+        let max_block_size = sizes.iter().copied().max().unwrap();
+        // Room for about three blocks, far fewer than the batch size
+        let max_buffered_bytes = max_block_size.saturating_mul(3);
+        let service = service.with_max_buffered_block_bytes(max_buffered_bytes);
+
+        let msg = SyncBlocksRequest {
+            start_hash: chain.get(names.first().unwrap().as_str()).unwrap().hash().to_vec(),
+            end_hash: chain
+                .get(names.get(num_blocks).unwrap().as_str())
+                .unwrap()
+                .hash()
+                .to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_blocks(req).await.unwrap().into_inner();
+
+        let mut num_taken = 0usize;
+        loop {
+            // Let the session fetch as far ahead as it may
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let num_queued = streaming.len();
+            assert!(num_queued < BLOCK_BATCH_SIZE, "{num_queued} blocks queued");
+            // The session counts the blocks queued and the last block taken, which the RPC server may still hold
+            let first_held = num_taken.saturating_sub(1);
+            let held = sizes
+                .get(first_held..num_taken.saturating_add(num_queued))
+                .unwrap()
+                .iter()
+                .sum::<usize>();
+            assert!(
+                held <= max_buffered_bytes.saturating_add(max_block_size),
+                "{held} bytes held, more than {max_buffered_bytes} + {max_block_size}"
+            );
+            match streaming.recv().await {
+                Some(block) => {
+                    let block = block.unwrap();
+                    assert_eq!(Some(&block.encoded_len()), sizes.get(num_taken));
+                    num_taken = num_taken.saturating_add(1);
+                },
+                None => break,
+            }
+        }
+        assert_eq!(num_taken, num_blocks);
+    }
+
+    /// Sets up a session over A to E whose byte budget makes it wait after each block, and waits until it has queued B
+    async fn start_session_waiting_after_b() -> (
+        BlockchainDatabase<TempDatabase>,
+        HashMap<String, Arc<ChainBlock>>,
+        LocalNodeCommsInterface,
+        tokio::sync::mpsc::Receiver<Result<proto::base_node::BlockBodyResponse, tari_comms::protocol::rpc::RpcStatus>>,
+    ) {
         let request_mock = RpcRequestMock::new(create_peer_manager());
         let db = create_new_blockchain();
         let (req_tx, _) = reply_channel::unbounded();
         let (block_tx, _) = reply_channel::unbounded();
         let (block_event_tx, _) = broadcast::channel(1);
         let local_interface = LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx);
+        // Any block fills the budget, so the session waits after each block until the previous one is taken
         let service = BaseNodeSyncRpcService::new(
             db.clone().into(),
             local_interface.clone(),
             BlockchainSyncConfig::default().rpc_block_batch_size,
-        );
+        )
+        .with_max_buffered_block_bytes(1);
 
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
 
@@ -242,21 +314,152 @@ mod sync_blocks {
             end_hash: chain.get("E").unwrap().hash().to_vec(),
         };
         let req = request_mock.request_with_context(Default::default(), msg);
-        let mut streaming = service.sync_blocks(req).await.unwrap().into_inner();
+        let streaming = service.sync_blocks(req).await.unwrap().into_inner();
 
-        // The sync worker is spawned but has not yet run on this single threaded runtime, so it sees this rewind
-        // before sending any blocks
-        let removed = vec![chain.get("C").unwrap().clone()];
-        assert_eq!(
-            local_interface.publish_block_event(BlockEvent::BlockSyncRewind(removed)),
-            1
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while streaming.is_empty() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(streaming.len(), 1);
+        (db, chain, local_interface, streaming)
+    }
+
+    /// Reads the rest of the session and checks that it is B followed by a Conflict
+    async fn assert_b_then_conflict(
+        chain: &HashMap<String, Arc<ChainBlock>>,
+        streaming: &mut tokio::sync::mpsc::Receiver<
+            Result<proto::base_node::BlockBodyResponse, tari_comms::protocol::rpc::RpcStatus>,
+        >,
+    ) -> String {
+        let responses = convert_mpsc_to_stream(streaming).collect::<Vec<_>>().await;
+        assert_eq!(responses.len(), 2, "{responses:?}");
+        let mut responses = responses.into_iter();
+        let block = responses.next().unwrap().unwrap();
+        assert_eq!(*chain.get("B").unwrap().hash(), block.hash);
+        let err = responses.next().unwrap().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+        err.details().to_string()
+    }
+
+    /// A reorg whose event never reaches the session is still caught: the next block does not follow the last one sent
+    #[tokio::test]
+    async fn it_sends_conflict_when_the_chain_changes_without_an_event() {
+        let (db, chain, _local_interface, mut streaming) = start_session_waiting_after_b().await;
+
+        // A longer fork from A replaces B to E, and no event is published
+        let (fork_names, fork) = create_chained_blocks(
+            &db,
+            block_specs!(["B2->GB"], ["C2->B2"], ["D2->C2"], ["E2->D2"], ["F2->E2"]),
+            chain.get("A").unwrap().clone(),
         );
+        for name in &fork_names {
+            db.add_block(fork.get(name).unwrap().to_arc_block()).unwrap();
+        }
+        assert_eq!(db.fetch_block(2, true).unwrap().hash(), fork.get("B2").unwrap().hash());
+
+        let details = assert_b_then_conflict(&chain, &mut streaming).await;
+        assert_eq!(
+            details,
+            "Reorg detected: the requested end block is no longer on the chain"
+        );
+    }
+
+    /// A reorg above the last block sent, whose event never reaches the session, is caught too: the next block still
+    /// follows the last one sent, but the chain no longer ends at the requested end block
+    #[tokio::test]
+    async fn it_sends_conflict_when_the_chain_changes_above_the_last_block_sent_without_an_event() {
+        let (db, chain, _local_interface, mut streaming) = start_session_waiting_after_b().await;
+
+        // A longer fork from B replaces C to E, and no event is published
+        let (fork_names, fork) = create_chained_blocks(
+            &db,
+            block_specs!(["C2->GB"], ["D2->C2"], ["E2->D2"], ["F2->E2"]),
+            chain.get("B").unwrap().clone(),
+        );
+        for name in &fork_names {
+            db.add_block(fork.get(name).unwrap().to_arc_block()).unwrap();
+        }
+        let next = db.fetch_block(3, true).unwrap();
+        assert_eq!(next.hash(), fork.get("C2").unwrap().hash());
+        assert_eq!(next.header().prev_hash, *chain.get("B").unwrap().hash());
+
+        let details = assert_b_then_conflict(&chain, &mut streaming).await;
+        assert_eq!(
+            details,
+            "Reorg detected: the requested end block is no longer on the chain"
+        );
+    }
+
+    /// A block that is gone because the chain was rewound is a Conflict, not an internal error
+    #[tokio::test]
+    async fn it_sends_conflict_when_a_block_is_gone() {
+        let (db, chain, _local_interface, mut streaming) = start_session_waiting_after_b().await;
+
+        db.rewind_to_height(2).unwrap();
+
+        let details = assert_b_then_conflict(&chain, &mut streaming).await;
+        assert_eq!(details, "Block #3 is no longer on the chain");
+    }
+
+    /// Block events play no part: a reorg event that leaves the requested chain intact (e.g. a rewind whose blocks were
+    /// re-applied) does not end the session
+    #[tokio::test]
+    async fn it_keeps_serving_when_a_reorg_event_leaves_the_requested_chain_intact() {
+        let (_db, chain, local_interface, mut streaming) = start_session_waiting_after_b().await;
+
+        let removed = vec![chain.get("C").unwrap().clone(), chain.get("D").unwrap().clone()];
+        local_interface.publish_block_event(BlockEvent::BlockSyncRewind(removed));
 
         let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
-        assert_eq!(responses.len(), 1);
-        let err = responses.into_iter().next().unwrap().unwrap_err();
-        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
-        assert_eq!(err.details(), "Reorg at height 3 detected");
+        assert_eq!(responses.len(), 4, "{responses:?}");
+        for (response, name) in responses.into_iter().zip(["B", "C", "D", "E"]) {
+            assert_eq!(*chain.get(name).unwrap().hash(), response.unwrap().hash);
+        }
+    }
+
+    /// The check after each fetch accepts the fetched block only if the same chain state has it at its height and has
+    /// the requested end block at the end height
+    #[test]
+    fn a_fetched_block_is_served_only_if_it_is_on_the_requested_chain() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let (_, fork) = create_chained_blocks(
+            &db,
+            block_specs!(["B2->GB"], ["C2->B2"]),
+            chain.get("A").unwrap().clone(),
+        );
+        let b = chain.get("B").unwrap();
+        let c = chain.get("C").unwrap();
+        let b2 = fork.get("B2").unwrap();
+        let c2 = fork.get("C2").unwrap();
+
+        assert!(is_on_requested_chain(
+            b.hash(),
+            Some(b.header()),
+            Some(c.header()),
+            c.hash()
+        ));
+        // The block at the fetched height was replaced after the fetch
+        assert!(!is_on_requested_chain(
+            b.hash(),
+            Some(b2.header()),
+            Some(c.header()),
+            c.hash()
+        ));
+        // The chain no longer ends at the requested end block
+        assert!(!is_on_requested_chain(
+            b.hash(),
+            Some(b.header()),
+            Some(c2.header()),
+            c.hash()
+        ));
+        // Either block is gone
+        assert!(!is_on_requested_chain(b.hash(), None, Some(c.header()), c.hash()));
+        assert!(!is_on_requested_chain(b.hash(), Some(b.header()), None, c.hash()));
     }
 }
 

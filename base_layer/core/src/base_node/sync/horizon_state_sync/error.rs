@@ -184,9 +184,22 @@ impl HorizonSyncError {
 
 #[cfg(test)]
 mod connect_error_test {
-    use tari_comms::protocol::rpc::{HandshakeRejectReason, RpcError, RpcHandshakeError};
+    use tari_comms::{
+        PeerConnectionError,
+        YamuxControlError,
+        protocol::rpc::{HandshakeRejectReason, RpcError, RpcHandshakeError},
+    };
 
     use super::*;
+
+    /// Our own connection refusing to open the RPC substream, because too many are open on it, is not the peer's fault
+    #[test]
+    fn a_locally_refused_substream_is_not_banned() {
+        let err = HorizonSyncError::from_connect_error(RpcError::PeerConnectionError(
+            PeerConnectionError::YamuxControlError(YamuxControlError::TooManyStreams),
+        ));
+        assert!(err.get_ban_reason().is_none(), "{err} was banned");
+    }
 
     /// A sync peer that cannot take a session while connecting is skipped without a ban; one that misbehaves while
     /// connecting, and any RPC error after connecting, is still banned

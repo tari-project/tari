@@ -62,7 +62,7 @@ use crate::{
         peer_connection,
     },
     multiaddr::Multiaddr,
-    multiplexing::Yamux,
+    multiplexing::{WriteStallSocket, Yamux},
     net_address::{MultiaddrRange, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, Peer, PeerManager},
@@ -472,7 +472,7 @@ where
     }
 
     fn check_authenticated_public_key(
-        socket: &NoiseSocket<TTransport::Output>,
+        socket: &NoiseSocket<WriteStallSocket<TTransport::Output>>,
         expected_public_key: &CommsPublicKey,
     ) -> Result<CommsPublicKey, ConnectionManagerError> {
         let authenticated_public_key = socket
@@ -492,7 +492,7 @@ where
     async fn perform_socket_upgrade_procedure(
         peer_manager: &PeerManager,
         node_identity: &NodeIdentity,
-        mut socket: NoiseSocket<TTransport::Output>,
+        mut socket: NoiseSocket<WriteStallSocket<TTransport::Output>>,
         dialed_addr: Multiaddr,
         authenticated_public_key: CommsPublicKey,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -538,8 +538,10 @@ where
             Some(peer_identity.claim.features),
             Some(peer_identity.metadata.user_agent.clone()),
         );
-        let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION, peer_connection_info)
-            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
+        let write_stall = socket.get_ref().write_stall();
+        let muxer =
+            Yamux::upgrade_connection_with_write_stall(socket, CONNECTION_DIRECTION, peer_connection_info, write_stall)
+                .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         if cancel_signal.is_triggered() {
             muxer.get_yamux_control().close().await?;
@@ -566,7 +568,7 @@ where
         transport: TTransport,
         backoff: Arc<TBackoff>,
         config: &ConnectionManagerConfig,
-    ) -> (DialState, DialResult<TTransport::Output>) {
+    ) -> (DialState, DialResult<WriteStallSocket<TTransport::Output>>) {
         // Container for dial
         let mut dial_state = {
             let mut temp_state = dial_state;
@@ -667,7 +669,7 @@ where
         excluded_dial_addresses: Vec<MultiaddrRange>,
     ) -> (
         DialState,
-        Result<(NoiseSocket<TTransport::Output>, Multiaddr), ConnectionManagerError>,
+        Result<(NoiseSocket<WriteStallSocket<TTransport::Output>>, Multiaddr), ConnectionManagerError>,
     ) {
         let supported_transport_protocols = transport.supported_protocols();
         trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
@@ -757,8 +759,9 @@ where
                     .await
                     .map_err(|_| ConnectionManagerError::WireFormatSendFailed)?;
 
+                // Write stalls are measured on the transport, under noise
                 let noise_socket = noise_config
-                    .upgrade_socket(socket, ConnectionDirection::Outbound)
+                    .upgrade_socket(WriteStallSocket::new(socket), ConnectionDirection::Outbound)
                     .await
                     .inspect_err(|err| {
                         debug!(
