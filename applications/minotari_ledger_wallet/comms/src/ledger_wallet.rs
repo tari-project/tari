@@ -58,7 +58,7 @@ pub const EXPECTED_NAME: &str = "minotari_ledger_wallet";
 /// application itself remains open to the no-prompt key recovery this change closes, for any host. The version bump
 /// that ships this application is what lets the wallet refuse it. Keep this in step with the ledger application's
 /// `version` in its `Cargo.toml`.
-pub const MIN_LEDGER_APP_VERSION: &str = "5.7.0-pre.6";
+pub const MIN_LEDGER_APP_VERSION: &str = "6.2.0-pre.1";
 
 struct HidManager {
     inner: Option<HidApi>,

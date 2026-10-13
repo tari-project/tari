@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.2.0-pre.1](https://github.com/tari-project/tari/compare/v6.2.0-pre.0...v6.2.0-pre.1) (2026-10-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **common_sqlite:** owner-only database files, WAL set in create_pool, per-database profiles (#8107)
+
+### Features
+
+* **base_node:** use mimalloc as the global allocator ([#8111](https://github.com/tari-project/tari/issues/8111)) ([e2adb3c](https://github.com/tari-project/tari/commit/e2adb3c959a139832ea98ffa571db249269d1dc9))
+
+
+### Bug Fixes
+
+* **common_sqlite:** owner-only database files, WAL set in create_pool, per-database profiles ([#8107](https://github.com/tari-project/tari/issues/8107)) ([b3fe279](https://github.com/tari-project/tari/commit/b3fe279e2ce594a2832aedf465ffbe5435531ffc)), closes [/github.com/tari-project/tari/pull/8107#discussion_r4256061979](https://github.com/tari-project//github.com/tari-project/tari/pull/8107/issues/discussion_r4256061979) [/github.com/tari-project/tari/pull/8107#discussion_r4256061988](https://github.com/tari-project//github.com/tari-project/tari/pull/8107/issues/discussion_r4256061988)
+* **comms/dht:** bound per-peer flood-ban metrics and drop stale entries ([#8110](https://github.com/tari-project/tari/issues/8110)) ([859cde7](https://github.com/tari-project/tari/commit/859cde7d332cf7b31088b2376ea15320e42efb0a))
+* **comms:** bound memory held for stalled yamux peers, RPC/sync streams and gRPC GetBlocks ([#8108](https://github.com/tari-project/tari/issues/8108)) ([48babe2](https://github.com/tari-project/tari/commit/48babe28a68856402028cda419f3b4b99a67a5ed))
+* **key_manager:** low-impact hardening from the key manager security analysis ([#8106](https://github.com/tari-project/tari/issues/8106)) ([42977a2](https://github.com/tari-project/tari/commit/42977a22f7a8f38e811672451c16875fc21de167)), closes [#8077](https://github.com/tari-project/tari/issues/8077) [#8104](https://github.com/tari-project/tari/issues/8104)
+* **ledger:** sign device sender-offset keys only through the reviewed metadata instruction ([#8104](https://github.com/tari-project/tari/issues/8104)) ([897835c](https://github.com/tari-project/tari/commit/897835c76d19e3e6c24daa89a7328b119d9eae19)), closes [#8098](https://github.com/tari-project/tari/issues/8098)
+* **node:** enable HTTP/2 and TCP keepalives on the base node gRPC server ([#8109](https://github.com/tari-project/tari/issues/8109)) ([3506c52](https://github.com/tari-project/tari/commit/3506c52460d73a8094ca031550b2156528ed10ff)), closes [#8108](https://github.com/tari-project/tari/issues/8108)
+
 ## [6.2.0-pre.0](https://github.com/tari-project/tari/compare/v6.1.0-pre.1...v6.2.0-pre.0) (2026-10-09)
 
 
