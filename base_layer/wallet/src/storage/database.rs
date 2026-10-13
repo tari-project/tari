@@ -436,8 +436,9 @@ mod test {
     #[test]
     fn test_database_crud() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
-        let db_folder = tempdir().unwrap().path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
+        let temp_dir = tempdir().unwrap();
+        let db_folder = temp_dir.path().to_str().unwrap().to_string();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}/{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("my secret lovely passphrase");
         let db = WalletDatabase::new(WalletSqliteDatabase::new(connection, passphrase).unwrap());

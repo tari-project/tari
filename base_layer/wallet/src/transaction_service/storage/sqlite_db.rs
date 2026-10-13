@@ -3218,7 +3218,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}{db_name}");
+        let db_path = format!("{db_folder}/{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -3629,7 +3629,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}{db_name}");
+        let db_path = format!("{db_folder}/{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -3773,7 +3773,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}{db_name}");
+        let db_path = format!("{db_folder}/{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -3927,7 +3927,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}{db_name}");
+        let db_path = format!("{db_folder}/{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
@@ -4051,7 +4051,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}{db_name}");
+        let db_path = format!("{db_folder}/{db_name}");
 
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
         // Note: For this test the connection pool is setup with a pool size of 2; a pooled connection must go out
