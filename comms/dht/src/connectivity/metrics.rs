@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    cmp,
     collections::{HashMap, HashSet, VecDeque, hash_map::Entry},
     time::Duration,
 };
@@ -43,8 +44,8 @@ const ALL_MESSAGES_RECV_CAPACITY: usize = 100_000;
 /// disconnects; this catches the ones whose disconnect was missed.
 const STALE_PRUNE_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
-/// A per-peer entry whose newest sample is older than this is dropped at the next prune. This is far longer than any
-/// flood-ban timespan, so ban decisions are not affected.
+/// A per-peer entry whose newest sample is older than this is dropped at the next prune. If the configured flood-ban
+/// timespan is longer, that timespan is used instead, so samples inside the flood-ban window are never pruned.
 const STALE_ENTRY_AGE: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug)]
@@ -168,17 +169,21 @@ impl MetricsState {
 pub struct MetricsCollector {
     stream: mpsc::Receiver<MetricOp>,
     state: MetricsState,
+    /// Per-peer entries whose newest sample is older than this are pruned
+    stale_entry_age: Duration,
 }
 
 impl MetricsCollector {
     /// Spawn the collector. `per_peer_capacity` is the maximum number of message samples kept per peer. It must be
-    /// more than the flood-ban message count, so that a flooding peer can be detected.
-    pub fn spawn(per_peer_capacity: usize) -> MetricsCollectorHandle {
+    /// more than the flood-ban message count, so that a flooding peer can be detected. `flood_ban_timespan` is the
+    /// flood-ban window: an idle peer entry is kept for at least this long.
+    pub fn spawn(per_peer_capacity: usize, flood_ban_timespan: Duration) -> MetricsCollectorHandle {
         let (metrics_tx, metrics_rx) = mpsc::channel(500);
         let metrics_collector = MetricsCollectorHandle::new(metrics_tx);
         let collector = Self {
             stream: metrics_rx,
             state: MetricsState::new(per_peer_capacity),
+            stale_entry_age: cmp::max(STALE_ENTRY_AGE, flood_ban_timespan),
         };
         task::spawn(collector.run());
         metrics_collector
@@ -199,7 +204,7 @@ impl MetricsCollector {
                     }
                 },
                 _ = prune_ticker.tick() => {
-                    self.state.prune_stale(STALE_ENTRY_AGE);
+                    self.state.prune_stale(self.stale_entry_age);
                 },
             }
         }
@@ -441,6 +446,7 @@ mod test {
 
     const FLOOD_BAN_MAX_MSG_COUNT: usize = 1000;
     const PER_PEER_CAPACITY: usize = FLOOD_BAN_MAX_MSG_COUNT + 1;
+    const FLOOD_BAN_TIMESPAN: Duration = Duration::from_secs(60);
 
     fn node_id(byte: u8) -> NodeId {
         NodeId::from_canonical_bytes(&[byte; NodeId::byte_size()]).unwrap()
@@ -517,7 +523,7 @@ mod test {
 
     #[tokio::test(start_paused = true)]
     async fn it_prunes_stale_entries_at_the_next_tick() {
-        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY);
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
         let old_peer = node_id(1);
         let recent_peer = node_id(2);
 
@@ -554,9 +560,31 @@ mod test {
         assert_eq!(ts.count(), 1);
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn it_keeps_idle_entries_within_a_long_flood_ban_timespan() {
+        let flood_ban_timespan = Duration::from_secs(2 * 60 * 60);
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, flood_ban_timespan);
+        let peer = node_id(1);
+
+        // t = 0
+        assert!(collector.write_metric_message_received(peer.clone()));
+        let ts = collector.get_messages_received_timeseries(peer.clone()).await.unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 75 min. Idle for more than 1 h, but still inside the 2 h flood-ban timespan, so the 70 min tick kept it
+        time::sleep(Duration::from_secs(75 * 60)).await;
+        let ts = collector.get_messages_received_timeseries(peer.clone()).await.unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 135 min. The 130 min tick pruned it: it has been idle for longer than the timespan
+        time::sleep(Duration::from_secs(60 * 60)).await;
+        let ts = collector.get_messages_received_timeseries(peer).await.unwrap();
+        assert_eq!(ts.count(), 0);
+    }
+
     #[tokio::test]
     async fn it_retains_only_via_the_handle() {
-        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY);
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
         assert!(collector.write_metric_message_received(node_id(1)));
         assert!(collector.write_metric_message_received(node_id(2)));
 

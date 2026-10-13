@@ -95,7 +95,7 @@ async fn setup(
         connectivity,
         dht_requester,
         event_publisher,
-        MetricsCollector::spawn(1001),
+        MetricsCollector::spawn(1001, Duration::from_secs(60)),
         shutdown.to_signal(),
     );
 
@@ -262,7 +262,7 @@ async fn it_survives_a_failed_initial_refresh() {
         connectivity,
         dht_requester,
         event_publisher,
-        MetricsCollector::spawn(1001),
+        MetricsCollector::spawn(1001, Duration::from_secs(60)),
         shutdown.to_signal(),
     );
 
@@ -291,7 +291,7 @@ async fn it_drops_metrics_of_disconnected_peers_when_events_lag() {
     let (dht_requester, mock) = create_dht_actor_mock();
     mock.spawn();
     let (event_publisher, _) = broadcast::channel(1);
-    let mut metrics_collector = MetricsCollector::spawn(1001);
+    let mut metrics_collector = MetricsCollector::spawn(1001, Duration::from_secs(60));
     let dht_connectivity = DhtConnectivity::new(
         Arc::new(DhtConfig::default()),
         build_peer_manager(),
@@ -1427,7 +1427,7 @@ mod metrics {
 
         #[tokio::test]
         async fn it_adds_message_received() {
-            let mut metric_collector = MetricsCollector::spawn(1001);
+            let mut metric_collector = MetricsCollector::spawn(1001, std::time::Duration::from_secs(60));
             let node_id = NodeId::default();
             (0..100).for_each(|_| {
                 assert!(metric_collector.write_metric_message_received(node_id.clone()));
@@ -1442,7 +1442,7 @@ mod metrics {
 
         #[tokio::test]
         async fn it_clears_the_metrics() {
-            let mut metric_collector = MetricsCollector::spawn(1001);
+            let mut metric_collector = MetricsCollector::spawn(1001, std::time::Duration::from_secs(60));
             let node_id = NodeId::default();
             assert!(metric_collector.write_metric_message_received(node_id.clone()));
 
