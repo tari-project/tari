@@ -22,18 +22,43 @@
 
 use core::time::Duration;
 
-use diesel::{RunQueryDsl, SqliteConnection, connection::SimpleConnection, dsl::sql, sql_types::Text};
+use diesel::{SqliteConnection, connection::SimpleConnection};
 use log::trace;
-
-use crate::connection::DbConnection;
 
 const LOG_TARGET: &str = "common_sqlite::connection_options";
 
-/// A default busy timeout for SQLite pool connection to throw a 'database is locked' error.
+/// The default busy timeout for a [`DbProfile::KeyMaterial`] database: how long a connection waits on a lock before
+/// SQLite returns 'database is locked'.
 pub const PRAGMA_BUSY_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// The default busy timeout for a [`DbProfile::Cache`] database. Caches sit on hot networking paths, where a call that
+/// waits a minute for a lock has long outlived the request that made it.
+pub const PRAGMA_BUSY_TIMEOUT_CACHE: Duration = Duration::from_secs(10);
+
+/// What a database holds, which decides the pragmas every connection to it gets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DbProfile {
+    /// Wallet and key-manager databases: durability and residue control over throughput.
+    KeyMaterial,
+    /// Peer, DHT and other caches: throughput over durability; nothing secret inside.
+    Cache,
+}
+
+impl DbProfile {
+    /// The `PRAGMA busy_timeout` used unless the caller overrides it.
+    pub fn default_busy_timeout(self) -> Duration {
+        match self {
+            DbProfile::KeyMaterial => PRAGMA_BUSY_TIMEOUT,
+            DbProfile::Cache => PRAGMA_BUSY_TIMEOUT_CACHE,
+        }
+    }
+}
 
 /// Connection-level options that are applied to **every** SQLite connection
 /// as it is acquired from the r2d2 pool (via the `CustomizeConnection` hook).
+///
+/// The journal mode is not set here: `SqliteConnectionPool::create_pool` switches a file-backed database to WAL once,
+/// before the pool is built, because the mode is persistent and a per-connection switch races other connections.
 ///
 /// # Timeout interplay
 /// `busy_timeout` controls how long a **checked-out** connection will wait
@@ -46,80 +71,72 @@ pub const PRAGMA_BUSY_TIMEOUT: Duration = Duration::from_secs(60);
 /// or keep `busy_timeout` lower and implement retries with backoff.
 #[derive(Debug, Clone)]
 pub struct ConnectionOptions {
-    /// If `true`, enables Write-Ahead Logging and sets
-    /// `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`
-    /// for a good durability/throughput trade-off.
-    enable_wal: bool,
-    /// If `true`, enforces SQLite foreign key constraints
-    /// (`PRAGMA foreign_keys = ON;`).
-    enable_foreign_keys: bool,
+    /// Which pragma set to apply.
+    profile: DbProfile,
     /// How long SQLite should wait for locks before returning `SQLITE_BUSY`.
-    /// When `None`, no busy timeout is configured.
-    busy_timeout: Option<Duration>,
+    busy_timeout: Duration,
 }
 
 impl ConnectionOptions {
-    /// Construct a new set of connection options.
-    ///
-    /// * `enable_wal` — enable WAL + `synchronous=NORMAL`
-    /// * `enable_foreign_keys` — enforce FK constraints
-    /// * `busy_timeout` — SQLite lock wait duration
-    pub fn new(enable_wal: bool, enable_foreign_keys: bool, busy_timeout: Duration) -> Self {
+    /// The options for `profile`, with the profile's default busy timeout.
+    pub fn from_profile(profile: DbProfile) -> Self {
         Self {
-            enable_wal,
-            enable_foreign_keys,
-            busy_timeout: Some(busy_timeout),
+            profile,
+            busy_timeout: profile.default_busy_timeout(),
         }
     }
 
-    /// Returns the busy timeout duration, if set.
-    pub fn get_busy_timeout(&self) -> Option<Duration> {
+    /// Override the profile's default busy timeout.
+    pub fn set_busy_timeout(&mut self, busy_timeout: Duration) {
+        self.busy_timeout = busy_timeout;
+    }
+
+    /// Returns the busy timeout duration.
+    pub fn get_busy_timeout(&self) -> Duration {
         self.busy_timeout
+    }
+
+    /// Returns the profile these options were built from.
+    pub fn profile(&self) -> DbProfile {
+        self.profile
     }
 }
 
 impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ConnectionOptions {
-    /// Applies PRAGMAs on each acquired connection:
-    /// - `PRAGMA busy_timeout`
-    /// - `PRAGMA secure_delete = ON;`
-    /// - `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;` (if enabled)
-    /// - `PRAGMA foreign_keys = ON;` (if enabled)
+    /// Applies the profile's PRAGMAs on each new connection:
+    ///
+    /// | Pragma               | `KeyMaterial` | `Cache`  |
+    /// |----------------------|---------------|----------|
+    /// | `busy_timeout`       | 60 s default  | 10 s default |
+    /// | `foreign_keys`       | ON            | ON       |
+    /// | `secure_delete`      | ON            | OFF      |
+    /// | `synchronous`        | FULL          | NORMAL   |
+    /// | `journal_size_limit` | 4 MiB         | 64 MiB   |
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
-        (|| {
-            let start = std::time::Instant::now();
-            if let Some(d) = self.busy_timeout {
-                conn.batch_execute(&format!("PRAGMA busy_timeout = {};", d.as_millis()))?;
-            }
+        let start = std::time::Instant::now();
+        let pragmas = match self.profile {
+            // `secure_delete` overwrites freed pages in the main database file, so a deleted row's plaintext is not
+            // left legible in a free page. It does not reach the `-wal` or `-journal` files: residue there is only
+            // bounded, by `journal_size_limit` and by a best-effort TRUNCATE checkpoint when the pool is cleaned up
+            // (`SqliteConnectionPool::cleanup`; the wallet does this when its last database handle is dropped). That
+            // checkpoint is skipped if another connection holds the database at that moment.
+            DbProfile::KeyMaterial => {
+                "PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON; PRAGMA synchronous = FULL; PRAGMA \
+                 journal_size_limit = 4194304;"
+            },
+            DbProfile::Cache => {
+                "PRAGMA foreign_keys = ON; PRAGMA secure_delete = OFF; PRAGMA synchronous = NORMAL; PRAGMA \
+                 journal_size_limit = 67108864;"
+            },
+        };
+        conn.batch_execute(&format!(
+            "PRAGMA busy_timeout = {}; {}",
+            self.busy_timeout.as_millis(),
+            pragmas
+        ))
+        .map_err(diesel::r2d2::Error::QueryError)?;
 
-            // These databases hold key material. Without this, a deleted row is only unlinked from the b-tree and its
-            // plaintext stays legible in the freed page until that page happens to be reused, so anyone reading the
-            // file can still recover it. Overwrite freed content instead.
-            conn.batch_execute("PRAGMA secure_delete = ON;")?;
-
-            if self.enable_wal {
-                // Read current mode (cheap, read-only)
-                let current: String = sql::<Text>("PRAGMA journal_mode;").get_result(conn)?;
-
-                if current.eq_ignore_ascii_case("wal") {
-                    // Already WAL: just ensure the sync level
-                    conn.batch_execute("PRAGMA synchronous = NORMAL;")?;
-                } else if DbConnection::migration_lock_active() {
-                    // Only attempt the WAL flip when we know we hold the process-wide write lock.
-                    // This avoids racy WAL changes from concurrent connection acquisitions.
-                    conn.batch_execute("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
-                } else {
-                    // Not WAL and no migration lock: do nothing (avoid SQLITE_BUSY on startup).
-                    // Next time on_acquire runs under the lock (during migrate), it will flip.
-                }
-            }
-
-            if self.enable_foreign_keys {
-                conn.batch_execute("PRAGMA foreign_keys = ON;")?;
-            }
-
-            trace!(target: LOG_TARGET, "Applied SQLite PRAGMAs on_acquire in {:.2?}", start.elapsed());
-            Ok(())
-        })()
-        .map_err(diesel::r2d2::Error::QueryError)
+        trace!(target: LOG_TARGET, "Applied SQLite PRAGMAs on_acquire in {:.2?}", start.elapsed());
+        Ok(())
     }
 }

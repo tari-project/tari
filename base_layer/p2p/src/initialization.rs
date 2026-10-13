@@ -35,6 +35,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
 };
 use tari_common_sqlite::{
+    DbProfile,
     connection::{DbConnection, DbConnectionUrl},
     error::StorageError,
 };
@@ -156,6 +157,7 @@ where
         &database_url,
         MIGRATIONS,
         Some(5),
+        DbProfile::Cache,
         PEER_DATABASE_BUSY_TIMEOUT,
     )?;
     let peer_database = PeerDatabaseSql::new(db_connection, &node_identity.to_peer())?;
@@ -313,6 +315,7 @@ async fn configure_comms_and_dht(
         &database_url,
         MIGRATIONS,
         Some(16),
+        DbProfile::Cache,
         PEER_DATABASE_BUSY_TIMEOUT,
     )?;
     let this_node = builder

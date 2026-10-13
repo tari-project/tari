@@ -25,7 +25,7 @@ use std::{fs::File, ops::DerefMut, path::Path};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
 use fs2::FileExt;
 use log::*;
-use tari_common_sqlite::{PRAGMA_BUSY_TIMEOUT, sqlite_connection_pool::SqliteConnectionPool};
+use tari_common_sqlite::{DbProfile, sqlite_connection_pool::SqliteConnectionPool};
 use tari_transaction_key_manager::storage::sqlite_db::TransactionKeyManagerSqliteDatabase;
 use tari_utilities::SafePassword;
 pub use wallet_db_connection::WalletDbConnection;
@@ -55,13 +55,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
         .to_str()
         .ok_or(WalletStorageError::InvalidUnicodePath)?;
 
-    let mut pool = SqliteConnectionPool::new(
-        String::from(path_str),
-        sqlite_pool_size,
-        true,
-        true,
-        PRAGMA_BUSY_TIMEOUT,
-    );
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), sqlite_pool_size, DbProfile::KeyMaterial)?;
     pool.create_pool()?;
     let mut connection = pool.get_pooled_connection()?;
 
@@ -75,7 +69,7 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
 
 pub fn run_migration_and_create_sqlite_memory_connection() -> Result<WalletDbConnection, WalletStorageError> {
     // Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
-    let mut pool = SqliteConnectionPool::new(String::from(":memory:"), 1, false, true, PRAGMA_BUSY_TIMEOUT);
+    let mut pool = SqliteConnectionPool::new(String::from(":memory:"), 1, DbProfile::KeyMaterial)?;
     pool.create_pool()?;
     let mut connection = pool.get_pooled_connection()?;
 
@@ -158,7 +152,7 @@ pub fn get_last_version<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, Wa
         .to_str()
         .ok_or(WalletStorageError::InvalidUnicodePath)?;
 
-    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, PRAGMA_BUSY_TIMEOUT);
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, DbProfile::KeyMaterial)?;
     pool.create_pool()?;
 
     WalletSettingSql::get(&DbKey::LastAccessedVersion, pool.get_pooled_connection()?.deref_mut())
@@ -170,8 +164,75 @@ pub fn get_last_network<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, Wa
         .to_str()
         .ok_or(WalletStorageError::InvalidUnicodePath)?;
 
-    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, true, true, PRAGMA_BUSY_TIMEOUT);
+    let mut pool = SqliteConnectionPool::new(String::from(path_str), 1, DbProfile::KeyMaterial)?;
     pool.create_pool()?;
 
     WalletSettingSql::get(&DbKey::LastAccessedNetwork, pool.get_pooled_connection()?.deref_mut())
+}
+
+#[cfg(test)]
+mod test {
+    use diesel::{
+        Connection,
+        RunQueryDsl,
+        SqliteConnection,
+        connection::SimpleConnection,
+        dsl::sql,
+        sql_types::Integer,
+    };
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use tari_utilities::SafePassword;
+
+    use super::{initialize_sqlite_database_backends, run_migration_and_create_sqlite_connection};
+
+    /// Dropping the last wallet handle truncates the WAL, so it does not keep copies of deleted rows. An outside
+    /// connection stays open throughout: without it SQLite would checkpoint and delete the WAL itself when the last
+    /// connection closed, and the test could not tell whether the wallet did anything.
+    #[test]
+    fn dropping_last_wallet_handle_truncates_wal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("console_wallet.db");
+        let wal_path = temp_dir.path().join("console_wallet.db-wal");
+
+        let connection = run_migration_and_create_sqlite_connection(&db_path, 4).unwrap();
+        let clone = connection.clone();
+        {
+            let mut conn = clone.get_pooled_connection().unwrap();
+            conn.batch_execute(
+                "CREATE TABLE secrets (id INTEGER PRIMARY KEY, value TEXT); WITH RECURSIVE n(i) AS (SELECT 1 UNION \
+                 ALL SELECT i + 1 FROM n WHERE i < 200) INSERT INTO secrets (value) SELECT 'secret-' || i FROM n; \
+                 DELETE FROM secrets;",
+            )
+            .unwrap();
+        }
+
+        let mut observer = SqliteConnection::establish(db_path.to_str().unwrap()).unwrap();
+        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM secrets")
+            .get_result(&mut observer)
+            .unwrap();
+        assert_eq!(count, 0);
+        assert!(
+            std::fs::metadata(&wal_path).unwrap().len() > 0,
+            "the test needs a non-empty WAL"
+        );
+
+        drop(clone);
+        drop(connection);
+
+        let wal_len = std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0);
+        assert_eq!(
+            wal_len, 0,
+            "the WAL was not truncated when the last wallet handle was dropped"
+        );
+        drop(observer);
+    }
+
+    /// `wallet.db_connection_pool_size = 0` used to reach r2d2's `Builder::max_size(0)`, which panics.
+    #[test]
+    fn pool_size_zero_from_config_is_an_error_not_a_panic() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("console_wallet.db");
+        let result = initialize_sqlite_database_backends(db_path, SafePassword::from("test password"), 0);
+        assert!(result.is_err());
+    }
 }

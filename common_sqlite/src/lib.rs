@@ -22,7 +22,7 @@
 
 pub mod connection;
 mod connection_options;
-pub use connection_options::PRAGMA_BUSY_TIMEOUT;
+pub use connection_options::{DbProfile, PRAGMA_BUSY_TIMEOUT, PRAGMA_BUSY_TIMEOUT_CACHE};
 pub mod error;
 pub mod sqlite_connection_pool;
 pub mod util;

@@ -326,7 +326,7 @@ mod test {
         let db_name = format!("{}.sqlite3", "test");
         let temp_dir = tempdir().unwrap();
         let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}{db_name}");
+        let db_path = format!("{db_folder}/{db_name}");
 
         let mut conn =
             SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {db_path}"));

@@ -17,7 +17,10 @@ use anyhow::anyhow;
 use bytes::Bytes;
 use chrono::Utc;
 use rand::Rng;
-use tari_common_sqlite::connection::{DbConnection, DbConnectionUrl};
+use tari_common_sqlite::{
+    DbProfile,
+    connection::{DbConnection, DbConnectionUrl},
+};
 use tari_comms::{
     CommsBuilder,
     CommsNode,
@@ -199,7 +202,7 @@ async fn setup_node_with_tor<P: Into<tor::PortMapping>>(
     Error,
 > {
     let database_url = DbConnectionUrl::File(PathBuf::from(database_path).join("peers.db"));
-    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5))?;
+    let db_connection = DbConnection::connect_and_migrate(&database_url, MIGRATIONS, Some(5), DbProfile::Cache)?;
     let peer_database = PeerDatabaseSql::new(db_connection, &create_test_peer())?;
 
     let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();

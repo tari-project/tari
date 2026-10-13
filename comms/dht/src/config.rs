@@ -48,7 +48,9 @@ const MIN_ON_CONNECT_RESYNC_TTL: Duration = Duration::from_secs(60);
 pub struct DhtConfig {
     /// The major protocol version to use. Default: DhtProtocolVersion::latest()
     pub protocol_version: DhtProtocolVersion,
-    /// The `DbConnectionUrl` for the Dht database. Default: In-memory database
+    /// The `DbConnectionUrl` for the Dht database. Default: `dht.sqlite` under the data directory (set by the p2p
+    /// config; `DhtConfig::default()` itself uses `:memory:`). `:memory:` is accepted only with a single connection
+    /// and is lost on restart.
     pub database_url: DbConnectionUrl,
     /// The number of peers to connect to as part of the managed peer pool.
     /// Default: 8

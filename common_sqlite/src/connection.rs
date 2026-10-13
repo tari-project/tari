@@ -26,7 +26,7 @@ use std::{
     fs,
     iter,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock, RwLockWriteGuard},
+    sync::{Arc, PoisonError, RwLock, RwLockWriteGuard},
     time::Duration,
 };
 
@@ -40,7 +40,7 @@ use rand::{RngExt, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    connection_options::PRAGMA_BUSY_TIMEOUT,
+    connection_options::DbProfile,
     error::{SqliteStorageError, StorageError},
     sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
 };
@@ -111,6 +111,10 @@ lazy_static::lazy_static! {
 }
 
 /// An SQLite database connection using the Diesel ORM with its r2d2 connection pool and SQLite WAL backend.
+///
+/// A file database is switched to WAL by `SqliteConnectionPool::create_pool`, once, before the pool opens any
+/// connection; it does not depend on the migration lock. The [`DbProfile`] passed to the constructors fixes the
+/// remaining pragmas and the default busy timeout.
 /// --------------------------------------------------------------------------------------------------------------------
 /// Notes on SQLite’s Concurrency Limitations (causes of intermittent “Database is Locked” errors)
 ///
@@ -176,40 +180,37 @@ impl Drop for TempDatabaseDir {
 
 impl DbConnection {
     /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl), optionally using the given pool size to
-    /// override the default setting of 1.
+    /// override the default setting of 1. The busy timeout is the profile's default.
     /// Note: See https://github.com/launchbadge/sqlx/issues/362#issuecomment-636661146
-    pub fn connect_url(db_url: &DbConnectionUrl, sqlite_pool_size: Option<usize>) -> Result<Self, StorageError> {
-        Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, PRAGMA_BUSY_TIMEOUT)
+    pub fn connect_url(
+        db_url: &DbConnectionUrl,
+        sqlite_pool_size: Option<usize>,
+        profile: DbProfile,
+    ) -> Result<Self, StorageError> {
+        Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, profile, profile.default_busy_timeout())
     }
 
-    /// As [`Self::connect_url`], but with an explicit `PRAGMA busy_timeout`.
+    /// As [`Self::connect_url`], but with an explicit `PRAGMA busy_timeout` in place of the profile's default.
     ///
-    /// The default ([`PRAGMA_BUSY_TIMEOUT`], 60s) suits databases where losing a write is worse than
+    /// The [`DbProfile::KeyMaterial`] default (60s) suits databases where losing a write is worse than
     /// waiting - the wallet, for instance. It is a poor fit for databases on a hot networking path,
     /// where a call that waits a minute for a lock has long outlived the request that made it and,
     /// even when run on a blocking thread pool, occupies a thread in it for that whole minute. Such
-    /// callers should pass something far shorter.
+    /// callers use [`DbProfile::Cache`] or pass something far shorter.
     pub fn connect_url_with_busy_timeout(
         db_url: &DbConnectionUrl,
         sqlite_pool_size: Option<usize>,
+        profile: DbProfile,
         busy_timeout: Duration,
     ) -> Result<Self, StorageError> {
-        debug!(target: LOG_TARGET, "Connecting to database using '{db_url:?}' (busy_timeout {busy_timeout:.0?})");
-
-        // Ensure the path exists
-        if let DbConnectionUrl::File(path) = db_url &&
-            let Some(parent) = path.parent()
-        {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        let mut pool = SqliteConnectionPool::new(
-            db_url.to_url_string(),
-            sqlite_pool_size.unwrap_or(1),
-            true,
-            true,
-            busy_timeout,
+        debug!(
+            target: LOG_TARGET,
+            "Connecting to database using '{db_url:?}' ({profile:?}, busy_timeout {busy_timeout:.0?})"
         );
+
+        // `create_pool` creates the directory and the file owner-only.
+        let mut pool = SqliteConnectionPool::new(db_url.to_url_string(), sqlite_pool_size.unwrap_or(1), profile)?
+            .with_busy_timeout(busy_timeout);
         pool.create_pool()?;
 
         debug!(target: LOG_TARGET, "{}", pool);
@@ -217,21 +218,10 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
-    fn acquire_migration_write_lock() -> Result<RwLockWriteGuard<'static, ()>, StorageError> {
-        match DB_WRITE_LOCK.write() {
-            Ok(value) => Ok(value),
-            Err(err) => Err(StorageError::DatabaseMigrationLockError(format!(
-                "Failed to acquire write lock for database migration: {err}"
-            ))),
-        }
-    }
-
-    /// Returns true **if** the migration write lock is currently held by *some* writer in this
-    /// process. We detect this by attempting a non-blocking read; it fails while a write lock is
-    /// held.
-    #[inline]
-    pub fn migration_lock_active() -> bool {
-        DB_WRITE_LOCK.try_read().is_err()
+    /// The lock only serialises migrations within this process and guards no data, so a poisoned lock is as good as
+    /// a healthy one.
+    fn acquire_migration_write_lock() -> RwLockWriteGuard<'static, ()> {
+        DB_WRITE_LOCK.write().unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Connect and migrate the database, once complete, then return a handle to the migrated database.
@@ -239,8 +229,15 @@ impl DbConnection {
         db_url: &DbConnectionUrl,
         migrations: EmbeddedMigrations,
         sqlite_pool_size: Option<usize>,
+        profile: DbProfile,
     ) -> Result<Self, StorageError> {
-        Self::connect_and_migrate_with_busy_timeout(db_url, migrations, sqlite_pool_size, PRAGMA_BUSY_TIMEOUT)
+        Self::connect_and_migrate_with_busy_timeout(
+            db_url,
+            migrations,
+            sqlite_pool_size,
+            profile,
+            profile.default_busy_timeout(),
+        )
     }
 
     /// As [`Self::connect_and_migrate`], but with an explicit `PRAGMA busy_timeout`. See
@@ -249,10 +246,11 @@ impl DbConnection {
         db_url: &DbConnectionUrl,
         migrations: EmbeddedMigrations,
         sqlite_pool_size: Option<usize>,
+        profile: DbProfile,
         busy_timeout: Duration,
     ) -> Result<Self, StorageError> {
-        let _lock = Self::acquire_migration_write_lock()?;
-        let conn = Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, busy_timeout)?;
+        let _lock = Self::acquire_migration_write_lock();
+        let conn = Self::connect_url_with_busy_timeout(db_url, sqlite_pool_size, profile, busy_timeout)?;
         let output = conn.migrate(migrations)?;
         debug!(target: LOG_TARGET, "Database migration: {}", output.trim());
         Ok(conn)
@@ -273,10 +271,10 @@ impl DbConnection {
             format!("{prefix}{rand_str}")
         }
 
+        // `create_pool` creates the directory owner-only.
         let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
-        fs::create_dir_all(&path)?;
         let db_url = DbConnectionUrl::File(path.join("my_temp.db"));
-        let mut conn = DbConnection::connect_and_migrate(&db_url, migrations, Some(10))?;
+        let mut conn = DbConnection::connect_and_migrate(&db_url, migrations, Some(10), DbProfile::Cache)?;
         conn.temp_dir = Some(Arc::new(TempDatabaseDir {
             pool: conn.pool.clone(),
             dir: path,
@@ -395,6 +393,31 @@ mod test {
         assert!(!path.exists(), "temp dir was not cleaned up by the last handle");
     }
 
+    /// Each `:memory:` connection is a separate database, so the pool must hold exactly one connection and never reap
+    /// it: a replacement connection would be an empty database without the migrated schema.
+    #[test]
+    fn memory_url_single_connection_keeps_schema() {
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
+
+        let db_conn =
+            DbConnection::connect_and_migrate(&DbConnectionUrl::Memory, MIGRATIONS, Some(1), DbProfile::Cache).unwrap();
+
+        let pool = db_conn.pool.r2d2_pool().unwrap();
+        assert_eq!(pool.max_size(), 1);
+        assert_eq!(pool.min_idle(), Some(1));
+        assert_eq!(pool.max_lifetime(), None);
+        assert_eq!(pool.idle_timeout(), None);
+        let state = pool.state();
+        assert_eq!(state.connections, 1);
+        assert_eq!(state.idle_connections, 1);
+
+        let mut pool_conn = db_conn.get_pooled_connection().unwrap();
+        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM test_table")
+            .get_result(&mut pool_conn)
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn stress_connect_and_migrate_contention() {
         const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./test/migrations");
@@ -412,13 +435,19 @@ mod test {
         let mode: String = sql::<Text>("PRAGMA journal_mode;").get_result(&mut c).unwrap();
         assert!(mode.eq_ignore_ascii_case("wal"));
 
+        // Temp databases use the `Cache` profile.
         let busy: String = sql::<Text>("PRAGMA busy_timeout;").get_result(&mut c).unwrap();
-        assert!(busy.parse::<u128>().unwrap() >= PRAGMA_BUSY_TIMEOUT.as_millis());
+        assert_eq!(
+            busy.parse::<u128>().unwrap(),
+            DbProfile::Cache.default_busy_timeout().as_millis()
+        );
 
         // We have 'sqlite_pool_size = Some(10))', so '160 writers + 320 readers' must queue.
         const WRITERS: usize = 160;
         const READERS: usize = 320;
-        const HOLD_MS: u64 = 100;
+        // Writers are serialised, so WRITERS * HOLD_MS (8s) must stay inside the pool checkout timeout, which for the
+        // `Cache` profile is its 10s busy timeout plus 5s.
+        const HOLD_MS: u64 = 50;
 
         let barrier = Arc::new(Barrier::new(WRITERS + READERS));
         let mut tasks = JoinSet::new();

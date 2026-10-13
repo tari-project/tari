@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io::Error, num::TryFromIntError};
+use std::{io, io::Error, num::TryFromIntError, path::PathBuf};
 
 use diesel::r2d2;
 use tari_utilities::{hex::HexError, message_format::MessageFormatError};
@@ -29,8 +29,21 @@ use tokio::task;
 
 #[derive(Debug, Error)]
 pub enum SqliteStorageError {
-    #[error("Poolsize is too big")]
-    PoolSize(#[from] TryFromIntError),
+    #[error("SQLite pool size must be 1..=64 (got {0})")]
+    PoolSize(usize),
+    #[error("an in-memory SQLite database is private to one connection; pool size must be 1 (got {0})")]
+    InMemoryPoolSize(usize),
+    #[error("Could not create or restrict the permissions of `{}`: {source}", path.display())]
+    FilePermissions { path: PathBuf, source: io::Error },
+    #[error(
+        "Refusing to open a database in `{}`: it has mode {mode:o} and owner uid {owner}, so other users can write to it",
+        path.display()
+    )]
+    UnsafeDirectory { path: PathBuf, mode: u32, owner: u32 },
+    #[error("Refusing to open database file `{}`: it {reason}", path.display())]
+    UnsafeDatabaseFile { path: PathBuf, reason: String },
+    #[error("Could not set the SQLite journal mode to `{expected}` (got `{actual}`)")]
+    JournalMode { expected: &'static str, actual: String },
     #[error("Database error: `{0}`")]
     R2d2Error(#[from] r2d2::Error),
     #[error("Database error: `{0}`")]
@@ -63,8 +76,6 @@ pub enum StorageError {
     TryFromIntError(#[from] TryFromIntError),
     #[error("IO error: `{0}`")]
     IoError(#[from] Error),
-    #[error("Database migration lock error: {0}")]
-    DatabaseMigrationLockError(String),
 }
 
 impl From<MessageFormatError> for StorageError {

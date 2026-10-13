@@ -1309,7 +1309,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}/{db_name}"), 16).unwrap();
         let mut conn = connection.get_pooled_connection().unwrap();
 
         let key1 = "key1".to_string();
@@ -1361,7 +1361,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}/{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 
@@ -1392,7 +1392,7 @@ mod test {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
         let db_folder = db_tempdir.path().to_str().unwrap().to_string();
-        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}{db_name}"), 16).unwrap();
+        let connection = run_migration_and_create_sqlite_connection(format!("{db_folder}/{db_name}"), 16).unwrap();
 
         let passphrase = SafePassword::from("an example very very secret key.".to_string());
 

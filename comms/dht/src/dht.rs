@@ -24,7 +24,11 @@ use std::sync::Arc;
 
 use futures::Future;
 use log::*;
-use tari_common_sqlite::{connection::DbConnection, error::StorageError};
+use tari_common_sqlite::{
+    DbProfile,
+    connection::{DbConnection, DbConnectionUrl},
+    error::StorageError,
+};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     message::{InboundMessage, OutboundMessage},
@@ -132,8 +136,18 @@ impl Dht {
             seed_peer_provider,
         };
 
-        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone(), MIGRATIONS, Some(16))
-            .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
+        // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one.
+        let pool_size = match dht.config.database_url {
+            DbConnectionUrl::Memory => 1,
+            _ => 16,
+        };
+        let conn = DbConnection::connect_and_migrate(
+            &dht.config.database_url.clone(),
+            MIGRATIONS,
+            Some(pool_size),
+            DbProfile::Cache,
+        )
+        .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         let connectivity = dht.connectivity_service(shutdown_signal.clone());
         dht.network_discovery_service(shutdown_signal.clone())
@@ -428,6 +442,26 @@ mod test {
             service_spy,
         },
     };
+
+    /// An in-memory database is private to one connection, so the default (`:memory:`) configuration must get a
+    /// single-connection pool; a larger one is refused at startup.
+    #[tokio::test]
+    async fn dht_initialize_with_memory_url_uses_single_connection() {
+        let config = DhtConfig::default_local_test();
+        assert!(matches!(config.database_url, DbConnectionUrl::Memory));
+
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let dht = Dht::builder()
+            .with_config(config)
+            .with_outbound_sender(out_tx)
+            .build(node_identity, peer_manager, connectivity, shutdown.to_signal())
+            .await;
+        assert!(dht.is_ok(), "{:?}", dht.err());
+    }
 
     #[tokio::test]
     async fn test_stack_unencrypted() {

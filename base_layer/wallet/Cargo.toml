@@ -10,9 +10,8 @@ license.workspace = true
 
 
 [features]
-default = ["bundled_sqlite"]
+default = []
 c_integration = []
-bundled_sqlite = ["libsqlite3-sys"]
 ledger = [
     "tari_transaction_components/ledger",
 ]
@@ -60,7 +59,6 @@ diesel_migrations = "2.3"
 digest = "0.10"
 fs2 = "0.4.0"
 futures = { version = "^0.3.1", features = ["compat", "std"] }
-libsqlite3-sys = { version = "0.30.1", features = ["bundled"], optional = true }
 log = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -92,8 +90,3 @@ tari_core = { workspace = true }
 env_logger = "0.11"
 prost = "0.13.3"
 
-
-[package.metadata.cargo-machete]
-ignored = [
-    "libsqlite3-sys",
-] # this is so we can run cargo machete without getting false positive about macro dependancies

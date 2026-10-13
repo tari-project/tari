@@ -27,7 +27,12 @@
 //!
 //! [DhtRequest]: ./enum.DhtRequest.html
 
-use std::{fmt, fmt::Display, sync::Arc, time::Instant};
+use std::{
+    fmt,
+    fmt::Display,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use chrono::{DateTime, Utc};
 use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
@@ -279,7 +284,13 @@ pub struct DhtActor {
     shutdown_signal: ShutdownSignal,
     request_rx: mpsc::UnboundedReceiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
+    /// When a dedup cache error was last logged, so a broken database logs once per [`DEDUP_ERROR_LOG_INTERVAL`]
+    /// rather than once per message.
+    dedup_error_logged_at: Arc<Mutex<Option<Instant>>>,
 }
+
+/// The minimum time between two error logs for a failing dedup cache.
+const DEDUP_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
 impl DhtActor {
     /// Create a new DhtActor
@@ -301,6 +312,7 @@ impl DhtActor {
         );
         Self {
             msg_hash_dedup_cache: DedupCacheDatabase::new(conn.clone(), config.dedup_cache_capacity),
+            dedup_error_logged_at: Arc::new(Mutex::new(None)),
             config,
             database: DhtDatabase::new(conn),
             outbound_requester,
@@ -423,17 +435,31 @@ impl DhtActor {
                 reply_tx,
             } => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
+                let dedup_error_logged_at = self.dedup_error_logged_at.clone();
                 Box::pin(async move {
                     match msg_hash_cache.add_msg_hash(&message_hash, &received_from) {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
                         Err(err) => {
-                            warn!(
-                                target: LOG_TARGET,
-                                "Unable to update message dedup cache because {err:?}"
-                            );
-                            let _ = reply_tx.send(0);
+                            // Fail closed: a hit count above any allowed number of occurrences makes the dedup
+                            // middleware discard the message. Replying 0 would let every message (and every replay
+                            // of it) through while the cache is broken.
+                            let mut logged_at = dedup_error_logged_at.lock().unwrap_or_else(|e| e.into_inner());
+                            let should_log = match *logged_at {
+                                Some(at) => at.elapsed() >= DEDUP_ERROR_LOG_INTERVAL,
+                                None => true,
+                            };
+                            if should_log {
+                                *logged_at = Some(Instant::now());
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Unable to update message dedup cache, discarding inbound messages until it \
+                                     recovers: {err:?}"
+                                );
+                            }
+                            drop(logged_at);
+                            let _ = reply_tx.send(u32::MAX);
                         },
                     }
                     Ok(())
@@ -955,6 +981,65 @@ mod test {
             assert_eq!(discovery_mock.call_count(), 1);
             assert_eq!(connectivity_mock.call_count().await, 0);
         }
+    }
+
+    /// A dedup cache that cannot be written must not wave messages through: the actor replies with a hit count no
+    /// `allowed_message_occurrences` can admit, and the dedup middleware discards the message.
+    #[tokio::test]
+    async fn dedup_db_error_discards_message() {
+        use diesel::connection::SimpleConnection;
+        use tari_comms::{pipeline::PipelineError, wrap_in_envelope_body};
+        use tower::{Layer, Service};
+
+        use crate::{
+            dedup::DedupLayer,
+            envelope::DhtMessageFlags,
+            inbound::DecryptedDhtMessage,
+            test_utils::{make_dht_inbound_message, service_spy},
+        };
+
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity_manager, mock) = create_connectivity_mock();
+        mock.spawn();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
+        let mut requester = DhtRequester::new(actor_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
+        let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let shutdown = Shutdown::new();
+        let conn = db_connection();
+        let actor = DhtActor::new(
+            Arc::new(DhtConfig::default_local_test()),
+            conn.clone(),
+            node_identity.clone(),
+            peer_manager,
+            connectivity_manager,
+            outbound_requester,
+            actor_rx,
+            discovery,
+            shutdown.to_signal(),
+        );
+        actor.spawn();
+
+        conn.get_pooled_connection()
+            .unwrap()
+            .batch_execute("DROP TABLE dedup_cache;")
+            .unwrap();
+
+        let num_hits = requester
+            .add_message_to_dedup_cache(vec![1u8, 2, 3], CommsPublicKey::default())
+            .await
+            .unwrap();
+        assert_eq!(num_hits, u32::MAX);
+
+        let spy = service_spy();
+        let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
+        let inbound_message =
+            make_dht_inbound_message(&node_identity, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
+        let decrypted_msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
+        dedup.call(decrypted_msg).await.unwrap();
+        assert_eq!(spy.call_count(), 0);
     }
 
     #[tokio::test]
