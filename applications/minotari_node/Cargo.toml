@@ -42,6 +42,8 @@ crossterm = { version = "0.28.1", default-features = false, features = [
 ] }
 derive_more = "0.99.17"
 dhat = "0.3.3"
+# Crate defaults (no `secure`, no `override`): only the Rust heap of the `minotari_node` binary is affected.
+mimalloc = { version = "0.1.52", optional = true }
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
@@ -83,10 +85,14 @@ hyper-util = "0.1"
 http-body-util = "0.1"
 
 [features]
-default = ["libtor"]
+default = ["libtor", "mimalloc"]
 metrics = ["tari_metrics", "tari_comms/metrics"]
 safe = []
 libtor = ["tari_libtor"]
+# Use mimalloc as the global allocator of the `minotari_node` binary instead of the system allocator (glibc malloc on
+# Linux), which keeps freed memory in per-thread arenas under the node's blocking-pool thread churn. C libraries
+# (LMDB, SQLite, RandomX, Tor) keep using libc malloc. Ignored when `dhat-heap` is enabled.
+mimalloc = ["dep:mimalloc"]
 # If you are doing heap profiling, use 'dhat-heap' and enable debug symbols:
 #   CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --bin minotari_node --features=dhat-heap            ...(Linux)
 #   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --bin minotari_node --features=dhat-heap  ...(PowerShell)

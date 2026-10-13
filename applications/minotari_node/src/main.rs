@@ -90,6 +90,15 @@ use tari_shutdown::Shutdown;
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
+/// mimalloc replaces the system allocator (glibc malloc on Linux) for the node's Rust heap. glibc keeps freed memory
+/// in per-thread arenas, and tokio's blocking pool, which creates and retires threads constantly, leaves that memory
+/// retained but unused. A process has one global allocator, so the `dhat-heap` build keeps dhat's.
+///
+/// This lives in the binary, not in the `minotari_node` library: a library that sets the global allocator would
+/// force it on every crate that links it, including tests and the integration test harness.
+#[cfg(all(feature = "mimalloc", not(feature = "dhat-heap")))]
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 const LOG_TARGET: &str = "minotari::base_node::app";
 
