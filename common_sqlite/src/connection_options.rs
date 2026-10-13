@@ -117,7 +117,9 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
         let pragmas = match self.profile {
             // `secure_delete` overwrites freed pages in the main database file, so a deleted row's plaintext is not
             // left legible in a free page. It does not reach the `-wal` or `-journal` files: residue there is only
-            // bounded, by `journal_size_limit` and by the TRUNCATE checkpoint run when the pool is cleaned up.
+            // bounded, by `journal_size_limit` and by a best-effort TRUNCATE checkpoint when the pool is cleaned up
+            // (`SqliteConnectionPool::cleanup`; the wallet does this when its last database handle is dropped). That
+            // checkpoint is skipped if another connection holds the database at that moment.
             DbProfile::KeyMaterial => {
                 "PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON; PRAGMA synchronous = FULL; PRAGMA \
                  journal_size_limit = 4194304;"

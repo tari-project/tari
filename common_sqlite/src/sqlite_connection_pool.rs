@@ -34,7 +34,7 @@ use diesel::{
     connection::SimpleConnection,
     dsl::sql,
     r2d2::{ConnectionManager, Pool, PooledConnection},
-    sql_types::Text,
+    sql_types::{Integer, Text},
 };
 use log::*;
 
@@ -234,22 +234,15 @@ impl SqliteConnectionPool {
 
     /// Perform cleanup on the connection pool. This will drop the pool and return the state of the pool.
     ///
-    /// For a [`DbProfile::KeyMaterial`] file database, first runs `PRAGMA wal_checkpoint(TRUNCATE)` (best effort) so
-    /// the `-wal` file does not keep copies of pages after the database is closed.
+    /// For a [`DbProfile::KeyMaterial`] file database, first runs a best-effort `PRAGMA wal_checkpoint(TRUNCATE)` so
+    /// the `-wal` file does not keep copies of freed pages after the database is closed. The checkpoint never waits:
+    /// if no connection is idle or another connection holds the database, it is skipped and logged at debug. Safe to
+    /// call from `Drop`.
     pub fn cleanup(&mut self) -> Option<String> {
         if let Some(pool) = self.pool.take() {
             let state = format!("{:?}", pool.state());
             if self.connection_options.profile() == DbProfile::KeyMaterial && !self.is_in_memory() {
-                match pool.try_get() {
-                    Some(mut conn) => {
-                        if let Err(e) = conn.batch_execute("PRAGMA wal_checkpoint(TRUNCATE);") {
-                            debug!(target: LOG_TARGET, "WAL checkpoint on cleanup of {} failed: {}", self.db_path, e);
-                        }
-                    },
-                    None => {
-                        debug!(target: LOG_TARGET, "No idle connection to checkpoint {} on cleanup", self.db_path);
-                    },
-                }
+                truncate_wal(&pool, &self.db_path);
             }
             drop(pool);
             return Some(state);
@@ -258,9 +251,39 @@ impl SqliteConnectionPool {
     }
 }
 
-/// Create the database's directory and file owner-only, and restrict any that already exist with group or other
-/// permission bits: a co-tenant with only read access to a SQLite file can still take a shared lock on it and stall
-/// every write. Called for file-backed databases before the first connection is opened.
+/// Best-effort `PRAGMA wal_checkpoint(TRUNCATE)` on an idle connection of `pool`, without waiting on any lock.
+fn truncate_wal(pool: &Pool<ConnectionManager<SqliteConnection>>, db_path: &str) {
+    let Some(mut conn) = pool.try_get() else {
+        debug!(target: LOG_TARGET, "No idle connection to checkpoint {} on cleanup", db_path);
+        return;
+    };
+    // This runs while the database is being closed, often from `Drop`, so it must not sit out the busy timeout.
+    let result = conn.batch_execute("PRAGMA busy_timeout = 0;").and_then(|_| {
+        sql::<(Integer, Integer, Integer)>("PRAGMA wal_checkpoint(TRUNCATE);").get_result::<(i32, i32, i32)>(&mut conn)
+    });
+    match result {
+        Ok((0, _, _)) => {
+            debug!(target: LOG_TARGET, "Truncated the WAL of {} on cleanup", db_path);
+        },
+        Ok((_, wal_frames, checkpointed)) => {
+            debug!(
+                target: LOG_TARGET,
+                "WAL checkpoint of {} on cleanup was blocked by another connection ({} of {} frames checkpointed)",
+                db_path,
+                checkpointed,
+                wal_frames
+            );
+        },
+        Err(e) => {
+            debug!(target: LOG_TARGET, "WAL checkpoint on cleanup of {} failed: {}", db_path, e);
+        },
+    }
+}
+
+/// Create the database's directory and file owner-only, and remove group and other permission bits from a file or
+/// sidecar that already exists: a co-tenant with only read access to a SQLite file can still take a shared lock on it
+/// and stall every write. An existing parent directory is only restricted when it is safe to (see
+/// [`restrict_existing_dir`]). Called for file-backed databases before the first connection is opened.
 #[cfg(unix)]
 fn prepare_database_path(path: &Path) -> Result<(), SqliteStorageError> {
     use std::{
@@ -277,7 +300,7 @@ fn prepare_database_path(path: &Path) -> Result<(), SqliteStorageError> {
         !parent.as_os_str().is_empty()
     {
         if parent.exists() {
-            restrict_mode(parent, 0o700)?;
+            restrict_existing_dir(parent)?;
         } else {
             DirBuilder::new()
                 .recursive(true)
@@ -296,37 +319,81 @@ fn prepare_database_path(path: &Path) -> Result<(), SqliteStorageError> {
         .mode(0o600)
         .open(path)
         .map_err(|e| permissions_error(path, e))?;
-    restrict_mode(path, 0o600)?;
+    remove_group_other_bits(path)?;
 
     for suffix in ["-wal", "-shm", "-journal"] {
         let mut sidecar = path.as_os_str().to_owned();
         sidecar.push(suffix);
         let sidecar = PathBuf::from(sidecar);
         if sidecar.exists() {
-            restrict_mode(&sidecar, 0o600)?;
+            remove_group_other_bits(&sidecar)?;
         }
     }
     Ok(())
 }
 
-/// Set `path` to `mode` if it grants any group or other permission.
+/// Remove group and other permission bits from an existing parent directory, but only from one owned by the effective
+/// user that has no sticky bit. A directory owned by someone else cannot be changed (and may be shared on purpose,
+/// e.g. a data directory other users read the chain database from), and a sticky directory such as `/tmp` is shared
+/// by design; those are logged and left alone, since the 0600 database file still protects the data.
 #[cfg(unix)]
-fn restrict_mode(path: &Path, mode: u32) -> Result<(), SqliteStorageError> {
+fn restrict_existing_dir(dir: &Path) -> Result<(), SqliteStorageError> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = fs::metadata(dir).map_err(|source| SqliteStorageError::FilePermissions {
+        path: dir.to_path_buf(),
+        source,
+    })?;
+    let mode = metadata.mode() & 0o7777;
+    if mode & 0o077 == 0 {
+        return Ok(());
+    }
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    if metadata.uid() != euid {
+        warn!(
+            target: LOG_TARGET,
+            "Database directory '{}' has mode {:o} and is owned by uid {}, not this process (uid {}); leaving its \
+             permissions unchanged",
+            dir.display(),
+            mode,
+            metadata.uid(),
+            euid
+        );
+        return Ok(());
+    }
+    if mode & 0o1000 != 0 {
+        warn!(
+            target: LOG_TARGET,
+            "Database directory '{}' has mode {:o} with the sticky bit set (a shared directory); leaving its \
+             permissions unchanged",
+            dir.display(),
+            mode
+        );
+        return Ok(());
+    }
+    remove_group_other_bits(dir)
+}
+
+/// Clear the group and other permission bits of `path`, keeping every other bit as it is.
+#[cfg(unix)]
+fn remove_group_other_bits(path: &Path) -> Result<(), SqliteStorageError> {
     use std::os::unix::fs::PermissionsExt;
 
     let permissions_error = |source| SqliteStorageError::FilePermissions {
         path: path.to_path_buf(),
         source,
     };
-    let current = fs::metadata(path).map_err(permissions_error)?.permissions().mode();
+    let current = fs::metadata(path).map_err(permissions_error)?.permissions().mode() & 0o7777;
     if current & 0o077 != 0 {
-        fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(permissions_error)?;
+        let restricted = current & !0o077;
+        fs::set_permissions(path, fs::Permissions::from_mode(restricted)).map_err(permissions_error)?;
         info!(
             target: LOG_TARGET,
             "Restricted permissions of '{}' from {:o} to {:o}",
             path.display(),
-            current & 0o777,
-            mode
+            current,
+            restricted
         );
     }
     Ok(())
@@ -453,7 +520,7 @@ mod test {
     #[cfg(unix)]
     fn mode_of(path: &Path) -> u32 {
         use std::os::unix::fs::PermissionsExt;
-        fs::metadata(path).unwrap().permissions().mode() & 0o777
+        fs::metadata(path).unwrap().permissions().mode() & 0o7777
     }
 
     #[cfg(unix)]
@@ -498,6 +565,47 @@ mod test {
         assert_eq!(mode_of(&db), 0o600);
         // SQLite gives the sidecars the main file's mode.
         assert_eq!(mode_of(&dir.join("peers.db-wal")), 0o600);
+    }
+
+    /// An existing directory owned by this process loses its group and other bits; files keep their owner bits.
+    #[cfg(unix)]
+    #[test]
+    fn create_pool_tightens_owned_parent_dir_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("data");
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let db = dir.join("wallet.db");
+        fs::write(&db, b"").unwrap();
+        // Only the group and other bits go; the owner's (unusual) execute bit stays.
+        fs::set_permissions(&db, fs::Permissions::from_mode(0o764)).unwrap();
+
+        let mut pool = SqliteConnectionPool::new(db.to_str().unwrap().to_string(), 1, DbProfile::KeyMaterial).unwrap();
+        pool.create_pool().unwrap();
+
+        assert_eq!(mode_of(&dir), 0o700);
+        assert_eq!(mode_of(&db), 0o700);
+    }
+
+    /// A sticky directory such as `/tmp` is shared by design: it is left as it is, and the database still opens.
+    #[cfg(unix)]
+    #[test]
+    fn create_pool_leaves_sticky_parent_dir_unchanged_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("shared");
+        fs::create_dir_all(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o1777)).unwrap();
+        let db = dir.join("peers.db");
+
+        let mut pool = SqliteConnectionPool::new(db.to_str().unwrap().to_string(), 1, DbProfile::Cache).unwrap();
+        pool.create_pool().unwrap();
+
+        assert_eq!(mode_of(&dir), 0o1777);
+        assert_eq!(mode_of(&db), 0o600);
     }
 
     #[test]

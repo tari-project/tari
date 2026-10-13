@@ -172,9 +172,60 @@ pub fn get_last_network<P: AsRef<Path>>(db_path: P) -> Result<Option<String>, Wa
 
 #[cfg(test)]
 mod test {
+    use diesel::{
+        Connection,
+        RunQueryDsl,
+        SqliteConnection,
+        connection::SimpleConnection,
+        dsl::sql,
+        sql_types::Integer,
+    };
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
     use tari_utilities::SafePassword;
 
-    use super::initialize_sqlite_database_backends;
+    use super::{initialize_sqlite_database_backends, run_migration_and_create_sqlite_connection};
+
+    /// Dropping the last wallet handle truncates the WAL, so it does not keep copies of deleted rows. An outside
+    /// connection stays open throughout: without it SQLite would checkpoint and delete the WAL itself when the last
+    /// connection closed, and the test could not tell whether the wallet did anything.
+    #[test]
+    fn dropping_last_wallet_handle_truncates_wal() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("console_wallet.db");
+        let wal_path = temp_dir.path().join("console_wallet.db-wal");
+
+        let connection = run_migration_and_create_sqlite_connection(&db_path, 4).unwrap();
+        let clone = connection.clone();
+        {
+            let mut conn = clone.get_pooled_connection().unwrap();
+            conn.batch_execute(
+                "CREATE TABLE secrets (id INTEGER PRIMARY KEY, value TEXT); WITH RECURSIVE n(i) AS (SELECT 1 UNION \
+                 ALL SELECT i + 1 FROM n WHERE i < 200) INSERT INTO secrets (value) SELECT 'secret-' || i FROM n; \
+                 DELETE FROM secrets;",
+            )
+            .unwrap();
+        }
+
+        let mut observer = SqliteConnection::establish(db_path.to_str().unwrap()).unwrap();
+        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM secrets")
+            .get_result(&mut observer)
+            .unwrap();
+        assert_eq!(count, 0);
+        assert!(
+            std::fs::metadata(&wal_path).unwrap().len() > 0,
+            "the test needs a non-empty WAL"
+        );
+
+        drop(clone);
+        drop(connection);
+
+        let wal_len = std::fs::metadata(&wal_path).map(|m| m.len()).unwrap_or(0);
+        assert_eq!(
+            wal_len, 0,
+            "the WAL was not truncated when the last wallet handle was dropped"
+        );
+        drop(observer);
+    }
 
     /// `wallet.db_connection_pool_size = 0` used to reach r2d2's `Builder::max_size(0)`, which panics.
     #[test]

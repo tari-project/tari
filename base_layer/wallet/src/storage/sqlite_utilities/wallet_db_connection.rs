@@ -26,25 +26,47 @@ use diesel::{
     SqliteConnection,
     r2d2::{ConnectionManager, PooledConnection},
 };
+use log::*;
 use tari_common_sqlite::{
     error::SqliteStorageError,
     sqlite_connection_pool::{PooledDbConnection, SqliteConnectionPool},
 };
 
+/// A handle to the wallet database. Cheap to clone; every clone shares one pool and one [`WalletDbLastHandle`].
 #[derive(Clone)]
 pub struct WalletDbConnection {
     pool: SqliteConnectionPool,
-    _file_lock: Arc<Option<File>>,
+    _last_handle: Arc<WalletDbLastHandle>,
+}
+
+/// Shared by every clone of a [`WalletDbConnection`] and dropped with the last one, which is when the wallet database
+/// is closed: it truncates the WAL (best effort, see [`SqliteConnectionPool::cleanup`]) while the wallet's file lock is
+/// still held, then releases the lock.
+struct WalletDbLastHandle {
+    pool: SqliteConnectionPool,
+    _file_lock: Option<File>,
+}
+
+impl Drop for WalletDbLastHandle {
+    fn drop(&mut self) {
+        let pool_state = self.pool.cleanup();
+        debug!(target: LOG_TARGET, "Closed the wallet database, pool state before cleanup: {pool_state:?}");
+    }
 }
 
 impl WalletDbConnection {
     pub fn new(pool: SqliteConnectionPool, file_lock: Option<File>) -> Self {
         Self {
+            _last_handle: Arc::new(WalletDbLastHandle {
+                pool: pool.clone(),
+                _file_lock: file_lock,
+            }),
             pool,
-            _file_lock: Arc::new(file_lock),
         }
     }
 }
+
+const LOG_TARGET: &str = "wallet::storage::wallet_db_connection";
 
 impl PooledDbConnection for WalletDbConnection {
     type Error = SqliteStorageError;
