@@ -382,6 +382,42 @@ jobs:
           ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked --all-features -p minotari_node --lib --
           grpc::base_node_grpc_server::test http::handler::json_rpc
 
+  # Unlike the `test` job, this one must pass: it fails when the minotari_node binary, built with its default features,
+  # stops using mimalloc as its global allocator or stops starting up as a node. Every other test job builds with
+  # `--all-features`, which turns on `dhat-heap` and with it dhat's allocator, and the cucumber tests link the
+  # minotari_node library rather than the binary, so nothing else runs the allocator the node ships with (see
+  # applications/minotari_node/tests/global_allocator.rs and scripts/minotari_node_smoke.sh).
+  node-allocator:
+    name: node allocator
+    # GitHub-hosted, with the same dependency setup as the `ci` job
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.toolchain }}
+      - name: ubuntu dependencies
+        run: |
+          # The ubuntu-24.04 runner image ships a HashiCorp apt source whose signing key is
+          # missing (NO_PUBKEY FC9CA96ACA026560), which makes `apt-get update` exit 100.
+          sudo rm -f /etc/apt/sources.list.d/*hashicorp*
+          sudo apt-get update
+          sudo bash scripts/install_ubuntu_dependencies.sh
+      - name: Cache cargo files and outputs
+        uses: Swatinem/rust-cache@v2
+      # `--exact binary_uses_mimalloc` makes the run fail with "0 passed" if the default features ever stop enabling
+      # mimalloc, rather than passing on the `binary_does_not_use_mimalloc` test that would compile instead.
+      - name: the default-feature minotari_node binary uses mimalloc
+        run: >-
+          ./scripts/cargo_test_ran_tests.sh cargo +${{ env.toolchain }} test --locked -p minotari_node
+          --test global_allocator -- --exact binary_uses_mimalloc
+      - name: build minotari_node with default features
+        run: cargo +${{ env.toolchain }} build --locked -p minotari_node --bin minotari_node
+      - name: the default-feature minotari_node binary starts and runs as a localnet node
+        run: ./scripts/minotari_node_smoke.sh target/debug/minotari_node
+
   test:
     name: test
     runs-on: [self-hosted, ubuntu-high-cpu]

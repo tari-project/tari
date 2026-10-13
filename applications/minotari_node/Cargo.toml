@@ -42,8 +42,6 @@ crossterm = { version = "0.28.1", default-features = false, features = [
 ] }
 derive_more = "0.99.17"
 dhat = "0.3.3"
-# Crate defaults (no `secure`, no `override`): only the Rust heap of the `minotari_node` binary is affected.
-mimalloc = { version = "0.1.52", optional = true }
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = [
     "alloc",
@@ -60,6 +58,8 @@ log4rs = { workspace = true, default-features = false, features = [
     "size_trigger",
     "fixed_window_roller",
 ] }
+# Crate defaults (no `secure`, no `override`): only the Rust heap of the `minotari_node` binary is affected.
+mimalloc = { version = "0.1.52", optional = true }
 nom = "7.1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
