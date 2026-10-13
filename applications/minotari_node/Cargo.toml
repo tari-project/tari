@@ -58,7 +58,9 @@ log4rs = { workspace = true, default-features = false, features = [
     "size_trigger",
     "fixed_window_roller",
 ] }
-# Crate defaults (no `secure`, no `override`): only the Rust heap of the `minotari_node` binary is affected.
+# Crate defaults, which bundle mimalloc v3. `secure` (guard pages, encoded free lists, double-free detection; ~10%
+# allocator cost) is deliberately off: it is defence-in-depth only and the C libraries keep glibc malloc anyway.
+# Revisit it with the system-vs-mimalloc A/B.
 mimalloc = { version = "0.1.52", optional = true }
 nom = "7.1"
 rustyline = "9.0"
