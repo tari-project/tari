@@ -103,11 +103,12 @@ pub struct DhtConfig {
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
-    /// `ban_duration_short`) Default: 100_000 messages
+    /// `ban_duration_short`). The DHT keeps the times of up to this many messages plus one per peer.
+    /// Default: 1000 messages
     pub flood_ban_max_msg_count: usize,
     /// The timespan over which to calculate the max message rate.
-    /// `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
-    /// Default: 100 seconds
+    /// `flood_ban_max_msg_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
+    /// Default: 60 seconds
     #[serde(with = "serializers::seconds")]
     pub flood_ban_timespan: Duration,
     /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.

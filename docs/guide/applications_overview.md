@@ -202,8 +202,8 @@ These rules apply to every application that uses a log4rs YAML file (`--log-conf
 - `base_node.p2p.dht.join_cooldown_interval=<seconds>` - Join cooldown (default: 600)
 - `base_node.p2p.dht.ban_duration=<seconds>` - Ban duration (default: 21,600)
 - `base_node.p2p.dht.ban_duration_short=<seconds>` - Short ban duration (default: 3,600)
-- `base_node.p2p.dht.flood_ban_max_msg_count=<num>` - Max messages before ban (default: 100,000)
-- `base_node.p2p.dht.flood_ban_timespan=<seconds>` - Flood detection timespan (default: 100)
+- `base_node.p2p.dht.flood_ban_max_msg_count=<num>` - Max messages before ban (default: 1000)
+- `base_node.p2p.dht.flood_ban_timespan=<seconds>` - Flood detection timespan (default: 60)
 - `base_node.p2p.dht.offline_peer_cooldown=<seconds>` - Offline peer cooldown (default: 7,200)
 - `base_node.p2p.dht.excluded_dial_addresses=<addresses>` - Excluded dial addresses
 - `base_node.p2p.dht.enable_forwarding=<bool>` - Enable message forwarding
@@ -482,8 +482,8 @@ The wallet supports extensive subcommands for various operations:
 - `wallet.p2p.dht.join_cooldown_interval=<seconds>` - Join cooldown (default: 120)
 - `wallet.p2p.dht.ban_duration=<seconds>` - Ban duration (default: 120)
 - `wallet.p2p.dht.ban_duration_short=<seconds>` - Short ban duration (default: 60)
-- `wallet.p2p.dht.flood_ban_max_msg_count=<num>` - Max messages before ban (default: 100,000)
-- `wallet.p2p.dht.flood_ban_timespan=<seconds>` - Flood detection timespan (default: 100)
+- `wallet.p2p.dht.flood_ban_max_msg_count=<num>` - Max messages before ban (default: 1000)
+- `wallet.p2p.dht.flood_ban_timespan=<seconds>` - Flood detection timespan (default: 60)
 - `wallet.p2p.dht.offline_peer_cooldown=<seconds>` - Offline peer cooldown (default: 7,200)
 - `wallet.p2p.dht.excluded_dial_addresses=<addresses>` - Excluded dial addresses
 - `wallet.p2p.dht.enable_forwarding=<bool>` - Enable message forwarding

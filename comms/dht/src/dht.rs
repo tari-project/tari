@@ -121,7 +121,11 @@ impl Dht {
         let (discovery_sender, discovery_receiver) = mpsc::channel(DHT_DISCOVERY_CHANNEL_SIZE);
         let (event_publisher, _) = broadcast::channel(DHT_EVENT_BROADCAST_CHANNEL_SIZE);
 
-        let metrics_collector = MetricsCollector::spawn();
+        // One sample more than the flood-ban count is all the flood-ban check needs to see a flooding peer
+        let metrics_collector = MetricsCollector::spawn(
+            config.flood_ban_max_msg_count.saturating_add(1),
+            config.flood_ban_timespan,
+        );
 
         let dht = Self {
             node_identity,

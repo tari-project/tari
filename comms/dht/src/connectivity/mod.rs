@@ -62,7 +62,13 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use thiserror::Error;
-use tokio::{sync::broadcast, task, task::JoinHandle, time, time::MissedTickBehavior};
+use tokio::{
+    sync::{broadcast, broadcast::error::RecvError},
+    task,
+    task::JoinHandle,
+    time,
+    time::MissedTickBehavior,
+};
 
 use crate::{
     DhtActorError,
@@ -424,17 +430,31 @@ impl DhtConnectivity {
         self.pool_fill_started = Some(now.into_std());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        let mut connectivity_events_closed = false;
         loop {
             tokio::select! {
-                Ok(event) = connectivity_events.recv() => {
-                    if let Err(err) = self.handle_connectivity_event(event).await {
-                        error!(target: LOG_TARGET, "Error handling connectivity event: {err:?}");
-                    }
-                    if self.connection_handles.is_empty() {
-                        debug!(target: LOG_TARGET, "No active peer connections detected. Triggering aggressive peer pool refresh.");
-                        if let Err(err) = self.refresh_peer_pools(true).await {
-                             error!(target: LOG_TARGET, "Error during aggressive peer pool refresh: {err:?}");
-                        }
+                result = connectivity_events.recv(), if !connectivity_events_closed => {
+                    match result {
+                        Ok(event) => {
+                            if let Err(err) = self.handle_connectivity_event(event).await {
+                                error!(target: LOG_TARGET, "Error handling connectivity event: {err:?}");
+                            }
+                            if self.connection_handles.is_empty() {
+                                debug!(target: LOG_TARGET, "No active peer connections detected. Triggering aggressive peer pool refresh.");
+                                if let Err(err) = self.refresh_peer_pools(true).await {
+                                     error!(target: LOG_TARGET, "Error during aggressive peer pool refresh: {err:?}");
+                                }
+                            }
+                        },
+                        Err(RecvError::Lagged(num_missed)) => {
+                            if let Err(err) = self.handle_connectivity_events_lagged(num_missed).await {
+                                error!(target: LOG_TARGET, "Error resyncing message metrics after missed connectivity events: {err:?}");
+                            }
+                        },
+                        Err(RecvError::Closed) => {
+                            warn!(target: LOG_TARGET, "Connectivity event stream closed");
+                            connectivity_events_closed = true;
+                        },
                     }
                },
 
@@ -466,6 +486,22 @@ impl DhtConnectivity {
             self.publish_pool_peers();
         }
 
+        Ok(())
+    }
+
+    /// Missed connectivity events may include disconnects, whose message metrics would then never be cleared. Drop the
+    /// metrics of every peer that is not currently connected. The pool is left alone.
+    async fn handle_connectivity_events_lagged(&mut self, num_missed: u64) -> Result<(), DhtConnectivityError> {
+        warn!(
+            target: LOG_TARGET,
+            "Missed {num_missed} connectivity event(s). Dropping message metrics for peers that are no longer connected."
+        );
+        let conns = self.connectivity.get_active_connections().await?;
+        let mut connected = HashSet::with_capacity(conns.len());
+        for conn in conns {
+            connected.insert(conn.peer_node_id().clone());
+        }
+        self.metrics_collector.retain_only(connected).await?;
         Ok(())
     }
 

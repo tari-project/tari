@@ -95,7 +95,7 @@ async fn setup(
         connectivity,
         dht_requester,
         event_publisher,
-        MetricsCollector::spawn(),
+        MetricsCollector::spawn(1001, Duration::from_secs(60)),
         shutdown.to_signal(),
     );
 
@@ -262,7 +262,7 @@ async fn it_survives_a_failed_initial_refresh() {
         connectivity,
         dht_requester,
         event_publisher,
-        MetricsCollector::spawn(),
+        MetricsCollector::spawn(1001, Duration::from_secs(60)),
         shutdown.to_signal(),
     );
 
@@ -272,6 +272,81 @@ async fn it_survives_a_failed_initial_refresh() {
         !handle.is_finished(),
         "DhtConnectivity exited after a failed initial refresh"
     );
+
+    shutdown.trigger();
+    tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+}
+
+/// Missed connectivity events may include disconnects, so on `Lagged` the message metrics are resynced to the peers
+/// that are still connected.
+#[tokio::test]
+async fn it_drops_metrics_of_disconnected_peers_when_events_lag() {
+    let shutdown = Shutdown::new();
+    let (connectivity, mock) = create_connectivity_mock();
+    let connectivity_state = mock.spawn();
+    let (dht_requester, mock) = create_dht_actor_mock();
+    mock.spawn();
+    let (event_publisher, _) = broadcast::channel(1);
+    let mut metrics_collector = MetricsCollector::spawn(1001, Duration::from_secs(60));
+    let dht_connectivity = DhtConnectivity::new(
+        Arc::new(DhtConfig::default()),
+        build_peer_manager(),
+        connectivity,
+        dht_requester,
+        event_publisher,
+        metrics_collector.clone(),
+        shutdown.to_signal(),
+    );
+
+    let connected_peer = make_node_identity().node_id().clone();
+    let disconnected_peer = make_node_identity().node_id().clone();
+    let (conn, _) = create_dummy_peer_connection(connected_peer.clone());
+    connectivity_state.add_active_connection(conn.clone()).await;
+    assert!(metrics_collector.write_metric_message_received(connected_peer.clone()));
+    assert!(metrics_collector.write_metric_message_received(disconnected_peer.clone()));
+    let ts = metrics_collector
+        .get_messages_received_timeseries(disconnected_peer.clone())
+        .await
+        .unwrap();
+    assert_eq!(ts.count(), 1);
+
+    // Overflow a channel of capacity 1 so that the first receive returns `Lagged`. The disconnect of
+    // `disconnected_peer` is one of the events that is lost.
+    let (event_tx, event_rx) = broadcast::channel(1);
+    event_tx
+        .send(ConnectivityEvent::PeerDisconnected(
+            disconnected_peer.clone(),
+            tari_comms::Minimized::No,
+        ))
+        .unwrap();
+    // The event that survives the lag keeps the connection handles non-empty, so no aggressive pool refresh starts
+    event_tx.send(ConnectivityEvent::PeerConnected(Box::new(conn))).unwrap();
+    let handle = tokio::spawn(dht_connectivity.run(event_rx));
+
+    async_assert!(
+        connectivity_state.count_calls_containing("GetActiveConnections").await > 0,
+        max_attempts = 50,
+        interval = Duration::from_millis(10),
+    );
+    async_assert!(
+        metrics_collector
+            .get_messages_received_timeseries(disconnected_peer.clone())
+            .await
+            .unwrap()
+            .count() ==
+            0,
+        max_attempts = 50,
+        interval = Duration::from_millis(10),
+    );
+    let ts = metrics_collector
+        .get_messages_received_timeseries(connected_peer)
+        .await
+        .unwrap();
+    assert_eq!(ts.count(), 1);
 
     shutdown.trigger();
     tokio::time::timeout(Duration::from_secs(5), handle)
@@ -1352,7 +1427,7 @@ mod metrics {
 
         #[tokio::test]
         async fn it_adds_message_received() {
-            let mut metric_collector = MetricsCollector::spawn();
+            let mut metric_collector = MetricsCollector::spawn(1001, std::time::Duration::from_secs(60));
             let node_id = NodeId::default();
             (0..100).for_each(|_| {
                 assert!(metric_collector.write_metric_message_received(node_id.clone()));
@@ -1367,7 +1442,7 @@ mod metrics {
 
         #[tokio::test]
         async fn it_clears_the_metrics() {
-            let mut metric_collector = MetricsCollector::spawn();
+            let mut metric_collector = MetricsCollector::spawn(1001, std::time::Duration::from_secs(60));
             let node_id = NodeId::default();
             assert!(metric_collector.write_metric_message_received(node_id.clone()));
 

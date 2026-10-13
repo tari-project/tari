@@ -21,8 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{HashMap, VecDeque, hash_map::Entry},
-    time::{Duration, Instant},
+    cmp,
+    collections::{HashMap, HashSet, VecDeque, hash_map::Entry},
+    time::Duration,
 };
 
 use log::*;
@@ -30,9 +31,22 @@ use tari_comms::peer_manager::NodeId;
 use tokio::{
     sync::{mpsc, oneshot},
     task,
+    time,
+    time::{Instant, MissedTickBehavior},
 };
 
 const LOG_TARGET: &str = "comms::dht::metrics";
+
+/// Number of samples kept for the node-wide message count. A single instance, so it is allocated up front.
+const ALL_MESSAGES_RECV_CAPACITY: usize = 100_000;
+
+/// How often the collector drops per-peer entries that have gone quiet. Entries are normally removed when the peer
+/// disconnects; this catches the ones whose disconnect was missed.
+const STALE_PRUNE_INTERVAL: Duration = Duration::from_secs(10 * 60);
+
+/// A per-peer entry whose newest sample is older than this is dropped at the next prune. If the configured flood-ban
+/// timespan is longer, that timespan is used instead, so samples inside the flood-ban window are never pruned.
+const STALE_ENTRY_AGE: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Debug)]
 enum MetricOp {
@@ -44,6 +58,8 @@ enum MetricOp {
 pub enum MetricWrite {
     MessageReceived(NodeId),
     ClearMetrics(NodeId),
+    /// Drop the metrics of every peer not in the set
+    RetainOnly(HashSet<NodeId>),
 }
 
 #[derive(Debug)]
@@ -57,18 +73,19 @@ pub enum MetricRead {
 struct MetricsState {
     messages_recv: HashMap<NodeId, TimeSeries<()>>,
     all_messages_recv: TimeSeries<()>,
-}
-
-impl Default for MetricsState {
-    fn default() -> Self {
-        Self {
-            all_messages_recv: TimeSeries::new(100000),
-            messages_recv: HashMap::<NodeId, TimeSeries<()>>::new(),
-        }
-    }
+    /// Maximum number of samples kept per peer
+    per_peer_capacity: usize,
 }
 
 impl MetricsState {
+    fn new(per_peer_capacity: usize) -> Self {
+        Self {
+            messages_recv: HashMap::new(),
+            all_messages_recv: TimeSeries::new(ALL_MESSAGES_RECV_CAPACITY),
+            per_peer_capacity,
+        }
+    }
+
     pub fn add_message_received(&mut self, node_id: NodeId) {
         match self.messages_recv.entry(node_id) {
             Entry::Occupied(mut entry) => {
@@ -84,7 +101,9 @@ impl MetricsState {
                 entry.get_mut().inc();
             },
             Entry::Vacant(entry) => {
-                let mut t = TimeSeries::new(11_000);
+                // Most peers send few messages, so the series grows as samples arrive instead of being allocated
+                // to its full capacity up front
+                let mut t = TimeSeries::new_unallocated(self.per_peer_capacity);
                 t.inc();
                 entry.insert(t);
             },
@@ -94,6 +113,33 @@ impl MetricsState {
 
     pub fn drop_metrics(&mut self, node_id: &NodeId) {
         self.messages_recv.remove(node_id);
+    }
+
+    pub fn retain_only(&mut self, node_ids: &HashSet<NodeId>) {
+        let num_before = self.messages_recv.len();
+        self.messages_recv.retain(|node_id, _| node_ids.contains(node_id));
+        debug!(
+            target: LOG_TARGET,
+            "Dropped message metrics for {} peer(s) that are no longer connected",
+            num_before.saturating_sub(self.messages_recv.len()),
+        );
+    }
+
+    /// Drop every per-peer entry whose newest sample is older than `max_age`.
+    pub fn prune_stale(&mut self, max_age: Duration) {
+        let now = Instant::now();
+        let num_before = self.messages_recv.len();
+        self.messages_recv.retain(|_, t| match t.newest() {
+            Some(newest) => now.saturating_duration_since(newest) <= max_age,
+            None => false,
+        });
+        let num_pruned = num_before.saturating_sub(self.messages_recv.len());
+        if num_pruned > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Pruned message metrics for {num_pruned} peer(s) with no messages in {max_age:.0?}",
+            );
+        }
     }
 
     pub fn message_received_get_timeseries(&self, node_id: &NodeId) -> TimeSeries<()> {
@@ -123,23 +169,44 @@ impl MetricsState {
 pub struct MetricsCollector {
     stream: mpsc::Receiver<MetricOp>,
     state: MetricsState,
+    /// Per-peer entries whose newest sample is older than this are pruned
+    stale_entry_age: Duration,
 }
 
 impl MetricsCollector {
-    pub fn spawn() -> MetricsCollectorHandle {
+    /// Spawn the collector. `per_peer_capacity` is the maximum number of message samples kept per peer. It must be
+    /// more than the flood-ban message count, so that a flooding peer can be detected. `flood_ban_timespan` is the
+    /// flood-ban window: an idle peer entry is kept for at least this long.
+    pub fn spawn(per_peer_capacity: usize, flood_ban_timespan: Duration) -> MetricsCollectorHandle {
         let (metrics_tx, metrics_rx) = mpsc::channel(500);
         let metrics_collector = MetricsCollectorHandle::new(metrics_tx);
         let collector = Self {
             stream: metrics_rx,
-            state: Default::default(),
+            state: MetricsState::new(per_peer_capacity),
+            stale_entry_age: cmp::max(STALE_ENTRY_AGE, flood_ban_timespan),
         };
         task::spawn(collector.run());
         metrics_collector
     }
 
     async fn run(mut self) {
-        while let Some(op) = self.stream.recv().await {
-            self.handle(op);
+        let first_prune = Instant::now()
+            .checked_add(STALE_PRUNE_INTERVAL)
+            .unwrap_or_else(Instant::now);
+        let mut prune_ticker = time::interval_at(first_prune, STALE_PRUNE_INTERVAL);
+        prune_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                maybe_op = self.stream.recv() => {
+                    match maybe_op {
+                        Some(op) => self.handle(op),
+                        None => break,
+                    }
+                },
+                _ = prune_ticker.tick() => {
+                    self.state.prune_stale(self.stale_entry_age);
+                },
+            }
         }
     }
 
@@ -152,13 +219,16 @@ impl MetricsCollector {
     }
 
     fn handle_write(&mut self, write: MetricWrite) {
-        use MetricWrite::{ClearMetrics, MessageReceived};
+        use MetricWrite::{ClearMetrics, MessageReceived, RetainOnly};
         match write {
             MessageReceived(node_id) => {
                 self.state.add_message_received(node_id);
             },
             ClearMetrics(node_id) => {
                 self.state.drop_metrics(&node_id);
+            },
+            RetainOnly(node_ids) => {
+                self.state.retain_only(&node_ids);
             },
         }
     }
@@ -194,6 +264,14 @@ impl<T> TimeSeries<T> {
         }
     }
 
+    /// Create a series that holds at most `capacity` samples, allocating as samples arrive.
+    pub fn new_unallocated(capacity: usize) -> Self {
+        Self {
+            values: VecDeque::new(),
+            capacity,
+        }
+    }
+
     pub fn empty() -> Self {
         Self {
             values: VecDeque::new(),
@@ -221,6 +299,11 @@ impl<T> TimeSeries<T> {
 
     pub fn count(&self) -> usize {
         self.values.len()
+    }
+
+    /// The time of the most recent sample
+    pub fn newest(&self) -> Option<Instant> {
+        self.values.back().map(|(i, _)| *i)
     }
 
     pub fn timespan(&self) -> Option<Duration> {
@@ -275,6 +358,14 @@ impl MetricsCollectorHandle {
     pub async fn clear_metrics(&mut self, node_id: NodeId) -> Result<(), MetricsError> {
         self.inner
             .send(MetricOp::Write(MetricWrite::ClearMetrics(node_id)))
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Drop the metrics of every peer not in `node_ids`. Err is returned if the metric collector has been shut down.
+    pub async fn retain_only(&mut self, node_ids: HashSet<NodeId>) -> Result<(), MetricsError> {
+        self.inner
+            .send(MetricOp::Write(MetricWrite::RetainOnly(node_ids)))
             .await
             .map_err(Into::into)
     }
@@ -344,5 +435,165 @@ impl<T> From<mpsc::error::SendError<T>> for MetricsError {
 impl From<oneshot::error::RecvError> for MetricsError {
     fn from(_: oneshot::error::RecvError) -> Self {
         MetricsError::ReplyCancelled
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_utilities::ByteArray;
+
+    use super::*;
+
+    const FLOOD_BAN_MAX_MSG_COUNT: usize = 1000;
+    const PER_PEER_CAPACITY: usize = FLOOD_BAN_MAX_MSG_COUNT + 1;
+    const FLOOD_BAN_TIMESPAN: Duration = Duration::from_secs(60);
+
+    fn node_id(byte: u8) -> NodeId {
+        NodeId::from_canonical_bytes(&[byte; NodeId::byte_size()]).unwrap()
+    }
+
+    #[test]
+    fn it_allocates_peer_entries_lazily() {
+        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        state.add_message_received(node_id(1));
+        let ts = state.messages_recv.get(&node_id(1)).unwrap();
+        assert_eq!(ts.count(), 1);
+        assert!(
+            ts.values.capacity() < PER_PEER_CAPACITY,
+            "per-peer series was preallocated to {} samples",
+            ts.values.capacity()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn it_evicts_the_oldest_sample_beyond_the_cap() {
+        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        state.add_message_received(node_id(1));
+        time::advance(Duration::from_secs(1)).await;
+        let after_first = Instant::now();
+        for _ in 0..PER_PEER_CAPACITY {
+            state.add_message_received(node_id(1));
+        }
+        let ts = state.messages_recv.get(&node_id(1)).unwrap();
+        assert_eq!(ts.count(), PER_PEER_CAPACITY);
+        // The first sample was evicted, all remaining samples are newer
+        assert_eq!(ts.count_since(after_first), PER_PEER_CAPACITY);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn it_detects_flooding_at_max_count_plus_one() {
+        let timespan = Duration::from_secs(60);
+        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        for _ in 0..FLOOD_BAN_MAX_MSG_COUNT {
+            state.add_message_received(node_id(1));
+        }
+        assert!(
+            state
+                .message_received_get_nodes_exceeding(FLOOD_BAN_MAX_MSG_COUNT, timespan)
+                .is_empty()
+        );
+
+        state.add_message_received(node_id(1));
+        let exceeding = state.message_received_get_nodes_exceeding(FLOOD_BAN_MAX_MSG_COUNT, timespan);
+        assert_eq!(exceeding.len(), 1);
+        assert_eq!(exceeding.first().map(|(n, _)| n), Some(&node_id(1)));
+
+        // Still detected once the cap is reached and old samples are being evicted
+        for _ in 0..500 {
+            state.add_message_received(node_id(1));
+        }
+        let exceeding = state.message_received_get_nodes_exceeding(FLOOD_BAN_MAX_MSG_COUNT, timespan);
+        assert_eq!(exceeding.len(), 1);
+    }
+
+    #[test]
+    fn it_retains_only_the_listed_peers() {
+        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        state.add_message_received(node_id(1));
+        state.add_message_received(node_id(2));
+        state.add_message_received(node_id(3));
+
+        let keep = [node_id(1), node_id(3)].into_iter().collect::<HashSet<_>>();
+        state.retain_only(&keep);
+
+        assert!(state.messages_recv.contains_key(&node_id(1)));
+        assert!(!state.messages_recv.contains_key(&node_id(2)));
+        assert!(state.messages_recv.contains_key(&node_id(3)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn it_prunes_stale_entries_at_the_next_tick() {
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
+        let old_peer = node_id(1);
+        let recent_peer = node_id(2);
+
+        // t = 0
+        assert!(collector.write_metric_message_received(old_peer.clone()));
+        let ts = collector
+            .get_messages_received_timeseries(old_peer.clone())
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 50 min
+        time::sleep(Duration::from_secs(50 * 60)).await;
+        assert!(collector.write_metric_message_received(recent_peer.clone()));
+        let ts = collector
+            .get_messages_received_timeseries(recent_peer.clone())
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 65 min. The old entry went stale after 60 min, but there has been no prune tick since then
+        time::sleep(Duration::from_secs(15 * 60)).await;
+        let ts = collector
+            .get_messages_received_timeseries(old_peer.clone())
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 75 min. The 70 min tick pruned the old entry and kept the recent one
+        time::sleep(Duration::from_secs(10 * 60)).await;
+        let ts = collector.get_messages_received_timeseries(old_peer).await.unwrap();
+        assert_eq!(ts.count(), 0);
+        let ts = collector.get_messages_received_timeseries(recent_peer).await.unwrap();
+        assert_eq!(ts.count(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn it_keeps_idle_entries_within_a_long_flood_ban_timespan() {
+        let flood_ban_timespan = Duration::from_secs(2 * 60 * 60);
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, flood_ban_timespan);
+        let peer = node_id(1);
+
+        // t = 0
+        assert!(collector.write_metric_message_received(peer.clone()));
+        let ts = collector.get_messages_received_timeseries(peer.clone()).await.unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 75 min. Idle for more than 1 h, but still inside the 2 h flood-ban timespan, so the 70 min tick kept it
+        time::sleep(Duration::from_secs(75 * 60)).await;
+        let ts = collector.get_messages_received_timeseries(peer.clone()).await.unwrap();
+        assert_eq!(ts.count(), 1);
+
+        // t = 135 min. The 130 min tick pruned it: it has been idle for longer than the timespan
+        time::sleep(Duration::from_secs(60 * 60)).await;
+        let ts = collector.get_messages_received_timeseries(peer).await.unwrap();
+        assert_eq!(ts.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn it_retains_only_via_the_handle() {
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
+        assert!(collector.write_metric_message_received(node_id(1)));
+        assert!(collector.write_metric_message_received(node_id(2)));
+
+        let keep = [node_id(1)].into_iter().collect::<HashSet<_>>();
+        collector.retain_only(keep).await.unwrap();
+
+        let ts = collector.get_messages_received_timeseries(node_id(1)).await.unwrap();
+        assert_eq!(ts.count(), 1);
+        let ts = collector.get_messages_received_timeseries(node_id(2)).await.unwrap();
+        assert_eq!(ts.count(), 0);
     }
 }
