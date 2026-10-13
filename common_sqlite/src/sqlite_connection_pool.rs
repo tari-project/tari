@@ -61,9 +61,10 @@ pub const MAX_POOL_SIZE: usize = 64;
 /// callers can obtain connections via [`get_pooled_connection`], a timed
 /// variant, or a non-blocking `try_get_pooled_connection`.
 ///
-/// For a file-backed database [`create_pool`] first restricts the file and its directory to the owner and switches
-/// the database to WAL; for an in-memory database it pins the pool's connections so none is ever reaped (each
-/// `:memory:` connection is its own database, and a reaped one would take the schema with it).
+/// For a file-backed database [`create_pool`] first checks the file, its sidecars and its directory and restricts them
+/// to the owner (see `prepare_database_path`), then switches the database to WAL; for an in-memory database it pins the
+/// pool's connections so none is ever reaped (each `:memory:` connection is its own database, and a reaped one would
+/// take the schema with it).
 ///
 /// # Concurrency notes
 /// SQLite allows only a single writer at a time (even in WAL mode). Keep write
@@ -132,7 +133,7 @@ impl SqliteConnectionPool {
         let max_size = u32::try_from(self.pool_size).map_err(|_| SqliteStorageError::PoolSize(self.pool_size))?;
         let busy_timeout = self.connection_options.get_busy_timeout();
         if !self.is_in_memory() {
-            prepare_database_path(Path::new(&self.db_path))?;
+            prepare_database_path(Path::new(&self.db_path), self.connection_options.profile())?;
             switch_to_wal(&self.db_path, busy_timeout)?;
         }
 
@@ -280,119 +281,174 @@ fn truncate_wal(pool: &Pool<ConnectionManager<SqliteConnection>>, db_path: &str)
     }
 }
 
-/// Create the database's directory and file owner-only, and remove group and other permission bits from a file or
-/// sidecar that already exists: a co-tenant with only read access to a SQLite file can still take a shared lock on it
-/// and stall every write. An existing parent directory is only restricted when it is safe to (see
-/// [`restrict_existing_dir`]). Called for file-backed databases before the first connection is opened.
+/// Make the database's directory and files safe to open, before the first connection is opened. A co-tenant with only
+/// read access to a SQLite file can still take a shared lock on it and stall every write, and one who can write to
+/// the directory can plant a `-wal` or `-shm` file of their own, which SQLite would then use.
+///
+/// - A missing directory is created 0700. An existing one is handled by [`restrict_existing_dir`].
+/// - The database file and any existing `-wal`, `-shm` and `-journal` sidecar must be a regular file owned by this
+///   process, not a symbolic link; anything else is refused for every profile. Group and other bits are cleared through
+///   the open file, so a symlink swapped in after the check is never followed.
 #[cfg(unix)]
-fn prepare_database_path(path: &Path) -> Result<(), SqliteStorageError> {
-    use std::{
-        fs::{DirBuilder, OpenOptions},
-        os::unix::fs::{DirBuilderExt, OpenOptionsExt},
-    };
+fn prepare_database_path(path: &Path, profile: DbProfile) -> Result<(), SqliteStorageError> {
+    use std::{fs::DirBuilder, os::unix::fs::DirBuilderExt};
 
-    let permissions_error = |p: &Path, source| SqliteStorageError::FilePermissions {
-        path: p.to_path_buf(),
-        source,
-    };
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
 
     if let Some(parent) = path.parent() &&
         !parent.as_os_str().is_empty()
     {
         if parent.exists() {
-            restrict_existing_dir(parent)?;
+            restrict_existing_dir(parent, profile, euid)?;
         } else {
             DirBuilder::new()
                 .recursive(true)
                 .mode(0o700)
                 .create(parent)
-                .map_err(|e| permissions_error(parent, e))?;
+                .map_err(|source| SqliteStorageError::FilePermissions {
+                    path: parent.to_path_buf(),
+                    source,
+                })?;
         }
     }
 
-    // No O_EXCL: the file normally exists already, and then `mode` is ignored, which is why it is restricted below.
-    OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .open(path)
-        .map_err(|e| permissions_error(path, e))?;
-    remove_group_other_bits(path)?;
-
+    secure_database_file(path, true, euid)?;
     for suffix in ["-wal", "-shm", "-journal"] {
         let mut sidecar = path.as_os_str().to_owned();
         sidecar.push(suffix);
-        let sidecar = PathBuf::from(sidecar);
-        if sidecar.exists() {
-            remove_group_other_bits(&sidecar)?;
-        }
+        secure_database_file(&PathBuf::from(sidecar), false, euid)?;
     }
     Ok(())
 }
 
-/// Remove group and other permission bits from an existing parent directory, but only from one owned by the effective
-/// user that has no sticky bit. A directory owned by someone else cannot be changed (and may be shared on purpose,
-/// e.g. a data directory other users read the chain database from), and a sticky directory such as `/tmp` is shared
-/// by design; those are logged and left alone, since the 0600 database file still protects the data.
+/// Handle an existing parent directory:
+/// - owned by this process and not sticky: clear its group and other bits;
+/// - otherwise (owned by someone else, or a sticky shared directory such as `/tmp`), it is left unchanged. If group or
+///   other users can write to it, a [`DbProfile::KeyMaterial`] database is refused, because a co-tenant could plant or
+///   replace its sidecar files; a [`DbProfile::Cache`] database only logs a warning. If they can only read it, a
+///   warning is logged and the owner-only database file is relied on.
 #[cfg(unix)]
-fn restrict_existing_dir(dir: &Path) -> Result<(), SqliteStorageError> {
-    use std::os::unix::fs::MetadataExt;
+fn restrict_existing_dir(dir: &Path, profile: DbProfile, euid: u32) -> Result<(), SqliteStorageError> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    let metadata = fs::metadata(dir).map_err(|source| SqliteStorageError::FilePermissions {
+    let permissions_error = |source| SqliteStorageError::FilePermissions {
         path: dir.to_path_buf(),
         source,
-    })?;
+    };
+    let metadata = fs::metadata(dir).map_err(permissions_error)?;
     let mode = metadata.mode() & 0o7777;
+    let owner = metadata.uid();
     if mode & 0o077 == 0 {
         return Ok(());
     }
-    // SAFETY: geteuid has no preconditions and cannot fail.
-    let euid = unsafe { libc::geteuid() };
-    if metadata.uid() != euid {
-        warn!(
+
+    if owner == euid && mode & 0o1000 == 0 {
+        let restricted = mode & !0o077;
+        fs::set_permissions(dir, fs::Permissions::from_mode(restricted)).map_err(permissions_error)?;
+        info!(
             target: LOG_TARGET,
-            "Database directory '{}' has mode {:o} and is owned by uid {}, not this process (uid {}); leaving its \
-             permissions unchanged",
+            "Restricted permissions of '{}' from {:o} to {:o}",
             dir.display(),
             mode,
-            metadata.uid(),
-            euid
+            restricted
         );
         return Ok(());
     }
-    if mode & 0o1000 != 0 {
-        warn!(
-            target: LOG_TARGET,
-            "Database directory '{}' has mode {:o} with the sticky bit set (a shared directory); leaving its \
-             permissions unchanged",
-            dir.display(),
-            mode
-        );
-        return Ok(());
+
+    if mode & 0o022 != 0 && profile == DbProfile::KeyMaterial {
+        return Err(SqliteStorageError::UnsafeDirectory {
+            path: dir.to_path_buf(),
+            mode,
+            owner,
+        });
     }
-    remove_group_other_bits(dir)
+    warn!(
+        target: LOG_TARGET,
+        "Database directory '{}' has mode {:o} and owner uid {} (this process is uid {}); it is shared or not ours, so \
+         its permissions are left unchanged",
+        dir.display(),
+        mode,
+        owner,
+        euid
+    );
+    Ok(())
 }
 
-/// Clear the group and other permission bits of `path`, keeping every other bit as it is.
+/// Check that `path` is a regular file owned by `euid` and clear its group and other bits. When `create` is true the
+/// file is created (0600) if missing; otherwise a missing file is fine and left missing. A symbolic link, any other
+/// non-regular file, or a file owned by someone else is refused.
 #[cfg(unix)]
-fn remove_group_other_bits(path: &Path) -> Result<(), SqliteStorageError> {
-    use std::os::unix::fs::PermissionsExt;
+fn secure_database_file(path: &Path, create: bool, euid: u32) -> Result<(), SqliteStorageError> {
+    use std::{
+        fs::OpenOptions,
+        io::ErrorKind,
+        os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    };
 
     let permissions_error = |source| SqliteStorageError::FilePermissions {
         path: path.to_path_buf(),
         source,
     };
-    let current = fs::metadata(path).map_err(permissions_error)?.permissions().mode() & 0o7777;
-    if current & 0o077 != 0 {
-        let restricted = current & !0o077;
-        fs::set_permissions(path, fs::Permissions::from_mode(restricted)).map_err(permissions_error)?;
+    let unsafe_file = |reason: String| SqliteStorageError::UnsafeDatabaseFile {
+        path: path.to_path_buf(),
+        reason,
+    };
+
+    // lstat: look at the path itself, not what a symlink points to.
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(unsafe_file("is a symbolic link".to_string()));
+            }
+            if !metadata.file_type().is_file() {
+                return Err(unsafe_file("is not a regular file".to_string()));
+            }
+        },
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            if !create {
+                return Ok(());
+            }
+        },
+        Err(e) => return Err(permissions_error(e)),
+    }
+
+    // O_NOFOLLOW: if a symlink was swapped in since the check above, the open fails rather than following it. The
+    // checks are repeated on the open file, which is what gets its mode changed.
+    let file = match OpenOptions::new()
+        .read(true)
+        .write(create)
+        .create(create)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound && !create => return Ok(()),
+        Err(e) => return Err(permissions_error(e)),
+    };
+    let metadata = file.metadata().map_err(permissions_error)?;
+    if !metadata.is_file() {
+        return Err(unsafe_file("is not a regular file".to_string()));
+    }
+    if metadata.uid() != euid {
+        return Err(unsafe_file(format!(
+            "is owned by uid {}, not this process (uid {})",
+            metadata.uid(),
+            euid
+        )));
+    }
+    let mode = metadata.mode() & 0o7777;
+    if mode & 0o077 != 0 {
+        let restricted = mode & !0o077;
+        file.set_permissions(fs::Permissions::from_mode(restricted))
+            .map_err(permissions_error)?;
         info!(
             target: LOG_TARGET,
             "Restricted permissions of '{}' from {:o} to {:o}",
             path.display(),
-            current,
+            mode,
             restricted
         );
     }
@@ -401,7 +457,7 @@ fn remove_group_other_bits(path: &Path) -> Result<(), SqliteStorageError> {
 
 /// Create the database's directory and file. Windows has no Unix modes to set.
 #[cfg(not(unix))]
-fn prepare_database_path(path: &Path) -> Result<(), SqliteStorageError> {
+fn prepare_database_path(path: &Path, _profile: DbProfile) -> Result<(), SqliteStorageError> {
     let permissions_error = |p: &Path, source| SqliteStorageError::FilePermissions {
         path: p.to_path_buf(),
         source,
@@ -589,23 +645,90 @@ mod test {
         assert_eq!(mode_of(&db), 0o700);
     }
 
-    /// A sticky directory such as `/tmp` is shared by design: it is left as it is, and the database still opens.
+    /// A sticky directory such as `/tmp` is shared by design and is never changed. Other users can write to it, so a
+    /// key-material database is refused there; a cache database opens with a warning.
     #[cfg(unix)]
     #[test]
-    fn create_pool_leaves_sticky_parent_dir_unchanged_on_unix() {
+    fn create_pool_sticky_parent_dir_refuses_key_material_on_unix() {
         use std::os::unix::fs::PermissionsExt;
 
         let root = tempfile::tempdir().unwrap();
         let dir = root.path().join("shared");
         fs::create_dir_all(&dir).unwrap();
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o1777)).unwrap();
-        let db = dir.join("peers.db");
 
-        let mut pool = SqliteConnectionPool::new(db.to_str().unwrap().to_string(), 1, DbProfile::Cache).unwrap();
+        let wallet_db = dir.join("wallet.db");
+        let mut pool =
+            SqliteConnectionPool::new(wallet_db.to_str().unwrap().to_string(), 1, DbProfile::KeyMaterial).unwrap();
+        let err = pool.create_pool().unwrap_err();
+        assert!(
+            matches!(err, SqliteStorageError::UnsafeDirectory { mode: 0o1777, .. }),
+            "unexpected error: {err:?}"
+        );
+        assert!(!wallet_db.exists());
+
+        let cache_db = dir.join("peers.db");
+        let mut pool = SqliteConnectionPool::new(cache_db.to_str().unwrap().to_string(), 1, DbProfile::Cache).unwrap();
         pool.create_pool().unwrap();
-
         assert_eq!(mode_of(&dir), 0o1777);
-        assert_eq!(mode_of(&db), 0o600);
+        assert_eq!(mode_of(&cache_db), 0o600);
+    }
+
+    /// SQLite would use a planted `-wal`; a symlinked one is refused, and its target is not chmodded.
+    #[cfg(unix)]
+    #[test]
+    fn create_pool_refuses_symlinked_wal_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("elsewhere");
+        fs::write(&target, b"").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+        let db = root.path().join("wallet.db");
+        std::os::unix::fs::symlink(&target, root.path().join("wallet.db-wal")).unwrap();
+
+        let mut pool = SqliteConnectionPool::new(db.to_str().unwrap().to_string(), 1, DbProfile::KeyMaterial).unwrap();
+        let err = pool.create_pool().unwrap_err();
+        assert!(
+            matches!(err, SqliteStorageError::UnsafeDatabaseFile { ref path, .. } if path.ends_with("wallet.db-wal")),
+            "unexpected error: {err:?}"
+        );
+        assert_eq!(mode_of(&target), 0o644);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_pool_refuses_symlinked_database_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("elsewhere.db");
+        fs::write(&target, b"").unwrap();
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o644)).unwrap();
+        let db = root.path().join("wallet.db");
+        std::os::unix::fs::symlink(&target, &db).unwrap();
+
+        let mut pool = SqliteConnectionPool::new(db.to_str().unwrap().to_string(), 1, DbProfile::KeyMaterial).unwrap();
+        let err = pool.create_pool().unwrap_err();
+        assert!(
+            matches!(err, SqliteStorageError::UnsafeDatabaseFile { ref path, .. } if path.ends_with("wallet.db")),
+            "unexpected error: {err:?}"
+        );
+        assert_eq!(mode_of(&target), 0o644);
+    }
+
+    /// A dangling symlink must not make `create_pool` create a file wherever it points.
+    #[cfg(unix)]
+    #[test]
+    fn create_pool_refuses_dangling_symlinked_database_on_unix() {
+        let root = tempfile::tempdir().unwrap();
+        let target = root.path().join("planted.db");
+        let db = root.path().join("wallet.db");
+        std::os::unix::fs::symlink(&target, &db).unwrap();
+
+        let mut pool = SqliteConnectionPool::new(db.to_str().unwrap().to_string(), 1, DbProfile::KeyMaterial).unwrap();
+        assert!(pool.create_pool().is_err());
+        assert!(!target.exists());
     }
 
     #[test]

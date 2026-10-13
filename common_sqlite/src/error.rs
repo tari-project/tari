@@ -35,6 +35,13 @@ pub enum SqliteStorageError {
     InMemoryPoolSize(usize),
     #[error("Could not create or restrict the permissions of `{}`: {source}", path.display())]
     FilePermissions { path: PathBuf, source: io::Error },
+    #[error(
+        "Refusing to open a database in `{}`: it has mode {mode:o} and owner uid {owner}, so other users can write to it",
+        path.display()
+    )]
+    UnsafeDirectory { path: PathBuf, mode: u32, owner: u32 },
+    #[error("Refusing to open database file `{}`: it {reason}", path.display())]
+    UnsafeDatabaseFile { path: PathBuf, reason: String },
     #[error("Could not set the SQLite journal mode to `{expected}` (got `{actual}`)")]
     JournalMode { expected: &'static str, actual: String },
     #[error("Database error: `{0}`")]
