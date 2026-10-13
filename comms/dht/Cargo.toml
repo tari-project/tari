@@ -52,6 +52,8 @@ pin-project = "0.4"
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }
+# `test-util` enables tokio's paused clock, used to test the metrics prune interval without real waits
+tokio = { workspace = true, features = ["test-util"] }
 
 env_logger = "0.11"
 futures-test = { version = "0.3.5" }
