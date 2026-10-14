@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use bytes::Bytes;
+use tokio::sync::OwnedSemaphorePermit;
 
 use super::MessageTag;
 use crate::peer_manager::NodeId;
@@ -33,6 +36,10 @@ pub struct InboundMessage {
     pub source_peer: NodeId,
     /// The raw message envelope
     pub body: Bytes,
+    /// One of the in-flight slots of the messaging session that received this message. The session reads no further
+    /// frames while all of its slots are held, so the slot is given back when the last clone of this message is
+    /// dropped by the consumer.
+    inflight_permit: Option<Arc<OwnedSemaphorePermit>>,
 }
 
 impl InboundMessage {
@@ -42,6 +49,14 @@ impl InboundMessage {
             tag: MessageTag::new(),
             source_peer,
             body,
+            inflight_permit: None,
         }
+    }
+
+    /// Attaches an in-flight slot of the receiving messaging session, which is released when this message (and every
+    /// clone of it) is dropped
+    pub(crate) fn with_inflight_permit(mut self, permit: OwnedSemaphorePermit) -> Self {
+        self.inflight_permit = Some(Arc::new(permit));
+        self
     }
 }

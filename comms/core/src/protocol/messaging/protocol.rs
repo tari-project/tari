@@ -36,13 +36,15 @@ use tari_shutdown::{
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{Semaphore, broadcast, mpsc, oneshot},
+    sync::{Semaphore, broadcast, mpsc, mpsc::error::TrySendError, oneshot},
     task::JoinHandle,
     time,
 };
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-use super::error::MessagingProtocolError;
+#[cfg(feature = "metrics")]
+use super::metrics;
+use super::{error::MessagingProtocolError, outbound::QueuedOutboundMessage};
 use crate::{
     PeerConnection,
     RefKind,
@@ -61,6 +63,15 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
+
+/// The most messages that may wait in one peer's outbound queue. A message sent to a peer whose queue is full fails
+/// immediately (so the DHT can pick another route) instead of growing the queue.
+pub(super) const OUTBOUND_QUEUE_CAPACITY: usize = 500;
+/// The most messages that may wait to be retried, across all peers. A message that does not fit fails immediately.
+const RETRY_QUEUE_CAPACITY: usize = 500;
+/// How long after it was queued a message may still be sent. An expired message fails instead of being sent, and is
+/// not requeued when its session ends, so a redial backlog cannot accumulate.
+pub(super) const OUTBOUND_MESSAGE_TTL: Duration = Duration::from_secs(60);
 
 /// Maximum frame size of a messaging protocol frame. The RPC frame size is derived from this so that anything that can
 /// be propagated over messaging (e.g. a block) can also be fetched over RPC (e.g. during sync).
@@ -133,6 +144,12 @@ pub enum SendFailReason {
     Dropped,
     #[error("Message could not send after {0} attempt(s)")]
     MaxRetriesReached(usize),
+    #[error("The outbound queue for the peer is full")]
+    QueueFull,
+    #[error("Message expired before it could be sent")]
+    Expired,
+    #[error("Timed out sending the message to the peer")]
+    SendTimeout,
 }
 
 /// Events emitted by the messaging protocol.
@@ -252,7 +269,7 @@ pub struct MessagingProtocol {
     protocol_id: ProtocolId,
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
-    active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
+    active_queues: HashMap<NodeId, mpsc::Sender<QueuedOutboundMessage>>,
     active_inbound: HashMap<NodeId, PeerInboundSessions>,
     replacement_budgets: HashMap<NodeId, ReplacementBudget>,
     /// Monotonically increasing id assigned to each spawned `InboundMessaging` session (see
@@ -266,8 +283,8 @@ pub struct MessagingProtocol {
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: mpsc::Receiver<MessagingEvent>,
-    retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
-    retry_queue_rx: mpsc::UnboundedReceiver<OutboundMessage>,
+    retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
+    retry_queue_rx: mpsc::Receiver<QueuedOutboundMessage>,
     /// Substreams that resolved to a connection off the actor's `select!` loop (see
     /// `handle_protocol_notification`). The actor drains this and calls `spawn_inbound_handler` synchronously.
     resolved_substream_tx: mpsc::Sender<(PeerConnection, Substream)>,
@@ -279,6 +296,9 @@ pub struct MessagingProtocol {
     /// is node-wide, not per-peer, so unlike the `ReplacementBudget` throttles it needs only one clock. See
     /// [`SHED_LOG_INTERVAL`].
     last_pending_resolution_shed_log: Option<time::Instant>,
+    /// Throttles the `warn!` logged when a message fails because a peer's outbound queue is full. See
+    /// [`SHED_LOG_INTERVAL`].
+    last_queue_full_log: Option<time::Instant>,
     shutdown_signal: ShutdownSignal,
     /// Never broadcast: dropped when this service exits, which resolves `complete_signal` with `None`.
     complete_trigger: OneshotTrigger<()>,
@@ -297,7 +317,7 @@ impl MessagingProtocol {
     ) -> Self {
         let (internal_messaging_event_tx, internal_messaging_event_rx) =
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
-        let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded_channel();
+        let (retry_queue_tx, retry_queue_rx) = mpsc::channel(RETRY_QUEUE_CAPACITY);
         let (resolved_substream_tx, resolved_substream_rx) = mpsc::channel(MAX_PENDING_SUBSTREAM_RESOLUTIONS);
 
         Self {
@@ -321,6 +341,7 @@ impl MessagingProtocol {
             resolved_substream_rx,
             pending_resolution_permits: Arc::new(Semaphore::new(MAX_PENDING_SUBSTREAM_RESOLUTIONS)),
             last_pending_resolution_shed_log: None,
+            last_queue_full_log: None,
             shutdown_signal,
             complete_trigger: OneshotTrigger::new(),
         }
@@ -472,15 +493,28 @@ impl MessagingProtocol {
         }
     }
 
-    fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+    fn handle_retry_queue_messages(&mut self, msg: QueuedOutboundMessage) -> Result<(), MessagingProtocolError> {
         debug!(target: LOG_TARGET, "Retrying outbound message ({msg})");
-        self.send_message(msg)?;
+        self.enqueue_message(msg)?;
         Ok(())
     }
 
-    fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+    /// Queues a new message for its peer, with a deadline [`OUTBOUND_MESSAGE_TTL`] from now.
+    pub(super) fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         trace!(target: LOG_TARGET, "Received request to send message ({out_msg})");
-        let peer_node_id = out_msg.peer_node_id.clone();
+        let deadline = time::Instant::now()
+            .checked_add(OUTBOUND_MESSAGE_TTL)
+            .unwrap_or_else(time::Instant::now);
+        self.enqueue_message(QueuedOutboundMessage {
+            message: out_msg,
+            deadline,
+        })
+    }
+
+    /// Puts a message on its peer's outbound queue, spawning the peer's outbound handler if it has none. If the queue
+    /// is full the message fails immediately.
+    fn enqueue_message(&mut self, queued: QueuedOutboundMessage) -> Result<(), MessagingProtocolError> {
+        let peer_node_id = queued.message.peer_node_id.clone();
         let sender = loop {
             match self.active_queues.entry(peer_node_id.clone()) {
                 Entry::Occupied(entry) => {
@@ -503,14 +537,37 @@ impl MessagingProtocol {
             }
         };
 
-        trace!(target: LOG_TARGET, "Sending message {out_msg}");
-        let tag = out_msg.tag;
-        match sender.send(out_msg) {
+        trace!(target: LOG_TARGET, "Sending message {queued}");
+        let tag = queued.message.tag;
+        match sender.try_send(queued) {
             Ok(_) => {
                 trace!(target: LOG_TARGET, "Message ({tag}) dispatched to outbound handler");
                 Ok(())
             },
-            Err(err) => {
+            Err(TrySendError::Full(mut queued)) => {
+                #[cfg(feature = "metrics")]
+                metrics::outbound_dropped("queue_full").inc();
+                queued.message.reply_fail(SendFailReason::QueueFull);
+                let msg = format!(
+                    "Outbound queue for peer '{}' is full ({} messages); failing message ({})",
+                    queued.message.peer_node_id.short_str(),
+                    OUTBOUND_QUEUE_CAPACITY,
+                    tag
+                );
+                let now = time::Instant::now();
+                let should_warn = match self.last_queue_full_log {
+                    Some(last) => now.saturating_duration_since(last) >= SHED_LOG_INTERVAL,
+                    None => true,
+                };
+                if should_warn {
+                    self.last_queue_full_log = Some(now);
+                    warn!(target: LOG_TARGET, "{msg}");
+                } else {
+                    debug!(target: LOG_TARGET, "{msg}");
+                }
+                Ok(())
+            },
+            Err(err @ TrySendError::Closed(_)) => {
                 debug!(
                     target: LOG_TARGET,
                     "Failed to send message on channel because '{err:?}'"
@@ -520,14 +577,22 @@ impl MessagingProtocol {
         }
     }
 
+    /// The number of messages waiting in the outbound queue for `peer_node_id`, if it has one
+    #[cfg(test)]
+    pub(super) fn outbound_queue_len(&self, peer_node_id: &NodeId) -> Option<usize> {
+        self.active_queues
+            .get(peer_node_id)
+            .map(|sender| sender.max_capacity().saturating_sub(sender.capacity()))
+    }
+
     fn spawn_outbound_handler(
         connectivity: ConnectivityRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
-        retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+        retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
         protocol_id: ProtocolId,
-    ) -> mpsc::UnboundedSender<OutboundMessage> {
-        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+    ) -> mpsc::Sender<QueuedOutboundMessage> {
+        let (msg_tx, msg_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
         let outbound_messaging = OutboundMessaging::new(
             connectivity,
             events_tx,

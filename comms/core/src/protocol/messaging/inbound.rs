@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, task::Poll};
+use std::{io, sync::Arc, task::Poll};
 
 use futures::StreamExt;
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc, oneshot},
+    sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc, oneshot},
 };
 
 #[cfg(feature = "metrics")]
@@ -37,17 +37,25 @@ use crate::{PeerConnection, message::InboundMessage, peer_manager::NodeId};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
+/// The most messages one session may have delivered to the node-wide inbound channel (see
+/// `INBOUND_MESSAGE_BUFFER_SIZE`) that the consumer has not yet dropped. A session holding all of them stops reading
+/// its substream, so a flooding peer is held back by its own yamux window rather than filling the shared channel and
+/// starving every other peer.
+pub(super) const INBOUND_PER_SESSION_INFLIGHT: usize = 4;
+
 /// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
 pub struct InboundMessaging {
     connection: PeerConnection,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     messaging_events_tx: broadcast::Sender<MessagingEvent>,
     /// The `MessagingProtocol` actor's internal channel - distinct from `messaging_events_tx` above, which is
-    /// the external broadcast. Used only to report this session's exit, keyed by `session_id`, so the actor can
-    /// prune its `active_inbound`/`replacement_budgets` bookkeeping precisely. See
-    /// `MessagingEvent::InboundSessionExited`.
+    /// the external broadcast. Used to report this session's exit, keyed by `session_id`, so the actor can
+    /// prune its `active_inbound`/`replacement_budgets` bookkeeping precisely (see
+    /// `MessagingEvent::InboundSessionExited`), and to report protocol violations, which the actor bans for.
     internal_events_tx: mpsc::Sender<MessagingEvent>,
     session_id: u64,
+    /// This session's in-flight slots. See [INBOUND_PER_SESSION_INFLIGHT].
+    inflight_permits: Arc<Semaphore>,
     enable_message_received_event: bool,
     shutdown_signal: ShutdownSignal,
     replaced: oneshot::Receiver<()>,
@@ -71,6 +79,7 @@ impl InboundMessaging {
             messaging_events_tx,
             internal_events_tx,
             session_id,
+            inflight_permits: Arc::new(Semaphore::new(INBOUND_PER_SESSION_INFLIGHT)),
             enable_message_received_event,
             shutdown_signal,
             replaced,
@@ -107,6 +116,20 @@ impl InboundMessaging {
         let mut disconnected = false;
 
         loop {
+            // Take one of this session's in-flight slots before reading the next frame. While the consumer still
+            // holds all of them, nothing more is read from the substream, which leaves the peer's yamux window to
+            // push back on it. This also applies while draining after a stop, exactly as the blocking delivery
+            // below always has.
+            let permit = tokio::select! {
+                biased;
+                _ = self.shutdown_signal.wait() => break,
+                permit = Arc::clone(&self.inflight_permits).acquire_owned() => match permit {
+                    Ok(permit) => permit,
+                    // The semaphore is never closed
+                    Err(_) => break,
+                },
+            };
+
             let maybe_result = if disconnected {
                 match futures::poll!(stream.next()) {
                     Poll::Ready(item) => item,
@@ -139,7 +162,7 @@ impl InboundMessaging {
             };
             let Some(result) = maybe_result else { break };
 
-            if !self.handle_frame_result(result, &peer).await {
+            if !self.handle_frame_result(result, &peer, permit).await {
                 break;
             }
         }
@@ -174,13 +197,18 @@ impl InboundMessaging {
     }
 
     /// Handles a single decoded frame (or read error). Returns `false` if the read loop should stop.
-    async fn handle_frame_result(&mut self, result: io::Result<bytes::BytesMut>, peer: &NodeId) -> bool {
+    async fn handle_frame_result(
+        &mut self,
+        result: io::Result<bytes::BytesMut>,
+        peer: &NodeId,
+        permit: OwnedSemaphorePermit,
+    ) -> bool {
         match result {
             Ok(raw_msg) => {
                 #[cfg(feature = "metrics")]
                 metrics::inbound_message_count().inc();
                 let msg_len = raw_msg.len();
-                let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
+                let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze()).with_inflight_permit(permit);
                 debug!(
                     target: LOG_TARGET,
                     "Received message {} from peer '{}' ({} bytes)",
@@ -219,10 +247,15 @@ impl InboundMessaging {
                     peer.short_str(),
                     err
                 );
-                let _result = self.messaging_events_tx.send(MessagingEvent::ProtocolViolation {
-                    peer_node_id: peer.clone(),
-                    details: err.to_string(),
-                });
+                // Sent to the actor, which bans the peer and then forwards the event to the external broadcast for
+                // subscribers. Nothing bans for events sent straight to the external broadcast.
+                let _result = self
+                    .internal_events_tx
+                    .send(MessagingEvent::ProtocolViolation {
+                        peer_node_id: peer.clone(),
+                        details: err.to_string(),
+                    })
+                    .await;
                 false
             },
             Err(err) => {

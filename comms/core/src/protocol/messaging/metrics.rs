@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntGauge};
+use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
 
 pub fn num_sessions() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
@@ -64,4 +64,19 @@ pub fn error_count() -> IntCounter {
         Lazy::new(|| tari_metrics::register_int_counter("comms::messaging::errors", "The number of errors").unwrap());
 
     METER.clone()
+}
+
+/// Outbound messages that failed without being sent, by reason: `queue_full` (the peer's queue was full),
+/// `retry_queue_full`, `expired` (past the message deadline) or `send_timeout` (the peer stopped reading)
+pub fn outbound_dropped(reason: &str) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::messaging::outbound_dropped_total",
+            "The number of outbound messages that failed without being sent, by reason",
+            &["reason"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[reason])
 }

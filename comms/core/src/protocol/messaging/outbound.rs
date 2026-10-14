@@ -20,10 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Instant;
+use std::{fmt, time::Duration};
 
 use futures::{SinkExt, StreamExt};
-use tokio::sync::mpsc;
+use tokio::{
+    sync::{mpsc, mpsc::error::TrySendError},
+    time,
+    time::Instant,
+};
 use tracing::{Instrument, Level, debug, error, span, trace};
 
 #[cfg(feature = "metrics")]
@@ -45,23 +49,47 @@ const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 /// This should only need to be 1 to handle the case where the pending dial is cancelled due to to tie breaking
 /// and because the connection manager already retries dialing a number of times for each requested dial.
 const MAX_SEND_RETRIES: usize = 1;
+/// How long writing one message to the peer may take. A peer that stops reading leaves our write waiting for yamux
+/// window forever, so once this passes the message fails, the session exits (resetting the substream) and every
+/// message still queued for the peer fails with it.
+pub(super) const OUTBOUND_SEND_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// An outbound message waiting in a peer's queue (or the retry queue), with the instant after which it is no longer
+/// sent or retried. The deadline is set once, when the message is first queued, and is kept across retries.
+#[derive(Debug)]
+pub(super) struct QueuedOutboundMessage {
+    pub message: OutboundMessage,
+    pub deadline: Instant,
+}
+
+impl QueuedOutboundMessage {
+    pub fn is_expired(&self) -> bool {
+        Instant::now() >= self.deadline
+    }
+}
+
+impl fmt::Display for QueuedOutboundMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.message.fmt(f)
+    }
+}
 
 /// Actor for outbound messaging for a peer. This is spawned lazily when an outbound message must be sent.
 pub struct OutboundMessaging {
     connectivity: ConnectivityRequester,
-    messages_rx: mpsc::UnboundedReceiver<OutboundMessage>,
+    messages_rx: mpsc::Receiver<QueuedOutboundMessage>,
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
-    retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+    retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
     peer_node_id: NodeId,
     protocol_id: ProtocolId,
 }
 
 impl OutboundMessaging {
-    pub fn new(
+    pub(super) fn new(
         connectivity: ConnectivityRequester,
         messaging_events_tx: mpsc::Sender<MessagingEvent>,
-        messages_rx: mpsc::UnboundedReceiver<OutboundMessage>,
-        retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+        messages_rx: mpsc::Receiver<QueuedOutboundMessage>,
+        retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
         peer_node_id: NodeId,
         protocol_id: ProtocolId,
     ) -> Self {
@@ -244,6 +272,7 @@ impl OutboundMessaging {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn start_forwarding_messages(
         self,
         conn: PeerConnection,
@@ -277,6 +306,10 @@ impl OutboundMessaging {
         #[cfg(feature = "metrics")]
         let outbound_count = metrics::outbound_message_count();
 
+        // Set when a write took longer than `OUTBOUND_SEND_TIMEOUT`. The peer is not reading, so the messages still
+        // queued for it are failed rather than retried on a new substream that would stall in the same way.
+        let mut send_timed_out = false;
+
         // A message is only ever reported as sent (`reply_success`) once the write to the sink has actually
         // succeeded. Pulling a message off `messages_rx` and reporting success before attempting to write it -
         // the previous behaviour - meant that a message which was popped right as the connection tore down
@@ -286,7 +319,7 @@ impl OutboundMessaging {
         // not restructure this back into a pipelined `Stream`/`Sink` forward without preserving "attempt before
         // ack" - that ordering is the fix.
         loop {
-            let out_msg = tokio::select! {
+            let mut queued = tokio::select! {
                 biased;
                 _ = &mut on_disconnect => {
                     debug!(
@@ -320,17 +353,35 @@ impl OutboundMessaging {
                 },
             };
 
+            if queued.is_expired() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Message for peer '{}' expired before it could be sent: {}", peer_node_id, queued
+                );
+                #[cfg(feature = "metrics")]
+                metrics::outbound_dropped("expired").inc();
+                queued.message.reply_fail(SendFailReason::Expired);
+                continue;
+            }
+
             #[cfg(feature = "metrics")]
             outbound_count.inc();
             trace!(
                 target: LOG_TARGET,
-                "Message for peer '{}' sending {} on stream {}", peer_node_id, out_msg, stream_id
+                "Message for peer '{}' sending {} on stream {}", peer_node_id, queued, stream_id
             );
 
-            let mut out_msg = out_msg;
-            match sink.send(out_msg.body.clone()).await {
-                Ok(_) => out_msg.reply_success(),
-                Err(err) => {
+            // The write is raced against the disconnect signal, so a write waiting on a dead connection is noticed
+            // straight away rather than after the timeout.
+            let body = queued.message.body.clone();
+            let send_result = tokio::select! {
+                biased;
+                _ = &mut on_disconnect => None,
+                result = time::timeout(OUTBOUND_SEND_TIMEOUT, sink.send(body)) => Some(result),
+            };
+            match send_result {
+                Some(Ok(Ok(()))) => queued.message.reply_success(),
+                Some(Ok(Err(err))) => {
                     // The write genuinely failed - most commonly because the connection died between this
                     // message being popped off the channel and the write being attempted. It was never
                     // delivered, so it must not be acked as a success, and - since it is no longer in
@@ -343,24 +394,71 @@ impl OutboundMessaging {
                     );
                     #[cfg(feature = "metrics")]
                     metrics::error_count().inc();
-                    drop(retry_queue_tx.send(out_msg));
+                    Self::requeue_for_retry(&retry_queue_tx, queued);
+                    break;
+                },
+                Some(Err(_elapsed)) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Sending a message to peer '{}' on stream {} took longer than {:.0?}. Closing the session.",
+                        peer_node_id, stream_id, OUTBOUND_SEND_TIMEOUT
+                    );
+                    #[cfg(feature = "metrics")]
+                    metrics::outbound_dropped("send_timeout").inc();
+                    queued.message.reply_fail(SendFailReason::SendTimeout);
+                    send_timed_out = true;
+                    break;
+                },
+                None => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Outbound messaging stream {} ended for peer {} while sending (connection disconnected). \
+                         Queuing for retry.",
+                        stream_id, peer_node_id
+                    );
+                    Self::requeue_for_retry(&retry_queue_tx, queued);
                     break;
                 },
             }
         }
 
+        // Dropping the substream resets it, so the peer's inbound session sees the end of this session
+        drop(sink);
+        drop(remote_stream);
+
         // Close so that the protocol handler does not resend to this session
         messages_rx.close();
+        if send_timed_out {
+            let mut failed_messages_count = 0usize;
+            while let Some(mut queued) = messages_rx.recv().await {
+                #[cfg(feature = "metrics")]
+                metrics::outbound_dropped("send_timeout").inc();
+                queued.message.reply_fail(SendFailReason::SendTimeout);
+                failed_messages_count = failed_messages_count.saturating_add(1);
+            }
+            if failed_messages_count > 0 {
+                debug!(
+                    target: LOG_TARGET,
+                    "{} pending message(s) for peer '{}' failed because a send timed out.",
+                    failed_messages_count,
+                    peer_node_id
+                );
+            }
+            return Ok(());
+        }
+
         // The stream ended, perhaps due to a disconnect, but there could be more messages left on the queue. Collect
-        // any messages and queue them up for retry. If we cannot reconnect to the peer, the queued messages will be
-        // dropped.
+        // the ones still inside their deadline and queue them up for retry, so a redial backlog cannot build up. If we
+        // cannot reconnect to the peer, the queued messages will be dropped.
         let mut retried_messages_count = 0usize;
-        while let Some(msg) = messages_rx.recv().await {
-            if retry_queue_tx.send(msg).is_err() {
+        while let Some(queued) = messages_rx.recv().await {
+            if retry_queue_tx.is_closed() {
                 // The messaging protocol has shut down, so let's exit too
                 break;
             }
-            retried_messages_count = retried_messages_count.saturating_add(1);
+            if Self::requeue_for_retry(&retry_queue_tx, queued) {
+                retried_messages_count = retried_messages_count.saturating_add(1);
+            }
         }
 
         if retried_messages_count > 0 {
@@ -377,12 +475,41 @@ impl OutboundMessaging {
         Ok(())
     }
 
+    /// Puts a message that was not sent on the retry queue, unless it has expired or the retry queue is full, in which
+    /// case it fails now. Returns true if the message was queued.
+    fn requeue_for_retry(
+        retry_queue_tx: &mpsc::Sender<QueuedOutboundMessage>,
+        mut queued: QueuedOutboundMessage,
+    ) -> bool {
+        if queued.is_expired() {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("expired").inc();
+            queued.message.reply_fail(SendFailReason::Expired);
+            return false;
+        }
+        match retry_queue_tx.try_send(queued) {
+            Ok(()) => true,
+            Err(TrySendError::Full(mut queued)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Retry queue is full. Failing message {}", queued
+                );
+                #[cfg(feature = "metrics")]
+                metrics::outbound_dropped("retry_queue_full").inc();
+                queued.message.reply_fail(SendFailReason::QueueFull);
+                false
+            },
+            // The messaging protocol has shut down. Dropping the message fails its reply.
+            Err(TrySendError::Closed(_)) => false,
+        }
+    }
+
     async fn fail_all_pending_messages(&mut self, reason: SendFailReason) {
         // Close the request channel so that we can read all the remaining messages and flush them
         // to a failed event
         self.messages_rx.close();
-        while let Some(mut out_msg) = self.messages_rx.recv().await {
-            out_msg.reply_fail(reason);
+        while let Some(mut queued) = self.messages_rx.recv().await {
+            queued.message.reply_fail(reason);
         }
     }
 }

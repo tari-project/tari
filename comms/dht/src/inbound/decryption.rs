@@ -49,6 +49,10 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::middleware::decryption";
 
+/// The most parts an envelope body may carry. DHT handlers only ever read the first part, and Tari sends at most two,
+/// so this leaves plenty of room while stopping a peer from packing an 8 MiB frame with millions of empty parts.
+const MAX_ENVELOPE_PARTS: usize = 16;
+
 #[derive(Error, Debug, PartialEq)]
 enum DecryptionError {
     #[error("Failed to validate message signature")]
@@ -352,7 +356,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::MessageRejectDecryptionFailed)?;
         // Deserialization into an EnvelopeBody is done here to determine if the
         // decryption produced valid bytes or not.
-        decode_with_max_items::<EnvelopeBody>(&decrypted, DHT_MESSAGE_MAX_DECODE_ITEMS)
+        decode_envelope_body(&decrypted)
             .and_then(|body| {
                 // Check if we received a body length of zero
                 //
@@ -383,7 +387,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
         let authenticated_pk = validated.authenticated_origin().cloned();
         let msg = validated.message();
-        match decode_with_max_items::<EnvelopeBody>(&msg.body, DHT_MESSAGE_MAX_DECODE_ITEMS) {
+        match decode_envelope_body(&msg.body) {
             Ok(deserialized) => {
                 trace!(
                     target: LOG_TARGET,
@@ -410,6 +414,19 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             },
         }
     }
+}
+
+/// Decodes an envelope body, rejecting one with more than [MAX_ENVELOPE_PARTS] parts like any other undecodable body.
+fn decode_envelope_body(bytes: &[u8]) -> Result<EnvelopeBody, prost::DecodeError> {
+    let body = decode_with_max_items::<EnvelopeBody>(bytes, DHT_MESSAGE_MAX_DECODE_ITEMS)?;
+    if body.parts.len() > MAX_ENVELOPE_PARTS {
+        return Err(prost::DecodeError::new(format!(
+            "EnvelopeBody has {} parts, at most {} allowed",
+            body.parts.len(),
+            MAX_ENVELOPE_PARTS
+        )));
+    }
+    Ok(body)
 }
 
 #[cfg(test)]
@@ -777,14 +794,46 @@ mod test {
         sleep(Duration::from_secs(1)).await;
         assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
 
-        // At the budget, it decodes
-        let at_budget = EnvelopeBody {
-            parts: vec![Vec::new(); DHT_MESSAGE_MAX_DECODE_ITEMS],
+        // At the parts cap (which is below the decode budget), it decodes
+        let at_cap = EnvelopeBody {
+            parts: vec![Vec::new(); MAX_ENVELOPE_PARTS],
         };
         let message =
-            make_dht_inbound_message(&node_identity, &at_budget, DhtMessageFlags::ENCRYPTED, true, true).unwrap();
+            make_dht_inbound_message(&node_identity, &at_cap, DhtMessageFlags::ENCRYPTED, true, true).unwrap();
         let decrypted = expect_no_error(node_identity, message, true).await;
-        assert_eq!(decrypted.decryption_result.unwrap(), at_budget);
+        assert_eq!(decrypted.decryption_result.unwrap(), at_cap);
+    }
+
+    #[tokio::test]
+    /// An envelope body with more than MAX_ENVELOPE_PARTS parts (but inside the decode budget) is discarded without a
+    /// ban, whether or not it is encrypted, and one at the cap is passed on
+    async fn envelope_with_too_many_parts_is_rejected() {
+        let node_identity = make_node_identity();
+        let too_many = EnvelopeBody {
+            parts: vec![b"part".to_vec(); MAX_ENVELOPE_PARTS + 1],
+        };
+        const { assert!(MAX_ENVELOPE_PARTS < DHT_MESSAGE_MAX_DECODE_ITEMS) };
+
+        for flags in [DhtMessageFlags::NONE, DhtMessageFlags::ENCRYPTED] {
+            // The test maker only signs encrypted messages correctly; a clear text message needs no signature
+            let is_encrypted = flags.is_encrypted();
+            let message = make_dht_inbound_message(&node_identity, &too_many, flags, is_encrypted, true).unwrap();
+            assert_eq!(
+                passed_on_and_bans(node_identity.clone(), message).await,
+                (false, 0),
+                "{flags:?}"
+            );
+
+            let at_cap = EnvelopeBody {
+                parts: vec![b"part".to_vec(); MAX_ENVELOPE_PARTS],
+            };
+            let message = make_dht_inbound_message(&node_identity, &at_cap, flags, is_encrypted, true).unwrap();
+            assert_eq!(
+                passed_on_and_bans(node_identity.clone(), message).await,
+                (true, 0),
+                "{flags:?}"
+            );
+        }
     }
 
     /// Calls the decryption service with `message` and returns whether the message was passed on (to the forwarder

@@ -29,6 +29,7 @@ use tari_comms::{
 
 mod greeting_service;
 mod helpers;
+mod messaging;
 mod rpc;
 mod rpc_stress;
 mod substream_stress;

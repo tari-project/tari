@@ -28,12 +28,20 @@ use tari_common_sqlite::connection::DbConnection;
 use tari_shutdown::Shutdown;
 use tari_test_utils::{collect_stream, unpack_enum};
 use tokio::{
-    sync::{broadcast, mpsc, oneshot},
+    io::AsyncReadExt,
+    sync::{broadcast, mpsc, oneshot, oneshot::error::TryRecvError},
     time,
+    time::Instant,
 };
 
-use super::protocol::{MessagingEventReceiver, MessagingProtocol};
+use super::{
+    extension::INBOUND_MESSAGE_BUFFER_SIZE,
+    inbound::INBOUND_PER_SESSION_INFLIGHT,
+    outbound::{OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueuedOutboundMessage},
+    protocol::{MessagingEventReceiver, MessagingProtocol, OUTBOUND_MESSAGE_TTL, OUTBOUND_QUEUE_CAPACITY},
+};
 use crate::{
+    Minimized,
     message::{InboundMessage, MessageTag, MessagingReplyRx, OutboundMessage},
     multiplexing::Substream,
     net_address::MultiaddressesWithStats,
@@ -948,5 +956,397 @@ async fn superseded_session_exiting_does_not_disturb_the_current_session() {
             )
             .unwrap();
         assert_eq!(in_msg.body, body);
+    }
+}
+
+/// A message body larger than the 256 KiB starting window of a yamux stream. Sending it to a peer that never reads
+/// leaves the write waiting for window.
+fn stalling_body() -> Bytes {
+    Bytes::from(vec![0u8; 1024 * 1024])
+}
+
+/// Polls `condition` until it holds, panicking after 5 seconds
+async fn wait_until<F: FnMut() -> bool>(mut condition: F) {
+    time::timeout(Duration::from_secs(5), async {
+        while !condition() {
+            time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("condition was not met within 5 seconds");
+}
+
+#[tokio::test]
+async fn outbound_queue_full_fails_new_messages_without_growth() {
+    let shutdown = Shutdown::new();
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+
+    let (_proto_tx, proto_rx) = mpsc::channel(10);
+    let (_request_tx, request_rx) = mpsc::unbounded_channel();
+    let (inbound_msg_tx, _inbound_msg_rx) = mpsc::channel(10);
+    let (events_tx, _events_rx) = broadcast::channel(10);
+    // Not spawned: the test calls `send_message` directly so that it can look at the peer's queue
+    let mut msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
+        requester,
+        proto_rx,
+        request_rx,
+        events_tx,
+        inbound_msg_tx,
+        shutdown.to_signal(),
+    );
+
+    let peer = peer_node_identity.node_id().clone();
+    let (reply_tx, mut stalled_reply_rx) = oneshot::channel();
+    msg_proto
+        .send_message(OutboundMessage::with_reply(
+            peer.clone(),
+            stalling_body(),
+            reply_tx.into(),
+        ))
+        .unwrap();
+    // The peer accepts the substream but never reads from it
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    // The outbound session has taken the stalling message off the queue and is stuck writing it
+    wait_until(|| msg_proto.outbound_queue_len(&peer) == Some(0)).await;
+    time::sleep(Duration::from_millis(100)).await;
+
+    let mut queued_reply_rxs = Vec::with_capacity(OUTBOUND_QUEUE_CAPACITY);
+    for _ in 0..OUTBOUND_QUEUE_CAPACITY {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        msg_proto
+            .send_message(OutboundMessage::with_reply(
+                peer.clone(),
+                TEST_MSG1.clone(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        queued_reply_rxs.push(reply_rx);
+    }
+    assert_eq!(msg_proto.outbound_queue_len(&peer), Some(OUTBOUND_QUEUE_CAPACITY));
+
+    // One more fails straight away, and the queue does not grow
+    let (reply_tx, reply_rx) = oneshot::channel();
+    msg_proto
+        .send_message(OutboundMessage::with_reply(
+            peer.clone(),
+            TEST_MSG1.clone(),
+            reply_tx.into(),
+        ))
+        .unwrap();
+    let reply = time::timeout(Duration::from_millis(10), reply_rx)
+        .await
+        .expect("a message for a full queue must fail immediately")
+        .unwrap();
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+    assert_eq!(msg_proto.outbound_queue_len(&peer), Some(OUTBOUND_QUEUE_CAPACITY));
+
+    // Everything already queued is still waiting to be sent
+    assert!(matches!(stalled_reply_rx.try_recv(), Err(TryRecvError::Empty)));
+    for reply_rx in &mut queued_reply_rxs {
+        assert!(matches!(reply_rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn outbound_send_times_out_and_session_exits() {
+    let (_, node_identity, conn_man_mock, _, request_tx, _, mut events_rx, _shutdown) =
+        spawn_messaging_protocol().await;
+
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+
+    let (reply_tx, stalled_reply_rx) = oneshot::channel();
+    request_tx
+        .send(OutboundMessage::with_reply(
+            peer.clone(),
+            stalling_body(),
+            reply_tx.into(),
+        ))
+        .unwrap();
+    let (reply_tx, queued_reply_rx) = oneshot::channel();
+    request_tx
+        .send(OutboundMessage::with_reply(
+            peer.clone(),
+            TEST_MSG1.clone(),
+            reply_tx.into(),
+        ))
+        .unwrap();
+
+    // The peer accepts the substream but stops reading
+    let mut substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    let start = Instant::now();
+
+    let reply = stalled_reply_rx.await.unwrap();
+    unpack_enum!(Err(SendFailReason::SendTimeout) = reply);
+    assert!(start.elapsed() >= OUTBOUND_SEND_TIMEOUT);
+    // The message queued behind it fails too, rather than being retried on a new substream
+    let reply = queued_reply_rx.await.unwrap();
+    unpack_enum!(Err(SendFailReason::SendTimeout) = reply);
+
+    let event = time::timeout(Duration::from_secs(5), events_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    unpack_enum!(MessagingEvent::OutboundProtocolExited(node_id) = &event);
+    assert_eq!(*node_id, peer);
+
+    // The session closed the substream: the peer reads what arrived before the stall and then the end of it
+    let mut received = Vec::new();
+    let _result = time::timeout(Duration::from_secs(5), substream.read_to_end(&mut received))
+        .await
+        .expect("the outbound session did not close the substream");
+    assert!(received.len() < stalling_body().len());
+}
+
+#[tokio::test]
+async fn expired_messages_are_not_requeued_on_disconnect() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1.clone()).await;
+    let peer = peer_node_identity.node_id().clone();
+
+    let (events_tx, _events_rx) = mpsc::channel(10);
+    let (messages_tx, messages_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
+    let (retry_queue_tx, mut retry_queue_rx) = mpsc::channel(10);
+    let outbound = OutboundMessaging::new(
+        requester,
+        events_tx,
+        messages_rx,
+        retry_queue_tx,
+        peer.clone(),
+        MESSAGING_PROTOCOL_ID.clone(),
+    );
+    let outbound_task = tokio::spawn(outbound.run());
+
+    let live_deadline = Instant::now().checked_add(OUTBOUND_MESSAGE_TTL).unwrap();
+    let expired_deadline = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
+    let queue = |body: Bytes, deadline: Instant| {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let queued = QueuedOutboundMessage {
+            message: OutboundMessage::with_reply(peer.clone(), body, reply_tx.into()),
+            deadline,
+        };
+        (queued, reply_rx)
+    };
+
+    // Stall the session on a message the peer never reads
+    let (stalled, _stalled_reply_rx) = queue(stalling_body(), live_deadline);
+    let stalled_tag = stalled.message.tag;
+    messages_tx.send(stalled).await.unwrap();
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    wait_until(|| messages_tx.capacity() == OUTBOUND_QUEUE_CAPACITY).await;
+
+    // Queue expired and live messages behind it, then disconnect
+    let (expired1, expired1_reply_rx) = queue(TEST_MSG1.clone(), expired_deadline);
+    let (expired2, expired2_reply_rx) = queue(TEST_MSG1.clone(), expired_deadline);
+    let (live, _live_reply_rx) = queue(TEST_MSG2.clone(), live_deadline);
+    let live_tag = live.message.tag;
+    messages_tx.send(expired1).await.unwrap();
+    messages_tx.send(live).await.unwrap();
+    messages_tx.send(expired2).await.unwrap();
+    conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+
+    time::timeout(Duration::from_secs(5), outbound_task)
+        .await
+        .expect("the outbound session did not exit on disconnect")
+        .unwrap();
+
+    for reply_rx in [expired1_reply_rx, expired2_reply_rx] {
+        let reply = reply_rx.await.unwrap();
+        unpack_enum!(Err(SendFailReason::Expired) = reply);
+    }
+    // Only the messages still inside their deadline were requeued
+    let mut retried_tags = Vec::new();
+    while let Ok(queued) = retry_queue_rx.try_recv() {
+        retried_tags.push(queued.message.tag);
+    }
+    assert_eq!(retried_tags.len(), 2, "{retried_tags:?}");
+    assert!(retried_tags.contains(&stalled_tag));
+    assert!(retried_tags.contains(&live_tag));
+}
+
+/// Starts forwarding the inbound substreams of a new peer to the messaging protocol and returns the peer's node id
+/// and a substream on which it can send messages
+async fn connect_inbound_peer(
+    node_identity: &NodeIdentity,
+    conn_man_mock: &ConnectivityManagerMockState,
+    proto_tx: mpsc::Sender<ProtocolNotification<Substream>>,
+) -> (
+    NodeId,
+    tokio_util::codec::Framed<Substream, tokio_util::codec::LengthDelimitedCodec>,
+) {
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+    let peer_node_id = peer.node_id.clone();
+    let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(node_identity.to_peer(), peer).await;
+    conn_man_mock.add_active_connection(conn1).await;
+
+    tokio::spawn({
+        let peer_node_id = peer_node_id.clone();
+        async move {
+            while let Some(stream_theirs) = conn2_state.next_incoming_substream().await {
+                proto_tx
+                    .send(ProtocolNotification::new(
+                        MESSAGING_PROTOCOL_ID.clone(),
+                        ProtocolEvent::NewInboundSubstream(peer_node_id.clone(), stream_theirs),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+
+    let stream_ours = conn1_state.open_substream().await.unwrap();
+    (peer_node_id, MessagingProtocol::framed(stream_ours))
+}
+
+#[tokio::test]
+async fn flooding_peer_cannot_starve_other_peers_inbound() {
+    const FLOOD_MESSAGES: usize = 20;
+    let shutdown = Shutdown::new();
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (proto_tx, proto_rx) = mpsc::channel(10);
+    let (_request_tx, request_rx) = mpsc::unbounded_channel();
+    let (inbound_msg_tx, mut inbound_msg_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);
+    let (events_tx, _events_rx) = broadcast::channel(100);
+    let msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
+        requester,
+        proto_rx,
+        request_rx,
+        events_tx,
+        inbound_msg_tx,
+        shutdown.to_signal(),
+    );
+    tokio::spawn(msg_proto.run());
+
+    let (flooder, mut flooder_stream) = connect_inbound_peer(&node_identity, &conn_man_mock, proto_tx.clone()).await;
+    let (honest, mut honest_stream) = connect_inbound_peer(&node_identity, &conn_man_mock, proto_tx).await;
+
+    // Peer A sends continuously while the consumer is not reading
+    for i in 0..FLOOD_MESSAGES {
+        flooder_stream.send(Bytes::from(format!("FLOOD{i}"))).await.unwrap();
+    }
+    time::sleep(Duration::from_millis(200)).await;
+    // Peer B sends a single message
+    honest_stream.send(TEST_MSG1.clone()).await.unwrap();
+    time::sleep(Duration::from_millis(200)).await;
+
+    // One consumer cycle: everything queued is A's in-flight messages plus B's message. They are held (not dropped)
+    // so A's slots stay in use.
+    let mut held = Vec::new();
+    for _ in 0..=INBOUND_PER_SESSION_INFLIGHT {
+        let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+            .await
+            .expect("the honest peer's message was starved by the flooding peer")
+            .unwrap();
+        held.push(msg);
+    }
+    let from_honest = held.iter().filter(|msg| msg.source_peer == honest).count();
+    let from_flooder = held.iter().filter(|msg| msg.source_peer == flooder).count();
+    assert_eq!(from_honest, 1);
+    assert_eq!(from_flooder, INBOUND_PER_SESSION_INFLIGHT);
+
+    // A holds no more slots than its in-flight limit while the consumer holds its messages
+    assert!(
+        time::timeout(Duration::from_millis(200), inbound_msg_rx.recv())
+            .await
+            .is_err(),
+        "the flooding peer delivered more than {INBOUND_PER_SESSION_INFLIGHT} messages that were not yet consumed"
+    );
+
+    // Once the consumer drops them, the rest of A's messages arrive
+    drop(held);
+    for _ in INBOUND_PER_SESSION_INFLIGHT..FLOOD_MESSAGES {
+        let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(msg.source_peer, flooder);
+    }
+}
+
+#[tokio::test]
+async fn oversized_frame_is_reported_on_the_internal_channel() {
+    let shutdown = Shutdown::new();
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (proto_tx, proto_rx) = mpsc::channel(10);
+    let (_request_tx, request_rx) = mpsc::unbounded_channel();
+    let (inbound_msg_tx, _inbound_msg_rx) = mpsc::channel(10);
+    let (events_tx, mut events_rx) = broadcast::channel(100);
+    let msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
+        requester,
+        proto_rx,
+        request_rx,
+        events_tx,
+        inbound_msg_tx,
+        shutdown.to_signal(),
+    )
+    .with_ban_duration(Duration::from_secs(60));
+    tokio::spawn(msg_proto.run());
+
+    let (peer, framed) = connect_inbound_peer(&node_identity, &conn_man_mock, proto_tx).await;
+    // A 9 MiB length header, over the 8 MiB frame limit
+    let mut substream = framed.into_inner();
+    let oversized_len = u32::try_from(9 * 1024 * 1024).unwrap();
+    tokio::io::AsyncWriteExt::write_all(&mut substream, &oversized_len.to_be_bytes())
+        .await
+        .unwrap();
+    tokio::io::AsyncWriteExt::flush(&mut substream).await.unwrap();
+
+    // The actor bans the peer...
+    let banned = time::timeout(Duration::from_secs(5), async {
+        loop {
+            let banned = conn_man_mock.take_banned_peers().await;
+            if !banned.is_empty() {
+                return banned;
+            }
+            time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the peer that sent an oversized frame was not banned");
+    assert_eq!(banned.len(), 1);
+    assert_eq!(banned.first().map(|(node_id, _, _)| node_id), Some(&peer));
+    // ...and still forwards the violation to external subscribers
+    let event = time::timeout(Duration::from_secs(5), async {
+        loop {
+            let event = events_rx.recv().await.unwrap();
+            if matches!(event, MessagingEvent::ProtocolViolation { .. }) {
+                return event;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    match event {
+        MessagingEvent::ProtocolViolation { peer_node_id, .. } => assert_eq!(peer_node_id, peer),
+        _ => unreachable!(),
     }
 }

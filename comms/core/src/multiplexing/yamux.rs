@@ -70,9 +70,18 @@ const YAMUX_SPLIT_SEND_SIZE: usize = noise::MAX_WRITE_BUFFER_LENGTH - YAMUX_HEAD
 /// The maximum number of open streams per connection, in both directions. yamux holds the unread data of every stream,
 /// including streams that were dropped but not yet cleaned up. For streams whose window is still the 256 KiB starting
 /// window, this caps the unread data a peer can pin on one connection at 128 x 256 KiB = 32 MiB. yamux grows the window
-/// of a stream that is read quickly, so streams whose windows grew can pin more, up to the connection receive window,
-/// which is left at the yamux default. A peer that opens more streams than this has its connection closed by yamux.
+/// of a stream that is read quickly, so streams whose windows grew can pin more, up to
+/// [YAMUX_MAX_CONNECTION_RECEIVE_WINDOW]. A peer that opens more streams than this has its connection closed by yamux.
 const YAMUX_MAX_NUM_STREAMS: usize = 128;
+
+/// The most that yamux auto-tuning may grow the receive window of all streams on one connection to, together. The
+/// yamux default is 1 GiB, which a peer that answers window pings late (inflating the RTT estimate) can drive us
+/// towards. 64 MiB is eight 8 MiB messaging frames in flight, which is plenty to keep a fast link busy. This is local
+/// policy only: the 256 KiB starting window of each stream is fixed by the yamux spec and is not changed.
+const YAMUX_MAX_CONNECTION_RECEIVE_WINDOW: usize = 64 * 1024 * 1024;
+
+/// The starting receive window of every yamux stream, fixed by the yamux spec (not exported by the yamux crate)
+const YAMUX_STARTING_WINDOW: usize = 256 * 1024;
 
 pub struct Yamux {
     control: Control,
@@ -82,12 +91,16 @@ pub struct Yamux {
 }
 
 fn yamux_config() -> yamux::Config {
-    // The connection receive window is left at the default: the 256 KiB starting window is fixed by the yamux spec,
-    // and auto-tuning grows it up to 1 GiB per connection. The stream limit is lowered from 512, because yamux keeps
-    // the unread data of every stream it knows about. The default split send size of 16 KiB sends many small frames
-    // for large messages, so frames are sized to fill one noise frame each.
+    // The 256 KiB starting window is fixed by the yamux spec, and auto-tuning grows it up to the connection receive
+    // window, which is capped at 64 MiB (eight 8 MiB messaging frames in flight) instead of the 1 GiB default, so one
+    // connection cannot make us buffer up to 1 GiB of unread data. The stream limit is lowered from 512, because yamux
+    // keeps the unread data of every stream it knows about. The default split send size of 16 KiB sends many small
+    // frames for large messages, so frames are sized to fill one noise frame each.
     let mut config = yamux::Config::default();
+    // The stream limit must be lowered before the window is capped: yamux panics if the connection receive window
+    // is smaller than the 256 KiB starting window times the stream limit.
     config.set_max_num_streams(YAMUX_MAX_NUM_STREAMS);
+    config.set_max_connection_receive_window(Some(YAMUX_MAX_CONNECTION_RECEIVE_WINDOW));
     config.set_split_send_size(YAMUX_SPLIT_SEND_SIZE);
     config
 }
@@ -156,6 +169,12 @@ impl Yamux {
             ConnectionDirection::Outbound => Mode::Client,
         };
         let mut config = yamux_config();
+        // yamux panics unless the connection receive window has room for the starting window of every stream. Only
+        // tests pass a stream limit above YAMUX_MAX_NUM_STREAMS, so only they can need a larger window.
+        let min_connection_receive_window = max_num_streams.saturating_mul(YAMUX_STARTING_WINDOW);
+        if min_connection_receive_window > YAMUX_MAX_CONNECTION_RECEIVE_WINDOW {
+            config.set_max_connection_receive_window(Some(min_connection_receive_window));
+        }
         config.set_max_num_streams(max_num_streams);
 
         let substream_counter = AtomicRefCounter::new();
@@ -1170,9 +1189,15 @@ mod test {
     fn yamux_frames_fill_one_noise_frame() {
         let config = format!("{:?}", yamux_config());
         assert!(config.contains("split_send_size: 65507"), "{config}");
-        // Window defaults are unchanged
+        assert!(config.contains("max_num_streams: 128"), "{config}");
+    }
+
+    #[test]
+    fn yamux_connection_window_is_capped() {
+        let config = format!("{:?}", yamux_config());
+        // 64 MiB instead of the 1 GiB yamux default
         assert!(
-            config.contains("max_connection_receive_window: Some(1073741824)"),
+            config.contains("max_connection_receive_window: Some(67108864)"),
             "{config}"
         );
         assert!(config.contains("max_num_streams: 128"), "{config}");
