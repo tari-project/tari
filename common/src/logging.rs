@@ -879,7 +879,14 @@ mod test {
     fn repeated_logger_key_still_loads() {
         let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\nroot:\n  appenders: \
                     [app]\nloggers:\n  a:\n    level: info\n  a:\n    level: debug\n";
-        assert!(super::from_yaml::<log4rs::config::RawConfig>(yaml).is_ok());
+        let config: log4rs::config::RawConfig = super::from_yaml(yaml).unwrap();
+        let loggers = config.loggers();
+        assert_eq!(loggers.len(), 1);
+        // The last value wins, as with log4rs's own YAML loading
+        assert_eq!(
+            loggers.first().map(|l| (l.name(), l.level())),
+            Some(("a", log::LevelFilter::Debug))
+        );
         let choice = choose_for(yaml);
         assert!(!choice.refused, "{:?}", choice.findings);
     }
