@@ -55,8 +55,9 @@ pub enum RequestFrame {
 /// `LengthDelimitedCodec` reserves buffer space for the length a frame declares as soon as it has read the prefix, so
 /// with the 8 MiB response frame limit, four bytes from a client would make the server reserve 8 MiB per session. This
 /// reads the prefix itself and reserves nothing for the declared length: the read buffer grows only as bytes arrive
-/// (`Framed` makes room for each read), so the memory a session holds tracks what the client has actually sent. A
-/// request within the limit still costs up to the request limit once the client has sent all of it. A longer request
+/// (`Framed` makes room for each read), so a request only costs what the client has actually sent of it, up to the
+/// request limit for one sent in full. The allocation stays behind after a large request (later frames reuse it)
+/// until the session replaces it with a small one (see `release_large_read_buffer`). A longer request
 /// (up to the frame limit, which a peer running a version with a larger request cap may honestly send) is reported as
 /// [RequestFrame::Oversized] once the start of it, which holds its `request_id`, has arrived, so the server can reply
 /// with `BadRequest` and carry on with the session. A length over the frame limit is an error, as it is for

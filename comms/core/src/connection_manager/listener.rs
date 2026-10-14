@@ -83,9 +83,14 @@ async fn notify_inbound_connect_failed(
     peer_addr: &Multiaddr,
 ) {
     let event = ConnectionManagerEvent::PeerInboundConnectFailed(err);
-    if send_or_drop(conn_man_notifier, event, "listener_inbound_connect_failed")
-        .await
-        .is_err()
+    if send_or_drop(
+        conn_man_notifier,
+        event,
+        "listener_inbound_connect_failed",
+        Some(peer_addr),
+    )
+    .await
+    .is_err()
     {
         debug!(
             target: LOG_TARGET,
@@ -314,8 +319,10 @@ where
                             // Bounded so that a busy connection manager cannot park this task (and the listener permit
                             // it holds). The connection manager never learns of a connection whose event was dropped,
                             // so nothing would use or close it: close it here.
+                            let peer = peer_conn.peer_node_id().clone();
                             let event = ConnectionManagerEvent::PeerConnected(peer_conn.into());
-                            let result = send_or_drop(&conn_man_notifier, event, "listener_peer_connected").await;
+                            let result =
+                                send_or_drop(&conn_man_notifier, event, "listener_peer_connected", Some(&peer)).await;
                             if let Err(err) = result &&
                                 let ConnectionManagerEvent::PeerConnected(conn) = err.into_inner()
                             {

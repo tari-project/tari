@@ -212,6 +212,8 @@ impl GreetingRpc for GreetingService {
 pub struct SlowGreetingService {
     delay: Arc<RwLock<Duration>>,
     num_cancelled: Arc<AtomicUsize>,
+    num_in_flight: Arc<AtomicUsize>,
+    max_in_flight: Arc<AtomicUsize>,
 }
 
 impl SlowGreetingService {
@@ -219,7 +221,14 @@ impl SlowGreetingService {
         Self {
             delay,
             num_cancelled: Arc::new(AtomicUsize::new(0)),
+            num_in_flight: Arc::new(AtomicUsize::new(0)),
+            max_in_flight: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// The most `say_hello` calls whose work was running at once
+    pub fn max_in_flight(&self) -> Arc<AtomicUsize> {
+        self.max_in_flight.clone()
     }
 
     /// The number of `say_hello` calls dropped (cancelled) before they finished
@@ -250,7 +259,17 @@ impl GreetingRpc for SlowGreetingService {
             finished: false,
         };
         let delay = *self.delay.read().await;
-        time::sleep(delay).await;
+        // Like a blocking database call, the work runs on a task of its own, which keeps running if this call is
+        // dropped
+        let num_in_flight = self.num_in_flight.clone();
+        let max_in_flight = self.max_in_flight.clone();
+        let work = task::spawn(async move {
+            let now_in_flight = num_in_flight.fetch_add(1, Ordering::SeqCst).saturating_add(1);
+            max_in_flight.fetch_max(now_in_flight, Ordering::SeqCst);
+            time::sleep(delay).await;
+            num_in_flight.fetch_sub(1, Ordering::SeqCst);
+        });
+        let _result = work.await;
         guard.finished = true;
         Ok(Response::new(SayHelloResponse {
             greeting: "took a while to load".to_string(),

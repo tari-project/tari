@@ -1226,6 +1226,8 @@ where
 
                     let start = Instant::now();
                     let result = self.handle_request(frame.freeze()).await;
+                    // The request (and every copy of it) is gone by now
+                    release_large_read_buffer(self.framed.get_mut().read_buffer_mut());
                     let elapsed = start.elapsed();
                     trace!(
                         target: LOG_TARGET,
@@ -1440,19 +1442,20 @@ where
             decoded_msg.payload.into(),
         );
 
-        let service_call = log_timing(
-            &self.logging_context_string,
-            request_id,
-            "service call",
-            self.service.call(req),
-        );
-        // The call is dropped (cancelling it) if the session is told to stop, or if the client hangs up or abandons the
-        // request with a FIN: nobody is waiting for the answer any more, and it would hold the session slot until the
-        // deadline
+        // A clone, so that the call (which lives on while this function sends the response) does not borrow `self`
+        let logging_context = self.logging_context_string.clone();
+        let service_call = log_timing(&logging_context, request_id, "service call", self.service.call(req));
+        // The call is dropped (cancelling it) only if the session is told to stop. If the client gives up on the
+        // request (a FIN) or hangs up, the call is still driven to the end (or its deadline) and its result discarded:
+        // dropping it would not stop work it handed to other tasks (e.g. blocking database calls), so a client
+        // repeating request-then-FIN could otherwise start any number of them at once. This way a session never has
+        // more than one call running.
         //
         // Meanwhile only frames small enough to be a FIN are read: a longer one (a pipelined request) is left on the
         // substream until this request is done, so the client's flow control, not the session, holds it.
         let mut stop_rx = self.stop_rx.clone();
+        let call = time::timeout(deadline, service_call);
+        tokio::pin!(call);
         self.framed
             .get_mut()
             .codec_mut()
@@ -1460,21 +1463,34 @@ where
         let selected = tokio::select! {
             biased;
             _ = stop_rx.changed() => Err(RpcServerError::SessionStopped),
-            reason = wait_for_client_cancel(&mut self.framed, &mut self.buffered_request) => Err(reason),
-            result = time::timeout(deadline, service_call) => Ok(result),
+            reason = wait_for_client_to_give_up(&mut self.framed, &mut self.buffered_request) => Err(reason),
+            result = &mut call => Ok(result),
         };
         self.framed.get_mut().codec_mut().set_peek_limit(None);
         let service_result = match selected {
             Ok(result) => result,
-            Err(RpcServerError::ClientInterruptedStream) => {
+            Err(RpcServerError::SessionStopped) => return Err(RpcServerError::SessionStopped),
+            Err(reason) => {
                 debug!(
                     target: LOG_TARGET,
-                    "({}) Client sent FIN while its request was being handled. Request abandoned.",
-                    self.logging_context_string
+                    "({}) Client gave up on its request while it was being handled ({}). Finishing the call without \
+                     replying.",
+                    self.logging_context_string,
+                    reason
                 );
-                return Ok(true);
+                // The substream is not read meanwhile
+                tokio::select! {
+                    biased;
+                    _ = stop_rx.changed() => return Err(RpcServerError::SessionStopped),
+                    _ = &mut call => {},
+                }
+                return match reason {
+                    // The session carries on with the next request. An abandoned call is not activity.
+                    RpcServerError::ClientInterruptedStream => Ok(false),
+                    // The client hung up: the session ends
+                    reason => Err(reason),
+                };
             },
-            Err(err) => return Err(err),
         };
         let service_result = match service_result {
             Ok(v) => v,
@@ -1789,7 +1805,8 @@ fn is_fin(frame: &BytesMut) -> bool {
 }
 
 /// Waits, while a request's service call runs, for the client to give up on it, and returns why: it hung up
-/// (`StreamClosedByRemote`, or the read error), or it sent a FIN (`ClientInterruptedStream`).
+/// (`StreamClosedByRemote`, or the read error), or it sent a FIN (`ClientInterruptedStream`). The call is not cancelled
+/// for either (see `ActivePeerRpcService::handle_request`), only its result discarded.
 ///
 /// Any other frame is a request pipelined behind this one. A small one is kept in `buffered`; a larger one is not read
 /// at all (the codec is in peek mode, see `RequestCodec::set_peek_limit`), only noted in `buffered` as
@@ -1797,7 +1814,10 @@ fn is_fin(frame: &BytesMut) -> bool {
 /// is lost or reordered; from then on only the service call's own deadline (and the stop signal) can end the call
 /// early. The session may still read the substream before then while it waits to send a response: see
 /// `ActivePeerRpcService::check_interruptions`.
-async fn wait_for_client_cancel(framed: &mut SessionFraming, buffered: &mut Option<RequestFrame>) -> RpcServerError {
+async fn wait_for_client_to_give_up(
+    framed: &mut SessionFraming,
+    buffered: &mut Option<RequestFrame>,
+) -> RpcServerError {
     if buffered.is_none() {
         match framed.next().await {
             None => return RpcServerError::StreamClosedByRemote,
@@ -1807,6 +1827,25 @@ async fn wait_for_client_cancel(framed: &mut SessionFraming, buffered: &mut Opti
         }
     }
     future::pending().await
+}
+
+/// A read buffer is given a fresh allocation once it has more than this capacity
+const MAX_IDLE_READ_BUFFER_CAPACITY: usize = 64 * 1024;
+
+/// The capacity of a fresh read buffer, as `Framed` starts with
+const READ_BUFFER_INITIAL_CAPACITY: usize = 8 * 1024;
+
+/// A read buffer that grew for a large request keeps that allocation for the rest of the session: each frame is split
+/// off the front of it and the rest reuses the same allocation. Once such a request has been handled, this moves what
+/// is left (the start of the next request, if any) into a fresh, small buffer, so an idle session does not pin up to
+/// the request limit.
+fn release_large_read_buffer(buffer: &mut BytesMut) {
+    if buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY {
+        return;
+    }
+    let mut fresh = BytesMut::with_capacity(cmp::max(buffer.len(), READ_BUFFER_INITIAL_CAPACITY));
+    fresh.extend_from_slice(buffer);
+    *buffer = fresh;
 }
 
 /// Switches a substream from the canonical framing used for the handshake to the session's request framing. The
@@ -1923,6 +1962,41 @@ mod test {
             builder.clamp_client_deadline(Duration::from_secs(5)),
             Duration::from_secs(5)
         );
+    }
+
+    /// After a large request, the read buffer goes back to a small allocation, keeping any bytes of the next request
+    #[test]
+    fn a_large_request_does_not_pin_its_read_buffer() {
+        use tokio_util::codec::{Decoder, LengthDelimitedCodec};
+
+        fn with_prefix(body: &[u8]) -> Vec<u8> {
+            let mut frame = u32::try_from(body.len()).unwrap().to_be_bytes().to_vec();
+            frame.extend_from_slice(body);
+            frame
+        }
+
+        let mut codec = RequestCodec::new(LengthDelimitedCodec::new(), rpc::max_request_size());
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(&with_prefix(&vec![1; 4 * 1024 * 1024]));
+        // The start of the next (small) request has arrived too
+        let small = with_prefix(&[2; 10]);
+        buffer.extend_from_slice(small.get(..7).unwrap());
+
+        let Some(RequestFrame::Request(large)) = codec.decode(&mut buffer).unwrap() else {
+            panic!("expected a request");
+        };
+        drop(large);
+        assert!(buffer.capacity() > MAX_IDLE_READ_BUFFER_CAPACITY);
+        release_large_read_buffer(&mut buffer);
+        assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
+
+        buffer.extend_from_slice(small.get(7..).unwrap());
+        let Some(RequestFrame::Request(frame)) = codec.decode(&mut buffer).unwrap() else {
+            panic!("expected a request");
+        };
+        assert_eq!(frame.as_ref(), &[2; 10]);
+        release_large_read_buffer(&mut buffer);
+        assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
     }
 
     #[test]

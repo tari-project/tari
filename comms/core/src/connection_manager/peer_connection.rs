@@ -765,9 +765,14 @@ impl PeerConnectionActor {
                 // manager stall this actor, and the peer's other substreams with it
                 let event =
                     ConnectionManagerEvent::NewInboundSubstream(self.peer_node_id.clone(), selected_protocol, stream);
-                if send_or_drop(&self.event_notifier, event, "peer_connection_new_substream")
-                    .await
-                    .is_err()
+                if send_or_drop(
+                    &self.event_notifier,
+                    event,
+                    "peer_connection_new_substream",
+                    Some(&self.peer_node_id),
+                )
+                .await
+                .is_err()
                 {
                     debug!(
                         target: LOG_TARGET,

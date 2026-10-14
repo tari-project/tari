@@ -1574,13 +1574,14 @@ async fn stream_id_reuse_does_not_remove_wrong_session() {
     new_client.say_hello(Default::default()).await.unwrap();
 }
 
-/// A client that hangs up while its request is in a service call cancels the call, rather than leaving it to run until
-/// its deadline
+/// A client that hangs up while its request is in a service call does not cancel the call (its work may run on other
+/// tasks that dropping it would not stop): the call runs to the end, its result is discarded, and only then does the
+/// session end and release its slot
 #[tokio::test]
-async fn client_hangup_cancels_service_call() {
+async fn client_hangup_finishes_the_service_call_then_ends_the_session() {
     use futures::SinkExt;
 
-    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(60))));
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(1))));
     let num_cancelled = service.num_cancelled();
     let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
     let (notif_tx, handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
@@ -1589,25 +1590,33 @@ async fn client_hangup_cancels_service_call() {
     let mut framed = open_raw_session(&peer).await;
     framed.send(say_hello_frame(1, 0)).await.unwrap();
     time::sleep(Duration::from_millis(200)).await;
-    assert_eq!(num_cancelled.load(Ordering::SeqCst), 0);
-
     framed.close().await.unwrap();
-    let cancelled = holds_within(Duration::from_secs(2), || {
+
+    // The call is still running, so the session still holds its slot
+    time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(handle.clone().get_num_active_sessions().await.unwrap(), 1);
+    // Once the call is done, the session ends
+    let ended = holds_within(Duration::from_secs(3), || {
         let mut handle = handle.clone();
-        let num_cancelled = num_cancelled.clone();
-        async move { num_cancelled.load(Ordering::SeqCst) == 1 && handle.get_num_active_sessions().await.unwrap() == 0 }
+        async move { handle.get_num_active_sessions().await.unwrap() == 0 }
     })
     .await;
-    assert!(cancelled, "the service call was not cancelled when the client hung up");
+    assert!(ended, "the session did not end after the client hung up");
+    assert_eq!(
+        num_cancelled.load(Ordering::SeqCst),
+        0,
+        "the service call was cancelled"
+    );
 }
 
-/// A FIN sent while the request is in its service call abandons the request (cancelling the call) and the session
-/// carries on; a request pipelined behind one in a service call is not lost, it is handled next
+/// A FIN sent while the request is in its service call abandons the request: no response is sent for it, but the call
+/// is not cancelled, and the session reads its next request only once the call is done. A request pipelined behind
+/// one in a service call is not lost, it is handled next.
 #[tokio::test]
 async fn requests_arriving_during_a_service_call() {
     use futures::SinkExt;
 
-    let delay = Arc::new(RwLock::new(Duration::from_secs(60)));
+    let delay = Arc::new(RwLock::new(Duration::from_millis(500)));
     let service = SlowGreetingService::new(delay.clone());
     let num_cancelled = service.num_cancelled();
     let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
@@ -1616,27 +1625,54 @@ async fn requests_arriving_during_a_service_call() {
     let mut framed = open_raw_session(&peer).await;
 
     framed.send(say_hello_frame(1, 0)).await.unwrap();
-    time::sleep(Duration::from_millis(200)).await;
+    time::sleep(Duration::from_millis(100)).await;
     framed
         .send(say_hello_frame(1, rpc::message::RpcMessageFlags::FIN.bits()))
         .await
         .unwrap();
-    let cancelled = holds_within(Duration::from_secs(2), || {
-        let num_cancelled = num_cancelled.clone();
-        async move { num_cancelled.load(Ordering::SeqCst) == 1 }
-    })
-    .await;
-    assert!(cancelled, "the FIN did not cancel the service call");
-
-    *delay.write().await = Duration::from_millis(300);
     framed.send(say_hello_frame(2, 0)).await.unwrap();
     framed.send(say_hello_frame(3, 0)).await.unwrap();
+    // The first response is for request 2: none is sent for the abandoned request 1
     for request_id in [2, 3] {
         let resp = read_raw_response(&mut framed).await;
         assert_eq!(resp.request_id, request_id);
         assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
     }
-    assert_eq!(num_cancelled.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        num_cancelled.load(Ordering::SeqCst),
+        0,
+        "the abandoned call was cancelled"
+    );
+}
+
+/// A client repeating request-then-FIN cannot get more than one service call running at once on a session: each
+/// abandoned call is finished before the next request is read. (Dropping the call would not stop its work, which runs
+/// on a task of its own, as a blocking database call does.)
+#[tokio::test]
+async fn request_and_fin_loop_keeps_one_call_in_flight() {
+    use futures::SinkExt;
+
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_millis(200))));
+    let max_in_flight = service.max_in_flight();
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, _handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut framed = open_raw_session(&peer).await;
+
+    for request_id in 1..=5 {
+        framed.send(say_hello_frame(request_id, 0)).await.unwrap();
+        // Long enough for the call to have started its work
+        time::sleep(Duration::from_millis(50)).await;
+        framed
+            .send(say_hello_frame(request_id, rpc::message::RpcMessageFlags::FIN.bits()))
+            .await
+            .unwrap();
+    }
+    framed.send(say_hello_frame(6, 0)).await.unwrap();
+    let resp = read_raw_response(&mut framed).await;
+    assert_eq!(resp.request_id, 6);
+    assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+    assert_eq!(max_in_flight.load(Ordering::SeqCst), 1);
 }
 
 /// A request declaring a length over `RPC_MAX_REQUEST_SIZE` is answered with `BadRequest` from its length prefix and

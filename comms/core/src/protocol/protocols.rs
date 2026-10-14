@@ -120,8 +120,10 @@ impl<TSubstream> Protocols<TSubstream> {
     ) -> Result<(), ProtocolError> {
         match self.protocols.get_mut(protocol) {
             Some(sender) => {
+                let ProtocolEvent::NewInboundSubstream(peer, _) = &event;
+                let peer = peer.clone();
                 let notification = ProtocolNotification::new(protocol.clone(), event);
-                match send_or_drop(sender, notification, "protocol_notification").await {
+                match send_or_drop(sender, notification, "protocol_notification", Some(&peer)).await {
                     Ok(()) => Ok(()),
                     Err(SendTimeoutError::Timeout(_)) => Err(ProtocolError::NotificationDropped),
                     Err(SendTimeoutError::Closed(_)) => Err(ProtocolError::NotificationSenderDisconnected),
