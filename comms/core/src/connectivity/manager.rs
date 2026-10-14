@@ -737,10 +737,11 @@ impl ConnectivityManagerActor {
                 connected.push(state.node_id().clone());
             }
         }
+        let seen_since = self.config.seen_since();
         let peer_manager = self.peer_manager.clone();
         let running = self.peer_garbage_collection_running.clone();
         tokio::spawn(async move {
-            if let Err(err) = peer_manager.garbage_collect(connected).await {
+            if let Err(err) = peer_manager.garbage_collect(connected, seen_since).await {
                 warn!(target: LOG_TARGET, "Peer database garbage collection failed: {err}");
             }
             running.store(false, Ordering::Release);
@@ -2187,7 +2188,7 @@ mod peer_garbage_collection_tests {
             .unwrap(),
         );
         let mut node_ids = Vec::new();
-        for i in 0..3i64 {
+        for i in 0..4i64 {
             // Claim-sourced addresses (configured ones are always kept), none of them ever reached
             let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
             for address in peer.addresses.clone().into_vec() {
@@ -2212,10 +2213,15 @@ mod peer_garbage_collection_tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
 
-        // The cap of 1 is met by the connected peer alone, so both unconnected peers go
+        // The connected peer stays and does not count: the three unconnected ones are trimmed to the cap of 1
         assert!(peer_manager.find_by_node_id(&node_ids[0]).await.unwrap().is_some());
-        assert!(peer_manager.find_by_node_id(&node_ids[1]).await.unwrap().is_none());
-        assert!(peer_manager.find_by_node_id(&node_ids[2]).await.unwrap().is_none());
+        let mut unconnected_left = 0;
+        for node_id in &node_ids[1..] {
+            if peer_manager.find_by_node_id(node_id).await.unwrap().is_some() {
+                unconnected_left += 1;
+            }
+        }
+        assert_eq!(unconnected_left, 1);
 
         // Not due again until the interval has passed
         actor.maybe_collect_peer_garbage();

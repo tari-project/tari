@@ -46,7 +46,7 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
     backoff::ConstantBackoff,
-    multiaddr::multiaddr,
+    multiaddr::{Multiaddr, multiaddr},
     peer_manager::{
         NodeIdentity,
         PEER_DATABASE_BUSY_TIMEOUT,
@@ -57,6 +57,7 @@ use tari_comms::{
         PeerManagerError,
         database::{MIGRATIONS, PeerDatabaseSql},
     },
+    peer_validator::validate_address_shape,
     pipeline,
     protocol::{
         NodeNetworkInfo,
@@ -604,6 +605,23 @@ impl SeedPeerProvider for ConfigSeedPeerProvider {
 /// dialer back into a co-equal steady-state controller fighting the pool - proactively dialing peers the pool
 /// then immediately disconnects as over-capacity, every refresh cycle, forever. Clamping here is what makes the
 /// relationship deliberate rather than incidental.
+/// Warns, loudly, about each of this node's public addresses that other nodes will drop from its identity claim (for
+/// example a DNS name that is not an ordinary host name). The node still starts. Returns how many there were.
+fn warn_about_unusable_public_addresses(addresses: &[Multiaddr]) -> usize {
+    let mut unusable = 0usize;
+    for address in addresses {
+        if let Err(err) = validate_address_shape(address) {
+            unusable = unusable.saturating_add(1);
+            warn!(
+                target: LOG_TARGET,
+                "Public address '{address}' is not usable: {err}. Other nodes will drop it from this node's \
+                 identity, so peers will not be able to reach this node on it. Fix p2p.public_addresses."
+            );
+        }
+    }
+    unusable
+}
+
 fn reconcile_proactive_dialing_floor(configured_floor: usize, dht_pool_size: usize) -> usize {
     if configured_floor < dht_pool_size {
         return configured_floor;
@@ -675,6 +693,7 @@ impl ServiceInitializer for P2pInitializer {
 
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
+        warn_about_unusable_public_addresses(&node_identity.public_addresses());
 
         let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
             Ok(peers) => peers,
@@ -774,5 +793,16 @@ mod test {
     #[test]
     fn zero_pool_size_clamps_to_zero_without_underflowing() {
         assert_eq!(reconcile_proactive_dialing_floor(8, 0), 0);
+    }
+
+    #[test]
+    fn unusable_public_addresses_are_reported() {
+        let addresses = vec![
+            "/ip4/23.23.23.23/tcp/18189".parse().unwrap(),
+            "/dns4/node.example.com/tcp/18189".parse().unwrap(),
+            "/dns4/my_node.example.com/tcp/18189".parse().unwrap(),
+            "/dns4/127.1/tcp/18189".parse().unwrap(),
+        ];
+        assert_eq!(warn_about_unusable_public_addresses(&addresses), 2);
     }
 }

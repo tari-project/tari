@@ -48,7 +48,8 @@ pub fn is_external_address(address: &Multiaddr) -> bool {
 /// one network cannot fill the candidate list.
 ///
 /// IPv4 addresses are grouped by /16 and IPv6 addresses by /32 (an IPv4-mapped IPv6 address is grouped as IPv4). A DNS
-/// address is grouped by its name, as it is not resolved here, and an onion address is its own group. Any other kind of
+/// address is grouped by the last two labels of its name (it is not resolved here, and there is no public suffix
+/// list), and an onion address is its own group. Any other kind of
 /// address is its own group, and so is a local address (only stored on test and local networks, where every node may
 /// share one loopback /16).
 pub fn address_netgroup(address: &Multiaddr) -> String {
@@ -69,7 +70,11 @@ pub fn address_netgroup(address: &Multiaddr) -> String {
             },
         },
         Protocol::Dns4(name) | Protocol::Dns6(name) | Protocol::Dnsaddr(name) => {
-            format!("dns:{}", name.trim_end_matches('.').to_ascii_lowercase())
+            // The last two labels: names under one domain cost nothing to mint (wildcard DNS), so they are one group
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            let labels = name.split('.').collect::<Vec<_>>();
+            let first_kept = labels.len().saturating_sub(2);
+            format!("dns:{}", labels.get(first_kept..).unwrap_or_default().join("."))
         },
         Protocol::Onion3(onion) => format!("onion3:{}", hex::to_hex(onion.hash())),
         _ => format!("other:{address}"),
@@ -612,7 +617,11 @@ mod test {
         assert_ne!(netgroup("/ip4/23.45.1.1/tcp/2"), netgroup("/ip4/23.46.1.1/tcp/2"));
         assert_eq!(netgroup("/ip6/2606:4700:1:2::1/tcp/1"), "ip6:2606:4700");
         assert_eq!(netgroup("/ip6/::ffff:23.45.1.1/tcp/1"), "ip4:23.45");
-        assert_eq!(netgroup("/dns4/Node.Example.com./tcp/1"), "dns:node.example.com");
+        assert_eq!(netgroup("/dns4/Node.Example.com./tcp/1"), "dns:example.com");
+        assert_eq!(netgroup("/dns4/a1.evil.com/tcp/1"), netgroup("/dns4/A2.Evil.com/tcp/2"));
+        assert_eq!(netgroup("/dns4/a1.evil.com/tcp/1"), "dns:evil.com");
+        assert_eq!(netgroup("/dns4/example.com/tcp/1"), "dns:example.com");
+        assert_ne!(netgroup("/dns4/a1.evil.com/tcp/1"), netgroup("/dns4/a1.good.com/tcp/1"));
         let onion = "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234";
         assert!(netgroup(onion).starts_with("onion3:"));
         assert_eq!(netgroup("/memory/5"), "other:/memory/5");

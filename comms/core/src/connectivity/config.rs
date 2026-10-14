@@ -53,8 +53,8 @@ pub struct ConnectivityConfig {
     /// The length of time to wait before disconnecting a connection that failed tie breaking.
     /// Default: 1s
     pub connection_tie_break_linger: Duration,
-    /// If the peer has not been seen within this interval, it will be removed from the peer list on the
-    /// next connection attempt.
+    /// An address last seen longer ago than this no longer counts as reached: it is not preferred when choosing peers
+    /// to dial, and does not protect its peer from peer database garbage collection.
     /// Default: 24 hours
     pub expire_peer_last_seen_duration: Duration,
     /// The closest number of peer connections to maintain; connections above the threshold will be removed
@@ -90,6 +90,16 @@ pub struct ConnectivityConfig {
 }
 
 impl ConnectivityConfig {
+    /// Addresses last seen before the returned time no longer count as reached. See
+    /// [`Self::expire_peer_last_seen_duration`].
+    pub(crate) fn seen_since(&self) -> chrono::NaiveDateTime {
+        let now = chrono::Utc::now().naive_utc();
+        chrono::Duration::from_std(self.expire_peer_last_seen_duration)
+            .ok()
+            .and_then(|expiry| now.checked_sub_signed(expiry))
+            .unwrap_or(chrono::NaiveDateTime::MIN)
+    }
+
     /// Whether this peer's circuit breaker is currently open, i.e. it has failed
     /// `circuit_breaker_failure_threshold` times in a row and has not yet waited out
     /// `circuit_breaker_retry_interval`.

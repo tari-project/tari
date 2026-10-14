@@ -63,7 +63,7 @@ use crate::{
     peer_validator::validate_address_shape,
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
-    utils::datetime::safe_future_datetime_from_duration,
+    utils::{datetime::safe_future_datetime_from_duration, text::sanitize_for_display},
 };
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/peer_manager/storage/migrations");
@@ -84,8 +84,9 @@ const ADDRESS_CLASSIFIER_VERSION: u32 = 1;
 /// `db_metadata` key holding the [`ADDRESS_BYTES_VERSION`] whose full pass over the stored addresses has run.
 const ADDRESS_BYTES_VERSION_KEY: &str = "address_bytes_version";
 /// Bump this to run [`PeerDatabaseSql::backfill_address_bytes`] over every stored address again.
-/// Version 2 also removes rows whose address is not well formed.
-const ADDRESS_BYTES_VERSION: u32 = 2;
+/// Version 2 also removes rows whose address is not well formed. Version 3 also removes rows whose stored claim holds
+/// an address that is not well formed, and recomputes `netgroup` (DNS names are grouped by their last two labels).
+const ADDRESS_BYTES_VERSION: u32 = 3;
 
 /// The most rows peer garbage collection deletes in one write transaction, so that it never holds the database's single
 /// writer for long.
@@ -100,6 +101,8 @@ const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
 pub struct GarbageCollectionStats {
     /// Never-seen peers removed to bring the table back under the row cap
     pub excess_peers_removed: usize,
+    /// Peers with addresses and a (current or past) ban removed to bring them back under their cap
+    pub banned_peers_removed: usize,
     /// Peers without any address (typically only carrying a handshake ban) removed to bring them back under their cap
     pub address_less_peers_removed: usize,
     /// Soft-deleted peers removed after their retention period
@@ -109,8 +112,10 @@ pub struct GarbageCollectionStats {
 /// The passes of [`PeerDatabaseSql::garbage_collect`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GarbageCollectionPass {
-    /// Live peers with addresses, none of them ever reached
+    /// Live, never-banned peers with addresses, none of them reached recently or configured
     NeverSeen,
+    /// Live peers with addresses that have (or had) a ban
+    Banned,
     /// Live peers without any address
     AddressLess,
     /// Peers soft deleted before the retention period
@@ -121,56 +126,75 @@ enum GarbageCollectionPass {
 struct GarbageCollectionContext {
     now: NaiveDateTime,
     deleted_before: NaiveDateTime,
+    /// An address last seen before this no longer counts as reached
+    seen_since: NaiveDateTime,
     config_source: String,
     connected_hex: Vec<String>,
 }
 
-/// The peers eligible for removal in `pass`, in removal order. Used both to find candidates and to re-check them
-/// right before they are deleted.
-fn garbage_collection_candidates<'a>(
+/// The peers `pass` may remove. Used to count them, to find candidates and to re-check candidates right before they
+/// are deleted. Connected peers and seed peers are never eligible.
+fn garbage_collection_eligible<'a>(
     pass: GarbageCollectionPass,
     context: &'a GarbageCollectionContext,
-) -> peers::BoxedQuery<'a, diesel::sqlite::Sqlite, diesel::sql_types::BigInt> {
+) -> peers::BoxedQuery<'a, diesel::sqlite::Sqlite> {
     let not_seed =
         diesel::dsl::sql::<diesel::sql_types::Bool>(&format!("peers.flags & {} = 0", PeerFlags::SEED.to_i32()));
-    let not_banned = peers::banned_until.is_null().or(peers::banned_until.le(context.now));
     let has_address = diesel::dsl::exists(multi_addresses::table.filter(multi_addresses::peer_id.eq(peers::peer_id)));
+    let has_configured_address = diesel::dsl::exists(
+        multi_addresses::table
+            .filter(multi_addresses::peer_id.eq(peers::peer_id))
+            .filter(multi_addresses::source.eq(&context.config_source)),
+    );
     let query = peers::table
-        .select(peers::peer_id)
         .filter(peers::node_id.ne_all(&context.connected_hex))
         .into_boxed();
     match pass {
         GarbageCollectionPass::NeverSeen => {
-            // Peers we have reached, or that have a configured address, are kept
-            let reached_or_configured = diesel::dsl::exists(
+            // Peers reached recently are kept; a reach older than `seen_since` no longer counts
+            let reached = diesel::dsl::exists(
                 multi_addresses::table
                     .filter(multi_addresses::peer_id.eq(peers::peer_id))
-                    .filter(
-                        multi_addresses::last_seen
-                            .is_not_null()
-                            .or(multi_addresses::source.eq(&context.config_source)),
-                    ),
+                    .filter(multi_addresses::last_seen.ge(context.seen_since)),
             );
             query
                 .filter(peers::deleted_at.is_null())
+                .filter(peers::banned_until.is_null())
                 .filter(has_address)
-                .filter(not(reached_or_configured))
-                .filter(not_banned)
+                .filter(not(reached))
+                .filter(not(has_configured_address))
                 .filter(not_seed)
-                .order_by(peers::added_at.asc())
         },
-        GarbageCollectionPass::AddressLess => {
-            // NULL (never banned) sorts first, then the ban that ended or ends soonest; oldest first among equals
-            query
-                .filter(peers::deleted_at.is_null())
-                .filter(not(has_address))
-                .filter(not_seed)
-                .order_by((peers::banned_until.asc(), peers::added_at.asc()))
-        },
+        GarbageCollectionPass::Banned => query
+            .filter(peers::deleted_at.is_null())
+            .filter(peers::banned_until.is_not_null())
+            .filter(has_address)
+            .filter(not(has_configured_address))
+            .filter(not_seed),
+        GarbageCollectionPass::AddressLess => query
+            .filter(peers::deleted_at.is_null())
+            .filter(not(has_address))
+            .filter(not_seed),
         GarbageCollectionPass::SoftDeleted => query
             .filter(peers::deleted_at.lt(context.deleted_before))
-            .filter(not_banned)
-            .order_by(peers::peer_id.asc()),
+            .filter(peers::banned_until.is_null().or(peers::banned_until.le(context.now))),
+    }
+}
+
+/// The peer ids eligible for removal in `pass`, in removal order.
+fn garbage_collection_candidates<'a>(
+    pass: GarbageCollectionPass,
+    context: &'a GarbageCollectionContext,
+) -> peers::BoxedQuery<'a, diesel::sqlite::Sqlite, diesel::sql_types::BigInt> {
+    let query = garbage_collection_eligible(pass, context).select(peers::peer_id);
+    match pass {
+        // Random, so that whoever floods the table cannot choose which honest peers go
+        GarbageCollectionPass::NeverSeen => query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()")),
+        // NULL (never banned) sorts first, then the ban that ended or ends soonest; oldest first among equals
+        GarbageCollectionPass::Banned | GarbageCollectionPass::AddressLess => {
+            query.order_by((peers::banned_until.asc(), peers::added_at.asc()))
+        },
+        GarbageCollectionPass::SoftDeleted => query.order_by(peers::peer_id.asc()),
     }
 }
 
@@ -254,9 +278,20 @@ impl PeerDatabaseSql {
                 // A claimed address that parses but is not well formed was stored before claims were checked for
                 // it, e.g. the text `/dns4/a/tcp/80/ip4/10.0.0.1/tcp/1` of a DNS name containing `/`: it now reads
                 // as a different address than the one signed, and serving it on to other peers would be blamed on
-                // us. Configured addresses are the operator's and are kept.
+                // us. The same goes for the stored claim: it is served whole, so one bad address in it (even one we
+                // never stored as a row) makes the row unsafe to keep. Configured addresses are the operator's and
+                // are kept.
                 let well_formed = |address: &Multiaddr, source: &PeerAddressSource| {
-                    source.is_config() || validate_address_shape(address).is_ok()
+                    if source.is_config() {
+                        return true;
+                    }
+                    let claim_is_well_formed = source.peer_identity_claim().is_none_or(|claim| {
+                        claim
+                            .addresses
+                            .iter()
+                            .all(|claimed| validate_address_shape(claimed).is_ok())
+                    });
+                    validate_address_shape(address).is_ok() && claim_is_well_formed
                 };
                 // The source is left as it is, in the text form older versions read
                 match (address, source) {
@@ -792,6 +827,7 @@ impl PeerDatabaseSql {
     ) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
 
+        let banned_reason = sanitize_ban_reason(&banned_reason);
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let dt = safe_future_datetime_from_duration(ban_duration);
             let banned_until = dt.naive_utc();
@@ -822,6 +858,7 @@ impl PeerDatabaseSql {
         banned_reason: String,
     ) -> Result<NodeId, StorageError> {
         let node_id = NodeId::from_public_key(public_key);
+        let banned_reason = sanitize_ban_reason(&banned_reason);
         let mut conn = self.connection.get_pooled_connection()?;
 
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
@@ -853,21 +890,22 @@ impl PeerDatabaseSql {
         })
     }
 
-    /// Removes peers to keep the table at or under `max_peer_rows`, then removes peers that were soft deleted more
-    /// than [`SOFT_DELETED_PEER_RETENTION`] ago.
+    /// Removes peers to keep each kind of peer row under its cap, then removes peers that were soft deleted more than
+    /// [`SOFT_DELETED_PEER_RETENTION`] ago.
     ///
-    /// Peer identities are free to create, and every inbound handshake stores one, so without a cap the table grows
-    /// without bound. Only peers that have never been reached on any address are removed for the cap, oldest first.
-    /// Seed peers, peers with a configured address and peers with an active ban are never removed.
+    /// Peer identities are free to create, and every inbound handshake stores one, so without caps the table grows
+    /// without bound. Each cap counts only the rows that can be removed for it:
+    /// - Never-banned peers with addresses, none reached since `seen_since` and none configured: at most
+    ///   `max_peer_rows`, removed in random order so that a flood cannot choose which honest peers go.
+    /// - Peers with addresses and a current or past ban: at most a fifth of `max_peer_rows`, the ban that ended or ends
+    ///   soonest removed first.
+    /// - Peers without any address, mostly rows that only record a handshake ban: at most a fifth of `max_peer_rows`,
+    ///   in the same order. The bans of removed rows are lost.
     ///
-    /// Peers without any address are counted and capped separately, at a fifth of `max_peer_rows`. These are mostly
-    /// rows added only to record a handshake ban, which any number of fresh keys can create, so they must not count
-    /// against (and push out) the peers we can dial. Above their cap they are removed soonest-ending ban first (no ban
-    /// or an expired one first); the bans of the removed rows are lost.
-    ///
-    /// Peers in `connected` are never removed. Inbound-only peers are never marked as seen and wallets usually have no
-    /// address, so without this a long-lived connected neighbour would be removed, after which its messages are dropped
-    /// as coming from an unknown peer and it can no longer be banned.
+    /// Seed peers, peers with a configured address, recently reached peers and the peers in `connected` are never
+    /// removed. Inbound-only peers are never marked as seen and wallets usually have no address, so without the
+    /// `connected` exemption a long-lived connected neighbour would be removed, after which its messages are dropped as
+    /// coming from an unknown peer and it can no longer be banned.
     ///
     /// Candidates are found with a plain read, which takes no write lock however large the table is. They are then
     /// deleted in chunks of [`GARBAGE_COLLECTION_BATCH_SIZE`], each in its own short write transaction that checks
@@ -877,6 +915,7 @@ impl PeerDatabaseSql {
         &self,
         max_peer_rows: usize,
         connected: &[NodeId],
+        seen_since: NaiveDateTime,
     ) -> Result<GarbageCollectionStats, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
         let now = chrono::Utc::now().naive_utc();
@@ -885,42 +924,48 @@ impl PeerDatabaseSql {
             deleted_before: now
                 .checked_sub_signed(SOFT_DELETED_PEER_RETENTION)
                 .unwrap_or(NaiveDateTime::MIN),
+            seen_since,
             // Matches the JSON stored in `multi_addresses.source` for `PeerAddressSource::Config`
             config_source: serde_json::to_string(&PeerAddressSource::Config)
                 .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
             connected_hex: connected.iter().map(|node_id| node_id.to_hex()).collect(),
         };
+        let max_peer_rows = i64::try_from(max_peer_rows).unwrap_or(i64::MAX);
+        let side_cap = max_peer_rows / 5;
 
-        let peers_with_addresses = multi_addresses::table.select(multi_addresses::peer_id);
-        let live_peers = peers::table
-            .filter(peers::deleted_at.is_null())
-            .filter(peers::peer_id.eq_any(peers_with_addresses))
-            .count()
-            .get_result::<i64>(&mut conn)?;
-        let excess = live_peers.saturating_sub(i64::try_from(max_peer_rows).unwrap_or(i64::MAX));
-        let excess_peers_removed =
+        // Each cap counts only the rows its pass could remove. Counting rows that can never be removed (reached,
+        // banned, connected, ...) would let a flood of such rows push out every removable honest peer on each run.
+        let mut stats = GarbageCollectionStats::default();
+        let excess = self
+            .count_eligible(&mut conn, GarbageCollectionPass::NeverSeen, &context)?
+            .saturating_sub(max_peer_rows);
+        stats.excess_peers_removed =
             self.garbage_collection_pass(&mut conn, GarbageCollectionPass::NeverSeen, &context, Some(excess))?;
-
-        let address_less_peers = peers::table
-            .filter(peers::deleted_at.is_null())
-            .filter(not(
-                peers::peer_id.eq_any(multi_addresses::table.select(multi_addresses::peer_id))
-            ))
-            .count()
-            .get_result::<i64>(&mut conn)?;
-        let address_less_cap = i64::try_from(max_peer_rows / 5).unwrap_or(i64::MAX);
-        let excess = address_less_peers.saturating_sub(address_less_cap);
-        let address_less_peers_removed =
+        let excess = self
+            .count_eligible(&mut conn, GarbageCollectionPass::Banned, &context)?
+            .saturating_sub(side_cap);
+        stats.banned_peers_removed =
+            self.garbage_collection_pass(&mut conn, GarbageCollectionPass::Banned, &context, Some(excess))?;
+        let excess = self
+            .count_eligible(&mut conn, GarbageCollectionPass::AddressLess, &context)?
+            .saturating_sub(side_cap);
+        stats.address_less_peers_removed =
             self.garbage_collection_pass(&mut conn, GarbageCollectionPass::AddressLess, &context, Some(excess))?;
-
-        let soft_deleted_peers_removed =
+        stats.soft_deleted_peers_removed =
             self.garbage_collection_pass(&mut conn, GarbageCollectionPass::SoftDeleted, &context, None)?;
+        Ok(stats)
+    }
 
-        Ok(GarbageCollectionStats {
-            excess_peers_removed,
-            address_less_peers_removed,
-            soft_deleted_peers_removed,
-        })
+    // A plain read: the number of peers `pass` may remove
+    fn count_eligible(
+        &self,
+        conn: &mut SqliteConnection,
+        pass: GarbageCollectionPass,
+        context: &GarbageCollectionContext,
+    ) -> Result<i64, StorageError> {
+        Ok(garbage_collection_eligible(pass, context)
+            .count()
+            .get_result::<i64>(conn)?)
     }
 
     // Removes up to `limit` (unlimited if `None`) peers eligible for `pass`, returning how many were removed
@@ -1329,7 +1374,8 @@ impl PeerDatabaseSql {
     /// Return available dial candidates that are communication nodes, not banned, not deleted,
     /// optionally not failed, optionally at random, and not in the excluded node IDs list. At most `max_per_netgroup`
     /// addresses are taken from any one network group (`0` disables the cap), less the number already taken from that
-    /// group according to `netgroups_taken` (for a caller that tops up an earlier selection).
+    /// group according to `netgroups_taken` (for a caller that tops up an earlier selection). Addresses seen since
+    /// `seen_since` are taken first; an older sighting no longer counts.
     pub fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
@@ -1339,6 +1385,7 @@ impl PeerDatabaseSql {
         randomize: bool,
         max_per_netgroup: usize,
         netgroups_taken: &HashMap<String, usize>,
+        seen_since: NaiveDateTime,
     ) -> Result<Vec<Peer>, StorageError> {
         if let Some(n) = n &&
             n == 0
@@ -1350,7 +1397,7 @@ impl PeerDatabaseSql {
 
         // Communication nodes that are not banned and not deleted
         let mut conditions = vec![
-            "(peers.banned_until IS NULL OR peers.banned_until < ?)".to_string(),
+            "(peers.banned_until IS NULL OR peers.banned_until < ?2)".to_string(),
             "peers.deleted_at IS NULL".to_string(),
             format!("peers.features & {} != 0", PeerFeatures::COMMUNICATION_NODE.to_i32()),
         ];
@@ -1398,13 +1445,15 @@ impl PeerDatabaseSql {
         let limit = n.map_or(i64::MAX, |n| i64::try_from(n).unwrap_or(i64::MAX));
         let sql = format!(
             "SELECT node_id FROM ( SELECT peers.node_id AS node_id, multi_addresses.netgroup AS netgroup, \
-             multi_addresses.last_seen IS NOT NULL AS was_seen, ROW_NUMBER() OVER ( PARTITION BY \
-             multi_addresses.netgroup ORDER BY multi_addresses.last_seen IS NOT NULL DESC, {rank_order} ) AS \
+             COALESCE(multi_addresses.last_seen >= ?1, 0) AS was_seen, ROW_NUMBER() OVER ( PARTITION BY \
+             multi_addresses.netgroup ORDER BY COALESCE(multi_addresses.last_seen >= ?1, 0) DESC, {rank_order} ) AS \
              netgroup_rank FROM peers INNER JOIN multi_addresses ON multi_addresses.peer_id = peers.peer_id WHERE {} \
              ) GROUP BY node_id HAVING {netgroup_cap} ORDER BY MAX(was_seen) DESC, {final_order} LIMIT {limit}",
             conditions.join(" AND ")
         );
+        // ?1: an address last seen before this no longer counts as reached; ?2: now
         let node_ids = diesel::sql_query(sql)
+            .bind::<diesel::sql_types::Timestamp, _>(seen_since)
             .bind::<diesel::sql_types::Timestamp, _>(chrono::Utc::now().naive_utc())
             .load::<NodeIdRow>(&mut conn)?
             .into_iter()
@@ -1844,6 +1893,14 @@ fn has_lossless_text(address: &Multiaddr) -> bool {
         );
     }
     reads_back
+}
+
+/// The longest ban reason stored, in bytes. Reasons often quote what a peer sent.
+const MAX_BAN_REASON_BYTES: usize = 256;
+
+/// A ban reason as stored: no control, format or line-breaking characters, and at most [`MAX_BAN_REASON_BYTES`].
+fn sanitize_ban_reason(reason: &str) -> String {
+    sanitize_for_display(reason, MAX_BAN_REASON_BYTES)
 }
 
 fn sql_escape(input: &str) -> String {
@@ -3110,7 +3167,16 @@ mod tests {
 
         // Test case 1: Only non-failed peers, no exclusions
         let dial_candidates = peers_db
-            .get_available_dial_candidates(&[], None, &transport_protocols, true, false, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                None,
+                &transport_protocols,
+                true,
+                false,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap();
         assert_eq!(dial_candidates.len(), 97);
         // Verify deleted, banned and failed are not returned
@@ -3120,7 +3186,16 @@ mod tests {
 
         // Test case 2: Only non-failed peers, with exclusions
         let dial_candidates = peers_db
-            .get_available_dial_candidates(&seed_peers, None, &transport_protocols, true, false, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &seed_peers,
+                None,
+                &transport_protocols,
+                true,
+                false,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap();
         assert_eq!(dial_candidates.len(), 72);
         // Verify deleted, banned and failed are not returned
@@ -3135,7 +3210,16 @@ mod tests {
         // Test case 3: Verify randomness
         let limit = 17;
         let mut dial_candidates_1 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                Some(limit),
+                &transport_protocols,
+                true,
+                false,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -3144,7 +3228,16 @@ mod tests {
         dial_candidates_1.sort();
 
         let mut dial_candidates_2 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                Some(limit),
+                &transport_protocols,
+                true,
+                false,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -3153,7 +3246,16 @@ mod tests {
         dial_candidates_2.sort();
 
         let mut dial_candidates_3 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, true, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                Some(limit),
+                &transport_protocols,
+                true,
+                true,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -3165,6 +3267,11 @@ mod tests {
         assert_eq!(dial_candidates_1, dial_candidates_2);
         // - With randomness, results should differ
         assert_ne!(dial_candidates_1, dial_candidates_3);
+    }
+
+    /// A `seen_since` under which any sighting counts as reached
+    fn long_ago() -> chrono::NaiveDateTime {
+        chrono::NaiveDateTime::MIN
     }
 
     fn new_test_db() -> PeerDatabaseSql {
@@ -3313,6 +3420,13 @@ mod tests {
             TimeDelta::zero(),
         );
         peers_db.add_or_update_peer(lossy_address.clone()).unwrap();
+        // Its own address is fine, but its stored claim also holds a name that is now filtered out
+        let bad_sibling = node_peer_with_addresses(
+            vec!["/ip4/28.1.1.1/tcp/18189".parse().unwrap()],
+            true,
+            TimeDelta::zero(),
+        );
+        peers_db.add_or_update_peer(bad_sibling.clone()).unwrap();
         // A configured address of an unusual shape is the operator's and is kept
         let mut configured = node_peer_with_addresses(vec![], false, TimeDelta::zero());
         let configured_address: Multiaddr = "/ip4/27.1.1.1/udt/sctp/5678".parse().unwrap();
@@ -3353,6 +3467,21 @@ mod tests {
         ))
         .execute(&mut conn)
         .unwrap();
+        let sibling_source = diesel::sql_query(
+            "SELECT source AS value FROM multi_addresses WHERE address = '/ip4/28.1.1.1/tcp/18189'".to_string(),
+        )
+        .get_result::<TextValue>(&mut conn)
+        .unwrap()
+        .value;
+        let mut sibling_source: serde_json::Value = serde_json::from_str(&sibling_source).unwrap();
+        sibling_source["FromPeerConnection"]["peer_identity_claim"]["addresses"] =
+            serde_json::json!(["/ip4/28.1.1.1/tcp/18189", "/dns4/a_b.example.com/tcp/1"]);
+        diesel::sql_query(format!(
+            "UPDATE multi_addresses SET source = '{}' WHERE address = '/ip4/28.1.1.1/tcp/18189'",
+            sibling_source
+        ))
+        .execute(&mut conn)
+        .unwrap();
         // A database from before the backfill existed
         diesel::delete(db_metadata::table.filter(db_metadata::key.eq(ADDRESS_BYTES_VERSION_KEY)))
             .execute(&mut conn)
@@ -3376,16 +3505,17 @@ mod tests {
         assert!(!rows.iter().any(|row| row.address.starts_with("/dns4/")));
         drop(conn);
 
-        // Every peer is still returned; the three whose only address was poisoned have none left
+        // Every peer is still returned; the four whose only address was poisoned have none left
         let all_peers = peers_db.get_all_peers(None).unwrap();
-        assert_eq!(all_peers.len(), good_peers.len() + 4);
+        assert_eq!(all_peers.len(), good_peers.len() + 5);
         for peer in &all_peers {
             if peer.node_id == configured.node_id {
                 assert!(peer.addresses.contains(&configured_address));
             }
             if peer.node_id == poisoned_address.node_id ||
                 peer.node_id == poisoned_claim.node_id ||
-                peer.node_id == lossy_address.node_id
+                peer.node_id == lossy_address.node_id ||
+                peer.node_id == bad_sibling.node_id
             {
                 assert_eq!(peer.addresses.address_iter().collect::<Vec<_>>(), vec![
                     &Multiaddr::empty()
@@ -3393,7 +3523,16 @@ mod tests {
             }
         }
         let candidates = peers_db
-            .get_available_dial_candidates(&[], None, &TransportProtocol::get_all(), true, true, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                None,
+                &TransportProtocol::get_all(),
+                true,
+                true,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap();
         let mut candidate_ids = candidates.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
         candidate_ids.sort();
@@ -3482,12 +3621,14 @@ mod tests {
         assert_eq!(stored.addresses, healthy.addresses);
     }
 
+    /// The cap counts only removable rows: never-seen peers are trimmed to it, in random order, while reached peers are
+    /// kept and do not count. (The name predates random eviction order.)
     #[test]
     fn peer_row_cap_evicts_never_seen_oldest_first() {
         let peers_db = new_test_db();
         let mut seen = Vec::new();
         let mut unseen = Vec::new();
-        for i in 0..8u8 {
+        for i in 0..10u8 {
             let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
             // The seen peers are the oldest, so age alone would remove them first
             let is_seen = i < 3;
@@ -3500,21 +3641,21 @@ mod tests {
             }
         }
 
-        let stats = peers_db.garbage_collect(5, &[]).unwrap();
+        let stats = peers_db.garbage_collect(5, &[], long_ago()).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
-            excess_peers_removed: 3,
+            excess_peers_removed: 2,
+            banned_peers_removed: 0,
             address_less_peers_removed: 0,
             soft_deleted_peers_removed: 0,
         });
-        let mut expected = seen.clone();
-        expected.extend(unseen[3..].iter().cloned());
-        expected.sort();
-        assert_eq!(stored_node_ids(&peers_db), expected);
-        assert_eq!(peers_db.size(), 5);
+        let stored = stored_node_ids(&peers_db);
+        assert!(seen.iter().all(|id| stored.contains(id)));
+        assert_eq!(unseen.iter().filter(|id| stored.contains(id)).count(), 5);
+        assert_eq!(peers_db.size(), 8);
 
         // At the cap there is nothing more to do
         assert_eq!(
-            peers_db.garbage_collect(5, &[]).unwrap(),
+            peers_db.garbage_collect(5, &[], long_ago()).unwrap(),
             GarbageCollectionStats::default()
         );
     }
@@ -3540,14 +3681,24 @@ mod tests {
         let expendable = node_peer_with_addresses(vec![address(4)], false, TimeDelta::zero());
         peers_db.add_or_update_peer(expendable).unwrap();
 
-        // Cap of zero: only the one peer that is none of the above can go
-        let stats = peers_db.garbage_collect(0, &[]).unwrap();
+        // Cap of 5: everything fits, the banned row within its own cap of 5 / 5 = 1
+        let stats = peers_db.garbage_collect(5, &[], long_ago()).unwrap();
+        assert_eq!(stats, GarbageCollectionStats::default());
+        // Cap of zero: everything removable goes (including the banned row, whose own cap is now 0), seeds and
+        // configured peers stay
+        let stats = peers_db.garbage_collect(0, &[], long_ago()).unwrap();
         assert_eq!(stats.excess_peers_removed, 1);
-        let mut expected = vec![banned.node_id.clone(), seed.node_id, configured.node_id];
+        assert_eq!(stats.banned_peers_removed, 1);
+        let mut expected = vec![seed.node_id, configured.node_id];
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
 
         // Soft-deleted peers go after a day, unless banned
+        let banned = node_peer_with_addresses(vec![address(1)], false, old);
+        peers_db.add_or_update_peer(banned.clone()).unwrap();
+        peers_db
+            .set_banned(&banned.node_id, Duration::from_secs(3600), "bad".to_string())
+            .unwrap();
         let soft_deleted = node_peer_with_addresses(vec![address(5)], true, TimeDelta::zero());
         peers_db.add_or_update_peer(soft_deleted.clone()).unwrap();
         let recently_deleted = node_peer_with_addresses(vec![address(6)], true, TimeDelta::zero());
@@ -3563,9 +3714,10 @@ mod tests {
         drop(conn);
         peers_db.soft_delete_peer(&recently_deleted.node_id).unwrap();
 
-        let stats = peers_db.garbage_collect(100, &[]).unwrap();
+        let stats = peers_db.garbage_collect(100, &[], long_ago()).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 0,
+            banned_peers_removed: 0,
             address_less_peers_removed: 0,
             soft_deleted_peers_removed: 1,
         });
@@ -3584,6 +3736,109 @@ mod tests {
             .get_result::<i64>(&mut conn)
             .unwrap();
         assert_eq!(orphaned_addresses, 0);
+    }
+
+    /// A flood of keys that are stored and then banned must not push out never-seen honest peers: banned rows have
+    /// their own cap and do not count against `max_peer_rows`.
+    #[test]
+    fn banned_rows_with_addresses_are_capped_separately() {
+        let peers_db = new_test_db();
+        let max_peer_rows = 10;
+        let mut honest = Vec::new();
+        for i in 0..10u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::hours(100));
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            honest.push(peer.node_id);
+        }
+        let mut banned = Vec::new();
+        for i in 0..12u64 {
+            let address = format!("/ip4/24.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            peers_db
+                .set_banned(&peer.node_id, Duration::from_secs(3600 + i * 60), "bad".to_string())
+                .unwrap();
+            banned.push(peer.node_id);
+        }
+
+        let stats = peers_db.garbage_collect(max_peer_rows, &[], long_ago()).unwrap();
+        assert_eq!(stats, GarbageCollectionStats {
+            excess_peers_removed: 0,
+            // 12 rows, cap 10 / 5 = 2; the bans ending soonest go first
+            banned_peers_removed: 10,
+            address_less_peers_removed: 0,
+            soft_deleted_peers_removed: 0,
+        });
+        let mut expected = honest.clone();
+        expected.extend(banned[10..].iter().cloned());
+        expected.sort();
+        assert_eq!(stored_node_ids(&peers_db), expected);
+    }
+
+    /// A sighting older than the expiry no longer protects a peer from garbage collection or puts it first in line to
+    /// be dialled.
+    #[test]
+    fn expired_last_seen_no_longer_counts_as_reached() {
+        let peers_db = new_test_db();
+        let transport_protocols = TransportProtocol::get_all();
+        let address: Multiaddr = "/ip4/23.1.1.1/tcp/18189".parse().unwrap();
+        let stale = node_peer_with_addresses(vec![address.clone()], false, TimeDelta::hours(100));
+        peers_db.add_or_update_peer(stale.clone()).unwrap();
+        let two_days_ago = chrono::Utc::now().naive_utc() - TimeDelta::days(2);
+        peers_db.set_last_seen(&stale.node_id, two_days_ago, &address).unwrap();
+        let mut fresh = Vec::new();
+        for i in 2..12u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            fresh.push(peer.node_id);
+        }
+        let seen_since = chrono::Utc::now().naive_utc() - TimeDelta::days(1);
+
+        // Not ranked first: it is one of eleven unreached peers, so it is rarely first
+        let mut first_count = 0;
+        for _ in 0..50 {
+            let candidates = peers_db
+                .get_available_dial_candidates(
+                    &[],
+                    None,
+                    &transport_protocols,
+                    true,
+                    true,
+                    4,
+                    &HashMap::new(),
+                    seen_since,
+                )
+                .unwrap();
+            if candidates[0].node_id == stale.node_id {
+                first_count += 1;
+            }
+        }
+        assert!(first_count < 25, "{first_count}");
+        // With any sighting counting, it would always be first
+        let candidates = peers_db
+            .get_available_dial_candidates(
+                &[],
+                None,
+                &transport_protocols,
+                true,
+                true,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
+            .unwrap();
+        assert_eq!(candidates[0].node_id, stale.node_id);
+
+        // Removable: with room for only ten never-seen peers, and the stale one counted among them, one goes. With the
+        // old sighting counting, it would be kept and the ten fresh ones would fit.
+        assert_eq!(
+            peers_db.garbage_collect(10, &[], long_ago()).unwrap(),
+            GarbageCollectionStats::default()
+        );
+        let stats = peers_db.garbage_collect(10, &[], seen_since).unwrap();
+        assert_eq!(stats.excess_peers_removed, 1);
     }
 
     #[test]
@@ -3619,9 +3874,10 @@ mod tests {
             .unwrap();
         drop(conn);
 
-        let stats = peers_db.garbage_collect(max_peer_rows, &[]).unwrap();
+        let stats = peers_db.garbage_collect(max_peer_rows, &[], long_ago()).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 0,
+            banned_peers_removed: 0,
             // 13 rows, cap 10 / 5 = 2
             address_less_peers_removed: 11,
             soft_deleted_peers_removed: 0,
@@ -3635,10 +3891,31 @@ mod tests {
     }
 
     #[test]
+    fn ban_reasons_are_stored_sanitised() {
+        let peers_db = new_test_db();
+        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+        let reason = format!("bad\u{202e}\nFAKE LOG{}", "x".repeat(1000));
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(3600), reason.clone())
+            .unwrap();
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert!(stored.banned_reason.starts_with("badFAKE LOG"));
+        assert_eq!(stored.banned_reason.len(), 256);
+
+        let unknown = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db
+            .ban_or_add_banned_peer(&unknown.public_key, Duration::from_secs(3600), reason)
+            .unwrap();
+        let stored = peers_db.get_peer_by_public_key(&unknown.public_key).unwrap().unwrap();
+        assert!(stored.banned_reason.starts_with("badFAKE LOG"));
+        assert_eq!(stored.banned_reason.len(), 256);
+    }
+
+    #[test]
     fn garbage_collection_never_removes_connected_peers() {
         let peers_db = new_test_db();
-        // A long-connected inbound neighbour: its claimed address was never dialled, so never seen, and it is the
-        // oldest row
+        // A long-connected inbound neighbour: its claimed address was never dialled, so never seen
         let inbound = node_peer_with_addresses(
             vec!["/ip4/23.0.1.1/tcp/18189".parse().unwrap()],
             false,
@@ -3663,28 +3940,29 @@ mod tests {
         }
         let connected = vec![inbound.node_id.clone(), wallet.node_id.clone()];
 
-        // Address-less cap 15 / 5 = 3 of 5: the two oldest unconnected go, not by row id
-        let stats = peers_db.garbage_collect(15, &connected).unwrap();
-        assert_eq!(stats.address_less_peers_removed, 2);
+        // Address-less cap 15 / 5 = 3, and the connected wallet does not count: of the 4 unconnected, the oldest goes
+        // (not by row id)
+        let stats = peers_db.garbage_collect(15, &connected, long_ago()).unwrap();
+        assert_eq!(stats.address_less_peers_removed, 1);
         for (hours, node_id) in &address_less {
             let kept = peers_db.get_peer_by_node_id(node_id).unwrap().is_some();
-            assert_eq!(kept, *hours < 30, "{hours}h");
+            assert_eq!(kept, *hours < 40, "{hours}h");
         }
 
         // Both caps exceeded: unconnected rows are trimmed, the connected ones stay
-        let stats = peers_db.garbage_collect(5, &connected).unwrap();
+        let stats = peers_db.garbage_collect(5, &connected, long_ago()).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
-            excess_peers_removed: 3,
+            excess_peers_removed: 2,
+            banned_peers_removed: 0,
             address_less_peers_removed: 2,
             soft_deleted_peers_removed: 0,
         });
         assert!(peers_db.get_peer_by_node_id(&inbound.node_id).unwrap().is_some());
         assert!(peers_db.get_peer_by_node_id(&wallet.node_id).unwrap().is_some());
-        let mut expected = unconnected[3..].to_vec();
-        expected.push(inbound.node_id.clone());
-        expected.push(wallet.node_id.clone());
-        expected.sort();
-        assert_eq!(stored_node_ids(&peers_db), expected);
+        let stored = stored_node_ids(&peers_db);
+        assert_eq!(unconnected.iter().filter(|id| stored.contains(id)).count(), 5);
+        assert_eq!(address_less.iter().filter(|(_, id)| stored.contains(id)).count(), 1);
+        assert_eq!(stored.len(), 8);
     }
 
     /// Candidates are read without a write lock, so a peer can change between the read and its delete. The delete
@@ -3703,6 +3981,7 @@ mod tests {
         let context = GarbageCollectionContext {
             now,
             deleted_before: now.checked_sub_signed(TimeDelta::hours(24)).unwrap(),
+            seen_since: long_ago(),
             config_source: serde_json::to_string(&PeerAddressSource::Config).unwrap(),
             connected_hex: vec![],
         };
@@ -3766,7 +4045,16 @@ mod tests {
         for randomize in [true, false] {
             for _ in 0..10 {
                 let candidates = peers_db
-                    .get_available_dial_candidates(&[], None, &transport_protocols, true, randomize, 4, &HashMap::new())
+                    .get_available_dial_candidates(
+                        &[],
+                        None,
+                        &transport_protocols,
+                        true,
+                        randomize,
+                        4,
+                        &HashMap::new(),
+                        long_ago(),
+                    )
                     .unwrap()
                     .into_iter()
                     .map(|p| p.node_id)
@@ -3775,6 +4063,43 @@ mod tests {
                 assert!(from_sybils <= 4, "{from_sybils}");
                 assert!(honest.iter().all(|id| candidates.contains(id)));
             }
+        }
+    }
+
+    #[test]
+    fn wildcard_dns_sybils_are_one_netgroup() {
+        let peers_db = new_test_db();
+        // No transport filter: none of the transport prefixes match DNS addresses
+        let transport_protocols: Vec<TransportProtocol> = vec![];
+        let mut sybils = Vec::new();
+        for i in 1..=20u8 {
+            let address = format!("/dns4/a{i}.evil.com/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            sybils.push(peer.node_id);
+        }
+        let honest = node_peer_with_addresses(
+            vec!["/dns4/node.example.com/tcp/18189".parse().unwrap()],
+            false,
+            TimeDelta::zero(),
+        );
+        peers_db.add_or_update_peer(honest.clone()).unwrap();
+
+        for _ in 0..10 {
+            let candidates = peers_db
+                .get_available_dial_candidates(
+                    &[],
+                    None,
+                    &transport_protocols,
+                    true,
+                    true,
+                    4,
+                    &HashMap::new(),
+                    long_ago(),
+                )
+                .unwrap();
+            assert_eq!(candidates.iter().filter(|p| sybils.contains(&p.node_id)).count(), 4);
+            assert!(candidates.iter().any(|p| p.node_id == honest.node_id));
         }
     }
 
@@ -3794,7 +4119,16 @@ mod tests {
         }
         for _ in 0..10 {
             let candidates = peers_db
-                .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 4, &HashMap::new())
+                .get_available_dial_candidates(
+                    &[],
+                    None,
+                    &transport_protocols,
+                    true,
+                    true,
+                    4,
+                    &HashMap::new(),
+                    long_ago(),
+                )
                 .unwrap();
             assert_eq!(candidates.len(), 20);
             // Previously reached peers lead the list
@@ -3830,7 +4164,16 @@ mod tests {
         for randomize in [true, false] {
             for _ in 0..10 {
                 let candidates = peers_db
-                    .get_available_dial_candidates(&[], None, &transport_protocols, true, randomize, 4, &HashMap::new())
+                    .get_available_dial_candidates(
+                        &[],
+                        None,
+                        &transport_protocols,
+                        true,
+                        randomize,
+                        4,
+                        &HashMap::new(),
+                        long_ago(),
+                    )
                     .unwrap()
                     .into_iter()
                     .map(|p| p.node_id)
@@ -3846,7 +4189,16 @@ mod tests {
 
         // A limit is filled from previously reached addresses first
         let candidates = peers_db
-            .get_available_dial_candidates(&[], Some(2), &transport_protocols, true, true, 4, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                Some(2),
+                &transport_protocols,
+                true,
+                true,
+                4,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap();
         assert!(candidates.iter().all(|p| crowded_seen.contains(&p.node_id)));
 
@@ -3855,7 +4207,16 @@ mod tests {
         netgroups_taken.insert("ip4:23.23".to_string(), 3usize);
         for _ in 0..10 {
             let candidates = peers_db
-                .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 4, &netgroups_taken)
+                .get_available_dial_candidates(
+                    &[],
+                    None,
+                    &transport_protocols,
+                    true,
+                    true,
+                    4,
+                    &netgroups_taken,
+                    long_ago(),
+                )
                 .unwrap();
             let from_crowded = candidates.iter().filter(|p| crowded.contains(&p.node_id)).count();
             assert_eq!(from_crowded, 1);
@@ -3864,7 +4225,16 @@ mod tests {
 
         // 0 disables the cap
         let candidates = peers_db
-            .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 0, &HashMap::new())
+            .get_available_dial_candidates(
+                &[],
+                None,
+                &transport_protocols,
+                true,
+                true,
+                0,
+                &HashMap::new(),
+                long_ago(),
+            )
             .unwrap();
         assert_eq!(candidates.len(), 22);
     }

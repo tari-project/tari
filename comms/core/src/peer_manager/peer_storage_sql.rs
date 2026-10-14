@@ -22,6 +22,7 @@
 
 use std::{cmp::min, collections::HashMap, time::Duration};
 
+use chrono::NaiveDateTime;
 use log::*;
 use multiaddr::Multiaddr;
 
@@ -248,6 +249,7 @@ impl PeerStorageSql {
         randomize: bool,
         max_per_netgroup: usize,
         netgroups_taken: &HashMap<String, usize>,
+        seen_since: NaiveDateTime,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_available_dial_candidates(
             exclude_node_ids,
@@ -257,6 +259,7 @@ impl PeerStorageSql {
             randomize,
             max_per_netgroup,
             netgroups_taken,
+            seen_since,
         )?)
     }
 
@@ -320,8 +323,9 @@ impl PeerStorageSql {
         &self,
         max_peer_rows: usize,
         connected: &[NodeId],
+        seen_since: NaiveDateTime,
     ) -> Result<GarbageCollectionStats, PeerManagerError> {
-        Ok(self.peer_db.garbage_collect(max_peer_rows, connected)?)
+        Ok(self.peer_db.garbage_collect(max_peer_rows, connected, seen_since)?)
     }
 
     /// Ban the peer for the given duration
@@ -852,7 +856,8 @@ mod test {
                     false,
                     false,
                     0,
-                    &HashMap::new()
+                    &HashMap::new(),
+                    NaiveDateTime::MIN
                 )
                 .unwrap()
                 .is_empty()

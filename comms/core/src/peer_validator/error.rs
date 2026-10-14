@@ -49,6 +49,8 @@ pub enum PeerValidatorError {
     PeerIdentityUserAgentTooLong { length: usize, max: usize },
     #[error("Peer identity field '{field}' contains characters other than printable ASCII")]
     NonPrintableIdentityString { field: &'static str },
+    #[error("Unusable DNS name: {0}")]
+    UnusableDnsName(String),
 }
 
 impl PeerValidatorError {
@@ -62,7 +64,9 @@ impl PeerValidatorError {
             // Not evidence of hostility either: an odd user agent or protocol id is simply not stored.
             Self::PeerHasNoAddresses { .. } |
             Self::PeerHasNoUsableAddresses { .. } |
-            Self::NonPrintableIdentityString { .. } => false,
+            Self::NonPrintableIdentityString { .. } |
+            // Older nodes accept and relay any DNS name, so an unusual one is dropped, not punished
+            Self::UnusableDnsName(_) => false,
             Self::InvalidPeerSignature { .. } |
             Self::InvalidPeerAddresses { .. } |
             Self::InvalidMultiaddr(_) |

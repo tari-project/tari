@@ -26,7 +26,7 @@ use log::*;
 use thiserror::Error;
 
 use super::RpcError;
-use crate::{proto, traits::OrOptional};
+use crate::{proto, traits::OrOptional, utils::text::is_invisible_or_line_breaking};
 
 const LOG_TARGET: &str = "comms::rpc::status";
 
@@ -180,16 +180,17 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
 
         // Slice the bytes before decoding, so that a huge payload is never converted in full. Control characters
         // (including newlines) are replaced so that the details cannot forge log lines, and invisible format
-        // characters (bidi overrides, zero-width) are dropped so that they cannot disguise what is shown.
+        // characters (bidi overrides, zero-width) and the Unicode line and paragraph separators are dropped so that
+        // they cannot disguise what is shown or break the line.
         let prefix = resp.payload.get(..MAX_PEER_DETAILS_BYTES).unwrap_or(&resp.payload);
         let mut details = String::with_capacity(prefix.len());
         for c in String::from_utf8_lossy(prefix).chars() {
             if c.is_control() {
                 details.push(' ');
-            } else if !is_format_char(c) {
+            } else if !is_invisible_or_line_breaking(c) {
                 details.push(c);
             } else {
-                // Format character: dropped
+                // Format character or line/paragraph separator: dropped
             }
         }
         if resp.payload.len() > MAX_PEER_DETAILS_BYTES {
@@ -201,35 +202,6 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
             details,
         }
     }
-}
-
-/// True for characters in the Unicode general category `Cf` (format), e.g. bidi overrides, zero-width spaces and
-/// joiners and the byte order mark.
-fn is_format_char(c: char) -> bool {
-    matches!(
-        u32::from(c),
-        0x00AD |
-            0x0600..=0x0605 |
-            0x061C |
-            0x06DD |
-            0x070F |
-            0x0890..=0x0891 |
-            0x08E2 |
-            0x180E |
-            0x200B..=0x200F |
-            0x202A..=0x202E |
-            0x2060..=0x2064 |
-            0x2066..=0x206F |
-            0xFEFF |
-            0xFFF9..=0xFFFB |
-            0x110BD |
-            0x110CD |
-            0x13430..=0x1343F |
-            0x1BCA0..=0x1BCA3 |
-            0x1D173..=0x1D17A |
-            0xE0001 |
-            0xE0020..=0xE007F
-    )
 }
 
 impl From<prost::DecodeError> for RpcStatus {
@@ -398,6 +370,13 @@ mod test {
                 .to_vec(),
         );
         assert_eq!(RpcStatus::from(&resp).details(), "oktxt.exe!");
+
+        // Unicode line and paragraph separators break a line without being control characters
+        let resp = response(
+            RpcStatusCode::General,
+            "line 1\u{2028}FAKE\u{2029}LINE".as_bytes().to_vec(),
+        );
+        assert_eq!(RpcStatus::from(&resp).details(), "line 1FAKELINE");
 
         // Ordinary non-ASCII text is kept
         let resp = response(RpcStatusCode::General, "café ü 日本".as_bytes().to_vec());

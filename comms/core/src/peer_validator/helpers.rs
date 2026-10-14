@@ -87,16 +87,19 @@ pub fn validate_and_filter_peer_identity_claim_addresses(
     // repeatedly submitting validly structured all-local claims.
     validate_peer_identity_claim_signature(public_key, claim)?;
 
-    if config.allow_test_addresses {
-        return Ok(claim.addresses.clone());
-    }
-
     let mut valid_addresses = Vec::with_capacity(claim.addresses.len());
     for addr in &claim.addresses {
         // Structural validation has already succeeded above. This second pass
-        // applies the production-only address policy and filters local/test
-        // transports without invalidating the signature over the original claim.
-        match validate_address(addr, false) {
+        // filters addresses without invalidating the signature over the original
+        // claim: DNS names that are not ordinary host names (older nodes accept
+        // and relay them, so they are not a sign of hostility), and, in
+        // production, local/test transports.
+        let permitted = match validate_dns_name_of(addr) {
+            Ok(()) if config.allow_test_addresses => Ok(()),
+            Ok(()) => validate_address(addr, false),
+            Err(err) => Err(err),
+        };
+        match permitted {
             Ok(()) => valid_addresses.push(addr.clone()),
             Err(err) => {
                 debug!(
@@ -112,11 +115,23 @@ pub fn validate_and_filter_peer_identity_claim_addresses(
     Ok(valid_addresses)
 }
 
-/// Checks only the shape of an address, as claim validation does before it applies the local-address policy: an
-/// IP or DNS address followed by exactly a non-zero TCP port, an onion3 address on its own, or a non-zero memory port,
-/// with a well-formed DNS name. Local and test addresses pass.
-pub(crate) fn validate_address_shape(addr: &Multiaddr) -> Result<(), PeerValidatorError> {
-    validate_address(addr, true)
+/// Checks the shape of an address without the local-address policy: an IP or DNS address followed by exactly a
+/// non-zero TCP port, an onion3 address on its own, or a non-zero memory port, and an ordinary DNS host name. Local and
+/// test addresses pass. An address that fails is either refused (a malformed one) or dropped (an unusual DNS name) by
+/// claim validation, so it must never be stored from or relayed in a claim.
+pub fn validate_address_shape(addr: &Multiaddr) -> Result<(), PeerValidatorError> {
+    validate_address(addr, true)?;
+    validate_dns_name_of(addr)
+}
+
+/// Applies [`validate_dns_name`] to the address's DNS name, if it has one.
+fn validate_dns_name_of(addr: &Multiaddr) -> Result<(), PeerValidatorError> {
+    match addr.iter().next() {
+        Some(Protocol::Dns4(name)) | Some(Protocol::Dns6(name)) | Some(Protocol::Dnsaddr(name)) => {
+            validate_dns_name(&name)
+        },
+        _ => Ok(()),
+    }
 }
 
 fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), PeerValidatorError> {
@@ -126,8 +141,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
         .ok_or_else(|| PeerValidatorError::InvalidMultiaddr("Multiaddr was empty".to_string()))?;
 
     match proto {
-        Protocol::Dns4(name) | Protocol::Dns6(name) | Protocol::Dnsaddr(name) => {
-            validate_dns_name(&name)?;
+        Protocol::Dns4(_) | Protocol::Dns6(_) | Protocol::Dnsaddr(_) => {
             let tcp = addr_iter.next().ok_or_else(|| {
                 PeerValidatorError::InvalidMultiaddr("Address does not include a TCP port".to_string())
             })?;
@@ -135,7 +149,7 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             validate_tcp_port(tcp)?;
             expect_end_of_address(addr_iter)?;
             // The address is stored and relayed in its text form too, which must read back as exactly the address
-            // that was signed. The name check above already guarantees it; this is the backstop.
+            // that was signed. A DNS name containing `/` does not; no honest node produces one.
             let reparsed = Multiaddr::from_str(&addr.to_string())
                 .map_err(|_| PeerValidatorError::InvalidMultiaddr("DNS address does not round trip".to_string()))?;
             if reparsed != *addr {
@@ -184,8 +198,10 @@ fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), Peer
             expect_end_of_address(addr_iter)?;
             validate_onion3_address(&addr)
         },
+        // Only the protocol name: the component's value is the peer's and is not echoed into logs
         p => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Unsupported address type '{p}'"
+            "Unsupported address type '{}'",
+            p.tag()
         ))),
     }
 }
@@ -197,14 +213,14 @@ const MAX_DNS_LABEL_LENGTH: usize = 63;
 
 /// Checks that a claimed DNS name is an ordinary host name.
 ///
-/// The multiaddr library accepts any UTF-8 in a DNS component, including `/`, which turns the text form of the address
-/// into a different address (or none at all). Only letter-digit-hyphen labels are allowed, and a name whose last label
-/// is numeric is refused: names such as `127.1` or `0x7f000001` are resolved as IP addresses and would bypass the IP
-/// address checks.
+/// Only letter-digit-hyphen labels are allowed, and a name whose last label is numeric is refused: names such as
+/// `127.1` or `0x7f000001` are resolved as IP addresses and would bypass the IP address checks. Older nodes accept
+/// and relay any name, so a failure here only drops the address ([`PeerValidatorError::UnusableDnsName`] is not a ban
+/// offence).
 fn validate_dns_name(name: &str) -> Result<(), PeerValidatorError> {
     let name = name.strip_suffix('.').unwrap_or(name);
     if name.is_empty() || name.len() > MAX_DNS_NAME_LENGTH {
-        return Err(PeerValidatorError::InvalidMultiaddr(
+        return Err(PeerValidatorError::UnusableDnsName(
             "DNS name is empty or too long".to_string(),
         ));
     }
@@ -212,17 +228,17 @@ fn validate_dns_name(name: &str) -> Result<(), PeerValidatorError> {
     let mut last_label = "";
     for label in name.split('.') {
         if label.is_empty() || label.len() > MAX_DNS_LABEL_LENGTH {
-            return Err(PeerValidatorError::InvalidMultiaddr(
+            return Err(PeerValidatorError::UnusableDnsName(
                 "DNS label is empty or too long".to_string(),
             ));
         }
         if !label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
-            return Err(PeerValidatorError::InvalidMultiaddr(
+            return Err(PeerValidatorError::UnusableDnsName(
                 "DNS label contains characters other than letters, digits and '-'".to_string(),
             ));
         }
         if label.starts_with('-') || label.ends_with('-') {
-            return Err(PeerValidatorError::InvalidMultiaddr(
+            return Err(PeerValidatorError::UnusableDnsName(
                 "DNS label starts or ends with '-'".to_string(),
             ));
         }
@@ -235,7 +251,7 @@ fn validate_dns_name(name: &str) -> Result<(), PeerValidatorError> {
         .strip_prefix("0x")
         .is_some_and(|rest| rest.bytes().all(|b| b.is_ascii_hexdigit()));
     if is_decimal || is_hex {
-        return Err(PeerValidatorError::InvalidMultiaddr(
+        return Err(PeerValidatorError::UnusableDnsName(
             "Numeric DNS names are invalid".to_string(),
         ));
     }
@@ -246,7 +262,8 @@ fn validate_dns_name(name: &str) -> Result<(), PeerValidatorError> {
 fn expect_end_of_address(mut iter: multiaddr::Iter<'_>) -> Result<(), PeerValidatorError> {
     match iter.next() {
         Some(p) => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Unexpected multiaddress component '{p}'"
+            "Unexpected multiaddress component '{}'",
+            p.tag()
         ))),
         None => Ok(()),
     }
@@ -259,7 +276,8 @@ fn validate_tcp_port(expected_tcp: Protocol) -> Result<(), PeerValidatorError> {
         )),
         Protocol::Tcp(_) => Ok(()),
         p => Err(PeerValidatorError::InvalidMultiaddr(format!(
-            "Expected TCP address component but got '{p}'"
+            "Expected TCP address component but got '{}'",
+            p.tag()
         ))),
     }
 }
@@ -399,25 +417,28 @@ mod test {
         ));
     }
 
-    fn signed_claim(address: Multiaddr) -> (CommsPublicKey, PeerIdentityClaim) {
-        let node_identity = crate::peer_manager::NodeIdentity::random(
+    fn signed_claim(addresses: Vec<Multiaddr>) -> (CommsPublicKey, PeerIdentityClaim) {
+        let node_identity = crate::peer_manager::NodeIdentity::random_multiple_addresses(
             &mut rand::rng(),
-            address.clone(),
+            addresses.clone(),
             crate::peer_manager::PeerFeatures::COMMUNICATION_NODE,
         );
         let claim = PeerIdentityClaim {
-            addresses: vec![address],
+            addresses,
             features: crate::peer_manager::PeerFeatures::COMMUNICATION_NODE,
             signature: node_identity.identity_signature_read().clone().unwrap(),
         };
         (node_identity.public_key().clone(), claim)
     }
 
+    /// A `/` in a DNS name changes what the address's text form reads back as. No honest node produces one, so it
+    /// stays a ban offence.
     #[test]
     fn slash_in_dns_label_is_rejected_as_invalid_multiaddr() {
         let config = PeerValidatorConfig::default();
+        let good: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
         for name in ["evil/x", "a/tcp/80/ip4/10.0.0.1"] {
-            let (public_key, claim) = signed_claim(multiaddr!(Dns4(name), Tcp(1u16)));
+            let (public_key, claim) = signed_claim(vec![good.clone(), multiaddr!(Dns4(name), Tcp(1u16))]);
             let err = validate_and_filter_peer_identity_claim_addresses(&config, &public_key, &claim).unwrap_err();
             assert!(
                 matches!(err, PeerValidatorError::InvalidMultiaddr(_)),
@@ -427,19 +448,51 @@ mod test {
             assert!(err.is_ban_offence());
         }
 
-        let (public_key, claim) = signed_claim(multiaddr!(Dns4("ok.example.com"), Tcp(1u16)));
+        let (public_key, claim) = signed_claim(vec![multiaddr!(Dns4("ok.example.com"), Tcp(1u16))]);
         let permitted = validate_and_filter_peer_identity_claim_addresses(&config, &public_key, &claim).unwrap();
         assert_eq!(permitted, claim.addresses);
     }
 
+    /// Numeric names resolve as IP addresses and would bypass the IP checks, so the address is dropped. Older nodes
+    /// accept and relay them, so the claim is not refused and nobody is banned for it.
     #[test]
     fn numeric_dns_label_is_rejected() {
+        let config = PeerValidatorConfig::default();
+        let good: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
         for name in ["127.1", "0x7f000001", "1.2.3.4", "example.123"] {
-            let address = multiaddr!(Dns4(name), Tcp(1u16));
-            // Structural: rejected even where test addresses are allowed
-            let err = validate_address(&address, true).unwrap_err();
-            assert!(matches!(err, PeerValidatorError::InvalidMultiaddr(_)), "{name}");
+            let numeric = multiaddr!(Dns4(name), Tcp(1u16));
+            let (public_key, claim) = signed_claim(vec![good.clone(), numeric.clone()]);
+            let permitted = validate_and_filter_peer_identity_claim_addresses(&config, &public_key, &claim).unwrap();
+            assert_eq!(permitted, vec![good.clone()], "{name}");
+
+            let err = validate_address_shape(&numeric).unwrap_err();
+            assert!(matches!(err, PeerValidatorError::UnusableDnsName(_)), "{name}");
+            assert!(!err.is_ban_offence());
         }
+    }
+
+    #[test]
+    fn unusual_dns_name_is_filtered_not_banned() {
+        let good: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let unusual: Multiaddr = "/dns4/a_b.example.com/tcp/1".parse().unwrap();
+        for allow_test_addresses in [false, true] {
+            let config = PeerValidatorConfig {
+                allow_test_addresses,
+                ..Default::default()
+            };
+            let (public_key, claim) = signed_claim(vec![good.clone(), unusual.clone()]);
+            let permitted = validate_and_filter_peer_identity_claim_addresses(&config, &public_key, &claim).unwrap();
+            assert_eq!(permitted, vec![good.clone()]);
+            // The signature was checked over the unmodified claim
+            assert_eq!(claim.addresses, vec![good.clone(), unusual.clone()]);
+
+            // A claim with only such a name is valid but has nothing usable, which is not a ban offence either
+            let (public_key, claim) = signed_claim(vec![unusual.clone()]);
+            let permitted = validate_and_filter_peer_identity_claim_addresses(&config, &public_key, &claim).unwrap();
+            assert!(permitted.is_empty());
+        }
+        let err = validate_address_shape(&unusual).unwrap_err();
+        assert!(!err.is_ban_offence());
     }
 
     #[test]
@@ -459,7 +512,9 @@ mod test {
             too_long_name.as_str(),
         ];
         for name in invalid {
-            validate_address(&multiaddr!(Dns4(name), Tcp(1u16)), true).unwrap_err();
+            let address = multiaddr!(Dns4(name), Tcp(1u16));
+            let err = validate_address_shape(&address).unwrap_err();
+            assert!(!err.is_ban_offence(), "{name}: {err:?}");
         }
 
         let valid = [
@@ -470,8 +525,24 @@ mod test {
             "localhost",
         ];
         for name in valid {
-            validate_address(&multiaddr!(Dns4(name), Tcp(1u16)), true).unwrap();
+            validate_address_shape(&multiaddr!(Dns4(name), Tcp(1u16))).unwrap();
         }
+    }
+
+    #[test]
+    fn error_messages_do_not_echo_address_values() {
+        let address: Multiaddr = "/ip4/23.23.23.23/udp/7777".parse().unwrap();
+        let message = validate_address_shape(&address).unwrap_err().to_string();
+        assert!(message.contains("udp"), "{message}");
+        assert!(!message.contains("7777"), "{message}");
+
+        let address = multiaddr!(Dns4("example.com"), Tcp(1u16), Dns4("secret-value"));
+        let message = validate_address_shape(&address).unwrap_err().to_string();
+        assert!(!message.contains("secret-value"), "{message}");
+
+        let address: Multiaddr = "/unix/secret-path".parse().unwrap();
+        let message = validate_address_shape(&address).unwrap_err().to_string();
+        assert!(!message.contains("secret-path"), "{message}");
     }
 
     #[test]

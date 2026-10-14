@@ -27,6 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::NaiveDateTime;
 use log::*;
 use multiaddr::Multiaddr;
 
@@ -166,20 +167,26 @@ impl PeerManager {
     /// without addresses above their own cap, and peers that were soft deleted more than a day ago. Peers in
     /// `connected` are never removed: a connected peer whose row is gone has its messages dropped and cannot be banned.
     ///
-    /// Driven by the connectivity manager, which knows which peers are connected.
-    pub async fn garbage_collect(&self, connected: Vec<NodeId>) -> Result<GarbageCollectionStats, PeerManagerError> {
+    /// Driven by the connectivity manager, which knows which peers are connected. An address last seen before
+    /// `seen_since` no longer counts as reached.
+    pub async fn garbage_collect(
+        &self,
+        connected: Vec<NodeId>,
+        seen_since: NaiveDateTime,
+    ) -> Result<GarbageCollectionStats, PeerManagerError> {
         let max_peer_rows = self.config.max_peer_rows;
         let stats = self
             .peer_storage
-            .call(move |s| s.garbage_collect(max_peer_rows, &connected))
+            .call(move |s| s.garbage_collect(max_peer_rows, &connected, seen_since))
             .await?;
         if stats != GarbageCollectionStats::default() {
             info!(
                 target: LOG_TARGET,
-                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap, {} peer(s) \
-                 without addresses over their cap and {} soft-deleted peer(s)",
+                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap, {} banned \
+                 peer(s) and {} peer(s) without addresses over their caps and {} soft-deleted peer(s)",
                 stats.excess_peers_removed,
                 max_peer_rows,
+                stats.banned_peers_removed,
                 stats.address_less_peers_removed,
                 stats.soft_deleted_peers_removed
             );
@@ -188,6 +195,7 @@ impl PeerManager {
         {
             let removed = stats
                 .excess_peers_removed
+                .saturating_add(stats.banned_peers_removed)
                 .saturating_add(stats.address_less_peers_removed)
                 .saturating_add(stats.soft_deleted_peers_removed);
             metrics::garbage_collected_peers().inc_by(u64::try_from(removed).unwrap_or(u64::MAX));
@@ -304,7 +312,7 @@ impl PeerManager {
     /// At most [`PeerManagerConfig::max_candidates_per_netgroup`] addresses are taken from any one network group, less
     /// what `netgroups_taken` says an earlier selection already took from it (keyed by
     /// [`address_netgroup`](crate::net_address::address_netgroup)), so that a caller topping up a first selection does
-    /// not get a fresh budget for the same groups.
+    /// not get a fresh budget for the same groups. Addresses seen since `seen_since` are taken first.
     pub async fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
@@ -312,6 +320,7 @@ impl PeerManager {
         exclude_failed: bool,
         randomize: bool,
         netgroups_taken: &HashMap<String, usize>,
+        seen_since: NaiveDateTime,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         let exclude_node_ids = exclude_node_ids.to_vec();
         let netgroups_taken = netgroups_taken.clone();
@@ -327,6 +336,7 @@ impl PeerManager {
                     randomize,
                     max_per_netgroup,
                     &netgroups_taken,
+                    seen_since,
                 )
             })
             .await

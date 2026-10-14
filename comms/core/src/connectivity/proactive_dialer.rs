@@ -221,6 +221,7 @@ impl ProactiveDialer {
                 true,
                 true,
                 &HashMap::new(),
+                self.config.seen_since(),
             )
             .await?;
         if candidates.len() < candidate_target {
@@ -238,6 +239,7 @@ impl ProactiveDialer {
                     false,
                     true,
                     &netgroups_taken,
+                    self.config.seen_since(),
                 )
                 .await?;
             candidates.append(&mut random);

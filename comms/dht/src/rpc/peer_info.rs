@@ -26,6 +26,7 @@ use anyhow::anyhow;
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures, PeerIdentityClaim},
+    peer_validator::validate_address_shape,
     types::CommsPublicKey,
 };
 use tari_utilities::ByteArray;
@@ -52,6 +53,17 @@ impl UnvalidatedPeerInfo {
                 let claim = addr.source().peer_identity_claim()?;
 
                 if claim.addresses.len() > max_addresses_per_claim {
+                    return None;
+                }
+
+                // A stored claim may hold an address that we filtered out when we accepted it, or that an older
+                // version stored before addresses were checked. The claim is signed as a whole, so it cannot be
+                // trimmed: it is not relayed at all, as a receiving node may drop it or count it against us.
+                if claim
+                    .addresses
+                    .iter()
+                    .any(|address| validate_address_shape(address).is_err())
+                {
                     return None;
                 }
 
@@ -160,5 +172,76 @@ impl TryFrom<JoinMessage> for UnvalidatedPeerInfo {
             public_key,
             claims: vec![identity_claim],
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #![allow(clippy::indexing_slicing)]
+    use tari_comms::{
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        peer_manager::{NodeIdentity, PeerFlags},
+    };
+
+    use super::*;
+
+    fn claim_source(addresses: Vec<Multiaddr>) -> PeerAddressSource {
+        let node_identity = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            addresses.clone(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        PeerAddressSource::FromPeerConnection {
+            peer_identity_claim: PeerIdentityClaim {
+                addresses,
+                features: PeerFeatures::COMMUNICATION_NODE,
+                signature: node_identity.identity_signature_read().clone().unwrap(),
+            },
+        }
+    }
+
+    #[test]
+    fn serving_skips_a_claim_with_an_address_that_fails_the_shape_check() {
+        let good: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let other: Multiaddr = "/ip4/24.24.24.24/tcp/18189".parse().unwrap();
+        let unusual: Multiaddr = "/dns4/a_b.example.com/tcp/1".parse().unwrap();
+        let node_identity = NodeIdentity::random(&mut rand::rng(), good.clone(), PeerFeatures::COMMUNICATION_NODE);
+
+        // Stored from a claim that also held the unusual name (which was filtered out on the way in)
+        let mut addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![good.clone()],
+            &claim_source(vec![good.clone(), unusual]),
+        );
+        let peer = Peer::new(
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
+            addresses.clone(),
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            vec![],
+            String::new(),
+        );
+        assert!(
+            UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5)
+                .claims
+                .is_empty()
+        );
+
+        // A clean claim for another address is still served
+        addresses.add_or_update_addresses(std::slice::from_ref(&other), &PeerAddressSource::FromDiscovery {
+            peer_identity_claim: claim_source(vec![other.clone()]).peer_identity_claim().unwrap().clone(),
+        });
+        let peer = Peer::new(
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
+            addresses,
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            vec![],
+            String::new(),
+        );
+        let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5);
+        assert_eq!(served.claims.len(), 1);
+        assert_eq!(served.claims[0].addresses, vec![other]);
     }
 }

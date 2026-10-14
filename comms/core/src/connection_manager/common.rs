@@ -521,4 +521,28 @@ mod test {
             validate_peer_identity_message(&PeerValidatorConfig::default(), node_identity.public_key(), msg).unwrap();
         assert_eq!(validated.supported_protocols().len(), 2);
     }
+
+    #[test]
+    fn unusual_dns_name_in_a_handshake_claim_is_dropped_and_the_peer_kept() {
+        let good: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let unusual: Multiaddr = "/dns4/a_b.example.com/tcp/1".parse().unwrap();
+        let node_identity = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            vec![good.clone(), unusual.clone()],
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let config = PeerValidatorConfig {
+            allow_test_addresses: false,
+            ..PeerValidatorConfig::default()
+        };
+
+        let validated =
+            validate_peer_identity_message(&config, node_identity.public_key(), identity_message(&node_identity))
+                .unwrap();
+        assert_eq!(validated.permitted_addresses, vec![good.clone()]);
+        let peer =
+            create_or_update_peer_from_validated_peer_identity(None, node_identity.public_key().clone(), &validated);
+        assert!(peer.addresses.contains(&good));
+        assert!(!peer.addresses.contains(&unusual));
+    }
 }

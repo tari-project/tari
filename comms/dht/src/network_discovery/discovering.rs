@@ -629,6 +629,54 @@ mod test {
         );
     }
 
+    /// Older nodes accept and relay any DNS name. A sync peer relaying many claims with names we do not use
+    /// (wildcard sybils, say) is not hostile, and must not be banned for it.
+    #[test]
+    fn relayed_claims_with_unusual_dns_names_do_not_count_against_the_sync_peer() {
+        use tari_comms::{
+            multiaddr::Multiaddr,
+            peer_manager::{NodeIdentity, PeerFeatures, PeerIdentityClaim},
+        };
+
+        use crate::{DhtConfig, peer_validator::PeerValidator, rpc::UnvalidatedPeerInfo};
+
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&config);
+        let mut hostile_claims = 0usize;
+        for i in 0..10u8 {
+            let unusual: Multiaddr = format!("/dns4/a_{i}.example.com/tcp/1").parse().unwrap();
+            // Half come with a usable address too, half with only the unusual name
+            let mut addresses = vec![unusual];
+            if i % 2 == 0 {
+                addresses.push(format!("/ip4/23.23.23.{i}/tcp/18189").parse().unwrap());
+            }
+            let node_identity = NodeIdentity::random_multiple_addresses(
+                &mut rand::rng(),
+                addresses.clone(),
+                PeerFeatures::COMMUNICATION_NODE,
+            );
+            let relayed = UnvalidatedPeerInfo {
+                public_key: node_identity.public_key().clone(),
+                claims: vec![PeerIdentityClaim {
+                    addresses,
+                    features: PeerFeatures::COMMUNICATION_NODE,
+                    signature: node_identity.identity_signature_read().clone().unwrap(),
+                }],
+            };
+            match validator.validate_peer(relayed, None) {
+                Ok(peer) => assert_eq!(peer.addresses.len(), 1),
+                Err(err) => {
+                    let err = NetworkDiscoveryError::from(err);
+                    if classify_relay_failure(&err) == Some(true) {
+                        hostile_claims = hostile_claims.saturating_add(1);
+                    }
+                },
+            }
+        }
+        assert_eq!(hostile_claims, 0);
+        assert!(hostile_claims <= MAX_HOSTILE_RELAYED_CLAIMS);
+    }
+
     #[test]
     fn a_local_failure_ends_the_round() {
         // Nothing to do with what the sync peer sent, so the round cannot continue.
