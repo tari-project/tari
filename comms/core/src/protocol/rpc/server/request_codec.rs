@@ -57,7 +57,9 @@ pub enum RequestFrame {
 /// with `BadRequest` and carry on with the session. A length over the frame limit is an error, as it is for
 /// `LengthDelimitedCodec`.
 ///
-/// Responses are encoded by `LengthDelimitedCodec` as before.
+/// It is only used once the handshake is done: the handshake frames are read with the canonical framing, whose limit is
+/// lowered to `MAX_HANDSHAKE_FRAME_SIZE` while they are read (see `Handshake`), so they are capped from their length
+/// prefix too. Responses are encoded by `LengthDelimitedCodec` as before.
 pub struct RequestCodec {
     encoder: LengthDelimitedCodec,
     max_frame_len: usize,

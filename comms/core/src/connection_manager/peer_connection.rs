@@ -1035,6 +1035,38 @@ mod tests {
         assert!(matches!(event, ConnectionManagerEvent::PeerViolation { .. }), "{event}");
     }
 
+    /// The listener's cleanup of a connection whose `PeerConnected` event was dropped does not wait on a connection
+    /// actor that is itself stuck on the busy connection manager, and the connection is still torn down once the
+    /// actor is free
+    #[tokio::test]
+    async fn an_unannounced_connection_is_closed_without_waiting_on_a_stuck_actor() {
+        use tokio::io::AsyncWriteExt;
+
+        let (conn, remote, mut event_rx) = connection_with_full_event_channel().await;
+        // Park the actor on the full channel, reporting a violation
+        let mut substream = remote.get_yamux_control().open_stream().await.unwrap();
+        substream.write_all(&[0, 0xff]).await.unwrap();
+        substream.flush().await.unwrap();
+        time::sleep(Duration::from_millis(200)).await;
+
+        time::timeout(
+            Duration::from_secs(3),
+            super::super::listener::close_unannounced_connection(conn),
+        )
+        .await
+        .expect("closing the connection waited on the stuck actor");
+
+        // Once the connection manager drains its channel, the actor is free and the connection closes
+        let event = next_event_after_filler(&mut event_rx).await;
+        assert!(matches!(event, ConnectionManagerEvent::PeerViolation { .. }), "{event}");
+        let mut incoming = remote.into_incoming();
+        let closed = time::timeout(Duration::from_secs(5), incoming.next()).await;
+        assert!(
+            matches!(closed, Ok(None)),
+            "the connection was not closed once the actor was free"
+        );
+    }
+
     #[test]
     fn clone_with_dispatches_to_the_right_kind() {
         let conn = make_conn();

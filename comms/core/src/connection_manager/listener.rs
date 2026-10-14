@@ -67,10 +67,32 @@ use crate::{
     peer_manager::NodeIdentity,
     protocol::ProtocolId,
     transports::Transport,
-    utils::{mpsc::send_or_drop, multiaddr::multiaddr_to_socketaddr},
+    utils::{
+        mpsc::{SEND_OR_DROP_TIMEOUT, send_or_drop},
+        multiaddr::multiaddr_to_socketaddr,
+    },
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
+
+/// Closes a connection whose `PeerConnected` event was dropped, so that nothing else knows of it.
+///
+/// Waits for the connection actor's reply for at most [SEND_OR_DROP_TIMEOUT]: the actor may itself be waiting on the
+/// busy connection manager (to report a violation, say), and the caller holds a listener permit. If it does not reply
+/// in time, the connection is still torn down once the actor is free: the disconnect request is already queued (this is
+/// the only handle, so its request channel is otherwise empty), and dropping the handle closes that channel, which
+/// also ends the actor.
+pub(super) async fn close_unannounced_connection(mut conn: PeerConnection) {
+    let disconnect = conn.disconnect_silent(Minimized::No, "listener: PeerConnected event dropped");
+    if time::timeout(SEND_OR_DROP_TIMEOUT, disconnect).await.is_err() {
+        debug!(
+            target: LOG_TARGET,
+            "Connection to peer `{}` did not confirm its disconnect within {:.0?}; it closes once its actor is free",
+            conn.peer_node_id(),
+            SEND_OR_DROP_TIMEOUT
+        );
+    }
+}
 
 /// Listens on the given transport for peer connections and notifies when a new inbound peer connection is established.
 pub struct PeerListener<TTransport> {
@@ -268,11 +290,9 @@ where
                             let event = ConnectionManagerEvent::PeerConnected(peer_conn.into());
                             let result = send_or_drop(&conn_man_notifier, event, "listener_peer_connected").await;
                             if let Err(err) = result &&
-                                let ConnectionManagerEvent::PeerConnected(mut conn) = err.into_inner()
+                                let ConnectionManagerEvent::PeerConnected(conn) = err.into_inner()
                             {
-                                let _result = conn
-                                    .disconnect_silent(Minimized::No, "listener: PeerConnected event dropped")
-                                    .await;
+                                close_unannounced_connection(*conn).await;
                             }
                         },
                         Err(err) => {
