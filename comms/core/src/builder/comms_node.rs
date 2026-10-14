@@ -196,6 +196,7 @@ impl UnspawnedCommsNode {
         //---------------------------------- Spawn Actors --------------------------------------------//
         connectivity_manager.spawn();
         connection_manager.spawn();
+        peer_manager.clone().spawn_garbage_collector(shutdown_signal.clone());
 
         trace!(target: LOG_TARGET, "Hello from comms!");
         info!(

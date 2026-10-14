@@ -53,6 +53,7 @@ use tari_comms::{
         Peer,
         PeerFeatures,
         PeerFlags,
+        PeerManagerConfig,
         PeerManagerError,
         database::{MIGRATIONS, PeerDatabaseSql},
     },
@@ -309,21 +310,27 @@ async fn configure_comms_and_dht(
             .join(&config.peer_database_name)
             .with_extension("db"),
     );
-    // The peer database is written on every dial result, so it must not be able to park a caller for
-    // the shared 60s default - see `PEER_DATABASE_BUSY_TIMEOUT`.
-    let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
-        &database_url,
-        MIGRATIONS,
-        Some(16),
-        DbProfile::Cache,
-        PEER_DATABASE_BUSY_TIMEOUT,
-    )?;
     let this_node = builder
         .node_identity()
         .as_deref()
         .ok_or(CommsBuilderError::NodeIdentityNotSet)?
         .to_peer();
-    let peer_database = PeerDatabaseSql::new(db_connection, &this_node)?;
+    // Opening the peer database migrates it and may rewrite stored addresses once after an upgrade, so it runs on the
+    // blocking pool rather than on this task's worker thread.
+    let peer_database = tokio::task::spawn_blocking(move || -> Result<PeerDatabaseSql, CommsInitializationError> {
+        // The peer database is written on every dial result, so it must not be able to park a caller for
+        // the shared 60s default - see `PEER_DATABASE_BUSY_TIMEOUT`.
+        let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
+            &database_url,
+            MIGRATIONS,
+            Some(16),
+            DbProfile::Cache,
+            PEER_DATABASE_BUSY_TIMEOUT,
+        )?;
+        Ok(PeerDatabaseSql::new(db_connection, &this_node)?)
+    })
+    .await
+    .map_err(std::io::Error::other)??;
 
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
@@ -639,6 +646,11 @@ impl ServiceInitializer for P2pInitializer {
             .with_reaper_min_connection_thresholds(
                 self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes,
             )
+            .with_reaper_inbound_soft_limit(config.reaper_inbound_soft_limit)
+            .with_peer_manager_config(PeerManagerConfig {
+                max_peer_rows: config.max_peer_rows,
+                max_candidates_per_netgroup: config.max_candidates_per_netgroup,
+            })
             .with_proactive_dialing_enabled(config.proactive_dialing_enabled)
             .with_proactive_dialing_floor(reconcile_proactive_dialing_floor(
                 config.proactive_dialing_floor,

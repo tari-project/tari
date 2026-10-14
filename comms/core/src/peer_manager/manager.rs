@@ -27,7 +27,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use log::*;
 use multiaddr::Multiaddr;
+use tari_shutdown::ShutdownSignal;
+use tokio::{task::JoinHandle, time::MissedTickBehavior};
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
@@ -37,15 +40,19 @@ use crate::{
         NodeId,
         PeerFeatures,
         PeerFlags,
+        PeerManagerConfig,
         PeerManagerError,
         ThisPeerIdentity,
         blocking_storage::BlockingPeerStorage,
+        database::GarbageCollectionStats,
         peer::Peer,
         peer_id::PeerId,
         peer_storage_sql::PeerStorageSql,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
+
+const LOG_TARGET: &str = "comms::peer_manager";
 
 /// The PeerManager provides functionality to add, find and delete peers. It wraps synchronous
 /// WAL-enabled SQLite database access and provides an async interface to the rest of the code base.
@@ -58,6 +65,7 @@ pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
     peer_storage: BlockingPeerStorage,
     transport_protocols: Vec<TransportProtocol>,
+    config: PeerManagerConfig,
     /// In-memory, per-peer generation counter bumped by every `unban_peer`/`unban_all_peers` call (see
     /// `bump_ban_generation`). Shared across every clone of this `PeerManager` via the `Arc`, which is what
     /// makes it visible both to `ConnectivityManagerActor` (which needs it, see `ban_generation`) and to the
@@ -131,18 +139,83 @@ pub const PEER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 /// the wallet in particular — keep the 60s default.
 pub const PEER_DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How often the peer database garbage collector runs. It also runs once as soon as it is started.
+const GARBAGE_COLLECTION_INTERVAL: Duration = Duration::from_secs(10 * 60);
+
 impl PeerManager {
-    /// Constructs a new empty PeerManager
+    /// Constructs a new PeerManager with the default [`PeerManagerConfig`]
     pub fn new(
         database: CommsDatabase,
         transport_protocols: Vec<TransportProtocol>,
+    ) -> Result<PeerManager, PeerManagerError> {
+        Self::new_with_config(database, transport_protocols, PeerManagerConfig::default())
+    }
+
+    /// Constructs a new PeerManager
+    pub fn new_with_config(
+        database: CommsDatabase,
+        transport_protocols: Vec<TransportProtocol>,
+        config: PeerManagerConfig,
     ) -> Result<PeerManager, PeerManagerError> {
         let peer_storage_sql = PeerStorageSql::new_indexed(database)?;
 
         Ok(Self {
             peer_storage: BlockingPeerStorage::new(peer_storage_sql),
             transport_protocols,
+            config,
             ban_generations: Arc::new(Mutex::new(HashMap::new())),
+        })
+    }
+
+    /// Removes peers above [`PeerManagerConfig::max_peer_rows`] that have never been reached, oldest first, and peers
+    /// that were soft deleted more than a day ago.
+    pub async fn garbage_collect(&self) -> Result<GarbageCollectionStats, PeerManagerError> {
+        let max_peer_rows = self.config.max_peer_rows;
+        let stats = self
+            .peer_storage
+            .call(move |s| s.garbage_collect(max_peer_rows))
+            .await?;
+        #[cfg(feature = "metrics")]
+        {
+            let removed = stats
+                .excess_peers_removed
+                .saturating_add(stats.soft_deleted_peers_removed);
+            metrics::garbage_collected_peers().inc_by(u64::try_from(removed).unwrap_or(u64::MAX));
+            let count = self.count().await;
+            #[allow(clippy::cast_possible_wrap)]
+            metrics::peer_list_size().set(count as i64);
+        }
+        Ok(stats)
+    }
+
+    /// Runs [`Self::garbage_collect`] now and then every [`GARBAGE_COLLECTION_INTERVAL`] until shutdown.
+    pub fn spawn_garbage_collector(self: Arc<Self>, mut shutdown_signal: ShutdownSignal) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(GARBAGE_COLLECTION_INTERVAL);
+            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {},
+                    _ = shutdown_signal.wait() => break,
+                }
+                match self.garbage_collect().await {
+                    Ok(stats) => {
+                        if stats != GarbageCollectionStats::default() {
+                            info!(
+                                target: LOG_TARGET,
+                                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap \
+                                 and {} soft-deleted peer(s)",
+                                stats.excess_peers_removed,
+                                self.config.max_peer_rows,
+                                stats.soft_deleted_peers_removed
+                            );
+                        }
+                    },
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Peer database garbage collection failed: {err}");
+                    },
+                }
+            }
         })
     }
 
@@ -257,6 +330,7 @@ impl PeerManager {
     ) -> Result<Vec<Peer>, PeerManagerError> {
         let exclude_node_ids = exclude_node_ids.to_vec();
         let transport_protocols = self.transport_protocols.clone();
+        let max_per_netgroup = self.config.max_candidates_per_netgroup;
         self.peer_storage
             .call(move |s| {
                 s.get_available_dial_candidates(
@@ -265,6 +339,7 @@ impl PeerManager {
                     &transport_protocols,
                     exclude_failed,
                     randomize,
+                    max_per_netgroup,
                 )
             })
             .await

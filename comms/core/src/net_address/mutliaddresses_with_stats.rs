@@ -725,4 +725,52 @@ mod test {
         assert_eq!(addresses.addresses()[0].address(), &addr_2);
         assert_eq!(addresses.addresses()[1].address(), &addr_1);
     }
+
+    #[test]
+    fn relayed_old_claim_does_not_clear_failure_mark() {
+        let address = "/ip4/23.23.23.23/tcp/18189".parse::<Multiaddr>().unwrap();
+        let secret = CommsSecretKey::random(&mut rand::rng());
+        let claim_at = |updated_at| PeerIdentityClaim {
+            addresses: vec![address.clone()],
+            features: PeerFeatures::COMMUNICATION_NODE,
+            signature: IdentitySignature::sign_new(
+                &secret,
+                PeerFeatures::COMMUNICATION_NODE,
+                std::slice::from_ref(&address),
+                updated_at,
+            ),
+        };
+        let old_claim = claim_at(Utc::now() - chrono::Duration::hours(1));
+        let current_claim = claim_at(Utc::now());
+
+        let mut stored = MultiaddressesWithStats::from_addresses_with_source(
+            vec![address.clone()],
+            &PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: current_claim.clone(),
+            },
+        );
+        stored.mark_failed_connection_attempt(&address, "Connection refused".to_string());
+
+        // Someone relays the old claim, and someone else relays the current one
+        for claim in [old_claim, current_claim] {
+            let relayed = MultiaddressesWithStats::from_addresses_with_source(
+                vec![address.clone()],
+                &PeerAddressSource::FromDiscovery {
+                    peer_identity_claim: claim,
+                },
+            );
+            stored.merge(&relayed);
+            let merged = &stored.addresses()[0];
+            assert_eq!(merged.last_failed_reason(), Some("Connection refused"));
+            assert_eq!(merged.connection_attempts(), 1);
+            assert!(merged.last_attempted().is_some());
+            assert_eq!(merged.quality_score(), Some(0));
+        }
+
+        // A later successful dial still clears it
+        let mut dialled = stored.clone();
+        dialled.mark_last_seen_now(&address);
+        stored.merge(&dialled);
+        assert_eq!(stored.addresses()[0].last_failed_reason(), None);
+    }
 }

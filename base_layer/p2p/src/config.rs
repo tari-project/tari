@@ -191,6 +191,19 @@ pub struct P2pConfig {
     /// `P2pInitializer` clamps it below the pool size and warns if this is set into conflict.
     /// Default: 8
     pub proactive_dialing_floor: usize,
+    /// Once more than this many inbound connections are open, the connection reaper closes idle inbound connections,
+    /// oldest first, until the count is back at this limit. Inbound connections are not counted towards the
+    /// outbound reaping threshold, so remote peers cannot evict the connections this node chose.
+    /// Default: 400
+    pub reaper_inbound_soft_limit: usize,
+    /// The most peers kept in the peer database. Above this, peers that have never been reached on any address are
+    /// removed, oldest first. Seed peers, peers with a configured address and banned peers are kept.
+    /// Default: 50,000
+    pub max_peer_rows: usize,
+    /// The most addresses taken from any one network group (IPv4 /16, IPv6 /32, an onion or DNS name) when selecting
+    /// peers to dial, so that one operator cannot fill the list. 0 disables the cap.
+    /// Default: 4
+    pub max_candidates_per_netgroup: usize,
 }
 
 impl Default for P2pConfig {
@@ -221,6 +234,9 @@ impl Default for P2pConfig {
             max_seed_peer_age: Duration::from_secs(15 * 60),
             proactive_dialing_enabled: true,
             proactive_dialing_floor: 8,
+            reaper_inbound_soft_limit: 400,
+            max_peer_rows: 50_000,
+            max_candidates_per_netgroup: 4,
         }
     }
 }

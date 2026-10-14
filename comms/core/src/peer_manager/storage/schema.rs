@@ -44,6 +44,8 @@ table! {
         last_failed_reason -> Nullable<Text>,
         quality_score -> Nullable<Integer>,
         source -> Text,
+        address_bytes -> Binary,
+        netgroup -> Text,
     }
 }
 

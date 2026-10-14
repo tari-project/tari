@@ -45,7 +45,7 @@ use crate::{
     connectivity::{ConnectivityConfig, ConnectivityRequester},
     multiaddr::Multiaddr,
     net_address::MultiaddrRange,
-    peer_manager::{NodeIdentity, PeerManager},
+    peer_manager::{NodeIdentity, PeerManager, PeerManagerConfig},
     peer_validator::PeerValidatorConfig,
     protocol::{NodeNetworkInfo, ProtocolExtensions},
     tor,
@@ -116,6 +116,7 @@ pub struct CommsBuilder {
     shutdown_signal: Option<ShutdownSignal>,
     maintain_n_closest_connections_only: Option<usize>,
     transport_protocols: Vec<TransportProtocol>,
+    peer_manager_config: PeerManagerConfig,
 }
 
 impl Default for CommsBuilder {
@@ -130,6 +131,7 @@ impl Default for CommsBuilder {
             shutdown_signal: None,
             maintain_n_closest_connections_only: None,
             transport_protocols: TransportProtocol::get_all(),
+            peer_manager_config: PeerManagerConfig::default(),
         }
     }
 }
@@ -309,9 +311,23 @@ impl CommsBuilder {
         self
     }
 
-    /// The closest number of peer connections to maintain; connections above the threshold will be removed
+    /// The number of outbound connections above which idle outbound connections are reaped. See
+    /// [`ConnectivityConfig::reaper_min_connection_threshold`].
     pub fn with_reaper_min_connection_thresholds(mut self, connections: usize) -> Self {
         self.connectivity_config.reaper_min_connection_threshold = connections;
+        self
+    }
+
+    /// Once more than this many inbound connections are open, idle inbound connections are closed, oldest first,
+    /// until the count is back at this limit. See [`ConnectivityConfig::reaper_inbound_soft_limit`].
+    pub fn with_reaper_inbound_soft_limit(mut self, limit: usize) -> Self {
+        self.connectivity_config.reaper_inbound_soft_limit = limit;
+        self
+    }
+
+    /// Set the peer manager configuration (peer database row cap and dial candidate spreading)
+    pub fn with_peer_manager_config(mut self, config: PeerManagerConfig) -> Self {
+        self.peer_manager_config = config;
         self
     }
 
@@ -341,8 +357,9 @@ impl CommsBuilder {
     fn make_peer_manager(&mut self) -> Result<Arc<PeerManager>, CommsBuilderError> {
         match self.peer_storage.take() {
             Some(storage) => {
-                let peer_manager = PeerManager::new(storage, self.transport_protocols.clone())
-                    .map_err(CommsBuilderError::PeerManagerError)?;
+                let peer_manager =
+                    PeerManager::new_with_config(storage, self.transport_protocols.clone(), self.peer_manager_config)
+                        .map_err(CommsBuilderError::PeerManagerError)?;
                 Ok(Arc::new(peer_manager))
             },
             None => Err(CommsBuilderError::PeerStorageNotProvided),

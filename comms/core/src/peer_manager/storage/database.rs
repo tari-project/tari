@@ -40,8 +40,16 @@ use multiaddr::Multiaddr;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_utilities::{hex, hex::Hex};
 
+#[cfg(feature = "metrics")]
+use crate::peer_manager::metrics;
 use crate::{
-    net_address::{MultiaddrWithStats, MultiaddressesWithStats, PeerAddressSource, is_external_address},
+    net_address::{
+        MultiaddrWithStats,
+        MultiaddressesWithStats,
+        PeerAddressSource,
+        address_netgroup,
+        is_external_address,
+    },
     peer_manager::{
         NodeId,
         Peer,
@@ -72,6 +80,26 @@ const ADDRESS_CLASSIFIER_VERSION_KEY: &str = "address_classifier_version";
 /// once on the next start.
 const ADDRESS_CLASSIFIER_VERSION: u32 = 1;
 
+/// `db_metadata` key holding the [`ADDRESS_BYTES_VERSION`] whose full pass over the stored addresses has run.
+const ADDRESS_BYTES_VERSION_KEY: &str = "address_bytes_version";
+/// Bump this to run [`PeerDatabaseSql::backfill_address_bytes`] over every stored address again.
+const ADDRESS_BYTES_VERSION: u32 = 1;
+
+/// The most rows peer garbage collection deletes in one write transaction, so that it never holds the database's single
+/// writer for long.
+const GARBAGE_COLLECTION_BATCH_SIZE: i64 = 500;
+/// How long a soft-deleted peer is kept before garbage collection removes it for good.
+const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
+
+/// What one run of [`PeerDatabaseSql::garbage_collect`] removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GarbageCollectionStats {
+    /// Never-seen peers removed to bring the table back under the row cap
+    pub excess_peers_removed: usize,
+    /// Soft-deleted peers removed after their retention period
+    pub soft_deleted_peers_removed: usize,
+}
+
 /// This peer's identity information
 #[derive(Clone)]
 pub struct ThisPeerIdentity {
@@ -99,8 +127,97 @@ impl PeerDatabaseSql {
             },
         };
         PeerDatabaseSql::add_this_peer_node_identity_to_db(&instance)?;
+        // Must run first: every later read decodes `address_bytes`
+        PeerDatabaseSql::backfill_address_bytes(&instance)?;
         PeerDatabaseSql::reclassify_stored_address_externality(&instance)?;
         Ok(instance)
+    }
+
+    /// Fills in `address_bytes`, `netgroup` and the lossless `source` encoding for addresses stored as text, and
+    /// removes the rows whose text cannot be decoded.
+    ///
+    /// The text form of a multiaddr is not lossless, and an address whose DNS name contains `/` does not parse back at
+    /// all - before `address_bytes` existed, one such row made every peer query fail. Those rows cannot be repaired, so
+    /// they are deleted. The same applies to a row whose `source` (which contains the full signed claim) does not
+    /// decode.
+    ///
+    /// The first pass covers every row and is recorded in `db_metadata` under [`ADDRESS_BYTES_VERSION_KEY`]. Later
+    /// starts only visit rows that have no bytes, which can only have been written by an older version after a
+    /// downgrade, so the step is idempotent and cheap once done.
+    fn backfill_address_bytes(&self) -> Result<(), StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let applied_version = db_metadata::table
+                .filter(db_metadata::key.eq(ADDRESS_BYTES_VERSION_KEY))
+                .select(db_metadata::value)
+                .first::<String>(conn)
+                .optional()?
+                .and_then(|version| version.parse::<u32>().ok());
+            let full_pass = applied_version != Some(ADDRESS_BYTES_VERSION);
+
+            let mut query = multi_addresses::table
+                .select((
+                    multi_addresses::address_id,
+                    multi_addresses::address,
+                    multi_addresses::source,
+                ))
+                .into_boxed();
+            if !full_pass {
+                query = query.filter(multi_addresses::address_bytes.eq(Vec::<u8>::new()));
+            }
+            let stored = query.load::<(Option<i32>, String, String)>(conn)?;
+
+            let mut removed = 0usize;
+            for (address_id, address_text, source) in stored {
+                let Some(address_id) = address_id else {
+                    continue;
+                };
+                // The one place stored text is parsed: it is all an older version wrote
+                let address = Multiaddr::from_str(&address_text).ok().filter(|a| !a.is_empty());
+                let source = serde_json::from_str::<PeerAddressSource>(&source).ok();
+                let row = multi_addresses::table.filter(multi_addresses::address_id.eq(address_id));
+                match (address, source) {
+                    (Some(address), Some(source)) => {
+                        let source = serde_json::to_string(&source)
+                            .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?;
+                        diesel::update(row)
+                            .set((
+                                multi_addresses::address_bytes.eq(address.to_vec()),
+                                multi_addresses::netgroup.eq(address_netgroup(&address)),
+                                multi_addresses::source.eq(source),
+                            ))
+                            .execute(conn)?;
+                    },
+                    _ => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Removing stored peer address that cannot be decoded: {address_text:?}"
+                        );
+                        diesel::delete(row).execute(conn)?;
+                        removed = removed.saturating_add(1);
+                    },
+                }
+            }
+
+            if removed > 0 {
+                warn!(
+                    target: LOG_TARGET,
+                    "Removed {removed} stored peer address(es) that could not be decoded"
+                );
+            }
+
+            if full_pass {
+                diesel::replace_into(db_metadata::table)
+                    .values((
+                        db_metadata::key.eq(ADDRESS_BYTES_VERSION_KEY),
+                        db_metadata::value.eq(ADDRESS_BYTES_VERSION.to_string()),
+                    ))
+                    .execute(conn)?;
+            }
+
+            Ok(())
+        })
     }
 
     /// Recomputes the persisted `is_external` flag for every stored address, once per classifier
@@ -135,17 +252,18 @@ impl PeerDatabaseSql {
                 .select((
                     multi_addresses::address_id,
                     multi_addresses::address,
+                    multi_addresses::address_bytes,
                     multi_addresses::is_external,
                 ))
-                .load::<(Option<i32>, String, bool)>(conn)?;
+                .load::<(Option<i32>, String, Vec<u8>, bool)>(conn)?;
 
             let mut reclassified = 0usize;
-            for (address_id, address, was_external) in stored {
+            for (address_id, address, address_bytes, was_external) in stored {
                 let Some(address_id) = address_id else {
                     continue;
                 };
-                // An address we can no longer parse can never be dialled, so it is not external.
-                let is_external = Multiaddr::from_str(&address).is_ok_and(|addr| is_external_address(&addr));
+                // An address we can no longer decode can never be dialled, so it is not external.
+                let is_external = Multiaddr::try_from(address_bytes).is_ok_and(|addr| is_external_address(&addr));
                 if is_external == was_external {
                     continue;
                 }
@@ -353,6 +471,8 @@ impl PeerDatabaseSql {
                     quality_score: address.quality_score(),
                     source: serde_json::to_string(&address.source())
                         .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
+                    address_bytes: address.address().to_vec(),
+                    netgroup: address_netgroup(address.address()),
                 });
             }
         }
@@ -449,6 +569,8 @@ impl PeerDatabaseSql {
                         serde_json::to_string(&address.source())
                             .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
                     ),
+                    address_bytes: Some(address.address().to_vec()),
+                    netgroup: Some(address_netgroup(address.address())),
                 });
             }
         }
@@ -480,23 +602,24 @@ impl PeerDatabaseSql {
 
         // Update the associated multi-addresses
         // - Remove all stale addresses that are not in the update list
-        let final_addr_list: Vec<String> = update_peer_sql
+        // Addresses are matched on their bytes: the text form is not lossless.
+        let final_addr_list: Vec<Vec<u8>> = update_peer_sql
             .addresses
             .iter()
-            .filter_map(|a| a.address.clone())
+            .filter_map(|a| a.address_bytes.clone())
             .collect();
 
         diesel::delete(
             multi_addresses::table
                 .filter(multi_addresses::peer_id.eq(peer_id))
-                .filter(not(multi_addresses::address.eq_any(&final_addr_list))),
+                .filter(not(multi_addresses::address_bytes.eq_any(&final_addr_list))),
         )
         .execute(conn)?;
         // - Update existing addresses and add new ones
         for address_update in update_peer_sql.addresses {
             let updated = diesel::update(
                 multi_addresses::table
-                    .filter(multi_addresses::address.eq(address_update.address.clone().unwrap_or_default()))
+                    .filter(multi_addresses::address_bytes.eq(address_update.address_bytes.clone().unwrap_or_default()))
                     .filter(multi_addresses::peer_id.eq(peer_id)),
             )
             .set(&address_update)
@@ -608,6 +731,133 @@ impl PeerDatabaseSql {
         })
     }
 
+    /// Ban the peer with this public key, adding a minimal peer row for it first if it is not stored yet.
+    ///
+    /// Peers are often banned during the connection handshake, before they have been stored, and a ban that only
+    /// updated an existing row was lost for them. The row added here has no addresses and no features, so it is never a
+    /// dial candidate; it exists only to carry the ban, and garbage collection keeps it while the ban is active.
+    pub fn ban_or_add_banned_peer(
+        &self,
+        public_key: &CommsPublicKey,
+        ban_duration: Duration,
+        banned_reason: String,
+    ) -> Result<NodeId, StorageError> {
+        let node_id = NodeId::from_public_key(public_key);
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let banned_until = safe_future_datetime_from_duration(ban_duration).naive_utc();
+            let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_hex())))
+                .set((
+                    peers::banned_until.eq(banned_until),
+                    peers::banned_reason.eq(banned_reason.clone()),
+                ))
+                .execute(conn)?;
+            if affected > 0 {
+                return Ok(node_id.clone());
+            }
+
+            let mut peer = Peer::new(
+                public_key.clone(),
+                node_id.clone(),
+                MultiaddressesWithStats::empty(),
+                PeerFlags::empty(),
+                PeerFeatures::NONE,
+                Vec::new(),
+                String::new(),
+            );
+            peer.banned_until = Some(banned_until);
+            peer.banned_reason = banned_reason;
+            let new_peer_sql = self.add_peer_sql(peer)?;
+            self.add_peer_inner(new_peer_sql, conn)?;
+            Ok(node_id.clone())
+        })
+    }
+
+    /// Removes peers to keep the table at or under `max_peer_rows`, then removes peers that were soft deleted more
+    /// than [`SOFT_DELETED_PEER_RETENTION`] ago.
+    ///
+    /// Peer identities are free to create, and every inbound handshake stores one, so without a cap the table grows
+    /// without bound. Only peers that have never been reached on any address are removed for the cap, oldest first.
+    /// Seed peers, peers with a configured address and peers with an active ban are never removed.
+    ///
+    /// Rows are deleted in batches of [`GARBAGE_COLLECTION_BATCH_SIZE`], each in its own short write transaction.
+    pub fn garbage_collect(&self, max_peer_rows: usize) -> Result<GarbageCollectionStats, StorageError> {
+        let mut stats = GarbageCollectionStats::default();
+        let mut conn = self.connection.get_pooled_connection()?;
+        let now = chrono::Utc::now().naive_utc();
+        // Matches the JSON stored in `multi_addresses.source` for `PeerAddressSource::Config`
+        let config_source = serde_json::to_string(&PeerAddressSource::Config)
+            .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?;
+
+        let live_peers = peers::table
+            .filter(peers::deleted_at.is_null())
+            .count()
+            .get_result::<i64>(&mut conn)?;
+        let mut excess = live_peers.saturating_sub(i64::try_from(max_peer_rows).unwrap_or(i64::MAX));
+        while excess > 0 {
+            let batch_size = min(excess, GARBAGE_COLLECTION_BATCH_SIZE);
+            let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
+                let kept_peer_ids = multi_addresses::table
+                    .filter(
+                        multi_addresses::last_seen
+                            .is_not_null()
+                            .or(multi_addresses::source.eq(&config_source)),
+                    )
+                    .select(multi_addresses::peer_id);
+                let peer_ids = peers::table
+                    .filter(peers::deleted_at.is_null())
+                    .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
+                    .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                        "flags & {} = 0",
+                        PeerFlags::SEED.to_i32()
+                    )))
+                    .filter(not(peers::peer_id.eq_any(kept_peer_ids)))
+                    .order_by(peers::added_at.asc())
+                    .select(peers::peer_id)
+                    .limit(batch_size)
+                    .load::<i64>(conn)?;
+                PeerDatabaseSql::delete_peers_by_id(&peer_ids, conn)
+            })?;
+            if removed == 0 {
+                break;
+            }
+            stats.excess_peers_removed = stats.excess_peers_removed.saturating_add(removed);
+            excess = excess.saturating_sub(i64::try_from(removed).unwrap_or(i64::MAX));
+        }
+
+        let deleted_before = now
+            .checked_sub_signed(SOFT_DELETED_PEER_RETENTION)
+            .unwrap_or(NaiveDateTime::MIN);
+        loop {
+            let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
+                let peer_ids = peers::table
+                    .filter(peers::deleted_at.lt(deleted_before))
+                    .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
+                    .select(peers::peer_id)
+                    .limit(GARBAGE_COLLECTION_BATCH_SIZE)
+                    .load::<i64>(conn)?;
+                PeerDatabaseSql::delete_peers_by_id(&peer_ids, conn)
+            })?;
+            if removed == 0 {
+                break;
+            }
+            stats.soft_deleted_peers_removed = stats.soft_deleted_peers_removed.saturating_add(removed);
+        }
+
+        Ok(stats)
+    }
+
+    // Hard-deletes the given peers and their addresses, returning the number of peers deleted
+    fn delete_peers_by_id(peer_ids: &[i64], conn: &mut SqliteConnection) -> Result<usize, StorageError> {
+        if peer_ids.is_empty() {
+            return Ok(0);
+        }
+        diesel::delete(multi_addresses::table.filter(multi_addresses::peer_id.eq_any(peer_ids))).execute(conn)?;
+        let deleted = diesel::delete(peers::table.filter(peers::peer_id.eq_any(peer_ids))).execute(conn)?;
+        Ok(deleted)
+    }
+
     /// Reset the banned metadata for a peer, returning 'Some(node_id)' if successful, 'None' otherwise
     pub fn reset_banned(&self, node_id: &NodeId) -> Result<Option<NodeId>, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
@@ -685,7 +935,7 @@ impl PeerDatabaseSql {
                             .select(peers::peer_id)
                             .single_value()),
                     )
-                    .filter(multi_addresses::address.eq(address.to_string())),
+                    .filter(multi_addresses::address_bytes.eq(address.to_vec())),
             )
             .set(multi_addresses::last_seen.eq(last_seen))
             .execute(conn)?;
@@ -711,7 +961,7 @@ impl PeerDatabaseSql {
                             .select(peers::peer_id)
                             .single_value()),
                     )
-                    .filter(multi_addresses::address.eq(address.to_string())),
+                    .filter(multi_addresses::address_bytes.eq(address.to_vec())),
             )
             .set(multi_addresses::last_seen.eq(None::<NaiveDateTime>))
             .execute(conn)?;
@@ -742,7 +992,7 @@ impl PeerDatabaseSql {
                             .select(peers::peer_id)
                             .single_value()),
                     )
-                    .filter(multi_addresses::address.eq(address.to_string())),
+                    .filter(multi_addresses::address_bytes.eq(address.to_vec())),
             )
             .set(multi_addresses::last_failed_reason.eq(sql_escape(&last_failed_reason)))
             .execute(conn)?;
@@ -772,7 +1022,7 @@ impl PeerDatabaseSql {
                             .select(peers::peer_id)
                             .single_value()),
                     )
-                    .filter(multi_addresses::address.eq(address.to_string())),
+                    .filter(multi_addresses::address_bytes.eq(address.to_vec())),
             )
             .set(multi_addresses::last_failed_reason.eq(None::<String>))
             .execute(conn)?;
@@ -789,8 +1039,6 @@ impl PeerDatabaseSql {
     fn peers_from_left_join_query(
         results: Vec<(NewPeerSql, Option<NewMultiaddrWithStatsSql>)>,
     ) -> Result<Vec<Peer>, StorageError> {
-        use std::collections::HashMap;
-
         if results.is_empty() {
             return Ok(Vec::new());
         }
@@ -805,12 +1053,23 @@ impl PeerDatabaseSql {
             }
         }
 
-        let peers = peer_map
-            .into_iter()
-            .map(|(_, (peer, addresses))| Peer::try_from((peer, addresses)))
-            .collect::<Result<Vec<_>, _>>()?;
+        Ok(PeerDatabaseSql::peers_from_rows(peer_map))
+    }
 
-        Ok(peers)
+    // Converts grouped peer rows into peers. A peer row that cannot be decoded is skipped with a warning rather than
+    // failing every query that happens to load it.
+    fn peers_from_rows(peer_map: HashMap<i64, (NewPeerSql, Vec<NewMultiaddrWithStatsSql>)>) -> Vec<Peer> {
+        let mut peers = Vec::with_capacity(peer_map.len());
+        for (_, (peer, addresses)) in peer_map {
+            let node_id = peer.node_id.clone();
+            match Peer::try_from((peer, addresses)) {
+                Ok(peer) => peers.push(peer),
+                Err(err) => {
+                    warn!(target: LOG_TARGET, "Skipping stored peer '{node_id}' that cannot be decoded: {err}");
+                },
+            }
+        }
+        peers
     }
 
     // Helper function to convert a Vec of join query results into a Vec of Peer
@@ -830,12 +1089,7 @@ impl PeerDatabaseSql {
                 .push(address);
         }
 
-        let peers = peer_map
-            .into_iter()
-            .map(|(_, (peer, addresses))| Peer::try_from((peer, addresses)))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(peers)
+        Ok(PeerDatabaseSql::peers_from_rows(peer_map))
     }
 
     /// Find all peers that match a partial node ID or public key
@@ -915,25 +1169,34 @@ impl PeerDatabaseSql {
 
     /// Return at most `n` peers from the database that are not banned and not deleted
     pub fn get_n_not_banned_or_deleted_peers(&self, number: usize) -> Result<Vec<Peer>, StorageError> {
+        if number == 0 {
+            return Ok(Vec::new());
+        }
         let mut conn = self.connection.get_pooled_connection()?;
 
-        // Perform a join query to fetch peers and their addresses
-        let results = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(
-                peers::banned_until
-                    .is_null()
-                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
-            )
-            .filter(peers::deleted_at.is_null())
-            .load::<(NewPeerSql, NewMultiaddrWithStatsSql)>(&mut conn)?;
+        conn.transaction::<_, StorageError, _>(|conn| {
+            // Step 1: at most `number` peers that have an address, limited in SQL rather than after loading every row
+            let node_ids = peers::table
+                .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
+                .filter(
+                    peers::banned_until
+                        .is_null()
+                        .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
+                )
+                .filter(peers::deleted_at.is_null())
+                .select(peers::node_id)
+                .distinct()
+                .limit(i64::try_from(number).unwrap_or(i64::MAX))
+                .load::<String>(conn)?;
 
-        let peers = PeerDatabaseSql::peers_from_join_query(results)?;
-        Ok(peers.into_iter().take(number).collect())
+            // Step 2: load those peers with all of their addresses
+            self.get_peers_by_node_ids_str(&node_ids, false, conn)
+        })
     }
 
     /// Return available dial candidates that are communication nodes, not banned, not deleted,
-    /// optionally not failed, optionally at random, and not in the excluded node IDs list.
+    /// optionally not failed, optionally at random, and not in the excluded node IDs list. At most `max_per_netgroup`
+    /// addresses are taken from any one network group (`0` disables the cap).
     pub fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
@@ -941,6 +1204,7 @@ impl PeerDatabaseSql {
         transport_protocols: &[TransportProtocol],
         exclude_failed: bool,
         randomize: bool,
+        max_per_netgroup: usize,
     ) -> Result<Vec<Peer>, StorageError> {
         if let Some(n) = n &&
             n == 0
@@ -949,51 +1213,56 @@ impl PeerDatabaseSql {
             return Ok(Vec::new());
         }
         let mut conn = self.connection.get_pooled_connection()?;
-        let addr_filter_sql = Self::build_addr_filter_sql(transport_protocols);
 
-        // Build base query filtering for communication nodes, not banned, not deleted
-        let mut query = peers::table
-            .inner_join(multi_addresses::table.on(multi_addresses::peer_id.eq(peers::peer_id)))
-            .filter(
-                peers::banned_until
-                    .is_null()
-                    .or(peers::banned_until.lt(chrono::Utc::now().naive_utc())),
-            )
-            .filter(peers::deleted_at.is_null())
-            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
-                "features & {} != 0",
-                PeerFeatures::COMMUNICATION_NODE.to_i32()
-            )))
-            .select(peers::node_id)
-            .distinct()
-            .into_boxed();
-
+        // Communication nodes that are not banned and not deleted
+        let mut conditions = vec![
+            "(peers.banned_until IS NULL OR peers.banned_until < ?)".to_string(),
+            "peers.deleted_at IS NULL".to_string(),
+            format!("peers.features & {} != 0", PeerFeatures::COMMUNICATION_NODE.to_i32()),
+        ];
         if exclude_failed {
-            query = query.filter(multi_addresses::last_failed_reason.is_null());
+            conditions.push("multi_addresses.last_failed_reason IS NULL".to_string());
         }
-
-        if randomize {
-            query = query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()"));
+        if let Some(filter_sql) = Self::build_addr_filter_sql(transport_protocols) {
+            conditions.push(filter_sql);
         }
-
-        if let Some(filter_sql) = addr_filter_sql {
-            query = query.filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&filter_sql));
-        }
-
         // Exclude connected peers if provided
         if !exclude_node_ids.is_empty() {
-            let excluded_hex_ids: Vec<String> = exclude_node_ids.iter().map(|node_id| node_id.to_hex()).collect();
-            query = query.filter(peers::node_id.ne_all(excluded_hex_ids));
+            let excluded_hex_ids: Vec<String> = exclude_node_ids
+                .iter()
+                .map(|node_id| format!("'{}'", sql_escape(&node_id.to_hex())))
+                .collect();
+            conditions.push(format!("peers.node_id NOT IN ({})", excluded_hex_ids.join(", ")));
         }
 
-        // Apply limit if specified
-        if let Some(limit) = n {
-            // Safely convert usize to i64, using try_into with fallback to i64::MAX
-            let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
-            query = query.limit(limit_i64);
-        }
-
-        let node_ids = query.load::<String>(&mut conn)?;
+        // Each network group (see `address_netgroup`) contributes at most `max_per_netgroup` addresses, so that one
+        // operator with many addresses in one network cannot fill the candidate list. Addresses we have reached before
+        // are taken first, within each group and overall.
+        let max_per_netgroup = if max_per_netgroup == 0 {
+            i64::MAX
+        } else {
+            i64::try_from(max_per_netgroup).unwrap_or(i64::MAX)
+        };
+        let (rank_order, final_order) = if randomize {
+            ("RANDOM()", "RANDOM()")
+        } else {
+            ("multi_addresses.address_id", "node_id")
+        };
+        let limit = n.map_or(i64::MAX, |n| i64::try_from(n).unwrap_or(i64::MAX));
+        let sql = format!(
+            "SELECT node_id FROM ( SELECT peers.node_id AS node_id, multi_addresses.last_seen IS NOT NULL AS \
+             was_seen, ROW_NUMBER() OVER ( PARTITION BY multi_addresses.netgroup ORDER BY multi_addresses.last_seen \
+             IS NOT NULL DESC, {rank_order} ) AS netgroup_rank FROM peers INNER JOIN multi_addresses ON \
+             multi_addresses.peer_id = peers.peer_id WHERE {} ) WHERE netgroup_rank <= {max_per_netgroup} GROUP BY \
+             node_id ORDER BY MAX(was_seen) DESC, {final_order} LIMIT {limit}",
+            conditions.join(" AND ")
+        );
+        let node_ids = diesel::sql_query(sql)
+            .bind::<diesel::sql_types::Timestamp, _>(chrono::Utc::now().naive_utc())
+            .load::<NodeIdRow>(&mut conn)?
+            .into_iter()
+            .map(|row| row.node_id)
+            .collect::<Vec<_>>();
 
         if node_ids.is_empty() {
             return Ok(Vec::new());
@@ -1129,16 +1398,16 @@ impl PeerDatabaseSql {
         let mut conn = self.connection.get_pooled_connection()?;
 
         conn.transaction::<_, StorageError, _>(|conn| {
-            let node_id = node_id.to_hex();
+            let node_id_hex = node_id.to_hex();
             let peer_id = peers::table
-                .filter(peers::node_id.eq(node_id))
+                .filter(peers::node_id.eq(&node_id_hex))
                 .select(peers::peer_id)
                 .first::<i64>(conn)?;
             let addresses_query: Vec<NewMultiaddrWithStatsSql> = multi_addresses::table
                 .filter(multi_addresses::peer_id.eq(peer_id))
                 .load::<NewMultiaddrWithStatsSql>(conn)?;
 
-            MultiaddressesWithStats::try_from(addresses_query)
+            Ok(multiaddresses_from_rows(&node_id_hex, addresses_query))
         })
     }
 
@@ -1380,19 +1649,14 @@ impl PeerDatabaseSql {
         PeerDatabaseSql::peers_from_join_query(results)
     }
 
-    // Retrieve the peer indexes as 'Vec<(peer_id, public_key, node_id)>'
-    fn get_peer_indexes(&self) -> Result<Vec<(i64, String, String)>, StorageError> {
+    fn count_peers(&self) -> Result<i64, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-
-        let peer_indexes = peers::table
-            .select((peers::peer_id, peers::public_key, peers::node_id))
-            .load::<(i64, String, String)>(&mut conn)?;
-        Ok(peer_indexes.into_iter().collect::<Vec<_>>())
+        Ok(peers::table.count().get_result::<i64>(&mut conn)?)
     }
 
     /// Get the size of the peer database
     pub fn size(&self) -> usize {
-        self.get_peer_indexes().unwrap_or_default().len()
+        usize::try_from(self.count_peers().unwrap_or_default()).unwrap_or_default()
     }
 
     /// Builds an OR-ed SQL clause like:
@@ -1413,6 +1677,12 @@ impl PeerDatabaseSql {
 
 fn sql_escape(input: &str) -> String {
     input.replace('\'', "''")
+}
+
+#[derive(QueryableByName)]
+struct NodeIdRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    node_id: String,
 }
 
 #[derive(Clone, Debug, Selectable, Queryable, Insertable, PartialEq, Eq)]
@@ -1483,6 +1753,8 @@ pub struct NewMultiaddrWithStatsSql {
     pub last_failed_reason: Option<String>,
     pub quality_score: Option<i32>,
     pub source: String,
+    pub address_bytes: Vec<u8>,
+    pub netgroup: String,
 }
 
 #[derive(Clone, Debug, AsChangeset, PartialEq, Eq)]
@@ -1500,6 +1772,8 @@ pub struct UpdateMultiaddrWithStatsSql {
     pub last_failed_reason: Option<Option<String>>,
     pub quality_score: Option<Option<i32>>,
     pub source: Option<String>,
+    pub address_bytes: Option<Vec<u8>>,
+    pub netgroup: Option<String>,
 }
 
 /// Serialize the protocols into a comma-separated string
@@ -1577,6 +1851,8 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
             last_failed_reason: Some(address.last_failed_reason().map(|v| v.to_string())),
             quality_score: Some(address.quality_score()),
             source: Some(serde_json::to_string(&address.source()).unwrap_or_default()),
+            address_bytes: Some(address.address().to_vec()),
+            netgroup: Some(address_netgroup(address.address())),
         }
     }
 }
@@ -1595,7 +1871,7 @@ impl TryFrom<(NewPeerSql, Vec<NewMultiaddrWithStatsSql>)> for Peer {
             .filter(|&id| id != 0),
             CommsPublicKey::from_hex(&peer_query.public_key)?,
             NodeId::from_hex(&peer_query.node_id)?,
-            MultiaddressesWithStats::try_from(addresses_query)?,
+            multiaddresses_from_rows(&peer_query.node_id, addresses_query),
             PeerFlags::from_bits(u8::try_from(peer_query.flags)?)
                 .ok_or_else(|| StorageError::UnexpectedResult("Peer flags are invalid".to_string()))?,
             peer_query.banned_until,
@@ -1620,36 +1896,51 @@ fn i64_to_duration(val: Option<i64>) -> Result<Option<Duration>, StorageError> {
     .transpose()
 }
 
-impl TryFrom<Vec<NewMultiaddrWithStatsSql>> for MultiaddressesWithStats {
-    type Error = StorageError;
-
-    fn try_from(addresses_query: Vec<NewMultiaddrWithStatsSql>) -> Result<Self, Self::Error> {
-        let mut addresses = Vec::new();
-        for addr in addresses_query {
-            let address = if addr.address.is_empty() {
-                MultiaddrWithStats::new(Multiaddr::empty(), PeerAddressSource::Config)
-            } else {
-                MultiaddrWithStats::new_with_stats(
-                    Multiaddr::from_str(&addr.address).map_err(|e| StorageError::UnexpectedResult(e.to_string()))?,
-                    addr.last_seen,
-                    u32::try_from(addr.connection_attempts)?,
-                    i64_to_duration(addr.avg_initial_dial_time)?,
-                    u32::try_from(addr.initial_dial_time_sample_count)?,
-                    i64_to_duration(addr.avg_latency)?,
-                    u32::try_from(addr.latency_sample_count)?,
-                    addr.last_attempted,
-                    addr.last_failed_reason,
-                    addr.quality_score,
-                    serde_json::from_str(&addr.source).map_err(StorageError::JsonError)?,
-                )
-            };
-            addresses.push(address);
+/// Converts a peer's stored address rows into its address list.
+///
+/// A row that cannot be decoded is skipped with a warning instead of failing the whole read: one bad row used to make
+/// every query that loaded it fail. A peer left with no usable address gets the empty placeholder address, as a peer
+/// stored without addresses always has, so it is never silently dropped from a result.
+fn multiaddresses_from_rows(node_id: &str, addresses_query: Vec<NewMultiaddrWithStatsSql>) -> MultiaddressesWithStats {
+    let mut addresses = Vec::with_capacity(addresses_query.len());
+    for addr in addresses_query {
+        let address_text = addr.address.clone();
+        match multiaddr_with_stats_from_row(addr) {
+            Ok(address) => addresses.push(address),
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Skipping stored address {address_text:?} of peer '{node_id}' that cannot be decoded: {err}"
+                );
+                #[cfg(feature = "metrics")]
+                metrics::undecodable_address_rows().inc();
+            },
         }
-        if addresses.is_empty() {
-            addresses.push(MultiaddrWithStats::new(Multiaddr::empty(), PeerAddressSource::Config));
-        }
-        Ok(MultiaddressesWithStats::from(addresses))
     }
+    if addresses.is_empty() {
+        addresses.push(MultiaddrWithStats::new(Multiaddr::empty(), PeerAddressSource::Config));
+    }
+    MultiaddressesWithStats::from(addresses)
+}
+
+fn multiaddr_with_stats_from_row(addr: NewMultiaddrWithStatsSql) -> Result<MultiaddrWithStats, StorageError> {
+    let address = Multiaddr::try_from(addr.address_bytes).map_err(|e| StorageError::UnexpectedResult(e.to_string()))?;
+    if address.is_empty() {
+        return Err(StorageError::UnexpectedResult("Address bytes are empty".to_string()));
+    }
+    Ok(MultiaddrWithStats::new_with_stats(
+        address,
+        addr.last_seen,
+        u32::try_from(addr.connection_attempts)?,
+        i64_to_duration(addr.avg_initial_dial_time)?,
+        u32::try_from(addr.initial_dial_time_sample_count)?,
+        i64_to_duration(addr.avg_latency)?,
+        u32::try_from(addr.latency_sample_count)?,
+        addr.last_attempted,
+        addr.last_failed_reason,
+        addr.quality_score,
+        serde_json::from_str(&addr.source).map_err(StorageError::JsonError)?,
+    ))
 }
 
 impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
@@ -1669,6 +1960,8 @@ impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
             last_failed_reason: address.last_failed_reason.unwrap_or_default(),
             quality_score: address.quality_score.unwrap_or_default(),
             source: address.source.unwrap_or_default(),
+            address_bytes: address.address_bytes.unwrap_or_default(),
+            netgroup: address.netgroup.unwrap_or_default(),
         }
     }
 }
@@ -1695,9 +1988,15 @@ mod tests {
             create_test_peer_add_internal_addresses,
             create_test_peer_internal_addresses_only,
             database::{MIGRATIONS, NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql},
-            manager::create_test_peer_with_onion_address,
+            manager::{create_peer_address_source_with_claim, create_test_peer_with_onion_address},
             storage::{
-                database::{ADDRESS_CLASSIFIER_VERSION_KEY, duration_to_i64_ms_infallible, u32_to_i32_infallible},
+                database::{
+                    ADDRESS_BYTES_VERSION_KEY,
+                    ADDRESS_CLASSIFIER_VERSION_KEY,
+                    GarbageCollectionStats,
+                    duration_to_i64_ms_infallible,
+                    u32_to_i32_infallible,
+                },
                 schema::{db_metadata, multi_addresses, peers},
             },
         },
@@ -2637,7 +2936,7 @@ mod tests {
 
         // Test case 1: Only non-failed peers, no exclusions
         let dial_candidates = peers_db
-            .get_available_dial_candidates(&[], None, &transport_protocols, true, false)
+            .get_available_dial_candidates(&[], None, &transport_protocols, true, false, 4)
             .unwrap();
         assert_eq!(dial_candidates.len(), 97);
         // Verify deleted, banned and failed are not returned
@@ -2647,7 +2946,7 @@ mod tests {
 
         // Test case 2: Only non-failed peers, with exclusions
         let dial_candidates = peers_db
-            .get_available_dial_candidates(&seed_peers, None, &transport_protocols, true, false)
+            .get_available_dial_candidates(&seed_peers, None, &transport_protocols, true, false, 4)
             .unwrap();
         assert_eq!(dial_candidates.len(), 72);
         // Verify deleted, banned and failed are not returned
@@ -2662,7 +2961,7 @@ mod tests {
         // Test case 3: Verify randomness
         let limit = 17;
         let mut dial_candidates_1 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false)
+            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4)
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -2671,7 +2970,7 @@ mod tests {
         dial_candidates_1.sort();
 
         let mut dial_candidates_2 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false)
+            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4)
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -2680,7 +2979,7 @@ mod tests {
         dial_candidates_2.sort();
 
         let mut dial_candidates_3 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, true)
+            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, true, 4)
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -2692,5 +2991,370 @@ mod tests {
         assert_eq!(dial_candidates_1, dial_candidates_2);
         // - With randomness, results should differ
         assert_ne!(dial_candidates_1, dial_candidates_3);
+    }
+
+    fn new_test_db() -> PeerDatabaseSql {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap()
+    }
+
+    /// A node peer whose addresses all come from one signed claim, optionally marked as reached, added `age` ago.
+    fn node_peer_with_addresses(addresses: Vec<Multiaddr>, seen: bool, age: TimeDelta) -> Peer {
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let source = create_peer_address_source_with_claim(addresses.clone(), PeerFeatures::COMMUNICATION_NODE);
+        peer.addresses = MultiaddressesWithStats::from_addresses_with_source(addresses.clone(), &source);
+        if seen {
+            peer.addresses.mark_last_seen_now(&addresses[0]);
+        }
+        peer.added_at = chrono::Utc::now().naive_utc().checked_sub_signed(age).unwrap();
+        peer
+    }
+
+    fn stored_node_ids(peers_db: &PeerDatabaseSql) -> Vec<NodeId> {
+        let mut node_ids = peers_db
+            .get_all_peers(None)
+            .unwrap()
+            .into_iter()
+            .map(|p| p.node_id)
+            .collect::<Vec<_>>();
+        node_ids.sort();
+        node_ids
+    }
+
+    #[test]
+    fn addresses_round_trip_through_bytes() {
+        let peers_db = new_test_db();
+        let addresses: Vec<Multiaddr> = vec![
+            "/ip4/23.23.23.23/tcp/18189".parse().unwrap(),
+            "/ip6/2606:4700:4700::1111/tcp/18189".parse().unwrap(),
+            "/dns4/node.example.com/tcp/18189".parse().unwrap(),
+            "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
+                .parse()
+                .unwrap(),
+            // The text form of this one reads back as a different address; the bytes do not
+            multiaddr::multiaddr!(Dns4("a/tcp/80/ip4/10.0.0.1"), Tcp(1u16)),
+        ];
+        let peer = node_peer_with_addresses(addresses.clone(), true, TimeDelta::zero());
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        let mut stored_addresses = stored.addresses.address_iter().cloned().collect::<Vec<_>>();
+        let mut expected = addresses.clone();
+        stored_addresses.sort_by_key(|a| a.to_vec());
+        expected.sort_by_key(|a| a.to_vec());
+        assert_eq!(stored_addresses, expected);
+        // The signed claim inside each address's source is lossless too
+        for address in stored.addresses.iter() {
+            let claim = address.source().peer_identity_claim().unwrap();
+            assert_eq!(claim.addresses, addresses);
+        }
+        assert_eq!(peers_db.get_addresses(&peer.node_id).unwrap(), peer.addresses);
+
+        // Updating the peer matches its stored rows on their bytes, so nothing is duplicated
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let rows = multi_addresses::table
+            .load::<NewMultiaddrWithStatsSql>(&mut conn)
+            .unwrap();
+        assert_eq!(rows.len(), addresses.len());
+        for row in rows {
+            let address = Multiaddr::try_from(row.address_bytes).unwrap();
+            assert_eq!(row.netgroup, crate::net_address::address_netgroup(&address));
+        }
+    }
+
+    #[test]
+    fn legacy_poisoned_address_row_is_skipped_not_fatal() {
+        use diesel_migrations::MigrationHarness;
+
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peers_db = PeerDatabaseSql::new(db_connection.clone(), &this_peer).unwrap();
+        let mut good_peers = Vec::new();
+        for i in 0..5u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], true, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            good_peers.push(peer);
+        }
+        let poisoned_address = node_peer_with_addresses(
+            vec!["/ip4/24.1.1.1/tcp/18189".parse().unwrap()],
+            true,
+            TimeDelta::zero(),
+        );
+        peers_db.add_or_update_peer(poisoned_address.clone()).unwrap();
+        let poisoned_claim = node_peer_with_addresses(
+            vec!["/ip4/25.1.1.1/tcp/18189".parse().unwrap()],
+            true,
+            TimeDelta::zero(),
+        );
+        peers_db.add_or_update_peer(poisoned_claim.clone()).unwrap();
+
+        // Go back to the schema before this change, where addresses were text only, and write what an older version
+        // could have stored from a claim with a `/` in a DNS name
+        let mut conn = db_connection.get_pooled_connection().unwrap();
+        conn.revert_last_migration(MIGRATIONS).unwrap();
+        diesel::sql_query(
+            "UPDATE multi_addresses SET address = '/dns4/evil/x/tcp/1' WHERE address = '/ip4/24.1.1.1/tcp/18189'",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        let source = diesel::sql_query(
+            "SELECT source AS value FROM multi_addresses WHERE address = '/ip4/25.1.1.1/tcp/18189'".to_string(),
+        )
+        .get_result::<TextValue>(&mut conn)
+        .unwrap()
+        .value;
+        let mut source: serde_json::Value = serde_json::from_str(&source).unwrap();
+        source["FromPeerConnection"]["peer_identity_claim"]["addresses"] =
+            serde_json::json!(["/ip4/25.1.1.1/tcp/18189", "/dns4/evil/x/tcp/1"]);
+        diesel::sql_query(format!(
+            "UPDATE multi_addresses SET source = '{}' WHERE address = '/ip4/25.1.1.1/tcp/18189'",
+            source
+        ))
+        .execute(&mut conn)
+        .unwrap();
+        // A database from before the backfill existed
+        diesel::delete(db_metadata::table.filter(db_metadata::key.eq(ADDRESS_BYTES_VERSION_KEY)))
+            .execute(&mut conn)
+            .unwrap();
+        drop(conn);
+
+        // Upgrade: migration, then the data step on open
+        db_connection.migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(db_connection, &this_peer).unwrap();
+
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let rows = multi_addresses::table
+            .load::<NewMultiaddrWithStatsSql>(&mut conn)
+            .unwrap();
+        assert_eq!(rows.len(), good_peers.len());
+        assert!(
+            rows.iter()
+                .all(|row| !row.address_bytes.is_empty() && !row.netgroup.is_empty())
+        );
+        drop(conn);
+
+        // Every peer is still returned; the two whose only address was poisoned have none left
+        let all_peers = peers_db.get_all_peers(None).unwrap();
+        assert_eq!(all_peers.len(), good_peers.len() + 2);
+        for peer in &all_peers {
+            if peer.node_id == poisoned_address.node_id || peer.node_id == poisoned_claim.node_id {
+                assert_eq!(peer.addresses.address_iter().collect::<Vec<_>>(), vec![
+                    &Multiaddr::empty()
+                ]);
+            }
+        }
+        let candidates = peers_db
+            .get_available_dial_candidates(&[], None, &TransportProtocol::get_all(), true, true, 4)
+            .unwrap();
+        let mut candidate_ids = candidates.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
+        candidate_ids.sort();
+        let mut expected = good_peers.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(candidate_ids, expected);
+    }
+
+    #[derive(diesel::QueryableByName)]
+    struct TextValue {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        value: String,
+    }
+
+    #[test]
+    fn undecodable_address_row_is_skipped_on_read() {
+        let peers_db = new_test_db();
+        let good: Multiaddr = "/ip4/23.1.1.1/tcp/18189".parse().unwrap();
+        let other: Multiaddr = "/ip4/23.2.1.1/tcp/18189".parse().unwrap();
+        let peer = node_peer_with_addresses(vec![good.clone(), other.clone()], true, TimeDelta::zero());
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+        let healthy = node_peer_with_addresses(vec!["/ip4/24.1.1.1/tcp/1".parse().unwrap()], true, TimeDelta::zero());
+        peers_db.add_or_update_peer(healthy.clone()).unwrap();
+
+        // Corrupt one row's bytes and another row's source
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        diesel::update(multi_addresses::table.filter(multi_addresses::address_bytes.eq(other.to_vec())))
+            .set(multi_addresses::address_bytes.eq(vec![0xffu8, 0xff, 0xff]))
+            .execute(&mut conn)
+            .unwrap();
+        diesel::update(multi_addresses::table.filter(multi_addresses::address_bytes.eq(good.to_vec())))
+            .set(multi_addresses::source.eq("{not json"))
+            .execute(&mut conn)
+            .unwrap();
+        drop(conn);
+
+        assert_eq!(peers_db.get_all_peers(None).unwrap().len(), 2);
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert_eq!(stored.addresses.address_iter().collect::<Vec<_>>(), vec![
+            &Multiaddr::empty()
+        ]);
+        let stored = peers_db.get_peer_by_public_key(&healthy.public_key).unwrap().unwrap();
+        assert_eq!(stored.addresses, healthy.addresses);
+    }
+
+    #[test]
+    fn peer_row_cap_evicts_never_seen_oldest_first() {
+        let peers_db = new_test_db();
+        let mut seen = Vec::new();
+        let mut unseen = Vec::new();
+        for i in 0..8u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            // The seen peers are the oldest, so age alone would remove them first
+            let is_seen = i < 3;
+            let peer = node_peer_with_addresses(vec![address], is_seen, TimeDelta::hours(100 - i64::from(i)));
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            if is_seen {
+                seen.push(peer.node_id);
+            } else {
+                unseen.push(peer.node_id);
+            }
+        }
+
+        let stats = peers_db.garbage_collect(5).unwrap();
+        assert_eq!(stats, GarbageCollectionStats {
+            excess_peers_removed: 3,
+            soft_deleted_peers_removed: 0,
+        });
+        let mut expected = seen.clone();
+        expected.extend(unseen[3..].iter().cloned());
+        expected.sort();
+        assert_eq!(stored_node_ids(&peers_db), expected);
+        assert_eq!(peers_db.size(), 5);
+
+        // At the cap there is nothing more to do
+        assert_eq!(peers_db.garbage_collect(5).unwrap(), GarbageCollectionStats::default());
+    }
+
+    #[test]
+    fn garbage_collection_keeps_banned_seed_and_config_peers() {
+        let peers_db = new_test_db();
+        let old = TimeDelta::hours(100);
+        let address = |i: u8| format!("/ip4/23.{i}.1.1/tcp/18189").parse::<Multiaddr>().unwrap();
+
+        let banned = node_peer_with_addresses(vec![address(1)], false, old);
+        peers_db.add_or_update_peer(banned.clone()).unwrap();
+        peers_db
+            .set_banned(&banned.node_id, Duration::from_secs(3600), "bad".to_string())
+            .unwrap();
+        let mut seed = node_peer_with_addresses(vec![address(2)], false, old);
+        seed.flags = PeerFlags::SEED;
+        peers_db.add_or_update_peer(seed.clone()).unwrap();
+        let mut configured = node_peer_with_addresses(vec![], false, old);
+        configured.addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![address(3)], &PeerAddressSource::Config);
+        peers_db.add_or_update_peer(configured.clone()).unwrap();
+        // A handshake ban for a key with no row adds a row that has no address at all
+        let unknown_key = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).public_key;
+        let unknown_node_id = peers_db
+            .ban_or_add_banned_peer(&unknown_key, Duration::from_secs(3600), "bad".to_string())
+            .unwrap();
+        let expendable = node_peer_with_addresses(vec![address(4)], false, TimeDelta::zero());
+        peers_db.add_or_update_peer(expendable).unwrap();
+
+        // Cap of zero: only the one peer that is none of the above can go
+        let stats = peers_db.garbage_collect(0).unwrap();
+        assert_eq!(stats.excess_peers_removed, 1);
+        let mut expected = vec![
+            banned.node_id.clone(),
+            seed.node_id,
+            configured.node_id,
+            unknown_node_id.clone(),
+        ];
+        expected.sort();
+        assert_eq!(stored_node_ids(&peers_db), expected);
+
+        // Soft-deleted peers go after a day, unless banned
+        let soft_deleted = node_peer_with_addresses(vec![address(5)], true, TimeDelta::zero());
+        peers_db.add_or_update_peer(soft_deleted.clone()).unwrap();
+        let recently_deleted = node_peer_with_addresses(vec![address(6)], true, TimeDelta::zero());
+        peers_db.add_or_update_peer(recently_deleted.clone()).unwrap();
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let two_days_ago = chrono::Utc::now().naive_utc() - TimeDelta::days(2);
+        diesel::update(
+            peers::table.filter(peers::node_id.eq_any(vec![soft_deleted.node_id.to_hex(), banned.node_id.to_hex()])),
+        )
+        .set(peers::deleted_at.eq(two_days_ago))
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
+        peers_db.soft_delete_peer(&recently_deleted.node_id).unwrap();
+
+        let stats = peers_db.garbage_collect(100).unwrap();
+        assert_eq!(stats, GarbageCollectionStats {
+            excess_peers_removed: 0,
+            soft_deleted_peers_removed: 1,
+        });
+        assert!(peers_db.get_peer_by_node_id(&soft_deleted.node_id).unwrap().is_none());
+        assert!(
+            peers_db
+                .get_peer_by_node_id(&recently_deleted.node_id)
+                .unwrap()
+                .is_some()
+        );
+        assert!(peers_db.get_peer_by_node_id(&banned.node_id).unwrap().is_some());
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let orphaned_addresses = multi_addresses::table
+            .filter(multi_addresses::address_bytes.eq(address(5).to_vec()))
+            .count()
+            .get_result::<i64>(&mut conn)
+            .unwrap();
+        assert_eq!(orphaned_addresses, 0);
+    }
+
+    #[test]
+    fn dial_candidates_capped_per_netgroup() {
+        let peers_db = new_test_db();
+        let transport_protocols = TransportProtocol::get_all();
+        let mut crowded = Vec::new();
+        let mut crowded_seen = Vec::new();
+        for i in 0..20u8 {
+            let address = format!("/ip4/23.23.{i}.1/tcp/18189").parse().unwrap();
+            let is_seen = i < 2;
+            let peer = node_peer_with_addresses(vec![address], is_seen, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            if is_seen {
+                crowded_seen.push(peer.node_id.clone());
+            }
+            crowded.push(peer.node_id);
+        }
+        let mut elsewhere = Vec::new();
+        for address in ["/ip4/24.1.1.1/tcp/18189", "/ip6/2606:4700::1/tcp/18189"] {
+            let peer = node_peer_with_addresses(vec![address.parse().unwrap()], false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            elsewhere.push(peer.node_id);
+        }
+
+        for randomize in [true, false] {
+            for _ in 0..10 {
+                let candidates = peers_db
+                    .get_available_dial_candidates(&[], None, &transport_protocols, true, randomize, 4)
+                    .unwrap()
+                    .into_iter()
+                    .map(|p| p.node_id)
+                    .collect::<Vec<_>>();
+                let from_crowded = candidates.iter().filter(|id| crowded.contains(id)).count();
+                assert_eq!(from_crowded, 4);
+                // Addresses we reached before are taken first
+                assert!(crowded_seen.iter().all(|id| candidates.contains(id)));
+                assert!(elsewhere.iter().all(|id| candidates.contains(id)));
+                assert_eq!(candidates.len(), 6);
+            }
+        }
+
+        // A limit is filled from previously reached addresses first
+        let candidates = peers_db
+            .get_available_dial_candidates(&[], Some(2), &transport_protocols, true, true, 4)
+            .unwrap();
+        assert!(candidates.iter().all(|p| crowded_seen.contains(&p.node_id)));
+
+        // 0 disables the cap
+        let candidates = peers_db
+            .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 0)
+            .unwrap();
+        assert_eq!(candidates.len(), 22);
     }
 }
