@@ -2633,6 +2633,10 @@ where
             output_features_and_scripts_size.saturating_mul(number_of_splits),
         );
 
+        if fee >= accumulated_amount_with_fee {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
+
         let accumulated_amount = accumulated_amount_with_fee.saturating_sub(fee);
         // The `number_of_splits == 0` guard above proves the divisor is non-zero.
         let amount_per_split = MicroMinotari(
@@ -2641,6 +2645,9 @@ where
                 .checked_div(number_of_splits as u64)
                 .unwrap_or(0),
         );
+        if amount_per_split == MicroMinotari::zero() {
+            return Err(OutputManagerError::NotEnoughFunds);
+        }
         let unspent_remainder = MicroMinotari(
             accumulated_amount
                 .as_u64()
