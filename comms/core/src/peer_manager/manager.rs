@@ -203,10 +203,11 @@ impl PeerManager {
                         if stats != GarbageCollectionStats::default() {
                             info!(
                                 target: LOG_TARGET,
-                                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap \
-                                 and {} soft-deleted peer(s)",
+                                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap, \
+                                 {} peer(s) without addresses over their cap and {} soft-deleted peer(s)",
                                 stats.excess_peers_removed,
                                 self.config.max_peer_rows,
+                                stats.address_less_peers_removed,
                                 stats.soft_deleted_peers_removed
                             );
                         }
@@ -320,15 +321,22 @@ impl PeerManager {
     }
 
     /// Get available dial candidates that are communication nodes, not banned, not deleted, reachable
-    /// optionally not failed, optionally at random, and not in the excluded node IDs list
+    /// optionally not failed, optionally at random, and not in the excluded node IDs list.
+    ///
+    /// At most [`PeerManagerConfig::max_candidates_per_netgroup`] addresses are taken from any one network group, less
+    /// what `netgroups_taken` says an earlier selection already took from it (keyed by
+    /// [`address_netgroup`](crate::net_address::address_netgroup)), so that a caller topping up a first selection does
+    /// not get a fresh budget for the same groups.
     pub async fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
         exclude_failed: bool,
         randomize: bool,
+        netgroups_taken: &HashMap<String, usize>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         let exclude_node_ids = exclude_node_ids.to_vec();
+        let netgroups_taken = netgroups_taken.clone();
         let transport_protocols = self.transport_protocols.clone();
         let max_per_netgroup = self.config.max_candidates_per_netgroup;
         self.peer_storage
@@ -340,6 +348,7 @@ impl PeerManager {
                     exclude_failed,
                     randomize,
                     max_per_netgroup,
+                    &netgroups_taken,
                 )
             })
             .await

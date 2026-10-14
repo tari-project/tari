@@ -137,12 +137,20 @@ impl MultiaddressesWithStats {
                     .map(|a| (a.address().clone(), a))
                     .collect();
 
-                // 2) Insert/override with incoming advertised set
+                // 2) Insert/override with incoming advertised set. An address we already know keeps its dial results (a
+                //    claim says nothing about reachability), merged with the newer source; addresses missing from the
+                //    new claim are dropped.
                 for item in &incoming.addresses {
-                    match by_addr.get_mut(item.address()) {
-                        Some(existing) => {
-                            // Merge stats and prefer newer/better source
-                            existing.merge(item);
+                    if let Some(existing) = by_addr.get_mut(item.address()) {
+                        // Merge stats and prefer newer/better source
+                        existing.merge(item);
+                        continue;
+                    }
+                    match self.addresses.iter().find(|a| a.address() == item.address()) {
+                        Some(stored) => {
+                            let mut kept = stored.clone();
+                            kept.merge(item);
+                            by_addr.insert(item.address().clone(), kept);
                         },
                         None => {
                             by_addr.insert(item.address().clone(), item.clone());
@@ -766,6 +774,44 @@ mod test {
             assert!(merged.last_attempted().is_some());
             assert_eq!(merged.quality_score(), Some(0));
         }
+
+        // The peer re-signs its claim with the same address: the claim is replaced, the failure mark is kept
+        let newer_claim = claim_at(Utc::now() + chrono::Duration::minutes(1));
+        let resigned = MultiaddressesWithStats::from_addresses_with_source(
+            vec![address.clone()],
+            &PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: newer_claim.clone(),
+            },
+        );
+        stored.merge(&resigned);
+        assert_eq!(stored.len(), 1);
+        let merged = &stored.addresses()[0];
+        assert_eq!(merged.source().peer_identity_claim(), Some(&newer_claim));
+        assert_eq!(merged.last_failed_reason(), Some("Connection refused"));
+        assert_eq!(merged.connection_attempts(), 1);
+        assert!(merged.last_attempted().is_some());
+        assert_eq!(merged.quality_score(), Some(0));
+
+        // A newer claim that drops the address replaces the set
+        let other_address = "/ip4/24.24.24.24/tcp/18189".parse::<Multiaddr>().unwrap();
+        let mut moved = stored.clone();
+        let moved_claim = PeerIdentityClaim {
+            addresses: vec![other_address.clone()],
+            features: PeerFeatures::COMMUNICATION_NODE,
+            signature: IdentitySignature::sign_new(
+                &secret,
+                PeerFeatures::COMMUNICATION_NODE,
+                std::slice::from_ref(&other_address),
+                Utc::now() + chrono::Duration::minutes(2),
+            ),
+        };
+        moved.merge(&MultiaddressesWithStats::from_addresses_with_source(
+            vec![other_address.clone()],
+            &PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: moved_claim,
+            },
+        ));
+        assert_eq!(moved.address_iter().collect::<Vec<_>>(), vec![&other_address]);
 
         // A later successful dial still clears it
         let mut dialled = stored.clone();

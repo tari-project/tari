@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::min, time::Duration};
+use std::{cmp::min, collections::HashMap, time::Duration};
 
 use log::*;
 use multiaddr::Multiaddr;
@@ -247,6 +247,7 @@ impl PeerStorageSql {
         exclude_failed: bool,
         randomize: bool,
         max_per_netgroup: usize,
+        netgroups_taken: &HashMap<String, usize>,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_available_dial_candidates(
             exclude_node_ids,
@@ -255,6 +256,7 @@ impl PeerStorageSql {
             exclude_failed,
             randomize,
             max_per_netgroup,
+            netgroups_taken,
         )?)
     }
 
@@ -839,7 +841,15 @@ mod test {
         assert_eq!(peer.features, PeerFeatures::NONE);
         assert!(
             storage
-                .get_available_dial_candidates(&[], None, &TransportProtocol::get_all(), false, false, 0)
+                .get_available_dial_candidates(
+                    &[],
+                    None,
+                    &TransportProtocol::get_all(),
+                    false,
+                    false,
+                    0,
+                    &HashMap::new()
+                )
                 .unwrap()
                 .is_empty()
         );

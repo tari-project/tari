@@ -196,8 +196,10 @@ pub struct P2pConfig {
     /// outbound reaping threshold, so remote peers cannot evict the connections this node chose.
     /// Default: 400
     pub reaper_inbound_soft_limit: usize,
-    /// The most peers kept in the peer database. Above this, peers that have never been reached on any address are
-    /// removed, oldest first. Seed peers, peers with a configured address and banned peers are kept.
+    /// The most peers with addresses kept in the peer database. Above this, peers that have never been reached on any
+    /// address are removed, oldest first. Seed peers, peers with a configured address and banned peers are kept.
+    /// Peers without any address (mostly rows that only record a handshake ban) are capped separately at a fifth of
+    /// this, soonest-ending ban removed first.
     /// Default: 50,000
     pub max_peer_rows: usize,
     /// The most addresses taken from any one network group (IPv4 /16, IPv6 /32, an onion or DNS name) when selecting

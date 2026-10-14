@@ -96,6 +96,8 @@ const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
 pub struct GarbageCollectionStats {
     /// Never-seen peers removed to bring the table back under the row cap
     pub excess_peers_removed: usize,
+    /// Peers without any address (typically only carrying a handshake ban) removed to bring them back under their cap
+    pub address_less_peers_removed: usize,
     /// Soft-deleted peers removed after their retention period
     pub soft_deleted_peers_removed: usize,
 }
@@ -733,7 +735,7 @@ impl PeerDatabaseSql {
     ///
     /// Peers are often banned during the connection handshake, before they have been stored, and a ban that only
     /// updated an existing row was lost for them. The row added here has no addresses and no features, so it is never a
-    /// dial candidate; it exists only to carry the ban, and garbage collection keeps it while the ban is active.
+    /// dial candidate; it exists only to carry the ban. Such rows are capped separately by garbage collection.
     pub fn ban_or_add_banned_peer(
         &self,
         public_key: &CommsPublicKey,
@@ -779,6 +781,11 @@ impl PeerDatabaseSql {
     /// without bound. Only peers that have never been reached on any address are removed for the cap, oldest first.
     /// Seed peers, peers with a configured address and peers with an active ban are never removed.
     ///
+    /// Peers without any address are counted and capped separately, at a fifth of `max_peer_rows`. These are mostly
+    /// rows added only to record a handshake ban, which any number of fresh keys can create, so they must not count
+    /// against (and push out) the peers we can dial. Above their cap they are removed soonest-ending ban first (no ban
+    /// or an expired one first); the bans of the removed rows are lost.
+    ///
     /// Rows are deleted in batches of [`GARBAGE_COLLECTION_BATCH_SIZE`], each in its own short write transaction.
     pub fn garbage_collect(&self, max_peer_rows: usize) -> Result<GarbageCollectionStats, StorageError> {
         let mut stats = GarbageCollectionStats::default();
@@ -788,8 +795,10 @@ impl PeerDatabaseSql {
         let config_source = serde_json::to_string(&PeerAddressSource::Config)
             .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?;
 
+        let peers_with_addresses = multi_addresses::table.select(multi_addresses::peer_id);
         let live_peers = peers::table
             .filter(peers::deleted_at.is_null())
+            .filter(peers::peer_id.eq_any(peers_with_addresses))
             .count()
             .get_result::<i64>(&mut conn)?;
         let mut excess = live_peers.saturating_sub(i64::try_from(max_peer_rows).unwrap_or(i64::MAX));
@@ -803,8 +812,10 @@ impl PeerDatabaseSql {
                             .or(multi_addresses::source.eq(&config_source)),
                     )
                     .select(multi_addresses::peer_id);
+                let peers_with_addresses = multi_addresses::table.select(multi_addresses::peer_id);
                 let peer_ids = peers::table
                     .filter(peers::deleted_at.is_null())
+                    .filter(peers::peer_id.eq_any(peers_with_addresses))
                     .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
                     .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
                         "flags & {} = 0",
@@ -821,6 +832,41 @@ impl PeerDatabaseSql {
                 break;
             }
             stats.excess_peers_removed = stats.excess_peers_removed.saturating_add(removed);
+            excess = excess.saturating_sub(i64::try_from(removed).unwrap_or(i64::MAX));
+        }
+
+        let address_less_peers = peers::table
+            .filter(peers::deleted_at.is_null())
+            .filter(not(
+                peers::peer_id.eq_any(multi_addresses::table.select(multi_addresses::peer_id))
+            ))
+            .count()
+            .get_result::<i64>(&mut conn)?;
+        let address_less_cap = i64::try_from(max_peer_rows / 5).unwrap_or(i64::MAX);
+        let mut excess = address_less_peers.saturating_sub(address_less_cap);
+        while excess > 0 {
+            let batch_size = min(excess, GARBAGE_COLLECTION_BATCH_SIZE);
+            let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
+                // NULL (never banned) sorts first, then the ban that ended or ends soonest
+                let peer_ids = peers::table
+                    .filter(peers::deleted_at.is_null())
+                    .filter(not(
+                        peers::peer_id.eq_any(multi_addresses::table.select(multi_addresses::peer_id))
+                    ))
+                    .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                        "flags & {} = 0",
+                        PeerFlags::SEED.to_i32()
+                    )))
+                    .order_by(peers::banned_until.asc())
+                    .select(peers::peer_id)
+                    .limit(batch_size)
+                    .load::<i64>(conn)?;
+                PeerDatabaseSql::delete_peers_by_id(&peer_ids, conn)
+            })?;
+            if removed == 0 {
+                break;
+            }
+            stats.address_less_peers_removed = stats.address_less_peers_removed.saturating_add(removed);
             excess = excess.saturating_sub(i64::try_from(removed).unwrap_or(i64::MAX));
         }
 
@@ -1194,7 +1240,8 @@ impl PeerDatabaseSql {
 
     /// Return available dial candidates that are communication nodes, not banned, not deleted,
     /// optionally not failed, optionally at random, and not in the excluded node IDs list. At most `max_per_netgroup`
-    /// addresses are taken from any one network group (`0` disables the cap).
+    /// addresses are taken from any one network group (`0` disables the cap), less the number already taken from that
+    /// group according to `netgroups_taken` (for a caller that tops up an earlier selection).
     pub fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
@@ -1203,6 +1250,7 @@ impl PeerDatabaseSql {
         exclude_failed: bool,
         randomize: bool,
         max_per_netgroup: usize,
+        netgroups_taken: &HashMap<String, usize>,
     ) -> Result<Vec<Peer>, StorageError> {
         if let Some(n) = n &&
             n == 0
@@ -1236,10 +1284,19 @@ impl PeerDatabaseSql {
         // Each network group (see `address_netgroup`) contributes at most `max_per_netgroup` addresses, so that one
         // operator with many addresses in one network cannot fill the candidate list. Addresses we have reached before
         // are taken first, within each group and overall.
-        let max_per_netgroup = if max_per_netgroup == 0 {
-            i64::MAX
+        let netgroup_cap = if max_per_netgroup == 0 {
+            "1".to_string()
         } else {
-            i64::try_from(max_per_netgroup).unwrap_or(i64::MAX)
+            // `netgroup_rank + <already taken from this group> <= max_per_netgroup`
+            let mut already_taken = "0".to_string();
+            if !netgroups_taken.is_empty() {
+                let mut arms = Vec::with_capacity(netgroups_taken.len());
+                for (netgroup, taken) in netgroups_taken {
+                    arms.push(format!("WHEN '{}' THEN {}", sql_escape(netgroup), taken));
+                }
+                already_taken = format!("CASE netgroup {} ELSE 0 END", arms.join(" "));
+            }
+            format!("netgroup_rank + {already_taken} <= {max_per_netgroup}")
         };
         let (rank_order, final_order) = if randomize {
             ("RANDOM()", "RANDOM()")
@@ -1248,11 +1305,11 @@ impl PeerDatabaseSql {
         };
         let limit = n.map_or(i64::MAX, |n| i64::try_from(n).unwrap_or(i64::MAX));
         let sql = format!(
-            "SELECT node_id FROM ( SELECT peers.node_id AS node_id, multi_addresses.last_seen IS NOT NULL AS \
-             was_seen, ROW_NUMBER() OVER ( PARTITION BY multi_addresses.netgroup ORDER BY multi_addresses.last_seen \
-             IS NOT NULL DESC, {rank_order} ) AS netgroup_rank FROM peers INNER JOIN multi_addresses ON \
-             multi_addresses.peer_id = peers.peer_id WHERE {} ) WHERE netgroup_rank <= {max_per_netgroup} GROUP BY \
-             node_id ORDER BY MAX(was_seen) DESC, {final_order} LIMIT {limit}",
+            "SELECT node_id FROM ( SELECT peers.node_id AS node_id, multi_addresses.netgroup AS netgroup, \
+             multi_addresses.last_seen IS NOT NULL AS was_seen, ROW_NUMBER() OVER ( PARTITION BY \
+             multi_addresses.netgroup ORDER BY multi_addresses.last_seen IS NOT NULL DESC, {rank_order} ) AS \
+             netgroup_rank FROM peers INNER JOIN multi_addresses ON multi_addresses.peer_id = peers.peer_id WHERE {} \
+             ) WHERE {netgroup_cap} GROUP BY node_id ORDER BY MAX(was_seen) DESC, {final_order} LIMIT {limit}",
             conditions.join(" AND ")
         );
         let node_ids = diesel::sql_query(sql)
@@ -1984,7 +2041,7 @@ impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::indexing_slicing)]
-    use std::time::Duration;
+    use std::{collections::HashMap, time::Duration};
 
     use chrono::TimeDelta;
     use diesel::{self, ExpressionMethods, QueryDsl, RunQueryDsl};
@@ -2951,7 +3008,7 @@ mod tests {
 
         // Test case 1: Only non-failed peers, no exclusions
         let dial_candidates = peers_db
-            .get_available_dial_candidates(&[], None, &transport_protocols, true, false, 4)
+            .get_available_dial_candidates(&[], None, &transport_protocols, true, false, 4, &HashMap::new())
             .unwrap();
         assert_eq!(dial_candidates.len(), 97);
         // Verify deleted, banned and failed are not returned
@@ -2961,7 +3018,7 @@ mod tests {
 
         // Test case 2: Only non-failed peers, with exclusions
         let dial_candidates = peers_db
-            .get_available_dial_candidates(&seed_peers, None, &transport_protocols, true, false, 4)
+            .get_available_dial_candidates(&seed_peers, None, &transport_protocols, true, false, 4, &HashMap::new())
             .unwrap();
         assert_eq!(dial_candidates.len(), 72);
         // Verify deleted, banned and failed are not returned
@@ -2976,7 +3033,7 @@ mod tests {
         // Test case 3: Verify randomness
         let limit = 17;
         let mut dial_candidates_1 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4)
+            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4, &HashMap::new())
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -2985,7 +3042,7 @@ mod tests {
         dial_candidates_1.sort();
 
         let mut dial_candidates_2 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4)
+            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, false, 4, &HashMap::new())
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -2994,7 +3051,7 @@ mod tests {
         dial_candidates_2.sort();
 
         let mut dial_candidates_3 = peers_db
-            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, true, 4)
+            .get_available_dial_candidates(&[], Some(limit), &transport_protocols, true, true, 4, &HashMap::new())
             .unwrap()
             .iter()
             .map(|p| p.node_id.clone())
@@ -3204,7 +3261,7 @@ mod tests {
             }
         }
         let candidates = peers_db
-            .get_available_dial_candidates(&[], None, &TransportProtocol::get_all(), true, true, 4)
+            .get_available_dial_candidates(&[], None, &TransportProtocol::get_all(), true, true, 4, &HashMap::new())
             .unwrap();
         let mut candidate_ids = candidates.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
         candidate_ids.sort();
@@ -3313,6 +3370,7 @@ mod tests {
         let stats = peers_db.garbage_collect(5).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 3,
+            address_less_peers_removed: 0,
             soft_deleted_peers_removed: 0,
         });
         let mut expected = seen.clone();
@@ -3343,23 +3401,13 @@ mod tests {
         configured.addresses =
             MultiaddressesWithStats::from_addresses_with_source(vec![address(3)], &PeerAddressSource::Config);
         peers_db.add_or_update_peer(configured.clone()).unwrap();
-        // A handshake ban for a key with no row adds a row that has no address at all
-        let unknown_key = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).public_key;
-        let unknown_node_id = peers_db
-            .ban_or_add_banned_peer(&unknown_key, Duration::from_secs(3600), "bad".to_string())
-            .unwrap();
         let expendable = node_peer_with_addresses(vec![address(4)], false, TimeDelta::zero());
         peers_db.add_or_update_peer(expendable).unwrap();
 
         // Cap of zero: only the one peer that is none of the above can go
         let stats = peers_db.garbage_collect(0).unwrap();
         assert_eq!(stats.excess_peers_removed, 1);
-        let mut expected = vec![
-            banned.node_id.clone(),
-            seed.node_id,
-            configured.node_id,
-            unknown_node_id.clone(),
-        ];
+        let mut expected = vec![banned.node_id.clone(), seed.node_id, configured.node_id];
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
 
@@ -3382,6 +3430,7 @@ mod tests {
         let stats = peers_db.garbage_collect(100).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 0,
+            address_less_peers_removed: 0,
             soft_deleted_peers_removed: 1,
         });
         assert!(peers_db.get_peer_by_node_id(&soft_deleted.node_id).unwrap().is_none());
@@ -3399,6 +3448,54 @@ mod tests {
             .get_result::<i64>(&mut conn)
             .unwrap();
         assert_eq!(orphaned_addresses, 0);
+    }
+
+    #[test]
+    fn ban_only_rows_are_capped_separately_and_do_not_push_out_peers() {
+        let peers_db = new_test_db();
+        let max_peer_rows = 10;
+        // Honest peers we have never reached, at the row cap
+        let mut honest = Vec::new();
+        for i in 0..10u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::hours(100));
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            honest.push(peer.node_id);
+        }
+        // A flood of handshake bans for fresh keys, far past both caps. The ban ending soonest goes first.
+        let mut bans = Vec::new();
+        for i in 0..12u64 {
+            let key = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).public_key;
+            let node_id = peers_db
+                .ban_or_add_banned_peer(&key, Duration::from_secs(3600 + i * 60), "bad".to_string())
+                .unwrap();
+            bans.push(node_id);
+        }
+        // One whose ban already ended goes before any active one
+        let expired_key = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).public_key;
+        let expired = peers_db
+            .ban_or_add_banned_peer(&expired_key, Duration::from_secs(3600), "bad".to_string())
+            .unwrap();
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        diesel::update(peers::table.filter(peers::node_id.eq(expired.to_hex())))
+            .set(peers::banned_until.eq(chrono::Utc::now().naive_utc().checked_sub_signed(TimeDelta::hours(1))))
+            .execute(&mut conn)
+            .unwrap();
+        drop(conn);
+
+        let stats = peers_db.garbage_collect(max_peer_rows).unwrap();
+        assert_eq!(stats, GarbageCollectionStats {
+            excess_peers_removed: 0,
+            // 13 rows, cap 10 / 5 = 2
+            address_less_peers_removed: 11,
+            soft_deleted_peers_removed: 0,
+        });
+        let mut expected = honest.clone();
+        // The two longest bans are kept
+        expected.extend(bans[10..].iter().cloned());
+        expected.sort();
+        assert_eq!(stored_node_ids(&peers_db), expected);
+        assert!(peers_db.get_peer_by_node_id(&expired).unwrap().is_none());
     }
 
     #[test]
@@ -3427,7 +3524,7 @@ mod tests {
         for randomize in [true, false] {
             for _ in 0..10 {
                 let candidates = peers_db
-                    .get_available_dial_candidates(&[], None, &transport_protocols, true, randomize, 4)
+                    .get_available_dial_candidates(&[], None, &transport_protocols, true, randomize, 4, &HashMap::new())
                     .unwrap()
                     .into_iter()
                     .map(|p| p.node_id)
@@ -3443,13 +3540,25 @@ mod tests {
 
         // A limit is filled from previously reached addresses first
         let candidates = peers_db
-            .get_available_dial_candidates(&[], Some(2), &transport_protocols, true, true, 4)
+            .get_available_dial_candidates(&[], Some(2), &transport_protocols, true, true, 4, &HashMap::new())
             .unwrap();
         assert!(candidates.iter().all(|p| crowded_seen.contains(&p.node_id)));
 
+        // A top-up selection only gets what is left of each group's budget
+        let mut netgroups_taken = HashMap::new();
+        netgroups_taken.insert("ip4:23.23".to_string(), 3usize);
+        for _ in 0..10 {
+            let candidates = peers_db
+                .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 4, &netgroups_taken)
+                .unwrap();
+            let from_crowded = candidates.iter().filter(|p| crowded.contains(&p.node_id)).count();
+            assert_eq!(from_crowded, 1);
+            assert_eq!(candidates.len(), 3);
+        }
+
         // 0 disables the cap
         let candidates = peers_db
-            .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 0)
+            .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 0, &HashMap::new())
             .unwrap();
         assert_eq!(candidates.len(), 22);
     }

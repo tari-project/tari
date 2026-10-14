@@ -23,9 +23,10 @@
 /// Peer manager configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PeerManagerConfig {
-    /// The most peers (not counting soft-deleted ones) kept in the peer database. Above this, garbage collection
-    /// removes peers that have never been reached on any address, oldest first. Seed peers, peers with a
-    /// configured address and peers with an active ban are never removed.
+    /// The most peers with addresses (not counting soft-deleted ones) kept in the peer database. Above this, garbage
+    /// collection removes peers that have never been reached on any address, oldest first. Seed peers, peers with a
+    /// configured address and peers with an active ban are never removed. Peers without any address (mostly rows that
+    /// only record a handshake ban) are capped separately at a fifth of this, soonest-ending ban removed first.
     /// Default: 50,000
     pub max_peer_rows: usize,
     /// The most addresses taken from any one network group (IPv4 /16, IPv6 /32, an onion or DNS name) when selecting

@@ -240,8 +240,10 @@ event_channel_size = 3500
 # first, until the count is back at this limit. Inbound connections are not counted towards the outbound reaping
 # threshold, so remote peers cannot evict the connections this node chose. (default value = 400)
 #reaper_inbound_soft_limit = 400
-# The most peers kept in the peer database. Above this, peers that have never been reached on any address are removed,
-# oldest first. Seed peers, peers with a configured address and banned peers are kept. (default value = 50000)
+# The most peers with addresses kept in the peer database. Above this, peers that have never been reached on any address
+# are removed, oldest first. Seed peers, peers with a configured address and banned peers are kept. Peers without any
+# address (mostly rows that only record a handshake ban) are capped separately at a fifth of this, soonest-ending ban
+# removed first. (default value = 50000)
 #max_peer_rows = 50000
 # The most addresses taken from any one network group (IPv4 /16, IPv6 /32, an onion or DNS name) when selecting peers
 # to dial, so that one operator cannot fill the list. 0 disables the cap. (default value = 4)
