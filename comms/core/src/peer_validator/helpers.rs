@@ -112,6 +112,13 @@ pub fn validate_and_filter_peer_identity_claim_addresses(
     Ok(valid_addresses)
 }
 
+/// Checks only the shape of an address, as claim validation does before it applies the local-address policy: an
+/// IP or DNS address followed by exactly a non-zero TCP port, an onion3 address on its own, or a non-zero memory port,
+/// with a well-formed DNS name. Local and test addresses pass.
+pub(crate) fn validate_address_shape(addr: &Multiaddr) -> Result<(), PeerValidatorError> {
+    validate_address(addr, true)
+}
+
 fn validate_address(addr: &Multiaddr, allow_test_addrs: bool) -> Result<(), PeerValidatorError> {
     let mut addr_iter = addr.iter();
     let proto = addr_iter

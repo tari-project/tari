@@ -60,6 +60,7 @@ use crate::{
         peer_id::peer_id_from_i64,
         storage::schema::{db_metadata, multi_addresses, node_identity, peers},
     },
+    peer_validator::validate_address_shape,
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
     utils::datetime::safe_future_datetime_from_duration,
@@ -83,7 +84,8 @@ const ADDRESS_CLASSIFIER_VERSION: u32 = 1;
 /// `db_metadata` key holding the [`ADDRESS_BYTES_VERSION`] whose full pass over the stored addresses has run.
 const ADDRESS_BYTES_VERSION_KEY: &str = "address_bytes_version";
 /// Bump this to run [`PeerDatabaseSql::backfill_address_bytes`] over every stored address again.
-const ADDRESS_BYTES_VERSION: u32 = 1;
+/// Version 2 also removes rows whose address is not well formed.
+const ADDRESS_BYTES_VERSION: u32 = 2;
 
 /// The most rows peer garbage collection deletes in one write transaction, so that it never holds the database's single
 /// writer for long.
@@ -136,7 +138,7 @@ impl PeerDatabaseSql {
     }
 
     /// Fills in `address_bytes` and `netgroup` for addresses stored as text, and removes the rows whose text cannot be
-    /// decoded.
+    /// decoded or whose claimed address is not well formed.
     ///
     /// The text form of a multiaddr is not lossless, and an address whose DNS name contains `/` does not parse back at
     /// all - before `address_bytes` existed, one such row made every peer query fail. Those rows cannot be repaired, so
@@ -179,9 +181,16 @@ impl PeerDatabaseSql {
                 let address = Multiaddr::from_str(&address_text).ok().filter(|a| !a.is_empty());
                 let source = serde_json::from_str::<PeerAddressSource>(&source).ok();
                 let row = multi_addresses::table.filter(multi_addresses::address_id.eq(address_id));
+                // A claimed address that parses but is not well formed was stored before claims were checked for
+                // it, e.g. the text `/dns4/a/tcp/80/ip4/10.0.0.1/tcp/1` of a DNS name containing `/`: it now reads
+                // as a different address than the one signed, and serving it on to other peers would be blamed on
+                // us. Configured addresses are the operator's and are kept.
+                let well_formed = |address: &Multiaddr, source: &PeerAddressSource| {
+                    source.is_config() || validate_address_shape(address).is_ok()
+                };
                 // The source is left as it is, in the text form older versions read
                 match (address, source) {
-                    (Some(address), Some(_)) => {
+                    (Some(address), Some(source)) if well_formed(&address, &source) => {
                         diesel::update(row)
                             .set((
                                 multi_addresses::address_bytes.eq(address.to_vec()),
@@ -1284,10 +1293,14 @@ impl PeerDatabaseSql {
         // Each network group (see `address_netgroup`) contributes at most `max_per_netgroup` addresses, so that one
         // operator with many addresses in one network cannot fill the candidate list. Addresses we have reached before
         // are taken first, within each group and overall.
+        // A peer is admitted only if every one of its eligible addresses is within its group's budget. Admitting it
+        // when any one is would let a peer with an address in a crowded group plus one in a group of its own (a
+        // unique DNS name or onion address costs nothing) through, and the dialer would then dial the crowded
+        // address too.
         let netgroup_cap = if max_per_netgroup == 0 {
             "1".to_string()
         } else {
-            // `netgroup_rank + <already taken from this group> <= max_per_netgroup`
+            // `MAX(netgroup_rank + <already taken from this group>) <= max_per_netgroup` over the peer's rows
             let mut already_taken = "0".to_string();
             if !netgroups_taken.is_empty() {
                 let mut arms = Vec::with_capacity(netgroups_taken.len());
@@ -1296,7 +1309,7 @@ impl PeerDatabaseSql {
                 }
                 already_taken = format!("CASE netgroup {} ELSE 0 END", arms.join(" "));
             }
-            format!("netgroup_rank + {already_taken} <= {max_per_netgroup}")
+            format!("MAX(netgroup_rank + {already_taken}) <= {max_per_netgroup}")
         };
         let (rank_order, final_order) = if randomize {
             ("RANDOM()", "RANDOM()")
@@ -1309,7 +1322,7 @@ impl PeerDatabaseSql {
              multi_addresses.last_seen IS NOT NULL AS was_seen, ROW_NUMBER() OVER ( PARTITION BY \
              multi_addresses.netgroup ORDER BY multi_addresses.last_seen IS NOT NULL DESC, {rank_order} ) AS \
              netgroup_rank FROM peers INNER JOIN multi_addresses ON multi_addresses.peer_id = peers.peer_id WHERE {} \
-             ) WHERE {netgroup_cap} GROUP BY node_id ORDER BY MAX(was_seen) DESC, {final_order} LIMIT {limit}",
+             ) GROUP BY node_id HAVING {netgroup_cap} ORDER BY MAX(was_seen) DESC, {final_order} LIMIT {limit}",
             conditions.join(" AND ")
         );
         let node_ids = diesel::sql_query(sql)
@@ -1326,7 +1339,14 @@ impl PeerDatabaseSql {
         // A peer can have more than one valid address, so that if the join-limit-load query is not returning node IDs,
         // it will give the requested number of unique peer-adress combinations, which will result in less peer records
         // than what was required. For that reason, we need a 2nd query to fetch the peers by node IDs.
-        self.get_peers_by_node_ids_str(&node_ids, false, &mut conn)
+        let mut peers = self.get_peers_by_node_ids_str(&node_ids, false, &mut conn)?;
+        // Keep the order chosen above (previously reached first, then random)
+        let mut position = HashMap::with_capacity(node_ids.len());
+        for (index, node_id) in node_ids.iter().enumerate() {
+            position.insert(node_id.clone(), index);
+        }
+        peers.sort_by_key(|peer| position.get(&peer.node_id.to_hex()).copied().unwrap_or(usize::MAX));
+        Ok(peers)
     }
 
     /// Get a peer by its node ID
@@ -3179,6 +3199,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn legacy_poisoned_address_row_is_skipped_not_fatal() {
         use diesel_migrations::MigrationHarness;
 
@@ -3204,6 +3225,20 @@ mod tests {
             TimeDelta::zero(),
         );
         peers_db.add_or_update_peer(poisoned_claim.clone()).unwrap();
+        let lossy_address = node_peer_with_addresses(
+            vec!["/ip4/26.1.1.1/tcp/18189".parse().unwrap()],
+            true,
+            TimeDelta::zero(),
+        );
+        peers_db.add_or_update_peer(lossy_address.clone()).unwrap();
+        // A configured address of an unusual shape is the operator's and is kept
+        let mut configured = node_peer_with_addresses(vec![], false, TimeDelta::zero());
+        let configured_address: Multiaddr = "/ip4/27.1.1.1/udt/sctp/5678".parse().unwrap();
+        configured.addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![configured_address.clone()],
+            &PeerAddressSource::Config,
+        );
+        peers_db.add_or_update_peer(configured.clone()).unwrap();
 
         // Go back to the schema before this change, where addresses were text only, and write what an older version
         // could have stored from a claim with a `/` in a DNS name
@@ -3211,6 +3246,13 @@ mod tests {
         conn.revert_last_migration(MIGRATIONS).unwrap();
         diesel::sql_query(
             "UPDATE multi_addresses SET address = '/dns4/evil/x/tcp/1' WHERE address = '/ip4/24.1.1.1/tcp/18189'",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        // The other shape: the text of `Dns4("a/tcp/80/ip4/10.0.0.1")` parses, as a different, valid multiaddr
+        diesel::sql_query(
+            "UPDATE multi_addresses SET address = '/dns4/a/tcp/80/ip4/10.0.0.1/tcp/1' WHERE address = \
+             '/ip4/26.1.1.1/tcp/18189'",
         )
         .execute(&mut conn)
         .unwrap();
@@ -3243,18 +3285,26 @@ mod tests {
         let rows = multi_addresses::table
             .load::<NewMultiaddrWithStatsSql>(&mut conn)
             .unwrap();
-        assert_eq!(rows.len(), good_peers.len());
+        // The good rows and the configured one
+        assert_eq!(rows.len(), good_peers.len() + 1);
         assert!(
             rows.iter()
                 .all(|row| !row.address_bytes.is_empty() && !row.netgroup.is_empty())
         );
+        assert!(!rows.iter().any(|row| row.address.starts_with("/dns4/")));
         drop(conn);
 
-        // Every peer is still returned; the two whose only address was poisoned have none left
+        // Every peer is still returned; the three whose only address was poisoned have none left
         let all_peers = peers_db.get_all_peers(None).unwrap();
-        assert_eq!(all_peers.len(), good_peers.len() + 2);
+        assert_eq!(all_peers.len(), good_peers.len() + 4);
         for peer in &all_peers {
-            if peer.node_id == poisoned_address.node_id || peer.node_id == poisoned_claim.node_id {
+            if peer.node_id == configured.node_id {
+                assert!(peer.addresses.contains(&configured_address));
+            }
+            if peer.node_id == poisoned_address.node_id ||
+                peer.node_id == poisoned_claim.node_id ||
+                peer.node_id == lossy_address.node_id
+            {
                 assert_eq!(peer.addresses.address_iter().collect::<Vec<_>>(), vec![
                     &Multiaddr::empty()
                 ]);
@@ -3266,6 +3316,7 @@ mod tests {
         let mut candidate_ids = candidates.into_iter().map(|p| p.node_id).collect::<Vec<_>>();
         candidate_ids.sort();
         let mut expected = good_peers.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
+        expected.push(configured.node_id.clone());
         expected.sort();
         assert_eq!(candidate_ids, expected);
     }
@@ -3496,6 +3547,70 @@ mod tests {
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
         assert!(peers_db.get_peer_by_node_id(&expired).unwrap().is_none());
+    }
+
+    #[test]
+    fn multi_address_peers_do_not_bypass_the_netgroup_cap() {
+        let peers_db = new_test_db();
+        let transport_protocols = TransportProtocol::get_all();
+        // Each Sybil claims an address in one crowded /16 plus a DNS name of its own (free with wildcard DNS)
+        let mut sybils = Vec::new();
+        for i in 0..30u8 {
+            let addresses = vec![
+                format!("/ip4/23.23.{i}.1/tcp/18189").parse().unwrap(),
+                format!("/dns4/s{i}.attacker.example/tcp/18189").parse().unwrap(),
+            ];
+            let peer = node_peer_with_addresses(addresses, false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            sybils.push(peer.node_id);
+        }
+        let mut honest = Vec::new();
+        for i in 0..5u8 {
+            let address = format!("/ip4/{}.1.1.1/tcp/18189", 30 + i).parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            honest.push(peer.node_id);
+        }
+
+        for randomize in [true, false] {
+            for _ in 0..10 {
+                let candidates = peers_db
+                    .get_available_dial_candidates(&[], None, &transport_protocols, true, randomize, 4, &HashMap::new())
+                    .unwrap()
+                    .into_iter()
+                    .map(|p| p.node_id)
+                    .collect::<Vec<_>>();
+                let from_sybils = candidates.iter().filter(|id| sybils.contains(id)).count();
+                assert!(from_sybils <= 4, "{from_sybils}");
+                assert!(honest.iter().all(|id| candidates.contains(id)));
+            }
+        }
+    }
+
+    #[test]
+    fn dial_candidates_come_back_in_selection_order() {
+        let peers_db = new_test_db();
+        let transport_protocols = TransportProtocol::get_all();
+        let mut seen = Vec::new();
+        for i in 0..20u8 {
+            let address = format!("/ip4/{}.1.1.1/tcp/18189", 30 + i).parse().unwrap();
+            let is_seen = i % 4 == 0;
+            let peer = node_peer_with_addresses(vec![address], is_seen, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            if is_seen {
+                seen.push(peer.node_id);
+            }
+        }
+        for _ in 0..10 {
+            let candidates = peers_db
+                .get_available_dial_candidates(&[], None, &transport_protocols, true, true, 4, &HashMap::new())
+                .unwrap();
+            assert_eq!(candidates.len(), 20);
+            // Previously reached peers lead the list
+            for peer in candidates.iter().take(seen.len()) {
+                assert!(seen.contains(&peer.node_id));
+            }
+        }
     }
 
     #[test]

@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use log::*;
 
@@ -40,21 +37,17 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connectivity::proactive_dialer";
 
-/// How many of the given peers have an address in each network group. A peer counts once per group however many of
-/// its addresses are in it. This is an upper bound on what a dial-candidate selection took from each group, which is
-/// what a follow-up selection must not exceed the per-group cap with.
+/// How many addresses the given peers have in each network group. The dial-candidate selection admits a peer only if
+/// every one of its addresses is within its group's budget, so this is (at most a slight over-count of) what a
+/// selection took from each group, which a follow-up selection must not exceed the per-group cap with.
 fn count_netgroups(peers: &[Peer]) -> HashMap<String, usize> {
     let mut counts = HashMap::new();
     for peer in peers {
-        let mut groups = HashSet::new();
         for address in peer.addresses.address_iter() {
             if !address.is_empty() {
-                groups.insert(address_netgroup(address));
+                let count = counts.entry(address_netgroup(address)).or_insert(0usize);
+                *count = count.saturating_add(1);
             }
-        }
-        for group in groups {
-            let count = counts.entry(group).or_insert(0usize);
-            *count = count.saturating_add(1);
         }
     }
     counts
@@ -271,7 +264,9 @@ impl ProactiveDialer {
             final_candidates.push(peer);
         }
 
-        // Sort by health score if available, otherwise by distance
+        // Sort by health score. The sort is stable, so peers with equal scores keep the order the peer database chose
+        // (previously reached first, then random); breaking ties on anything a peer controls, such as its node id,
+        // would let it be picked first.
         final_candidates.sort_by(|a, b| {
             let health_a = connection_stats
                 .get(&a.node_id)
@@ -283,14 +278,8 @@ impl ProactiveDialer {
                 .map(|s| s.health_score(self.config.success_rate_tracking_window))
                 .unwrap_or(0.5);
 
-            // Primary sort by health (descending)
-            match health_b.partial_cmp(&health_a) {
-                Some(order) if order != std::cmp::Ordering::Equal => order,
-                _ => {
-                    // Secondary sort by node_id for determinism
-                    a.node_id.cmp(&b.node_id)
-                },
-            }
+            // Health, descending
+            health_b.partial_cmp(&health_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Take the top candidates
@@ -367,6 +356,39 @@ mod tests {
                 .mark_failed_connection_attempt(&address, "Connection refused".to_string());
         }
         peer
+    }
+
+    #[tokio::test]
+    async fn previously_reached_peers_are_dialled_first() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let mut seen = Vec::new();
+        for i in 0..12u8 {
+            let address = format!("/ip4/{}.1.1.1/tcp/18189", 30 + i);
+            let mut peer = peer_at(&address, false);
+            if i < 2 {
+                peer.addresses.mark_last_seen_now(&address.parse().unwrap());
+                seen.push(peer.node_id.clone());
+            }
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+
+        let (connection_manager, _mock) = create_connection_manager_mock();
+        let dialer = ProactiveDialer::new(ConnectivityConfig::default(), connection_manager, peer_manager);
+        for _ in 0..10 {
+            // Equal health scores: the peer database's order (seen first) decides, not the node ids
+            let mut candidates = dialer
+                .select_dial_candidates(&ConnectionPool::new(), &HashMap::new(), &[], 2, 0)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|p| p.node_id)
+                .collect::<Vec<_>>();
+            candidates.sort();
+            let mut expected = seen.clone();
+            expected.sort();
+            assert_eq!(candidates, expected);
+        }
     }
 
     #[tokio::test]
