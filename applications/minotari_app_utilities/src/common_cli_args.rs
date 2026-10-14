@@ -78,6 +78,11 @@ where
 }
 
 impl CommonCliArgs {
+    /// Returns the path to the configuration file.
+    ///
+    /// Note: The configuration file path is evaluated before reading the configuration file itself,
+    /// so it cannot reflect any `network = "..."` entry inside that file. Its base path resolution
+    /// is driven solely by the `--network` CLI flag or the `TARI_NETWORK` environment variable.
     pub fn config_path(&self) -> PathBuf {
         let config_path = PathBuf::from(&self.config);
         if config_path.is_absolute() {
@@ -89,6 +94,11 @@ impl CommonCliArgs {
 
     pub fn get_base_path(&self) -> PathBuf {
         let network = self.network.unwrap_or_default();
+        PathBuf::from(&self.base_path).join(network.to_string())
+    }
+
+    pub fn get_base_path_for(&self, network: &Network) -> PathBuf {
+        let network = self.network.unwrap_or(*network);
         PathBuf::from(&self.base_path).join(network.to_string())
     }
 
@@ -110,17 +120,70 @@ impl CommonCliArgs {
 }
 
 impl ConfigOverrideProvider for CommonCliArgs {
-    fn get_config_property_overrides(&self, _network: &Network) -> Vec<(String, String)> {
+    fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
         overrides.push((
             "common.base_path".to_string(),
-            self.get_base_path()
+            self.get_base_path_for(network)
                 .as_os_str()
                 .to_str()
                 .expect("An os string from a path")
                 .into(),
         ));
         overrides
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn common_cli_args_uses_resolved_network_when_cli_unset() {
+        let args = CommonCliArgs {
+            base_path: "/tmp/tari".to_string(),
+            config: "config.toml".to_string(),
+            log_config: None,
+            log_path: None,
+            network: None,
+            config_property_overrides: Vec::new(),
+        };
+
+        let overrides = args.get_config_property_overrides(&Network::StageNet);
+        let base_path_override = overrides
+            .into_iter()
+            .find(|(k, _)| k == "common.base_path")
+            .map(|(_, v)| v)
+            .expect("common.base_path override missing");
+
+        assert!(
+            base_path_override.ends_with("stagenet"),
+            "expected base_path to end with stagenet, got {base_path_override}"
+        );
+    }
+
+    #[test]
+    fn common_cli_args_cli_network_takes_precedence() {
+        let args = CommonCliArgs {
+            base_path: "/tmp/tari".to_string(),
+            config: "config.toml".to_string(),
+            log_config: None,
+            log_path: None,
+            network: Some(Network::Esmeralda),
+            config_property_overrides: Vec::new(),
+        };
+
+        let overrides = args.get_config_property_overrides(&Network::StageNet);
+        let base_path_override = overrides
+            .into_iter()
+            .find(|(k, _)| k == "common.base_path")
+            .map(|(_, v)| v)
+            .expect("common.base_path override missing");
+
+        assert!(
+            base_path_override.ends_with("esmeralda"),
+            "expected base_path to end with esmeralda, got {base_path_override}"
+        );
     }
 }
 
