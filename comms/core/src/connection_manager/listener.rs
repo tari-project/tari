@@ -54,6 +54,7 @@ use super::{
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
 use crate::{
+    Minimized,
     PeerManager,
     bounded_executor::BoundedExecutor,
     connection_manager::{
@@ -66,10 +67,64 @@ use crate::{
     peer_manager::NodeIdentity,
     protocol::ProtocolId,
     transports::Transport,
-    utils::multiaddr::multiaddr_to_socketaddr,
+    utils::{
+        mpsc::{SEND_OR_DROP_TIMEOUT, send_or_drop},
+        multiaddr::multiaddr_to_socketaddr,
+    },
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
+
+/// Tells the connection manager that an inbound connection from `peer_addr` failed, unless it is too busy to take it
+/// (see [send_or_drop]). The peer's identity is not known (its upgrade failed), only its address.
+async fn notify_inbound_connect_failed(
+    conn_man_notifier: &mpsc::Sender<ConnectionManagerEvent>,
+    err: ConnectionManagerError,
+    peer_addr: &Multiaddr,
+) {
+    let event = ConnectionManagerEvent::PeerInboundConnectFailed(err);
+    if send_or_drop(
+        conn_man_notifier,
+        event,
+        "listener_inbound_connect_failed",
+        Some(peer_addr),
+    )
+    .await
+    .is_err()
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Dropped the PeerInboundConnectFailed event for the peer at {peer_addr} because the connection manager was \
+             busy"
+        );
+    }
+}
+
+/// Closes a connection whose `PeerConnected` event was dropped, so that nothing else knows of it.
+///
+/// Waits for the connection actor's reply for at most [SEND_OR_DROP_TIMEOUT]: the actor may itself be waiting on the
+/// busy connection manager (to report a violation, say), and the caller holds a listener permit. If it does not reply
+/// in time, the connection is still torn down once the actor is free: the disconnect request is already queued (this is
+/// the only handle, so its request channel is otherwise empty), and dropping the handle closes that channel, which
+/// also ends the actor.
+pub(super) async fn close_unannounced_connection(mut conn: PeerConnection) {
+    debug!(
+        target: LOG_TARGET,
+        "Dropped the PeerConnected event for peer `{}` ({}) because the connection manager was busy; closing the \
+         connection",
+        conn.peer_node_id(),
+        conn.address()
+    );
+    let disconnect = conn.disconnect_silent(Minimized::No, "listener: PeerConnected event dropped");
+    if time::timeout(SEND_OR_DROP_TIMEOUT, disconnect).await.is_err() {
+        debug!(
+            target: LOG_TARGET,
+            "Connection to peer `{}` did not confirm its disconnect within {:.0?}; it closes once its actor is free",
+            conn.peer_node_id(),
+            SEND_OR_DROP_TIMEOUT
+        );
+    }
+}
 
 /// Listens on the given transport for peer connections and notifies when a new inbound peer connection is established.
 pub struct PeerListener<TTransport> {
@@ -253,7 +308,7 @@ where
                         noise_config.clone(),
                         conn_man_notifier.clone(),
                         socket,
-                        peer_addr,
+                        peer_addr.clone(),
                         our_supported_protocols,
                         &config,
                     )
@@ -261,26 +316,25 @@ where
 
                     match result {
                         Ok(peer_conn) => {
-                            log_if_error!(
-                                target: LOG_TARGET,
-                                conn_man_notifier
-                                    .send(ConnectionManagerEvent::PeerConnected(peer_conn.into()))
-                                    .await,
-                                "Failed to publish event because '{error}'",
-                            );
+                            // Bounded so that a busy connection manager cannot park this task (and the listener permit
+                            // it holds). The connection manager never learns of a connection whose event was dropped,
+                            // so nothing would use or close it: close it here.
+                            let peer = peer_conn.peer_node_id().clone();
+                            let event = ConnectionManagerEvent::PeerConnected(peer_conn.into());
+                            let result =
+                                send_or_drop(&conn_man_notifier, event, "listener_peer_connected", Some(&peer)).await;
+                            if let Err(err) = result &&
+                                let ConnectionManagerEvent::PeerConnected(conn) = err.into_inner()
+                            {
+                                close_unannounced_connection(*conn).await;
+                            }
                         },
                         Err(err) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "[ThisNode={this_node_id_str}] Peer connection upgrade failed for peer because '{err:?}'"
                             );
-                            log_if_error!(
-                                target: LOG_TARGET,
-                                conn_man_notifier
-                                    .send(ConnectionManagerEvent::PeerInboundConnectFailed(err))
-                                    .await,
-                                "Failed to publish event because '{error}'",
-                            );
+                            notify_inbound_connect_failed(&conn_man_notifier, err, &peer_addr).await;
                         },
                     }
                 },

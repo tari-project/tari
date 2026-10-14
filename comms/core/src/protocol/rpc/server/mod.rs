@@ -35,6 +35,7 @@ mod metrics;
 pub mod mock;
 
 mod early_close;
+mod request_codec;
 mod router;
 
 use std::{
@@ -51,16 +52,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{SinkExt, StreamExt, future, stream::FuturesUnordered};
+use futures::{SinkExt, StreamExt, future, future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use prost::Message;
+use request_codec::{RequestCodec, RequestFrame};
 use router::Router;
-use tokio::{
-    sync::mpsc,
-    task::{JoinHandle, JoinSet},
-    time,
-};
+use tokio::{sync::mpsc, task::JoinSet, time};
 use tokio_stream::Stream;
+use tokio_util::codec::{Framed, FramedParts};
 use tower::{Service, make::MakeService};
 use tracing::{Instrument, Level, debug, error, instrument, span, trace, warn};
 
@@ -76,6 +75,7 @@ use super::{
 };
 use crate::{
     Bytes,
+    BytesMut,
     Substream,
     bounded_executor::BoundedExecutor,
     framing,
@@ -196,6 +196,16 @@ const DEFAULT_MAXIMUM_CLIENT_DEADLINE: Duration = Duration::from_secs(10 * 60);
 /// reason for teardown to take long, and the whole point is to stop a stalled peer from holding the
 /// session's executor permit.
 const SESSION_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How long a session that was told to stop (culled, or closed for its peer) spends trying to shut its substream down
+/// gracefully before dropping it. Kept well under a second so that a culled session's slot is free within a second
+/// even if its peer is not reading.
+const STOPPED_SESSION_CLOSE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// The longest frame read while a request's service call runs, to see whether the client abandoned it with a FIN. A FIN
+/// request has no payload, so it is at most 29 bytes: a tag byte for each of its four integer fields, three u32
+/// varints (5 bytes each) and a u64 varint (10 bytes). This leaves room for a client that sets a short payload as well.
+const MAX_FIN_REQUEST_SIZE: usize = 128;
 
 #[derive(Clone)]
 pub struct RpcServerBuilder {
@@ -371,7 +381,12 @@ where TSvc: MakeService<ProtocolId, Request<Bytes>>
     comms_provider: TCommsProvider,
     request_rx: mpsc::Receiver<RpcServerRequest>,
     sessions: HashMap<NodeId, Vec<SessionInfo>>,
-    tasks: FuturesUnordered<JoinHandle<(NodeId, Id)>>,
+    /// The id given to the next session. Unique for the life of the server, unlike yamux stream ids, which every
+    /// connection reuses.
+    next_session_id: u64,
+    /// Resolves to the peer and session id of each session once its task ends, however it ends (a panic included), so
+    /// that its session is always released
+    tasks: FuturesUnordered<BoxFuture<'static, (NodeId, u64)>>,
     /// Handshakes in progress. Dropping the set (when `serve` returns) aborts them, so none outlives the server.
     handshakes: JoinSet<HandshakeOutcome<<TSvc as MakeService<ProtocolId, Request<Bytes>>>::Service>>,
     /// The peer of each handshake task, and whether the task will accept the session, so its pending slot and session
@@ -435,6 +450,8 @@ enum SessionDecision<S> {
 
 struct SessionInfo {
     pub(crate) peer_watch: tokio::sync::watch::Sender<()>,
+    pub(crate) session_id: u64,
+    /// For logging only: stream ids are reused across connections, so they do not identify a session
     pub(crate) stream_id: Id,
 }
 
@@ -472,6 +489,7 @@ where
             comms_provider,
             request_rx,
             sessions: HashMap::new(),
+            next_session_id: 0,
             tasks: FuturesUnordered::new(),
             handshakes: JoinSet::new(),
             handshake_peers: HashMap::new(),
@@ -501,8 +519,8 @@ where
                     }
                 }
 
-                Some(Ok((node_id, stream_id))) = self.tasks.next() => {
-                    self.on_session_complete(&node_id, stream_id);
+                Some((node_id, session_id)) = self.tasks.next() => {
+                    self.on_session_complete(&node_id, session_id);
                 },
 
                 Some(joined) = self.handshakes.join_next_with_id() => {
@@ -858,7 +876,10 @@ where
         if let Some(session_info) = self.sessions.get_mut(node_id) {
             for info in session_info.iter_mut() {
                 count = count.saturating_add(1);
-                info!(target: LOG_TARGET, "Closing RPC session {} for peer `{}`", info.stream_id, node_id);
+                info!(
+                    target: LOG_TARGET,
+                    "Closing RPC session {} (stream id {}) for peer `{}`", info.session_id, info.stream_id, node_id
+                );
                 let _ = info.peer_watch.send(());
             }
             self.sessions.remove(node_id);
@@ -866,13 +887,16 @@ where
         count
     }
 
-    fn on_session_complete(&mut self, node_id: &NodeId, stream_id: Id) {
+    fn on_session_complete(&mut self, node_id: &NodeId, session_id: u64) {
         if let Some(session_info) = self.sessions.get_mut(node_id) {
-            if let Some(info) = session_info.iter_mut().find(|info| info.stream_id == stream_id) {
-                info!(target: LOG_TARGET, "Session complete for {node_id} (stream id {stream_id})");
+            if let Some(info) = session_info.iter_mut().find(|info| info.session_id == session_id) {
+                info!(
+                    target: LOG_TARGET,
+                    "Session {session_id} complete for {node_id} (stream id {})", info.stream_id
+                );
                 let _ = info.peer_watch.send(());
             };
-            session_info.retain(|info| info.stream_id != stream_id);
+            session_info.retain(|info| info.session_id != session_id);
             if session_info.is_empty() {
                 self.sessions.remove(node_id);
             }
@@ -909,6 +933,8 @@ where
         );
 
         let stream_id = framed.stream_id();
+        let session_id = self.next_session_id;
+        self.next_session_id = self.next_session_id.wrapping_add(1);
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(());
         let config = self.config.clone();
         let comms_provider = self.comms_provider.clone();
@@ -918,16 +944,30 @@ where
         let handle = self
             .executor
             .try_spawn(async move {
-                if let Err(err) = Handshake::new(&mut framed)
-                    .with_timeout(config.handshake_timeout)
-                    .accept_version(version)
-                    .await
-                {
+                // The session is registered (and can be culled or closed) from here on, so a stop ends it even while
+                // the acceptance is waiting on a peer that does not read. The substream is dropped
+                // without a close. The clone has its own record of what it has seen, so a stop after
+                // the acceptance still reaches the session below; a stop sent before this task first
+                // runs is seen here (as is a dropped sender).
+                let mut accept_stop_rx = stop_rx.clone();
+                let mut handshake = Handshake::new(&mut framed).with_timeout(config.handshake_timeout);
+                let accepted = tokio::select! {
+                    biased;
+                    _ = accept_stop_rx.changed() => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "RPC session for `{node_id_clone}` was stopped before its acceptance was sent"
+                        );
+                        return (node_id_clone, session_id);
+                    },
+                    result = handshake.accept_version(version) => result,
+                };
+                if let Err(err) = accepted {
                     debug!(
                         target: LOG_TARGET,
                         "Could not send the RPC handshake acceptance to `{node_id_clone}`; ending the session: {err}"
                     );
-                    return (node_id_clone, stream_id);
+                    return (node_id_clone, session_id);
                 }
                 let service = ActivePeerRpcService::new(
                     config,
@@ -938,40 +978,37 @@ where
                     comms_provider,
                     stop_rx,
                 );
+                // Counted until the session ends, however it ends (a panic included)
                 #[cfg(feature = "metrics")]
-                let num_sessions = metrics::num_sessions(&service.protocol);
-                #[cfg(feature = "metrics")]
-                num_sessions.inc();
+                let _num_sessions = metrics::ActiveSession::new(&service.protocol);
                 service.start().await;
                 info!(target: LOG_TARGET, "END OF SESSION for {node_id_clone} ");
-                #[cfg(feature = "metrics")]
-                num_sessions.dec();
 
-                (node_id_clone, stream_id)
+                (node_id_clone, session_id)
             })
             .map_err(|e| RpcServerError::MaximumSessionsReached(format!("{e:?}")))?;
 
-        self.tasks.push(handle);
+        let task_node_id = node_id.clone();
+        self.tasks.push(Box::pin(async move {
+            if let Err(err) = handle.await {
+                error!(target: LOG_TARGET, "RPC session {session_id} for peer `{task_node_id}` failed: {err}");
+            }
+            (task_node_id, session_id)
+        }));
         let mut peer_stop = vec![SessionInfo {
             peer_watch: stop_tx,
+            session_id,
             stream_id,
         }];
         self.sessions
             .entry(node_id.clone())
             .and_modify(|entry| entry.append(&mut peer_stop))
             .or_insert(peer_stop);
-        if let Some(info) = self.sessions.get(&node_id.clone()) {
+        if let Some(info) = self.sessions.get(node_id) {
             info!(
                 target: LOG_TARGET,
-                "NEW SESSION created for {} ({} active) ", node_id.clone(), info.len()
+                "NEW SESSION {session_id} created for {node_id} (stream id {stream_id}, {} active) ", info.len()
             );
-            // Warn if `stream_id` is already in use
-            if info.iter().filter(|session| session.stream_id == stream_id).count() > 1 {
-                warn!(
-                    target: LOG_TARGET,
-                    "Stream ID {stream_id} already in use for peer {node_id}. This should not happen."
-                );
-            }
         }
 
         Ok(())
@@ -988,14 +1025,20 @@ fn decrement(counts: &mut HashMap<NodeId, usize>, node_id: &NodeId) {
     }
 }
 
+/// A session's substream, framed for reading requests (see [RequestCodec]) and writing responses
+type SessionFraming = EarlyClose<Framed<Substream, RequestCodec>>;
+
 struct ActivePeerRpcService<TSvc, TCommsProvider> {
     config: RpcServerBuilder,
     protocol: ProtocolId,
     node_id: NodeId,
     service: TSvc,
-    framed: EarlyClose<CanonicalFraming<Substream>>,
+    framed: SessionFraming,
+    /// A request that arrived while the previous one was being served, to be handled next
+    buffered_request: Option<RequestFrame>,
     comms_provider: TCommsProvider,
     logging_context_string: Arc<String>,
+    /// Changes (or closes) when the session must stop: it was culled, closed for its peer, or the server is gone
     stop_rx: tokio::sync::watch::Receiver<()>,
     /// Looked up once per session rather than for every streamed message.
     #[cfg(feature = "metrics")]
@@ -1031,7 +1074,8 @@ where
             protocol,
             node_id,
             service,
-            framed: EarlyClose::new(framed),
+            framed: EarlyClose::new(into_session_framing(framed)),
+            buffered_request: None,
             comms_provider,
             stop_rx,
         }
@@ -1065,8 +1109,16 @@ where
     /// Every write here goes into a yamux window the peer controls, so a peer that simply stops
     /// reading can park any unbounded `send`. Route all of them through this so the bound is
     /// structural rather than something to remember at each call site.
+    ///
+    /// Also gives up as soon as the session is told to stop, with `SessionStopped`.
     async fn send_with_deadline(&mut self, msg: Bytes, deadline: Duration) -> Result<(), RpcServerError> {
-        match time::timeout(deadline, self.framed.send(msg)).await {
+        let mut stop_rx = self.stop_rx.clone();
+        let result = tokio::select! {
+            biased;
+            _ = stop_rx.changed() => return Err(RpcServerError::SessionStopped),
+            result = time::timeout(deadline, self.framed.send(msg)) => result,
+        };
+        match result {
             Ok(result) => result.map_err(Into::into),
             Err(_elapsed) => {
                 debug!(
@@ -1083,7 +1135,7 @@ where
         }
     }
 
-    /// Shut the substream down, giving up after [`SESSION_CLOSE_TIMEOUT`] and letting it drop.
+    /// Shut the substream down, giving up after `timeout` (normally [`SESSION_CLOSE_TIMEOUT`]) and letting it drop.
     ///
     /// `EarlyClose::poll_close` falls through to `check_for_early_close`, which returns `Pending`
     /// for a peer that is merely silent - so closing a substream whose window the peer has filled
@@ -1092,21 +1144,49 @@ where
     /// is not running (we are not in the select), and culling only signals `stop_rx`, which this
     /// task is no longer watching. One peer could walk the global session limit down to zero and
     /// lock every other peer out of the node.
-    async fn close_framed(&mut self) -> Result<(), RpcServerError> {
-        match time::timeout(SESSION_CLOSE_TIMEOUT, self.framed.close()).await {
+    ///
+    /// A session that has been told to stop (before or during the close) never spends longer than
+    /// [`STOPPED_SESSION_CLOSE_TIMEOUT`] on it, so it releases its slot within a second on every path.
+    async fn close_framed(&mut self, timeout: Duration) -> Result<(), RpcServerError> {
+        let timeout = if self.stop_requested() {
+            cmp::min(timeout, STOPPED_SESSION_CLOSE_TIMEOUT)
+        } else {
+            timeout
+        };
+        let mut stop_rx = self.stop_rx.clone();
+        let result = tokio::select! {
+            biased;
+            result = time::timeout(timeout, self.framed.close()) => result,
+            _ = stop_rx.changed(), if timeout > STOPPED_SESSION_CLOSE_TIMEOUT => {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) Stop signal received while closing the substream. Dropping it.",
+                    self.logging_context_string
+                );
+                return Ok(());
+            },
+        };
+        match result {
             Ok(result) => result.map_err(Into::into),
             Err(_elapsed) => {
                 debug!(
                     target: LOG_TARGET,
                     "({}) Peer did not accept the substream close within {:.0?}. Dropping it.",
                     self.logging_context_string,
-                    SESSION_CLOSE_TIMEOUT
+                    timeout
                 );
                 Ok(())
             },
         }
     }
 
+    /// Whether the session has been told to stop. The server drops the sender right after signalling (or when it shuts
+    /// down), so a closed channel counts as a stop too; that also covers a signal this receiver has already seen.
+    fn stop_requested(&self) -> bool {
+        self.stop_rx.has_changed().unwrap_or(true)
+    }
+
+    #[allow(clippy::too_many_lines)]
     async fn run(&mut self) -> Result<(), RpcServerError> {
         // Only the time spent waiting for the next request is bounded - handling a request holds
         // this loop and cannot trip the timer. Without this, a session (and the slot it occupies in
@@ -1117,110 +1197,165 @@ where
         tokio::pin!(idle_sleep);
 
         loop {
-            tokio::select! {
-                _ = self.stop_rx.changed() => {
-                    debug!(target: LOG_TARGET, "({}) Stop signal received, closing substream.", self.logging_context_string);
-                    break;
-                }
-                () = &mut idle_sleep, if idle_timeout.is_some() => {
+            let next = match self.buffered_request.take() {
+                // A request that arrived during the last service call: one that was not read yet is read now
+                Some(RequestFrame::Unread) | None => tokio::select! {
+                    _ = self.stop_rx.changed() => {
+                        debug!(target: LOG_TARGET, "({}) Stop signal received, closing substream.", self.logging_context_string);
+                        self.close_framed(STOPPED_SESSION_CLOSE_TIMEOUT).await?;
+                        return Ok(());
+                    }
+                    () = &mut idle_sleep, if idle_timeout.is_some() => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "({}) Closing session idle for {:.0?}.",
+                            self.logging_context_string,
+                            idle_timeout.unwrap_or_default()
+                        );
+                        break;
+                    }
+                    result = self.framed.next() => result,
+                },
+                Some(frame) => Some(Ok(frame)),
+            };
+
+            let served = match next {
+                Some(Ok(RequestFrame::Request(frame))) => {
+                    #[cfg(feature = "metrics")]
+                    metrics::inbound_requests_bytes(&self.protocol).observe(frame.len() as f64);
+
+                    let start = Instant::now();
+                    let was_large = frame.len() > MAX_IDLE_READ_BUFFER_CAPACITY;
+                    let result = self.handle_request(frame.freeze()).await;
+                    // The request (and every copy of it) is gone by now
+                    release_large_read_buffer(self.framed.get_mut().read_buffer_mut(), was_large);
+                    let elapsed = start.elapsed();
+                    trace!(
+                        target: LOG_TARGET,
+                        "({}) RPC request completed in {:.0?}{}",
+                        self.logging_context_string,
+                        elapsed,
+                        if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
+                    );
+                    result
+                },
+                Some(Ok(RequestFrame::Oversized { request_id, len })) => {
+                    self.reject_oversized_request(request_id, len).await.map(|()| false)
+                },
+                // Only produced in peek mode, which is only on during a service call
+                Some(Ok(RequestFrame::Unread)) => Err(RpcServerError::ProtocolError(
+                    "BUG: a frame was left unread outside a service call".to_string(),
+                )),
+                Some(Err(err)) => {
+                    if let Err(err) = self.close_framed(SESSION_CLOSE_TIMEOUT).await {
+                        error!(
+                            target: LOG_TARGET,
+                            "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
+                        );
+                    }
+                    return Err(err.into());
+                },
+                None => break,
+            };
+
+            match served {
+                // Only a request that reached the service counts as activity. An ACK (a liveness ping), a FIN or a
+                // rejected request does not: otherwise a peer could hold its session slots forever with pings alone.
+                Ok(true) => {
+                    if let Some(timeout) = idle_timeout {
+                        idle_sleep.as_mut().reset(
+                            time::Instant::now()
+                                .checked_add(timeout)
+                                .unwrap_or_else(time::Instant::now),
+                        );
+                    }
+                },
+                Ok(false) => {},
+                Err(RpcServerError::SessionStopped) => {
                     debug!(
                         target: LOG_TARGET,
-                        "({}) Closing session idle for {:.0?}.",
-                        self.logging_context_string,
-                        idle_timeout.unwrap_or_default()
+                        "({}) Stop signal received while handling a request, closing substream.",
+                        self.logging_context_string
                     );
-                    break;
-                }
-                result = self.framed.next() => {
-                    match result {
-                        Some(Ok(frame)) => {
-                            #[cfg(feature = "metrics")]
-                            metrics::inbound_requests_bytes(&self.protocol).observe(frame.len() as f64);
+                    self.close_framed(STOPPED_SESSION_CLOSE_TIMEOUT).await?;
+                    return Ok(());
+                },
+                Err(RpcServerError::StreamClosedByRemote) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "({}) Client closed the substream while its request was being handled.",
+                        self.logging_context_string
+                    );
+                    // The client is gone, so this close has nobody to wait for
+                    self.close_framed(STOPPED_SESSION_CLOSE_TIMEOUT).await?;
+                    return Ok(());
+                },
+                Err(err) => {
+                    // A write deadline means the peer stopped reading, so the window is
+                    // already full and a graceful close cannot land - skip straight to
+                    // dropping the substream rather than burning the close timeout.
+                    let close_result = if matches!(err, RpcServerError::WriteStreamExceededDeadline) {
+                        Ok(())
+                    } else {
+                        self.close_framed(SESSION_CLOSE_TIMEOUT).await
+                    };
+                    if let Err(err) = close_result {
+                        let level = err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error);
 
-                            let start = Instant::now();
-
-                            if let Err(err) = self.handle_request(frame.freeze()).await {
-                                // A write deadline means the peer stopped reading, so the window is
-                                // already full and a graceful close cannot land - skip straight to
-                                // dropping the substream rather than burning the close timeout.
-                                let close_result = if matches!(err, RpcServerError::WriteStreamExceededDeadline) {
-                                    Ok(())
-                                } else {
-                                    self.close_framed().await
-                                };
-                                if let Err(err) = close_result {
-                                    let level = err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error);
-
-                                    log!(
-                                        target: LOG_TARGET,
-                                        level,
-                                        "({}) Failed to close substream after socket error: {}",
-                                        self.logging_context_string,
-                                        err,
-                                    );
-                                }
-                                let level = err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error);
-                                log!(
-                                    target: LOG_TARGET,
-                                    level,
-                                    "(peer: {}, protocol: {}) Failed to handle request: {}",
-                                    self.node_id,
-                                    self.protocol_name(),
-                                    err
-                                );
-                                return Err(err);
-                            }
-                            let elapsed = start.elapsed();
-                            trace!(
-                                target: LOG_TARGET,
-                                "({}) RPC request completed in {:.0?}{}",
-                                self.logging_context_string,
-                                elapsed,
-                                if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
-                            );
-                            if let Some(timeout) = idle_timeout {
-                                idle_sleep.as_mut().reset(
-                                    time::Instant::now().checked_add(timeout).unwrap_or_else(time::Instant::now),
-                                );
-                            }
-                        },
-                        Some(Err(err)) => {
-                            if let Err(err) = self.close_framed().await {
-                                error!(
-                                    target: LOG_TARGET,
-                                    "({}) Failed to close substream after socket error: {}", self.logging_context_string, err
-                                );
-                            }
-                            return Err(err.into());
-                        },
-                        None => break,
+                        log!(
+                            target: LOG_TARGET,
+                            level,
+                            "({}) Failed to close substream after socket error: {}",
+                            self.logging_context_string,
+                            err,
+                        );
                     }
-                }
+                    let level = match &err {
+                        RpcServerError::Io(e) => err_to_log_level(e),
+                        err => err.early_close_io().map(err_to_log_level).unwrap_or(log::Level::Error),
+                    };
+                    log!(
+                        target: LOG_TARGET,
+                        level,
+                        "(peer: {}, protocol: {}) Failed to handle request: {}",
+                        self.node_id,
+                        self.protocol_name(),
+                        err
+                    );
+                    return Err(err);
+                },
             }
         }
 
-        self.close_framed().await?;
+        self.close_framed(SESSION_CLOSE_TIMEOUT).await?;
         Ok(())
     }
 
+    /// Replies `BadRequest` to a request over [rpc::RPC_MAX_REQUEST_SIZE], which was not read. No ban: a peer running a
+    /// version with a larger request cap may send such a request honestly.
+    async fn reject_oversized_request(&mut self, request_id: u32, len: usize) -> Result<(), RpcServerError> {
+        debug!(
+            target: LOG_TARGET,
+            "({}) Rejecting a {} byte request, larger than the maximum of {} bytes",
+            self.logging_context_string,
+            len,
+            rpc::max_request_size()
+        );
+        #[cfg(feature = "metrics")]
+        metrics::status_error_counter(&self.protocol, super::RpcStatusCode::BadRequest).inc();
+        let rejection = oversized_request_response(request_id, len);
+        self.send_with_deadline(rejection.to_encoded_bytes().into(), SESSION_CLOSE_TIMEOUT)
+            .await
+    }
+
+    /// Handles one request. Returns whether it reached the service, which is what counts as activity for the idle
+    /// timer.
     #[allow(clippy::too_many_lines)]
     #[instrument(name = "rpc::server::handle_req", level="trace", skip(self, request), err, fields(request_size = request.len ()))]
-    async fn handle_request(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
-        if let Some(rejection) = reject_oversized_request(&request) {
-            debug!(
-                target: LOG_TARGET,
-                "({}) Rejecting a {} byte request, larger than the maximum of {} bytes",
-                self.logging_context_string,
-                request.len(),
-                rpc::max_request_size()
-            );
-            #[cfg(feature = "metrics")]
-            metrics::status_error_counter(&self.protocol, super::RpcStatusCode::BadRequest).inc();
-            self.send_with_deadline(rejection.to_encoded_bytes().into(), SESSION_CLOSE_TIMEOUT)
-                .await?;
-            return Ok(());
-        }
+    async fn handle_request(&mut self, mut request: Bytes) -> Result<bool, RpcServerError> {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
+        // The payload was copied out, so release the frame now rather than hold it through the service call
+        drop(request);
 
         let request_id = decoded_msg.request_id;
         let method = RpcMethod::from(decoded_msg.method);
@@ -1249,7 +1384,7 @@ where
             // here - bound this on the teardown timeout instead.
             self.send_with_deadline(bad_request.to_encoded_bytes().into(), SESSION_CLOSE_TIMEOUT)
                 .await?;
-            return Ok(());
+            return Ok(false);
         }
 
         // ...and it is capped from above, because the deadline governs both the service call and
@@ -1277,7 +1412,7 @@ where
 
         if msg_flags.contains(RpcMessageFlags::FIN) {
             debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
-            return Ok(());
+            return Ok(false);
         }
         if msg_flags.contains(RpcMessageFlags::ACK) {
             debug!(
@@ -1291,7 +1426,7 @@ where
                 ..Default::default()
             };
             self.send_with_deadline(ack.to_encoded_bytes().into(), deadline).await?;
-            return Ok(());
+            return Ok(false);
         }
 
         trace!(
@@ -1308,13 +1443,56 @@ where
             decoded_msg.payload.into(),
         );
 
-        let service_call = log_timing(
-            &self.logging_context_string,
-            request_id,
-            "service call",
-            self.service.call(req),
-        );
-        let service_result = time::timeout(deadline, service_call).await;
+        // A clone, so that the call (which lives on while this function sends the response) does not borrow `self`
+        let logging_context = self.logging_context_string.clone();
+        let service_call = log_timing(&logging_context, request_id, "service call", self.service.call(req));
+        // The call is dropped (cancelling it) only if the session is told to stop. If the client gives up on the
+        // request (a FIN) or hangs up, the call is still driven to the end (or its deadline) and its result discarded:
+        // dropping it would not stop work it handed to other tasks (e.g. blocking database calls), so a client
+        // repeating request-then-FIN could otherwise start any number of them at once. This way a session never has
+        // more than one call running.
+        //
+        // Meanwhile only frames small enough to be a FIN are read: a longer one (a pipelined request) is left on the
+        // substream until this request is done, so the client's flow control, not the session, holds it.
+        let mut stop_rx = self.stop_rx.clone();
+        let call = time::timeout(deadline, service_call);
+        tokio::pin!(call);
+        self.framed
+            .get_mut()
+            .codec_mut()
+            .set_peek_limit(Some(MAX_FIN_REQUEST_SIZE));
+        let selected = tokio::select! {
+            biased;
+            _ = stop_rx.changed() => Err(RpcServerError::SessionStopped),
+            reason = wait_for_client_to_give_up(&mut self.framed, &mut self.buffered_request) => Err(reason),
+            result = &mut call => Ok(result),
+        };
+        self.framed.get_mut().codec_mut().set_peek_limit(None);
+        let service_result = match selected {
+            Ok(result) => result,
+            Err(RpcServerError::SessionStopped) => return Err(RpcServerError::SessionStopped),
+            Err(reason) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) Client gave up on its request while it was being handled ({}). Finishing the call without \
+                     replying.",
+                    self.logging_context_string,
+                    reason
+                );
+                // The substream is not read meanwhile
+                tokio::select! {
+                    biased;
+                    _ = stop_rx.changed() => return Err(RpcServerError::SessionStopped),
+                    _ = &mut call => {},
+                }
+                return match reason {
+                    // The session carries on with the next request. An abandoned call is not activity.
+                    RpcServerError::ClientInterruptedStream => Ok(false),
+                    // The client hung up: the session ends
+                    reason => Err(reason),
+                };
+            },
+        };
         let service_result = match service_result {
             Ok(v) => v,
             Err(_) => {
@@ -1343,7 +1521,7 @@ where
                 metrics::status_error_counter(&self.protocol, status.as_status_code()).inc();
                 self.send_with_deadline(timed_out.to_encoded_bytes().into(), deadline)
                     .await?;
-                return Ok(());
+                return Ok(true);
             },
         };
 
@@ -1370,7 +1548,7 @@ where
             },
         }
 
-        Ok(())
+        Ok(true)
     }
 
     fn protocol_name(&self) -> Cow<'_, str> {
@@ -1403,6 +1581,7 @@ where
             });
 
         let logging_context = self.logging_context_string.clone();
+        let mut stop_rx = self.stop_rx.clone();
         // The next item, pulled from the stream and encoded while the previous one was being sent. `Some(None)` means
         // the stream ended during that send.
         let mut prefetched: Option<Option<Bytes>> = None;
@@ -1431,6 +1610,8 @@ where
                     let timeout = time::sleep(deadline);
 
                     tokio::select! {
+                        // The session was told to stop: drop the stream (and whatever it is waiting on)
+                        _ = stop_rx.changed() => return Err(RpcServerError::SessionStopped),
                         // Check if the client interrupted the outgoing stream
                         Err(err) = self.check_interruptions() => {
                             match err {
@@ -1508,18 +1689,27 @@ where
     }
 
     async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
+        // A request that arrived during the service call is handled after this one, so this does not read past it.
+        // The substream can still be read while a send waits for the peer: `EarlyClose` checks for a message from the
+        // client then, and one ends the session (`UnexpectedMessage`), as it always has for a client that sends while
+        // it is being answered.
+        if self.buffered_request.is_some() {
+            return Ok(());
+        }
         let check = future::poll_fn(|cx| match Pin::new(&mut self.framed).poll_next(cx) {
-            Poll::Ready(Some(Ok(mut msg))) => {
-                if msg.len() > rpc::max_request_size() {
-                    // Never decode an oversized message; a client may only send a FIN here, which is tiny
-                    debug!(
-                        target: LOG_TARGET,
-                        "Ignoring a {} byte message received during a streaming response (maximum {} bytes)",
-                        msg.len(),
-                        rpc::max_request_size()
-                    );
-                    return Poll::Ready(None);
-                }
+            Poll::Ready(Some(Ok(RequestFrame::Oversized { len, .. }))) => {
+                // An oversized message is never read; a client may only send a FIN here, which is tiny
+                debug!(
+                    target: LOG_TARGET,
+                    "Ignoring a {} byte message received during a streaming response (maximum {} bytes)",
+                    len,
+                    rpc::max_request_size()
+                );
+                Poll::Ready(None)
+            },
+            // Only produced in peek mode, which is off here
+            Poll::Ready(Some(Ok(RequestFrame::Unread))) => Poll::Ready(None),
+            Poll::Ready(Some(Ok(RequestFrame::Request(mut msg)))) => {
                 let decoded_msg = match proto::rpc::RpcRequest::decode(&mut msg) {
                     Ok(msg) => msg,
                     Err(err) => {
@@ -1595,33 +1785,100 @@ async fn log_timing<R, F: Future<Output = R>>(context_str: &str, request_id: u32
     ret
 }
 
-/// Just the request id of an `RpcRequest`. Decoding this skips over the other fields, including the payload, without
-/// copying them.
+/// The flags of an `RpcRequest`. Decoding this skips over the other fields, including the payload, without copying
+/// them.
 #[derive(Clone, PartialEq, prost::Message)]
-struct RpcRequestId {
-    #[prost(uint32, tag = "1")]
-    request_id: u32,
+struct RpcRequestFlags {
+    #[prost(uint32, tag = "3")]
+    flags: u32,
 }
 
-/// If `request` is larger than [rpc::RPC_MAX_REQUEST_SIZE], returns the `BadRequest` response to send instead of
-/// decoding it. Only the request id is read, so that the client can match the response. No ban: a peer running a
-/// version with a larger request cap may send such a request honestly.
-fn reject_oversized_request(request: &Bytes) -> Option<proto::rpc::RpcResponse> {
-    if request.len() <= rpc::max_request_size() {
-        return None;
+/// Whether `frame` is a request with the FIN flag set, with which a client abandons its request. Anything that does not
+/// decode as one is not.
+fn is_fin(frame: &BytesMut) -> bool {
+    match RpcRequestFlags::decode(frame.as_ref()) {
+        Ok(request) => u8::try_from(request.flags)
+            .ok()
+            .and_then(RpcMessageFlags::from_bits)
+            .is_some_and(|flags| flags.is_fin()),
+        Err(_) => false,
     }
-    let request_id = RpcRequestId::decode(request.clone()).map(|r| r.request_id).unwrap_or(0);
+}
+
+/// Waits, while a request's service call runs, for the client to give up on it, and returns why: it hung up
+/// (`StreamClosedByRemote`, or the read error), or it sent a FIN (`ClientInterruptedStream`). The call is not cancelled
+/// for either (see `ActivePeerRpcService::handle_request`), only its result discarded.
+///
+/// Any other frame is a request pipelined behind this one. A small one is kept in `buffered`; a larger one is not read
+/// at all (the codec is in peek mode, see `RequestCodec::set_peek_limit`), only noted in `buffered` as
+/// [RequestFrame::Unread]. Either way the session handles it next, and this function does not read again, so nothing
+/// is lost or reordered; from then on only the service call's own deadline (and the stop signal) can end the call
+/// early. The session may still read the substream before then while it waits to send a response: see
+/// `ActivePeerRpcService::check_interruptions`.
+async fn wait_for_client_to_give_up(
+    framed: &mut SessionFraming,
+    buffered: &mut Option<RequestFrame>,
+) -> RpcServerError {
+    if buffered.is_none() {
+        match framed.next().await {
+            None => return RpcServerError::StreamClosedByRemote,
+            Some(Err(err)) => return err.into(),
+            Some(Ok(RequestFrame::Request(frame))) if is_fin(&frame) => return RpcServerError::ClientInterruptedStream,
+            Some(Ok(frame)) => *buffered = Some(frame),
+        }
+    }
+    future::pending().await
+}
+
+/// A read buffer is given a fresh allocation once it has more than this capacity
+const MAX_IDLE_READ_BUFFER_CAPACITY: usize = 64 * 1024;
+
+/// The capacity of a fresh read buffer, as `Framed` starts with
+const READ_BUFFER_INITIAL_CAPACITY: usize = 8 * 1024;
+
+/// A read buffer that grew for a large request keeps that allocation for the rest of the session: each frame is split
+/// off the front of it and the rest reuses the same allocation. Once such a request has been handled
+/// (`after_large_request`), this moves what is left (the start of the next request, if any) into a fresh, small
+/// buffer, so an idle session does not pin up to the request limit.
+///
+/// The decision is taken from the request's size, not from `buffer.capacity()`: after a frame is split off, that is
+/// only the free space behind the frame, which is small when the frame filled its allocation, while the rest of the
+/// buffer still shares (and would reclaim, on the next read) the whole allocation.
+fn release_large_read_buffer(buffer: &mut BytesMut, after_large_request: bool) {
+    if !after_large_request && buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY {
+        return;
+    }
+    let mut fresh = BytesMut::with_capacity(cmp::max(buffer.len(), READ_BUFFER_INITIAL_CAPACITY));
+    fresh.extend_from_slice(buffer);
+    *buffer = fresh;
+}
+
+/// Switches a substream from the canonical framing used for the handshake to the session's request framing. The
+/// handshake has read exactly one frame and nothing since, so the codec is between frames, and any bytes of a request
+/// the client sent straight after its handshake are carried over.
+fn into_session_framing(framed: CanonicalFraming<Substream>) -> Framed<Substream, RequestCodec> {
+    let parts = framed.into_parts();
+    let codec = RequestCodec::new(parts.codec, rpc::max_request_size());
+    let mut session_parts = FramedParts::new::<Bytes>(parts.io, codec);
+    session_parts.read_buf = parts.read_buf;
+    session_parts.write_buf = parts.write_buf;
+    Framed::from_parts(session_parts)
+}
+
+/// The `BadRequest` response to a request of `len` bytes, over [rpc::RPC_MAX_REQUEST_SIZE]. It carries the request's
+/// `request_id` so that the client can match the response.
+fn oversized_request_response(request_id: u32, len: usize) -> proto::rpc::RpcResponse {
     let status = RpcStatus::bad_request(&format!(
         "The request size exceeded the maximum allowed request size. Max = {} bytes, Got = {} bytes",
         rpc::max_request_size(),
-        request.len()
+        len
     ));
-    Some(proto::rpc::RpcResponse {
+    proto::rpc::RpcResponse {
         request_id,
         status: status.as_code(),
         flags: RpcMessageFlags::FIN.bits().into(),
         payload: status.to_details_bytes(),
-    })
+    }
 }
 
 fn into_response(request_id: u32, result: Result<BodyBytes, RpcStatus>) -> RpcResponse {
@@ -1709,6 +1966,84 @@ mod test {
         assert_eq!(
             builder.clamp_client_deadline(Duration::from_secs(5)),
             Duration::from_secs(5)
+        );
+    }
+
+    /// After a large request, the read buffer goes back to a small allocation, keeping any bytes of the next request
+    #[test]
+    fn a_large_request_does_not_pin_its_read_buffer() {
+        use tokio_util::codec::{Decoder, LengthDelimitedCodec};
+
+        fn with_prefix(body: &[u8]) -> Vec<u8> {
+            let mut frame = u32::try_from(body.len()).unwrap().to_be_bytes().to_vec();
+            frame.extend_from_slice(body);
+            frame
+        }
+
+        let mut codec = RequestCodec::new(LengthDelimitedCodec::new(), rpc::max_request_size());
+        let mut buffer = BytesMut::new();
+        buffer.extend_from_slice(&with_prefix(&vec![1; 4 * 1024 * 1024]));
+        // The start of the next (small) request has arrived too
+        let small = with_prefix(&[2; 10]);
+        buffer.extend_from_slice(small.get(..7).unwrap());
+
+        let Some(RequestFrame::Request(large)) = codec.decode(&mut buffer).unwrap() else {
+            panic!("expected a request");
+        };
+        drop(large);
+        assert!(buffer.capacity() > MAX_IDLE_READ_BUFFER_CAPACITY);
+        release_large_read_buffer(&mut buffer, true);
+        assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
+
+        buffer.extend_from_slice(small.get(7..).unwrap());
+        let Some(RequestFrame::Request(frame)) = codec.decode(&mut buffer).unwrap() else {
+            panic!("expected a request");
+        };
+        assert_eq!(frame.as_ref(), &[2; 10]);
+        release_large_read_buffer(&mut buffer, false);
+        assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
+    }
+
+    /// A request that fills its allocation almost exactly leaves little free space behind it, but the allocation is
+    /// still released: the rest of the buffer shares it and would reclaim all of it on the next read
+    #[test]
+    fn a_request_filling_its_allocation_does_not_pin_it() {
+        use tokio_util::codec::{Decoder, LengthDelimitedCodec};
+
+        let body_len = (1 << 20) - 4 - 10;
+        let mut frame = u32::try_from(body_len).unwrap().to_be_bytes().to_vec();
+        frame.extend_from_slice(&vec![1; body_len]);
+
+        // Read the way `Framed` reads: make room for at least one byte, then fill the free space
+        let mut buffer = BytesMut::new();
+        let mut remaining = frame.as_slice();
+        while !remaining.is_empty() {
+            buffer.reserve(1);
+            let free = buffer.capacity().saturating_sub(buffer.len());
+            let (now, later) = remaining.split_at(cmp::min(free, remaining.len()));
+            buffer.extend_from_slice(now);
+            remaining = later;
+        }
+
+        let mut codec = RequestCodec::new(LengthDelimitedCodec::new(), rpc::max_request_size());
+        let Some(RequestFrame::Request(request)) = codec.decode(&mut buffer).unwrap() else {
+            panic!("expected a request");
+        };
+        assert_eq!(request.len(), body_len);
+        drop(request);
+        // Little is free behind the request, so its capacity alone does not show the allocation
+        assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
+
+        release_large_read_buffer(&mut buffer, true);
+        // The next reads fill the free space and make room for more, as `Framed` does, without reclaiming the large
+        // allocation
+        let free = buffer.capacity().saturating_sub(buffer.len());
+        buffer.extend_from_slice(&vec![2; free]);
+        buffer.reserve(1);
+        assert!(
+            buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY,
+            "{} bytes still allocated",
+            buffer.capacity()
         );
     }
 

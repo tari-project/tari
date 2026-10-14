@@ -22,12 +22,13 @@
 
 use std::collections::HashMap;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, mpsc::error::SendTimeoutError};
 
 use crate::{
     Substream,
     peer_manager::NodeId,
     protocol::{ProtocolError, ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolId},
+    utils::mpsc::send_or_drop,
 };
 
 /// Protocol notification sender
@@ -108,7 +109,10 @@ impl<TSubstream> Protocols<TSubstream> {
         self.protocols.keys().cloned().collect()
     }
 
-    /// Send a notification to the registered notifier for the protocol ID.
+    /// Send a notification to the registered notifier for the protocol ID. A protocol that does not take it within
+    /// [SEND_OR_DROP_TIMEOUT](crate::utils::mpsc::SEND_OR_DROP_TIMEOUT) does not get it: the notification (and with it
+    /// any substream it carries) is dropped and `NotificationDropped` returned, so a stalled protocol cannot stall the
+    /// caller.
     pub async fn notify(
         &mut self,
         protocol: &ProtocolId,
@@ -116,11 +120,14 @@ impl<TSubstream> Protocols<TSubstream> {
     ) -> Result<(), ProtocolError> {
         match self.protocols.get_mut(protocol) {
             Some(sender) => {
-                sender
-                    .send(ProtocolNotification::new(protocol.clone(), event))
-                    .await
-                    .map_err(|_| ProtocolError::NotificationSenderDisconnected)?;
-                Ok(())
+                let ProtocolEvent::NewInboundSubstream(peer, _) = &event;
+                let peer = peer.clone();
+                let notification = ProtocolNotification::new(protocol.clone(), event);
+                match send_or_drop(sender, notification, "protocol_notification", Some(&peer)).await {
+                    Ok(()) => Ok(()),
+                    Err(SendTimeoutError::Timeout(_)) => Err(ProtocolError::NotificationDropped),
+                    Err(SendTimeoutError::Closed(_)) => Err(ProtocolError::NotificationSenderDisconnected),
+                }
             },
             None => Err(ProtocolError::ProtocolNotRegistered),
         }
