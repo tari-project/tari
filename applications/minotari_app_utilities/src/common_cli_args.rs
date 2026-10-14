@@ -51,7 +51,8 @@ pub struct CommonCliArgs {
     pub network: Option<Network>,
 
     /// Overrides for properties in the config file (use the fully qualified key name!!). To choose the network use
-    /// --network esmeralda, not -p. Examples:
+    /// --network esmeralda, not -p. Override values are visible in the process list and shell history, so secrets
+    /// belong in the config file or an environment variable. Examples:
     /// -p base_node.grpc_server_allow_methods="get_tokens_in_circulation, get_sync_progress, get_mempool_stats"
     /// -p esmeralda.p2p.seeds.peer_seeds="<public_key_1>::<address_1>", "<public_key_2>::<address_2>", or,
     /// -p base_node.grpc_server_allow_methods=""
@@ -69,11 +70,13 @@ where
     U: std::str::FromStr,
     U::Err: Error + Send + Sync + 'static,
 {
-    let mut parts = s.split('=').map(|s| s.trim());
-    let k = parts.next().ok_or("invalid override: string empty`")?;
-    let v = parts
-        .next()
+    let (k, v) = s
+        .split_once('=')
         .ok_or_else(|| format!("invalid override: expected key=value: no `=` found in `{s}`"))?;
+    let k = k.trim();
+    if k.is_empty() {
+        return Err("invalid override: string empty`".into());
+    }
     Ok((k.parse()?, v.parse()?))
 }
 
@@ -135,5 +138,33 @@ mod defaults {
 
     pub(super) fn config() -> String {
         DEFAULT_CONFIG.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_key_val_handles_multiple_equals_and_preserves_whitespace() {
+        let (k, v): (String, String) = parse_key_val("a.b=c=d").unwrap();
+        assert_eq!(k, "a.b");
+        assert_eq!(v, "c=d");
+
+        let (k, v): (String, String) = parse_key_val("a.b= x ").unwrap();
+        assert_eq!(k, "a.b");
+        assert_eq!(v, " x ");
+
+        let (k, v): (String, String) = parse_key_val(" key = val ").unwrap();
+        assert_eq!(k, "key");
+        assert_eq!(v, " val ");
+
+        let (k, v): (String, String) = parse_key_val("key=").unwrap();
+        assert_eq!(k, "key");
+        assert_eq!(v, "");
+
+        assert!(parse_key_val::<String, String>("=val").is_err());
+        assert!(parse_key_val::<String, String>("   =val").is_err());
+        assert!(parse_key_val::<String, String>("no_equals").is_err());
     }
 }
