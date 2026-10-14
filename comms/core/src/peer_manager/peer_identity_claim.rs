@@ -33,7 +33,7 @@ use crate::{
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct PeerIdentityClaim {
-    #[serde(with = "claim_addresses_serde")]
+    #[serde(serialize_with = "claim_addresses_serde::serialize")]
     pub addresses: Vec<Multiaddr>,
     pub features: PeerFeatures,
     pub signature: IdentitySignature,
@@ -55,44 +55,45 @@ impl PeerIdentityClaim {
     }
 }
 
-/// Serde for the claimed addresses, which are stored in the peer database inside each address's source.
+/// Serialization for the claimed addresses, which are stored in the peer database inside each address's source.
 ///
-/// The text form of a multiaddr is not lossless: a DNS name may contain `/`, which reads back as a different address
-/// or not at all, and the claim's signature covers the binary form. Human-readable formats therefore carry each
-/// address as the hex of its bytes. Text written by earlier versions (always starting with `/`) is still accepted, and
-/// is rewritten as hex the next time the row is saved. Binary formats already used the bytes and are unchanged.
+/// Human-readable formats keep the text form that every version of the node writes and reads, so a node downgraded to
+/// an older version can still read every stored claim. The text form is not lossless, though: a DNS name containing
+/// `/` reads back as a different address or not at all. Such an address is left out of the stored claim with a
+/// warning. Claim validation already rejects these addresses, so this is only a backstop. Binary formats use the
+/// address bytes and are unchanged. Deserialization is `Multiaddr`'s own.
 mod claim_addresses_serde {
+    use std::str::FromStr;
+
+    use log::warn;
     use multiaddr::Multiaddr;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error, ser::SerializeSeq};
-    use tari_utilities::hex::{from_hex, to_hex};
+    use serde::{Serialize, Serializer, ser::SerializeSeq};
+
+    const LOG_TARGET: &str = "comms::peer_manager::peer_identity_claim";
 
     pub fn serialize<S: Serializer>(addresses: &[Multiaddr], serializer: S) -> Result<S::Ok, S::Error> {
         if !serializer.is_human_readable() {
             return addresses.serialize(serializer);
         }
-        let mut seq = serializer.serialize_seq(Some(addresses.len()))?;
+        let mut lossless = Vec::with_capacity(addresses.len());
         for address in addresses {
-            seq.serialize_element(&to_hex(&address.to_vec()))?;
+            let text = address.to_string();
+            let reads_back = Multiaddr::from_str(&text).is_ok_and(|parsed| parsed.to_vec() == address.to_vec());
+            if reads_back {
+                lossless.push(text);
+            } else {
+                warn!(
+                    target: LOG_TARGET,
+                    "Leaving claimed address {text:?} out of the stored claim: its text form does not read back as the \
+                     same address"
+                );
+            }
+        }
+        let mut seq = serializer.serialize_seq(Some(lossless.len()))?;
+        for text in &lossless {
+            seq.serialize_element(text)?;
         }
         seq.end()
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error> {
-        if !deserializer.is_human_readable() {
-            return Vec::<Multiaddr>::deserialize(deserializer);
-        }
-        let items = Vec::<String>::deserialize(deserializer)?;
-        let mut addresses = Vec::with_capacity(items.len());
-        for item in items {
-            let address = if item.starts_with('/') {
-                item.parse::<Multiaddr>().map_err(D::Error::custom)?
-            } else {
-                let bytes = from_hex(&item).map_err(D::Error::custom)?;
-                Multiaddr::try_from(bytes).map_err(D::Error::custom)?
-            };
-            addresses.push(address);
-        }
-        Ok(addresses)
     }
 }
 
@@ -149,28 +150,31 @@ mod test {
     }
 
     #[test]
-    fn claim_addresses_round_trip_through_json_as_bytes() {
-        // A name the text form cannot represent
-        let lossy = multiaddr!(Dns4("a/tcp/80/ip4/10.0.0.1"), Tcp(1u16));
-        let plain: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
-        let claim = claim(vec![plain.clone(), lossy.clone()]);
+    fn claim_addresses_are_stored_as_text() {
+        let first: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let second: Multiaddr = "/dns4/node.example.com/tcp/18189".parse().unwrap();
+        let claim = claim(vec![first.clone(), second.clone()]);
 
-        let json = serde_json::to_string(&claim).unwrap();
-        assert!(!json.contains("/ip4/"), "{json}");
-        let decoded: PeerIdentityClaim = serde_json::from_str(&json).unwrap();
+        let json: serde_json::Value = serde_json::to_value(&claim).unwrap();
+        assert_eq!(
+            json["addresses"],
+            serde_json::json!(["/ip4/23.23.23.23/tcp/18189", "/dns4/node.example.com/tcp/18189"])
+        );
+        let decoded: PeerIdentityClaim = serde_json::from_value(json).unwrap();
         assert_eq!(decoded, claim);
-        assert_eq!(decoded.addresses, vec![plain, lossy]);
     }
 
     #[test]
-    fn claim_addresses_accept_the_old_text_form() {
-        let address: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
-        let claim = claim(vec![address.clone()]);
-        let mut json: serde_json::Value = serde_json::to_value(&claim).unwrap();
-        json["addresses"] = serde_json::json!(["/ip4/23.23.23.23/tcp/18189"]);
+    fn claim_address_without_a_lossless_text_form_is_not_stored() {
+        // Reads back as a different address
+        let lossy = multiaddr!(Dns4("a/tcp/80/ip4/10.0.0.1"), Tcp(1u16));
+        // Does not read back at all
+        let unparsable = multiaddr!(Dns4("evil/x"), Tcp(1u16));
+        let plain: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let claim = claim(vec![lossy, plain.clone(), unparsable]);
 
-        let decoded: PeerIdentityClaim = serde_json::from_value(json).unwrap();
-        assert_eq!(decoded.addresses, vec![address]);
-        assert_eq!(decoded, claim);
+        let json = serde_json::to_string(&claim).unwrap();
+        let decoded: PeerIdentityClaim = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.addresses, vec![plain]);
     }
 }

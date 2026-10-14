@@ -133,8 +133,8 @@ impl PeerDatabaseSql {
         Ok(instance)
     }
 
-    /// Fills in `address_bytes`, `netgroup` and the lossless `source` encoding for addresses stored as text, and
-    /// removes the rows whose text cannot be decoded.
+    /// Fills in `address_bytes` and `netgroup` for addresses stored as text, and removes the rows whose text cannot be
+    /// decoded.
     ///
     /// The text form of a multiaddr is not lossless, and an address whose DNS name contains `/` does not parse back at
     /// all - before `address_bytes` existed, one such row made every peer query fail. Those rows cannot be repaired, so
@@ -177,15 +177,13 @@ impl PeerDatabaseSql {
                 let address = Multiaddr::from_str(&address_text).ok().filter(|a| !a.is_empty());
                 let source = serde_json::from_str::<PeerAddressSource>(&source).ok();
                 let row = multi_addresses::table.filter(multi_addresses::address_id.eq(address_id));
+                // The source is left as it is, in the text form older versions read
                 match (address, source) {
-                    (Some(address), Some(source)) => {
-                        let source = serde_json::to_string(&source)
-                            .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?;
+                    (Some(address), Some(_)) => {
                         diesel::update(row)
                             .set((
                                 multi_addresses::address_bytes.eq(address.to_vec()),
                                 multi_addresses::netgroup.eq(address_netgroup(&address)),
-                                multi_addresses::source.eq(source),
                             ))
                             .execute(conn)?;
                     },
@@ -454,7 +452,7 @@ impl PeerDatabaseSql {
 
         let mut new_addresses_sql = Vec::with_capacity(peer.addresses.len());
         for address in peer.addresses.iter() {
-            if !address.address().is_empty() {
+            if !address.address().is_empty() && has_lossless_text(address.address()) {
                 new_addresses_sql.push(NewMultiaddrWithStatsSql {
                     address_id: None, // This will be set automatically
                     peer_id: 0,       // This will be set automatically
@@ -552,7 +550,7 @@ impl PeerDatabaseSql {
 
         let mut update_addresses_sql = Vec::with_capacity(peer.addresses.len());
         for address in peer.addresses.iter() {
-            if !address.address().is_empty() {
+            if !address.address().is_empty() && has_lossless_text(address.address()) {
                 update_addresses_sql.push(UpdateMultiaddrWithStatsSql {
                     address: Some(address.address().to_string()),
                     is_external: Some(address.is_external()),
@@ -1673,6 +1671,23 @@ impl PeerDatabaseSql {
 
         Some(format!("({})", conditions.join(" OR ")))
     }
+}
+
+/// True if the address's text form reads back as exactly this address.
+///
+/// The `address` text column is what older versions read, and one row they cannot parse makes their peer queries fail,
+/// so an address without a lossless text form is not stored at all (with a warning). Claim validation already rejects
+/// such addresses, so this is only a backstop.
+fn has_lossless_text(address: &Multiaddr) -> bool {
+    let text = address.to_string();
+    let reads_back = Multiaddr::from_str(&text).is_ok_and(|parsed| parsed.to_vec() == address.to_vec());
+    if !reads_back {
+        warn!(
+            target: LOG_TARGET,
+            "Not storing address {text:?}: its text form does not read back as the same address"
+        );
+    }
+    reads_back
 }
 
 fn sql_escape(input: &str) -> String {
@@ -3035,8 +3050,6 @@ mod tests {
             "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234"
                 .parse()
                 .unwrap(),
-            // The text form of this one reads back as a different address; the bytes do not
-            multiaddr::multiaddr!(Dns4("a/tcp/80/ip4/10.0.0.1"), Tcp(1u16)),
         ];
         let peer = node_peer_with_addresses(addresses.clone(), true, TimeDelta::zero());
         peers_db.add_or_update_peer(peer.clone()).unwrap();
@@ -3047,7 +3060,6 @@ mod tests {
         stored_addresses.sort_by_key(|a| a.to_vec());
         expected.sort_by_key(|a| a.to_vec());
         assert_eq!(stored_addresses, expected);
-        // The signed claim inside each address's source is lossless too
         for address in stored.addresses.iter() {
             let claim = address.source().peer_identity_claim().unwrap();
             assert_eq!(claim.addresses, addresses);
@@ -3063,8 +3075,50 @@ mod tests {
         assert_eq!(rows.len(), addresses.len());
         for row in rows {
             let address = Multiaddr::try_from(row.address_bytes).unwrap();
+            assert_eq!(row.address, address.to_string());
             assert_eq!(row.netgroup, crate::net_address::address_netgroup(&address));
         }
+    }
+
+    /// The stored rows stay readable by an older version, which parses the `address` text column and the claim
+    /// addresses in `source` as text.
+    #[test]
+    fn stored_source_json_keeps_the_old_text_form() {
+        let peers_db = new_test_db();
+        let plain: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let named: Multiaddr = "/dns4/node.example.com/tcp/18189".parse().unwrap();
+        // Text reads back as a different address, and text that does not read back at all
+        let lossy = multiaddr::multiaddr!(Dns4("a/tcp/80/ip4/10.0.0.1"), Tcp(1u16));
+        let unparsable = multiaddr::multiaddr!(Dns4("evil/x"), Tcp(1u16));
+        let peer = node_peer_with_addresses(
+            vec![plain.clone(), lossy, named.clone(), unparsable],
+            true,
+            TimeDelta::zero(),
+        );
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let rows = multi_addresses::table
+            .load::<NewMultiaddrWithStatsSql>(&mut conn)
+            .unwrap();
+        drop(conn);
+        // Only the addresses with a lossless text form are stored
+        let mut stored_text = rows.iter().map(|row| row.address.clone()).collect::<Vec<_>>();
+        stored_text.sort();
+        assert_eq!(stored_text, vec![named.to_string(), plain.to_string()]);
+        for row in &rows {
+            let source: serde_json::Value = serde_json::from_str(&row.source).unwrap();
+            assert_eq!(
+                source["FromPeerConnection"]["peer_identity_claim"]["addresses"],
+                serde_json::json!(["/ip4/23.23.23.23/tcp/18189", "/dns4/node.example.com/tcp/18189"])
+            );
+            // Exactly what an older version parses: the text column and the claim's addresses as `Multiaddr` text
+            row.address.parse::<Multiaddr>().unwrap();
+            serde_json::from_str::<PeerAddressSource>(&row.source).unwrap();
+        }
+
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert_eq!(stored.addresses.len(), 2);
     }
 
     #[test]
@@ -3157,6 +3211,48 @@ mod tests {
         let mut expected = good_peers.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
         expected.sort();
         assert_eq!(candidate_ids, expected);
+    }
+
+    /// What an older version does after a downgrade: its diesel schema has no `address_bytes` or `netgroup`, so it
+    /// names only the columns it knows on insert and select. The new columns' defaults make that work, and the row is
+    /// filled in on the next start of a newer version.
+    #[test]
+    fn rows_written_by_an_older_version_are_backfilled() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peers_db = PeerDatabaseSql::new(db_connection.clone(), &this_peer).unwrap();
+        let address: Multiaddr = "/ip4/23.1.1.1/tcp/18189".parse().unwrap();
+        let peer = node_peer_with_addresses(vec![address.clone()], true, TimeDelta::zero());
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+
+        let mut conn = db_connection.get_pooled_connection().unwrap();
+        let peer_id = peers::table
+            .filter(peers::node_id.eq(peer.node_id.to_hex()))
+            .select(peers::peer_id)
+            .first::<i64>(&mut conn)
+            .unwrap();
+        let source = serde_json::to_string(peer.addresses.addresses()[0].source()).unwrap();
+        let older: Multiaddr = "/ip4/24.1.1.1/tcp/18189".parse().unwrap();
+        diesel::sql_query(format!(
+            "INSERT INTO multi_addresses (peer_id, address, last_seen, connection_attempts, avg_initial_dial_time, \
+             initial_dial_time_sample_count, avg_latency, latency_sample_count, last_attempted, last_failed_reason, \
+             quality_score, source, is_external) VALUES ({peer_id}, '{older}', NULL, 0, NULL, 0, NULL, 0, NULL, NULL, \
+             NULL, '{source}', 1)"
+        ))
+        .execute(&mut conn)
+        .unwrap();
+        // The older version's reads name only its own columns
+        let old_columns =
+            diesel::sql_query("SELECT address AS value FROM multi_addresses ORDER BY address_id".to_string())
+                .load::<TextValue>(&mut conn)
+                .unwrap();
+        assert_eq!(old_columns.len(), 2);
+        drop(conn);
+
+        let peers_db = PeerDatabaseSql::new(db_connection, &this_peer).unwrap();
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert!(stored.addresses.contains(&address));
+        assert!(stored.addresses.contains(&older));
     }
 
     #[derive(diesel::QueryableByName)]
