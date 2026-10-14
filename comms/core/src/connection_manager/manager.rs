@@ -58,7 +58,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, PeerManagerError},
     peer_validator::PeerValidatorConfig,
-    protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
+    protocol::{NodeNetworkInfo, ProtocolError, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
 };
 
@@ -448,23 +448,23 @@ where
                 );
                 #[cfg(feature = "metrics")]
                 metrics::inbound_substream_counter(&protocol).inc();
-                let notify_fut = self
+                // Waits at most a second for the protocol to take the substream, then drops it (yamux resets it, which
+                // the remote sees as a failed negotiation). This loop serves every peer, so one stalled protocol must
+                // not hold it up for longer than that.
+                let result = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
-                match time::timeout(Duration::from_secs(10), notify_fut).await {
-                    Ok(Ok(_)) => {
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
+                    .await;
+                match result {
+                    Ok(()) => {
                         debug!(target: LOG_TARGET, "Protocol notification for '{proto_str}' sent" );
                     },
-                    Ok(Err(err)) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{proto_str}' because '{err:?}'"
-                        );
-                    },
+                    // Already warned about (rate limited) and counted where it was dropped
+                    Err(ProtocolError::NotificationDropped) => {},
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{proto_str}' because {err}"
+                            "Error sending NewSubstream notification for protocol '{proto_str}' because '{err:?}'"
                         );
                     },
                 }

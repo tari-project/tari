@@ -33,7 +33,7 @@ pub fn num_sessions(protocol: &ProtocolId) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::rpc::server::num_sessions",
-            "The number of active server sessions per protocol",
+            "The number of active server sessions per protocol. Handshakes in progress are not counted.",
             &["protocol"],
         )
         .unwrap()

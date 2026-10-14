@@ -211,19 +211,47 @@ impl GreetingRpc for GreetingService {
 
 pub struct SlowGreetingService {
     delay: Arc<RwLock<Duration>>,
+    num_cancelled: Arc<AtomicUsize>,
 }
 
 impl SlowGreetingService {
     pub fn new(delay: Arc<RwLock<Duration>>) -> Self {
-        Self { delay }
+        Self {
+            delay,
+            num_cancelled: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// The number of `say_hello` calls dropped (cancelled) before they finished
+    pub fn num_cancelled(&self) -> Arc<AtomicUsize> {
+        self.num_cancelled.clone()
+    }
+}
+
+/// Counts a call as cancelled if it is dropped before `finished` is called
+struct CancelGuard {
+    num_cancelled: Arc<AtomicUsize>,
+    finished: bool,
+}
+
+impl Drop for CancelGuard {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.num_cancelled.fetch_add(1, Ordering::SeqCst);
+        }
     }
 }
 
 #[async_trait]
 impl GreetingRpc for SlowGreetingService {
     async fn say_hello(&self, _: Request<SayHelloRequest>) -> Result<Response<SayHelloResponse>, RpcStatus> {
+        let mut guard = CancelGuard {
+            num_cancelled: self.num_cancelled.clone(),
+            finished: false,
+        };
         let delay = *self.delay.read().await;
         time::sleep(delay).await;
+        guard.finished = true;
         Ok(Response::new(SayHelloResponse {
             greeting: "took a while to load".to_string(),
         }))

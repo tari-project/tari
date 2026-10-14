@@ -20,9 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
-use tokio::sync::mpsc;
+use log::warn;
+use tokio::sync::{mpsc, mpsc::error::SendTimeoutError};
+
+const LOG_TARGET: &str = "comms::utils::mpsc";
+
+/// How long [send_or_drop] waits for room on a full channel before it drops the item
+pub const SEND_OR_DROP_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The shortest interval between two warnings about items dropped at the same site
+const DROP_WARNING_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Per site: when its last drop warning was logged, and how many drops have not been logged since
+static DROP_WARNINGS: Mutex<Vec<(&'static str, Instant, usize)>> = Mutex::new(Vec::new());
 
 pub async fn send_all<T, I: IntoIterator<Item = T>>(
     sender: &mpsc::Sender<T>,
@@ -32,6 +48,80 @@ pub async fn send_all<T, I: IntoIterator<Item = T>>(
         sender.send(item).await?;
     }
     Ok(())
+}
+
+/// Sends `item` on an internal bounded channel, waiting at most [SEND_OR_DROP_TIMEOUT] for room. If the receiver does
+/// not make room in time, or is gone, the item is dropped instead: one stalled consumer must not stall the actor that
+/// feeds it, and with it everything else that actor serves. `site` names the call site in the warning (logged at most
+/// once per 10 s per site) and in the `comms_channel_drop_total` metric.
+///
+/// The dropped item is handed back in the error, for a caller that has to clean up after it.
+pub async fn send_or_drop<T>(sender: &mpsc::Sender<T>, item: T, site: &'static str) -> Result<(), SendTimeoutError<T>> {
+    let result = sender.send_timeout(item, SEND_OR_DROP_TIMEOUT).await;
+    if let Err(err) = &result {
+        let reason = match err {
+            SendTimeoutError::Timeout(_) => "the receiver did not take it in time",
+            SendTimeoutError::Closed(_) => "the receiver is gone",
+        };
+        record_drop(site, reason);
+    }
+    result
+}
+
+fn record_drop(site: &'static str, reason: &str) {
+    #[cfg(feature = "metrics")]
+    channel_drop_counter(site).inc();
+
+    let now = Instant::now();
+    let mut warnings = match DROP_WARNINGS.lock() {
+        Ok(warnings) => warnings,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let mut count = None;
+    let mut found = false;
+    for (warned_site, last, suppressed) in warnings.iter_mut() {
+        if *warned_site != site {
+            continue;
+        }
+        found = true;
+        if now.saturating_duration_since(*last) < DROP_WARNING_INTERVAL {
+            *suppressed = suppressed.saturating_add(1);
+        } else {
+            count = Some(suppressed.saturating_add(1));
+            *last = now;
+            *suppressed = 0;
+        }
+        break;
+    }
+    if !found {
+        warnings.push((site, now, 0));
+        count = Some(1);
+    }
+    drop(warnings);
+
+    if let Some(count) = count {
+        warn!(
+            target: LOG_TARGET,
+            "Dropped {count} item(s) sent to `{site}` because {reason} within {SEND_OR_DROP_TIMEOUT:.0?}"
+        );
+    }
+}
+
+#[cfg(feature = "metrics")]
+fn channel_drop_counter(site: &'static str) -> tari_metrics::IntCounter {
+    use once_cell::sync::Lazy;
+    use tari_metrics::IntCounterVec;
+
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms_channel_drop_total",
+            "The number of items dropped because an internal channel's receiver did not take them within 1s, per site",
+            &["site"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[site])
 }
 
 pub fn send_all_unbounded<T, I: IntoIterator<Item = T>>(
@@ -219,6 +309,30 @@ mod test {
 
         drop(rx);
         assert!(wait_for_one_taken(&tx).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_or_drop_delivers_when_there_is_room() {
+        let (tx, mut rx) = mpsc::channel(1);
+        send_or_drop(&tx, 1, "test").await.unwrap();
+        assert_eq!(rx.recv().await, Some(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn send_or_drop_drops_the_item_when_the_receiver_stalls() {
+        let (tx, mut rx) = mpsc::channel(1);
+        tx.send(1).await.unwrap();
+        let started = time::Instant::now();
+        let err = send_or_drop(&tx, 2, "test").await.unwrap_err();
+        assert_eq!(started.elapsed(), SEND_OR_DROP_TIMEOUT);
+        assert!(matches!(err, SendTimeoutError::Timeout(2)));
+        // Only the first item was delivered
+        assert_eq!(rx.recv().await, Some(1));
+        assert!(rx.try_recv().is_err());
+
+        drop(rx);
+        let err = send_or_drop(&tx, 3, "test").await.unwrap_err();
+        assert!(matches!(err, SendTimeoutError::Closed(3)));
     }
 
     #[tokio::test]

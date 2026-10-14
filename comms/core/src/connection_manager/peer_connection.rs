@@ -59,7 +59,7 @@ use crate::{
     multiplexing::{Control, IncomingSubstreams, Substream, WriteStall, Yamux, YamuxControlError},
     peer_manager::{NodeId, PeerFeatures},
     protocol::{ProtocolId, ProtocolNegotiation},
-    utils::atomic_ref_counter::AtomicRefCounter,
+    utils::{atomic_ref_counter::AtomicRefCounter, mpsc::send_or_drop},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
@@ -819,8 +819,10 @@ impl PeerConnectionActor {
         Ok(NegotiatedSubstream::new(selected_protocol, stream))
     }
 
+    /// Hands `event` to the connection manager, or drops it if the connection manager does not take it within a second
+    /// (see [send_or_drop]): the connection manager serves every peer, and this actor must keep serving its own.
     async fn notify_event(&mut self, event: ConnectionManagerEvent) {
-        let _result = self.event_notifier.send(event).await;
+        let _result = send_or_drop(&self.event_notifier, event, "peer_connection_event").await;
     }
 
     /// Disconnect this peer connection.

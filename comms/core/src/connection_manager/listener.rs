@@ -54,6 +54,7 @@ use super::{
 #[cfg(feature = "metrics")]
 use crate::connection_manager::metrics;
 use crate::{
+    Minimized,
     PeerManager,
     bounded_executor::BoundedExecutor,
     connection_manager::{
@@ -66,7 +67,7 @@ use crate::{
     peer_manager::NodeIdentity,
     protocol::ProtocolId,
     transports::Transport,
-    utils::multiaddr::multiaddr_to_socketaddr,
+    utils::{mpsc::send_or_drop, multiaddr::multiaddr_to_socketaddr},
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
@@ -261,26 +262,30 @@ where
 
                     match result {
                         Ok(peer_conn) => {
-                            log_if_error!(
-                                target: LOG_TARGET,
-                                conn_man_notifier
-                                    .send(ConnectionManagerEvent::PeerConnected(peer_conn.into()))
-                                    .await,
-                                "Failed to publish event because '{error}'",
-                            );
+                            // Bounded so that a busy connection manager cannot park this task (and the listener permit
+                            // it holds). The connection manager never learns of a connection whose event was dropped,
+                            // so nothing would use or close it: close it here.
+                            let event = ConnectionManagerEvent::PeerConnected(peer_conn.into());
+                            let result = send_or_drop(&conn_man_notifier, event, "listener_peer_connected").await;
+                            if let Err(err) = result &&
+                                let ConnectionManagerEvent::PeerConnected(mut conn) = err.into_inner()
+                            {
+                                let _result = conn
+                                    .disconnect_silent(Minimized::No, "listener: PeerConnected event dropped")
+                                    .await;
+                            }
                         },
                         Err(err) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "[ThisNode={this_node_id_str}] Peer connection upgrade failed for peer because '{err:?}'"
                             );
-                            log_if_error!(
-                                target: LOG_TARGET,
-                                conn_man_notifier
-                                    .send(ConnectionManagerEvent::PeerInboundConnectFailed(err))
-                                    .await,
-                                "Failed to publish event because '{error}'",
-                            );
+                            let _result = send_or_drop(
+                                &conn_man_notifier,
+                                ConnectionManagerEvent::PeerInboundConnectFailed(err),
+                                "listener_inbound_connect_failed",
+                            )
+                            .await;
                         },
                     }
                 },

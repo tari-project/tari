@@ -483,3 +483,103 @@ async fn dial_cancelled() {
     assert_eq!(node_id, node_identity2.node_id());
     unpack_enum!(ConnectionManagerError::DialCancelled = err);
 }
+
+/// Builds a connection manager for a new node on the memory transport, registering each protocol with its sender
+async fn build_node(
+    protocols: &[(
+        &ProtocolId,
+        &mpsc::Sender<crate::protocol::ProtocolNotification<crate::Substream>>,
+    )],
+    shutdown: &Shutdown,
+) -> (
+    std::sync::Arc<crate::NodeIdentity>,
+    std::sync::Arc<crate::PeerManager>,
+    ConnectionManagerRequester,
+    multiaddr::Multiaddr,
+) {
+    let node_identity = build_node_identity(PeerFeatures::empty());
+    let peer_manager = build_peer_manager(&node_identity.to_peer()).unwrap();
+    let mut node_protocols = Protocols::new();
+    for (protocol, sender) in protocols {
+        node_protocols.add([(*protocol).clone()], sender);
+    }
+    let mut conn_man = build_connection_manager(
+        TestNodeConfig {
+            node_identity: node_identity.clone(),
+            ..Default::default()
+        },
+        MemoryTransport,
+        peer_manager.clone(),
+        node_protocols,
+        shutdown.to_signal(),
+    );
+    let address = conn_man.wait_until_listening().await.unwrap().bind_address().clone();
+    (node_identity, peer_manager, conn_man, address)
+}
+
+/// A protocol that stops draining its notification channel cannot hold up the connection manager: once the channel is
+/// full, each further substream for it is dropped after a second, so substreams for other protocols are still
+/// delivered promptly and new connections are still announced.
+#[tokio::test]
+async fn stalled_protocol_consumer_does_not_stall_connection_manager() {
+    static STALLED_PROTO: ProtocolId = ProtocolId::from_static(b"/test/stalled");
+    static OTHER_PROTO: ProtocolId = ProtocolId::from_static(b"/test/other");
+    let shutdown = Shutdown::new();
+
+    // Node 2 never reads `_stalled_rx`, so its channel is full after one substream
+    let (stalled_tx, _stalled_rx) = mpsc::channel(1);
+    let (other_tx, mut other_rx) = mpsc::channel(10);
+    let (node_identity2, _, conn_man2, address2) =
+        build_node(&[(&STALLED_PROTO, &stalled_tx), (&OTHER_PROTO, &other_tx)], &shutdown).await;
+    let mut subscription2 = conn_man2.get_event_subscription();
+
+    let node2_peer = Peer::new(
+        node_identity2.public_key().clone(),
+        node_identity2.node_id().clone(),
+        MultiaddressesWithStats::from_addresses_with_source(vec![address2], &PeerAddressSource::Config),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
+
+    let (unused_tx, _) = mpsc::channel(1);
+    let (_, peer_manager1, mut conn_man1, _) =
+        build_node(&[(&STALLED_PROTO, &unused_tx), (&OTHER_PROTO, &unused_tx)], &shutdown).await;
+    peer_manager1.add_or_update_peer(node2_peer.clone()).await.unwrap();
+    let mut conn = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
+
+    // The first fills the stalled protocol's channel, the second waits for room until it is dropped
+    let mut stalled_substreams = Vec::new();
+    for _ in 0..2 {
+        let mut substream = conn.open_substream(&STALLED_PROTO).await.unwrap();
+        substream.stream.write_all(b"stalled").await.unwrap();
+        stalled_substreams.push(substream);
+    }
+
+    let mut other = conn.open_substream(&OTHER_PROTO).await.unwrap();
+    other.stream.write_all(b"other").await.unwrap();
+    let notification = tokio::time::timeout(Duration::from_secs(2), other_rx.recv())
+        .await
+        .expect("the substream for another protocol was held up behind the stalled protocol")
+        .unwrap();
+    assert_eq!(notification.protocol, OTHER_PROTO);
+
+    // A new connection to node 2 is still announced promptly
+    let (unused_tx, _) = mpsc::channel(1);
+    let (node_identity3, peer_manager3, mut conn_man3, _) = build_node(&[(&OTHER_PROTO, &unused_tx)], &shutdown).await;
+    peer_manager3.add_or_update_peer(node2_peer).await.unwrap();
+    let _conn3 = conn_man3.dial_peer(node_identity2.node_id().clone()).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let event = subscription2.recv().await.unwrap();
+            if let ConnectionManagerEvent::PeerConnected(conn) = &*event &&
+                conn.peer_node_id() == node_identity3.node_id()
+            {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("PeerConnected was not published for the new connection");
+}
