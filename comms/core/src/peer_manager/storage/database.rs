@@ -63,7 +63,10 @@ use crate::{
     peer_validator::validate_address_shape,
     protocol::ProtocolId,
     types::{CommsPublicKey, TransportProtocol},
-    utils::{datetime::safe_future_datetime_from_duration, text::sanitize_for_display},
+    utils::{
+        datetime::{clamp_to_max_stored_datetime, max_stored_datetime, safe_future_datetime_from_duration},
+        text::sanitize_for_display,
+    },
 };
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./src/peer_manager/storage/migrations");
@@ -230,6 +233,7 @@ impl PeerDatabaseSql {
         // Must run first: every later read decodes `address_bytes`
         PeerDatabaseSql::backfill_address_bytes(&instance)?;
         PeerDatabaseSql::reclassify_stored_address_externality(&instance)?;
+        PeerDatabaseSql::clamp_stored_ban_times(&instance)?;
         Ok(instance)
     }
 
@@ -334,6 +338,28 @@ impl PeerDatabaseSql {
 
             Ok(())
         })
+    }
+
+    /// Rewrites ban times stored with a year past 9999 to [`max_stored_datetime`].
+    ///
+    /// Such a time (a ban "forever") is written with a leading `+` and compares as text before every current time, so
+    /// it read as long expired: the peer stayed a dial candidate and garbage collection removed it, losing the ban.
+    /// New writes are clamped; this repairs rows written before that, or by an older version. It is idempotent and
+    /// touches no row once they are repaired.
+    fn clamp_stored_ban_times(&self) -> Result<(), StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+        let repaired = diesel::update(peers::table.filter(peers::banned_until.is_not_null()).filter(
+            diesel::dsl::sql::<diesel::sql_types::Bool>("peers.banned_until LIKE '+%'"),
+        ))
+        .set(peers::banned_until.eq(max_stored_datetime()))
+        .execute(&mut conn)?;
+        if repaired > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "Repaired {repaired} stored indefinite peer ban(s) that read as expired"
+            );
+        }
+        Ok(())
     }
 
     /// Recomputes the persisted `is_external` flag for every stored address, once per classifier
@@ -558,7 +584,7 @@ impl PeerDatabaseSql {
             public_key: peer.public_key.to_hex(),
             node_id: peer.node_id.to_hex(),
             flags: peer.flags.to_i32(),
-            banned_until: peer.banned_until,
+            banned_until: peer.banned_until.map(clamp_to_max_stored_datetime),
             banned_reason: peer.banned_reason.clone(),
             features: peer.features.to_i32(),
             supported_protocols: serialize_protocols(&peer.supported_protocols),
@@ -657,7 +683,7 @@ impl PeerDatabaseSql {
         let update_peer_sql = UpdatePeerSql {
             node_id: Some(peer.node_id.to_hex()),
             flags: Some(peer.flags.to_i32()),
-            banned_until: Some(peer.banned_until),
+            banned_until: Some(peer.banned_until.map(clamp_to_max_stored_datetime)),
             banned_reason: Some(peer.banned_reason.clone()),
             features: Some(peer.features.to_i32()),
             supported_protocols: Some(serialize_protocols(&peer.supported_protocols)),
@@ -831,8 +857,8 @@ impl PeerDatabaseSql {
 
         let banned_reason = sanitize_ban_reason(&banned_reason);
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
-            let dt = safe_future_datetime_from_duration(ban_duration);
-            let banned_until = dt.naive_utc();
+            let banned_until =
+                clamp_to_max_stored_datetime(safe_future_datetime_from_duration(ban_duration).naive_utc());
 
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
                 .set((
@@ -864,7 +890,8 @@ impl PeerDatabaseSql {
         let mut conn = self.connection.get_pooled_connection()?;
 
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
-            let banned_until = safe_future_datetime_from_duration(ban_duration).naive_utc();
+            let banned_until =
+                clamp_to_max_stored_datetime(safe_future_datetime_from_duration(ban_duration).naive_utc());
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_hex())))
                 .set((
                     peers::banned_until.eq(banned_until),
@@ -3777,6 +3804,130 @@ mod tests {
         expected.extend(banned[10..].iter().cloned());
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
+    }
+
+    /// A ban "forever" used to be stored as `+262142-...`, which compares as text before every current time, so the
+    /// peer read as unbanned to SQL: it stayed a dial candidate and garbage collection removed it, losing the ban.
+    #[test]
+    fn indefinite_bans_stay_in_force_in_sql() {
+        let peers_db = new_test_db();
+        let forever = Duration::from_secs(u64::MAX);
+        let address = |i: u8| format!("/ip4/23.{i}.1.1/tcp/18189").parse::<Multiaddr>().unwrap();
+
+        // With addresses, never reached: banned forever, and banned for an hour
+        let banned_forever = node_peer_with_addresses(vec![address(1)], false, TimeDelta::hours(100));
+        peers_db.add_or_update_peer(banned_forever.clone()).unwrap();
+        peers_db
+            .set_banned(&banned_forever.node_id, forever, "forever".to_string())
+            .unwrap();
+        let banned_briefly = node_peer_with_addresses(vec![address(2)], false, TimeDelta::hours(100));
+        peers_db.add_or_update_peer(banned_briefly.clone()).unwrap();
+        peers_db
+            .set_banned(&banned_briefly.node_id, Duration::from_secs(3600), "brief".to_string())
+            .unwrap();
+        // Without addresses (handshake bans): forever, and for an hour
+        let forever_key = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).public_key;
+        let address_less_forever = peers_db
+            .ban_or_add_banned_peer(&forever_key, forever, "forever".to_string())
+            .unwrap();
+        let brief_key = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE).public_key;
+        let address_less_brief = peers_db
+            .ban_or_add_banned_peer(&brief_key, Duration::from_secs(3600), "brief".to_string())
+            .unwrap();
+
+        // Read back, it is still a ban forever
+        let stored = peers_db.get_peer_by_node_id(&banned_forever.node_id).unwrap().unwrap();
+        assert!(stored.is_banned());
+        assert!(crate::utils::datetime::is_max_datetime(stored.banned_until().unwrap()));
+
+        // Not a dial candidate
+        let candidates = peers_db
+            .get_available_dial_candidates(
+                &[],
+                None,
+                &TransportProtocol::get_all(),
+                true,
+                true,
+                0,
+                &HashMap::new(),
+                long_ago(),
+            )
+            .unwrap();
+        assert!(candidates.is_empty(), "{candidates:?}");
+
+        // Never-seen cap 0 does not take it (it is banned); banned and address-less caps of 1 (5 / 5) keep it over the
+        // timed bans
+        let stats = peers_db.garbage_collect(5, &[], long_ago()).unwrap();
+        assert_eq!(stats.excess_peers_removed, 0);
+        assert_eq!(stats.banned_peers_removed, 1);
+        assert_eq!(stats.address_less_peers_removed, 1);
+        assert!(peers_db.get_peer_by_node_id(&banned_forever.node_id).unwrap().is_some());
+        assert!(peers_db.get_peer_by_node_id(&banned_briefly.node_id).unwrap().is_none());
+        assert!(peers_db.get_peer_by_node_id(&address_less_forever).unwrap().is_some());
+        assert!(peers_db.get_peer_by_node_id(&address_less_brief).unwrap().is_none());
+
+        // Soft deleted long ago, an active ban still keeps the row
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        diesel::update(peers::table.filter(peers::node_id.eq(banned_forever.node_id.to_hex())))
+            .set(peers::deleted_at.eq(chrono::Utc::now().naive_utc() - TimeDelta::days(2)))
+            .execute(&mut conn)
+            .unwrap();
+        drop(conn);
+        let stats = peers_db.garbage_collect(5, &[], long_ago()).unwrap();
+        assert_eq!(stats.soft_deleted_peers_removed, 0);
+        assert!(peers_db.get_peer_by_node_id(&banned_forever.node_id).unwrap().is_some());
+    }
+
+    #[test]
+    fn stored_indefinite_ban_times_are_repaired_on_open() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peers_db = PeerDatabaseSql::new(db_connection.clone(), &this_peer).unwrap();
+        let live = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(live.clone()).unwrap();
+        let soft_deleted = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(soft_deleted.clone()).unwrap();
+        peers_db.soft_delete_peer(&soft_deleted.node_id).unwrap();
+
+        // What an earlier build wrote for a ban forever
+        let mut conn = db_connection.get_pooled_connection().unwrap();
+        diesel::sql_query(
+            "UPDATE peers SET banned_until = '+262142-12-31 23:59:59.999999999' WHERE node_id IN ('".to_string() +
+                &live.node_id.to_hex() +
+                "', '" +
+                &soft_deleted.node_id.to_hex() +
+                "')",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
+
+        let peers_db = PeerDatabaseSql::new(db_connection, &this_peer).unwrap();
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let stored = diesel::sql_query(
+            "SELECT banned_until AS value FROM peers WHERE banned_until IS NOT NULL ORDER BY node_id".to_string(),
+        )
+        .load::<TextValue>(&mut conn)
+        .unwrap();
+        drop(conn);
+        assert_eq!(stored.len(), 2);
+        for row in stored {
+            assert_eq!(row.value, "9999-12-31 23:59:59");
+        }
+        assert!(
+            peers_db
+                .get_peer_by_node_id(&live.node_id)
+                .unwrap()
+                .unwrap()
+                .is_banned()
+        );
+        assert!(
+            peers_db
+                .get_peer_by_node_id(&soft_deleted.node_id)
+                .unwrap()
+                .unwrap()
+                .is_banned()
+        );
     }
 
     /// `banned_until` stays set after a ban expires. A peer whose ban has expired is judged like any other peer: kept

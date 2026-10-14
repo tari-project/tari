@@ -22,7 +22,7 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, Local, NaiveDateTime, Utc};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, Utc};
 
 pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
     let old_duration = chrono::Duration::from_std(duration).unwrap_or(chrono::Duration::MAX);
@@ -51,13 +51,46 @@ pub fn format_local_datetime(datetime: &NaiveDateTime) -> String {
     local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
+/// The latest time stored in a database: 9999-12-31 23:59:59.
+///
+/// Databases such as SQLite store times as text and compare them as text. A later time has a five or more digit year
+/// written with a leading `+` (e.g. `+262142-12-31 ...` for [`DateTime::<Utc>::MAX_UTC`]), which sorts before every
+/// four-digit year, so a ban "forever" would read as long expired. Store-bound times are clamped to this.
+pub fn max_stored_datetime() -> NaiveDateTime {
+    NaiveDate::from_ymd_opt(9999, 12, 31)
+        .and_then(|date| date.and_hms_opt(23, 59, 59))
+        .expect("9999-12-31 23:59:59 is a valid date and time")
+}
+
+/// `datetime`, or [`max_stored_datetime`] if it is later.
+pub fn clamp_to_max_stored_datetime(datetime: NaiveDateTime) -> NaiveDateTime {
+    datetime.min(max_stored_datetime())
+}
+
+/// True for the "forever" time: [`DateTime::<Utc>::MAX_UTC`], or the [`max_stored_datetime`] it is stored as.
 pub fn is_max_datetime(datetime: &NaiveDateTime) -> bool {
-    DateTime::<Utc>::MAX_UTC.naive_utc() == *datetime
+    *datetime >= max_stored_datetime()
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn far_future_times_are_clamped_for_storage() {
+        let forever = safe_future_datetime_from_duration(Duration::from_secs(u64::MAX)).naive_utc();
+        assert!(forever > max_stored_datetime());
+        let stored = clamp_to_max_stored_datetime(forever);
+        assert_eq!(stored, max_stored_datetime());
+        assert!(is_max_datetime(&stored));
+        assert!(is_max_datetime(&forever));
+        // A four-digit year: sorts after every current time as text, too
+        assert_eq!(stored.to_string(), "9999-12-31 23:59:59");
+
+        let soon = Utc::now().naive_utc();
+        assert_eq!(clamp_to_max_stored_datetime(soon), soon);
+        assert!(!is_max_datetime(&soon));
+    }
 
     #[test]
     fn formats_duration() {
