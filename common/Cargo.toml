@@ -24,14 +24,14 @@ log = { workspace = true }
 log4rs = { workspace = true, default-features = false, features = [
     "config_parsing",
     "threshold_filter",
-    "yaml_format",
 ] }
 multiaddr = { version = "0.18.2" }
 path-clean = "0.1.0"
 prost-build = { version = "0.11.9", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = "0.9.17"
+serde-saphyr = { version = "2.0", default-features = false, features = ["deserialize"] }
+serde-value = "0.7"
 sha2 = { version = "0.10", optional = true }
 thiserror = { workspace = true }
 
@@ -39,6 +39,11 @@ thiserror = { workspace = true }
 libc = "0.2"
 
 [dev-dependencies]
+# Lets the tests build the sample log configs with every appender kind they use
+log4rs = { workspace = true, default-features = false, features = [
+    "all_components",
+    "config_parsing",
+] }
 tari_test_utils = { workspace = true }
 tempfile = "3.1.0"
 toml = "0.5.8"

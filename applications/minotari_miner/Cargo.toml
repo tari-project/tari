@@ -36,7 +36,6 @@ log = { workspace = true, features = ["std"] }
 log4rs = { workspace = true, default-features = false, features = [
     "config_parsing",
     "threshold_filter",
-    "yaml_format",
     "console_appender",
     "rolling_file_appender",
     "compound_policy",
