@@ -316,8 +316,12 @@ impl PeerStorageSql {
 
     /// Remove peers above the `max_peer_rows` cap and long soft-deleted peers. See
     /// [`PeerDatabaseSql::garbage_collect`].
-    pub fn garbage_collect(&self, max_peer_rows: usize) -> Result<GarbageCollectionStats, PeerManagerError> {
-        Ok(self.peer_db.garbage_collect(max_peer_rows)?)
+    pub fn garbage_collect(
+        &self,
+        max_peer_rows: usize,
+        connected: &[NodeId],
+    ) -> Result<GarbageCollectionStats, PeerManagerError> {
+        Ok(self.peer_db.garbage_collect(max_peer_rows, connected)?)
     }
 
     /// Ban the peer for the given duration

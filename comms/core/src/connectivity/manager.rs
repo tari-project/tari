@@ -22,7 +22,10 @@
 use std::{
     collections::HashMap,
     fmt,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -92,6 +95,8 @@ const PEER_DISCONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const ACCEPTABLE_CONNECTIVITY_REQUEST_PROCESSING_TIME: Duration = Duration::from_millis(500);
 // Warning threshold for event processing time
 const ACCEPTABLE_EVENT_PROCESSING_TIME: Duration = Duration::from_millis(500);
+/// How often the peer database is garbage collected (on the first pool refresh, then at most this often).
+const PEER_GARBAGE_COLLECTION_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 /// # Connectivity Manager
 ///
@@ -132,6 +137,8 @@ impl ConnectivityManager {
             proactive_dialer,
             seeds: vec![],
             ban_persist_retry_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_BAN_PERSIST_RETRIES)),
+            last_peer_garbage_collection: None,
+            peer_garbage_collection_running: Arc::new(AtomicBool::new(false)),
         }
         .spawn()
     }
@@ -193,6 +200,10 @@ struct ConnectivityManagerActor {
     seeds: Vec<NodeId>,
     /// Bounds concurrent `retry_ban_persistence` tasks - see `MAX_CONCURRENT_BAN_PERSIST_RETRIES`.
     ban_persist_retry_permits: Arc<Semaphore>,
+    /// When peer database garbage collection last started - see `maybe_collect_peer_garbage`.
+    last_peer_garbage_collection: Option<Instant>,
+    /// Set while a garbage collection task runs, so that a slow one is never overlapped by the next.
+    peer_garbage_collection_running: Arc<AtomicBool>,
 }
 
 impl ConnectivityManagerActor {
@@ -568,6 +579,7 @@ impl ConnectivityManagerActor {
         if self.config.is_connection_reaping_enabled {
             self.reap_inactive_connections(task_id).await;
         }
+        self.maybe_collect_peer_garbage();
         if let Some(threshold) = self.config.maintain_n_closest_connections_only {
             self.maintain_n_closest_peer_connections_only(threshold, task_id).await;
         }
@@ -699,6 +711,40 @@ impl ConnectivityManagerActor {
                 start.elapsed()
             );
         }
+    }
+
+    /// Starts a peer database garbage collection if one is due and none is running.
+    ///
+    /// It runs here because the pool knows which peers are connected, and a connected peer must never lose its row:
+    /// inbound-only peers are never marked as seen and wallets usually claim no address, so the collector would
+    /// otherwise remove long-lived connected neighbours. The collection runs in its own task (its database work on the
+    /// blocking pool) so that it never holds up this actor.
+    fn maybe_collect_peer_garbage(&mut self) {
+        let is_due = self
+            .last_peer_garbage_collection
+            .is_none_or(|started| started.elapsed() >= PEER_GARBAGE_COLLECTION_INTERVAL);
+        if !is_due || self.peer_garbage_collection_running.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        self.last_peer_garbage_collection = Some(Instant::now());
+
+        let mut connected = Vec::new();
+        for state in self.pool.all() {
+            if !matches!(
+                state.status(),
+                ConnectionStatus::Failed | ConnectionStatus::Disconnected(_)
+            ) {
+                connected.push(state.node_id().clone());
+            }
+        }
+        let peer_manager = self.peer_manager.clone();
+        let running = self.peer_garbage_collection_running.clone();
+        tokio::spawn(async move {
+            if let Err(err) = peer_manager.garbage_collect(connected).await {
+                warn!(target: LOG_TARGET, "Peer database garbage collection failed: {err}");
+            }
+            running.store(false, Ordering::Release);
+        });
     }
 
     async fn reap_inactive_connections(&mut self, task_id: u64) {
@@ -1947,7 +1993,7 @@ mod speculative_dial_circuit_breaker_tests {
     /// channel. The receiver is held directly rather than going through `ConnectionManagerMock` so the
     /// assertions below are synchronous - "was a `DialPeer` request produced by this call?" is answered by
     /// `try_recv`, with no sleeping or racing against a spawned mock task.
-    fn setup(
+    pub(super) fn setup(
         peer_manager: Arc<PeerManager>,
     ) -> (
         ConnectivityManagerActor,
@@ -1981,6 +2027,8 @@ mod speculative_dial_circuit_breaker_tests {
             proactive_dialer,
             seeds: vec![],
             ban_persist_retry_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_BAN_PERSIST_RETRIES)),
+            last_peer_garbage_collection: None,
+            peer_garbage_collection_running: Arc::new(AtomicBool::new(false)),
         };
 
         (actor, cm_rx, shutdown)
@@ -2101,5 +2149,76 @@ mod speculative_dial_circuit_breaker_tests {
             Ok(ConnectionManagerRequest::DialPeer { node_id: dialed, .. }) => assert_eq!(dialed, node_id),
             other => panic!("a speculative dial to a healthy peer must go through, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod peer_garbage_collection_tests {
+    #![allow(clippy::indexing_slicing)]
+    use tari_common_sqlite::connection::DbConnection;
+
+    use super::*;
+    use crate::{
+        peer_manager::{
+            PeerFeatures,
+            PeerManagerConfig,
+            create_test_peer,
+            database::{MIGRATIONS, PeerDatabaseSql},
+        },
+        test_utils::mocks::create_dummy_peer_connection,
+        types::TransportProtocol,
+    };
+
+    /// A connected inbound peer that was never dialled (so never seen) and is the oldest row, with the row cap
+    /// exceeded: the collector the pool refresh starts must leave it alone.
+    #[tokio::test]
+    async fn pool_refresh_garbage_collection_keeps_connected_peers() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peer_manager = Arc::new(
+            PeerManager::new_with_config(
+                PeerDatabaseSql::new(db_connection, &this_peer).unwrap(),
+                TransportProtocol::get_all(),
+                PeerManagerConfig {
+                    max_peer_rows: 1,
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+        );
+        let mut node_ids = Vec::new();
+        for i in 0..3i64 {
+            // Claim-sourced addresses (configured ones are always kept), none of them ever reached
+            let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+            for address in peer.addresses.clone().into_vec() {
+                peer.addresses.reset_stats_to_default(&address);
+            }
+            peer.added_at = chrono::Utc::now()
+                .naive_utc()
+                .checked_sub_signed(chrono::TimeDelta::hours(10 - i))
+                .unwrap();
+            node_ids.push(peer.node_id.clone());
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+
+        let (mut actor, _cm_rx, _shutdown) = super::speculative_dial_circuit_breaker_tests::setup(peer_manager.clone());
+        let (connection, _requests) = create_dummy_peer_connection(node_ids[0].clone());
+        actor.pool.insert_connection(connection);
+
+        actor.maybe_collect_peer_garbage();
+        let started = Instant::now();
+        while actor.peer_garbage_collection_running.load(Ordering::Acquire) {
+            assert!(started.elapsed() < Duration::from_secs(10));
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
+        // The cap of 1 is met by the connected peer alone, so both unconnected peers go
+        assert!(peer_manager.find_by_node_id(&node_ids[0]).await.unwrap().is_some());
+        assert!(peer_manager.find_by_node_id(&node_ids[1]).await.unwrap().is_none());
+        assert!(peer_manager.find_by_node_id(&node_ids[2]).await.unwrap().is_none());
+
+        // Not due again until the interval has passed
+        actor.maybe_collect_peer_garbage();
+        assert!(!actor.peer_garbage_collection_running.load(Ordering::Acquire));
     }
 }

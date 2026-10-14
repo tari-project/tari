@@ -29,8 +29,6 @@ use std::{
 
 use log::*;
 use multiaddr::Multiaddr;
-use tari_shutdown::ShutdownSignal;
-use tokio::{task::JoinHandle, time::MissedTickBehavior};
 
 #[cfg(feature = "metrics")]
 use crate::peer_manager::metrics;
@@ -139,9 +137,6 @@ pub const PEER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 /// the wallet in particular — keep the 60s default.
 pub const PEER_DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// How often the peer database garbage collector runs. It also runs once as soon as it is started.
-const GARBAGE_COLLECTION_INTERVAL: Duration = Duration::from_secs(10 * 60);
-
 impl PeerManager {
     /// Constructs a new PeerManager with the default [`PeerManagerConfig`]
     pub fn new(
@@ -167,18 +162,33 @@ impl PeerManager {
         })
     }
 
-    /// Removes peers above [`PeerManagerConfig::max_peer_rows`] that have never been reached, oldest first, and peers
-    /// that were soft deleted more than a day ago.
-    pub async fn garbage_collect(&self) -> Result<GarbageCollectionStats, PeerManagerError> {
+    /// Removes peers above [`PeerManagerConfig::max_peer_rows`] that have never been reached, oldest first, peers
+    /// without addresses above their own cap, and peers that were soft deleted more than a day ago. Peers in
+    /// `connected` are never removed: a connected peer whose row is gone has its messages dropped and cannot be banned.
+    ///
+    /// Driven by the connectivity manager, which knows which peers are connected.
+    pub async fn garbage_collect(&self, connected: Vec<NodeId>) -> Result<GarbageCollectionStats, PeerManagerError> {
         let max_peer_rows = self.config.max_peer_rows;
         let stats = self
             .peer_storage
-            .call(move |s| s.garbage_collect(max_peer_rows))
+            .call(move |s| s.garbage_collect(max_peer_rows, &connected))
             .await?;
+        if stats != GarbageCollectionStats::default() {
+            info!(
+                target: LOG_TARGET,
+                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap, {} peer(s) \
+                 without addresses over their cap and {} soft-deleted peer(s)",
+                stats.excess_peers_removed,
+                max_peer_rows,
+                stats.address_less_peers_removed,
+                stats.soft_deleted_peers_removed
+            );
+        }
         #[cfg(feature = "metrics")]
         {
             let removed = stats
                 .excess_peers_removed
+                .saturating_add(stats.address_less_peers_removed)
                 .saturating_add(stats.soft_deleted_peers_removed);
             metrics::garbage_collected_peers().inc_by(u64::try_from(removed).unwrap_or(u64::MAX));
             let count = self.count().await;
@@ -186,38 +196,6 @@ impl PeerManager {
             metrics::peer_list_size().set(count as i64);
         }
         Ok(stats)
-    }
-
-    /// Runs [`Self::garbage_collect`] now and then every [`GARBAGE_COLLECTION_INTERVAL`] until shutdown.
-    pub fn spawn_garbage_collector(self: Arc<Self>, mut shutdown_signal: ShutdownSignal) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(GARBAGE_COLLECTION_INTERVAL);
-            interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
-            loop {
-                tokio::select! {
-                    _ = interval.tick() => {},
-                    _ = shutdown_signal.wait() => break,
-                }
-                match self.garbage_collect().await {
-                    Ok(stats) => {
-                        if stats != GarbageCollectionStats::default() {
-                            info!(
-                                target: LOG_TARGET,
-                                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap, \
-                                 {} peer(s) without addresses over their cap and {} soft-deleted peer(s)",
-                                stats.excess_peers_removed,
-                                self.config.max_peer_rows,
-                                stats.address_less_peers_removed,
-                                stats.soft_deleted_peers_removed
-                            );
-                        }
-                    },
-                    Err(err) => {
-                        warn!(target: LOG_TARGET, "Peer database garbage collection failed: {err}");
-                    },
-                }
-            }
-        })
     }
 
     /// Get this peer's identity

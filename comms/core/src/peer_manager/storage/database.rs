@@ -795,9 +795,18 @@ impl PeerDatabaseSql {
     /// against (and push out) the peers we can dial. Above their cap they are removed soonest-ending ban first (no ban
     /// or an expired one first); the bans of the removed rows are lost.
     ///
+    /// Peers in `connected` are never removed. Inbound-only peers are never marked as seen and wallets usually have no
+    /// address, so without this a long-lived connected neighbour would be removed, after which its messages are dropped
+    /// as coming from an unknown peer and it can no longer be banned.
+    ///
     /// Rows are deleted in batches of [`GARBAGE_COLLECTION_BATCH_SIZE`], each in its own short write transaction.
-    pub fn garbage_collect(&self, max_peer_rows: usize) -> Result<GarbageCollectionStats, StorageError> {
+    pub fn garbage_collect(
+        &self,
+        max_peer_rows: usize,
+        connected: &[NodeId],
+    ) -> Result<GarbageCollectionStats, StorageError> {
         let mut stats = GarbageCollectionStats::default();
+        let connected_hex = connected.iter().map(|node_id| node_id.to_hex()).collect::<Vec<_>>();
         let mut conn = self.connection.get_pooled_connection()?;
         let now = chrono::Utc::now().naive_utc();
         // Matches the JSON stored in `multi_addresses.source` for `PeerAddressSource::Config`
@@ -824,6 +833,7 @@ impl PeerDatabaseSql {
                 let peers_with_addresses = multi_addresses::table.select(multi_addresses::peer_id);
                 let peer_ids = peers::table
                     .filter(peers::deleted_at.is_null())
+                    .filter(peers::node_id.ne_all(&connected_hex))
                     .filter(peers::peer_id.eq_any(peers_with_addresses))
                     .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
                     .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
@@ -856,9 +866,10 @@ impl PeerDatabaseSql {
         while excess > 0 {
             let batch_size = min(excess, GARBAGE_COLLECTION_BATCH_SIZE);
             let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
-                // NULL (never banned) sorts first, then the ban that ended or ends soonest
+                // NULL (never banned) sorts first, then the ban that ended or ends soonest; oldest first among equals
                 let peer_ids = peers::table
                     .filter(peers::deleted_at.is_null())
+                    .filter(peers::node_id.ne_all(&connected_hex))
                     .filter(not(
                         peers::peer_id.eq_any(multi_addresses::table.select(multi_addresses::peer_id))
                     ))
@@ -866,7 +877,7 @@ impl PeerDatabaseSql {
                         "flags & {} = 0",
                         PeerFlags::SEED.to_i32()
                     )))
-                    .order_by(peers::banned_until.asc())
+                    .order_by((peers::banned_until.asc(), peers::added_at.asc()))
                     .select(peers::peer_id)
                     .limit(batch_size)
                     .load::<i64>(conn)?;
@@ -886,6 +897,7 @@ impl PeerDatabaseSql {
             let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
                 let peer_ids = peers::table
                     .filter(peers::deleted_at.lt(deleted_before))
+                    .filter(peers::node_id.ne_all(&connected_hex))
                     .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
                     .select(peers::peer_id)
                     .limit(GARBAGE_COLLECTION_BATCH_SIZE)
@@ -3418,7 +3430,7 @@ mod tests {
             }
         }
 
-        let stats = peers_db.garbage_collect(5).unwrap();
+        let stats = peers_db.garbage_collect(5, &[]).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 3,
             address_less_peers_removed: 0,
@@ -3431,7 +3443,10 @@ mod tests {
         assert_eq!(peers_db.size(), 5);
 
         // At the cap there is nothing more to do
-        assert_eq!(peers_db.garbage_collect(5).unwrap(), GarbageCollectionStats::default());
+        assert_eq!(
+            peers_db.garbage_collect(5, &[]).unwrap(),
+            GarbageCollectionStats::default()
+        );
     }
 
     #[test]
@@ -3456,7 +3471,7 @@ mod tests {
         peers_db.add_or_update_peer(expendable).unwrap();
 
         // Cap of zero: only the one peer that is none of the above can go
-        let stats = peers_db.garbage_collect(0).unwrap();
+        let stats = peers_db.garbage_collect(0, &[]).unwrap();
         assert_eq!(stats.excess_peers_removed, 1);
         let mut expected = vec![banned.node_id.clone(), seed.node_id, configured.node_id];
         expected.sort();
@@ -3478,7 +3493,7 @@ mod tests {
         drop(conn);
         peers_db.soft_delete_peer(&recently_deleted.node_id).unwrap();
 
-        let stats = peers_db.garbage_collect(100).unwrap();
+        let stats = peers_db.garbage_collect(100, &[]).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 0,
             address_less_peers_removed: 0,
@@ -3534,7 +3549,7 @@ mod tests {
             .unwrap();
         drop(conn);
 
-        let stats = peers_db.garbage_collect(max_peer_rows).unwrap();
+        let stats = peers_db.garbage_collect(max_peer_rows, &[]).unwrap();
         assert_eq!(stats, GarbageCollectionStats {
             excess_peers_removed: 0,
             // 13 rows, cap 10 / 5 = 2
@@ -3547,6 +3562,59 @@ mod tests {
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
         assert!(peers_db.get_peer_by_node_id(&expired).unwrap().is_none());
+    }
+
+    #[test]
+    fn garbage_collection_never_removes_connected_peers() {
+        let peers_db = new_test_db();
+        // A long-connected inbound neighbour: its claimed address was never dialled, so never seen, and it is the
+        // oldest row
+        let inbound = node_peer_with_addresses(
+            vec!["/ip4/23.0.1.1/tcp/18189".parse().unwrap()],
+            false,
+            TimeDelta::hours(100),
+        );
+        peers_db.add_or_update_peer(inbound.clone()).unwrap();
+        let mut unconnected = Vec::new();
+        for i in 1..8u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::hours(100 - i64::from(i)));
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            unconnected.push(peer.node_id);
+        }
+        // A connected wallet with no address, the oldest of the address-less rows
+        let wallet = node_peer_with_addresses(vec![], false, TimeDelta::hours(50));
+        peers_db.add_or_update_peer(wallet.clone()).unwrap();
+        let mut address_less = Vec::new();
+        for hours in [40, 10, 30, 20] {
+            let peer = node_peer_with_addresses(vec![], false, TimeDelta::hours(hours));
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            address_less.push((hours, peer.node_id));
+        }
+        let connected = vec![inbound.node_id.clone(), wallet.node_id.clone()];
+
+        // Address-less cap 15 / 5 = 3 of 5: the two oldest unconnected go, not by row id
+        let stats = peers_db.garbage_collect(15, &connected).unwrap();
+        assert_eq!(stats.address_less_peers_removed, 2);
+        for (hours, node_id) in &address_less {
+            let kept = peers_db.get_peer_by_node_id(node_id).unwrap().is_some();
+            assert_eq!(kept, *hours < 30, "{hours}h");
+        }
+
+        // Both caps exceeded: unconnected rows are trimmed, the connected ones stay
+        let stats = peers_db.garbage_collect(5, &connected).unwrap();
+        assert_eq!(stats, GarbageCollectionStats {
+            excess_peers_removed: 3,
+            address_less_peers_removed: 2,
+            soft_deleted_peers_removed: 0,
+        });
+        assert!(peers_db.get_peer_by_node_id(&inbound.node_id).unwrap().is_some());
+        assert!(peers_db.get_peer_by_node_id(&wallet.node_id).unwrap().is_some());
+        let mut expected = unconnected[3..].to_vec();
+        expected.push(inbound.node_id.clone());
+        expected.push(wallet.node_id.clone());
+        expected.sort();
+        assert_eq!(stored_node_ids(&peers_db), expected);
     }
 
     #[test]
