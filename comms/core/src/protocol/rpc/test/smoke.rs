@@ -1642,6 +1642,11 @@ async fn requests_arriving_during_a_service_call() {
 /// A request declaring a length over `RPC_MAX_REQUEST_SIZE` is answered with `BadRequest` from its length prefix and
 /// the start of its body (which holds the request id) alone: the server does not wait for, or buffer, the rest. The
 /// rest is skipped as it arrives and the session carries on.
+///
+/// SPEC-B asks for the error "before any payload bytes are sent". The server deliberately waits for the first 6 bytes
+/// of the body (the `request_id` field) so that the `BadRequest` carries the request id and the client can match it,
+/// as `oversized_requests_are_rejected_before_decoding` requires. Six bytes instead of zero still shows that nothing
+/// near the declared length is waited for or buffered.
 #[tokio::test]
 async fn oversized_request_header_is_rejected_before_allocation() {
     use futures::SinkExt;
@@ -1683,4 +1688,30 @@ async fn oversized_request_header_is_rejected_before_allocation() {
     let resp = read_raw_response(&mut framed).await;
     assert_eq!(resp.request_id, 8);
     assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+}
+
+/// A session whose task panics still releases its slot: with a limit of one session per peer, the peer can connect
+/// again
+#[tokio::test]
+async fn a_panicking_session_releases_its_slot() {
+    let builder = RpcServer::builder()
+        .with_maximum_sessions_per_client(1)
+        .with_cull_oldest_peer_rpc_connection_on_full(false)
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    // `return_error` is not implemented by this service: it panics inside the session task
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::ZERO)));
+    let (notif_tx, handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (node_identity, peer) = connect_peer(&notif_tx, &context).await;
+
+    let mut client = connect_greeting_client(&peer).await.unwrap();
+    client.return_error().await.unwrap_err();
+    let released = holds_within(Duration::from_secs(5), || {
+        let mut handle = handle.clone();
+        let node_id = node_identity.node_id().clone();
+        async move { handle.get_num_active_sessions_for(node_id).await.unwrap() == 0 }
+    })
+    .await;
+    assert!(released, "the panicked session was still counted against its peer");
+    let mut client = connect_greeting_client(&peer).await.unwrap();
+    client.say_hello(Default::default()).await.unwrap();
 }

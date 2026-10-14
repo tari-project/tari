@@ -52,16 +52,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{SinkExt, StreamExt, future, stream::FuturesUnordered};
+use futures::{SinkExt, StreamExt, future, future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use prost::Message;
 use request_codec::{RequestCodec, RequestFrame};
 use router::Router;
-use tokio::{
-    sync::mpsc,
-    task::{JoinHandle, JoinSet},
-    time,
-};
+use tokio::{sync::mpsc, task::JoinSet, time};
 use tokio_stream::Stream;
 use tokio_util::codec::{Framed, FramedParts};
 use tower::{Service, make::MakeService};
@@ -383,7 +379,9 @@ where TSvc: MakeService<ProtocolId, Request<Bytes>>
     /// The id given to the next session. Unique for the life of the server, unlike yamux stream ids, which every
     /// connection reuses.
     next_session_id: u64,
-    tasks: FuturesUnordered<JoinHandle<(NodeId, u64)>>,
+    /// Resolves to the peer and session id of each session once its task ends, however it ends (a panic included), so
+    /// that its session is always released
+    tasks: FuturesUnordered<BoxFuture<'static, (NodeId, u64)>>,
     /// Handshakes in progress. Dropping the set (when `serve` returns) aborts them, so none outlives the server.
     handshakes: JoinSet<HandshakeOutcome<<TSvc as MakeService<ProtocolId, Request<Bytes>>>::Service>>,
     /// The peer of each handshake task, and whether the task will accept the session, so its pending slot and session
@@ -516,7 +514,7 @@ where
                     }
                 }
 
-                Some(Ok((node_id, session_id))) = self.tasks.next() => {
+                Some((node_id, session_id)) = self.tasks.next() => {
                     self.on_session_complete(&node_id, session_id);
                 },
 
@@ -974,7 +972,13 @@ where
             })
             .map_err(|e| RpcServerError::MaximumSessionsReached(format!("{e:?}")))?;
 
-        self.tasks.push(handle);
+        let task_node_id = node_id.clone();
+        self.tasks.push(Box::pin(async move {
+            if let Err(err) = handle.await {
+                error!(target: LOG_TARGET, "RPC session {session_id} for peer `{task_node_id}` failed: {err}");
+            }
+            (task_node_id, session_id)
+        }));
         let mut peer_stop = vec![SessionInfo {
             peer_watch: stop_tx,
             session_id,
@@ -1124,8 +1128,29 @@ where
     /// is not running (we are not in the select), and culling only signals `stop_rx`, which this
     /// task is no longer watching. One peer could walk the global session limit down to zero and
     /// lock every other peer out of the node.
+    ///
+    /// A session that has been told to stop (before or during the close) never spends longer than
+    /// [`STOPPED_SESSION_CLOSE_TIMEOUT`] on it, so it releases its slot within a second on every path.
     async fn close_framed(&mut self, timeout: Duration) -> Result<(), RpcServerError> {
-        match time::timeout(timeout, self.framed.close()).await {
+        let timeout = if self.stop_requested() {
+            cmp::min(timeout, STOPPED_SESSION_CLOSE_TIMEOUT)
+        } else {
+            timeout
+        };
+        let mut stop_rx = self.stop_rx.clone();
+        let result = tokio::select! {
+            biased;
+            result = time::timeout(timeout, self.framed.close()) => result,
+            _ = stop_rx.changed(), if timeout > STOPPED_SESSION_CLOSE_TIMEOUT => {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) Stop signal received while closing the substream. Dropping it.",
+                    self.logging_context_string
+                );
+                return Ok(());
+            },
+        };
+        match result {
             Ok(result) => result.map_err(Into::into),
             Err(_elapsed) => {
                 debug!(
@@ -1137,6 +1162,12 @@ where
                 Ok(())
             },
         }
+    }
+
+    /// Whether the session has been told to stop. The server drops the sender right after signalling (or when it shuts
+    /// down), so a closed channel counts as a stop too; that also covers a signal this receiver has already seen.
+    fn stop_requested(&self) -> bool {
+        self.stop_rx.has_changed().unwrap_or(true)
     }
 
     #[allow(clippy::too_many_lines)]

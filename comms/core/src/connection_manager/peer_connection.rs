@@ -410,6 +410,9 @@ impl PeerConnection {
             String::from_utf8_lossy(&protocol),
             self.peer_node_id
         );
+        // Responses are read with the canonical framing, which reserves up to RPC_MAX_FRAME_SIZE from a frame's length
+        // prefix; a smaller per-client `max_response_size` is only checked once a response is read, because a final
+        // (FIN) response is exempt from it and may be frame-sized (see `RpcClientBuilder::with_max_response_size`)
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
         let rpc_session_state = Arc::new(AtomicBool::new(true));
 
@@ -758,12 +761,11 @@ impl PeerConnectionActor {
     ) {
         match result {
             Ok((selected_protocol, stream)) => {
-                self.notify_event(ConnectionManagerEvent::NewInboundSubstream(
-                    self.peer_node_id.clone(),
-                    selected_protocol,
-                    stream,
-                ))
-                .await;
+                // A substream can be dropped (the peer sees its negotiation fail) rather than let a busy connection
+                // manager stall this actor, and the peer's other substreams with it
+                let event =
+                    ConnectionManagerEvent::NewInboundSubstream(self.peer_node_id.clone(), selected_protocol, stream);
+                let _result = send_or_drop(&self.event_notifier, event, "peer_connection_new_substream").await;
             },
             Err(PeerConnectionError::ProtocolError(err)) if err.is_ban_offence() => {
                 error!(
@@ -774,6 +776,8 @@ impl PeerConnectionActor {
                     err
                 );
 
+                // Not dropped when the connection manager is busy, or the violation would go unpunished. Waiting only
+                // holds up this (misbehaving) peer's own connection.
                 self.notify_event(ConnectionManagerEvent::PeerViolation {
                     peer_node_id: self.peer_node_id.clone(),
                     details: err.to_string(),
@@ -819,10 +823,10 @@ impl PeerConnectionActor {
         Ok(NegotiatedSubstream::new(selected_protocol, stream))
     }
 
-    /// Hands `event` to the connection manager, or drops it if the connection manager does not take it within a second
-    /// (see [send_or_drop]): the connection manager serves every peer, and this actor must keep serving its own.
+    /// Hands `event` to the connection manager, waiting for room however long that takes. For events that must not be
+    /// lost (a disconnect, a violation); a new substream uses [send_or_drop] instead.
     async fn notify_event(&mut self, event: ConnectionManagerEvent) {
-        let _result = send_or_drop(&self.event_notifier, event, "peer_connection_event").await;
+        let _result = self.event_notifier.send(event).await;
     }
 
     /// Disconnect this peer connection.
@@ -860,6 +864,7 @@ impl PeerConnectionActor {
             ),
         }
 
+        // Not dropped when the connection manager is busy: subscribers would otherwise never learn the peer is gone
         if !silent {
             self.notify_event(ConnectionManagerEvent::PeerDisconnected(
                 self.id,
@@ -967,6 +972,67 @@ mod tests {
         assert!(!weak.is_strong());
         // counter remains at 1 (just `strong`, not `weak`).
         assert_eq!(conn.strong_count(), 1);
+    }
+
+    /// Starts a peer connection actor whose connection manager channel holds one event and is already full. Returns
+    /// the connection, the remote end of it and the connection manager's receiver.
+    async fn connection_with_full_event_channel() -> (PeerConnection, Yamux, mpsc::Receiver<ConnectionManagerEvent>) {
+        let (_, local, remote) = crate::test_utils::transport::build_multiplexed_connections().await;
+        let (event_tx, event_rx) = mpsc::channel(1);
+        event_tx
+            .send(ConnectionManagerEvent::PeerInboundConnectFailed(
+                super::super::ConnectionManagerError::DialQueueFull,
+            ))
+            .await
+            .unwrap();
+        let conn = create(
+            local,
+            Multiaddr::empty(),
+            NodeId::default(),
+            PeerFeatures::empty(),
+            ConnectionDirection::Outbound,
+            event_tx,
+            Arc::new(vec![ProtocolId::from_static(b"/test/proto")]),
+            vec![],
+        );
+        (conn, remote, event_rx)
+    }
+
+    /// Takes the event that filled the channel, then returns the next one
+    async fn next_event_after_filler(event_rx: &mut mpsc::Receiver<ConnectionManagerEvent>) -> ConnectionManagerEvent {
+        let filler = event_rx.recv().await.unwrap();
+        assert!(matches!(filler, ConnectionManagerEvent::PeerInboundConnectFailed(_)));
+        time::timeout(Duration::from_secs(5), event_rx.recv())
+            .await
+            .expect("the event was not delivered once the channel drained")
+            .unwrap()
+    }
+
+    /// A busy connection manager does not make the connection lose its `PeerDisconnected` event: it is delivered once
+    /// the channel drains, however long that takes
+    #[tokio::test]
+    async fn peer_disconnected_is_not_dropped_when_the_connection_manager_is_busy() {
+        let (_conn, remote, mut event_rx) = connection_with_full_event_channel().await;
+        drop(remote);
+        // Well past the time after which a new substream would have been dropped
+        time::sleep(Duration::from_millis(1500)).await;
+        let event = next_event_after_filler(&mut event_rx).await;
+        assert!(matches!(event, ConnectionManagerEvent::PeerDisconnected(..)), "{event}");
+    }
+
+    /// Nor does it lose a `PeerViolation`, so the violation is still acted on
+    #[tokio::test]
+    async fn peer_violation_is_not_dropped_when_the_connection_manager_is_busy() {
+        use tokio::io::AsyncWriteExt;
+
+        let (_conn, remote, mut event_rx) = connection_with_full_event_channel().await;
+        // A protocol negotiation frame with invalid flags, which is a ban offence
+        let mut substream = remote.get_yamux_control().open_stream().await.unwrap();
+        substream.write_all(&[0, 0xff]).await.unwrap();
+        substream.flush().await.unwrap();
+        time::sleep(Duration::from_millis(1500)).await;
+        let event = next_event_after_filler(&mut event_rx).await;
+        assert!(matches!(event, ConnectionManagerEvent::PeerViolation { .. }), "{event}");
     }
 
     #[test]
