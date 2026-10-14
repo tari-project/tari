@@ -188,25 +188,6 @@ mod tests {
             "expected base_path to end with esmeralda, got {base_path_override}"
         );
     }
-}
-
-mod defaults {
-    use tari_common::dir_utils;
-
-    const DEFAULT_CONFIG: &str = "config/config.toml";
-
-    pub(super) fn base_path() -> String {
-        dir_utils::default_path("", None).to_string_lossy().to_string()
-    }
-
-    pub(super) fn config() -> String {
-        DEFAULT_CONFIG.to_string()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 
     #[test]
     fn parse_key_val_handles_multiple_equals_and_preserves_whitespace() {
@@ -229,5 +210,19 @@ mod tests {
         assert!(parse_key_val::<String, String>("=val").is_err());
         assert!(parse_key_val::<String, String>("   =val").is_err());
         assert!(parse_key_val::<String, String>("no_equals").is_err());
+    }
+}
+
+mod defaults {
+    use tari_common::dir_utils;
+
+    const DEFAULT_CONFIG: &str = "config/config.toml";
+
+    pub(super) fn base_path() -> String {
+        dir_utils::default_path("", None).to_string_lossy().to_string()
+    }
+
+    pub(super) fn config() -> String {
+        DEFAULT_CONFIG.to_string()
     }
 }
