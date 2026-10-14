@@ -765,7 +765,17 @@ impl PeerConnectionActor {
                 // manager stall this actor, and the peer's other substreams with it
                 let event =
                     ConnectionManagerEvent::NewInboundSubstream(self.peer_node_id.clone(), selected_protocol, stream);
-                let _result = send_or_drop(&self.event_notifier, event, "peer_connection_new_substream").await;
+                if send_or_drop(&self.event_notifier, event, "peer_connection_new_substream")
+                    .await
+                    .is_err()
+                {
+                    debug!(
+                        target: LOG_TARGET,
+                        "[{}] Dropped a new inbound substream from peer `{}` because the connection manager was busy",
+                        self,
+                        self.peer_node_id
+                    );
+                }
             },
             Err(PeerConnectionError::ProtocolError(err)) if err.is_ban_offence() => {
                 error!(

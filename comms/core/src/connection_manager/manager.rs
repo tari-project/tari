@@ -453,14 +453,20 @@ where
                 // not hold it up for longer than that.
                 let result = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream))
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id.clone(), stream))
                     .await;
                 match result {
                     Ok(()) => {
                         debug!(target: LOG_TARGET, "Protocol notification for '{proto_str}' sent" );
                     },
-                    // Already warned about (rate limited) and counted where it was dropped
-                    Err(ProtocolError::NotificationDropped) => {},
+                    // Already warned about (rate limited, without the peer) and counted where it was dropped
+                    Err(ProtocolError::NotificationDropped) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Dropped an inbound substream from peer `{node_id}` because protocol '{proto_str}' did not \
+                             take it in time"
+                        );
+                    },
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,

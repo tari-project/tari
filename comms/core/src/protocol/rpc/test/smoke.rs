@@ -1836,3 +1836,55 @@ async fn sessions_culled_while_the_peer_stops_reading_are_released_promptly() {
         handle.get_num_active_sessions().await.unwrap()
     );
 }
+
+/// A large request pipelined behind one that is in a slow service call is not read while the call runs: the client's
+/// send is held back by flow control rather than buffered by the server. It is handled normally afterwards.
+#[tokio::test]
+async fn a_large_pipelined_request_is_not_read_during_a_service_call() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::proto;
+
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(2))));
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, _handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut framed = open_raw_session(&peer).await;
+
+    framed.send(say_hello_frame(1, 0)).await.unwrap();
+    time::sleep(Duration::from_millis(200)).await;
+
+    // Far larger than a yamux stream's initial window, but within the request limit
+    let large = proto::rpc::RpcRequest {
+        request_id: 2,
+        method: 1,
+        flags: 0,
+        deadline: 30,
+        payload: SayHelloRequest {
+            name: "a".repeat(2 * 1024 * 1024),
+            language: 1,
+        }
+        .encode_to_vec(),
+    }
+    .encode_to_vec();
+    assert!(large.len() < rpc::RPC_MAX_REQUEST_SIZE);
+    let send = framed.send(large.into());
+    tokio::pin!(send);
+    assert!(
+        time::timeout(Duration::from_millis(1000), &mut send).await.is_err(),
+        "the server read the whole pipelined request while the first one was in its service call"
+    );
+
+    // Once the first request is answered, the pipelined one is read and handled
+    time::timeout(Duration::from_secs(10), send)
+        .await
+        .expect("the pipelined request was not read after the first was answered")
+        .unwrap();
+    let first = read_raw_response(&mut framed).await;
+    assert_eq!(first.request_id, 1);
+    assert_eq!(RpcStatusCode::from(first.status), RpcStatusCode::Ok);
+    let second = read_raw_response(&mut framed).await;
+    assert_eq!(second.request_id, 2);
+    assert_eq!(RpcStatusCode::from(second.status), RpcStatusCode::Ok);
+}

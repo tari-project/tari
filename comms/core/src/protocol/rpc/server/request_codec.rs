@@ -44,6 +44,9 @@ pub enum RequestFrame {
         request_id: u32,
         len: usize,
     },
+    /// In peek mode (see [RequestCodec::set_peek_limit]): the next frame is longer than the peek limit. Nothing of it
+    /// was consumed; it is read as usual once peek mode is off.
+    Unread,
 }
 
 /// The server's framing for an RPC session: the canonical length-delimited framing, except that a request longer than
@@ -51,8 +54,10 @@ pub enum RequestFrame {
 ///
 /// `LengthDelimitedCodec` reserves buffer space for the length a frame declares as soon as it has read the prefix, so
 /// with the 8 MiB response frame limit, four bytes from a client would make the server reserve 8 MiB per session. This
-/// reads the prefix itself and only buffers requests within the request limit. A longer request (up to the frame limit,
-/// which a peer running a version with a larger request cap may honestly send) is reported as
+/// reads the prefix itself and reserves nothing for the declared length: the read buffer grows only as bytes arrive
+/// (`Framed` makes room for each read), so the memory a session holds tracks what the client has actually sent. A
+/// request within the limit still costs up to the request limit once the client has sent all of it. A longer request
+/// (up to the frame limit, which a peer running a version with a larger request cap may honestly send) is reported as
 /// [RequestFrame::Oversized] once the start of it, which holds its `request_id`, has arrived, so the server can reply
 /// with `BadRequest` and carry on with the session. A length over the frame limit is an error, as it is for
 /// `LengthDelimitedCodec`.
@@ -66,6 +71,8 @@ pub struct RequestCodec {
     max_request_size: usize,
     /// The bytes of an oversized request that are still to be skipped
     skip_remaining: usize,
+    /// In peek mode, the longest frame that is decoded; a longer one is reported as [RequestFrame::Unread]
+    peek_limit: Option<usize>,
 }
 
 impl RequestCodec {
@@ -76,7 +83,15 @@ impl RequestCodec {
             encoder: codec,
             max_request_size,
             skip_remaining: 0,
+            peek_limit: None,
         }
+    }
+
+    /// Turns peek mode on (`Some(limit)`) or off (`None`). In peek mode a frame longer than `limit` is not read: it is
+    /// reported as [RequestFrame::Unread] (every time it is asked for) and left where it is, so the session stops
+    /// reading the substream and the client's flow control holds the rest of it back.
+    pub fn set_peek_limit(&mut self, limit: Option<usize>) {
+        self.peek_limit = limit;
     }
 }
 
@@ -108,6 +123,12 @@ impl Decoder for RequestCodec {
             ));
         }
 
+        if let Some(peek_limit) = self.peek_limit &&
+            len > peek_limit
+        {
+            return Ok(Some(RequestFrame::Unread));
+        }
+
         if len > self.max_request_size {
             let body_start_end = LENGTH_PREFIX_SIZE.saturating_add(cmp::min(len, REQUEST_ID_PREFIX_SIZE));
             let Some(body_start) = src.get(LENGTH_PREFIX_SIZE..body_start_end) else {
@@ -120,9 +141,8 @@ impl Decoder for RequestCodec {
             return Ok(Some(RequestFrame::Oversized { request_id, len }));
         }
 
-        let frame_end = LENGTH_PREFIX_SIZE.saturating_add(len);
-        if src.len() < frame_end {
-            src.reserve(frame_end.saturating_sub(src.len()));
+        // Nothing is reserved for the rest of the frame: `Framed` grows the buffer as bytes arrive
+        if src.len() < LENGTH_PREFIX_SIZE.saturating_add(len) {
             return Ok(None);
         }
         src.advance(LENGTH_PREFIX_SIZE);
@@ -230,6 +250,42 @@ mod test {
             panic!("expected a request");
         };
         assert_eq!(decoded.as_ref(), next.as_slice());
+    }
+
+    #[test]
+    fn it_reserves_nothing_for_the_declared_length_of_a_request() {
+        let codec = LengthDelimitedCodec::builder().max_frame_length(2_000_000).new_codec();
+        let mut codec = RequestCodec::new(codec, 1_000_000);
+        let mut src = BytesMut::from(&900_000u32.to_be_bytes()[..]);
+        assert!(codec.decode(&mut src).unwrap().is_none());
+        assert!(src.capacity() < 1024, "reserved {} bytes", src.capacity());
+    }
+
+    #[test]
+    fn in_peek_mode_a_long_frame_is_left_unread() {
+        let mut codec = codec();
+        codec.set_peek_limit(Some(10));
+        let short = [1u8; 10];
+        let long = encoded_request(9, 20);
+        let mut src = with_prefix(&short);
+        src.extend_from_slice(&with_prefix(&long));
+
+        let RequestFrame::Request(frame) = codec.decode(&mut src).unwrap().unwrap() else {
+            panic!("expected a request");
+        };
+        assert_eq!(frame.as_ref(), short.as_slice());
+        // Reported, but nothing of it consumed, however often it is asked for
+        let len_before = src.len();
+        for _ in 0..2 {
+            assert!(matches!(codec.decode(&mut src).unwrap(), Some(RequestFrame::Unread)));
+            assert_eq!(src.len(), len_before);
+        }
+
+        codec.set_peek_limit(None);
+        let RequestFrame::Request(frame) = codec.decode(&mut src).unwrap().unwrap() else {
+            panic!("expected a request");
+        };
+        assert_eq!(frame.as_ref(), long.as_slice());
     }
 
     #[test]

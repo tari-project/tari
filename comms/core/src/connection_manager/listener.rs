@@ -75,6 +75,26 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
+/// Tells the connection manager that an inbound connection from `peer_addr` failed, unless it is too busy to take it
+/// (see [send_or_drop]). The peer's identity is not known (its upgrade failed), only its address.
+async fn notify_inbound_connect_failed(
+    conn_man_notifier: &mpsc::Sender<ConnectionManagerEvent>,
+    err: ConnectionManagerError,
+    peer_addr: &Multiaddr,
+) {
+    let event = ConnectionManagerEvent::PeerInboundConnectFailed(err);
+    if send_or_drop(conn_man_notifier, event, "listener_inbound_connect_failed")
+        .await
+        .is_err()
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Dropped the PeerInboundConnectFailed event for the peer at {peer_addr} because the connection manager was \
+             busy"
+        );
+    }
+}
+
 /// Closes a connection whose `PeerConnected` event was dropped, so that nothing else knows of it.
 ///
 /// Waits for the connection actor's reply for at most [SEND_OR_DROP_TIMEOUT]: the actor may itself be waiting on the
@@ -83,6 +103,13 @@ const LOG_TARGET: &str = "comms::connection_manager::listener";
 /// the only handle, so its request channel is otherwise empty), and dropping the handle closes that channel, which
 /// also ends the actor.
 pub(super) async fn close_unannounced_connection(mut conn: PeerConnection) {
+    debug!(
+        target: LOG_TARGET,
+        "Dropped the PeerConnected event for peer `{}` ({}) because the connection manager was busy; closing the \
+         connection",
+        conn.peer_node_id(),
+        conn.address()
+    );
     let disconnect = conn.disconnect_silent(Minimized::No, "listener: PeerConnected event dropped");
     if time::timeout(SEND_OR_DROP_TIMEOUT, disconnect).await.is_err() {
         debug!(
@@ -276,7 +303,7 @@ where
                         noise_config.clone(),
                         conn_man_notifier.clone(),
                         socket,
-                        peer_addr,
+                        peer_addr.clone(),
                         our_supported_protocols,
                         &config,
                     )
@@ -300,12 +327,7 @@ where
                                 target: LOG_TARGET,
                                 "[ThisNode={this_node_id_str}] Peer connection upgrade failed for peer because '{err:?}'"
                             );
-                            let _result = send_or_drop(
-                                &conn_man_notifier,
-                                ConnectionManagerEvent::PeerInboundConnectFailed(err),
-                                "listener_inbound_connect_failed",
-                            )
-                            .await;
+                            notify_inbound_connect_failed(&conn_man_notifier, err, &peer_addr).await;
                         },
                     }
                 },

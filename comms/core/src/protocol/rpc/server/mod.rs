@@ -202,6 +202,11 @@ const SESSION_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 /// even if its peer is not reading.
 const STOPPED_SESSION_CLOSE_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// The longest frame read while a request's service call runs, to see whether the client abandoned it with a FIN. A FIN
+/// request has no payload, so it is at most 29 bytes: a tag byte for each of its four integer fields, three u32
+/// varints (5 bytes each) and a u64 varint (10 bytes). This leaves room for a client that sets a short payload as well.
+const MAX_FIN_REQUEST_SIZE: usize = 128;
+
 #[derive(Clone)]
 pub struct RpcServerBuilder {
     maximum_simultaneous_sessions: Option<usize>,
@@ -973,14 +978,11 @@ where
                     comms_provider,
                     stop_rx,
                 );
+                // Counted until the session ends, however it ends (a panic included)
                 #[cfg(feature = "metrics")]
-                let num_sessions = metrics::num_sessions(&service.protocol);
-                #[cfg(feature = "metrics")]
-                num_sessions.inc();
+                let _num_sessions = metrics::ActiveSession::new(&service.protocol);
                 service.start().await;
                 info!(target: LOG_TARGET, "END OF SESSION for {node_id_clone} ");
-                #[cfg(feature = "metrics")]
-                num_sessions.dec();
 
                 (node_id_clone, session_id)
             })
@@ -1196,8 +1198,8 @@ where
 
         loop {
             let next = match self.buffered_request.take() {
-                Some(frame) => Some(Ok(frame)),
-                None => tokio::select! {
+                // A request that arrived during the last service call: one that was not read yet is read now
+                Some(RequestFrame::Unread) | None => tokio::select! {
                     _ = self.stop_rx.changed() => {
                         debug!(target: LOG_TARGET, "({}) Stop signal received, closing substream.", self.logging_context_string);
                         self.close_framed(STOPPED_SESSION_CLOSE_TIMEOUT).await?;
@@ -1214,6 +1216,7 @@ where
                     }
                     result = self.framed.next() => result,
                 },
+                Some(frame) => Some(Ok(frame)),
             };
 
             let served = match next {
@@ -1236,6 +1239,10 @@ where
                 Some(Ok(RequestFrame::Oversized { request_id, len })) => {
                     self.reject_oversized_request(request_id, len).await.map(|()| false)
                 },
+                // Only produced in peek mode, which is only on during a service call
+                Some(Ok(RequestFrame::Unread)) => Err(RpcServerError::ProtocolError(
+                    "BUG: a frame was left unread outside a service call".to_string(),
+                )),
                 Some(Err(err)) => {
                     if let Err(err) = self.close_framed(SESSION_CLOSE_TIMEOUT).await {
                         error!(
@@ -1344,6 +1351,8 @@ where
     #[instrument(name = "rpc::server::handle_req", level="trace", skip(self, request), err, fields(request_size = request.len ()))]
     async fn handle_request(&mut self, mut request: Bytes) -> Result<bool, RpcServerError> {
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
+        // The payload was copied out, so release the frame now rather than hold it through the service call
+        drop(request);
 
         let request_id = decoded_msg.request_id;
         let method = RpcMethod::from(decoded_msg.method);
@@ -1440,22 +1449,32 @@ where
         // The call is dropped (cancelling it) if the session is told to stop, or if the client hangs up or abandons the
         // request with a FIN: nobody is waiting for the answer any more, and it would hold the session slot until the
         // deadline
+        //
+        // Meanwhile only frames small enough to be a FIN are read: a longer one (a pipelined request) is left on the
+        // substream until this request is done, so the client's flow control, not the session, holds it.
         let mut stop_rx = self.stop_rx.clone();
-        let service_result = tokio::select! {
+        self.framed
+            .get_mut()
+            .codec_mut()
+            .set_peek_limit(Some(MAX_FIN_REQUEST_SIZE));
+        let selected = tokio::select! {
             biased;
-            _ = stop_rx.changed() => return Err(RpcServerError::SessionStopped),
-            reason = wait_for_client_cancel(&mut self.framed, &mut self.buffered_request) => {
-                if matches!(reason, RpcServerError::ClientInterruptedStream) {
-                    debug!(
-                        target: LOG_TARGET,
-                        "({}) Client sent FIN while its request was being handled. Request abandoned.",
-                        self.logging_context_string
-                    );
-                    return Ok(true);
-                }
-                return Err(reason);
+            _ = stop_rx.changed() => Err(RpcServerError::SessionStopped),
+            reason = wait_for_client_cancel(&mut self.framed, &mut self.buffered_request) => Err(reason),
+            result = time::timeout(deadline, service_call) => Ok(result),
+        };
+        self.framed.get_mut().codec_mut().set_peek_limit(None);
+        let service_result = match selected {
+            Ok(result) => result,
+            Err(RpcServerError::ClientInterruptedStream) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "({}) Client sent FIN while its request was being handled. Request abandoned.",
+                    self.logging_context_string
+                );
+                return Ok(true);
             },
-            result = time::timeout(deadline, service_call) => result,
+            Err(err) => return Err(err),
         };
         let service_result = match service_result {
             Ok(v) => v,
@@ -1653,8 +1672,10 @@ where
     }
 
     async fn check_interruptions(&mut self) -> Result<(), RpcServerError> {
-        // A request that arrived during the service call is handled after this one, and nothing behind it is read
-        // before then (see `wait_for_client_cancel`)
+        // A request that arrived during the service call is handled after this one, so this does not read past it.
+        // The substream can still be read while a send waits for the peer: `EarlyClose` checks for a message from the
+        // client then, and one ends the session (`UnexpectedMessage`), as it always has for a client that sends while
+        // it is being answered.
         if self.buffered_request.is_some() {
             return Ok(());
         }
@@ -1669,6 +1690,8 @@ where
                 );
                 Poll::Ready(None)
             },
+            // Only produced in peek mode, which is off here
+            Poll::Ready(Some(Ok(RequestFrame::Unread))) => Poll::Ready(None),
             Poll::Ready(Some(Ok(RequestFrame::Request(mut msg)))) => {
                 let decoded_msg = match proto::rpc::RpcRequest::decode(&mut msg) {
                     Ok(msg) => msg,
@@ -1768,9 +1791,12 @@ fn is_fin(frame: &BytesMut) -> bool {
 /// Waits, while a request's service call runs, for the client to give up on it, and returns why: it hung up
 /// (`StreamClosedByRemote`, or the read error), or it sent a FIN (`ClientInterruptedStream`).
 ///
-/// Any other frame is a request pipelined behind this one. It is kept in `buffered` for the session to handle next,
-/// and the substream is not read again until then, so nothing is lost or reordered; from then on only the service
-/// call's own deadline (and the stop signal) can end it early.
+/// Any other frame is a request pipelined behind this one. A small one is kept in `buffered`; a larger one is not read
+/// at all (the codec is in peek mode, see `RequestCodec::set_peek_limit`), only noted in `buffered` as
+/// [RequestFrame::Unread]. Either way the session handles it next, and this function does not read again, so nothing
+/// is lost or reordered; from then on only the service call's own deadline (and the stop signal) can end the call
+/// early. The session may still read the substream before then while it waits to send a response: see
+/// `ActivePeerRpcService::check_interruptions`.
 async fn wait_for_client_cancel(framed: &mut SessionFraming, buffered: &mut Option<RequestFrame>) -> RpcServerError {
     if buffered.is_none() {
         match framed.next().await {
