@@ -89,7 +89,9 @@ const ADDRESS_BYTES_VERSION: u32 = 2;
 
 /// The most rows peer garbage collection deletes in one write transaction, so that it never holds the database's single
 /// writer for long.
-const GARBAGE_COLLECTION_BATCH_SIZE: i64 = 500;
+const GARBAGE_COLLECTION_BATCH_SIZE: usize = 500;
+/// How many garbage collection candidates one plain read fetches, to be deleted in batches.
+const GARBAGE_COLLECTION_READ_SIZE: i64 = 5000;
 /// How long a soft-deleted peer is kept before garbage collection removes it for good.
 const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
 
@@ -102,6 +104,74 @@ pub struct GarbageCollectionStats {
     pub address_less_peers_removed: usize,
     /// Soft-deleted peers removed after their retention period
     pub soft_deleted_peers_removed: usize,
+}
+
+/// The passes of [`PeerDatabaseSql::garbage_collect`]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GarbageCollectionPass {
+    /// Live peers with addresses, none of them ever reached
+    NeverSeen,
+    /// Live peers without any address
+    AddressLess,
+    /// Peers soft deleted before the retention period
+    SoftDeleted,
+}
+
+/// What every garbage collection pass needs to decide eligibility
+struct GarbageCollectionContext {
+    now: NaiveDateTime,
+    deleted_before: NaiveDateTime,
+    config_source: String,
+    connected_hex: Vec<String>,
+}
+
+/// The peers eligible for removal in `pass`, in removal order. Used both to find candidates and to re-check them
+/// right before they are deleted.
+fn garbage_collection_candidates<'a>(
+    pass: GarbageCollectionPass,
+    context: &'a GarbageCollectionContext,
+) -> peers::BoxedQuery<'a, diesel::sqlite::Sqlite, diesel::sql_types::BigInt> {
+    let not_seed =
+        diesel::dsl::sql::<diesel::sql_types::Bool>(&format!("peers.flags & {} = 0", PeerFlags::SEED.to_i32()));
+    let not_banned = peers::banned_until.is_null().or(peers::banned_until.le(context.now));
+    let has_address = diesel::dsl::exists(multi_addresses::table.filter(multi_addresses::peer_id.eq(peers::peer_id)));
+    let query = peers::table
+        .select(peers::peer_id)
+        .filter(peers::node_id.ne_all(&context.connected_hex))
+        .into_boxed();
+    match pass {
+        GarbageCollectionPass::NeverSeen => {
+            // Peers we have reached, or that have a configured address, are kept
+            let reached_or_configured = diesel::dsl::exists(
+                multi_addresses::table
+                    .filter(multi_addresses::peer_id.eq(peers::peer_id))
+                    .filter(
+                        multi_addresses::last_seen
+                            .is_not_null()
+                            .or(multi_addresses::source.eq(&context.config_source)),
+                    ),
+            );
+            query
+                .filter(peers::deleted_at.is_null())
+                .filter(has_address)
+                .filter(not(reached_or_configured))
+                .filter(not_banned)
+                .filter(not_seed)
+                .order_by(peers::added_at.asc())
+        },
+        GarbageCollectionPass::AddressLess => {
+            // NULL (never banned) sorts first, then the ban that ended or ends soonest; oldest first among equals
+            query
+                .filter(peers::deleted_at.is_null())
+                .filter(not(has_address))
+                .filter(not_seed)
+                .order_by((peers::banned_until.asc(), peers::added_at.asc()))
+        },
+        GarbageCollectionPass::SoftDeleted => query
+            .filter(peers::deleted_at.lt(context.deleted_before))
+            .filter(not_banned)
+            .order_by(peers::peer_id.asc()),
+    }
 }
 
 /// This peer's identity information
@@ -799,19 +869,27 @@ impl PeerDatabaseSql {
     /// address, so without this a long-lived connected neighbour would be removed, after which its messages are dropped
     /// as coming from an unknown peer and it can no longer be banned.
     ///
-    /// Rows are deleted in batches of [`GARBAGE_COLLECTION_BATCH_SIZE`], each in its own short write transaction.
+    /// Candidates are found with a plain read, which takes no write lock however large the table is. They are then
+    /// deleted in chunks of [`GARBAGE_COLLECTION_BATCH_SIZE`], each in its own short write transaction that checks
+    /// the chunk against the same conditions again (cheaply, by peer id), so a peer that was reached, banned or
+    /// connected in the meantime is not removed.
     pub fn garbage_collect(
         &self,
         max_peer_rows: usize,
         connected: &[NodeId],
     ) -> Result<GarbageCollectionStats, StorageError> {
-        let mut stats = GarbageCollectionStats::default();
-        let connected_hex = connected.iter().map(|node_id| node_id.to_hex()).collect::<Vec<_>>();
         let mut conn = self.connection.get_pooled_connection()?;
         let now = chrono::Utc::now().naive_utc();
-        // Matches the JSON stored in `multi_addresses.source` for `PeerAddressSource::Config`
-        let config_source = serde_json::to_string(&PeerAddressSource::Config)
-            .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?;
+        let context = GarbageCollectionContext {
+            now,
+            deleted_before: now
+                .checked_sub_signed(SOFT_DELETED_PEER_RETENTION)
+                .unwrap_or(NaiveDateTime::MIN),
+            // Matches the JSON stored in `multi_addresses.source` for `PeerAddressSource::Config`
+            config_source: serde_json::to_string(&PeerAddressSource::Config)
+                .map_err(|err| StorageError::UnexpectedResult(err.to_string()))?,
+            connected_hex: connected.iter().map(|node_id| node_id.to_hex()).collect(),
+        };
 
         let peers_with_addresses = multi_addresses::table.select(multi_addresses::peer_id);
         let live_peers = peers::table
@@ -819,40 +897,9 @@ impl PeerDatabaseSql {
             .filter(peers::peer_id.eq_any(peers_with_addresses))
             .count()
             .get_result::<i64>(&mut conn)?;
-        let mut excess = live_peers.saturating_sub(i64::try_from(max_peer_rows).unwrap_or(i64::MAX));
-        while excess > 0 {
-            let batch_size = min(excess, GARBAGE_COLLECTION_BATCH_SIZE);
-            let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
-                let kept_peer_ids = multi_addresses::table
-                    .filter(
-                        multi_addresses::last_seen
-                            .is_not_null()
-                            .or(multi_addresses::source.eq(&config_source)),
-                    )
-                    .select(multi_addresses::peer_id);
-                let peers_with_addresses = multi_addresses::table.select(multi_addresses::peer_id);
-                let peer_ids = peers::table
-                    .filter(peers::deleted_at.is_null())
-                    .filter(peers::node_id.ne_all(&connected_hex))
-                    .filter(peers::peer_id.eq_any(peers_with_addresses))
-                    .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
-                    .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
-                        "flags & {} = 0",
-                        PeerFlags::SEED.to_i32()
-                    )))
-                    .filter(not(peers::peer_id.eq_any(kept_peer_ids)))
-                    .order_by(peers::added_at.asc())
-                    .select(peers::peer_id)
-                    .limit(batch_size)
-                    .load::<i64>(conn)?;
-                PeerDatabaseSql::delete_peers_by_id(&peer_ids, conn)
-            })?;
-            if removed == 0 {
-                break;
-            }
-            stats.excess_peers_removed = stats.excess_peers_removed.saturating_add(removed);
-            excess = excess.saturating_sub(i64::try_from(removed).unwrap_or(i64::MAX));
-        }
+        let excess = live_peers.saturating_sub(i64::try_from(max_peer_rows).unwrap_or(i64::MAX));
+        let excess_peers_removed =
+            self.garbage_collection_pass(&mut conn, GarbageCollectionPass::NeverSeen, &context, Some(excess))?;
 
         let address_less_peers = peers::table
             .filter(peers::deleted_at.is_null())
@@ -862,55 +909,75 @@ impl PeerDatabaseSql {
             .count()
             .get_result::<i64>(&mut conn)?;
         let address_less_cap = i64::try_from(max_peer_rows / 5).unwrap_or(i64::MAX);
-        let mut excess = address_less_peers.saturating_sub(address_less_cap);
-        while excess > 0 {
-            let batch_size = min(excess, GARBAGE_COLLECTION_BATCH_SIZE);
-            let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
-                // NULL (never banned) sorts first, then the ban that ended or ends soonest; oldest first among equals
-                let peer_ids = peers::table
-                    .filter(peers::deleted_at.is_null())
-                    .filter(peers::node_id.ne_all(&connected_hex))
-                    .filter(not(
-                        peers::peer_id.eq_any(multi_addresses::table.select(multi_addresses::peer_id))
-                    ))
-                    .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
-                        "flags & {} = 0",
-                        PeerFlags::SEED.to_i32()
-                    )))
-                    .order_by((peers::banned_until.asc(), peers::added_at.asc()))
-                    .select(peers::peer_id)
-                    .limit(batch_size)
-                    .load::<i64>(conn)?;
-                PeerDatabaseSql::delete_peers_by_id(&peer_ids, conn)
-            })?;
-            if removed == 0 {
-                break;
-            }
-            stats.address_less_peers_removed = stats.address_less_peers_removed.saturating_add(removed);
-            excess = excess.saturating_sub(i64::try_from(removed).unwrap_or(i64::MAX));
-        }
+        let excess = address_less_peers.saturating_sub(address_less_cap);
+        let address_less_peers_removed =
+            self.garbage_collection_pass(&mut conn, GarbageCollectionPass::AddressLess, &context, Some(excess))?;
 
-        let deleted_before = now
-            .checked_sub_signed(SOFT_DELETED_PEER_RETENTION)
-            .unwrap_or(NaiveDateTime::MIN);
+        let soft_deleted_peers_removed =
+            self.garbage_collection_pass(&mut conn, GarbageCollectionPass::SoftDeleted, &context, None)?;
+
+        Ok(GarbageCollectionStats {
+            excess_peers_removed,
+            address_less_peers_removed,
+            soft_deleted_peers_removed,
+        })
+    }
+
+    // Removes up to `limit` (unlimited if `None`) peers eligible for `pass`, returning how many were removed
+    fn garbage_collection_pass(
+        &self,
+        conn: &mut SqliteConnection,
+        pass: GarbageCollectionPass,
+        context: &GarbageCollectionContext,
+        mut limit: Option<i64>,
+    ) -> Result<usize, StorageError> {
+        let mut removed = 0usize;
         loop {
-            let removed = conn.immediate_transaction::<_, StorageError, _>(|conn| {
-                let peer_ids = peers::table
-                    .filter(peers::deleted_at.lt(deleted_before))
-                    .filter(peers::node_id.ne_all(&connected_hex))
-                    .filter(peers::banned_until.is_null().or(peers::banned_until.le(now)))
-                    .select(peers::peer_id)
-                    .limit(GARBAGE_COLLECTION_BATCH_SIZE)
-                    .load::<i64>(conn)?;
-                PeerDatabaseSql::delete_peers_by_id(&peer_ids, conn)
-            })?;
-            if removed == 0 {
+            let read_size = match limit {
+                Some(limit) => min(limit, GARBAGE_COLLECTION_READ_SIZE),
+                None => GARBAGE_COLLECTION_READ_SIZE,
+            };
+            if read_size <= 0 {
                 break;
             }
-            stats.soft_deleted_peers_removed = stats.soft_deleted_peers_removed.saturating_add(removed);
-        }
+            // A plain read: no write lock is held while the whole table is searched
+            let candidates = garbage_collection_candidates(pass, context)
+                .limit(read_size)
+                .load::<i64>(conn)?;
+            if candidates.is_empty() {
+                break;
+            }
 
-        Ok(stats)
+            let mut removed_this_read = 0usize;
+            for chunk in candidates.chunks(GARBAGE_COLLECTION_BATCH_SIZE) {
+                let deleted = PeerDatabaseSql::delete_if_still_eligible(conn, pass, context, chunk)?;
+                removed_this_read = removed_this_read.saturating_add(deleted);
+            }
+            if removed_this_read == 0 {
+                break;
+            }
+            removed = removed.saturating_add(removed_this_read);
+            if let Some(remaining) = limit.as_mut() {
+                *remaining = remaining.saturating_sub(i64::try_from(removed_this_read).unwrap_or(i64::MAX));
+            }
+        }
+        Ok(removed)
+    }
+
+    // Deletes those of `peer_ids` that are still eligible for `pass`, in one short write transaction. Re-checking is
+    // cheap: the candidate query is restricted to these peer ids.
+    fn delete_if_still_eligible(
+        conn: &mut SqliteConnection,
+        pass: GarbageCollectionPass,
+        context: &GarbageCollectionContext,
+        peer_ids: &[i64],
+    ) -> Result<usize, StorageError> {
+        conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let still_eligible = garbage_collection_candidates(pass, context)
+                .filter(peers::peer_id.eq_any(peer_ids))
+                .load::<i64>(conn)?;
+            PeerDatabaseSql::delete_peers_by_id(&still_eligible, conn)
+        })
     }
 
     // Hard-deletes the given peers and their addresses, returning the number of peers deleted
@@ -2097,8 +2164,11 @@ mod tests {
                 database::{
                     ADDRESS_BYTES_VERSION_KEY,
                     ADDRESS_CLASSIFIER_VERSION_KEY,
+                    GarbageCollectionContext,
+                    GarbageCollectionPass,
                     GarbageCollectionStats,
                     duration_to_i64_ms_infallible,
+                    garbage_collection_candidates,
                     u32_to_i32_infallible,
                 },
                 schema::{db_metadata, multi_addresses, peers},
@@ -3615,6 +3685,59 @@ mod tests {
         expected.push(wallet.node_id.clone());
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
+    }
+
+    /// Candidates are read without a write lock, so a peer can change between the read and its delete. The delete
+    /// re-checks every condition.
+    #[test]
+    fn garbage_collection_rechecks_candidates_before_deleting() {
+        let peers_db = new_test_db();
+        let mut peers = Vec::new();
+        for i in 0..4u8 {
+            let address = format!("/ip4/23.{i}.1.1/tcp/18189").parse().unwrap();
+            let peer = node_peer_with_addresses(vec![address], false, TimeDelta::hours(10 - i64::from(i)));
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            peers.push(peer);
+        }
+        let now = chrono::Utc::now().naive_utc();
+        let context = GarbageCollectionContext {
+            now,
+            deleted_before: now.checked_sub_signed(TimeDelta::hours(24)).unwrap(),
+            config_source: serde_json::to_string(&PeerAddressSource::Config).unwrap(),
+            connected_hex: vec![],
+        };
+        let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+        let candidates = garbage_collection_candidates(GarbageCollectionPass::NeverSeen, &context)
+            .load::<i64>(&mut conn)
+            .unwrap();
+        assert_eq!(candidates.len(), 4);
+
+        // Between the read and the delete: one is reached, one is banned, one gets a live connection
+        let reached = &peers[0];
+        peers_db
+            .set_last_seen(&reached.node_id, now, reached.addresses.addresses()[0].address())
+            .unwrap();
+        peers_db
+            .set_banned(&peers[1].node_id, Duration::from_secs(3600), "bad".to_string())
+            .unwrap();
+        let context = GarbageCollectionContext {
+            connected_hex: vec![peers[2].node_id.to_hex()],
+            ..context
+        };
+
+        let deleted = PeerDatabaseSql::delete_if_still_eligible(
+            &mut conn,
+            GarbageCollectionPass::NeverSeen,
+            &context,
+            &candidates,
+        )
+        .unwrap();
+        drop(conn);
+        assert_eq!(deleted, 1);
+        for (i, peer) in peers.iter().enumerate() {
+            let kept = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().is_some();
+            assert_eq!(kept, i < 3, "peer {i}");
+        }
     }
 
     #[test]
