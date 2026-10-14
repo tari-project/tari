@@ -703,21 +703,18 @@ impl ConnectivityManagerActor {
 
     async fn reap_inactive_connections(&mut self, task_id: u64) {
         let start = Instant::now();
-        let excess_connections = self
-            .pool
-            .count_connected()
-            .saturating_sub(self.config.reaper_min_connection_threshold);
-        if excess_connections == 0 {
+        // Outbound connections are reaped above `reaper_min_connection_threshold` outbound connections and inbound
+        // connections above `reaper_inbound_soft_limit` inbound connections. Strong handles pin a connection, so those
+        // are skipped even when they appear idle. A pinned connection that is write stalled is still closed by its
+        // yamux worker once the stall reaches WRITE_STALL_TIMEOUT.
+        let mut connections = self.pool.get_reapable_connections_mut(
+            self.config.reaper_min_connection_threshold,
+            self.config.reaper_inbound_soft_limit,
+            self.config.reaper_min_inactive_age,
+        );
+        if connections.is_empty() {
             return;
         }
-
-        let mut connections = self
-            .pool
-            .get_inactive_outbound_connections_mut(self.config.reaper_min_inactive_age);
-        // Strong handles pin a connection — skip them even when they appear idle. A pinned connection that is write
-        // stalled is still closed by its yamux worker once the stall reaches WRITE_STALL_TIMEOUT.
-        connections.retain(|conn| !conn.is_strongly_held());
-        connections.truncate(excess_connections);
         let mut nodes_to_remove = Vec::new();
         for conn in &mut connections {
             if !conn.is_connected() {
@@ -726,8 +723,9 @@ impl ConnectivityManagerActor {
 
             debug!(
                 target: LOG_TARGET,
-                "({}) Disconnecting '{}' because connection was inactive ({} handles, write stalled for {:.0?})",
+                "({}) Disconnecting {} '{}' because connection was inactive ({} handles, write stalled for {:.0?})",
                 task_id,
+                conn.direction(),
                 conn.peer_node_id().short_str(),
                 conn.handle_count(),
                 conn.write_stalled_for().unwrap_or_default()

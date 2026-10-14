@@ -35,9 +35,15 @@ pub struct ConnectivityConfig {
     pub connection_pool_refresh_interval: Duration,
     /// True if connection reaping is enabled, otherwise false (default: true)
     pub is_connection_reaping_enabled: bool,
-    /// The minimum number of connections that must exist before any connections may be reaped
+    /// The minimum number of outbound connections that must exist before any outbound connections may be reaped.
+    /// Only outbound connections count: inbound connections are opened by remote peers, so counting them would let
+    /// anyone with enough identities evict the connections this node chose.
     /// Default: 50
     pub reaper_min_connection_threshold: usize,
+    /// Once more than this many inbound connections are open, idle inbound connections are closed, oldest first,
+    /// until the count is back at this limit. Connections pinned by a strong handle are never closed.
+    /// Default: 400
+    pub reaper_inbound_soft_limit: usize,
     /// The minimum age of the connection before it can be reaped. This prevents a connection that has just been
     /// established from being reaped due to inactivity. Default: 20 minutes
     pub reaper_min_inactive_age: Duration,
@@ -107,6 +113,7 @@ impl Default for ConnectivityConfig {
             connection_pool_refresh_interval: Duration::from_secs(60),
             reaper_min_inactive_age: Duration::from_secs(20 * 60),
             reaper_min_connection_threshold: 50,
+            reaper_inbound_soft_limit: 400,
             is_connection_reaping_enabled: true,
             max_failures_mark_offline: 1,
             connection_tie_break_linger: Duration::from_secs(2),
