@@ -76,3 +76,21 @@ pub fn inbound_substream_counter(protocol: &ProtocolId) -> IntCounter {
 
     METER.with_label_values(&[String::from_utf8_lossy(protocol).as_ref()])
 }
+
+/// Inbound sockets closed by the listener before the handshake started. `reason` is one of:
+/// - `inbound_cap`: the listener's `max_inbound_connections` (established + in flight) is reached
+/// - `inbound_cap_per_ip`: the source's `max_inbound_connections_per_ip` (established + in flight) is reached
+/// - `per_ip`: the source's `max_inbound_handshakes_per_ip` (in flight) is reached
+/// - `slots_full`: all `max_simultaneous_inbound_connects` handshake slots are in use
+pub fn inbound_handshake_rejected(reason: &str) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::connections::inbound_handshake_rejected",
+            "Number of inbound sockets closed before the handshake started",
+            &["reason"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[reason])
+}
