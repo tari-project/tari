@@ -47,7 +47,7 @@ To iterate against a simulator you leave running:
 SPECULOS_APDU_ADDRESS=$(./scripts/ledger_speculos.sh address nanosplus default) \
 SPECULOS_API_ADDRESS=$(./scripts/ledger_speculos.sh api-address nanosplus default) \
 SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
-  cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
+  cargo test --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
     --ignored --test-threads=1 --skip a_wrong_length_payload_does_not_block_on_a_button_press
 ```
 

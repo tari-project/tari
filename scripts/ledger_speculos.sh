@@ -652,7 +652,9 @@ KEY_MANAGER_TARGET_ARGS=(--locked -p "${KEY_MANAGER_PACKAGE}" --features ledger 
 # workspace's `cargo ci-clippy` never sees a line of it; this is the one place anything does.
 cmd_compile() {
   echo "==> Compiling the scenario suite"
-  cargo test --locked --no-run --manifest-path "${COMMS_TESTING_MANIFEST}"
+  # No `--locked` on comms_testing: its lockfile is separate from the root workspace's, so any root dependency
+  # change (through tari_common and friends) leaves it stale and would fail unrelated PRs.
+  cargo test --no-run --manifest-path "${COMMS_TESTING_MANIFEST}"
   echo "==> Compiling the key manager suite into ${KEY_MANAGER_TARGET_DIR}"
   key_manager_cargo test --no-run "${KEY_MANAGER_TARGET_ARGS[@]}"
   echo "==> Linting the key manager suite"
@@ -680,7 +682,7 @@ Or, without JUnit, run the suite directly against a simulator you started yourse
   SPECULOS_APDU_ADDRESS=$(./scripts/ledger_speculos.sh address nanosplus default) \
   SPECULOS_API_ADDRESS=$(./scripts/ledger_speculos.sh api-address nanosplus default) \
   SPECULOS_MODEL=nanosplus SPECULOS_SEED_ID=default \
-    cargo test --locked --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
+    cargo test --manifest-path applications/minotari_ledger_wallet/comms_testing/Cargo.toml -- \
       --ignored --test-threads=1 --skip @BLOCKING_PROBE@
 
 The --skip is needed on every model. That test documents an unfixed device bug and leaves the device unusable by
@@ -838,7 +840,6 @@ cmd_test() {
         SPECULOS_MODEL="${model}" \
         SPECULOS_SEED_ID="${seed}" \
         cargo nextest run \
-        --locked \
         --manifest-path "${COMMS_TESTING_MANIFEST}" \
         --profile ci \
         --run-ignored all \
