@@ -1715,3 +1715,124 @@ async fn a_panicking_session_releases_its_slot() {
     let mut client = connect_greeting_client(&peer).await.unwrap();
     client.say_hello(Default::default()).await.unwrap();
 }
+
+/// A socket whose reads can be switched off for good, so the other side's writes back up once the pipe is full
+struct StopReadingSocket {
+    inner: tokio::io::DuplexStream,
+    stopped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl tokio::io::AsyncRead for StopReadingSocket {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.stopped.load(Ordering::SeqCst) {
+            // Never woken: this side has stopped reading for the rest of the test
+            return std::task::Poll::Pending;
+        }
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for StopReadingSocket {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// A peer that stops reading and keeps completing client handshakes on new substreams, each culling its oldest
+/// session, does not make the culled sessions hold their slots: each is released within a second, whether it was
+/// streaming a response or had only just been accepted.
+///
+/// This does not stall the acceptance write itself: with yamux 0.13 the first write on a new stream always fits (the
+/// stream starts with a full send window and its sender has a reserved slot in the connection's queue), however
+/// stalled the socket is. The session task still selects its acceptance against the stop signal, which also covers a
+/// session culled before its task first runs.
+#[tokio::test]
+async fn sessions_culled_while_the_peer_stops_reading_are_released_promptly() {
+    use crate::connection_manager::{ConnectionDirection, PeerConnectionInfo};
+
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(10)
+        .with_maximum_sessions_per_client(1)
+        .with_cull_oldest_peer_rpc_connection_on_full(true)
+        .with_handshake_timeout(Duration::from_secs(15))
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, mut handle, context, _shutdown) =
+        setup_server_with_handle(GreetingService::default(), builder).await;
+
+    // A small pipe, so the server's writes stall soon after the client stops reading
+    let (client_socket, server_socket) = tokio::io::duplex(16 * 1024);
+    let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let client_socket = StopReadingSocket {
+        inner: client_socket,
+        stopped: stopped.clone(),
+    };
+    let client = Yamux::upgrade_connection(
+        client_socket,
+        ConnectionDirection::Outbound,
+        PeerConnectionInfo::default(),
+    )
+    .unwrap();
+    let server = Yamux::upgrade_connection(
+        server_socket,
+        ConnectionDirection::Inbound,
+        PeerConnectionInfo::default(),
+    )
+    .unwrap();
+    let node_identity = build_node_identity(Default::default());
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
+    spawn_inbound(server.into_incoming(), notif_tx, node_identity.node_id().clone());
+
+    // The first session asks for a response far larger than the pipe, then the client stops reading
+    let mut first = connect_greeting_client(&client).await.unwrap();
+    stopped.store(true, Ordering::SeqCst);
+    let _request = task::spawn(async move { first.reply_with_msg_of_size(1024 * 1024).await });
+    time::sleep(Duration::from_millis(500)).await;
+
+    // Two more sessions: the first culls the session that is streaming, the second culls the first while it waits to
+    // send its acceptance
+    let mut held = Vec::new();
+    for _ in 0..2 {
+        let mut substream = client.get_yamux_control().open_stream().await.unwrap();
+        substream.write_all(&handshake_frame()).await.unwrap();
+        substream.flush().await.unwrap();
+        held.push(substream);
+        time::sleep(Duration::from_millis(300)).await;
+    }
+
+    let released = holds_within(Duration::from_secs(1), || {
+        let mut handle = handle.clone();
+        async move { handle.get_num_active_sessions().await.unwrap() == 1 }
+    })
+    .await;
+    assert!(
+        released,
+        "a culled session still held its slot: {} active",
+        handle.get_num_active_sessions().await.unwrap()
+    );
+}

@@ -939,11 +939,25 @@ where
         let handle = self
             .executor
             .try_spawn(async move {
-                if let Err(err) = Handshake::new(&mut framed)
-                    .with_timeout(config.handshake_timeout)
-                    .accept_version(version)
-                    .await
-                {
+                // The session is registered (and can be culled or closed) from here on, so a stop ends it even while
+                // the acceptance is waiting on a peer that does not read. The substream is dropped
+                // without a close. The clone has its own record of what it has seen, so a stop after
+                // the acceptance still reaches the session below; a stop sent before this task first
+                // runs is seen here (as is a dropped sender).
+                let mut accept_stop_rx = stop_rx.clone();
+                let mut handshake = Handshake::new(&mut framed).with_timeout(config.handshake_timeout);
+                let accepted = tokio::select! {
+                    biased;
+                    _ = accept_stop_rx.changed() => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "RPC session for `{node_id_clone}` was stopped before its acceptance was sent"
+                        );
+                        return (node_id_clone, session_id);
+                    },
+                    result = handshake.accept_version(version) => result,
+                };
+                if let Err(err) = accepted {
                     debug!(
                         target: LOG_TARGET,
                         "Could not send the RPC handshake acceptance to `{node_id_clone}`; ending the session: {err}"
