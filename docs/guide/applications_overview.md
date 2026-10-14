@@ -12,7 +12,7 @@ The Tari project consists of several applications that work together to provide 
 - **minotari_miner** - Mining implementation for SHA-3 based proof-of-work
 - **minotari_merge_mining_proxy** - Proxy server for merge mining with Monero/XMRig
 - **minotari_ledger_wallet** - Hardware wallet implementation for Ledger devices
-- **deps_only** - Development utility for building dependencies
+- **deps_only** - Placeholder workspace member; builds nothing beyond `log`
 
 ## Applications
 
@@ -691,17 +691,17 @@ signing.
 
 ### 6. deps_only
 
-**Description**: Development utility that builds all project dependencies for Docker layer caching.
+**Description**: Placeholder workspace member that does nothing at runtime.
 
 **Binary Name**: `deps_only`
 
 **Purpose**:
 
-- Build all project dependencies without functionality
-- Create cached Docker layers with compiled dependencies
-- Speed up subsequent builds in containerized environments
+- Originally intended to build every workspace dependency so Docker layers could be cached
+- Its only dependency is `log`, so building it does not pre-compile anything else
+- No Dockerfile or CI job builds it; `tarilabs.Dockerfile` copies the directory only so the workspace manifest resolves
 
-**Usage**: This is typically used in Docker build processes and not run directly by users.
+**Usage**: Not used in any build process and not run directly by users.
 
 ---
 
@@ -854,13 +854,6 @@ cargo build --release --bin minotari_node
 cargo build --release --bin minotari_console_wallet
 cargo build --release --bin minotari_miner
 cargo build --release --bin minotari_merge_mining_proxy
-```
-
-### Building Dependencies Only
-
-```bash
-# Build dependencies for Docker layer caching
-cargo build --bin deps_only
 ```
 
 ### Cross-compilation
