@@ -29,10 +29,8 @@ futures = { version = "^0.3.1", features = ["compat", "std"] }
 libc = "0.2.65"
 log = { workspace = true }
 log4rs = { workspace = true, features = [
-    "default",
-    "console_appender",
-    "file_appender",
-    "yaml_format",
+    "all_components",
+    "config_parsing",
 ] }
 rand = { workspace = true }
 thiserror = { workspace = true }
