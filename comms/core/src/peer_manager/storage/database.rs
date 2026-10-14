@@ -101,7 +101,7 @@ const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
 pub struct GarbageCollectionStats {
     /// Never-seen peers removed to bring the table back under the row cap
     pub excess_peers_removed: usize,
-    /// Peers with addresses and a (current or past) ban removed to bring them back under their cap
+    /// Peers with addresses and an active ban removed to bring them back under their cap
     pub banned_peers_removed: usize,
     /// Peers without any address (typically only carrying a handshake ban) removed to bring them back under their cap
     pub address_less_peers_removed: usize,
@@ -112,9 +112,9 @@ pub struct GarbageCollectionStats {
 /// The passes of [`PeerDatabaseSql::garbage_collect`]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GarbageCollectionPass {
-    /// Live, never-banned peers with addresses, none of them reached recently or configured
+    /// Live peers with addresses and no active ban, none of them reached recently or configured
     NeverSeen,
-    /// Live peers with addresses that have (or had) a ban
+    /// Live peers with addresses and an active ban
     Banned,
     /// Live peers without any address
     AddressLess,
@@ -157,17 +157,19 @@ fn garbage_collection_eligible<'a>(
                     .filter(multi_addresses::peer_id.eq(peers::peer_id))
                     .filter(multi_addresses::last_seen.ge(context.seen_since)),
             );
+            // An expired ban is no ban: such a peer is judged like any other
             query
                 .filter(peers::deleted_at.is_null())
-                .filter(peers::banned_until.is_null())
+                .filter(peers::banned_until.is_null().or(peers::banned_until.le(context.now)))
                 .filter(has_address)
                 .filter(not(reached))
                 .filter(not(has_configured_address))
                 .filter(not_seed)
         },
+        // Active bans only: `banned_until` is not cleared when a ban expires
         GarbageCollectionPass::Banned => query
             .filter(peers::deleted_at.is_null())
-            .filter(peers::banned_until.is_not_null())
+            .filter(peers::banned_until.gt(context.now))
             .filter(has_address)
             .filter(not(has_configured_address))
             .filter(not_seed),
@@ -190,7 +192,7 @@ fn garbage_collection_candidates<'a>(
     match pass {
         // Random, so that whoever floods the table cannot choose which honest peers go
         GarbageCollectionPass::NeverSeen => query.order_by(diesel::dsl::sql::<diesel::sql_types::Integer>("RANDOM()")),
-        // NULL (never banned) sorts first, then the ban that ended or ends soonest; oldest first among equals
+        // Soonest-ending ban first (for address-less rows: no ban and expired bans first); oldest first among equals
         GarbageCollectionPass::Banned | GarbageCollectionPass::AddressLess => {
             query.order_by((peers::banned_until.asc(), peers::added_at.asc()))
         },
@@ -895,10 +897,11 @@ impl PeerDatabaseSql {
     ///
     /// Peer identities are free to create, and every inbound handshake stores one, so without caps the table grows
     /// without bound. Each cap counts only the rows that can be removed for it:
-    /// - Never-banned peers with addresses, none reached since `seen_since` and none configured: at most
-    ///   `max_peer_rows`, removed in random order so that a flood cannot choose which honest peers go.
-    /// - Peers with addresses and a current or past ban: at most a fifth of `max_peer_rows`, the ban that ended or ends
-    ///   soonest removed first.
+    /// - Peers with addresses and no active ban (an expired ban counts as none), none reached since `seen_since` and
+    ///   none configured: at most `max_peer_rows`, removed in random order so that a flood cannot choose which honest
+    ///   peers go.
+    /// - Peers with addresses and an active ban: at most a fifth of `max_peer_rows`, the ban that ends soonest removed
+    ///   first.
     /// - Peers without any address, mostly rows that only record a handshake ban: at most a fifth of `max_peer_rows`,
     ///   in the same order. The bans of removed rows are lost.
     ///
@@ -3774,6 +3777,58 @@ mod tests {
         expected.extend(banned[10..].iter().cloned());
         expected.sort();
         assert_eq!(stored_node_ids(&peers_db), expected);
+    }
+
+    /// `banned_until` stays set after a ban expires. A peer whose ban has expired is judged like any other peer: kept
+    /// while recently reached, and never-seen otherwise, instead of being first out of the banned class.
+    #[test]
+    fn expired_bans_are_not_in_the_banned_class() {
+        let peers_db = new_test_db();
+        let address = |i: u8| format!("/ip4/23.{i}.1.1/tcp/18189").parse::<Multiaddr>().unwrap();
+        let expire_ban = |node_id: &NodeId| {
+            let mut conn = peers_db.connection.get_pooled_connection().unwrap();
+            diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_hex())))
+                .set(peers::banned_until.eq(chrono::Utc::now().naive_utc() - TimeDelta::hours(1)))
+                .execute(&mut conn)
+                .unwrap();
+        };
+
+        // Banned once, for a short while, and reached since
+        let reached = node_peer_with_addresses(vec![address(1)], true, TimeDelta::hours(100));
+        peers_db.add_or_update_peer(reached.clone()).unwrap();
+        peers_db
+            .set_banned(&reached.node_id, Duration::from_secs(1800), "sync".to_string())
+            .unwrap();
+        expire_ban(&reached.node_id);
+        // Banned once and never reached
+        let unreached = node_peer_with_addresses(vec![address(2)], false, TimeDelta::hours(100));
+        peers_db.add_or_update_peer(unreached.clone()).unwrap();
+        peers_db
+            .set_banned(&unreached.node_id, Duration::from_secs(1800), "sync".to_string())
+            .unwrap();
+        expire_ban(&unreached.node_id);
+        // A flood of active long bans, far over the banned cap of 10 / 5 = 2
+        let mut active = Vec::new();
+        for i in 10..20u8 {
+            let peer = node_peer_with_addresses(vec![address(i)], false, TimeDelta::zero());
+            peers_db.add_or_update_peer(peer.clone()).unwrap();
+            peers_db
+                .set_banned(&peer.node_id, Duration::from_secs(30 * 24 * 3600), "bad".to_string())
+                .unwrap();
+            active.push(peer.node_id);
+        }
+
+        let stats = peers_db.garbage_collect(10, &[], long_ago()).unwrap();
+        // Only active bans are in the banned class, and they are trimmed to its cap
+        assert_eq!(stats.banned_peers_removed, 8);
+        assert!(peers_db.get_peer_by_node_id(&reached.node_id).unwrap().is_some());
+        assert!(peers_db.get_peer_by_node_id(&unreached.node_id).unwrap().is_some());
+
+        // The unreached one counts as never-seen: with room for none, it goes, the reached one stays
+        let stats = peers_db.garbage_collect(0, &[], long_ago()).unwrap();
+        assert_eq!(stats.excess_peers_removed, 1);
+        assert!(peers_db.get_peer_by_node_id(&unreached.node_id).unwrap().is_none());
+        assert!(peers_db.get_peer_by_node_id(&reached.node_id).unwrap().is_some());
     }
 
     /// A sighting older than the expiry no longer protects a peer from garbage collection or puts it first in line to
