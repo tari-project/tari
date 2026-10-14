@@ -241,6 +241,27 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn peer_sync_rejects_a_slash_in_a_dns_name() {
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&config);
+        let poisoned = tari_comms::multiaddr::multiaddr!(Dns4("evil/x"), Tcp(1u16));
+        let err = validator
+            .validate_peer(make_unvalidated_peer(vec![poisoned]), None)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidMultiaddr(_))
+        ));
+        assert!(err.is_ban_offence());
+
+        let fine = Multiaddr::from_str("/dns4/node.example.com/tcp/18189").unwrap();
+        let peer = validator
+            .validate_peer(make_unvalidated_peer(vec![fine.clone()]), None)
+            .unwrap();
+        assert!(peer.addresses.contains(&fine));
+    }
+
     #[tokio::test]
     async fn it_does_not_add_an_invalid_peer() {
         let config = DhtConfig::default_local_test();

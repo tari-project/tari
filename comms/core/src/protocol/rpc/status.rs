@@ -179,12 +179,19 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
         }
 
         // Slice the bytes before decoding, so that a huge payload is never converted in full. Control characters
-        // (including newlines) are replaced so that the details cannot forge log lines.
+        // (including newlines) are replaced so that the details cannot forge log lines, and invisible format
+        // characters (bidi overrides, zero-width) are dropped so that they cannot disguise what is shown.
         let prefix = resp.payload.get(..MAX_PEER_DETAILS_BYTES).unwrap_or(&resp.payload);
-        let mut details = String::from_utf8_lossy(prefix)
-            .chars()
-            .map(|c| if c.is_control() { ' ' } else { c })
-            .collect::<String>();
+        let mut details = String::with_capacity(prefix.len());
+        for c in String::from_utf8_lossy(prefix).chars() {
+            if c.is_control() {
+                details.push(' ');
+            } else if !is_format_char(c) {
+                details.push(c);
+            } else {
+                // Format character: dropped
+            }
+        }
         if resp.payload.len() > MAX_PEER_DETAILS_BYTES {
             details.push_str(&format!("… (truncated, {} bytes)", resp.payload.len()));
         }
@@ -194,6 +201,35 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
             details,
         }
     }
+}
+
+/// True for characters in the Unicode general category `Cf` (format), e.g. bidi overrides, zero-width spaces and
+/// joiners and the byte order mark.
+fn is_format_char(c: char) -> bool {
+    matches!(
+        u32::from(c),
+        0x00AD |
+            0x0600..=0x0605 |
+            0x061C |
+            0x06DD |
+            0x070F |
+            0x0890..=0x0891 |
+            0x08E2 |
+            0x180E |
+            0x200B..=0x200F |
+            0x202A..=0x202E |
+            0x2060..=0x2064 |
+            0x2066..=0x206F |
+            0xFEFF |
+            0xFFF9..=0xFFFB |
+            0x110BD |
+            0x110CD |
+            0x13430..=0x1343F |
+            0x1BCA0..=0x1BCA3 |
+            0x1D173..=0x1D17A |
+            0xE0001 |
+            0xE0020..=0xE007F
+    )
 }
 
 impl From<prost::DecodeError> for RpcStatus {
@@ -350,6 +386,22 @@ mod test {
     fn control_characters_in_peer_details_are_replaced() {
         let resp = response(RpcStatusCode::General, b"line 1\nFAKE LOG LINE\r\x1b[31m".to_vec());
         assert_eq!(RpcStatus::from(&resp).details(), "line 1 FAKE LOG LINE  [31m");
+    }
+
+    #[test]
+    fn rpc_status_details_strip_format_chars() {
+        // Right-to-left override, zero-width space, zero-width joiner, BOM, soft hyphen, tag character
+        let resp = response(
+            RpcStatusCode::General,
+            "ok\u{202e}txt.exe\u{200b}\u{200d}\u{feff}\u{ad}\u{e0041}!"
+                .as_bytes()
+                .to_vec(),
+        );
+        assert_eq!(RpcStatus::from(&resp).details(), "oktxt.exe!");
+
+        // Ordinary non-ASCII text is kept
+        let resp = response(RpcStatusCode::General, "café ü 日本".as_bytes().to_vec());
+        assert_eq!(RpcStatus::from(&resp).details(), "café ü 日本");
     }
 
     #[test]
