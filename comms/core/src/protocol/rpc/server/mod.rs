@@ -1225,9 +1225,10 @@ where
                     metrics::inbound_requests_bytes(&self.protocol).observe(frame.len() as f64);
 
                     let start = Instant::now();
+                    let was_large = frame.len() > MAX_IDLE_READ_BUFFER_CAPACITY;
                     let result = self.handle_request(frame.freeze()).await;
                     // The request (and every copy of it) is gone by now
-                    release_large_read_buffer(self.framed.get_mut().read_buffer_mut());
+                    release_large_read_buffer(self.framed.get_mut().read_buffer_mut(), was_large);
                     let elapsed = start.elapsed();
                     trace!(
                         target: LOG_TARGET,
@@ -1836,11 +1837,15 @@ const MAX_IDLE_READ_BUFFER_CAPACITY: usize = 64 * 1024;
 const READ_BUFFER_INITIAL_CAPACITY: usize = 8 * 1024;
 
 /// A read buffer that grew for a large request keeps that allocation for the rest of the session: each frame is split
-/// off the front of it and the rest reuses the same allocation. Once such a request has been handled, this moves what
-/// is left (the start of the next request, if any) into a fresh, small buffer, so an idle session does not pin up to
-/// the request limit.
-fn release_large_read_buffer(buffer: &mut BytesMut) {
-    if buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY {
+/// off the front of it and the rest reuses the same allocation. Once such a request has been handled
+/// (`after_large_request`), this moves what is left (the start of the next request, if any) into a fresh, small
+/// buffer, so an idle session does not pin up to the request limit.
+///
+/// The decision is taken from the request's size, not from `buffer.capacity()`: after a frame is split off, that is
+/// only the free space behind the frame, which is small when the frame filled its allocation, while the rest of the
+/// buffer still shares (and would reclaim, on the next read) the whole allocation.
+fn release_large_read_buffer(buffer: &mut BytesMut, after_large_request: bool) {
+    if !after_large_request && buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY {
         return;
     }
     let mut fresh = BytesMut::with_capacity(cmp::max(buffer.len(), READ_BUFFER_INITIAL_CAPACITY));
@@ -1987,7 +1992,7 @@ mod test {
         };
         drop(large);
         assert!(buffer.capacity() > MAX_IDLE_READ_BUFFER_CAPACITY);
-        release_large_read_buffer(&mut buffer);
+        release_large_read_buffer(&mut buffer, true);
         assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
 
         buffer.extend_from_slice(small.get(7..).unwrap());
@@ -1995,8 +2000,51 @@ mod test {
             panic!("expected a request");
         };
         assert_eq!(frame.as_ref(), &[2; 10]);
-        release_large_read_buffer(&mut buffer);
+        release_large_read_buffer(&mut buffer, false);
         assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
+    }
+
+    /// A request that fills its allocation almost exactly leaves little free space behind it, but the allocation is
+    /// still released: the rest of the buffer shares it and would reclaim all of it on the next read
+    #[test]
+    fn a_request_filling_its_allocation_does_not_pin_it() {
+        use tokio_util::codec::{Decoder, LengthDelimitedCodec};
+
+        let body_len = (1 << 20) - 4 - 10;
+        let mut frame = u32::try_from(body_len).unwrap().to_be_bytes().to_vec();
+        frame.extend_from_slice(&vec![1; body_len]);
+
+        // Read the way `Framed` reads: make room for at least one byte, then fill the free space
+        let mut buffer = BytesMut::new();
+        let mut remaining = frame.as_slice();
+        while !remaining.is_empty() {
+            buffer.reserve(1);
+            let free = buffer.capacity().saturating_sub(buffer.len());
+            let (now, later) = remaining.split_at(cmp::min(free, remaining.len()));
+            buffer.extend_from_slice(now);
+            remaining = later;
+        }
+
+        let mut codec = RequestCodec::new(LengthDelimitedCodec::new(), rpc::max_request_size());
+        let Some(RequestFrame::Request(request)) = codec.decode(&mut buffer).unwrap() else {
+            panic!("expected a request");
+        };
+        assert_eq!(request.len(), body_len);
+        drop(request);
+        // Little is free behind the request, so its capacity alone does not show the allocation
+        assert!(buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY);
+
+        release_large_read_buffer(&mut buffer, true);
+        // The next reads fill the free space and make room for more, as `Framed` does, without reclaiming the large
+        // allocation
+        let free = buffer.capacity().saturating_sub(buffer.len());
+        buffer.extend_from_slice(&vec![2; free]);
+        buffer.reserve(1);
+        assert!(
+            buffer.capacity() <= MAX_IDLE_READ_BUFFER_CAPACITY,
+            "{} bytes still allocated",
+            buffer.capacity()
+        );
     }
 
     #[test]

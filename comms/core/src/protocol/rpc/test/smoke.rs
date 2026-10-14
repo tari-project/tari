@@ -1924,3 +1924,54 @@ async fn a_large_pipelined_request_is_not_read_during_a_service_call() {
     assert_eq!(second.request_id, 2);
     assert_eq!(RpcStatusCode::from(second.status), RpcStatusCode::Ok);
 }
+
+/// A session that is culled while it finishes a call its client gave up on (with a FIN, or by hanging up) stops at
+/// once: the stop cancels the call and the session releases its slot within a second
+#[tokio::test]
+async fn a_session_finishing_an_abandoned_call_is_released_promptly_when_culled() {
+    use futures::SinkExt;
+
+    for hang_up in [false, true] {
+        let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(30))));
+        let num_cancelled = service.num_cancelled();
+        let builder = RpcServer::builder()
+            .with_maximum_simultaneous_sessions(10)
+            .with_maximum_sessions_per_client(1)
+            .with_cull_oldest_peer_rpc_connection_on_full(true)
+            .with_minimum_client_deadline(Duration::from_secs(0));
+        let (notif_tx, handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+        let (_, peer) = connect_peer(&notif_tx, &context).await;
+
+        let mut framed = open_raw_session(&peer).await;
+        framed.send(say_hello_frame(1, 0)).await.unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        if hang_up {
+            framed.close().await.unwrap();
+        } else {
+            framed
+                .send(say_hello_frame(1, rpc::message::RpcMessageFlags::FIN.bits()))
+                .await
+                .unwrap();
+        }
+        // Now finishing the abandoned call, which would take 30s
+        time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(handle.clone().get_num_active_sessions().await.unwrap(), 1);
+        assert_eq!(num_cancelled.load(Ordering::SeqCst), 0);
+
+        // Culls the session that is finishing the call
+        let _newest = connect_greeting_client(&peer).await.unwrap();
+        let released =
+            holds_within(Duration::from_secs(1), || {
+                let mut handle = handle.clone();
+                let num_cancelled = num_cancelled.clone();
+                async move {
+                    handle.get_num_active_sessions().await.unwrap() == 1 && num_cancelled.load(Ordering::SeqCst) == 1
+                }
+            })
+            .await;
+        assert!(
+            released,
+            "the culled session was still finishing its abandoned call after 1s (hang up: {hang_up})"
+        );
+    }
+}
