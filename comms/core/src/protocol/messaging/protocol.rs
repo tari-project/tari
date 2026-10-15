@@ -166,8 +166,10 @@ pub type MessagingEventReceiver = broadcast::Receiver<MessagingEvent>;
 pub enum SendFailReason {
     #[error("Dial was attempted, but failed")]
     PeerDialFailed,
+    /// Not currently produced by the messaging protocol
     #[error("Failed to open a messaging substream to peer")]
     SubstreamOpenFailed,
+    /// Not currently produced by the messaging protocol
     #[error("Failed to send on substream channel")]
     SubstreamSendFailed,
     #[error("Message was dropped before sending")]
@@ -187,6 +189,9 @@ pub enum SendFailReason {
     Expired,
     #[error("Timed out sending the message to the peer")]
     SendTimeout,
+    /// The message was queued behind another message whose write to the peer timed out, so it was never attempted
+    #[error("Message was queued behind a message that timed out sending to the peer")]
+    QueuedBehindTimeout,
 }
 
 /// Events emitted by the messaging protocol.

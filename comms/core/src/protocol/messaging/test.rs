@@ -1100,9 +1100,10 @@ async fn outbound_send_times_out_and_session_exits() {
     let reply = stalled_reply_rx.await.unwrap();
     unpack_enum!(Err(SendFailReason::SendTimeout) = reply);
     assert!(start.elapsed() >= OUTBOUND_SEND_TIMEOUT);
-    // The message queued behind it fails too, rather than being retried on a new substream
+    // The message queued behind it fails too, rather than being retried on a new substream, with a reason that does
+    // not blame the peer for a write it never got
     let reply = queued_reply_rx.await.unwrap();
-    unpack_enum!(Err(SendFailReason::SendTimeout) = reply);
+    unpack_enum!(Err(SendFailReason::QueuedBehindTimeout) = reply);
 
     let event = time::timeout(Duration::from_secs(5), events_rx.recv())
         .await
@@ -1946,7 +1947,7 @@ async fn outbound_bytes_are_released_after_a_ban_and_send_timeout() {
     unpack_enum!(Err(SendFailReason::SendTimeout) = first_reply);
     for reply_rx in reply_rxs {
         let reply = reply_rx.await.unwrap();
-        unpack_enum!(Err(SendFailReason::SendTimeout) = reply);
+        unpack_enum!(Err(SendFailReason::QueuedBehindTimeout) = reply);
     }
     wait_until(|| msg_proto.total_outbound_bytes() == 0).await;
 
@@ -2541,4 +2542,53 @@ async fn an_in_flight_message_that_loses_its_connection_twice_fails_as_connectio
         Err(SendFailReason::ConnectionLost(attempts)) => assert_eq!(attempts, MAX_SEND_RETRIES + 1),
         other => panic!("expected ConnectionLost, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn a_message_requeued_after_a_connection_loss_whose_redial_fails_fails_as_connection_lost() {
+    // No connection to the peer, so the session's dial fails
+    let (requester, mock) = create_connectivity_mock();
+    mock.spawn();
+    let peer = node_id::random();
+    let (events_tx, _events_rx) = mpsc::channel(10);
+    let (messages_tx, messages_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
+    let (retry_queue_tx, _retry_queue_rx) = mpsc::channel(10);
+    let outbound = OutboundMessaging::new(
+        requester,
+        events_tx,
+        messages_rx,
+        retry_queue_tx,
+        peer.clone(),
+        MESSAGING_PROTOCOL_ID.clone(),
+        test_queue_accounting(),
+    );
+
+    let deadline = Instant::now().checked_add(OUTBOUND_MESSAGE_TTL).unwrap();
+    let mut reply_rxs = Vec::new();
+    for retried_after_connection_loss in [true, false] {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        messages_tx
+            .send(QueuedOutboundMessage {
+                message: OutboundMessage::with_reply(peer.clone(), TEST_MSG1.clone(), reply_tx.into()),
+                deadline,
+                retries: 1,
+                attempts: 1,
+                retried_after_connection_loss,
+                bytes: None,
+            })
+            .await
+            .unwrap();
+        reply_rxs.push(reply_rx);
+    }
+    time::timeout(Duration::from_secs(5), outbound.run()).await.unwrap();
+
+    // The message that is being retried because its connection was lost reports that
+    let reply = reply_rxs.remove(0).await.unwrap();
+    match reply {
+        Err(SendFailReason::ConnectionLost(attempts)) => assert_eq!(attempts, 1),
+        other => panic!("expected ConnectionLost, got {other:?}"),
+    }
+    // Any other message reports the failed dial
+    let reply = reply_rxs.remove(0).await.unwrap();
+    unpack_enum!(Err(SendFailReason::PeerDialFailed) = reply);
 }

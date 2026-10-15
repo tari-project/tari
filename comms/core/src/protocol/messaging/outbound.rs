@@ -631,11 +631,13 @@ impl OutboundMessaging {
             Self::requeue_for_retry(&retry_queue_tx, queued, true);
         }
         if send_timed_out {
+            // Only the message whose own write timed out is reported as `SendTimeout`; the ones behind it were never
+            // attempted
             let mut failed_messages_count = 0usize;
             while let Some(mut queued) = messages_rx.recv().await {
                 #[cfg(feature = "metrics")]
-                metrics::outbound_dropped("send_timeout").inc();
-                queued.message.reply_fail(SendFailReason::SendTimeout);
+                metrics::outbound_dropped("queued_behind_timeout").inc();
+                queued.message.reply_fail(SendFailReason::QueuedBehindTimeout);
                 failed_messages_count = failed_messages_count.saturating_add(1);
             }
             if failed_messages_count > 0 {
@@ -739,7 +741,14 @@ impl OutboundMessaging {
         // to a failed event
         self.messages_rx.close();
         while let Some(mut queued) = self.messages_rx.recv().await {
-            queued.message.reply_fail(reason);
+            // A message that is here because a connection to the peer was lost reports that, not the redial failure
+            if queued.retried_after_connection_loss {
+                queued
+                    .message
+                    .reply_fail(SendFailReason::ConnectionLost(queued.attempts));
+            } else {
+                queued.message.reply_fail(reason);
+            }
         }
     }
 }

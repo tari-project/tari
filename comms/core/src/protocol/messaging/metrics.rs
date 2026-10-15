@@ -80,6 +80,7 @@ pub fn error_count() -> IntCounter {
 ///   connection to the peer went away
 /// - `expired`: the message was past its deadline
 /// - `send_timeout`: a write to the peer timed out (the peer stopped reading)
+/// - `queued_behind_timeout`: the message was queued behind one whose write timed out, and was never attempted
 ///
 /// There is deliberately no peer label (cardinality); the `warn!` logged for a full node-wide or dialing budget names
 /// the peer holding the most bytes.

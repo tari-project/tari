@@ -407,6 +407,20 @@ impl ConnectivityManagerActor {
         ref_kind: RefKind,
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
+        // An existing live connection is handed out before the peer database is asked anything, so a slow peer
+        // database cannot fail a "dial" to a peer we are already connected to. This does not let a banned peer stay
+        // usable: banning a peer disconnects its connection (see `ban_peer`), and the connection manager refuses new
+        // connections from a banned peer, so a banned peer has no live connection here for longer than that
+        // disconnect takes.
+        if let Some(state) = self.pool.get(&node_id) &&
+            state.is_connected()
+        {
+            if let Some(reply_tx) = reply_tx {
+                let _result = reply_tx.send(Ok(state.connection().expect("Already checked").clone_with(ref_kind)));
+            }
+            return;
+        }
+
         // Shed rather than block. `handle_dial_peer` runs on the ConnectivityManager's single request
         // loop and this ban check precedes every other statement in it, so a slow peer database used
         // to wedge the actor here — and with it `select_connections`, which the DHT needs to
