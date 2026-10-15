@@ -48,7 +48,7 @@ const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 /// The number of times to retry sending a failed message before publishing a SendMessageFailed event.
 /// This should only need to be 1 to handle the case where the pending dial is cancelled due to to tie breaking
 /// and because the connection manager already retries dialing a number of times for each requested dial.
-const MAX_SEND_RETRIES: usize = 1;
+pub(super) const MAX_SEND_RETRIES: usize = 1;
 /// How long writing one message to the peer may take. A peer that stops reading leaves our write waiting for yamux
 /// window forever, so once this passes the message fails, the session exits (resetting the substream) and every
 /// message still queued for the peer fails with it.
@@ -60,6 +60,10 @@ pub(super) const OUTBOUND_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) struct QueuedOutboundMessage {
     pub message: OutboundMessage,
     pub deadline: Instant,
+    /// How many times this message has been put on the retry queue. Once it reaches `MAX_SEND_RETRIES` the message
+    /// fails instead of being requeued again, so a peer that resets every messaging substream cannot keep its
+    /// backlog cycling through the shared retry queue until the deadline.
+    pub retries: usize,
 }
 
 impl QueuedOutboundMessage {
@@ -475,8 +479,9 @@ impl OutboundMessaging {
         Ok(())
     }
 
-    /// Puts a message that was not sent on the retry queue, unless it has expired or the retry queue is full, in which
-    /// case it fails now. Returns true if the message was queued.
+    /// Puts a message that was not sent on the retry queue, unless it has expired, has already been retried
+    /// `MAX_SEND_RETRIES` times, or the retry queue is full, in which case it fails now. Returns true if the message
+    /// was queued.
     fn requeue_for_retry(
         retry_queue_tx: &mpsc::Sender<QueuedOutboundMessage>,
         mut queued: QueuedOutboundMessage,
@@ -487,6 +492,19 @@ impl OutboundMessaging {
             queued.message.reply_fail(SendFailReason::Expired);
             return false;
         }
+        if queued.retries >= MAX_SEND_RETRIES {
+            debug!(
+                target: LOG_TARGET,
+                "Message was already retried {} time(s). Failing message {}", queued.retries, queued
+            );
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("max_retries").inc();
+            queued
+                .message
+                .reply_fail(SendFailReason::MaxRetriesReached(queued.retries.saturating_add(1)));
+            return false;
+        }
+        queued.retries = queued.retries.saturating_add(1);
         match retry_queue_tx.try_send(queued) {
             Ok(()) => true,
             Err(TrySendError::Full(mut queued)) => {

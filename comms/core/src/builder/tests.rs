@@ -64,9 +64,9 @@ use crate::{
     transports::MemoryTransport,
 };
 
-/// Receives `count` messages and keeps only their bodies. Each message is dropped as it arrives, as the DHT pipeline
-/// does, which gives the sending session its in-flight slot back: holding more than a few messages from one peer would
-/// stop that peer's session from reading further.
+/// Receives `count` messages and keeps only their bodies. Each message is dropped as soon as it arrives, which gives
+/// the sending session its in-flight slot back: holding more than a few messages from one peer would stop that peer's
+/// session from reading further.
 async fn collect_bodies(inbound_rx: &mut mpsc::Receiver<InboundMessage>, count: usize) -> Vec<Bytes> {
     let mut bodies = Vec::with_capacity(count);
     while bodies.len() < count {

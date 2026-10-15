@@ -38,9 +38,10 @@ use crate::{PeerConnection, message::InboundMessage, peer_manager::NodeId};
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
 /// The most messages one session may have delivered to the node-wide inbound channel (see
-/// `INBOUND_MESSAGE_BUFFER_SIZE`) that the consumer has not yet dropped. A session holding all of them stops reading
-/// its substream, so a flooding peer is held back by its own yamux window rather than filling the shared channel and
-/// starving every other peer.
+/// `INBOUND_MESSAGE_BUFFER_SIZE`) that the consumer has not yet finished processing. A message keeps its slot while it
+/// waits in the channel and for as long as the consumer holds it - for the DHT, until its whole inbound pipeline call
+/// has finished. A session holding all of them stops reading its substream, so a flooding peer is held back by its
+/// own yamux window rather than filling the shared channel and starving every other peer.
 pub(super) const INBOUND_PER_SESSION_INFLIGHT: usize = 4;
 
 /// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
@@ -116,10 +117,10 @@ impl InboundMessaging {
         let mut disconnected = false;
 
         loop {
-            // Take one of this session's in-flight slots before reading the next frame. While the consumer still
-            // holds all of them, nothing more is read from the substream, which leaves the peer's yamux window to
-            // push back on it. This also applies while draining after a stop, exactly as the blocking delivery
-            // below always has.
+            // Take one of this session's in-flight slots before reading the next frame. While the consumer is still
+            // processing (or holding) messages for all of them, nothing more is read from the substream, which leaves
+            // the peer's yamux window to push back on it. This also applies while draining after a stop,
+            // exactly as the blocking delivery below always has.
             let permit = tokio::select! {
                 biased;
                 _ = self.shutdown_signal.wait() => break,

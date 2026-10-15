@@ -67,7 +67,8 @@ pub fn error_count() -> IntCounter {
 }
 
 /// Outbound messages that failed without being sent, by reason: `queue_full` (the peer's queue was full),
-/// `retry_queue_full`, `expired` (past the message deadline) or `send_timeout` (the peer stopped reading)
+/// `retry_queue_full`, `expired` (past the message deadline), `max_retries` (already retried `MAX_SEND_RETRIES` times)
+/// or `send_timeout` (the peer stopped reading)
 pub fn outbound_dropped(reason: &str) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(

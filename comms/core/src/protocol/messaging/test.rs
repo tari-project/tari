@@ -37,7 +37,7 @@ use tokio::{
 use super::{
     extension::INBOUND_MESSAGE_BUFFER_SIZE,
     inbound::INBOUND_PER_SESSION_INFLIGHT,
-    outbound::{OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueuedOutboundMessage},
+    outbound::{MAX_SEND_RETRIES, OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueuedOutboundMessage},
     protocol::{MessagingEventReceiver, MessagingProtocol, OUTBOUND_MESSAGE_TTL, OUTBOUND_QUEUE_CAPACITY},
 };
 use crate::{
@@ -1143,6 +1143,7 @@ async fn expired_messages_are_not_requeued_on_disconnect() {
         let queued = QueuedOutboundMessage {
             message: OutboundMessage::with_reply(peer.clone(), body, reply_tx.into()),
             deadline,
+            retries: 0,
         };
         (queued, reply_rx)
     };
@@ -1349,4 +1350,128 @@ async fn oversized_frame_is_reported_on_the_internal_channel() {
         MessagingEvent::ProtocolViolation { peer_node_id, .. } => assert_eq!(peer_node_id, peer),
         _ => unreachable!(),
     }
+}
+
+#[tokio::test]
+async fn messages_to_a_peer_that_resets_every_substream_fail_after_max_retries() {
+    let (_, node_identity, conn_man_mock, _, request_tx, _, _, _shutdown) = spawn_messaging_protocol().await;
+
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+
+    // The peer resets every messaging substream we open, as soon as it arrives
+    let num_substreams = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    tokio::spawn({
+        let num_substreams = num_substreams.clone();
+        async move {
+            while let Some(substream) = peer_conn_mock2.next_incoming_substream().await {
+                num_substreams.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                drop(substream);
+            }
+        }
+    });
+
+    // Every message is larger than the stream window, so none can be written in full before the reset arrives (a
+    // small message could be written, and so reported as sent, before the peer's reset reaches us)
+    const NUM_MSGS: usize = 6;
+    let mut reply_rxs = Vec::new();
+    for _ in 0..NUM_MSGS {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        request_tx
+            .send(OutboundMessage::with_reply(
+                peer.clone(),
+                stalling_body(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        reply_rxs.push(reply_rx);
+    }
+
+    for reply_rx in reply_rxs {
+        let reply = time::timeout(Duration::from_secs(10), reply_rx)
+            .await
+            .expect("a message to a peer that resets every substream must fail, not be retried until its deadline")
+            .unwrap();
+        match reply {
+            Err(SendFailReason::MaxRetriesReached(attempts)) => assert_eq!(attempts, MAX_SEND_RETRIES + 1),
+            other => panic!("expected MaxRetriesReached, got {other:?}"),
+        }
+    }
+    // Each substream carries at least one attempt, and no message makes more than MAX_SEND_RETRIES + 1 attempts
+    time::sleep(Duration::from_millis(200)).await;
+    assert!(num_substreams.load(std::sync::atomic::Ordering::SeqCst) <= NUM_MSGS * (MAX_SEND_RETRIES + 1));
+}
+
+#[tokio::test]
+async fn actor_keeps_running_while_a_ban_request_is_pending() {
+    let shutdown = Shutdown::new();
+    // The connectivity mock is not running yet, so once its request buffer is full every ban request waits
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    for _ in 0..10 {
+        requester
+            .clone()
+            .ban_peer_until(node_id::random(), Duration::from_secs(60), "filler")
+            .await
+            .unwrap();
+    }
+
+    let (_proto_tx, proto_rx) = mpsc::channel(10);
+    let (_request_tx, request_rx) = mpsc::unbounded_channel();
+    let (inbound_msg_tx, _inbound_msg_rx) = mpsc::channel(10);
+    let (events_tx, mut events_rx) = broadcast::channel(100);
+    let msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
+        requester,
+        proto_rx,
+        request_rx,
+        events_tx,
+        inbound_msg_tx,
+        shutdown.to_signal(),
+    )
+    .with_ban_duration(Duration::from_secs(60));
+    let internal_events_tx = msg_proto.internal_event_sender();
+    tokio::spawn(msg_proto.run());
+
+    // Each violation is forwarded to subscribers only after the actor has handled the ban, so receiving them
+    // promptly shows the actor is not waiting on the ConnectivityManager
+    let violators = [node_id::random(), node_id::random()];
+    for violator in &violators {
+        internal_events_tx
+            .send(MessagingEvent::ProtocolViolation {
+                peer_node_id: violator.clone(),
+                details: "oversized frame".to_string(),
+            })
+            .await
+            .unwrap();
+        let event = time::timeout(Duration::from_millis(500), events_rx.recv())
+            .await
+            .expect("the messaging actor stalled waiting for a ban request")
+            .unwrap();
+        match event {
+            MessagingEvent::ProtocolViolation { peer_node_id, .. } => assert_eq!(&peer_node_id, violator),
+            other => panic!("unexpected event {other}"),
+        }
+    }
+
+    // Once the ConnectivityManager catches up, the bans still arrive
+    mock.spawn();
+    let mut banned = Vec::new();
+    time::timeout(Duration::from_secs(5), async {
+        loop {
+            for (node_id, _, _) in conn_man_mock.take_banned_peers().await {
+                banned.push(node_id);
+            }
+            if violators.iter().all(|violator| banned.contains(violator)) {
+                return;
+            }
+            time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the pending ban requests were lost");
+    assert_eq!(banned.len(), 12);
 }

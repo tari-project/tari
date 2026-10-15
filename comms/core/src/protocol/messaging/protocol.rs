@@ -372,7 +372,7 @@ impl MessagingProtocol {
         loop {
             tokio::select! {
                 Some(event) = self.internal_messaging_event_rx.recv() => {
-                    self.handle_internal_messaging_event(event).await;
+                    self.handle_internal_messaging_event(event);
                 },
 
                 Some(msg) = self.retry_queue_rx.recv() => {
@@ -422,7 +422,7 @@ impl MessagingProtocol {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }
 
-    async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
+    fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
         use MessagingEvent::*;
         trace!(target: LOG_TARGET, "Internal messaging event '{event}'" );
         match &event {
@@ -453,7 +453,7 @@ impl MessagingProtocol {
                 return;
             },
             ProtocolViolation { peer_node_id, details } => {
-                self.ban_peer(peer_node_id.clone(), details.to_string()).await;
+                self.ban_peer(peer_node_id.clone(), details.to_string());
             },
             _ => {},
         }
@@ -508,6 +508,7 @@ impl MessagingProtocol {
         self.enqueue_message(QueuedOutboundMessage {
             message: out_msg,
             deadline,
+            retries: 0,
         })
     }
 
@@ -575,6 +576,12 @@ impl MessagingProtocol {
                 Err(MessagingProtocolError::MessageSendFailed)
             },
         }
+    }
+
+    /// A sender for this actor's internal event channel, for tests that inject events such as protocol violations
+    #[cfg(test)]
+    pub(super) fn internal_event_sender(&self) -> mpsc::Sender<MessagingEvent> {
+        self.internal_messaging_event_tx.clone()
     }
 
     /// The number of messages waiting in the outbound queue for `peer_node_id`, if it has one
@@ -826,7 +833,12 @@ impl MessagingProtocol {
         Ok(())
     }
 
-    async fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {
+    /// Tears down everything this actor holds for the peer and asks the ConnectivityManager to ban it. The ban
+    /// request is sent from a spawned task: it can wait up to the requester's timeout (10s) when the
+    /// ConnectivityManager's request buffer is full, and awaiting it here would stall this actor - and every other
+    /// peer's messaging - once per banned peer, which a stream of fresh identities sending oversized frames could
+    /// repeat indefinitely.
+    fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {
         warn!(
             target: LOG_TARGET,
             "Banning peer '{}' because it violated the messaging protocol: {}", peer_node_id.short_str(), reason
@@ -847,16 +859,19 @@ impl MessagingProtocol {
         drop(self.active_queues.remove(&peer_node_id));
         match self.ban_duration {
             Some(ban_duration) => {
-                if let Err(err) = self
-                    .connectivity
-                    .ban_peer_until(peer_node_id.clone(), ban_duration, reason.to_string())
-                    .await
-                {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to ban peer '{}' because '{:?}'", peer_node_id.short_str(), err
-                    );
-                }
+                let mut connectivity = self.connectivity.clone();
+                let reason = reason.to_string();
+                tokio::spawn(async move {
+                    if let Err(err) = connectivity
+                        .ban_peer_until(peer_node_id.clone(), ban_duration, reason)
+                        .await
+                    {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to ban peer '{}' because '{:?}'", peer_node_id.short_str(), err
+                        );
+                    }
+                });
             },
             None => {
                 warn!(

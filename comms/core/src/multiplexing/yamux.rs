@@ -74,10 +74,13 @@ const YAMUX_SPLIT_SEND_SIZE: usize = noise::MAX_WRITE_BUFFER_LENGTH - YAMUX_HEAD
 /// [YAMUX_MAX_CONNECTION_RECEIVE_WINDOW]. A peer that opens more streams than this has its connection closed by yamux.
 const YAMUX_MAX_NUM_STREAMS: usize = 128;
 
-/// The most that yamux auto-tuning may grow the receive window of all streams on one connection to, together. The
-/// yamux default is 1 GiB, which a peer that answers window pings late (inflating the RTT estimate) can drive us
-/// towards. 64 MiB is eight 8 MiB messaging frames in flight, which is plenty to keep a fast link busy. This is local
-/// policy only: the 256 KiB starting window of each stream is fixed by the yamux spec and is not changed.
+/// The most that the receive windows of all streams on one connection may add up to, which bounds the unread data a
+/// peer can make us buffer on one connection. The yamux default is 1 GiB, which a peer that answers window pings late
+/// (inflating the RTT estimate) can drive us towards. yamux 0.13 reserves the 256 KiB starting window for every
+/// allowed stream (128 x 256 KiB = 32 MiB) and lets auto-tuning share only the remaining 32 MiB between all streams,
+/// so a single stream's window can grow to at most about 32.25 MiB - still room for several 8 MiB messaging frames in
+/// flight on one stream. This is local policy only: the 256 KiB starting window of each stream is fixed by the yamux
+/// spec and is not changed.
 const YAMUX_MAX_CONNECTION_RECEIVE_WINDOW: usize = 64 * 1024 * 1024;
 
 /// The starting receive window of every yamux stream, fixed by the yamux spec (not exported by the yamux crate)
@@ -91,9 +94,10 @@ pub struct Yamux {
 }
 
 fn yamux_config() -> yamux::Config {
-    // The 256 KiB starting window is fixed by the yamux spec, and auto-tuning grows it up to the connection receive
-    // window, which is capped at 64 MiB (eight 8 MiB messaging frames in flight) instead of the 1 GiB default, so one
-    // connection cannot make us buffer up to 1 GiB of unread data. The stream limit is lowered from 512, because yamux
+    // The 256 KiB starting window is fixed by the yamux spec. The connection receive window is capped at 64 MiB
+    // instead of the 1 GiB default, so one connection cannot make us buffer up to 1 GiB of unread data; after the
+    // starting windows of all 128 streams, that leaves 32 MiB that auto-tuning shares between the streams (see
+    // YAMUX_MAX_CONNECTION_RECEIVE_WINDOW). The stream limit is lowered from 512, because yamux
     // keeps the unread data of every stream it knows about. The default split send size of 16 KiB sends many small
     // frames for large messages, so frames are sized to fill one noise frame each.
     let mut config = yamux::Config::default();
