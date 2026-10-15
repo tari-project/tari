@@ -44,9 +44,10 @@ const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 /// has finished. A session holding all of them stops reading its substream, so a flooding peer is held back by its
 /// own yamux window rather than filling the shared channel and starving every other peer.
 pub(super) const INBOUND_PER_SESSION_INFLIGHT: usize = 4;
-/// How long a stopping (replaced or disconnected) session waits for an in-flight slot before each frame it still has
-/// buffered. Those frames were already reported as sent to the peer, so they are worth a short wait, but the session
-/// must not be kept alive by a slow consumer.
+/// How long a stopping (replaced or disconnected) session may keep draining the frames it still has buffered, in total,
+/// counted from when it starts stopping. Those frames were already reported as sent to the peer, so they are worth a
+/// short wait for an in-flight slot, but the session must not be kept alive by a slow consumer, nor by a peer that
+/// keeps refilling the old substream (reading it sends the peer more window).
 pub(super) const STOPPING_SESSION_PERMIT_WAIT: Duration = Duration::from_secs(2);
 
 /// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
@@ -114,21 +115,30 @@ impl InboundMessaging {
         // already local and ready to read. Racing `stream.next()` against the stop signal directly (as
         // `StreamExt::take_until` does) never gives the stream a chance to be polled once that fires, discarding
         // that buffered data outright. Once stopping, keep draining whatever is immediately available - without
-        // waiting for more, since nothing further will be read on this substream either way - before actually
-        // stopping. Note this only ever races *between* frames: once a frame has been read off the wire,
+        // waiting for more data - until nothing is left or `stop_deadline` passes, whichever is first: reading frees
+        // yamux window, so a peer could otherwise keep the old substream full forever. Note this only ever races
+        // *between* frames: once a frame has been read off the wire,
         // `handle_frame_result` below runs to completion outside the select, so a replacement can never abort a
         // message that has already been decoded - at worst it delays taking over until the in-flight
         // `inbound_message_tx.send` finishes.
         let mut disconnected = false;
+        // When a stopping session must exit, drained or not. Set once, when it starts stopping.
+        let mut stop_deadline: Option<time::Instant> = None;
 
         loop {
             // Take one of this session's in-flight slots before reading the next frame. While the consumer is still
             // processing (or holding) messages for all of them, nothing more is read from the substream, which leaves
             // the peer's yamux window to push back on it. Once stopping (disconnected or replaced), only what is
-            // already buffered is drained - the sender was told those frames were sent - and each waits at most
-            // `STOPPING_SESSION_PERMIT_WAIT` for a slot, so a stopping session never waits on the consumer for long.
+            // already buffered is drained - the sender was told those frames were sent - and only until
+            // `stop_deadline`, `STOPPING_SESSION_PERMIT_WAIT` after it started stopping, which also bounds the wait for
+            // slots, so a stopping session never outlives that by waiting on the consumer or on a refilling peer.
             let permit = if disconnected {
-                match self.wait_for_permit_while_stopping(&peer).await {
+                let deadline = *stop_deadline.get_or_insert_with(|| {
+                    time::Instant::now()
+                        .checked_add(STOPPING_SESSION_PERMIT_WAIT)
+                        .unwrap_or_else(time::Instant::now)
+                });
+                match self.wait_for_permit_while_stopping(&peer, deadline).await {
                     Some(permit) => permit,
                     None => break,
                 }
@@ -226,13 +236,25 @@ impl InboundMessaging {
         );
     }
 
-    /// Waits at most `STOPPING_SESSION_PERMIT_WAIT` for an in-flight slot for a frame this stopping session still has
-    /// buffered. Returns `None` if none came free in time, or on shutdown.
-    async fn wait_for_permit_while_stopping(&mut self, peer: &NodeId) -> Option<OwnedSemaphorePermit> {
-        let wait = time::timeout(
-            STOPPING_SESSION_PERMIT_WAIT,
-            Arc::clone(&self.inflight_permits).acquire_owned(),
-        );
+    /// Waits until `deadline` (at most) for an in-flight slot for a frame this stopping session still has buffered.
+    /// Returns `None` if the deadline has passed or no slot came free before it, or on shutdown.
+    async fn wait_for_permit_while_stopping(
+        &mut self,
+        peer: &NodeId,
+        deadline: time::Instant,
+    ) -> Option<OwnedSemaphorePermit> {
+        // Checked first: a slot that is free right away would otherwise be taken even past the deadline
+        if time::Instant::now() >= deadline {
+            debug!(
+                target: LOG_TARGET,
+                "Stopping inbound messaging session for peer '{}' without draining the rest of its substream: it has \
+                 been draining for {:.0?}",
+                peer.short_str(),
+                STOPPING_SESSION_PERMIT_WAIT
+            );
+            return None;
+        }
+        let wait = time::timeout_at(deadline, Arc::clone(&self.inflight_permits).acquire_owned());
         tokio::select! {
             biased;
             _ = self.shutdown_signal.wait() => None,
@@ -243,7 +265,7 @@ impl InboundMessaging {
                     debug!(
                         target: LOG_TARGET,
                         "Stopping inbound messaging session for peer '{}' without draining the rest of its \
-                         substream: no in-flight slot came free within {:.0?}",
+                         substream: no in-flight slot came free within {:.0?} of it stopping",
                         peer.short_str(),
                         STOPPING_SESSION_PERMIT_WAIT
                     );

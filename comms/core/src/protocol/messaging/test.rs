@@ -2413,3 +2413,63 @@ async fn a_new_message_to_a_dialing_queue_holding_a_requeued_backlog_is_capped()
         assert!(matches!(reply_rx.try_recv(), Err(TryRecvError::Empty)));
     }
 }
+
+#[tokio::test]
+async fn a_replaced_session_exits_even_if_the_peer_keeps_refilling_its_substream() {
+    let (peer_manager, node_identity_1, conn_man_mock, proto_tx, _, mut inbound_msg_rx, _, _shutdown) =
+        spawn_messaging_protocol().await;
+
+    let expected_node_id = node_id::random();
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+    let peer2 = Peer::new(
+        pk,
+        expected_node_id.clone(),
+        MultiaddressesWithStats::default(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
+    peer_manager.add_or_update_peer(peer2.clone()).await.unwrap();
+    let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(node_identity_1.to_peer(), peer2).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    tokio::spawn({
+        let expected_node_id = expected_node_id.clone();
+        async move {
+            while let Some(stream_theirs) = conn2_state.next_incoming_substream().await {
+                proto_tx
+                    .send(ProtocolNotification::new(
+                        MESSAGING_PROTOCOL_ID.clone(),
+                        ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_theirs),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+    // A slow consumer frees a slot well within STOPPING_SESSION_PERMIT_WAIT each time, so a session that waited for
+    // each frame separately would never run out of time
+    tokio::spawn(async move {
+        while let Some(msg) = inbound_msg_rx.recv().await {
+            time::sleep(Duration::from_millis(300)).await;
+            drop(msg);
+        }
+    });
+
+    // The peer writes on the first substream for as long as it can, so it always has frames buffered
+    let stream_ours = conn1_state.open_substream().await.unwrap();
+    let mut framed_ours = MessagingProtocol::framed(stream_ours);
+    framed_ours.send(TEST_MSG1.clone()).await.unwrap();
+    let writer = tokio::spawn(async move { while framed_ours.send(TEST_MSG1.clone()).await.is_ok() {} });
+    time::sleep(Duration::from_millis(100)).await;
+
+    // A second substream replaces the first session, which must stop within its drain deadline although the peer
+    // keeps refilling the old substream
+    let stream_ours2 = conn1_state.open_substream().await.unwrap();
+    let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
+    framed_ours2.send(TEST_MSG2.clone()).await.unwrap();
+    time::timeout(STOPPING_SESSION_PERMIT_WAIT + Duration::from_secs(2), writer)
+        .await
+        .expect("the replaced session kept draining a substream the peer kept refilling")
+        .unwrap();
+}
