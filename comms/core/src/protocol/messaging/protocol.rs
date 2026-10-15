@@ -509,6 +509,7 @@ impl MessagingProtocol {
             message: out_msg,
             deadline,
             retries: 0,
+            attempts: 0,
         })
     }
 

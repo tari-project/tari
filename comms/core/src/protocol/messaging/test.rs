@@ -1144,6 +1144,7 @@ async fn expired_messages_are_not_requeued_on_disconnect() {
             message: OutboundMessage::with_reply(peer.clone(), body, reply_tx.into()),
             deadline,
             retries: 0,
+            attempts: 0,
         };
         (queued, reply_rx)
     };
@@ -1396,7 +1397,9 @@ async fn messages_to_a_peer_that_resets_every_substream_fail_after_max_retries()
             .expect("a message to a peer that resets every substream must fail, not be retried until its deadline")
             .unwrap();
         match reply {
-            Err(SendFailReason::MaxRetriesReached(attempts)) => assert_eq!(attempts, MAX_SEND_RETRIES + 1),
+            // Only messages at the front of a session's queue get written before the reset, so a message may have
+            // been written fewer times than it was retried, but never more than once per retry plus the first try
+            Err(SendFailReason::MaxRetriesReached(attempts)) => assert!(attempts <= MAX_SEND_RETRIES + 1),
             other => panic!("expected MaxRetriesReached, got {other:?}"),
         }
     }
@@ -1474,4 +1477,89 @@ async fn actor_keeps_running_while_a_ban_request_is_pending() {
     .await
     .expect("the pending ban requests were lost");
     assert_eq!(banned.len(), 12);
+}
+
+#[tokio::test]
+async fn unwritten_messages_survive_consecutive_connection_disconnects() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer = peer_node_identity.node_id().clone();
+    let deadline = Instant::now().checked_add(OUTBOUND_MESSAGE_TTL).unwrap();
+    let queue = |body: Bytes| {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let queued = QueuedOutboundMessage {
+            message: OutboundMessage::with_reply(peer.clone(), body, reply_tx.into()),
+            deadline,
+            retries: 0,
+            attempts: 0,
+        };
+        (queued, reply_rx)
+    };
+
+    // Messages that are queued behind a stalled write in every session, so they are never written
+    let mut backlog = Vec::new();
+    let mut backlog_reply_rxs = Vec::new();
+    for _ in 0..3 {
+        let (queued, reply_rx) = queue(TEST_MSG1.clone());
+        backlog.push(queued);
+        backlog_reply_rxs.push(reply_rx);
+    }
+    let backlog_tags: Vec<_> = backlog.iter().map(|queued| queued.message.tag).collect();
+
+    for round in 0..2 {
+        // A fresh connection for each round, as after a tie-break or a redial
+        let (conn1, _, _, peer_conn_mock2) =
+            create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+        conn_man_mock.add_active_connection(conn1.clone()).await;
+
+        let (events_tx, _events_rx) = mpsc::channel(10);
+        let (messages_tx, messages_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
+        let (retry_queue_tx, mut retry_queue_rx) = mpsc::channel(10);
+        let outbound = OutboundMessaging::new(
+            requester.clone(),
+            events_tx,
+            messages_rx,
+            retry_queue_tx,
+            peer.clone(),
+            MESSAGING_PROTOCOL_ID.clone(),
+        );
+        let outbound_task = tokio::spawn(outbound.run());
+
+        // Stall the session on a message the peer never reads, then queue the backlog behind it
+        let (stalled, _stalled_reply_rx) = queue(stalling_body());
+        let stalled_tag = stalled.message.tag;
+        messages_tx.send(stalled).await.unwrap();
+        let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+        wait_until(|| messages_tx.capacity() == OUTBOUND_QUEUE_CAPACITY).await;
+        for queued in backlog.drain(..) {
+            messages_tx.send(queued).await.unwrap();
+        }
+
+        conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+        time::timeout(Duration::from_secs(5), outbound_task)
+            .await
+            .expect("the outbound session did not exit on disconnect")
+            .unwrap();
+
+        // The interrupted write uses up a retry; the never-written backlog is requeued without using one
+        while let Ok(queued) = retry_queue_rx.try_recv() {
+            if queued.message.tag == stalled_tag {
+                assert_eq!(queued.retries, 1, "round {round}");
+            } else {
+                assert_eq!(queued.retries, 0, "round {round}");
+                backlog.push(queued);
+            }
+        }
+        let requeued_tags: Vec<_> = backlog.iter().map(|queued| queued.message.tag).collect();
+        assert_eq!(requeued_tags, backlog_tags, "round {round}");
+    }
+
+    // None of the backlog has failed
+    for reply_rx in &mut backlog_reply_rxs {
+        assert!(matches!(reply_rx.try_recv(), Err(TryRecvError::Empty)));
+    }
 }

@@ -60,10 +60,13 @@ pub(super) const OUTBOUND_SEND_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) struct QueuedOutboundMessage {
     pub message: OutboundMessage,
     pub deadline: Instant,
-    /// How many times this message has been put on the retry queue. Once it reaches `MAX_SEND_RETRIES` the message
-    /// fails instead of being requeued again, so a peer that resets every messaging substream cannot keep its
-    /// backlog cycling through the shared retry queue until the deadline.
+    /// How many retries this message has used up. Once it reaches `MAX_SEND_RETRIES` the message fails instead of
+    /// being requeued again, so a peer that resets every messaging substream cannot keep its backlog cycling through
+    /// the shared retry queue until the deadline. Requeues after a connection disconnect do not use up a retry for
+    /// messages that were never written (see `requeue_for_retry`).
     pub retries: usize,
+    /// How many times a write of this message has been started, for the `MaxRetriesReached` failure
+    pub attempts: usize,
 }
 
 impl QueuedOutboundMessage {
@@ -322,6 +325,12 @@ impl OutboundMessaging {
         // and having already been popped off `messages_rx`, it was also invisible to the retry drain below. Do
         // not restructure this back into a pipelined `Stream`/`Sink` forward without preserving "attempt before
         // ack" - that ordering is the fix.
+        //
+        // Whether the backlog still in `messages_rx` uses up a retry when it is requeued below. It does when the peer
+        // closed or reset the substream, which a peer can repeat on every new substream; it does not when the
+        // connection itself went away, which is routine while simultaneous dials are tie-broken at start-up and
+        // says nothing about the messages that were never written.
+        let mut backlog_uses_retry = false;
         loop {
             let mut queued = tokio::select! {
                 biased;
@@ -340,6 +349,7 @@ impl OutboundMessaging {
                         target: LOG_TARGET,
                         "Outbound messaging stream {} ended for peer {} (remote closed).", stream_id, peer_node_id
                     );
+                    backlog_uses_retry = true;
                     break;
                 },
                 maybe_msg = messages_rx.recv() => {
@@ -378,6 +388,7 @@ impl OutboundMessaging {
             // The write is raced against the disconnect signal, so a write waiting on a dead connection is noticed
             // straight away rather than after the timeout.
             let body = queued.message.body.clone();
+            queued.attempts = queued.attempts.saturating_add(1);
             let send_result = tokio::select! {
                 biased;
                 _ = &mut on_disconnect => None,
@@ -398,7 +409,12 @@ impl OutboundMessaging {
                     );
                     #[cfg(feature = "metrics")]
                     metrics::error_count().inc();
-                    Self::requeue_for_retry(&retry_queue_tx, queued);
+                    // A write error does not say whether the substream or the whole connection failed. If the
+                    // connection is already reported as disconnected, treat it like the disconnect arms; otherwise
+                    // the peer closed or reset the substream.
+                    let connection_disconnected = futures::poll!(&mut on_disconnect).is_ready();
+                    backlog_uses_retry = !connection_disconnected;
+                    Self::requeue_for_retry(&retry_queue_tx, queued, true);
                     break;
                 },
                 Some(Err(_elapsed)) => {
@@ -420,7 +436,7 @@ impl OutboundMessaging {
                          Queuing for retry.",
                         stream_id, peer_node_id
                     );
-                    Self::requeue_for_retry(&retry_queue_tx, queued);
+                    Self::requeue_for_retry(&retry_queue_tx, queued, true);
                     break;
                 },
             }
@@ -460,7 +476,7 @@ impl OutboundMessaging {
                 // The messaging protocol has shut down, so let's exit too
                 break;
             }
-            if Self::requeue_for_retry(&retry_queue_tx, queued) {
+            if Self::requeue_for_retry(&retry_queue_tx, queued, backlog_uses_retry) {
                 retried_messages_count = retried_messages_count.saturating_add(1);
             }
         }
@@ -479,12 +495,13 @@ impl OutboundMessaging {
         Ok(())
     }
 
-    /// Puts a message that was not sent on the retry queue, unless it has expired, has already been retried
-    /// `MAX_SEND_RETRIES` times, or the retry queue is full, in which case it fails now. Returns true if the message
-    /// was queued.
+    /// Puts a message that was not sent on the retry queue, unless it has expired or the retry queue is full, in which
+    /// case it fails now. If `count_retry` is set, the requeue uses up one of the message's retries, and a message that
+    /// has already used up `MAX_SEND_RETRIES` fails instead. Returns true if the message was queued.
     fn requeue_for_retry(
         retry_queue_tx: &mpsc::Sender<QueuedOutboundMessage>,
         mut queued: QueuedOutboundMessage,
+        count_retry: bool,
     ) -> bool {
         if queued.is_expired() {
             #[cfg(feature = "metrics")]
@@ -492,19 +509,24 @@ impl OutboundMessaging {
             queued.message.reply_fail(SendFailReason::Expired);
             return false;
         }
-        if queued.retries >= MAX_SEND_RETRIES {
-            debug!(
-                target: LOG_TARGET,
-                "Message was already retried {} time(s). Failing message {}", queued.retries, queued
-            );
-            #[cfg(feature = "metrics")]
-            metrics::outbound_dropped("max_retries").inc();
-            queued
-                .message
-                .reply_fail(SendFailReason::MaxRetriesReached(queued.retries.saturating_add(1)));
-            return false;
+        if count_retry {
+            if queued.retries >= MAX_SEND_RETRIES {
+                debug!(
+                    target: LOG_TARGET,
+                    "Message was already retried {} time(s) after {} write attempt(s). Failing message {}",
+                    queued.retries,
+                    queued.attempts,
+                    queued
+                );
+                #[cfg(feature = "metrics")]
+                metrics::outbound_dropped("max_retries").inc();
+                queued
+                    .message
+                    .reply_fail(SendFailReason::MaxRetriesReached(queued.attempts));
+                return false;
+            }
+            queued.retries = queued.retries.saturating_add(1);
         }
-        queued.retries = queued.retries.saturating_add(1);
         match retry_queue_tx.try_send(queued) {
             Ok(()) => true,
             Err(TrySendError::Full(mut queued)) => {
