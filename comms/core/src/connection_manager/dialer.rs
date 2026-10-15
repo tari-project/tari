@@ -557,6 +557,7 @@ where
             conn_man_notifier,
             our_supported_protocols,
             peer_identity.metadata.supported_protocols.clone(),
+            None,
         );
 
         Ok((peer_connection, peer_identity))

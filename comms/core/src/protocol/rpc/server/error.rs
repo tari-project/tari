@@ -22,14 +22,16 @@
 
 use std::io;
 
-use bytes::BytesMut;
 use prost::DecodeError;
 use tokio::sync::oneshot;
 
 use crate::{
     peer_manager::NodeId,
     proto,
-    protocol::rpc::{handshake::RpcHandshakeError, server::early_close::EarlyCloseError},
+    protocol::rpc::{
+        handshake::RpcHandshakeError,
+        server::{early_close::EarlyCloseError, request_codec::RequestFrame},
+    },
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -63,9 +65,11 @@ pub enum RpcServerError {
     #[error("Stream write exceeded deadline")]
     WriteStreamExceededDeadline,
     #[error("Early close: {0}")]
-    EarlyClose(#[from] EarlyCloseError<BytesMut>),
+    EarlyClose(#[from] EarlyCloseError<RequestFrame>),
     #[error("Protocol error: {0}")]
     ProtocolError(String),
+    #[error("The session was told to stop")]
+    SessionStopped,
 }
 
 impl RpcServerError {

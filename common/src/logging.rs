@@ -31,7 +31,7 @@ use std::{
 
 use log::warn;
 use log4rs::{append::AppenderConfig, config::RawConfig};
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 
 use crate::{
     ConfigError,
@@ -345,17 +345,12 @@ struct RollerPaths {
 /// symlink to another disk. Only when canonicalization is impossible is the normalized lexical form compared instead.
 /// `contents` must already have `{{log_dir}}` substituted.
 fn check_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<(String, String)>, String> {
-    let mirror: AppendersMirror = serde_yaml::from_str(contents).map_err(|e| e.to_string())?;
+    let mirror: AppendersMirror = from_yaml(contents).map_err(|e| e.to_string())?;
     let mut escapes = Vec::new();
     for (name, appender) in mirror.appenders {
         // serde-derive matches non-string keys (e.g. a YAML `3:`) to fields by position, and log4rs's structs have a
         // different field order than the mirror, so any such key could hide a path from the check. Refuse them.
-        let as_yaml: serde_yaml::Value = appender
-            .config
-            .clone()
-            .deserialize_into()
-            .map_err(|e| format!("appender {name}: {e}"))?;
-        if !has_only_string_keys(&as_yaml) {
+        if !has_only_string_keys(&appender.config) {
             return Err(format!("appender {name}: a config key is not a plain string"));
         }
         let paths: AppenderPaths = appender
@@ -378,17 +373,26 @@ fn check_appender_paths(contents: &str, base: &LogDirBase) -> Result<Vec<(String
     Ok(escapes)
 }
 
-/// Returns true if every map key in `value`, at any depth, is a plain string. Keys that were wrapped (option or
-/// newtype) in the original value are unwrapped by the conversion and then fail the mirror's own deserialization.
-fn has_only_string_keys(value: &serde_yaml::Value) -> bool {
+/// Returns true if every map key in `value`, at any depth, is a plain string. A key wrapped in an option or newtype
+/// is not a plain string.
+fn has_only_string_keys(value: &serde_value::Value) -> bool {
     match value {
-        serde_yaml::Value::Mapping(map) => map
+        serde_value::Value::Map(map) => map
             .iter()
-            .all(|(key, value)| key.is_string() && has_only_string_keys(value)),
-        serde_yaml::Value::Sequence(items) => items.iter().all(has_only_string_keys),
-        serde_yaml::Value::Tagged(tagged) => has_only_string_keys(&tagged.value),
+            .all(|(key, value)| matches!(key, serde_value::Value::String(_)) && has_only_string_keys(value)),
+        serde_value::Value::Seq(items) => items.iter().all(has_only_string_keys),
+        serde_value::Value::Option(Some(inner)) | serde_value::Value::Newtype(inner) => has_only_string_keys(inner),
         _ => true,
     }
+}
+
+/// Parses a log4rs YAML config. Every parse of a log config goes through here, so the appender check and log4rs see
+/// the same document. A repeated key keeps the last value, as log4rs's own YAML loading did.
+fn from_yaml<T: DeserializeOwned>(contents: &str) -> Result<T, serde_saphyr::Error> {
+    serde_saphyr::from_str_with_options(
+        contents,
+        serde_saphyr::options! { duplicate_keys: serde_saphyr::DuplicateKeyPolicy::LastWins },
+    )
 }
 
 /// See [`check_appender_paths`].
@@ -449,7 +453,7 @@ fn resolve_for_containment(path: &Path) -> Option<PathBuf> {
 
 /// Starts log4rs with a YAML config that already has `{{log_dir}}` substituted.
 fn init_logging_from_yaml(contents: &str) -> Result<(), ConfigError> {
-    let config: RawConfig = serde_yaml::from_str(contents).map_err(|e| {
+    let config: RawConfig = from_yaml(contents).map_err(|e| {
         ConfigError::new(
             "Could not parse the contents of the log file as yaml",
             Some(e.to_string()),
@@ -535,9 +539,12 @@ macro_rules! log_if_error_fmt {
 
 #[cfg(test)]
 mod test {
-    use std::path::{Path, PathBuf};
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
+    };
 
-    use super::substitute_log_dir;
+    use super::{from_yaml, substitute_log_dir};
 
     #[cfg(unix)]
     #[test]
@@ -836,6 +843,8 @@ mod test {
             let contents = substitute_log_dir(yaml, &base.log_dir).unwrap();
             let escapes = check_appender_paths(&contents, &base).unwrap();
             assert!(escapes.is_empty(), "{name}: {escapes:?}");
+            let config: log4rs::config::RawConfig = from_yaml(&contents).unwrap_or_else(|e| panic!("{name}: {e}"));
+            log4rs::config::create_raw_config(config).unwrap_or_else(|e| panic!("{name}: {e}"));
         }
     }
 
@@ -858,10 +867,7 @@ mod test {
         for key in ["! appenders", "!x appenders"] {
             let yaml = format!("{key}:\n  evil:\n    kind: file\n    path: /tmp/evil\nroot:\n  appenders: [evil]\n");
             // log4rs itself would build this appender
-            assert!(
-                serde_yaml::from_str::<log4rs::config::RawConfig>(&yaml).is_ok(),
-                "{key}"
-            );
+            assert!(super::from_yaml::<log4rs::config::RawConfig>(&yaml).is_ok(), "{key}");
             let choice = choose_for(&yaml);
             assert!(choice.refused, "{key}: {:?}", choice.findings);
             assert!(!choice.untrusted);
@@ -873,7 +879,14 @@ mod test {
     fn repeated_logger_key_still_loads() {
         let yaml = "appenders:\n  app:\n    kind: file\n    path: \"{{log_dir}}/log/app.log\"\nroot:\n  appenders: \
                     [app]\nloggers:\n  a:\n    level: info\n  a:\n    level: debug\n";
-        assert!(serde_yaml::from_str::<log4rs::config::RawConfig>(yaml).is_ok());
+        let config: log4rs::config::RawConfig = super::from_yaml(yaml).unwrap();
+        let loggers = config.loggers();
+        assert_eq!(loggers.len(), 1);
+        // The last value wins, as with log4rs's own YAML loading
+        assert_eq!(
+            loggers.first().map(|l| (l.name(), l.level())),
+            Some(("a", log::LevelFilter::Debug))
+        );
         let choice = choose_for(yaml);
         assert!(!choice.refused, "{:?}", choice.findings);
     }
@@ -939,10 +952,10 @@ mod test {
     fn log_dir_is_escaped_for_yaml() {
         let yaml = "path: \"{{log_dir}}/log/base_node.log\"\n";
         let contents = substitute_log_dir(yaml, Path::new("/tmp/we\"ird\\dir")).unwrap();
-        let value: serde_yaml::Value = serde_yaml::from_str(&contents).unwrap();
+        let value: HashMap<String, String> = from_yaml(&contents).unwrap();
         assert_eq!(
-            value.get("path").and_then(|v| v.as_str()).unwrap(),
-            "/tmp/we\"ird/dir/log/base_node.log"
+            value.get("path").map(String::as_str),
+            Some("/tmp/we\"ird/dir/log/base_node.log")
         );
     }
 

@@ -37,6 +37,10 @@ impl<T, TSock: Stream<Item = io::Result<T>> + Unpin> EarlyClose<TSock> {
     pub fn new(inner: TSock) -> Self {
         Self { inner }
     }
+
+    pub fn get_mut(&mut self) -> &mut TSock {
+        &mut self.inner
+    }
 }
 
 impl<TSock: Stream + Unpin> Stream for EarlyClose<TSock> {

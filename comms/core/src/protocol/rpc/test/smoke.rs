@@ -21,7 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 
 use futures::StreamExt;
 use tari_shutdown::Shutdown;
@@ -1363,6 +1366,612 @@ async fn a_session_is_counted_before_the_client_is_told_it_was_accepted() {
         assert_eq!(
             counted, expected,
             "the client was told it was accepted before its session was counted"
+        );
+    }
+}
+
+/// Starts a server for `service_impl`, returning a handle to it as well
+async fn setup_server_with_handle<T: GreetingRpc>(
+    service_impl: T,
+    builder: RpcServerBuilder,
+) -> (
+    mpsc::Sender<ProtocolNotification<Substream>>,
+    rpc::RpcServerHandle,
+    RpcCommsBackend,
+    Shutdown,
+) {
+    let (notif_tx, notif_rx) = mpsc::channel(10);
+    let shutdown = Shutdown::new();
+    let (context, _) = create_mocked_rpc_context();
+    let server = builder.finish();
+    let handle = server.get_handle();
+    task::spawn({
+        let context = context.clone();
+        let shutdown_signal = shutdown.to_signal();
+        async move {
+            let fut = server
+                .add_service(GreetingServer::new(service_impl))
+                .serve(notif_rx, context);
+            tokio::select! {
+                biased;
+                _ = shutdown_signal => {},
+                r = fut => r.unwrap(),
+            }
+        }
+    });
+    (notif_tx, handle, context, shutdown)
+}
+
+/// Connects another yamux connection for the peer `node_id` to the server behind `notif_tx`, as a reconnect would
+async fn connect_peer_as(notif_tx: &mpsc::Sender<ProtocolNotification<Substream>>, node_id: &NodeId) -> Yamux {
+    let (_, inbound, outbound) = build_multiplexed_connections().await;
+    spawn_inbound(inbound.into_incoming(), notif_tx.clone(), node_id.clone());
+    outbound
+}
+
+/// Polls until `condition` holds, for at most `wait`. Returns whether it held.
+async fn holds_within<F, Fut>(wait: Duration, mut condition: F) -> bool
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let started = time::Instant::now();
+    loop {
+        if condition().await {
+            return true;
+        }
+        if started.elapsed() >= wait {
+            return false;
+        }
+        time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// An encoded `say_hello` (method 1) request
+fn say_hello_frame(request_id: u32, flags: u8) -> bytes::Bytes {
+    use prost::Message;
+
+    use crate::proto;
+
+    proto::rpc::RpcRequest {
+        request_id,
+        method: 1,
+        flags: u32::from(flags),
+        deadline: 30,
+        payload: SayHelloRequest {
+            name: "Yathvan".to_string(),
+            language: 1,
+        }
+        .encode_to_vec(),
+    }
+    .encode_to_vec()
+    .into()
+}
+
+/// Opens a session for the greeting protocol on `peer`, without a client
+async fn open_raw_session(peer: &Yamux) -> framing::CanonicalFraming<Substream> {
+    use crate::protocol::rpc::handshake::Handshake;
+
+    let socket = peer.get_yamux_control().open_stream().await.unwrap();
+    let mut framed = framing::canonical(socket, rpc::RPC_MAX_FRAME_SIZE);
+    Handshake::new(&mut framed).perform_client_handshake().await.unwrap();
+    framed
+}
+
+/// Reads the next response on a raw session
+async fn read_raw_response(framed: &mut framing::CanonicalFraming<Substream>) -> crate::proto::rpc::RpcResponse {
+    use prost::Message;
+
+    let frame = time::timeout(Duration::from_secs(5), framed.next())
+        .await
+        .expect("no response")
+        .unwrap()
+        .unwrap();
+    crate::proto::rpc::RpcResponse::decode(frame.freeze()).unwrap()
+}
+
+/// A session that is culled while its request is inside a slow service call stops at once: the call is cancelled and
+/// the session's task, with the slot it holds in the global session limit, is gone within a second
+#[tokio::test]
+async fn culled_session_releases_slot_while_mid_request() {
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(60))));
+    let num_cancelled = service.num_cancelled();
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(10)
+        .with_maximum_sessions_per_client(1)
+        .with_cull_oldest_peer_rpc_connection_on_full(true)
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, mut handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+
+    let socket = peer.get_yamux_control().open_stream().await.unwrap();
+    let mut oldest = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(30))
+        .connect(framing::canonical(socket, 1024))
+        .await
+        .unwrap();
+    let request = task::spawn(async move { oldest.say_hello(Default::default()).await });
+    time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(handle.get_num_active_sessions().await.unwrap(), 1);
+
+    // Culls the session that is mid-request
+    let _newest = connect_greeting_client(&peer).await.unwrap();
+    let released = holds_within(Duration::from_secs(1), || {
+        let mut handle = handle.clone();
+        let num_cancelled = num_cancelled.clone();
+        async move { handle.get_num_active_sessions().await.unwrap() == 1 && num_cancelled.load(Ordering::SeqCst) == 1 }
+    })
+    .await;
+    assert!(released, "the culled session was still running its request after 1s");
+    time::timeout(Duration::from_secs(5), request)
+        .await
+        .unwrap()
+        .unwrap()
+        .expect_err("the culled session's request succeeded");
+}
+
+/// ACKs (liveness pings) get their reply but do not count as activity, so a client that only pings is closed at the
+/// idle timeout
+#[tokio::test]
+async fn ack_only_traffic_hits_idle_timeout() {
+    let builder = RpcServer::builder()
+        .with_minimum_client_deadline(Duration::from_secs(0))
+        .with_idle_session_timeout(Duration::from_secs(1));
+    let (notif_tx, _handle, context, _shutdown) = setup_server_with_handle(GreetingService::default(), builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut client = connect_greeting_client(&peer).await.unwrap();
+
+    // Pings well inside the idle timeout are answered...
+    client.ping().await.unwrap();
+    // ...but keep pinging and the session is closed once it has been idle for the timeout
+    let mut closed = false;
+    for _ in 0..10 {
+        time::sleep(Duration::from_millis(300)).await;
+        if client.ping().await.is_err() {
+            closed = true;
+            break;
+        }
+    }
+    assert!(closed, "pings kept the session open past the idle timeout");
+}
+
+/// Sessions are tracked by a session id of their own, not the yamux stream id, which every connection reuses: when a
+/// peer's old session ends, its new session (on a new connection, with the same stream id) is still counted
+#[tokio::test]
+async fn stream_id_reuse_does_not_remove_wrong_session() {
+    use crate::stream_id::StreamId;
+
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, mut handle, context, _shutdown) =
+        setup_server_with_handle(GreetingService::default(), builder).await;
+    let (node_identity, old_peer) = connect_peer(&notif_tx, &context).await;
+    let node_id = node_identity.node_id().clone();
+    let new_peer = connect_peer_as(&notif_tx, &node_id).await;
+
+    let old_socket = old_peer.get_yamux_control().open_stream().await.unwrap();
+    let new_socket = new_peer.get_yamux_control().open_stream().await.unwrap();
+    assert_eq!(old_socket.stream_id(), new_socket.stream_id());
+    let mut old_client = GreetingClient::builder()
+        .connect(framing::canonical(old_socket, 1024))
+        .await
+        .unwrap();
+    let mut new_client = GreetingClient::builder()
+        .connect(framing::canonical(new_socket, 1024))
+        .await
+        .unwrap();
+    assert_eq!(handle.get_num_active_sessions_for(node_id.clone()).await.unwrap(), 2);
+
+    old_client.close().await;
+    let old_ended = holds_within(Duration::from_secs(5), || {
+        let mut handle = handle.clone();
+        async move { handle.get_num_active_sessions().await.unwrap() < 2 }
+    })
+    .await;
+    assert!(old_ended, "the old session did not end");
+    // Ending the old session neither stopped the new one nor stopped counting it
+    assert_eq!(handle.get_num_active_sessions().await.unwrap(), 1);
+    assert_eq!(handle.get_num_active_sessions_for(node_id).await.unwrap(), 1);
+    new_client.say_hello(Default::default()).await.unwrap();
+}
+
+/// A client that hangs up while its request is in a service call does not cancel the call (its work may run on other
+/// tasks that dropping it would not stop): the call runs to the end, its result is discarded, and only then does the
+/// session end and release its slot
+#[tokio::test]
+async fn client_hangup_finishes_the_service_call_then_ends_the_session() {
+    use futures::SinkExt;
+
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(1))));
+    let num_cancelled = service.num_cancelled();
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+
+    let mut framed = open_raw_session(&peer).await;
+    framed.send(say_hello_frame(1, 0)).await.unwrap();
+    time::sleep(Duration::from_millis(200)).await;
+    framed.close().await.unwrap();
+
+    // The call is still running, so the session still holds its slot
+    time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(handle.clone().get_num_active_sessions().await.unwrap(), 1);
+    // Once the call is done, the session ends
+    let ended = holds_within(Duration::from_secs(3), || {
+        let mut handle = handle.clone();
+        async move { handle.get_num_active_sessions().await.unwrap() == 0 }
+    })
+    .await;
+    assert!(ended, "the session did not end after the client hung up");
+    assert_eq!(
+        num_cancelled.load(Ordering::SeqCst),
+        0,
+        "the service call was cancelled"
+    );
+}
+
+/// A FIN sent while the request is in its service call abandons the request: no response is sent for it, but the call
+/// is not cancelled, and the session reads its next request only once the call is done. A request pipelined behind
+/// one in a service call is not lost, it is handled next.
+#[tokio::test]
+async fn requests_arriving_during_a_service_call() {
+    use futures::SinkExt;
+
+    let delay = Arc::new(RwLock::new(Duration::from_millis(500)));
+    let service = SlowGreetingService::new(delay.clone());
+    let num_cancelled = service.num_cancelled();
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, _handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut framed = open_raw_session(&peer).await;
+
+    framed.send(say_hello_frame(1, 0)).await.unwrap();
+    time::sleep(Duration::from_millis(100)).await;
+    framed
+        .send(say_hello_frame(1, rpc::message::RpcMessageFlags::FIN.bits()))
+        .await
+        .unwrap();
+    framed.send(say_hello_frame(2, 0)).await.unwrap();
+    framed.send(say_hello_frame(3, 0)).await.unwrap();
+    // The first response is for request 2: none is sent for the abandoned request 1
+    for request_id in [2, 3] {
+        let resp = read_raw_response(&mut framed).await;
+        assert_eq!(resp.request_id, request_id);
+        assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+    }
+    assert_eq!(
+        num_cancelled.load(Ordering::SeqCst),
+        0,
+        "the abandoned call was cancelled"
+    );
+}
+
+/// A client repeating request-then-FIN cannot get more than one service call running at once on a session: each
+/// abandoned call is finished before the next request is read. (Dropping the call would not stop its work, which runs
+/// on a task of its own, as a blocking database call does.)
+#[tokio::test]
+async fn request_and_fin_loop_keeps_one_call_in_flight() {
+    use futures::SinkExt;
+
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_millis(200))));
+    let max_in_flight = service.max_in_flight();
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, _handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut framed = open_raw_session(&peer).await;
+
+    for request_id in 1..=5 {
+        framed.send(say_hello_frame(request_id, 0)).await.unwrap();
+        // Long enough for the call to have started its work
+        time::sleep(Duration::from_millis(50)).await;
+        framed
+            .send(say_hello_frame(request_id, rpc::message::RpcMessageFlags::FIN.bits()))
+            .await
+            .unwrap();
+    }
+    framed.send(say_hello_frame(6, 0)).await.unwrap();
+    let resp = read_raw_response(&mut framed).await;
+    assert_eq!(resp.request_id, 6);
+    assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+    assert_eq!(max_in_flight.load(Ordering::SeqCst), 1);
+}
+
+/// A request declaring a length over `RPC_MAX_REQUEST_SIZE` is answered with `BadRequest` from its length prefix and
+/// the start of its body (which holds the request id) alone: the server does not wait for, or buffer, the rest. The
+/// rest is skipped as it arrives and the session carries on.
+///
+/// SPEC-B asks for the error "before any payload bytes are sent". The server deliberately waits for the first 6 bytes
+/// of the body (the `request_id` field) so that the `BadRequest` carries the request id and the client can match it,
+/// as `oversized_requests_are_rejected_before_decoding` requires. Six bytes instead of zero still shows that nothing
+/// near the declared length is waited for or buffered.
+#[tokio::test]
+async fn oversized_request_header_is_rejected_before_allocation() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::proto;
+
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let mut framed = open_raw_session(&outbound).await;
+
+    let declared = rpc::RPC_MAX_REQUEST_SIZE + 1;
+    let body_start = proto::rpc::RpcRequest {
+        request_id: 7,
+        method: 1,
+        flags: 0,
+        deadline: 10,
+        payload: vec![],
+    }
+    .encode_to_vec();
+    assert_eq!(body_start.len(), 6);
+    let mut frame_start = u32::try_from(declared).unwrap().to_be_bytes().to_vec();
+    frame_start.extend_from_slice(&body_start);
+    framed.get_mut().write_all(&frame_start).await.unwrap();
+    framed.get_mut().flush().await.unwrap();
+
+    let resp = read_raw_response(&mut framed).await;
+    assert_eq!(resp.request_id, 7);
+    assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::BadRequest);
+    let details = String::from_utf8(resp.payload).unwrap();
+    assert!(details.contains("request size exceeded"), "{details}");
+
+    // The rest of the oversized request is skipped, then the session serves the next request
+    framed
+        .get_mut()
+        .write_all(&vec![0; declared - body_start.len()])
+        .await
+        .unwrap();
+    framed.send(say_hello_frame(8, 0)).await.unwrap();
+    let resp = read_raw_response(&mut framed).await;
+    assert_eq!(resp.request_id, 8);
+    assert_eq!(RpcStatusCode::from(resp.status), RpcStatusCode::Ok);
+}
+
+/// A session whose task panics still releases its slot: with a limit of one session per peer, the peer can connect
+/// again
+#[tokio::test]
+async fn a_panicking_session_releases_its_slot() {
+    let builder = RpcServer::builder()
+        .with_maximum_sessions_per_client(1)
+        .with_cull_oldest_peer_rpc_connection_on_full(false)
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    // `return_error` is not implemented by this service: it panics inside the session task
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::ZERO)));
+    let (notif_tx, handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (node_identity, peer) = connect_peer(&notif_tx, &context).await;
+
+    let mut client = connect_greeting_client(&peer).await.unwrap();
+    client.return_error().await.unwrap_err();
+    let released = holds_within(Duration::from_secs(5), || {
+        let mut handle = handle.clone();
+        let node_id = node_identity.node_id().clone();
+        async move { handle.get_num_active_sessions_for(node_id).await.unwrap() == 0 }
+    })
+    .await;
+    assert!(released, "the panicked session was still counted against its peer");
+    let mut client = connect_greeting_client(&peer).await.unwrap();
+    client.say_hello(Default::default()).await.unwrap();
+}
+
+/// A socket whose reads can be switched off for good, so the other side's writes back up once the pipe is full
+struct StopReadingSocket {
+    inner: tokio::io::DuplexStream,
+    stopped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl tokio::io::AsyncRead for StopReadingSocket {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        if self.stopped.load(Ordering::SeqCst) {
+            // Never woken: this side has stopped reading for the rest of the test
+            return std::task::Poll::Pending;
+        }
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for StopReadingSocket {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// A peer that stops reading and keeps completing client handshakes on new substreams, each culling its oldest
+/// session, does not make the culled sessions hold their slots: each is released within a second, whether it was
+/// streaming a response or had only just been accepted.
+///
+/// This does not stall the acceptance write itself: with yamux 0.13 the first write on a new stream always fits (the
+/// stream starts with a full send window and its sender has a reserved slot in the connection's queue), however
+/// stalled the socket is. The session task still selects its acceptance against the stop signal, which also covers a
+/// session culled before its task first runs.
+#[tokio::test]
+async fn sessions_culled_while_the_peer_stops_reading_are_released_promptly() {
+    use crate::connection_manager::{ConnectionDirection, PeerConnectionInfo};
+
+    let builder = RpcServer::builder()
+        .with_maximum_simultaneous_sessions(10)
+        .with_maximum_sessions_per_client(1)
+        .with_cull_oldest_peer_rpc_connection_on_full(true)
+        .with_handshake_timeout(Duration::from_secs(15))
+        .with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, mut handle, context, _shutdown) =
+        setup_server_with_handle(GreetingService::default(), builder).await;
+
+    // A small pipe, so the server's writes stall soon after the client stops reading
+    let (client_socket, server_socket) = tokio::io::duplex(16 * 1024);
+    let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let client_socket = StopReadingSocket {
+        inner: client_socket,
+        stopped: stopped.clone(),
+    };
+    let client = Yamux::upgrade_connection(
+        client_socket,
+        ConnectionDirection::Outbound,
+        PeerConnectionInfo::default(),
+    )
+    .unwrap();
+    let server = Yamux::upgrade_connection(
+        server_socket,
+        ConnectionDirection::Inbound,
+        PeerConnectionInfo::default(),
+    )
+    .unwrap();
+    let node_identity = build_node_identity(Default::default());
+    context
+        .peer_manager()
+        .add_or_update_peer(node_identity.to_peer())
+        .await
+        .unwrap();
+    spawn_inbound(server.into_incoming(), notif_tx, node_identity.node_id().clone());
+
+    // The first session asks for a response far larger than the pipe, then the client stops reading
+    let mut first = connect_greeting_client(&client).await.unwrap();
+    stopped.store(true, Ordering::SeqCst);
+    let _request = task::spawn(async move { first.reply_with_msg_of_size(1024 * 1024).await });
+    time::sleep(Duration::from_millis(500)).await;
+
+    // Two more sessions: the first culls the session that is streaming, the second culls the first while it waits to
+    // send its acceptance
+    let mut held = Vec::new();
+    for _ in 0..2 {
+        let mut substream = client.get_yamux_control().open_stream().await.unwrap();
+        substream.write_all(&handshake_frame()).await.unwrap();
+        substream.flush().await.unwrap();
+        held.push(substream);
+        time::sleep(Duration::from_millis(300)).await;
+    }
+
+    let released = holds_within(Duration::from_secs(1), || {
+        let mut handle = handle.clone();
+        async move { handle.get_num_active_sessions().await.unwrap() == 1 }
+    })
+    .await;
+    assert!(
+        released,
+        "a culled session still held its slot: {} active",
+        handle.get_num_active_sessions().await.unwrap()
+    );
+}
+
+/// A large request pipelined behind one that is in a slow service call is not read while the call runs: the client's
+/// send is held back by flow control rather than buffered by the server. It is handled normally afterwards.
+#[tokio::test]
+async fn a_large_pipelined_request_is_not_read_during_a_service_call() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::proto;
+
+    let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(2))));
+    let builder = RpcServer::builder().with_minimum_client_deadline(Duration::from_secs(0));
+    let (notif_tx, _handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+    let (_, peer) = connect_peer(&notif_tx, &context).await;
+    let mut framed = open_raw_session(&peer).await;
+
+    framed.send(say_hello_frame(1, 0)).await.unwrap();
+    time::sleep(Duration::from_millis(200)).await;
+
+    // Far larger than a yamux stream's initial window, but within the request limit
+    let large = proto::rpc::RpcRequest {
+        request_id: 2,
+        method: 1,
+        flags: 0,
+        deadline: 30,
+        payload: SayHelloRequest {
+            name: "a".repeat(2 * 1024 * 1024),
+            language: 1,
+        }
+        .encode_to_vec(),
+    }
+    .encode_to_vec();
+    assert!(large.len() < rpc::RPC_MAX_REQUEST_SIZE);
+    let send = framed.send(large.into());
+    tokio::pin!(send);
+    assert!(
+        time::timeout(Duration::from_millis(1000), &mut send).await.is_err(),
+        "the server read the whole pipelined request while the first one was in its service call"
+    );
+
+    // Once the first request is answered, the pipelined one is read and handled
+    time::timeout(Duration::from_secs(10), send)
+        .await
+        .expect("the pipelined request was not read after the first was answered")
+        .unwrap();
+    let first = read_raw_response(&mut framed).await;
+    assert_eq!(first.request_id, 1);
+    assert_eq!(RpcStatusCode::from(first.status), RpcStatusCode::Ok);
+    let second = read_raw_response(&mut framed).await;
+    assert_eq!(second.request_id, 2);
+    assert_eq!(RpcStatusCode::from(second.status), RpcStatusCode::Ok);
+}
+
+/// A session that is culled while it finishes a call its client gave up on (with a FIN, or by hanging up) stops at
+/// once: the stop cancels the call and the session releases its slot within a second
+#[tokio::test]
+async fn a_session_finishing_an_abandoned_call_is_released_promptly_when_culled() {
+    use futures::SinkExt;
+
+    for hang_up in [false, true] {
+        let service = SlowGreetingService::new(Arc::new(RwLock::new(Duration::from_secs(30))));
+        let num_cancelled = service.num_cancelled();
+        let builder = RpcServer::builder()
+            .with_maximum_simultaneous_sessions(10)
+            .with_maximum_sessions_per_client(1)
+            .with_cull_oldest_peer_rpc_connection_on_full(true)
+            .with_minimum_client_deadline(Duration::from_secs(0));
+        let (notif_tx, handle, context, _shutdown) = setup_server_with_handle(service, builder).await;
+        let (_, peer) = connect_peer(&notif_tx, &context).await;
+
+        let mut framed = open_raw_session(&peer).await;
+        framed.send(say_hello_frame(1, 0)).await.unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        if hang_up {
+            framed.close().await.unwrap();
+        } else {
+            framed
+                .send(say_hello_frame(1, rpc::message::RpcMessageFlags::FIN.bits()))
+                .await
+                .unwrap();
+        }
+        // Now finishing the abandoned call, which would take 30s
+        time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(handle.clone().get_num_active_sessions().await.unwrap(), 1);
+        assert_eq!(num_cancelled.load(Ordering::SeqCst), 0);
+
+        // Culls the session that is finishing the call
+        let _newest = connect_greeting_client(&peer).await.unwrap();
+        let released =
+            holds_within(Duration::from_secs(1), || {
+                let mut handle = handle.clone();
+                let num_cancelled = num_cancelled.clone();
+                async move {
+                    handle.get_num_active_sessions().await.unwrap() == 1 && num_cancelled.load(Ordering::SeqCst) == 1
+                }
+            })
+            .await;
+        assert!(
+            released,
+            "the culled session was still finishing its abandoned call after 1s (hang up: {hang_up})"
         );
     }
 }

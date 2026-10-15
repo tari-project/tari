@@ -40,9 +40,10 @@ use tracing::{Instrument, Level, span};
 use super::{
     dialer::{Dialer, DialerRequest},
     error::ConnectionManagerError,
-    listener::PeerListener,
+    listener::{ListenerSharedState, PeerListener, effective_liveness_sessions},
     peer_connection::PeerConnection,
     requester::ConnectionManagerRequest,
+    self_liveness::LivenessTokens,
 };
 #[cfg(feature = "metrics")]
 use crate::connection_manager::ConnectionDirection;
@@ -58,7 +59,7 @@ use crate::{
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, PeerManagerError},
     peer_validator::PeerValidatorConfig,
-    protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
+    protocol::{NodeNetworkInfo, ProtocolError, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
 };
 
@@ -137,7 +138,9 @@ pub struct ConnectionManagerConfig {
     /// The maximum time to wait for a peer to respond on a noise protocol dial.
     /// Default: 60s
     pub noise_dial_timeout: Duration,
-    /// The number of liveness check sessions to allow. Default: 0
+    /// The number of liveness check sessions to allow, across all listeners of the node. Capped at half of
+    /// `max_simultaneous_inbound_connects`, since each session holds a handshake slot while open. The node's own
+    /// self-check does not need a session. Default: 1
     pub liveness_max_sessions: usize,
     /// CIDR blocks that allowlist liveness checks. Default: Localhost only (127.0.0.1/32)
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
@@ -150,6 +153,64 @@ pub struct ConnectionManagerConfig {
     pub peer_validation_config: PeerValidatorConfig,
     /// Addresses that should never be dialed
     pub excluded_dial_addresses: Vec<MultiaddrRange>,
+    /// The longest the unauthenticated stages of an inbound connection may take in total: the wire byte, noise and
+    /// the identity exchange. Peer database calls and the multiplexer upgrade are not counted. The per-stage
+    /// timeouts still apply inside this deadline. Must be non-zero. Default: 15s
+    pub inbound_handshake_timeout: Duration,
+    /// The maximum number of inbound handshakes in flight at once from a single source (an IPv4 address or an IPv6
+    /// /64), counted per listener. Loopback sources (including Tor inbound forwarded over loopback), sources in
+    /// `listener_per_ip_exempt_cidrs` and non-IP sources are exempt. Because loopback is always exempt, a clearnet
+    /// node behind a local TCP proxy that forwards over loopback gets no per-source protection; prefer forwarding that
+    /// preserves the source address. Must be non-zero. Default: 4
+    pub max_inbound_handshakes_per_ip: usize,
+    /// The maximum number of inbound connections, established and in-handshake combined. Inbound sockets over this
+    /// limit are closed before any handshake. Outbound connections are not counted. Each listener applies this
+    /// separately: connections to the auxiliary TCP listener are not counted against the main listener's limit, nor
+    /// the other way round. Must be non-zero. Default: 500
+    pub max_inbound_connections: usize,
+    /// The maximum number of inbound connections, established and in-handshake combined, from a single source (an
+    /// IPv4 address or an IPv6 /64), with the same exemptions as `max_inbound_handshakes_per_ip`. Counted per
+    /// listener. Many hosts can share one egress address (VPN, Tor exit, CGNAT, SNAT), and one of them can hold all of
+    /// that address's slots and lock the others out; `listener_per_ip_exempt_cidrs` is the escape hatch for proxies
+    /// and SNAT you control. Loopback sources are always exempt, so a clearnet node behind a proxy on the same host
+    /// that forwards over loopback (nginx or haproxy stream, socat) gets no per-source protection. Behind docker's
+    /// userland-proxy (or any SNAT, NAT64 or Teredo translator) all peers appear to come from one non-loopback address
+    /// (for docker, the bridge gateway, e.g. 172.17.0.1) and share its limit; add that address to
+    /// `listener_per_ip_exempt_cidrs`. Prefer forwarding that preserves the source address. Must be non-zero.
+    /// Default: 32
+    pub max_inbound_connections_per_ip: usize,
+    /// Sources exempt from the per-source inbound limits, in addition to loopback. If Tor (or another proxy, or SNAT)
+    /// forwards inbound connections to this node from a non-loopback address, every such connection appears to come
+    /// from that address; add it here or the per-source limits will throttle all of them. IPv4-mapped IPv6 CIDRs are
+    /// treated as their IPv4 form. Default: empty
+    pub listener_per_ip_exempt_cidrs: Vec<cidr::AnyIpCidr>,
+}
+
+impl ConnectionManagerConfig {
+    /// Rejects inbound listener limits that would refuse every inbound connection.
+    pub fn validate(&self) -> Result<(), ConnectionManagerError> {
+        if self.inbound_handshake_timeout.is_zero() {
+            return Err(ConnectionManagerError::InvalidConfig(
+                "inbound_handshake_timeout must be greater than zero".to_string(),
+            ));
+        }
+        if self.max_inbound_connections == 0 {
+            return Err(ConnectionManagerError::InvalidConfig(
+                "max_inbound_connections must be greater than zero".to_string(),
+            ));
+        }
+        if self.max_inbound_handshakes_per_ip == 0 {
+            return Err(ConnectionManagerError::InvalidConfig(
+                "max_inbound_handshakes_per_ip must be greater than zero".to_string(),
+            ));
+        }
+        if self.max_inbound_connections_per_ip == 0 {
+            return Err(ConnectionManagerError::InvalidConfig(
+                "max_inbound_connections_per_ip must be greater than zero".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl Default for ConnectionManagerConfig {
@@ -173,6 +234,11 @@ impl Default for ConnectionManagerConfig {
             noise_handshake_recv_timeout: Duration::from_secs(6),
             noise_dial_timeout: Duration::from_secs(60),
             excluded_dial_addresses: vec![],
+            inbound_handshake_timeout: Duration::from_secs(15),
+            max_inbound_handshakes_per_ip: 4,
+            max_inbound_connections: 500,
+            max_inbound_connections_per_ip: 32,
+            listener_per_ip_exempt_cidrs: vec![],
         }
     }
 }
@@ -205,6 +271,7 @@ pub(crate) struct ConnectionManager<TTransport, TBackoff> {
     dialer: Option<Dialer<TTransport, TBackoff>>,
     listener: Option<PeerListener<TTransport>>,
     aux_listener: Option<PeerListener<TcpTransport>>,
+    listener_shared_state: ListenerSharedState,
     peer_manager: Arc<PeerManager>,
     shutdown_signal: Option<ShutdownSignal>,
     protocols: Protocols<Substream>,
@@ -238,7 +305,19 @@ where
             .with_recv_timeout(config.noise_handshake_recv_timeout)
             .with_dial_timeout(config.noise_dial_timeout);
 
-        let listener = PeerListener::new(
+        // Both listeners share the self-check tokens and the liveness session permits node-wide
+        let liveness_sessions = effective_liveness_sessions(&config);
+        if liveness_sessions < config.liveness_max_sessions {
+            warn!(
+                target: LOG_TARGET,
+                "liveness_max_sessions ({}) is limited to {} (half of max_simultaneous_inbound_connects) so that \
+                 liveness sessions cannot hold every inbound handshake slot",
+                config.liveness_max_sessions,
+                liveness_sessions
+            );
+        }
+        let listener_shared_state = ListenerSharedState::new(&config);
+        let mut listener = PeerListener::new(
             config.clone(),
             config.listener_address.clone(),
             transport.clone(),
@@ -248,6 +327,7 @@ where
             node_identity.clone(),
             shutdown_signal.clone(),
         );
+        listener.set_shared_state(listener_shared_state.clone());
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
             info!(target: LOG_TARGET, "Starting auxiliary listener on {addr}");
@@ -256,7 +336,7 @@ where
                 self_liveness_self_check_interval: None,
                 ..config.clone()
             };
-            PeerListener::new(
+            let mut aux_listener = PeerListener::new(
                 aux_config,
                 addr,
                 TcpTransport::new(),
@@ -265,7 +345,11 @@ where
                 peer_manager.clone(),
                 node_identity.clone(),
                 shutdown_signal.clone(),
-            )
+            );
+            // The auxiliary listener shares the liveness state but keeps its own inbound counts, so it is neither
+            // refused by, nor counted against, the public listener's inbound limits
+            aux_listener.set_shared_state(listener_shared_state.with_own_counts());
+            aux_listener
         });
 
         let dialer = Dialer::new(
@@ -291,6 +375,7 @@ where
             listener: Some(listener),
             listener_info: None,
             aux_listener,
+            listener_shared_state,
             listening_notifiers: Vec::new(),
             connection_manager_events_tx,
             complete_trigger: OneshotTrigger::new(),
@@ -300,6 +385,12 @@ where
     pub fn add_protocols(&mut self, protocols: Protocols<Substream>) -> &mut Self {
         self.protocols.extend(protocols);
         self
+    }
+
+    /// The one-time tokens the listeners accept for this node's own liveness self-check. Pass these to
+    /// `SelfLivenessCheck` so its connections are recognised.
+    pub fn liveness_tokens(&self) -> LivenessTokens {
+        self.listener_shared_state.liveness_tokens.clone()
     }
 
     pub fn complete_signal(&self) -> OneshotSignal<()> {
@@ -448,23 +539,29 @@ where
                 );
                 #[cfg(feature = "metrics")]
                 metrics::inbound_substream_counter(&protocol).inc();
-                let notify_fut = self
+                // Waits at most a second for the protocol to take the substream, then drops it (yamux resets it, which
+                // the remote sees as a failed negotiation). This loop serves every peer, so one stalled protocol must
+                // not hold it up for longer than that.
+                let result = self
                     .protocols
-                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
-                match time::timeout(Duration::from_secs(10), notify_fut).await {
-                    Ok(Ok(_)) => {
+                    .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id.clone(), stream))
+                    .await;
+                match result {
+                    Ok(()) => {
                         debug!(target: LOG_TARGET, "Protocol notification for '{proto_str}' sent" );
                     },
-                    Ok(Err(err)) => {
-                        error!(
+                    // Already warned about (rate limited, without the peer) and counted where it was dropped
+                    Err(ProtocolError::NotificationDropped) => {
+                        debug!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{proto_str}' because '{err:?}'"
+                            "Dropped an inbound substream from peer `{node_id}` because protocol '{proto_str}' did not \
+                             take it in time"
                         );
                     },
                     Err(err) => {
                         error!(
                             target: LOG_TARGET,
-                            "Error sending NewSubstream notification for protocol '{proto_str}' because {err}"
+                            "Error sending NewSubstream notification for protocol '{proto_str}' because '{err:?}'"
                         );
                     },
                 }

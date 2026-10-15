@@ -2689,6 +2689,20 @@ async fn coin_split_even_builds_a_valid_transaction() {
     assert_validates(&tx);
 }
 
+#[tokio::test]
+async fn coin_split_even_rejects_insufficient_funds_for_fee() {
+    let (mut oms, _tempdir, uo) = oms_with_spendable_input(MicroMinotari::from(100)).await;
+
+    let split_count = 5;
+    let err = oms
+        .output_manager_handle
+        .create_coin_split_even(vec![uo.commitment().clone()], split_count, MicroMinotari::from(1000))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, OutputManagerError::NotEnoughFunds));
+}
+
 /// An uneven split takes a fixed amount per output and leaves the rest as change, so this exercises the case where
 /// the reservation has to draw one more key than the transaction has recipient outputs.
 #[tokio::test]

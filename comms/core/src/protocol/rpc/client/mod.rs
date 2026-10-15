@@ -303,6 +303,13 @@ impl<TClient> RpcClientBuilder<TClient> {
     /// bounds the memory a peer can make the client hold for one stream. The final response of a request (which is
     /// the only response of a non-streaming call) is not capped by this, only by the frame size.
     /// Default: [`RPC_MAX_FRAME_SIZE`](rpc::RPC_MAX_FRAME_SIZE), i.e. no limit beyond the frame size
+    ///
+    /// This size is checked once a response has been read. Unlike the server, which turns away an oversized request
+    /// from its length prefix (see `server::request_codec`), the client still reads responses with the canonical
+    /// `LengthDelimitedCodec`, which reserves up to the frame size ([`RPC_MAX_FRAME_SIZE`](rpc::RPC_MAX_FRAME_SIZE))
+    /// as soon as it reads a frame's length prefix. Applying this limit to the prefix is not practical: whether a
+    /// response is the final (FIN) one, which is exempt and may honestly be frame-sized, is only known once it has been
+    /// read. So the memory a server can make the client reserve per session is bounded by the frame size, not by this.
     pub fn with_max_response_size(mut self, size: usize) -> Self {
         self.config.max_response_size = size;
         self

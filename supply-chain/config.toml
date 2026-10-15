@@ -153,6 +153,10 @@ criteria = "safe-to-deploy"
 version = "0.2.21"
 criteria = "safe-to-deploy"
 
+[[exemptions.annotate-snippets]]
+version = "0.12.16"
+criteria = "safe-to-deploy"
+
 [[exemptions.anstream]]
 version = "0.6.18"
 criteria = "safe-to-deploy"
@@ -901,6 +905,10 @@ criteria = "safe-to-deploy"
 version = "1.0.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.encoding_rs_io]]
+version = "0.1.8"
+criteria = "safe-to-deploy"
+
 [[exemptions.endian-type]]
 version = "0.1.2"
 criteria = "safe-to-deploy"
@@ -1055,6 +1063,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.globwalk]]
 version = "0.8.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.granit-parser]]
+version = "2.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.group]]
@@ -2487,6 +2499,10 @@ criteria = "safe-to-deploy"
 version = "0.5.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.serde-saphyr]]
+version = "2.0.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.serde-value]]
 version = "0.7.0"
 criteria = "safe-to-deploy"
@@ -2533,10 +2549,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.serde_valid_literal]]
 version = "1.0.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.serde_yaml]]
-version = "0.9.34+deprecated"
 criteria = "safe-to-deploy"
 
 [[exemptions.serial_test]]
@@ -3107,10 +3119,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.unsafe-any-ors]]
 version = "1.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.unsafe-libyaml]]
-version = "0.2.11"
 criteria = "safe-to-deploy"
 
 [[exemptions.unsigned-varint]]

@@ -33,13 +33,30 @@ pub fn num_sessions(protocol: &ProtocolId) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
             "comms::rpc::server::num_sessions",
-            "The number of active server sessions per protocol",
+            "The number of active server sessions per protocol. Handshakes in progress are not counted.",
             &["protocol"],
         )
         .unwrap()
     });
 
     METER.with_label_values(&[String::from_utf8_lossy(protocol).as_ref()])
+}
+
+/// Counts a session in [num_sessions] for as long as it is held
+pub struct ActiveSession(IntGauge);
+
+impl ActiveSession {
+    pub fn new(protocol: &ProtocolId) -> Self {
+        let gauge = num_sessions(protocol);
+        gauge.inc();
+        Self(gauge)
+    }
+}
+
+impl Drop for ActiveSession {
+    fn drop(&mut self) {
+        self.0.dec();
+    }
 }
 
 pub fn handshake_error_counter(protocol: &ProtocolId) -> IntCounter {

@@ -222,6 +222,35 @@ event_channel_size = 3500
 # Enables periodic socket-level liveness checks. Default: Disabled
 # listener_self_liveness_check_interval = 15
 
+# The longest, in seconds, the unauthenticated stages of an inbound connection may take in total (wire byte, noise
+# and identity exchange). Connections that take longer are closed. Peer database work and the multiplexer upgrade are
+# not counted. Must be greater than zero. (default = 15)
+#listener_handshake_timeout = 15
+# The maximum number of inbound handshakes in flight at once from a single source (an IPv4 address or an IPv6 /64).
+# Further connections from that source are closed until one completes. Loopback sources, including Tor inbound
+# forwarded over loopback, are exempt. If a remote Tor forwarder or proxy delivers inbound connections, add its address
+# to `listener_per_ip_exempt_cidrs`. Because loopback is always exempt, a clearnet node behind a proxy on the same host
+# that forwards over loopback (nginx or haproxy stream, socat) gets no per-source protection. Behind docker's
+# userland-proxy (or any SNAT, NAT64 or Teredo translator) all peers appear to come from one non-loopback address (for
+# docker, the bridge gateway, e.g. 172.17.0.1) and share its limits; add that address to `listener_per_ip_exempt_cidrs`.
+# Prefer forwarding that preserves the source address. Must be greater than zero. (default = 4)
+#listener_max_handshakes_per_ip = 4
+# The maximum number of inbound connections, established and in-handshake combined. Inbound connections over this
+# limit are closed before any handshake. Outbound connections are not counted. The auxiliary TCP listener has its own
+# count and is neither counted against nor refused by this limit on the main listener. Must be greater than zero.
+# (default = 500)
+#max_inbound_connections = 500
+# The maximum number of inbound connections, established and in-handshake combined, from a single source (an IPv4
+# address or an IPv6 /64), counted per listener. Same exemptions as `listener_max_handshakes_per_ip`. Many hosts can
+# share one egress address (VPN, Tor exit, CGNAT, SNAT), and one of them can hold all of that address's slots and lock
+# the others out; `listener_per_ip_exempt_cidrs` is the escape hatch for proxies and SNAT you control. Loopback sources
+# are always exempt (see `listener_max_handshakes_per_ip`). Must be greater than zero. (default = 32)
+#max_inbound_connections_per_ip = 32
+# CIDRs exempt from the per-source inbound limits, in addition to loopback (always exempt). Every connection forwarded
+# by a remote Tor forwarder, proxy or SNAT appears to come from its address, so add that address here. IPv4-mapped IPv6
+# CIDRs are treated as their IPv4 form. (default = [])
+#listener_per_ip_exempt_cidrs = []
+
 # User agent string for this node
 #user_agent = ""
 

@@ -51,7 +51,8 @@ pub struct CommonCliArgs {
     pub network: Option<Network>,
 
     /// Overrides for properties in the config file (use the fully qualified key name!!). To choose the network use
-    /// --network esmeralda, not -p. Examples:
+    /// --network esmeralda, not -p. Override values are visible in the process list and shell history, so secrets
+    /// belong in the config file or an environment variable. Examples:
     /// -p base_node.grpc_server_allow_methods="get_tokens_in_circulation, get_sync_progress, get_mempool_stats"
     /// -p esmeralda.p2p.seeds.peer_seeds="<public_key_1>::<address_1>", "<public_key_2>::<address_2>", or,
     /// -p base_node.grpc_server_allow_methods=""
@@ -69,15 +70,22 @@ where
     U: std::str::FromStr,
     U::Err: Error + Send + Sync + 'static,
 {
-    let mut parts = s.split('=').map(|s| s.trim());
-    let k = parts.next().ok_or("invalid override: string empty`")?;
-    let v = parts
-        .next()
+    let (k, v) = s
+        .split_once('=')
         .ok_or_else(|| format!("invalid override: expected key=value: no `=` found in `{s}`"))?;
+    let k = k.trim();
+    if k.is_empty() {
+        return Err("invalid override: string empty`".into());
+    }
     Ok((k.parse()?, v.parse()?))
 }
 
 impl CommonCliArgs {
+    /// Returns the path to the configuration file.
+    ///
+    /// Note: The configuration file path is evaluated before reading the configuration file itself,
+    /// so it cannot reflect any `network = "..."` entry inside that file. Its base path resolution
+    /// is driven solely by the `--network` CLI flag or the `TARI_NETWORK` environment variable.
     pub fn config_path(&self) -> PathBuf {
         let config_path = PathBuf::from(&self.config);
         if config_path.is_absolute() {
@@ -89,6 +97,11 @@ impl CommonCliArgs {
 
     pub fn get_base_path(&self) -> PathBuf {
         let network = self.network.unwrap_or_default();
+        PathBuf::from(&self.base_path).join(network.to_string())
+    }
+
+    pub fn get_base_path_for(&self, network: &Network) -> PathBuf {
+        let network = self.network.unwrap_or(*network);
         PathBuf::from(&self.base_path).join(network.to_string())
     }
 
@@ -110,17 +123,93 @@ impl CommonCliArgs {
 }
 
 impl ConfigOverrideProvider for CommonCliArgs {
-    fn get_config_property_overrides(&self, _network: &Network) -> Vec<(String, String)> {
+    fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
         overrides.push((
             "common.base_path".to_string(),
-            self.get_base_path()
+            self.get_base_path_for(network)
                 .as_os_str()
                 .to_str()
                 .expect("An os string from a path")
                 .into(),
         ));
         overrides
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn common_cli_args_uses_resolved_network_when_cli_unset() {
+        let args = CommonCliArgs {
+            base_path: "/tmp/tari".to_string(),
+            config: "config.toml".to_string(),
+            log_config: None,
+            log_path: None,
+            network: None,
+            config_property_overrides: Vec::new(),
+        };
+
+        let overrides = args.get_config_property_overrides(&Network::StageNet);
+        let base_path_override = overrides
+            .into_iter()
+            .find(|(k, _)| k == "common.base_path")
+            .map(|(_, v)| v)
+            .expect("common.base_path override missing");
+
+        assert!(
+            base_path_override.ends_with("stagenet"),
+            "expected base_path to end with stagenet, got {base_path_override}"
+        );
+    }
+
+    #[test]
+    fn common_cli_args_cli_network_takes_precedence() {
+        let args = CommonCliArgs {
+            base_path: "/tmp/tari".to_string(),
+            config: "config.toml".to_string(),
+            log_config: None,
+            log_path: None,
+            network: Some(Network::Esmeralda),
+            config_property_overrides: Vec::new(),
+        };
+
+        let overrides = args.get_config_property_overrides(&Network::StageNet);
+        let base_path_override = overrides
+            .into_iter()
+            .find(|(k, _)| k == "common.base_path")
+            .map(|(_, v)| v)
+            .expect("common.base_path override missing");
+
+        assert!(
+            base_path_override.ends_with("esmeralda"),
+            "expected base_path to end with esmeralda, got {base_path_override}"
+        );
+    }
+
+    #[test]
+    fn parse_key_val_handles_multiple_equals_and_preserves_whitespace() {
+        let (k, v): (String, String) = parse_key_val("a.b=c=d").unwrap();
+        assert_eq!(k, "a.b");
+        assert_eq!(v, "c=d");
+
+        let (k, v): (String, String) = parse_key_val("a.b= x ").unwrap();
+        assert_eq!(k, "a.b");
+        assert_eq!(v, " x ");
+
+        let (k, v): (String, String) = parse_key_val(" key = val ").unwrap();
+        assert_eq!(k, "key");
+        assert_eq!(v, " val ");
+
+        let (k, v): (String, String) = parse_key_val("key=").unwrap();
+        assert_eq!(k, "key");
+        assert_eq!(v, "");
+
+        assert!(parse_key_val::<String, String>("=val").is_err());
+        assert!(parse_key_val::<String, String>("   =val").is_err());
+        assert!(parse_key_val::<String, String>("no_equals").is_err());
     }
 }
 

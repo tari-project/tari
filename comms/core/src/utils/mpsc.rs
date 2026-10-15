@@ -20,9 +20,41 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    fmt,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
-use tokio::sync::mpsc;
+use log::warn;
+use tokio::sync::{mpsc, mpsc::error::SendTimeoutError};
+
+const LOG_TARGET: &str = "comms::utils::mpsc";
+
+/// How long [send_or_drop] waits for room on a full channel before it drops the item
+pub const SEND_OR_DROP_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// The shortest interval between two warnings about items dropped at the same site
+const DROP_WARNING_INTERVAL: Duration = Duration::from_secs(10);
+
+/// The most peers whose drops are counted per site between two warnings. Drops from further peers are still counted
+/// in the total.
+const MAX_PEERS_PER_WARNING_INTERVAL: usize = 32;
+
+/// The number of peers (those with the most drops) named in a warning
+const NUM_PEERS_IN_WARNING: usize = 3;
+
+/// The drops at one site since its last warning
+struct SiteDrops {
+    site: &'static str,
+    last_warning: Option<Instant>,
+    num_dropped: usize,
+    /// Drops per peer, for the first [MAX_PEERS_PER_WARNING_INTERVAL] peers
+    peers: Vec<(String, usize)>,
+}
+
+static DROP_WARNINGS: Mutex<Vec<SiteDrops>> = Mutex::new(Vec::new());
 
 pub async fn send_all<T, I: IntoIterator<Item = T>>(
     sender: &mpsc::Sender<T>,
@@ -32,6 +64,112 @@ pub async fn send_all<T, I: IntoIterator<Item = T>>(
         sender.send(item).await?;
     }
     Ok(())
+}
+
+/// Sends `item` on an internal bounded channel, waiting at most [SEND_OR_DROP_TIMEOUT] for room. If the receiver does
+/// not make room in time, or is gone, the item is dropped instead: one stalled consumer must not stall the actor that
+/// feeds it, and with it everything else that actor serves. `site` names the call site in the warning (logged at most
+/// once per 10 s per site, naming the peers with the most drops since the last one) and in the
+/// `comms_channel_drop_total` metric. `peer` is the peer the item is about, if any.
+///
+/// The dropped item is handed back in the error, for a caller that has to clean up after it.
+pub async fn send_or_drop<T>(
+    sender: &mpsc::Sender<T>,
+    item: T,
+    site: &'static str,
+    peer: Option<&(dyn fmt::Display + Sync)>,
+) -> Result<(), SendTimeoutError<T>> {
+    let result = sender.send_timeout(item, SEND_OR_DROP_TIMEOUT).await;
+    if let Err(err) = &result {
+        let reason = match err {
+            SendTimeoutError::Timeout(_) => "the receiver did not take it in time",
+            SendTimeoutError::Closed(_) => "the receiver is gone",
+        };
+        record_drop(site, reason, peer);
+    }
+    result
+}
+
+fn record_drop(site: &'static str, reason: &str, peer: Option<&(dyn fmt::Display + Sync)>) {
+    #[cfg(feature = "metrics")]
+    channel_drop_counter(site).inc();
+
+    let now = Instant::now();
+    let mut warnings = match DROP_WARNINGS.lock() {
+        Ok(warnings) => warnings,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if !warnings.iter().any(|drops| drops.site == site) {
+        warnings.push(SiteDrops {
+            site,
+            last_warning: None,
+            num_dropped: 0,
+            peers: Vec::new(),
+        });
+    }
+    let Some(drops) = warnings.iter_mut().find(|drops| drops.site == site) else {
+        return;
+    };
+
+    drops.num_dropped = drops.num_dropped.saturating_add(1);
+    if let Some(peer) = peer {
+        let peer = peer.to_string();
+        match drops.peers.iter_mut().find(|(known, _)| *known == peer) {
+            Some((_, count)) => *count = count.saturating_add(1),
+            None => {
+                if drops.peers.len() < MAX_PEERS_PER_WARNING_INTERVAL {
+                    drops.peers.push((peer, 1));
+                }
+            },
+        }
+    }
+
+    if drops
+        .last_warning
+        .is_some_and(|last| now.saturating_duration_since(last) < DROP_WARNING_INTERVAL)
+    {
+        return;
+    }
+    drops.last_warning = Some(now);
+    let num_dropped = std::mem::take(&mut drops.num_dropped);
+    let mut peers = std::mem::take(&mut drops.peers);
+    drop(warnings);
+
+    peers.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut top_peers = Vec::new();
+    for (peer, count) in peers.iter().take(NUM_PEERS_IN_WARNING) {
+        top_peers.push(format!("{peer} ({count})"));
+    }
+    if top_peers.is_empty() {
+        warn!(
+            target: LOG_TARGET,
+            "Dropped {num_dropped} item(s) sent to `{site}` because {reason} within {SEND_OR_DROP_TIMEOUT:.0?}"
+        );
+    } else {
+        warn!(
+            target: LOG_TARGET,
+            "Dropped {num_dropped} item(s) sent to `{site}` because {reason} within {SEND_OR_DROP_TIMEOUT:.0?}. Most \
+             for: {}",
+            top_peers.join(", ")
+        );
+    }
+}
+
+#[cfg(feature = "metrics")]
+fn channel_drop_counter(site: &'static str) -> tari_metrics::IntCounter {
+    use once_cell::sync::Lazy;
+    use tari_metrics::IntCounterVec;
+
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms_channel_drop_total",
+            "The number of items dropped because an internal channel's receiver did not take them within 1s, per site",
+            &["site"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[site])
 }
 
 pub fn send_all_unbounded<T, I: IntoIterator<Item = T>>(
@@ -219,6 +357,43 @@ mod test {
 
         drop(rx);
         assert!(wait_for_one_taken(&tx).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_or_drop_delivers_when_there_is_room() {
+        let (tx, mut rx) = mpsc::channel(1);
+        send_or_drop(&tx, 1, "test", None).await.unwrap();
+        assert_eq!(rx.recv().await, Some(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn send_or_drop_drops_the_item_when_the_receiver_stalls() {
+        let (tx, mut rx) = mpsc::channel(1);
+        tx.send(1).await.unwrap();
+        let started = time::Instant::now();
+        let err = send_or_drop(&tx, 2, "test", None).await.unwrap_err();
+        assert_eq!(started.elapsed(), SEND_OR_DROP_TIMEOUT);
+        assert!(matches!(err, SendTimeoutError::Timeout(2)));
+        // Only the first item was delivered
+        assert_eq!(rx.recv().await, Some(1));
+        assert!(rx.try_recv().is_err());
+
+        drop(rx);
+        let err = send_or_drop(&tx, 3, "test", None).await.unwrap_err();
+        assert!(matches!(err, SendTimeoutError::Closed(3)));
+    }
+
+    #[test]
+    fn drops_are_counted_for_a_bounded_number_of_peers() {
+        const SITE: &str = "test_bounded_peers";
+        for peer in 0..100 {
+            record_drop(SITE, "test", Some(&peer));
+        }
+        let warnings = DROP_WARNINGS.lock().unwrap();
+        let drops = warnings.iter().find(|drops| drops.site == SITE).unwrap();
+        // The first drop was warned about at once; the other 99 wait for the next warning
+        assert_eq!(drops.num_dropped, 99);
+        assert_eq!(drops.peers.len(), MAX_PEERS_PER_WARNING_INTERVAL);
     }
 
     #[tokio::test]
