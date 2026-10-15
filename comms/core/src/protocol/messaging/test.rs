@@ -2358,3 +2358,58 @@ async fn a_requeued_backlog_is_not_held_to_the_dialing_queue_cap() {
         .expect("the dialing budget is used up by the requeued backlog");
     unpack_enum!(Err(SendFailReason::QueueFull) = reply);
 }
+
+#[tokio::test]
+async fn a_new_message_to_a_dialing_queue_holding_a_requeued_backlog_is_capped() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1.clone()).await;
+    let peer = peer_node_identity.node_id().clone();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    // A 16 MiB backlog for a peer that never reads: over the dialing queue cap, under every other budget
+    const BACKLOG_MESSAGES: usize = 4;
+    let mut reply_rxs = Vec::new();
+    for i in 0..BACKLOG_MESSAGES {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        msg_proto
+            .send_message(OutboundMessage::with_reply(
+                peer.clone(),
+                four_mib_body(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        reply_rxs.push(reply_rx);
+        if i == 0 {
+            wait_until(|| msg_proto.outbound_queue_established(&peer) == Some(true)).await;
+        }
+    }
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+    conn_man_mock.set_pending_connection(&peer).await;
+    for _ in 0..BACKLOG_MESSAGES {
+        time::timeout(Duration::from_secs(5), msg_proto.handle_next_retry())
+            .await
+            .expect("a message was not requeued after the disconnect");
+    }
+    let backlog_bytes = BACKLOG_MESSAGES * FOUR_MIB;
+    assert!(backlog_bytes > OUTBOUND_DIALING_QUEUE_MAX_BYTES);
+    assert_eq!(msg_proto.outbound_queue_established(&peer), Some(false));
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(backlog_bytes));
+
+    // A new message to the same peer is held to the dialing queue cap, which the backlog is already over
+    let reply = send_four_mib(&mut msg_proto, &peer)
+        .await
+        .expect("a new message to a dialing queue over its cap must fail immediately");
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(backlog_bytes));
+    assert_eq!(msg_proto.dialing_outbound_bytes(), backlog_bytes);
+    for reply_rx in &mut reply_rxs {
+        assert!(matches!(reply_rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+}

@@ -84,12 +84,14 @@ const MAX_PENDING_INBOUND_BLOCKS_TOTAL: usize = 64;
 /// The maximum number of inbound `BaseNodeRequest`s from a single peer handled at once, counted until the reply has
 /// left our outbound queue. Each request can produce a large reply (e.g. a full block), so a peer that keeps asking
 /// without reading the replies is held to a few at a time. Further requests from that peer are dropped; other peers are
-/// unaffected.
+/// unaffected. It matches [MAX_PENDING_INBOUND_BLOCKS_PER_PEER]: an honest peer reconciles up to that many of our
+/// blocks at once, each of which can ask us for the full block, and a request we drop makes that peer time out and ban
+/// us.
 ///
 /// There is deliberately no total across peers: slots are held while replies wait in the outbound queue, so peers that
 /// never read could pin any total cap and make us drop honest peers' requests, which those peers then time out and
 /// blame on us.
-const MAX_INFLIGHT_REQUESTS_PER_PEER: usize = 4;
+const MAX_INFLIGHT_REQUESTS_PER_PEER: usize = MAX_PENDING_INBOUND_BLOCKS_PER_PEER;
 
 /// A convenience struct to hold all the BaseNode streams
 pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
@@ -1027,6 +1029,9 @@ mod test {
 
         let peer_a = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
         let peer_b = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        // An honest peer can be reconciling as many of our blocks at once as we accept from it
+        const { assert!(MAX_INFLIGHT_REQUESTS_PER_PEER == MAX_PENDING_INBOUND_BLOCKS_PER_PEER) };
+        // One more request than the cap: the 9th is dropped
         for _ in 0..=MAX_INFLIGHT_REQUESTS_PER_PEER {
             service.spawn_handle_incoming_request(block_request(&db, peer_a.clone(), None));
         }
