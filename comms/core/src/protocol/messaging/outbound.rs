@@ -22,8 +22,10 @@
 
 use std::{
     fmt,
+    io,
     sync::{
         Arc,
+        Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -92,33 +94,92 @@ pub(super) struct QueuedOutboundMessage {
     pub bytes: Option<QueuedBytes>,
 }
 
-/// Body bytes charged against a peer queue's byte counter and the node-wide byte counter. Dropping it releases them,
-/// so every way a queued message can leave - sent, failed, expired, or dropped along with a closed queue - gives its
-/// bytes back exactly once.
+/// The byte accounting of one peer queue: the body bytes charged to it, and whether its session has established a
+/// substream yet. While it has not, its bytes are also charged to the node-wide dialing counter. The queue's bytes and
+/// its established flag change together under one lock, so the dialing counter always equals the bytes of the queues
+/// that are still dialing: a charge or release while dialing also moves the dialing counter, and establishing moves
+/// all of the queue's bytes off it at once.
+#[derive(Debug)]
+pub(super) struct QueueAccounting {
+    state: Mutex<QueueAccountingState>,
+    total_bytes: Arc<AtomicUsize>,
+    dialing_bytes: Arc<AtomicUsize>,
+}
+
+#[derive(Debug, Default)]
+struct QueueAccountingState {
+    queued_bytes: usize,
+    established: bool,
+}
+
+impl QueueAccounting {
+    pub fn new(total_bytes: Arc<AtomicUsize>, dialing_bytes: Arc<AtomicUsize>) -> Self {
+        Self {
+            state: Mutex::new(QueueAccountingState::default()),
+            total_bytes,
+            dialing_bytes,
+        }
+    }
+
+    /// The bytes charged to this queue, and whether its session has established a substream
+    pub fn snapshot(&self) -> (usize, bool) {
+        let state = self.lock();
+        (state.queued_bytes, state.established)
+    }
+
+    /// Records that this queue's session established a substream: its bytes stop counting as dialing bytes
+    pub fn mark_established(&self) {
+        let mut state = self.lock();
+        if !state.established {
+            state.established = true;
+            self.dialing_bytes.fetch_sub(state.queued_bytes, Ordering::SeqCst);
+        }
+    }
+
+    fn charge(&self, len: usize) {
+        let mut state = self.lock();
+        state.queued_bytes = state.queued_bytes.saturating_add(len);
+        self.total_bytes.fetch_add(len, Ordering::SeqCst);
+        if !state.established {
+            self.dialing_bytes.fetch_add(len, Ordering::SeqCst);
+        }
+    }
+
+    fn release(&self, len: usize) {
+        let mut state = self.lock();
+        state.queued_bytes = state.queued_bytes.saturating_sub(len);
+        self.total_bytes.fetch_sub(len, Ordering::SeqCst);
+        if !state.established {
+            self.dialing_bytes.fetch_sub(len, Ordering::SeqCst);
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, QueueAccountingState> {
+        // The state is two plain values that every holder leaves consistent, so a panic elsewhere cannot poison it
+        // in a way that matters
+        self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
+/// Body bytes of one message, charged to a peer queue's accounting. Dropping it releases them, so every way a queued
+/// message can leave - sent, failed, expired, or dropped along with a closed queue - gives its bytes back exactly once.
 #[derive(Debug)]
 pub(super) struct QueuedBytes {
     len: usize,
-    peer_queue_bytes: Arc<AtomicUsize>,
-    total_bytes: Arc<AtomicUsize>,
+    queue: Arc<QueueAccounting>,
 }
 
 impl QueuedBytes {
-    /// Charges `len` bytes to both counters
-    pub fn charge(len: usize, peer_queue_bytes: Arc<AtomicUsize>, total_bytes: Arc<AtomicUsize>) -> Self {
-        peer_queue_bytes.fetch_add(len, Ordering::SeqCst);
-        total_bytes.fetch_add(len, Ordering::SeqCst);
-        Self {
-            len,
-            peer_queue_bytes,
-            total_bytes,
-        }
+    /// Charges `len` bytes to `queue` (and through it to the node-wide counters)
+    pub fn charge(len: usize, queue: Arc<QueueAccounting>) -> Self {
+        queue.charge(len);
+        Self { len, queue }
     }
 }
 
 impl Drop for QueuedBytes {
     fn drop(&mut self) {
-        self.peer_queue_bytes.fetch_sub(self.len, Ordering::SeqCst);
-        self.total_bytes.fetch_sub(self.len, Ordering::SeqCst);
+        self.queue.release(self.len);
     }
 }
 
@@ -142,6 +203,8 @@ pub struct OutboundMessaging {
     retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
     peer_node_id: NodeId,
     protocol_id: ProtocolId,
+    /// The byte accounting of this session's queue, marked established once a substream is open
+    queue_accounting: Arc<QueueAccounting>,
 }
 
 impl OutboundMessaging {
@@ -152,6 +215,7 @@ impl OutboundMessaging {
         retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
         peer_node_id: NodeId,
         protocol_id: ProtocolId,
+        queue_accounting: Arc<QueueAccounting>,
     ) -> Self {
         Self {
             connectivity,
@@ -160,6 +224,7 @@ impl OutboundMessaging {
             retry_queue_tx,
             peer_node_id,
             protocol_id,
+            queue_accounting,
         }
     }
 
@@ -241,6 +306,7 @@ impl OutboundMessaging {
                 return Err(err);
             },
         };
+        self.queue_accounting.mark_established();
         self.start_forwarding_messages(conn, substream).await?;
 
         Ok(())
@@ -404,6 +470,9 @@ impl OutboundMessaging {
         // connection is closing - see `CONNECTION_CLOSE_GRACE`.
         let mut backlog_uses_retry = false;
         let mut substream_ended = false;
+        // The message whose write failed or was interrupted. It is requeued only after this session's queue is
+        // closed below, so the protocol handler cannot route its retry back into this ending session.
+        let mut interrupted = None;
         loop {
             let mut queued = tokio::select! {
                 biased;
@@ -469,6 +538,19 @@ impl OutboundMessaging {
             };
             match send_result {
                 Some(Ok(Ok(()))) => queued.message.reply_success(),
+                // The codec refuses to encode a frame over the maximum length before writing anything, so only this
+                // message failed and the substream is still good. Oversized messages are refused when they are
+                // queued; this only guards against one slipping through.
+                Some(Ok(Err(err))) if err.kind() == io::ErrorKind::InvalidInput => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Message for peer '{}' could not be encoded on stream {}: {}. Failing it.",
+                        peer_node_id, stream_id, err
+                    );
+                    #[cfg(feature = "metrics")]
+                    metrics::outbound_dropped("too_large").inc();
+                    queued.message.reply_fail(SendFailReason::MessageTooLarge);
+                },
                 Some(Ok(Err(err))) => {
                     // The write genuinely failed - most commonly because the connection died between this
                     // message being popped off the channel and the write being attempted. It was never
@@ -483,9 +565,9 @@ impl OutboundMessaging {
                     #[cfg(feature = "metrics")]
                     metrics::error_count().inc();
                     // A write error does not say whether the substream or the whole connection failed; that is
-                    // decided below.
+                    // decided below. The message is requeued once this session's queue is closed.
                     substream_ended = true;
-                    Self::requeue_for_retry(&retry_queue_tx, queued, true);
+                    interrupted = Some(queued);
                     break;
                 },
                 Some(Err(_elapsed)) => {
@@ -507,7 +589,7 @@ impl OutboundMessaging {
                          Queuing for retry.",
                         stream_id, peer_node_id
                     );
-                    Self::requeue_for_retry(&retry_queue_tx, queued, true);
+                    interrupted = Some(queued);
                     break;
                 },
             }
@@ -522,6 +604,11 @@ impl OutboundMessaging {
         // this ending session, whose drain would then charge them a retry. Once closed, it spawns a fresh session
         // for them instead. Messages already queued stay in `messages_rx` for the drain.
         messages_rx.close();
+
+        // The interrupted message always uses up a retry
+        if let Some(queued) = interrupted {
+            Self::requeue_for_retry(&retry_queue_tx, queued, true);
+        }
 
         // The substream ended without the connection being reported as disconnected (which only the disconnect
         // arms above complete, so `on_disconnect` has not completed yet here). If the connection is reported as

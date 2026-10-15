@@ -119,16 +119,44 @@ impl InboundMessaging {
         loop {
             // Take one of this session's in-flight slots before reading the next frame. While the consumer is still
             // processing (or holding) messages for all of them, nothing more is read from the substream, which leaves
-            // the peer's yamux window to push back on it. This also applies while draining after a stop,
-            // exactly as the blocking delivery below always has.
-            let permit = tokio::select! {
-                biased;
-                _ = self.shutdown_signal.wait() => break,
-                permit = Arc::clone(&self.inflight_permits).acquire_owned() => match permit {
+            // the peer's yamux window to push back on it. Once stopping (disconnected or replaced), only what is
+            // already buffered is drained, and only while a slot is free right now: a stopping session must not wait
+            // on the consumer.
+            let permit = if disconnected {
+                match Arc::clone(&self.inflight_permits).try_acquire_owned() {
                     Ok(permit) => permit,
-                    // The semaphore is never closed
                     Err(_) => break,
-                },
+                }
+            } else {
+                tokio::select! {
+                    biased;
+                    _ = self.shutdown_signal.wait() => break,
+                    permit = Arc::clone(&self.inflight_permits).acquire_owned() => match permit {
+                        Ok(permit) => permit,
+                        // The semaphore is never closed
+                        Err(_) => break,
+                    },
+                    _ = &mut on_disconnect => {
+                        disconnected = true;
+                        match Arc::clone(&self.inflight_permits).try_acquire_owned() {
+                            Ok(permit) => permit,
+                            Err(_) => break,
+                        }
+                    },
+                    _ = &mut self.replaced => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Inbound messaging session for peer '{}' replaced by a newer substream while waiting for \
+                             an in-flight slot",
+                            peer.short_str()
+                        );
+                        disconnected = true;
+                        match Arc::clone(&self.inflight_permits).try_acquire_owned() {
+                            Ok(permit) => permit,
+                            Err(_) => break,
+                        }
+                    },
+                }
             };
 
             let maybe_result = if disconnected {

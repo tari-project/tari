@@ -37,10 +37,11 @@ use tokio::{
 use super::{
     extension::INBOUND_MESSAGE_BUFFER_SIZE,
     inbound::INBOUND_PER_SESSION_INFLIGHT,
-    outbound::{MAX_SEND_RETRIES, OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueuedOutboundMessage},
+    outbound::{MAX_SEND_RETRIES, OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueueAccounting, QueuedOutboundMessage},
     protocol::{
         MessagingEventReceiver,
         MessagingProtocol,
+        OUTBOUND_DIALING_MAX_BYTES,
         OUTBOUND_MESSAGE_TTL,
         OUTBOUND_QUEUE_CAPACITY,
         OUTBOUND_QUEUE_MAX_BYTES,
@@ -1140,6 +1141,7 @@ async fn expired_messages_are_not_requeued_on_disconnect() {
         retry_queue_tx,
         peer.clone(),
         MESSAGING_PROTOCOL_ID.clone(),
+        test_queue_accounting(),
     );
     let outbound_task = tokio::spawn(outbound.run());
 
@@ -1554,6 +1556,7 @@ async fn assert_unwritten_backlog_survives_two_connection_closes(close: Connecti
             retry_queue_tx,
             peer.clone(),
             MESSAGING_PROTOCOL_ID.clone(),
+            test_queue_accounting(),
         );
         let outbound_task = tokio::spawn(outbound.run());
 
@@ -1778,34 +1781,104 @@ async fn outbound_queue_byte_budget_fails_new_messages() {
 
 #[tokio::test]
 async fn outbound_total_byte_budget_fails_new_messages() {
-    // The connectivity mock is not running, so no outbound session gets past dialing and every message stays queued
-    let (requester, _mock) = create_connectivity_mock();
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
 
-    let num_peers = OUTBOUND_TOTAL_MAX_BYTES / OUTBOUND_QUEUE_MAX_BYTES;
-    let mut _reply_rxs = Vec::new();
-    for _ in 0..num_peers {
-        let peer = node_id::random();
-        _reply_rxs.extend(fill_peer_byte_budget(&mut msg_proto, &peer));
+    // Two connected peers that will stay under their reserve: one whose 600 KiB message stalls, one that is idle
+    let (busy_peer, _busy_conn, _busy_substream, _busy_reply_rx) = connect_established_peer(
+        &mut msg_proto,
+        &conn_man_mock,
+        &node_identity,
+        Bytes::from(vec![0u8; 600 * 1024]),
+    )
+    .await;
+    assert_eq!(msg_proto.outbound_queue_bytes(&busy_peer), Some(600 * 1024));
+    let (idle_peer, _idle_conn, _idle_substream, idle_reply_rx) =
+        connect_established_peer(&mut msg_proto, &conn_man_mock, &node_identity, TEST_MSG1.clone()).await;
+    idle_reply_rx.await.unwrap().unwrap();
+    assert_eq!(msg_proto.outbound_queue_bytes(&idle_peer), Some(0));
+
+    // Peers that never read fill the node-wide budget
+    let mut _filled = Vec::new();
+    for _ in 0..OUTBOUND_TOTAL_MAX_BYTES / OUTBOUND_QUEUE_MAX_BYTES {
+        _filled.push(fill_established_peer(&mut msg_proto, &conn_man_mock, &node_identity).await);
     }
-    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES);
+    assert!(msg_proto.total_outbound_bytes() + FOUR_MIB > OUTBOUND_TOTAL_MAX_BYTES);
+    assert_eq!(msg_proto.dialing_outbound_bytes(), 0);
 
-    // A peer with an empty queue still takes one message, so peers that never read cannot shut everyone else out
-    let other_peer = node_id::random();
+    // A queue that is still dialing gets no reserve, so it is held to the full node-wide budget
+    let dialing_peer = node_id::random();
+    let reply = send_four_mib(&mut msg_proto, &dialing_peer)
+        .await
+        .expect("a message for a dialing queue over the node-wide byte budget must fail immediately");
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+    assert_eq!(msg_proto.outbound_queue_established(&dialing_peer), Some(false));
+
+    // A connected peer whose queue is under its reserve still takes another message, even holding 600 KiB already
     assert!(
-        send_four_mib(&mut msg_proto, &other_peer).await.is_none(),
-        "a peer with an empty queue must take one message even when the node-wide budget is used up"
+        send_four_mib(&mut msg_proto, &busy_peer).await.is_none(),
+        "an established queue under its reserve must take a message when the node-wide budget is used up"
     );
-    assert_eq!(msg_proto.outbound_queue_bytes(&other_peer), Some(FOUR_MIB));
-    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES + FOUR_MIB);
-
-    // Its next message is over the node-wide budget, although far under its own
-    let reply = send_four_mib(&mut msg_proto, &other_peer)
+    // Over its reserve, it is held to the node-wide budget again, although far under its own
+    let reply = send_four_mib(&mut msg_proto, &busy_peer)
         .await
         .expect("a message over the node-wide byte budget must fail immediately");
     unpack_enum!(Err(SendFailReason::QueueFull) = reply);
-    assert_eq!(msg_proto.outbound_queue_bytes(&other_peer), Some(FOUR_MIB));
-    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES + FOUR_MIB);
+
+    // A connected peer with an empty queue takes a message too
+    assert!(send_four_mib(&mut msg_proto, &idle_peer).await.is_none());
+}
+
+#[tokio::test]
+async fn queues_still_dialing_cannot_hold_more_than_the_dialing_budget() {
+    // The connectivity mock is not running, so no dial completes
+    let (requester, _mock) = create_connectivity_mock();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    // One reply each to many peers we cannot reach, as replies to made-up origins would be
+    let mut accepted = 0usize;
+    let mut refused = 0usize;
+    for _ in 0..2 * OUTBOUND_DIALING_MAX_BYTES / FOUR_MIB {
+        let peer = node_id::random();
+        let (reply_tx, reply_rx) = oneshot::channel();
+        msg_proto
+            .send_message(OutboundMessage::with_reply(
+                peer.clone(),
+                four_mib_body(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        match time::timeout(Duration::from_millis(10), reply_rx).await {
+            Ok(reply) => {
+                unpack_enum!(Err(SendFailReason::QueueFull) = reply.unwrap());
+                refused += 1;
+            },
+            Err(_) => accepted += 1,
+        }
+        assert_eq!(msg_proto.outbound_queue_established(&peer), Some(false));
+    }
+    assert_eq!(accepted, OUTBOUND_DIALING_MAX_BYTES / FOUR_MIB);
+    assert_eq!(refused, OUTBOUND_DIALING_MAX_BYTES / FOUR_MIB);
+    assert_eq!(msg_proto.dialing_outbound_bytes(), OUTBOUND_DIALING_MAX_BYTES);
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_DIALING_MAX_BYTES);
+}
+
+#[tokio::test]
+async fn establishing_moves_queued_bytes_off_the_dialing_budget() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    let (peer, _conn, _substream, _reply_rxs) =
+        fill_established_peer(&mut msg_proto, &conn_man_mock, &node_identity).await;
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(OUTBOUND_QUEUE_MAX_BYTES));
+    assert_eq!(msg_proto.dialing_outbound_bytes(), 0);
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_QUEUE_MAX_BYTES);
 }
 
 #[tokio::test(start_paused = true)]
@@ -1897,4 +1970,226 @@ async fn outbound_bytes_are_released_after_a_disconnect() {
         create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
     conn_man_mock.add_active_connection(conn1).await;
     assert!(send_four_mib(&mut msg_proto, &peer).await.is_none());
+}
+
+/// Byte accounting for an outbound session that a test runs on its own
+fn test_queue_accounting() -> Arc<QueueAccounting> {
+    Arc::new(QueueAccounting::new(
+        Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    ))
+}
+
+/// Connects a new peer that never reads, sends it `first_body`, and waits for its outbound session to establish.
+/// Returns the peer, its side of the connection and the substream (to keep them open), and the first message's reply.
+/// The first message must be accepted: yamux only announces a substream to the peer with its first data.
+async fn connect_established_peer(
+    msg_proto: &mut MessagingProtocol,
+    conn_man_mock: &ConnectivityManagerMockState,
+    node_identity: &NodeIdentity,
+    first_body: Bytes,
+) -> (
+    NodeId,
+    crate::test_utils::mocks::PeerConnectionMockState,
+    Substream,
+    MessagingReplyRx,
+) {
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    msg_proto
+        .send_message(OutboundMessage::with_reply(peer.clone(), first_body, reply_tx.into()))
+        .unwrap();
+    let substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    wait_until(|| msg_proto.outbound_queue_established(&peer) == Some(true)).await;
+    (peer, peer_conn_mock2, substream, reply_rx)
+}
+
+/// Connects a new peer that never reads and fills its established queue towards `OUTBOUND_QUEUE_MAX_BYTES`, as far
+/// as the node-wide budget allows
+async fn fill_established_peer(
+    msg_proto: &mut MessagingProtocol,
+    conn_man_mock: &ConnectivityManagerMockState,
+    node_identity: &NodeIdentity,
+) -> (
+    NodeId,
+    crate::test_utils::mocks::PeerConnectionMockState,
+    Substream,
+    Vec<MessagingReplyRx>,
+) {
+    let (peer, peer_conn, substream, first_reply_rx) =
+        connect_established_peer(msg_proto, conn_man_mock, node_identity, four_mib_body()).await;
+    let mut reply_rxs = vec![first_reply_rx];
+    for _ in 1..OUTBOUND_QUEUE_MAX_BYTES / FOUR_MIB {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        msg_proto
+            .send_message(OutboundMessage::with_reply(
+                peer.clone(),
+                four_mib_body(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        reply_rxs.push(reply_rx);
+    }
+    (peer, peer_conn, substream, reply_rxs)
+}
+
+#[tokio::test]
+async fn a_message_larger_than_a_frame_is_refused_when_queued() {
+    let (requester, _mock) = create_connectivity_mock();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+    let peer = node_id::random();
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    let body = Bytes::from(vec![0u8; super::MAX_FRAME_LENGTH + 1]);
+    msg_proto
+        .send_message(OutboundMessage::with_reply(peer.clone(), body, reply_tx.into()))
+        .unwrap();
+    let reply = time::timeout(Duration::from_millis(10), reply_rx)
+        .await
+        .expect("an oversized message must fail immediately")
+        .unwrap();
+    unpack_enum!(Err(SendFailReason::MessageTooLarge) = reply);
+    // No session was started and nothing was charged
+    assert_eq!(msg_proto.outbound_queue_len(&peer), None);
+    assert_eq!(msg_proto.total_outbound_bytes(), 0);
+}
+
+#[tokio::test]
+async fn a_message_the_codec_refuses_fails_alone_and_the_session_continues() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+
+    let (events_tx, _events_rx) = mpsc::channel(10);
+    let (messages_tx, messages_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
+    let (retry_queue_tx, mut retry_queue_rx) = mpsc::channel(10);
+    let outbound = OutboundMessaging::new(
+        requester,
+        events_tx,
+        messages_rx,
+        retry_queue_tx,
+        peer.clone(),
+        MESSAGING_PROTOCOL_ID.clone(),
+        test_queue_accounting(),
+    );
+    tokio::spawn(outbound.run());
+
+    // An oversized message that got past the queue check, then an ordinary one
+    let deadline = Instant::now().checked_add(OUTBOUND_MESSAGE_TTL).unwrap();
+    let mut reply_rxs = Vec::new();
+    for body in [Bytes::from(vec![0u8; super::MAX_FRAME_LENGTH + 1]), TEST_MSG1.clone()] {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        messages_tx
+            .send(QueuedOutboundMessage {
+                message: OutboundMessage::with_reply(peer.clone(), body, reply_tx.into()),
+                deadline,
+                retries: 0,
+                attempts: 0,
+                bytes: None,
+            })
+            .await
+            .unwrap();
+        reply_rxs.push(reply_rx);
+    }
+
+    let substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    let mut framed = MessagingProtocol::framed(substream);
+    let msg = time::timeout(Duration::from_secs(5), framed.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(msg, TEST_MSG1);
+
+    let oversized_reply = reply_rxs.remove(0).await.unwrap();
+    unpack_enum!(Err(SendFailReason::MessageTooLarge) = oversized_reply);
+    reply_rxs.remove(0).await.unwrap().unwrap();
+    // Nothing was requeued: the session did not end
+    assert!(retry_queue_rx.try_recv().is_err());
+    assert!(!messages_tx.is_closed());
+}
+
+#[tokio::test]
+async fn a_replaced_session_waiting_for_an_in_flight_slot_exits_without_the_consumer() {
+    let (peer_manager, node_identity_1, conn_man_mock, proto_tx, _, mut inbound_msg_rx, _, _shutdown) =
+        spawn_messaging_protocol().await;
+
+    let expected_node_id = node_id::random();
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+    let peer2 = Peer::new(
+        pk,
+        expected_node_id.clone(),
+        MultiaddressesWithStats::default(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
+    peer_manager.add_or_update_peer(peer2.clone()).await.unwrap();
+    let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(node_identity_1.to_peer(), peer2).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    tokio::spawn({
+        let expected_node_id = expected_node_id.clone();
+        async move {
+            while let Some(stream_theirs) = conn2_state.next_incoming_substream().await {
+                proto_tx
+                    .send(ProtocolNotification::new(
+                        MESSAGING_PROTOCOL_ID.clone(),
+                        ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_theirs),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+
+    // The consumer holds the first session's messages, so it uses all of its in-flight slots
+    let stream_ours = conn1_state.open_substream().await.unwrap();
+    let mut framed_ours = MessagingProtocol::framed(stream_ours);
+    for _ in 0..=INBOUND_PER_SESSION_INFLIGHT {
+        framed_ours.send(TEST_MSG1.clone()).await.unwrap();
+    }
+    let mut held = Vec::new();
+    for _ in 0..INBOUND_PER_SESSION_INFLIGHT {
+        held.push(
+            time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    time::sleep(Duration::from_millis(100)).await;
+
+    // A second substream replaces the first session, which must exit even though the consumer still holds its slots
+    let stream_ours2 = conn1_state.open_substream().await.unwrap();
+    let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
+    framed_ours2.send(TEST_MSG2.clone()).await.unwrap();
+    time::timeout(Duration::from_secs(5), async {
+        loop {
+            if framed_ours.send(TEST_MSG1.clone()).await.is_err() {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("the replaced session waited for the consumer instead of exiting");
+
+    // The new session delivers
+    let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(msg.body, TEST_MSG2);
+    drop(held);
 }

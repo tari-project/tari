@@ -49,7 +49,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use super::metrics;
 use super::{
     error::MessagingProtocolError,
-    outbound::{QueuedBytes, QueuedOutboundMessage},
+    outbound::{QueueAccounting, QueuedBytes, QueuedOutboundMessage},
 };
 use crate::{
     PeerConnection,
@@ -75,14 +75,22 @@ const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
 pub(super) const OUTBOUND_QUEUE_CAPACITY: usize = 500;
 /// The most body bytes that may wait in one peer's outbound queue. Counting messages alone lets a peer that never reads
 /// hold 500 large messages (e.g. block replies it keeps asking for). A message that would go over this fails
-/// immediately, unless the queue holds nothing and the message fits in a frame (see [`OUTBOUND_TOTAL_MAX_BYTES`]).
+/// immediately, unless the queue's reserve applies (see [`OUTBOUND_QUEUE_RESERVED_BYTES`]).
 pub(super) const OUTBOUND_QUEUE_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// The most body bytes that may wait in all peers' outbound queues and the retry queue together, which bounds what many
-/// peers that never read can make us hold. A message that would go over this fails immediately - unless its peer's
-/// queue holds nothing and the message fits in a frame ([`MAX_FRAME_LENGTH`]). That floor stops eight peers that
-/// never read (8 x [`OUTBOUND_QUEUE_MAX_BYTES`]) from shutting every other peer out, at the cost of a looser bound:
-/// at most this budget plus one frame per peer with a queue, i.e. 512 MiB + peers x 8 MiB.
+/// peers that never read can make us hold. A message that would go over this fails immediately, unless its queue's
+/// reserve applies (see [`OUTBOUND_QUEUE_RESERVED_BYTES`]). With the reserve, the worst case is this budget plus,
+/// per established queue, the reserve and one frame, plus the dialing budget:
+/// 512 MiB + established peers x (1 MiB + 8 MiB) + 64 MiB.
 pub(super) const OUTBOUND_TOTAL_MAX_BYTES: usize = 512 * 1024 * 1024;
+/// A queue whose session has established a substream and that holds less than this always takes another message that
+/// fits in a frame ([`MAX_FRAME_LENGTH`]), whatever the peer and node-wide budgets say. Without it, a few peers that
+/// never read could pin the node-wide budget and cut every connected peer down to one message at a time.
+pub(super) const OUTBOUND_QUEUE_RESERVED_BYTES: usize = 1024 * 1024;
+/// The most body bytes that may wait in queues whose session has not yet established a substream (still dialing),
+/// across all peers. Replies to peers we cannot reach would otherwise be held for the whole dial, each in a fresh
+/// queue. A message for a dialing queue that would go over this fails immediately; dialing queues get no reserve.
+pub(super) const OUTBOUND_DIALING_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// The most messages that may wait to be retried, across all peers. A message that does not fit fails immediately.
 const RETRY_QUEUE_CAPACITY: usize = 500;
 /// How long after it was queued a message may still be sent. An expired message fails instead of being sent, and is
@@ -158,6 +166,8 @@ pub enum SendFailReason {
     SubstreamSendFailed,
     #[error("Message was dropped before sending")]
     Dropped,
+    #[error("Message is larger than the maximum frame length")]
+    MessageTooLarge,
     #[error("Message could not send after {0} attempt(s)")]
     MaxRetriesReached(usize),
     #[error("The outbound queue for the peer is full")]
@@ -280,13 +290,13 @@ impl ReplacementBudget {
     }
 }
 
-/// The outbound queue of one outbound session for a peer, with the body bytes of the messages charged to it. The
-/// byte counter belongs to the queue rather than the peer: a fresh session gets a fresh queue and counter, and a
-/// message retried into it is charged to the new counter and released from the old one. The old session's
-/// remaining messages are bounded by the node-wide budget, which they stay charged to until they are dropped.
+/// The outbound queue of one outbound session for a peer, with its byte accounting. The accounting belongs to the
+/// queue rather than the peer: a fresh session gets a fresh queue and accounting, and a message retried into it is
+/// charged to the new queue and released from the old one. The old session's remaining messages are bounded by the
+/// node-wide budget, which they stay charged to until they are dropped.
 struct PeerQueue {
     sender: mpsc::Sender<QueuedOutboundMessage>,
-    queued_bytes: Arc<AtomicUsize>,
+    accounting: Arc<QueueAccounting>,
 }
 
 /// Actor responsible for lazily spawning inbound (protocol notifications) and outbound (mpsc channel) messaging actors.
@@ -298,6 +308,9 @@ pub struct MessagingProtocol {
     /// Body bytes of all messages waiting in the outbound queues and the retry queue. See
     /// [`OUTBOUND_TOTAL_MAX_BYTES`].
     total_queued_bytes: Arc<AtomicUsize>,
+    /// Body bytes of the messages in queues whose session has not established a substream yet. See
+    /// [`OUTBOUND_DIALING_MAX_BYTES`].
+    dialing_queued_bytes: Arc<AtomicUsize>,
     active_inbound: HashMap<NodeId, PeerInboundSessions>,
     replacement_budgets: HashMap<NodeId, ReplacementBudget>,
     /// Monotonically increasing id assigned to each spawned `InboundMessaging` session (see
@@ -356,6 +369,7 @@ impl MessagingProtocol {
             active_inbound: Default::default(),
             active_queues: Default::default(),
             total_queued_bytes: Arc::new(AtomicUsize::new(0)),
+            dialing_queued_bytes: Arc::new(AtomicUsize::new(0)),
             replacement_budgets: Default::default(),
             next_inbound_session_id: 0,
             messaging_events_tx,
@@ -561,10 +575,28 @@ impl MessagingProtocol {
         })
     }
 
-    /// Puts a message on its peer's outbound queue, spawning the peer's outbound handler if it has none. If the queue
-    /// is full, or the message would go over the peer's or the node-wide byte budget, the message fails immediately.
+    /// Puts a message on its peer's outbound queue, spawning the peer's outbound handler if it has none. If the message
+    /// is larger than a frame, the queue is full, or the message would go over a byte budget, it fails immediately.
+    #[allow(clippy::too_many_lines)]
     fn enqueue_message(&mut self, mut queued: QueuedOutboundMessage) -> Result<(), MessagingProtocolError> {
         let peer_node_id = queued.message.peer_node_id.clone();
+        let len = queued.message.body.len();
+        // A message that cannot be framed would only fail when it is written, holding a session and bytes until then
+        if len > MAX_FRAME_LENGTH {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("too_large").inc();
+            queued.message.reply_fail(SendFailReason::MessageTooLarge);
+            warn!(
+                target: LOG_TARGET,
+                "Message ({}) for peer '{}' is {} bytes, larger than the {} byte frame limit; failing it",
+                queued.message.tag,
+                peer_node_id.short_str(),
+                len,
+                MAX_FRAME_LENGTH
+            );
+            return Ok(());
+        }
+
         let queue = loop {
             match self.active_queues.entry(peer_node_id.clone()) {
                 Entry::Occupied(entry) => {
@@ -575,66 +607,81 @@ impl MessagingProtocol {
                     break entry.into_mut();
                 },
                 Entry::Vacant(entry) => {
+                    let accounting = Arc::new(QueueAccounting::new(
+                        Arc::clone(&self.total_queued_bytes),
+                        Arc::clone(&self.dialing_queued_bytes),
+                    ));
                     let sender = Self::spawn_outbound_handler(
                         self.connectivity.clone(),
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id.clone(),
                         self.retry_queue_tx.clone(),
                         self.protocol_id.clone(),
+                        Arc::clone(&accounting),
                     );
-                    break entry.insert(PeerQueue {
-                        sender,
-                        queued_bytes: Arc::new(AtomicUsize::new(0)),
-                    });
+                    break entry.insert(PeerQueue { sender, accounting });
                 },
             }
         };
         let sender = queue.sender.clone();
-        let peer_queue_bytes = Arc::clone(&queue.queued_bytes);
+        let accounting = Arc::clone(&queue.accounting);
 
         // A retried message is still charged to the queue it came from. Release that first, so it is charged once,
         // to this queue.
         queued.bytes = None;
-        let len = queued.message.body.len();
-        let queued_for_peer = peer_queue_bytes.load(Ordering::SeqCst);
+        let (queued_for_peer, established) = accounting.snapshot();
         let queued_in_total = self.total_queued_bytes.load(Ordering::SeqCst);
+        let queued_dialing = self.dialing_queued_bytes.load(Ordering::SeqCst);
         // Bytes are only ever added here, on the actor, so these checks cannot race with another charge; sessions
-        // only release bytes, which can only make room. A peer whose queue holds nothing always takes one message that
-        // fits in a frame, whatever either budget says.
-        let empty_queue_floor = queued_for_peer == 0 && len <= MAX_FRAME_LENGTH;
-        if !empty_queue_floor && queued_for_peer.saturating_add(len) > OUTBOUND_QUEUE_MAX_BYTES {
+        // only release bytes or become established, which can only make room. An established queue below its reserve
+        // always takes one more message (which fits in a frame, checked above), whatever the budgets say.
+        let reserve_applies = established && queued_for_peer < OUTBOUND_QUEUE_RESERVED_BYTES;
+        if !reserve_applies && queued_for_peer.saturating_add(len) > OUTBOUND_QUEUE_MAX_BYTES {
             #[cfg(feature = "metrics")]
             metrics::outbound_dropped("queue_bytes_full").inc();
             queued.message.reply_fail(SendFailReason::QueueFull);
-            self.log_queue_full(format!(
+            let msg = format!(
                 "Outbound queue for peer '{}' holds {} bytes, over the {} byte budget with this message; failing \
                  message ({})",
                 peer_node_id.short_str(),
                 queued_for_peer,
                 OUTBOUND_QUEUE_MAX_BYTES,
                 queued.message.tag
-            ));
+            );
+            self.log_queue_full(msg, false);
             return Ok(());
         }
-        if !empty_queue_floor && queued_in_total.saturating_add(len) > OUTBOUND_TOTAL_MAX_BYTES {
+        if !established && queued_dialing.saturating_add(len) > OUTBOUND_DIALING_MAX_BYTES {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("dialing_bytes_full").inc();
+            queued.message.reply_fail(SendFailReason::QueueFull);
+            let msg = format!(
+                "Outbound queues still dialing hold {} bytes, over the {} byte dialing budget with this message; \
+                 failing message ({}) for peer '{}'",
+                queued_dialing,
+                OUTBOUND_DIALING_MAX_BYTES,
+                queued.message.tag,
+                peer_node_id.short_str()
+            );
+            self.log_queue_full(msg, true);
+            return Ok(());
+        }
+        if !reserve_applies && queued_in_total.saturating_add(len) > OUTBOUND_TOTAL_MAX_BYTES {
             #[cfg(feature = "metrics")]
             metrics::outbound_dropped("total_bytes_full").inc();
             queued.message.reply_fail(SendFailReason::QueueFull);
-            self.log_queue_full(format!(
+            let msg = format!(
                 "Outbound queues hold {} bytes, over the node-wide {} byte budget with this message; failing message \
                  ({}) for peer '{}'",
                 queued_in_total,
                 OUTBOUND_TOTAL_MAX_BYTES,
                 queued.message.tag,
                 peer_node_id.short_str()
-            ));
+            );
+            self.log_queue_full(msg, true);
             return Ok(());
         }
-        queued.bytes = Some(QueuedBytes::charge(
-            len,
-            peer_queue_bytes,
-            Arc::clone(&self.total_queued_bytes),
-        ));
+        queued.bytes = Some(QueuedBytes::charge(len, accounting));
 
         trace!(target: LOG_TARGET, "Sending message {queued}");
         let tag = queued.message.tag;
@@ -647,12 +694,13 @@ impl MessagingProtocol {
                 #[cfg(feature = "metrics")]
                 metrics::outbound_dropped("queue_full").inc();
                 queued.message.reply_fail(SendFailReason::QueueFull);
-                self.log_queue_full(format!(
+                let msg = format!(
                     "Outbound queue for peer '{}' is full ({} messages); failing message ({})",
                     peer_node_id.short_str(),
                     OUTBOUND_QUEUE_CAPACITY,
                     tag
-                ));
+                );
+                self.log_queue_full(msg, false);
                 Ok(())
             },
             Err(err @ TrySendError::Closed(_)) => {
@@ -666,18 +714,39 @@ impl MessagingProtocol {
     }
 
     /// Logs a message that failed because an outbound queue or byte budget was full, at `warn!` at most once per
-    /// [`SHED_LOG_INTERVAL`] and at `debug!` otherwise
-    fn log_queue_full(&mut self, msg: String) {
+    /// [`SHED_LOG_INTERVAL`] and at `debug!` otherwise. For a node-wide budget, the `warn!` also names the peer whose
+    /// queue holds the most bytes, which is most likely the cause.
+    fn log_queue_full(&mut self, msg: String, name_largest_queue: bool) {
         let now = time::Instant::now();
         let should_warn = match self.last_queue_full_log {
             Some(last) => now.saturating_duration_since(last) >= SHED_LOG_INTERVAL,
             None => true,
         };
-        if should_warn {
-            self.last_queue_full_log = Some(now);
-            warn!(target: LOG_TARGET, "{msg}");
-        } else {
+        if !should_warn {
             debug!(target: LOG_TARGET, "{msg}");
+            return;
+        }
+        self.last_queue_full_log = Some(now);
+        if !name_largest_queue {
+            warn!(target: LOG_TARGET, "{msg}");
+            return;
+        }
+        // At most once per SHED_LOG_INTERVAL, so a scan of all queues is fine
+        let mut largest: Option<(&NodeId, usize)> = None;
+        for (node_id, queue) in &self.active_queues {
+            let (queued_bytes, _) = queue.accounting.snapshot();
+            if largest.is_none_or(|(_, most)| queued_bytes > most) {
+                largest = Some((node_id, queued_bytes));
+            }
+        }
+        match largest {
+            Some((node_id, queued_bytes)) => warn!(
+                target: LOG_TARGET,
+                "{msg}. The largest queue is for peer '{}' with {} bytes",
+                node_id.short_str(),
+                queued_bytes
+            ),
+            None => warn!(target: LOG_TARGET, "{msg}"),
         }
     }
 
@@ -719,13 +788,27 @@ impl MessagingProtocol {
     pub(super) fn outbound_queue_bytes(&self, peer_node_id: &NodeId) -> Option<usize> {
         self.active_queues
             .get(peer_node_id)
-            .map(|queue| queue.queued_bytes.load(Ordering::SeqCst))
+            .map(|queue| queue.accounting.snapshot().0)
     }
 
     /// The body bytes charged across all outbound queues and the retry queue
     #[cfg(test)]
     pub(super) fn total_outbound_bytes(&self) -> usize {
         self.total_queued_bytes.load(Ordering::SeqCst)
+    }
+
+    /// The body bytes charged to queues whose session has not established a substream yet
+    #[cfg(test)]
+    pub(super) fn dialing_outbound_bytes(&self) -> usize {
+        self.dialing_queued_bytes.load(Ordering::SeqCst)
+    }
+
+    /// Whether the session of the current outbound queue for `peer_node_id` has established a substream
+    #[cfg(test)]
+    pub(super) fn outbound_queue_established(&self, peer_node_id: &NodeId) -> Option<bool> {
+        self.active_queues
+            .get(peer_node_id)
+            .map(|queue| queue.accounting.snapshot().1)
     }
 
     /// Bans `peer_node_id` as a protocol violation would
@@ -740,6 +823,7 @@ impl MessagingProtocol {
         peer_node_id: NodeId,
         retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
         protocol_id: ProtocolId,
+        queue_accounting: Arc<QueueAccounting>,
     ) -> mpsc::Sender<QueuedOutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
         let outbound_messaging = OutboundMessaging::new(
@@ -749,6 +833,7 @@ impl MessagingProtocol {
             retry_queue_tx,
             peer_node_id,
             protocol_id,
+            queue_accounting,
         );
         tokio::spawn(outbound_messaging.run());
         msg_tx

@@ -66,9 +66,19 @@ pub fn error_count() -> IntCounter {
     METER.clone()
 }
 
-/// Outbound messages that failed without being sent, by reason: `queue_full` (the peer's queue was full),
-/// `retry_queue_full`, `expired` (past the message deadline), `max_retries` (already retried `MAX_SEND_RETRIES` times)
-/// or `send_timeout` (the peer stopped reading)
+/// Outbound messages that failed without being sent, by reason:
+/// - `queue_full`: the peer's queue held the most messages it may
+/// - `queue_bytes_full`: the message would take the peer's queue over its byte budget
+/// - `total_bytes_full`: the message would take all outbound queues over the node-wide byte budget
+/// - `dialing_bytes_full`: the message would take the queues still dialing over their byte budget
+/// - `too_large`: the message is larger than a frame
+/// - `retry_queue_full`: the message could not be put on the retry queue
+/// - `max_retries`: the message was already retried `MAX_SEND_RETRIES` times
+/// - `expired`: the message was past its deadline
+/// - `send_timeout`: a write to the peer timed out (the peer stopped reading)
+///
+/// There is deliberately no peer label (cardinality); the `warn!` logged for a full node-wide or dialing budget names
+/// the peer holding the most bytes.
 pub fn outbound_dropped(reason: &str) -> IntCounter {
     static METER: Lazy<IntCounterVec> = Lazy::new(|| {
         tari_metrics::register_int_counter_vec(
