@@ -432,13 +432,31 @@ impl MessagingProtocol {
                     "Outbound protocol handler exited for peer `{}`",
                     node_id.short_str()
                 );
-                if self.active_queues.remove(node_id).is_none() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound protocol \
-                         for peer `{}`",
-                        node_id.short_str()
-                    );
+                // Only remove the peer's queue if it belongs to the session that exited. Every outbound session
+                // closes or drops its own queue receiver before it reports its exit, so that session's sender reads
+                // as closed here. An open sender belongs to a newer session, spawned after the exited one closed its
+                // queue (e.g. for a retry sent while the exited session waited out `CONNECTION_CLOSE_GRACE`), and
+                // removing it would orphan that live session and let the next message spawn a second one.
+                match self.active_queues.get(node_id) {
+                    Some(sender) if sender.is_closed() => {
+                        self.active_queues.remove(node_id);
+                    },
+                    Some(_) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "OutboundProtocolExited event for peer `{}`, but a newer outbound session is running; \
+                             keeping it",
+                            node_id.short_str()
+                        );
+                    },
+                    None => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound \
+                             protocol for peer `{}`",
+                            node_id.short_str()
+                        );
+                    },
                 }
             },
             // `InboundMessaging` reports its exit to external subscribers on the broadcast
@@ -583,6 +601,25 @@ impl MessagingProtocol {
     #[cfg(test)]
     pub(super) fn internal_event_sender(&self) -> mpsc::Sender<MessagingEvent> {
         self.internal_messaging_event_tx.clone()
+    }
+
+    /// Waits for the next internal event, handles it as the running actor would, and returns it
+    #[cfg(test)]
+    pub(super) async fn handle_next_internal_event(&mut self) -> MessagingEvent {
+        let event = self
+            .internal_messaging_event_rx
+            .recv()
+            .await
+            .expect("internal event channel closed");
+        self.handle_internal_messaging_event(event.clone());
+        event
+    }
+
+    /// Waits for the next message on the retry queue and handles it as the running actor would
+    #[cfg(test)]
+    pub(super) async fn handle_next_retry(&mut self) {
+        let msg = self.retry_queue_rx.recv().await.expect("retry queue closed");
+        self.handle_retry_queue_messages(msg).unwrap();
     }
 
     /// The number of messages waiting in the outbound queue for `peer_node_id`, if it has one

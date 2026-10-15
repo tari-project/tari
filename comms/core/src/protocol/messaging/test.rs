@@ -1601,3 +1601,77 @@ async fn unwritten_messages_survive_consecutive_connection_disconnects() {
 async fn unwritten_messages_survive_consecutive_remote_connection_closes() {
     assert_unwritten_backlog_survives_two_connection_closes(ConnectionClose::Remote).await;
 }
+
+#[tokio::test]
+async fn an_exited_outbound_session_does_not_remove_its_successors_queue() {
+    let shutdown = Shutdown::new();
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+
+    // The peer resets the first messaging substream and keeps (but never reads) every later one
+    let num_substreams = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    tokio::spawn({
+        let num_substreams = num_substreams.clone();
+        async move {
+            let mut kept = Vec::new();
+            while let Some(substream) = peer_conn_mock2.next_incoming_substream().await {
+                if num_substreams.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+                    drop(substream);
+                } else {
+                    kept.push(substream);
+                }
+            }
+        }
+    });
+
+    let (_proto_tx, proto_rx) = mpsc::channel(10);
+    let (_request_tx, request_rx) = mpsc::unbounded_channel();
+    let (inbound_msg_tx, _inbound_msg_rx) = mpsc::channel(10);
+    let (events_tx, _events_rx) = broadcast::channel(10);
+    // Not spawned: the test drives the retry queue and internal events itself so that it can look at the queues
+    let mut msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
+        requester,
+        proto_rx,
+        request_rx,
+        events_tx,
+        inbound_msg_tx,
+        shutdown.to_signal(),
+    );
+
+    // Session A: the write fails when the peer resets the substream, so A requeues the message and closes its queue,
+    // then waits out the disconnect grace before reporting its exit
+    msg_proto
+        .send_message(OutboundMessage::new(peer.clone(), stalling_body()))
+        .unwrap();
+    // The retry arrives during A's grace wait and spawns session B, which the peer keeps
+    time::timeout(Duration::from_secs(5), msg_proto.handle_next_retry())
+        .await
+        .expect("the reset session did not requeue its message");
+    wait_until(|| num_substreams.load(std::sync::atomic::Ordering::SeqCst) == 2).await;
+    assert_eq!(msg_proto.outbound_queue_len(&peer), Some(0));
+
+    // A's exit must leave B's queue in place
+    let event = time::timeout(Duration::from_secs(5), msg_proto.handle_next_internal_event())
+        .await
+        .expect("session A did not exit");
+    unpack_enum!(MessagingEvent::OutboundProtocolExited(node_id) = &event);
+    assert_eq!(*node_id, peer);
+    assert_eq!(msg_proto.outbound_queue_len(&peer), Some(0));
+
+    // A new message goes to B rather than spawning another session
+    msg_proto
+        .send_message(OutboundMessage::new(peer.clone(), TEST_MSG1.clone()))
+        .unwrap();
+    assert_eq!(msg_proto.outbound_queue_len(&peer), Some(1));
+    time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(num_substreams.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
