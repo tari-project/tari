@@ -92,8 +92,10 @@ pub(super) const OUTBOUND_QUEUE_RESERVED_BYTES: usize = 1024 * 1024;
 /// across all peers. Replies to peers we cannot reach would otherwise be held for the whole dial, each in a fresh
 /// queue. A message for a dialing queue that would go over this fails immediately; dialing queues get no reserve.
 pub(super) const OUTBOUND_DIALING_MAX_BYTES: usize = 64 * 1024 * 1024;
-/// The most body bytes one queue may hold while its session is still dialing, so one unreachable peer cannot take the
-/// whole dialing budget. A single frame always fits, so a queue's first message is only held to the dialing budget.
+/// The most body bytes of new messages one queue may hold while its session is still dialing, so one unreachable peer
+/// cannot take the whole dialing budget. A single frame always fits, so a queue's first message is only held to the
+/// dialing budget. Retried messages (a previous session's backlog) are not held to this, only to the dialing budget,
+/// so a backlog survives a reconnect.
 pub(super) const OUTBOUND_DIALING_QUEUE_MAX_BYTES: usize = MAX_FRAME_LENGTH;
 /// The most messages that may wait to be retried, across all peers. A message that does not fit fails immediately.
 const RETRY_QUEUE_CAPACITY: usize = 500;
@@ -570,7 +572,7 @@ impl MessagingProtocol {
 
     fn handle_retry_queue_messages(&mut self, msg: QueuedOutboundMessage) -> Result<(), MessagingProtocolError> {
         debug!(target: LOG_TARGET, "Retrying outbound message ({msg})");
-        self.enqueue_message(msg)?;
+        self.enqueue_message(msg, true)?;
         Ok(())
     }
 
@@ -580,19 +582,29 @@ impl MessagingProtocol {
         let deadline = time::Instant::now()
             .checked_add(OUTBOUND_MESSAGE_TTL)
             .unwrap_or_else(time::Instant::now);
-        self.enqueue_message(QueuedOutboundMessage {
-            message: out_msg,
-            deadline,
-            retries: 0,
-            attempts: 0,
-            bytes: None,
-        })
+        self.enqueue_message(
+            QueuedOutboundMessage {
+                message: out_msg,
+                deadline,
+                retries: 0,
+                attempts: 0,
+                bytes: None,
+            },
+            false,
+        )
     }
 
     /// Puts a message on its peer's outbound queue, spawning the peer's outbound handler if it has none. If the message
     /// is larger than a frame, the queue is full, or the message would go over a byte budget, it fails immediately.
+    /// `is_retry` is set for a message coming off the retry queue: a session's backlog requeued into a fresh (dialing)
+    /// queue is not held to [`OUTBOUND_DIALING_QUEUE_MAX_BYTES`], so it survives a reconnect, but it still counts
+    /// against every other budget, including [`OUTBOUND_DIALING_MAX_BYTES`].
     #[allow(clippy::too_many_lines)]
-    fn enqueue_message(&mut self, mut queued: QueuedOutboundMessage) -> Result<(), MessagingProtocolError> {
+    fn enqueue_message(
+        &mut self,
+        mut queued: QueuedOutboundMessage,
+        is_retry: bool,
+    ) -> Result<(), MessagingProtocolError> {
         let peer_node_id = queued.message.peer_node_id.clone();
         let len = queued.message.body.len();
         // A message that cannot be framed would only fail when it is written, holding a session and bytes until then
@@ -665,7 +677,7 @@ impl MessagingProtocol {
             self.log_queue_full(msg, LargestQueue::NotNamed);
             return Ok(());
         }
-        if !established && queued_for_peer.saturating_add(len) > OUTBOUND_DIALING_QUEUE_MAX_BYTES {
+        if !established && !is_retry && queued_for_peer.saturating_add(len) > OUTBOUND_DIALING_QUEUE_MAX_BYTES {
             #[cfg(feature = "metrics")]
             metrics::outbound_dropped("dialing_queue_bytes_full").inc();
             queued.message.reply_fail(SendFailReason::QueueFull);

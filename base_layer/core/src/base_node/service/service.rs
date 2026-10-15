@@ -85,9 +85,11 @@ const MAX_PENDING_INBOUND_BLOCKS_TOTAL: usize = 64;
 /// left our outbound queue. Each request can produce a large reply (e.g. a full block), so a peer that keeps asking
 /// without reading the replies is held to a few at a time. Further requests from that peer are dropped; other peers are
 /// unaffected.
+///
+/// There is deliberately no total across peers: slots are held while replies wait in the outbound queue, so peers that
+/// never read could pin any total cap and make us drop honest peers' requests, which those peers then time out and
+/// blame on us.
 const MAX_INFLIGHT_REQUESTS_PER_PEER: usize = 4;
-/// A backstop on the number of inbound `BaseNodeRequest`s handled at once from all peers together
-const MAX_INFLIGHT_REQUESTS_TOTAL: usize = 256;
 
 /// A convenience struct to hold all the BaseNode streams
 pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
@@ -158,7 +160,8 @@ where B: BlockchainBackend + 'static
             ),
             inflight_inbound_requests: PendingByPeer::new(
                 MAX_INFLIGHT_REQUESTS_PER_PEER,
-                MAX_INFLIGHT_REQUESTS_TOTAL,
+                // No total cap; see MAX_INFLIGHT_REQUESTS_PER_PEER
+                usize::MAX,
                 "base node request",
                 LOG_TARGET,
             ),
@@ -1032,7 +1035,17 @@ mod test {
             service.inflight_inbound_requests.pending_for(&peer_a.node_id),
             MAX_INFLIGHT_REQUESTS_PER_PEER
         );
-        // Another peer is unaffected
+        // Many other peers, each at their own cap, do not crowd out another peer: there is no total cap
+        for _ in 0..64 {
+            let other = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+            for _ in 0..MAX_INFLIGHT_REQUESTS_PER_PEER {
+                service.spawn_handle_incoming_request(block_request(&db, other.clone(), None));
+            }
+            assert_eq!(
+                service.inflight_inbound_requests.pending_for(&other.node_id),
+                MAX_INFLIGHT_REQUESTS_PER_PEER
+            );
+        }
         service.spawn_handle_incoming_request(block_request(&db, peer_b.clone(), None));
         assert_eq!(service.inflight_inbound_requests.pending_for(&peer_b.node_id), 1);
 

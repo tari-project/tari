@@ -2294,22 +2294,67 @@ async fn a_replaced_session_delivers_a_buffered_frame_if_a_slot_frees_up_in_time
     }
     time::sleep(Duration::from_millis(100)).await;
 
-    // A second substream replaces the first session; a slot frees up well within the stopping session's wait
+    // A second substream replaces the first session. Its message arriving shows the replacement has happened (the
+    // actor tells the old session to stop in the same step that spawns the new one), and the old session is woken by
+    // that signal while it waits for a slot, so it is stopping well before the slot frees up below.
     let stream_ours2 = conn1_state.open_substream().await.unwrap();
     let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
     framed_ours2.send(TEST_MSG2.clone()).await.unwrap();
-    time::sleep(Duration::from_millis(200)).await;
-    held.pop();
+    let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(msg.body, TEST_MSG2);
+    drop(msg);
+    time::sleep(Duration::from_millis(100)).await;
+    // Nothing more has arrived: the buffered frame is still waiting for a slot
+    assert!(inbound_msg_rx.try_recv().is_err());
 
-    // The buffered frame (and the new session's message) both arrive
-    let mut bodies = Vec::new();
-    for _ in 0..2 {
-        let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+    // A slot frees up well within the stopping session's wait, and the buffered frame arrives
+    held.pop();
+    let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+        .await
+        .expect("a buffered frame of the replaced session was dropped")
+        .unwrap();
+    assert_eq!(msg.body, buffered);
+}
+
+#[tokio::test]
+async fn a_requeued_backlog_is_not_held_to_the_dialing_queue_cap() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1.clone()).await;
+    let peer = peer_node_identity.node_id().clone();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    // A 64 MiB backlog for a peer that never reads, then the connection drops
+    let mut reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer).await;
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+    // The redial does not complete, so the requeued backlog stays in the new, dialing queue
+    conn_man_mock.set_pending_connection(&peer).await;
+
+    for _ in 0..reply_rxs.len() {
+        time::timeout(Duration::from_secs(5), msg_proto.handle_next_retry())
             .await
-            .expect("a buffered frame of the replaced session was dropped")
-            .unwrap();
-        bodies.push(msg.body);
+            .expect("a message was not requeued after the disconnect");
     }
-    assert!(bodies.contains(&buffered), "{bodies:?}");
-    assert!(bodies.contains(&TEST_MSG2), "{bodies:?}");
+    assert_eq!(msg_proto.outbound_queue_established(&peer), Some(false));
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(OUTBOUND_QUEUE_MAX_BYTES));
+    assert_eq!(msg_proto.dialing_outbound_bytes(), OUTBOUND_DIALING_MAX_BYTES);
+    for reply_rx in &mut reply_rxs {
+        assert!(matches!(reply_rx.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    // New messages to a dialing queue are still held to its cap (and here to the full dialing budget)
+    let other_peer = node_id::random();
+    let reply = send_four_mib(&mut msg_proto, &other_peer)
+        .await
+        .expect("the dialing budget is used up by the requeued backlog");
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
 }
