@@ -41,7 +41,12 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tracing::{Instrument, Level, span};
 
-use super::{direction::ConnectionDirection, error::PeerConnectionError, manager::ConnectionManagerEvent};
+use super::{
+    direction::ConnectionDirection,
+    error::PeerConnectionError,
+    listener::EstablishedInboundGuard,
+    manager::ConnectionManagerEvent,
+};
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
     NamedProtocolService,
@@ -78,6 +83,7 @@ pub fn create(
     event_notifier: mpsc::Sender<ConnectionManagerEvent>,
     our_supported_protocols: Arc<Vec<ProtocolId>>,
     their_supported_protocols: Vec<ProtocolId>,
+    established_inbound_guard: Option<EstablishedInboundGuard>,
 ) -> PeerConnection {
     trace!(
         target: LOG_TARGET,
@@ -107,6 +113,7 @@ pub fn create(
         event_notifier,
         our_supported_protocols,
         their_supported_protocols,
+        established_inbound_guard,
     );
     tokio::spawn(peer_actor.run());
 
@@ -644,6 +651,9 @@ struct PeerConnectionActor {
     inbound_protocol_negotiations:
         FuturesUnordered<BoxFuture<'static, Result<(ProtocolId, Substream), PeerConnectionError>>>,
     their_supported_protocols: Vec<ProtocolId>,
+    /// Counts this connection against the listener's inbound connection cap until the actor exits. None for outbound
+    /// connections.
+    _established_inbound_guard: Option<EstablishedInboundGuard>,
 }
 
 impl PeerConnectionActor {
@@ -656,6 +666,7 @@ impl PeerConnectionActor {
         event_notifier: mpsc::Sender<ConnectionManagerEvent>,
         our_supported_protocols: Arc<Vec<ProtocolId>>,
         their_supported_protocols: Vec<ProtocolId>,
+        established_inbound_guard: Option<EstablishedInboundGuard>,
     ) -> Self {
         Self {
             id,
@@ -668,6 +679,7 @@ impl PeerConnectionActor {
             our_supported_protocols,
             inbound_protocol_negotiations: FuturesUnordered::new(),
             their_supported_protocols,
+            _established_inbound_guard: established_inbound_guard,
         }
     }
 
@@ -1009,6 +1021,7 @@ mod tests {
             event_tx,
             Arc::new(vec![ProtocolId::from_static(b"/test/proto")]),
             vec![],
+            None,
         );
         (conn, remote, event_rx)
     }

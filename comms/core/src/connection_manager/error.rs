@@ -100,6 +100,10 @@ pub enum ConnectionManagerError {
     AllPeerAddressesAreExcluded(String),
     #[error("Yamux error: {0}")]
     YamuxControlError(#[from] YamuxControlError),
+    #[error("Inbound handshake did not complete within the handshake timeout")]
+    InboundHandshakeTimeout,
+    #[error("Invalid connection manager configuration: {0}")]
+    InvalidConfig(String),
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {
