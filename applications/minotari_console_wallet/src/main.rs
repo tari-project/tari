@@ -87,7 +87,8 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    cli.install_grpc_signal_handler = true;
 
     // Handle --print-env before doing anything else so it works even without a valid config
     if cli.print_env {

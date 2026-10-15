@@ -235,7 +235,7 @@ fn wallet_or_exit(
 
         if cli.non_interactive_mode {
             info!(target: LOG_TARGET, "Starting GRPC server.");
-            grpc_mode(handle, config, wallet)
+            grpc_mode(handle, config, wallet, cli.install_grpc_signal_handler)
         } else {
             debug!(target: LOG_TARGET, "Prompting for run or exit key.");
             println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
@@ -328,6 +328,7 @@ pub fn recovery_mode(
     wallet_mode: WalletMode,
     wallet: WalletSqlite,
     skip_recovery: bool,
+    install_grpc_signal_handler: bool,
 ) -> Result<(), ExitError> {
     if !skip_recovery {
         // Do not remove this println!
@@ -357,7 +358,7 @@ pub fn recovery_mode(
     println!("Starting TUI.");
 
     match wallet_mode {
-        WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet),
+        WalletMode::RecoveryDaemon => grpc_mode(handle, wallet_config, wallet, install_grpc_signal_handler),
         WalletMode::RecoveryTui => {
             // The recovery output above may have pushed security warnings off screen; the TUI would hide them
             pause_if_security_warnings();
@@ -387,11 +388,33 @@ pub(crate) fn pause_if_security_warnings() {
     let _unused = std::io::stdin().read_line(&mut line);
 }
 
-pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
+pub fn grpc_mode(
+    handle: Handle,
+    config: &WalletConfig,
+    mut wallet: WalletSqlite,
+    install_signal_handler: bool,
+) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
         #[cfg(feature = "grpc")]
         {
+            let grpc_shutdown = tari_shutdown::Shutdown::new();
+            let _signal_handler = if install_signal_handler {
+                Some(crate::utils::signal_handler::spawn_signal_handler(
+                    grpc_shutdown.clone(),
+                    &handle,
+                ))
+            } else {
+                None
+            };
+            let mut wallet_shutdown = wallet.shutdown_signal.clone();
+            let grpc_shutdown_forward = grpc_shutdown.clone();
+            handle.spawn(async move {
+                let _ = wallet_shutdown.wait().await;
+                grpc_shutdown_forward.trigger();
+            });
+            wallet.shutdown_signal = grpc_shutdown.to_signal();
+
             let grpc = WalletGrpcServer::new(wallet.clone());
             let auth = config.grpc_authentication.clone();
 
