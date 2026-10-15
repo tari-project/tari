@@ -81,6 +81,13 @@ const MAX_PENDING_INBOUND_BLOCKS_PER_PEER: usize = 8;
 /// A backstop on the number of inbound `NewBlock` messages pending from all peers together, only reached if many peers
 /// flood at once.
 const MAX_PENDING_INBOUND_BLOCKS_TOTAL: usize = 64;
+/// The maximum number of inbound `BaseNodeRequest`s from a single peer handled at once, counted until the reply has
+/// left our outbound queue. Each request can produce a large reply (e.g. a full block), so a peer that keeps asking
+/// without reading the replies is held to a few at a time. Further requests from that peer are dropped; other peers are
+/// unaffected.
+const MAX_INFLIGHT_REQUESTS_PER_PEER: usize = 4;
+/// A backstop on the number of inbound `BaseNodeRequest`s handled at once from all peers together
+const MAX_INFLIGHT_REQUESTS_TOTAL: usize = 256;
 
 /// A convenience struct to hold all the BaseNode streams
 pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
@@ -117,6 +124,7 @@ pub(super) struct BaseNodeService<B> {
     base_node_config: BaseNodeStateMachineConfig,
     block_decode_permits: Arc<Semaphore>,
     pending_inbound_blocks: PendingByPeer,
+    inflight_inbound_requests: PendingByPeer,
 }
 
 impl<B> BaseNodeService<B>
@@ -146,6 +154,12 @@ where B: BlockchainBackend + 'static
                 MAX_PENDING_INBOUND_BLOCKS_PER_PEER,
                 MAX_PENDING_INBOUND_BLOCKS_TOTAL,
                 "block",
+                LOG_TARGET,
+            ),
+            inflight_inbound_requests: PendingByPeer::new(
+                MAX_INFLIGHT_REQUESTS_PER_PEER,
+                MAX_INFLIGHT_REQUESTS_TOTAL,
+                "base node request",
                 LOG_TARGET,
             ),
         }
@@ -278,9 +292,16 @@ where B: BlockchainBackend + 'static
     }
 
     fn spawn_handle_incoming_request(
-        &self,
+        &mut self,
         domain_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
     ) {
+        // Dropped (and logged at a limited rate) if the peer already has too many requests in flight; never banned
+        let Some(inflight_guard) = self
+            .inflight_inbound_requests
+            .try_accept(&domain_msg.source_peer.node_id)
+        else {
+            return;
+        };
         let inbound_nch = self.inbound_nch.clone();
         let outbound_message_service = self.outbound_message_service.clone();
         let state_machine_handle = self.state_machine_handle.clone();
@@ -288,6 +309,8 @@ where B: BlockchainBackend + 'static
         let short_ban = self.base_node_config.blockchain_sync_config.short_ban_period;
         let long_ban = self.base_node_config.blockchain_sync_config.ban_period;
         task::spawn(async move {
+            // Held until the reply has been sent (or failed), so it covers the reply's time in the outbound queue
+            let _inflight_guard = inflight_guard;
             let result = handle_incoming_request(
                 inbound_nch,
                 outbound_message_service,
@@ -493,6 +516,20 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     // it would make us dial that identity (and run DHT discovery for it) to deliver a large reply. Our own requests
     // are sent directly to the peer we ask (see `handle_outbound_request`) and are not signed, so a legitimate
     // request's origin is its source peer anyway.
+    // Our requests are never signed, so a request signed by some other identity than the peer sending it was relayed
+    // on someone else's behalf. Answering it would reflect the reply through us; drop it instead (it is not
+    // necessarily the sending peer's fault, so no ban).
+    if let Some(origin) = &domain_request_msg.authenticated_origin &&
+        *origin != domain_request_msg.source_peer.public_key
+    {
+        debug!(
+            target: LOG_TARGET,
+            "Dropping base node request from peer '{}' signed by another identity ({})",
+            domain_request_msg.source_peer.node_id.short_str(),
+            origin
+        );
+        return Ok(());
+    }
     let reply_public_key = domain_request_msg.source_peer.public_key.clone();
     let inner_msg = domain_request_msg.into_inner();
 
@@ -692,6 +729,12 @@ async fn handle_outbound_request(
                     target: LOG_TARGET,
                     "Outbound request ({request_key}) response Direct Send was unsuccessful and no message was sent"
                 );
+                // The request never left this node (e.g. our outbound queue for the peer was full, or the dial
+                // failed), so it must not later time out: a timeout is blamed on the peer. Fail it now as a broadcast
+                // failure instead, unless a response or the timeout already took it.
+                if let Some((reply_tx, _)) = waiting_requests.remove(request_key).await {
+                    let _result = reply_tx.send(Err(CommsInterfaceError::BroadcastFailed));
+                }
             };
         },
         Err(err) => {
@@ -875,56 +918,173 @@ mod test {
         Arc::new(Semaphore::new(MAX_CONCURRENT_BLOCK_DECODES))
     }
 
-    /// A request whose authenticated origin is some other identity is answered to the connected peer that sent it,
-    /// never to the origin
-    #[tokio::test]
-    async fn a_request_is_answered_to_its_source_peer_not_its_origin() {
-        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
-        use tari_comms_dht::{broadcast_strategy::BroadcastStrategy, outbound::mock::create_outbound_service_mock};
+    fn test_state_machine_handle() -> StateMachineHandle {
         use tokio::sync::watch;
 
         use crate::base_node::state_machine_service::states::StatusInfo;
 
-        let (inbound_nch, db, _mempool, _requests) = create_handlers();
-        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
-        let outbound_state = outbound_mock.get_state();
-        task::spawn(outbound_mock.run());
-        let shutdown = tari_shutdown::Shutdown::new();
         let (state_change_tx, _) = broadcast::channel(10);
+        // Only the current status is read, which stays readable after the sender is dropped
         let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
-        let state_machine_handle = StateMachineHandle::new(state_change_tx, status_rx, shutdown.to_signal());
+        StateMachineHandle::new(state_change_tx, status_rx, tari_shutdown::Shutdown::new().to_signal())
+    }
 
-        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
-        let origin = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    /// A `BaseNodeRequest` for the tip block from `source_peer`, signed by `origin` if given
+    fn block_request(
+        db: &BlockchainDatabase<TempDatabase>,
+        source_peer: tari_comms::peer_manager::Peer,
+        origin: Option<tari_comms::types::CommsPublicKey>,
+    ) -> DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>> {
         let tip_hash = *db.fetch_last_chain_header().unwrap().hash();
         let request = proto::BaseNodeServiceRequest {
             request_key: 123,
             request: Some(NodeCommsRequest::GetBlockFromAllChains(tip_hash).try_into().unwrap()),
         };
-        let domain_msg = DomainMessage {
-            source_peer: source_peer.clone(),
+        DomainMessage {
+            source_peer,
             dht_header: create_peer_message(TariMessageType::BaseNodeRequest, vec![])
                 .dht_header
                 .clone(),
-            authenticated_origin: Some(origin.public_key().clone()),
+            authenticated_origin: origin,
             inner: Ok(request),
-        };
+        }
+    }
 
-        task::spawn(handle_incoming_request(
-            inbound_nch,
+    /// Requests that are not signed, or signed by the peer that sent them, are answered to that peer
+    #[tokio::test]
+    async fn a_request_is_answered_to_its_source_peer() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::{broadcast_strategy::BroadcastStrategy, outbound::mock::create_outbound_service_mock};
+
+        let source = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        for origin in [None, Some(source.public_key().clone())] {
+            let (inbound_nch, db, _mempool, _requests) = create_handlers();
+            let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+            let outbound_state = outbound_mock.get_state();
+            task::spawn(outbound_mock.run());
+
+            let domain_msg = block_request(&db, source.to_peer(), origin);
+            handle_incoming_request(inbound_nch, outbound_requester, test_state_machine_handle(), domain_msg)
+                .await
+                .unwrap();
+            let (params, _body) = outbound_state.pop_call().await.unwrap();
+            match params.broadcast_strategy {
+                BroadcastStrategy::DirectPublicKey(public_key) => assert_eq!(*public_key, *source.public_key()),
+                other => panic!("unexpected broadcast strategy {other}"),
+            }
+        }
+    }
+
+    /// A request signed by some other identity than the peer that sent it was relayed, and is dropped unanswered
+    #[tokio::test]
+    async fn a_request_signed_by_another_identity_is_dropped() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::outbound::mock::create_outbound_service_mock;
+
+        let (inbound_nch, db, _mempool, _requests) = create_handlers();
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let outbound_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
+
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        let origin = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let domain_msg = block_request(&db, source_peer, Some(origin.public_key().clone()));
+        handle_incoming_request(inbound_nch, outbound_requester, test_state_machine_handle(), domain_msg)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(outbound_state.call_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn requests_beyond_a_peers_in_flight_cap_are_dropped() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::outbound::mock::{MockBehaviour, ResponseType, create_outbound_service_mock};
+
+        let (inbound_nch, db, _mempool, _requests) = create_handlers();
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let outbound_state = outbound_mock.get_state();
+        // Replies are slow to leave, so the handlers stay in flight
+        outbound_state
+            .set_behaviour(MockBehaviour {
+                direct: ResponseType::QueuedSuccessDelay(Duration::from_secs(60)),
+                broadcast: ResponseType::Queued,
+            })
+            .await;
+        task::spawn(outbound_mock.run());
+        let (connectivity, _) = create_connectivity_mock();
+        let mut service = BaseNodeService::new(
             outbound_requester,
-            state_machine_handle,
-            domain_msg,
-        ));
+            inbound_nch,
+            Duration::from_secs(60),
+            test_state_machine_handle(),
+            connectivity,
+            BaseNodeStateMachineConfig::default(),
+        );
+
+        let peer_a = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        let peer_b = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        for _ in 0..=MAX_INFLIGHT_REQUESTS_PER_PEER {
+            service.spawn_handle_incoming_request(block_request(&db, peer_a.clone(), None));
+        }
+        // The extra request was dropped, not queued
+        assert_eq!(
+            service.inflight_inbound_requests.pending_for(&peer_a.node_id),
+            MAX_INFLIGHT_REQUESTS_PER_PEER
+        );
+        // Another peer is unaffected
+        service.spawn_handle_incoming_request(block_request(&db, peer_b.clone(), None));
+        assert_eq!(service.inflight_inbound_requests.pending_for(&peer_b.node_id), 1);
+
+        // The first reply is held in the outbound mock; the rest wait behind it, all still in flight
         outbound_state
             .wait_call_count(1, Duration::from_secs(10))
             .await
             .unwrap();
-        let (params, _body) = outbound_state.pop_call().await.unwrap();
-        match params.broadcast_strategy {
-            BroadcastStrategy::DirectPublicKey(public_key) => assert_eq!(*public_key, source_peer.public_key),
-            other => panic!("unexpected broadcast strategy {other}"),
-        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            service.inflight_inbound_requests.pending_for(&peer_a.node_id),
+            MAX_INFLIGHT_REQUESTS_PER_PEER
+        );
+    }
+
+    /// A request that never leaves this node fails as a broadcast failure (no ban), not later as a timeout (a ban)
+    #[tokio::test]
+    async fn an_outbound_request_that_is_not_sent_fails_without_timing_out() {
+        use tari_comms::{message::MessageTag, protocol::messaging::SendFailReason};
+        use tari_comms_dht::outbound::{MessageSendState, SendMessageResponse, mock::create_outbound_service_mock};
+        use tokio::sync::oneshot;
+
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let outbound_state = outbound_mock.get_state();
+        let (send_reply_tx, send_reply_rx) = oneshot::channel();
+        send_reply_tx.send(Err(SendFailReason::QueueFull)).unwrap();
+        outbound_state
+            .set_next_response(SendMessageResponse::Queued(
+                vec![MessageSendState::new(MessageTag::new(), send_reply_rx)].into(),
+            ))
+            .await;
+        task::spawn(outbound_mock.run());
+
+        let waiting_requests = WaitingRequests::new();
+        let (timeout_sender, _timeout_receiver) = mpsc::channel(10);
+        let (reply_tx, reply_rx) = oneshot::channel();
+        handle_outbound_request(
+            outbound_requester,
+            waiting_requests,
+            timeout_sender,
+            reply_tx,
+            NodeCommsRequest::GetBlockFromAllChains(FixedHash::zero()),
+            Some(NodeId::default()),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
+        let reply = tokio::time::timeout(Duration::from_secs(5), reply_rx)
+            .await
+            .expect("an unsent request must fail straight away")
+            .unwrap();
+        assert!(matches!(reply, Err(CommsInterfaceError::BroadcastFailed)), "{reply:?}");
     }
 
     #[tokio::test]
