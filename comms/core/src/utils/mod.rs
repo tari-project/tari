@@ -28,3 +28,4 @@ pub mod datetime;
 pub mod mpsc;
 pub mod multiaddr;
 pub mod network;
+pub mod text;

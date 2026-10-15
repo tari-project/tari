@@ -47,6 +47,10 @@ pub enum PeerValidatorError {
     PeerIdentityProtocolIdTooLong { length: usize, max: usize },
     #[error("Peer provided a user agent that exceeds the maximum length: expected max {max} but got {length}")]
     PeerIdentityUserAgentTooLong { length: usize, max: usize },
+    #[error("Peer identity field '{field}' contains characters other than printable ASCII")]
+    NonPrintableIdentityString { field: &'static str },
+    #[error("Unusable DNS name: {0}")]
+    UnusableDnsName(String),
 }
 
 impl PeerValidatorError {
@@ -57,7 +61,12 @@ impl PeerValidatorError {
     /// avoids punishing a reachable peer that relayed it.
     pub fn is_ban_offence(&self) -> bool {
         match self {
-            Self::PeerHasNoAddresses { .. } | Self::PeerHasNoUsableAddresses { .. } => false,
+            // Not evidence of hostility either: an odd user agent or protocol id is simply not stored.
+            Self::PeerHasNoAddresses { .. } |
+            Self::PeerHasNoUsableAddresses { .. } |
+            Self::NonPrintableIdentityString { .. } |
+            // Older nodes accept and relay any DNS name, so an unusual one is dropped, not punished
+            Self::UnusableDnsName(_) => false,
             Self::InvalidPeerSignature { .. } |
             Self::InvalidPeerAddresses { .. } |
             Self::InvalidMultiaddr(_) |

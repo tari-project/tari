@@ -27,6 +27,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::NaiveDateTime;
+use log::*;
 use multiaddr::Multiaddr;
 
 #[cfg(feature = "metrics")]
@@ -37,15 +39,19 @@ use crate::{
         NodeId,
         PeerFeatures,
         PeerFlags,
+        PeerManagerConfig,
         PeerManagerError,
         ThisPeerIdentity,
         blocking_storage::BlockingPeerStorage,
+        database::GarbageCollectionStats,
         peer::Peer,
         peer_id::PeerId,
         peer_storage_sql::PeerStorageSql,
     },
     types::{CommsDatabase, CommsPublicKey, TransportProtocol},
 };
+
+const LOG_TARGET: &str = "comms::peer_manager";
 
 /// The PeerManager provides functionality to add, find and delete peers. It wraps synchronous
 /// WAL-enabled SQLite database access and provides an async interface to the rest of the code base.
@@ -58,6 +64,7 @@ pub struct PeerManager {
     // yo dawg, I heard you like wrappers, so I wrapped your wrapper in a wrapper so you can wrap while you wrap
     peer_storage: BlockingPeerStorage,
     transport_protocols: Vec<TransportProtocol>,
+    config: PeerManagerConfig,
     /// In-memory, per-peer generation counter bumped by every `unban_peer`/`unban_all_peers` call (see
     /// `bump_ban_generation`). Shared across every clone of this `PeerManager` via the `Arc`, which is what
     /// makes it visible both to `ConnectivityManagerActor` (which needs it, see `ban_generation`) and to the
@@ -132,18 +139,71 @@ pub const PEER_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 pub const PEER_DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(10);
 
 impl PeerManager {
-    /// Constructs a new empty PeerManager
+    /// Constructs a new PeerManager with the default [`PeerManagerConfig`]
     pub fn new(
         database: CommsDatabase,
         transport_protocols: Vec<TransportProtocol>,
+    ) -> Result<PeerManager, PeerManagerError> {
+        Self::new_with_config(database, transport_protocols, PeerManagerConfig::default())
+    }
+
+    /// Constructs a new PeerManager
+    pub fn new_with_config(
+        database: CommsDatabase,
+        transport_protocols: Vec<TransportProtocol>,
+        config: PeerManagerConfig,
     ) -> Result<PeerManager, PeerManagerError> {
         let peer_storage_sql = PeerStorageSql::new_indexed(database)?;
 
         Ok(Self {
             peer_storage: BlockingPeerStorage::new(peer_storage_sql),
             transport_protocols,
+            config,
             ban_generations: Arc::new(Mutex::new(HashMap::new())),
         })
+    }
+
+    /// Removes peers above [`PeerManagerConfig::max_peer_rows`] that have never been reached, oldest first, peers
+    /// without addresses above their own cap, and peers that were soft deleted more than a day ago. Peers in
+    /// `connected` are never removed: a connected peer whose row is gone has its messages dropped and cannot be banned.
+    ///
+    /// Driven by the connectivity manager, which knows which peers are connected. An address last seen before
+    /// `seen_since` no longer counts as reached.
+    pub async fn garbage_collect(
+        &self,
+        connected: Vec<NodeId>,
+        seen_since: NaiveDateTime,
+    ) -> Result<GarbageCollectionStats, PeerManagerError> {
+        let max_peer_rows = self.config.max_peer_rows;
+        let stats = self
+            .peer_storage
+            .call(move |s| s.garbage_collect(max_peer_rows, &connected, seen_since))
+            .await?;
+        if stats != GarbageCollectionStats::default() {
+            info!(
+                target: LOG_TARGET,
+                "Peer database garbage collection removed {} never-seen peer(s) over the {} row cap, {} banned \
+                 peer(s) and {} peer(s) without addresses over their caps and {} soft-deleted peer(s)",
+                stats.excess_peers_removed,
+                max_peer_rows,
+                stats.banned_peers_removed,
+                stats.address_less_peers_removed,
+                stats.soft_deleted_peers_removed
+            );
+        }
+        #[cfg(feature = "metrics")]
+        {
+            let removed = stats
+                .excess_peers_removed
+                .saturating_add(stats.banned_peers_removed)
+                .saturating_add(stats.address_less_peers_removed)
+                .saturating_add(stats.soft_deleted_peers_removed);
+            metrics::garbage_collected_peers().inc_by(u64::try_from(removed).unwrap_or(u64::MAX));
+            let count = self.count().await;
+            #[allow(clippy::cast_possible_wrap)]
+            metrics::peer_list_size().set(count as i64);
+        }
+        Ok(stats)
     }
 
     /// Get this peer's identity
@@ -247,16 +307,25 @@ impl PeerManager {
     }
 
     /// Get available dial candidates that are communication nodes, not banned, not deleted, reachable
-    /// optionally not failed, optionally at random, and not in the excluded node IDs list
+    /// optionally not failed, optionally at random, and not in the excluded node IDs list.
+    ///
+    /// At most [`PeerManagerConfig::max_candidates_per_netgroup`] addresses are taken from any one network group, less
+    /// what `netgroups_taken` says an earlier selection already took from it (keyed by
+    /// [`address_netgroup`](crate::net_address::address_netgroup)), so that a caller topping up a first selection does
+    /// not get a fresh budget for the same groups. Addresses seen since `seen_since` are taken first.
     pub async fn get_available_dial_candidates(
         &self,
         exclude_node_ids: &[NodeId],
         limit: Option<usize>,
         exclude_failed: bool,
         randomize: bool,
+        netgroups_taken: &HashMap<String, usize>,
+        seen_since: NaiveDateTime,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         let exclude_node_ids = exclude_node_ids.to_vec();
+        let netgroups_taken = netgroups_taken.clone();
         let transport_protocols = self.transport_protocols.clone();
+        let max_per_netgroup = self.config.max_candidates_per_netgroup;
         self.peer_storage
             .call(move |s| {
                 s.get_available_dial_candidates(
@@ -265,6 +334,9 @@ impl PeerManager {
                     &transport_protocols,
                     exclude_failed,
                     randomize,
+                    max_per_netgroup,
+                    &netgroups_taken,
+                    seen_since,
                 )
             })
             .await

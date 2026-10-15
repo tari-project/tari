@@ -131,6 +131,10 @@ pub(super) async fn perform_identity_exchange<
     Ok(peer_identity)
 }
 
+fn is_printable_ascii(bytes: &[u8]) -> bool {
+    bytes.iter().all(|b| (0x20..=0x7e).contains(b))
+}
+
 /// Validate the peer identity info.
 ///
 /// The following process is used to validate the peer:
@@ -191,6 +195,20 @@ pub(super) fn validate_peer_identity_message(
             max: config.max_user_agent_byte_length,
         }
         .into());
+    }
+
+    // These strings are logged, displayed and stored. Protocol ids are stored comma-separated, so a comma would split
+    // one id into two on read.
+    if !is_printable_ascii(user_agent.as_bytes()) {
+        return Err(PeerValidatorError::NonPrintableIdentityString { field: "user_agent" }.into());
+    }
+    for protocol in &supported_protocols {
+        if !is_printable_ascii(protocol) || protocol.contains(&b',') {
+            return Err(PeerValidatorError::NonPrintableIdentityString {
+                field: "supported_protocols",
+            }
+            .into());
+        }
     }
 
     let supported_protocols = supported_protocols.into_iter().map(ProtocolId::from).collect();
@@ -442,5 +460,89 @@ mod test {
             &validated,
         );
         assert!(updated.last_seen().is_none());
+    }
+
+    fn validation_error(result: Result<ValidatedPeerIdentityExchange, ConnectionManagerError>) -> PeerValidatorError {
+        match result {
+            Err(ConnectionManagerError::PeerValidationError(err)) => err,
+            other => panic!("expected a peer validation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn non_printable_user_agent_is_rejected_without_ban() {
+        let address: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let node_identity = NodeIdentity::random(&mut rand::rng(), address, PeerFeatures::COMMUNICATION_NODE);
+        // A bidi override, an escape and a newline
+        for user_agent in ["tari/\u{202e}1.0", "tari/\u{1b}[31m", "tari\n1.0"] {
+            let mut msg = identity_message(&node_identity);
+            msg.user_agent = user_agent.to_string();
+            let err = validation_error(validate_peer_identity_message(
+                &PeerValidatorConfig::default(),
+                node_identity.public_key(),
+                msg,
+            ));
+            assert!(matches!(err, PeerValidatorError::NonPrintableIdentityString {
+                field: "user_agent"
+            }));
+            assert!(err.as_ban_duration().is_none());
+        }
+
+        let mut msg = identity_message(&node_identity);
+        msg.user_agent = "tari/basenode/6.2.0".to_string();
+        validate_peer_identity_message(&PeerValidatorConfig::default(), node_identity.public_key(), msg).unwrap();
+    }
+
+    #[test]
+    fn protocol_id_with_comma_is_rejected() {
+        let address: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let node_identity = NodeIdentity::random(&mut rand::rng(), address, PeerFeatures::COMMUNICATION_NODE);
+        for protocol in [
+            b"t/a,t/b".to_vec(),
+            b"t/\x00".to_vec(),
+            "t/\u{200b}".as_bytes().to_vec(),
+        ] {
+            let mut msg = identity_message(&node_identity);
+            msg.supported_protocols = vec![b"t/msg/0.1".to_vec(), protocol];
+            let err = validation_error(validate_peer_identity_message(
+                &PeerValidatorConfig::default(),
+                node_identity.public_key(),
+                msg,
+            ));
+            assert!(matches!(err, PeerValidatorError::NonPrintableIdentityString {
+                field: "supported_protocols"
+            }));
+            assert!(err.as_ban_duration().is_none());
+        }
+
+        let mut msg = identity_message(&node_identity);
+        msg.supported_protocols = vec![b"t/msg/0.1".to_vec(), b"t/rpc/0.1".to_vec()];
+        let validated =
+            validate_peer_identity_message(&PeerValidatorConfig::default(), node_identity.public_key(), msg).unwrap();
+        assert_eq!(validated.supported_protocols().len(), 2);
+    }
+
+    #[test]
+    fn unusual_dns_name_in_a_handshake_claim_is_dropped_and_the_peer_kept() {
+        let good: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let unusual: Multiaddr = "/dns4/a_b.example.com/tcp/1".parse().unwrap();
+        let node_identity = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            vec![good.clone(), unusual.clone()],
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let config = PeerValidatorConfig {
+            allow_test_addresses: false,
+            ..PeerValidatorConfig::default()
+        };
+
+        let validated =
+            validate_peer_identity_message(&config, node_identity.public_key(), identity_message(&node_identity))
+                .unwrap();
+        assert_eq!(validated.permitted_addresses, vec![good.clone()]);
+        let peer =
+            create_or_update_peer_from_validated_peer_identity(None, node_identity.public_key().clone(), &validated);
+        assert!(peer.addresses.contains(&good));
+        assert!(!peer.addresses.contains(&unusual));
     }
 }

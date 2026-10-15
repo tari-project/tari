@@ -21,12 +21,36 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::IntGauge;
+use tari_metrics::{IntCounter, IntGauge};
 
 pub fn peer_list_size() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
         tari_metrics::register_int_gauge("comms::peer_manager::peer_list_size", "The total number of known peers")
             .unwrap()
+    });
+
+    METER.clone()
+}
+
+pub fn undecodable_address_rows() -> IntCounter {
+    static METER: Lazy<IntCounter> = Lazy::new(|| {
+        tari_metrics::register_int_counter(
+            "comms::peer_manager::undecodable_address_rows",
+            "The number of stored peer address rows skipped on read because they could not be decoded",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
+
+pub fn garbage_collected_peers() -> IntCounter {
+    static METER: Lazy<IntCounter> = Lazy::new(|| {
+        tari_metrics::register_int_counter(
+            "comms::peer_manager::garbage_collected_peers",
+            "The number of peer rows removed by peer database garbage collection",
+        )
+        .unwrap()
     });
 
     METER.clone()

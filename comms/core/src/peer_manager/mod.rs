@@ -72,6 +72,9 @@
 
 mod blocking_storage;
 
+mod config;
+pub use config::PeerManagerConfig;
+
 mod error;
 pub use error::PeerManagerError;
 

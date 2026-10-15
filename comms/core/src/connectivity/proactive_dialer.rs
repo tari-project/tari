@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use log::*;
 
@@ -31,10 +31,27 @@ use super::{
 };
 use crate::{
     connection_manager::ConnectionManagerRequester,
+    net_address::address_netgroup,
     peer_manager::{NodeId, Peer, PeerManager},
 };
 
 const LOG_TARGET: &str = "comms::connectivity::proactive_dialer";
+
+/// How many addresses the given peers have in each network group. The dial-candidate selection admits a peer only if
+/// every one of its addresses is within its group's budget, so this is (at most a slight over-count of) what a
+/// selection took from each group, which a follow-up selection must not exceed the per-group cap with.
+fn count_netgroups(peers: &[Peer]) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    for peer in peers {
+        for address in peer.addresses.address_iter() {
+            if !address.is_empty() {
+                let count = counts.entry(address_netgroup(address)).or_insert(0usize);
+                *count = count.saturating_add(1);
+            }
+        }
+    }
+    counts
+}
 pub const MAX_CONCURRENT_DIALS: usize = 30;
 
 /// Proactive peer dialing logic for maintaining target connection counts
@@ -198,9 +215,18 @@ impl ProactiveDialer {
         let candidate_target = count.saturating_mul(3);
         let mut candidates = self
             .peer_manager
-            .get_available_dial_candidates(&managed_and_excluded, Some(candidate_target), true, true)
+            .get_available_dial_candidates(
+                &managed_and_excluded,
+                Some(candidate_target),
+                true,
+                true,
+                &HashMap::new(),
+                self.config.seen_since(),
+            )
             .await?;
         if candidates.len() < candidate_target {
+            // The top-up shares the first selection's per-network-group budget
+            let netgroups_taken = count_netgroups(&candidates);
             // Only exclude managed and current selected nodes to get more candidates (thus include 'excluded_peers')
             let mut to_be_excluded = candidates.iter().map(|p| p.node_id.clone()).collect::<Vec<_>>();
             to_be_excluded.append(&mut managed);
@@ -212,6 +238,8 @@ impl ProactiveDialer {
                     Some(candidate_target.saturating_sub(candidates.len())),
                     false,
                     true,
+                    &netgroups_taken,
+                    self.config.seen_since(),
                 )
                 .await?;
             candidates.append(&mut random);
@@ -238,7 +266,9 @@ impl ProactiveDialer {
             final_candidates.push(peer);
         }
 
-        // Sort by health score if available, otherwise by distance
+        // Sort by health score. The sort is stable, so peers with equal scores keep the order the peer database chose
+        // (previously reached first, then random); breaking ties on anything a peer controls, such as its node id,
+        // would let it be picked first.
         final_candidates.sort_by(|a, b| {
             let health_a = connection_stats
                 .get(&a.node_id)
@@ -250,14 +280,8 @@ impl ProactiveDialer {
                 .map(|s| s.health_score(self.config.success_rate_tracking_window))
                 .unwrap_or(0.5);
 
-            // Primary sort by health (descending)
-            match health_b.partial_cmp(&health_a) {
-                Some(order) if order != std::cmp::Ordering::Equal => order,
-                _ => {
-                    // Secondary sort by node_id for determinism
-                    a.node_id.cmp(&b.node_id)
-                },
-            }
+            // Health, descending
+            health_b.partial_cmp(&health_a).unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Take the top candidates
@@ -315,8 +339,88 @@ impl ProactiveDialer {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{
+        connectivity::proactive_dialer::MAX_CONCURRENT_DIALS,
+        multiaddr::Multiaddr,
+        net_address::{MultiaddressesWithStats, PeerAddressSource},
+        peer_manager::{PeerFeatures, create_test_peer},
+        test_utils::{build_peer_manager, mocks::create_connection_manager_mock},
+    };
 
-    use crate::connectivity::proactive_dialer::MAX_CONCURRENT_DIALS;
+    fn peer_at(address: &str, failed: bool) -> Peer {
+        let address = address.parse::<Multiaddr>().unwrap();
+        let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peer.addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![address.clone()], &PeerAddressSource::Config);
+        if failed {
+            peer.addresses
+                .mark_failed_connection_attempt(&address, "Connection refused".to_string());
+        }
+        peer
+    }
+
+    #[tokio::test]
+    async fn previously_reached_peers_are_dialled_first() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let mut seen = Vec::new();
+        for i in 0..12u8 {
+            let address = format!("/ip4/{}.1.1.1/tcp/18189", 30 + i);
+            let mut peer = peer_at(&address, false);
+            if i < 2 {
+                peer.addresses.mark_last_seen_now(&address.parse().unwrap());
+                seen.push(peer.node_id.clone());
+            }
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+
+        let (connection_manager, _mock) = create_connection_manager_mock();
+        let dialer = ProactiveDialer::new(ConnectivityConfig::default(), connection_manager, peer_manager);
+        for _ in 0..10 {
+            // Equal health scores: the peer database's order (seen first) decides, not the node ids
+            let mut candidates = dialer
+                .select_dial_candidates(&ConnectionPool::new(), &HashMap::new(), &[], 2, 0)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|p| p.node_id)
+                .collect::<Vec<_>>();
+            candidates.sort();
+            let mut expected = seen.clone();
+            expected.sort();
+            assert_eq!(candidates, expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn top_up_selection_shares_the_netgroup_budget() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let mut crowded = Vec::new();
+        // Two healthy and ten failed peers in one /16: the first selection (failed peers excluded) under-fills
+        for i in 0..12u8 {
+            let peer = peer_at(&format!("/ip4/23.23.{i}.1/tcp/18189"), i >= 2);
+            crowded.push(peer.node_id.clone());
+            peer_manager.add_or_update_peer(peer).await.unwrap();
+        }
+        for address in ["/ip4/24.1.1.1/tcp/18189", "/ip4/25.1.1.1/tcp/18189"] {
+            peer_manager.add_or_update_peer(peer_at(address, false)).await.unwrap();
+        }
+
+        let (connection_manager, _mock) = create_connection_manager_mock();
+        let dialer = ProactiveDialer::new(ConnectivityConfig::default(), connection_manager, peer_manager);
+        for _ in 0..10 {
+            // 6 wanted, so 18 candidates are asked for and the top-up runs; the result is cut to 6
+            let candidates = dialer
+                .select_dial_candidates(&ConnectionPool::new(), &HashMap::new(), &[], 6, 0)
+                .await
+                .unwrap();
+            let from_crowded = candidates.iter().filter(|p| crowded.contains(&p.node_id)).count();
+            assert_eq!(from_crowded, 4, "{candidates:?}");
+            assert_eq!(candidates.len(), 6);
+        }
+    }
 
     #[test]
     fn test_calculate_dial_count() {

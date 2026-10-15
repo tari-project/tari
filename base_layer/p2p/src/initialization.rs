@@ -46,16 +46,18 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
     backoff::ConstantBackoff,
-    multiaddr::multiaddr,
+    multiaddr::{Multiaddr, multiaddr},
     peer_manager::{
         NodeIdentity,
         PEER_DATABASE_BUSY_TIMEOUT,
         Peer,
         PeerFeatures,
         PeerFlags,
+        PeerManagerConfig,
         PeerManagerError,
         database::{MIGRATIONS, PeerDatabaseSql},
     },
+    peer_validator::validate_address_shape,
     pipeline,
     protocol::{
         NodeNetworkInfo,
@@ -341,21 +343,27 @@ async fn configure_comms_and_dht(
             .join(&config.peer_database_name)
             .with_extension("db"),
     );
-    // The peer database is written on every dial result, so it must not be able to park a caller for
-    // the shared 60s default - see `PEER_DATABASE_BUSY_TIMEOUT`.
-    let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
-        &database_url,
-        MIGRATIONS,
-        Some(16),
-        DbProfile::Cache,
-        PEER_DATABASE_BUSY_TIMEOUT,
-    )?;
     let this_node = builder
         .node_identity()
         .as_deref()
         .ok_or(CommsBuilderError::NodeIdentityNotSet)?
         .to_peer();
-    let peer_database = PeerDatabaseSql::new(db_connection, &this_node)?;
+    // Opening the peer database migrates it and may rewrite stored addresses once after an upgrade, so it runs on the
+    // blocking pool rather than on this task's worker thread.
+    let peer_database = tokio::task::spawn_blocking(move || -> Result<PeerDatabaseSql, CommsInitializationError> {
+        // The peer database is written on every dial result, so it must not be able to park a caller for
+        // the shared 60s default - see `PEER_DATABASE_BUSY_TIMEOUT`.
+        let db_connection = DbConnection::connect_and_migrate_with_busy_timeout(
+            &database_url,
+            MIGRATIONS,
+            Some(16),
+            DbProfile::Cache,
+            PEER_DATABASE_BUSY_TIMEOUT,
+        )?;
+        Ok(PeerDatabaseSql::new(db_connection, &this_node)?)
+    })
+    .await
+    .map_err(std::io::Error::other)??;
 
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
@@ -636,6 +644,23 @@ impl SeedPeerProvider for ConfigSeedPeerProvider {
 /// dialer back into a co-equal steady-state controller fighting the pool - proactively dialing peers the pool
 /// then immediately disconnects as over-capacity, every refresh cycle, forever. Clamping here is what makes the
 /// relationship deliberate rather than incidental.
+/// Warns, loudly, about each of this node's public addresses that other nodes will drop from its identity claim (for
+/// example a DNS name that is not an ordinary host name). The node still starts. Returns how many there were.
+fn warn_about_unusable_public_addresses(addresses: &[Multiaddr]) -> usize {
+    let mut unusable = 0usize;
+    for address in addresses {
+        if let Err(err) = validate_address_shape(address) {
+            unusable = unusable.saturating_add(1);
+            warn!(
+                target: LOG_TARGET,
+                "Public address '{address}' is not usable: {err}. Other nodes will drop it from this node's \
+                 identity, so peers will not be able to reach this node on it. Fix p2p.public_addresses."
+            );
+        }
+    }
+    unusable
+}
+
 fn reconcile_proactive_dialing_floor(configured_floor: usize, dht_pool_size: usize) -> usize {
     if configured_floor < dht_pool_size {
         return configured_floor;
@@ -678,6 +703,11 @@ impl ServiceInitializer for P2pInitializer {
             .with_reaper_min_connection_thresholds(
                 self.config.dht.num_neighbouring_nodes + self.config.dht.num_random_nodes,
             )
+            .with_reaper_inbound_soft_limit(config.reaper_inbound_soft_limit)
+            .with_peer_manager_config(PeerManagerConfig {
+                max_peer_rows: config.max_peer_rows,
+                max_candidates_per_netgroup: config.max_candidates_per_netgroup,
+            })
             .with_proactive_dialing_enabled(config.proactive_dialing_enabled)
             .with_proactive_dialing_floor(reconcile_proactive_dialing_floor(
                 config.proactive_dialing_floor,
@@ -702,6 +732,7 @@ impl ServiceInitializer for P2pInitializer {
 
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
+        warn_about_unusable_public_addresses(&node_identity.public_addresses());
 
         let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
             Ok(peers) => peers,
@@ -829,5 +860,16 @@ mod test {
     #[test]
     fn zero_pool_size_clamps_to_zero_without_underflowing() {
         assert_eq!(reconcile_proactive_dialing_floor(8, 0), 0);
+    }
+
+    #[test]
+    fn unusable_public_addresses_are_reported() {
+        let addresses = vec![
+            "/ip4/23.23.23.23/tcp/18189".parse().unwrap(),
+            "/dns4/node.example.com/tcp/18189".parse().unwrap(),
+            "/dns4/my_node.example.com/tcp/18189".parse().unwrap(),
+            "/dns4/127.1/tcp/18189".parse().unwrap(),
+        ];
+        assert_eq!(warn_about_unusable_public_addresses(&addresses), 2);
     }
 }

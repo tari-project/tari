@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::min, time::Duration};
+use std::{cmp::min, collections::HashMap, time::Duration};
 
+use chrono::NaiveDateTime;
 use log::*;
 use multiaddr::Multiaddr;
 
@@ -32,7 +33,7 @@ use crate::{
         PeerFeatures,
         PeerFlags,
         PeerManagerError,
-        database::{PeerDatabaseSql, ThisPeerIdentity},
+        database::{GarbageCollectionStats, PeerDatabaseSql, ThisPeerIdentity},
         peer::Peer,
         peer_id::PeerId,
     },
@@ -246,6 +247,9 @@ impl PeerStorageSql {
         transport_protocols: &[TransportProtocol],
         exclude_failed: bool,
         randomize: bool,
+        max_per_netgroup: usize,
+        netgroups_taken: &HashMap<String, usize>,
+        seen_since: NaiveDateTime,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_available_dial_candidates(
             exclude_node_ids,
@@ -253,6 +257,9 @@ impl PeerStorageSql {
             transport_protocols,
             exclude_failed,
             randomize,
+            max_per_netgroup,
+            netgroups_taken,
+            seen_since,
         )?)
     }
 
@@ -299,17 +306,26 @@ impl PeerStorageSql {
         Ok(number_offline)
     }
 
-    /// Ban the peer for the given duration
+    /// Ban the peer for the given duration. A peer that is not stored yet (typically one banned during the connection
+    /// handshake) is added with only the ban, so that the ban is not lost.
     pub fn ban_peer(
         &self,
         public_key: &CommsPublicKey,
         duration: Duration,
         reason: String,
     ) -> Result<NodeId, PeerManagerError> {
-        let node_id = NodeId::from_key(public_key);
-        self.peer_db
-            .set_banned(&node_id, duration, reason)?
-            .ok_or(PeerManagerError::peer_not_found(&NodeId::from_public_key(public_key)))
+        Ok(self.peer_db.ban_or_add_banned_peer(public_key, duration, reason)?)
+    }
+
+    /// Remove peers above the `max_peer_rows` cap and long soft-deleted peers. See
+    /// [`PeerDatabaseSql::garbage_collect`].
+    pub fn garbage_collect(
+        &self,
+        max_peer_rows: usize,
+        connected: &[NodeId],
+        seen_since: NaiveDateTime,
+    ) -> Result<GarbageCollectionStats, PeerManagerError> {
+        Ok(self.peer_db.garbage_collect(max_peer_rows, connected, seen_since)?)
     }
 
     /// Ban the peer for the given duration
@@ -798,5 +814,70 @@ mod test {
                 .iter()
                 .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) })
         );
+    }
+
+    #[test]
+    fn ban_on_unknown_key_is_persisted() {
+        use tari_common_sqlite::{DbProfile, connection::DbConnectionUrl};
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_url = DbConnectionUrl::File(temp_dir.path().join("peers.db"));
+        let this_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let open = || {
+            let db_connection = DbConnection::connect_and_migrate(&db_url, MIGRATIONS, None, DbProfile::Cache).unwrap();
+            PeerStorageSql::new_indexed(PeerDatabaseSql::new(db_connection, &this_peer).unwrap()).unwrap()
+        };
+
+        // A key banned during the handshake, before it was ever stored
+        let unknown = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        let storage = open();
+        assert!(storage.find_by_public_key(&unknown.public_key).unwrap().is_none());
+        let node_id = storage
+            .ban_peer(
+                &unknown.public_key,
+                Duration::from_secs(3600),
+                "Invalid multiaddr".to_string(),
+            )
+            .unwrap();
+        assert_eq!(node_id, unknown.node_id);
+
+        let peer = storage.find_by_public_key(&unknown.public_key).unwrap().unwrap();
+        assert!(peer.is_banned());
+        assert_eq!(peer.reason_banned(), "Invalid multiaddr");
+        assert!(storage.is_peer_banned(&unknown.node_id).unwrap());
+        // It carries only the ban: never a dial candidate
+        assert_eq!(peer.features, PeerFeatures::NONE);
+        assert!(
+            storage
+                .get_available_dial_candidates(
+                    &[],
+                    None,
+                    &TransportProtocol::get_all(),
+                    false,
+                    false,
+                    0,
+                    &HashMap::new(),
+                    NaiveDateTime::MIN
+                )
+                .unwrap()
+                .is_empty()
+        );
+        drop(storage);
+
+        // Survives a restart
+        let storage = open();
+        let peer = storage.find_by_public_key(&unknown.public_key).unwrap().unwrap();
+        assert!(peer.is_banned());
+
+        // Banning a stored peer still updates it in place
+        let known = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
+        storage.add_or_update_peer(known.clone()).unwrap();
+        storage
+            .ban_peer(&known.public_key, Duration::from_secs(3600), "Again".to_string())
+            .unwrap();
+        let peer = storage.find_by_public_key(&known.public_key).unwrap().unwrap();
+        assert!(peer.is_banned());
+        assert_eq!(peer.addresses, known.addresses);
+        assert_eq!(storage.count(), 2);
     }
 }

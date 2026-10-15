@@ -178,10 +178,11 @@ impl Peer {
         }
         self.banned_until = cmp::max(self.banned_until, other.banned_until);
         self.added_at = cmp::min(self.added_at, other.added_at);
-        for protocol in &other.supported_protocols {
-            if !self.supported_protocols.contains(protocol) {
-                self.supported_protocols.push(protocol.clone());
-            }
+        // The protocol list is what the peer last told us over a connection, so it replaces the stored list rather
+        // than growing it. Only a connection's identity exchange carries a list; a peer built from discovery or a ban
+        // carries none, and must not erase the list we have.
+        if !other.supported_protocols.is_empty() {
+            self.supported_protocols = other.supported_protocols.clone();
         }
         self.metadata = other.metadata.clone();
         self.features = other.features;
@@ -444,5 +445,40 @@ mod test {
 
         assert_eq!(json["public_key"], expected_pk_hex);
         assert_eq!(json["node_id"], expected_nodeid_hex);
+    }
+
+    #[test]
+    fn merge_replaces_supported_protocols() {
+        let (_sk, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let node_id = NodeId::from_key(&pk);
+        let new_peer = |protocols: Vec<ProtocolId>| {
+            Peer::new(
+                pk.clone(),
+                node_id.clone(),
+                MultiaddressesWithStats::empty(),
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
+                protocols,
+                String::new(),
+            )
+        };
+
+        let mut stored = new_peer(vec![
+            ProtocolId::from_static(b"t/old/1"),
+            ProtocolId::from_static(b"t/msg/1"),
+        ]);
+        // A fresh identity exchange replaces the list instead of growing it
+        stored.merge(&new_peer(vec![
+            ProtocolId::from_static(b"t/msg/1"),
+            ProtocolId::from_static(b"t/new/1"),
+        ]));
+        assert_eq!(stored.supported_protocols(), &[
+            ProtocolId::from_static(b"t/msg/1"),
+            ProtocolId::from_static(b"t/new/1")
+        ]);
+
+        // A peer that carries no list (discovery, ban record) leaves it alone
+        stored.merge(&new_peer(vec![]));
+        assert_eq!(stored.supported_protocols().len(), 2);
     }
 }

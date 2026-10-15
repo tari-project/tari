@@ -16,6 +16,7 @@ use chrono::{NaiveDateTime, Utc};
 use log::trace;
 use multiaddr::{Multiaddr, Protocol};
 use serde::{Deserialize, Serialize};
+use tari_utilities::hex;
 
 use crate::{peer_manager::PeerIdentityClaim, types::CommsPublicKey};
 
@@ -41,6 +42,48 @@ pub fn is_external_address(address: &Multiaddr) -> bool {
         // Structural validation decides whether other protocols are supported.
         _ => true,
     }
+}
+
+/// The network group an address belongs to, used to spread dial candidates so that one operator with many addresses in
+/// one network cannot fill the candidate list.
+///
+/// IPv4 addresses are grouped by /16 and IPv6 addresses by /32 (an IPv4-mapped IPv6 address is grouped as IPv4). A DNS
+/// address is grouped by the last two labels of its name (it is not resolved here, and there is no public suffix
+/// list), and an onion address is its own group. Any other kind of
+/// address is its own group, and so is a local address (only stored on test and local networks, where every node may
+/// share one loopback /16).
+pub fn address_netgroup(address: &Multiaddr) -> String {
+    let Some(protocol) = address.iter().next() else {
+        return String::new();
+    };
+    if !is_external_address(address) {
+        return format!("other:{address}");
+    }
+
+    match protocol {
+        Protocol::Ip4(ip) => ipv4_netgroup(ip),
+        Protocol::Ip6(ip) => match ip.to_ipv4_mapped() {
+            Some(ip) => ipv4_netgroup(ip),
+            None => {
+                let [first, second, ..] = ip.segments();
+                format!("ip6:{first:x}:{second:x}")
+            },
+        },
+        Protocol::Dns4(name) | Protocol::Dns6(name) | Protocol::Dnsaddr(name) => {
+            // The last two labels: names under one domain cost nothing to mint (wildcard DNS), so they are one group
+            let name = name.trim_end_matches('.').to_ascii_lowercase();
+            let labels = name.split('.').collect::<Vec<_>>();
+            let first_kept = labels.len().saturating_sub(2);
+            format!("dns:{}", labels.get(first_kept..).unwrap_or_default().join("."))
+        },
+        Protocol::Onion3(onion) => format!("onion3:{}", hex::to_hex(onion.hash())),
+        _ => format!("other:{address}"),
+    }
+}
+
+fn ipv4_netgroup(ip: Ipv4Addr) -> String {
+    let [first, second, ..] = ip.octets();
+    format!("ip4:{first}.{second}")
 }
 
 fn is_internal_ipv4(addr: Ipv4Addr) -> bool {
@@ -171,29 +214,45 @@ impl MultiaddrWithStats {
                 other.last_seen,
                 other.quality_score
             );
-            self.last_seen = cmp::max(other.last_seen, self.last_seen);
-            self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
-            match self.latency_sample_count.cmp(&other.latency_sample_count) {
-                Ordering::Less => {
-                    self.avg_latency = other.avg_latency;
-                    self.latency_sample_count = other.latency_sample_count;
-                },
-                Ordering::Equal | Ordering::Greater => {},
+            // An address that only arrived in a claim (relayed, gossiped or freshly announced) says nothing about
+            // whether we can reach it. Taking its empty stats would let anyone holding an old claim clear our record
+            // of a failed dial, so only the claim itself is merged.
+            if other.has_dial_results() {
+                self.last_seen = cmp::max(other.last_seen, self.last_seen);
+                self.connection_attempts = cmp::max(self.connection_attempts, other.connection_attempts);
+                match self.latency_sample_count.cmp(&other.latency_sample_count) {
+                    Ordering::Less => {
+                        self.avg_latency = other.avg_latency;
+                        self.latency_sample_count = other.latency_sample_count;
+                    },
+                    Ordering::Equal | Ordering::Greater => {},
+                }
+                match self
+                    .initial_dial_time_sample_count
+                    .cmp(&other.initial_dial_time_sample_count)
+                {
+                    Ordering::Less => {
+                        self.avg_initial_dial_time = other.avg_initial_dial_time;
+                        self.initial_dial_time_sample_count = other.initial_dial_time_sample_count;
+                    },
+                    Ordering::Equal | Ordering::Greater => {},
+                }
+                self.last_attempted = cmp::max(self.last_attempted, other.last_attempted);
+                self.last_failed_reason = other.last_failed_reason.clone();
             }
-            match self
-                .initial_dial_time_sample_count
-                .cmp(&other.initial_dial_time_sample_count)
-            {
-                Ordering::Less => {
-                    self.avg_initial_dial_time = other.avg_initial_dial_time;
-                    self.initial_dial_time_sample_count = other.initial_dial_time_sample_count;
-                },
-                Ordering::Equal | Ordering::Greater => {},
-            }
-            self.last_attempted = cmp::max(self.last_attempted, other.last_attempted);
-            self.last_failed_reason = other.last_failed_reason.clone();
             self.update_source_if_better(&other.source);
         }
+    }
+
+    /// True if this address carries the outcome of a dial or of traffic on a connection, as opposed to only having
+    /// been announced in a claim.
+    pub fn has_dial_results(&self) -> bool {
+        self.last_seen.is_some() ||
+            self.last_attempted.is_some() ||
+            self.last_failed_reason.is_some() ||
+            self.connection_attempts > 0 ||
+            self.latency_sample_count > 0 ||
+            self.initial_dial_time_sample_count > 0
     }
 
     pub fn update_source_if_better(&mut self, source: &PeerAddressSource) {
@@ -549,6 +608,29 @@ impl PartialEq for PeerAddressSource {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn test_address_netgroup() {
+        let netgroup = |s: &str| address_netgroup(&s.parse::<Multiaddr>().unwrap());
+        assert_eq!(netgroup("/ip4/23.45.67.89/tcp/1"), "ip4:23.45");
+        assert_eq!(netgroup("/ip4/23.45.1.1/tcp/2"), netgroup("/ip4/23.45.200.7/tcp/3"));
+        assert_ne!(netgroup("/ip4/23.45.1.1/tcp/2"), netgroup("/ip4/23.46.1.1/tcp/2"));
+        assert_eq!(netgroup("/ip6/2606:4700:1:2::1/tcp/1"), "ip6:2606:4700");
+        assert_eq!(netgroup("/ip6/::ffff:23.45.1.1/tcp/1"), "ip4:23.45");
+        assert_eq!(netgroup("/dns4/Node.Example.com./tcp/1"), "dns:example.com");
+        assert_eq!(netgroup("/dns4/a1.evil.com/tcp/1"), netgroup("/dns4/A2.Evil.com/tcp/2"));
+        assert_eq!(netgroup("/dns4/a1.evil.com/tcp/1"), "dns:evil.com");
+        assert_eq!(netgroup("/dns4/example.com/tcp/1"), "dns:example.com");
+        assert_ne!(netgroup("/dns4/a1.evil.com/tcp/1"), netgroup("/dns4/a1.good.com/tcp/1"));
+        let onion = "/onion3/vww6ybal4bd7szmgncyruucpgfkqahzddi37ktceo3ah7ngmcopnpyyd:1234";
+        assert!(netgroup(onion).starts_with("onion3:"));
+        assert_eq!(netgroup("/memory/5"), "other:/memory/5");
+        // Local addresses are not grouped
+        assert_eq!(netgroup("/ip4/127.0.0.1/tcp/1"), "other:/ip4/127.0.0.1/tcp/1");
+        assert_ne!(netgroup("/ip4/127.0.0.1/tcp/1"), netgroup("/ip4/127.0.0.1/tcp/2"));
+        assert_eq!(netgroup("/dns4/localhost/tcp/1"), "other:/dns4/localhost/tcp/1");
+        assert_eq!(address_netgroup(&Multiaddr::empty()), "");
+    }
 
     #[test]
     fn test_is_external_address() {

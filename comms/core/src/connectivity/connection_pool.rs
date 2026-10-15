@@ -20,11 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, fmt, time::Duration};
+use std::{cmp, collections::HashMap, fmt, time::Duration};
 
 use nom::lib::std::collections::hash_map::Entry;
 
-use crate::{Minimized, PeerConnection, peer_manager::NodeId};
+use crate::{Minimized, PeerConnection, connection_manager::ConnectionDirection, peer_manager::NodeId};
 
 /// Status type for connections
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -167,15 +167,53 @@ impl ConnectionPool {
             .unwrap_or(ConnectionStatus::NotConnected)
     }
 
-    /// Returns the connections, inbound and outbound, that may be reaped: connections older than `min_age` that look
-    /// idle, and write-stalled connections whatever their age and use. A stalled connection's substream and handle
-    /// counts say nothing about whether it is useful, and the data yamux holds for it is not freed until it closes.
-    /// Write-stalled connections come first.
-    pub fn get_inactive_outbound_connections_mut(&mut self, min_age: Duration) -> Vec<&mut PeerConnection> {
+    /// Returns the connections the reaper should close: the inactive outbound connections above
+    /// `outbound_threshold` outbound connections, and the inactive inbound connections above `inbound_soft_limit`
+    /// inbound connections. Each direction is counted and reaped on its own, so a flood of inbound connections can
+    /// never push out the outbound connections this node chose.
+    ///
+    /// A connection is inactive if it is older than `min_age` and looks idle, or if it is write stalled whatever its
+    /// age and use (a stalled connection's substream and handle counts say nothing about whether it is useful, and
+    /// the data yamux holds for it is not freed until it closes). Write-stalled connections go first, then the
+    /// oldest idle ones. Connections pinned by a strong handle are never returned.
+    pub fn get_reapable_connections_mut(
+        &mut self,
+        outbound_threshold: usize,
+        inbound_soft_limit: usize,
+        min_age: Duration,
+    ) -> Vec<&mut PeerConnection> {
+        let excess_outbound = self.count_connected_outbound().saturating_sub(outbound_threshold);
+        let excess_inbound = self.count_connected_inbound().saturating_sub(inbound_soft_limit);
+        if excess_outbound == 0 && excess_inbound == 0 {
+            return Vec::new();
+        }
+
+        let mut outbound = Vec::new();
+        let mut inbound = Vec::new();
+        for conn in self.connections.values_mut().filter_map(|c| c.connection_mut()) {
+            if !conn.is_connected() || conn.is_strongly_held() {
+                continue;
+            }
+            match conn.direction() {
+                ConnectionDirection::Outbound => outbound.push(conn),
+                ConnectionDirection::Inbound => inbound.push(conn),
+            }
+        }
+
+        let mut reapable = Self::inactive_first(outbound, min_age);
+        reapable.truncate(excess_outbound);
+        let mut inbound = Self::inactive_first(inbound, min_age);
+        inbound.truncate(excess_inbound);
+        reapable.extend(inbound);
+        reapable
+    }
+
+    // Keeps the inactive connections: write-stalled ones first, then idle ones oldest first.
+    fn inactive_first(connections: Vec<&mut PeerConnection>, min_age: Duration) -> Vec<&mut PeerConnection> {
         // The stall state changes while this runs, so it is read once per connection
         let mut stalled = Vec::new();
         let mut idle = Vec::new();
-        for conn in self.connections.values_mut().filter_map(|c| c.connection_mut()) {
+        for conn in connections {
             let is_idle = conn.age() > min_age && conn.handle_count() <= 1 && conn.substream_count() < 3;
             if conn.is_write_stalled() {
                 stalled.push(conn);
@@ -185,6 +223,7 @@ impl ConnectionPool {
                 // Busy and not stalled: not reapable
             }
         }
+        idle.sort_by_key(|conn| cmp::Reverse(conn.age()));
         stalled.extend(idle);
         stalled
     }
@@ -245,6 +284,22 @@ impl ConnectionPool {
         self.count_filtered(|c| c.is_connected())
     }
 
+    pub fn count_connected_inbound(&self) -> usize {
+        self.count_filtered(|c| {
+            c.is_connected() &&
+                c.connection()
+                    .is_some_and(|c| c.direction() == ConnectionDirection::Inbound)
+        })
+    }
+
+    pub fn count_connected_outbound(&self) -> usize {
+        self.count_filtered(|c| {
+            c.is_connected() &&
+                c.connection()
+                    .is_some_and(|c| c.direction() == ConnectionDirection::Outbound)
+        })
+    }
+
     pub fn count_failed(&self) -> usize {
         self.count_filtered(|c| c.status() == ConnectionStatus::Failed)
     }
@@ -284,66 +339,141 @@ impl ConnectionPool {
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
+    use tokio::sync::mpsc;
+
     use super::*;
     use crate::{
+        RefKind,
+        connection_manager::PeerConnectionRequest,
         peer_manager::NodeId,
-        test_utils::{mocks::create_dummy_peer_connection, node_id},
+        test_utils::{mocks::create_dummy_peer_connection_with_direction, node_id},
     };
+
+    fn add_connection(
+        pool: &mut ConnectionPool,
+        direction: ConnectionDirection,
+    ) -> (PeerConnection, mpsc::Receiver<PeerConnectionRequest>) {
+        let (conn, requests) = create_dummy_peer_connection_with_direction(node_id::random(), direction);
+        pool.insert_connection(conn.clone());
+        (conn, requests)
+    }
+
+    fn reapable_node_ids(
+        pool: &mut ConnectionPool,
+        outbound_threshold: usize,
+        inbound_soft_limit: usize,
+        min_age: Duration,
+    ) -> Vec<NodeId> {
+        pool.get_reapable_connections_mut(outbound_threshold, inbound_soft_limit, min_age)
+            .into_iter()
+            .map(|conn| conn.peer_node_id().clone())
+            .collect()
+    }
 
     #[test]
     fn a_write_stalled_connection_is_reapable_even_if_it_looks_busy() {
         let mut pool = ConnectionPool::new();
-        let (busy, _busy_requests) = create_dummy_peer_connection(node_id::random());
-        let (stalled, _stalled_requests) = create_dummy_peer_connection(node_id::random());
-        // Both are young and have extra handles, so neither looks idle
-        let _busy_handle = busy.clone();
-        let _stalled_handle = stalled.clone();
+        // Both are young and the test holds an extra handle, so neither looks idle
+        let (_busy, _busy_requests) = add_connection(&mut pool, ConnectionDirection::Outbound);
+        let (stalled, _stalled_requests) = add_connection(&mut pool, ConnectionDirection::Outbound);
         let stalled_node_id = stalled.peer_node_id().clone();
-        pool.insert_connection(busy);
-        pool.insert_connection(stalled.clone());
 
         let min_age = Duration::from_secs(60 * 60);
-        assert!(pool.get_inactive_outbound_connections_mut(min_age).is_empty());
+        assert!(reapable_node_ids(&mut pool, 0, 0, min_age).is_empty());
 
         // A short wait is normal backpressure
         stalled
             .write_stall()
             .set_stalled_since(tokio::time::Instant::now() - Duration::from_secs(1));
-        assert!(pool.get_inactive_outbound_connections_mut(min_age).is_empty());
+        assert!(reapable_node_ids(&mut pool, 0, 0, min_age).is_empty());
 
         stalled
             .write_stall()
             .set_stalled_since(tokio::time::Instant::now() - Duration::from_secs(31));
-        let reapable = pool
-            .get_inactive_outbound_connections_mut(min_age)
-            .into_iter()
-            .map(|conn| conn.peer_node_id().clone())
-            .collect::<Vec<NodeId>>();
-        assert_eq!(reapable, vec![stalled_node_id]);
+        assert_eq!(reapable_node_ids(&mut pool, 0, 0, min_age), vec![stalled_node_id]);
     }
 
     #[test]
     fn write_stalled_connections_are_reaped_first() {
         let mut pool = ConnectionPool::new();
         let mut stalled_node_ids = Vec::new();
-        let mut handles = Vec::new();
+        let mut requests = Vec::new();
         for i in 0..6 {
-            let (conn, requests) = create_dummy_peer_connection(node_id::random());
+            let (conn, conn_requests) =
+                create_dummy_peer_connection_with_direction(node_id::random(), ConnectionDirection::Outbound);
             if i % 2 == 1 {
                 conn.write_stall()
                     .set_stalled_since(tokio::time::Instant::now() - Duration::from_secs(60));
                 stalled_node_ids.push(conn.peer_node_id().clone());
             }
-            handles.push(requests);
+            requests.push(conn_requests);
             pool.insert_connection(conn);
         }
 
         // Every connection is older than zero and idle, so all are reapable, stalled ones first
         std::thread::sleep(Duration::from_millis(1));
-        let reapable = pool.get_inactive_outbound_connections_mut(Duration::ZERO);
+        let reapable = reapable_node_ids(&mut pool, 0, 0, Duration::ZERO);
         assert_eq!(reapable.len(), 6);
-        for conn in reapable.iter().take(stalled_node_ids.len()) {
-            assert!(stalled_node_ids.contains(conn.peer_node_id()));
+        for node_id in reapable.iter().take(stalled_node_ids.len()) {
+            assert!(stalled_node_ids.contains(node_id));
         }
+    }
+
+    #[test]
+    fn sybil_inbound_connections_do_not_evict_idle_outbound() {
+        let mut pool = ConnectionPool::new();
+        let mut requests = Vec::new();
+        let (outbound, outbound_requests) =
+            create_dummy_peer_connection_with_direction(node_id::random(), ConnectionDirection::Outbound);
+        pool.insert_connection(outbound);
+        requests.push(outbound_requests);
+        for _ in 0..20 {
+            let (conn, conn_requests) =
+                create_dummy_peer_connection_with_direction(node_id::random(), ConnectionDirection::Inbound);
+            pool.insert_connection(conn);
+            requests.push(conn_requests);
+        }
+        std::thread::sleep(Duration::from_millis(1));
+        assert_eq!(pool.count_connected_inbound(), 20);
+        assert_eq!(pool.count_connected_outbound(), 1);
+
+        // 21 idle connections against an outbound threshold of 12 (a base node's DHT pool size): the inbound
+        // connections are not counted against it, and are under the inbound soft limit
+        assert!(reapable_node_ids(&mut pool, 12, 400, Duration::ZERO).is_empty());
+        // Even when the inbound connections are over their own limit, only inbound connections are reaped
+        let reapable = reapable_node_ids(&mut pool, 12, 5, Duration::ZERO);
+        assert_eq!(reapable.len(), 15);
+        for node_id in &reapable {
+            let conn = pool.get_connection(node_id).unwrap();
+            assert_eq!(conn.direction(), ConnectionDirection::Inbound);
+        }
+    }
+
+    #[test]
+    fn inbound_soft_limit_reaps_oldest_idle_inbound() {
+        let mut pool = ConnectionPool::new();
+        let mut node_ids = Vec::new();
+        let mut requests = Vec::new();
+        for _ in 0..3 {
+            let (conn, conn_requests) =
+                create_dummy_peer_connection_with_direction(node_id::random(), ConnectionDirection::Inbound);
+            node_ids.push(conn.peer_node_id().clone());
+            pool.insert_connection(conn);
+            requests.push(conn_requests);
+            // Distinct ages
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        assert_eq!(reapable_node_ids(&mut pool, 50, 2, Duration::ZERO), vec![
+            node_ids[0].clone()
+        ]);
+        assert!(reapable_node_ids(&mut pool, 50, 3, Duration::ZERO).is_empty());
+
+        // A connection pinned by a strong handle is never reaped, the next oldest goes instead
+        let _strong_handle = pool.get_connection(&node_ids[0]).unwrap().clone_with(RefKind::Strong);
+        assert_eq!(reapable_node_ids(&mut pool, 50, 2, Duration::ZERO), vec![
+            node_ids[1].clone()
+        ]);
     }
 }

@@ -26,7 +26,7 @@ use log::*;
 use thiserror::Error;
 
 use super::RpcError;
-use crate::{proto, traits::OrOptional};
+use crate::{proto, traits::OrOptional, utils::text::is_invisible_or_line_breaking};
 
 const LOG_TARGET: &str = "comms::rpc::status";
 
@@ -179,12 +179,20 @@ impl<'a> From<&'a proto::rpc::RpcResponse> for RpcStatus {
         }
 
         // Slice the bytes before decoding, so that a huge payload is never converted in full. Control characters
-        // (including newlines) are replaced so that the details cannot forge log lines.
+        // (including newlines) are replaced so that the details cannot forge log lines, and invisible format
+        // characters (bidi overrides, zero-width) and the Unicode line and paragraph separators are dropped so that
+        // they cannot disguise what is shown or break the line.
         let prefix = resp.payload.get(..MAX_PEER_DETAILS_BYTES).unwrap_or(&resp.payload);
-        let mut details = String::from_utf8_lossy(prefix)
-            .chars()
-            .map(|c| if c.is_control() { ' ' } else { c })
-            .collect::<String>();
+        let mut details = String::with_capacity(prefix.len());
+        for c in String::from_utf8_lossy(prefix).chars() {
+            if c.is_control() {
+                details.push(' ');
+            } else if !is_invisible_or_line_breaking(c) {
+                details.push(c);
+            } else {
+                // Format character or line/paragraph separator: dropped
+            }
+        }
         if resp.payload.len() > MAX_PEER_DETAILS_BYTES {
             details.push_str(&format!("… (truncated, {} bytes)", resp.payload.len()));
         }
@@ -350,6 +358,29 @@ mod test {
     fn control_characters_in_peer_details_are_replaced() {
         let resp = response(RpcStatusCode::General, b"line 1\nFAKE LOG LINE\r\x1b[31m".to_vec());
         assert_eq!(RpcStatus::from(&resp).details(), "line 1 FAKE LOG LINE  [31m");
+    }
+
+    #[test]
+    fn rpc_status_details_strip_format_chars() {
+        // Right-to-left override, zero-width space, zero-width joiner, BOM, soft hyphen, tag character
+        let resp = response(
+            RpcStatusCode::General,
+            "ok\u{202e}txt.exe\u{200b}\u{200d}\u{feff}\u{ad}\u{e0041}!"
+                .as_bytes()
+                .to_vec(),
+        );
+        assert_eq!(RpcStatus::from(&resp).details(), "oktxt.exe!");
+
+        // Unicode line and paragraph separators break a line without being control characters
+        let resp = response(
+            RpcStatusCode::General,
+            "line 1\u{2028}FAKE\u{2029}LINE".as_bytes().to_vec(),
+        );
+        assert_eq!(RpcStatus::from(&resp).details(), "line 1FAKELINE");
+
+        // Ordinary non-ASCII text is kept
+        let resp = response(RpcStatusCode::General, "café ü 日本".as_bytes().to_vec());
+        assert_eq!(RpcStatus::from(&resp).details(), "café ü 日本");
     }
 
     #[test]
