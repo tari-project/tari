@@ -81,7 +81,8 @@ pub(super) const OUTBOUND_QUEUE_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// peers that never read can make us hold. A message that would go over this fails immediately, unless its queue's
 /// reserve applies (see [`OUTBOUND_QUEUE_RESERVED_BYTES`]). With the reserve, the worst case is this budget plus,
 /// per established queue, the reserve and one frame, plus the dialing budget:
-/// 512 MiB + established peers x (1 MiB + 8 MiB) + 64 MiB.
+/// 512 MiB + established peers x (1 MiB + 8 MiB) + 64 MiB. Each dialing queue holds at most
+/// [`OUTBOUND_DIALING_QUEUE_MAX_BYTES`] of that 64 MiB.
 pub(super) const OUTBOUND_TOTAL_MAX_BYTES: usize = 512 * 1024 * 1024;
 /// A queue whose session has established a substream and that holds less than this always takes another message that
 /// fits in a frame ([`MAX_FRAME_LENGTH`]), whatever the peer and node-wide budgets say. Without it, a few peers that
@@ -91,6 +92,9 @@ pub(super) const OUTBOUND_QUEUE_RESERVED_BYTES: usize = 1024 * 1024;
 /// across all peers. Replies to peers we cannot reach would otherwise be held for the whole dial, each in a fresh
 /// queue. A message for a dialing queue that would go over this fails immediately; dialing queues get no reserve.
 pub(super) const OUTBOUND_DIALING_MAX_BYTES: usize = 64 * 1024 * 1024;
+/// The most body bytes one queue may hold while its session is still dialing, so one unreachable peer cannot take the
+/// whole dialing budget. A single frame always fits, so a queue's first message is only held to the dialing budget.
+pub(super) const OUTBOUND_DIALING_QUEUE_MAX_BYTES: usize = MAX_FRAME_LENGTH;
 /// The most messages that may wait to be retried, across all peers. A message that does not fit fails immediately.
 const RETRY_QUEUE_CAPACITY: usize = 500;
 /// How long after it was queued a message may still be sent. An expired message fails instead of being sent, and is
@@ -288,6 +292,16 @@ impl ReplacementBudget {
         }
         should
     }
+}
+
+/// Which peer queue, if any, a warning about a full outbound budget names
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LargestQueue {
+    NotNamed,
+    /// The largest queue of all
+    Any,
+    /// The largest queue that is still dialing
+    Dialing,
 }
 
 /// The outbound queue of one outbound session for a peer, with its byte accounting. The accounting belongs to the
@@ -648,7 +662,22 @@ impl MessagingProtocol {
                 OUTBOUND_QUEUE_MAX_BYTES,
                 queued.message.tag
             );
-            self.log_queue_full(msg, false);
+            self.log_queue_full(msg, LargestQueue::NotNamed);
+            return Ok(());
+        }
+        if !established && queued_for_peer.saturating_add(len) > OUTBOUND_DIALING_QUEUE_MAX_BYTES {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("dialing_queue_bytes_full").inc();
+            queued.message.reply_fail(SendFailReason::QueueFull);
+            let msg = format!(
+                "Outbound queue for peer '{}' is still dialing and holds {} bytes, over the {} byte budget for a \
+                 dialing queue with this message; failing message ({})",
+                peer_node_id.short_str(),
+                queued_for_peer,
+                OUTBOUND_DIALING_QUEUE_MAX_BYTES,
+                queued.message.tag
+            );
+            self.log_queue_full(msg, LargestQueue::NotNamed);
             return Ok(());
         }
         if !established && queued_dialing.saturating_add(len) > OUTBOUND_DIALING_MAX_BYTES {
@@ -663,7 +692,7 @@ impl MessagingProtocol {
                 queued.message.tag,
                 peer_node_id.short_str()
             );
-            self.log_queue_full(msg, true);
+            self.log_queue_full(msg, LargestQueue::Dialing);
             return Ok(());
         }
         if !reserve_applies && queued_in_total.saturating_add(len) > OUTBOUND_TOTAL_MAX_BYTES {
@@ -678,7 +707,7 @@ impl MessagingProtocol {
                 queued.message.tag,
                 peer_node_id.short_str()
             );
-            self.log_queue_full(msg, true);
+            self.log_queue_full(msg, LargestQueue::Any);
             return Ok(());
         }
         queued.bytes = Some(QueuedBytes::charge(len, accounting));
@@ -700,7 +729,7 @@ impl MessagingProtocol {
                     OUTBOUND_QUEUE_CAPACITY,
                     tag
                 );
-                self.log_queue_full(msg, false);
+                self.log_queue_full(msg, LargestQueue::NotNamed);
                 Ok(())
             },
             Err(err @ TrySendError::Closed(_)) => {
@@ -715,8 +744,8 @@ impl MessagingProtocol {
 
     /// Logs a message that failed because an outbound queue or byte budget was full, at `warn!` at most once per
     /// [`SHED_LOG_INTERVAL`] and at `debug!` otherwise. For a node-wide budget, the `warn!` also names the peer whose
-    /// queue holds the most bytes, which is most likely the cause.
-    fn log_queue_full(&mut self, msg: String, name_largest_queue: bool) {
+    /// queue holds the most bytes (among the queues that count against that budget), which is most likely the cause.
+    fn log_queue_full(&mut self, msg: String, largest_queue: LargestQueue) {
         let now = time::Instant::now();
         let should_warn = match self.last_queue_full_log {
             Some(last) => now.saturating_duration_since(last) >= SHED_LOG_INTERVAL,
@@ -727,14 +756,17 @@ impl MessagingProtocol {
             return;
         }
         self.last_queue_full_log = Some(now);
-        if !name_largest_queue {
+        if largest_queue == LargestQueue::NotNamed {
             warn!(target: LOG_TARGET, "{msg}");
             return;
         }
         // At most once per SHED_LOG_INTERVAL, so a scan of all queues is fine
         let mut largest: Option<(&NodeId, usize)> = None;
         for (node_id, queue) in &self.active_queues {
-            let (queued_bytes, _) = queue.accounting.snapshot();
+            let (queued_bytes, established) = queue.accounting.snapshot();
+            if largest_queue == LargestQueue::Dialing && established {
+                continue;
+            }
             if largest.is_none_or(|(_, most)| queued_bytes > most) {
                 largest = Some((node_id, queued_bytes));
             }
@@ -742,7 +774,7 @@ impl MessagingProtocol {
         match largest {
             Some((node_id, queued_bytes)) => warn!(
                 target: LOG_TARGET,
-                "{msg}. The largest queue is for peer '{}' with {} bytes",
+                "{msg}. The largest such queue is for peer '{}' with {} bytes",
                 node_id.short_str(),
                 queued_bytes
             ),

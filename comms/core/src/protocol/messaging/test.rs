@@ -36,12 +36,13 @@ use tokio::{
 
 use super::{
     extension::INBOUND_MESSAGE_BUFFER_SIZE,
-    inbound::INBOUND_PER_SESSION_INFLIGHT,
+    inbound::{INBOUND_PER_SESSION_INFLIGHT, STOPPING_SESSION_PERMIT_WAIT},
     outbound::{MAX_SEND_RETRIES, OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueueAccounting, QueuedOutboundMessage},
     protocol::{
         MessagingEventReceiver,
         MessagingProtocol,
         OUTBOUND_DIALING_MAX_BYTES,
+        OUTBOUND_DIALING_QUEUE_MAX_BYTES,
         OUTBOUND_MESSAGE_TTL,
         OUTBOUND_QUEUE_CAPACITY,
         OUTBOUND_QUEUE_MAX_BYTES,
@@ -1718,10 +1719,12 @@ fn unspawned_messaging_protocol(
     (msg_proto, shutdown)
 }
 
-/// Queues 4 MiB messages for `peer` until its queue holds `OUTBOUND_QUEUE_MAX_BYTES`, and returns their replies
-fn fill_peer_byte_budget(msg_proto: &mut MessagingProtocol, peer: &NodeId) -> Vec<MessagingReplyRx> {
+/// Queues 4 MiB messages for a connected `peer` until its queue holds `OUTBOUND_QUEUE_MAX_BYTES`, and returns their
+/// replies. The rest are only queued once the first has established the session: a dialing queue holds at most
+/// `OUTBOUND_DIALING_QUEUE_MAX_BYTES`.
+async fn fill_peer_byte_budget(msg_proto: &mut MessagingProtocol, peer: &NodeId) -> Vec<MessagingReplyRx> {
     let mut reply_rxs = Vec::new();
-    for _ in 0..OUTBOUND_QUEUE_MAX_BYTES / FOUR_MIB {
+    for i in 0..OUTBOUND_QUEUE_MAX_BYTES / FOUR_MIB {
         let (reply_tx, reply_rx) = oneshot::channel();
         msg_proto
             .send_message(OutboundMessage::with_reply(
@@ -1731,6 +1734,9 @@ fn fill_peer_byte_budget(msg_proto: &mut MessagingProtocol, peer: &NodeId) -> Ve
             ))
             .unwrap();
         reply_rxs.push(reply_rx);
+        if i == 0 {
+            wait_until(|| msg_proto.outbound_queue_established(peer) == Some(true)).await;
+        }
     }
     reply_rxs
 }
@@ -1765,7 +1771,7 @@ async fn outbound_queue_byte_budget_fails_new_messages() {
     let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
 
     // The peer never reads, so the first message stalls and the rest wait in the queue
-    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer).await;
     let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
     assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(OUTBOUND_QUEUE_MAX_BYTES));
     // Far below the 500 message cap
@@ -1888,8 +1894,20 @@ async fn a_dial_that_does_not_complete_releases_queued_bytes_by_the_message_dead
     let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
     let peer = node_id::random();
 
-    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
-    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_QUEUE_MAX_BYTES);
+    // A dialing queue holds two 4 MiB messages
+    let mut reply_rxs = Vec::new();
+    for _ in 0..OUTBOUND_DIALING_QUEUE_MAX_BYTES / FOUR_MIB {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        msg_proto
+            .send_message(OutboundMessage::with_reply(
+                peer.clone(),
+                four_mib_body(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        reply_rxs.push(reply_rx);
+    }
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_DIALING_QUEUE_MAX_BYTES);
 
     let start = Instant::now();
     for reply_rx in reply_rxs {
@@ -1914,7 +1932,7 @@ async fn outbound_bytes_are_released_after_a_ban_and_send_timeout() {
     let peer = peer_node_identity.node_id().clone();
     let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
 
-    let mut reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    let mut reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer).await;
     let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
     let reply = send_four_mib(&mut msg_proto, &peer).await.unwrap();
     unpack_enum!(Err(SendFailReason::QueueFull) = reply);
@@ -1948,7 +1966,7 @@ async fn outbound_bytes_are_released_after_a_disconnect() {
     let peer = peer_node_identity.node_id().clone();
     let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
 
-    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer).await;
     let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
     conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
 
@@ -2171,11 +2189,12 @@ async fn a_replaced_session_waiting_for_an_in_flight_slot_exits_without_the_cons
     }
     time::sleep(Duration::from_millis(100)).await;
 
-    // A second substream replaces the first session, which must exit even though the consumer still holds its slots
+    // A second substream replaces the first session, which must exit within STOPPING_SESSION_PERMIT_WAIT even though
+    // the consumer still holds its slots
     let stream_ours2 = conn1_state.open_substream().await.unwrap();
     let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
     framed_ours2.send(TEST_MSG2.clone()).await.unwrap();
-    time::timeout(Duration::from_secs(5), async {
+    time::timeout(STOPPING_SESSION_PERMIT_WAIT + Duration::from_secs(2), async {
         loop {
             if framed_ours.send(TEST_MSG1.clone()).await.is_err() {
                 break;
@@ -2192,4 +2211,105 @@ async fn a_replaced_session_waiting_for_an_in_flight_slot_exits_without_the_cons
         .unwrap();
     assert_eq!(msg.body, TEST_MSG2);
     drop(held);
+}
+
+#[tokio::test]
+async fn a_dialing_queue_cannot_hold_more_than_its_cap() {
+    // The connectivity mock is not running, so no dial completes
+    let (requester, _mock) = create_connectivity_mock();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+    let peer = node_id::random();
+
+    for _ in 0..OUTBOUND_DIALING_QUEUE_MAX_BYTES / FOUR_MIB {
+        assert!(send_four_mib(&mut msg_proto, &peer).await.is_none());
+    }
+    let reply = send_four_mib(&mut msg_proto, &peer)
+        .await
+        .expect("a message over a dialing queue's cap must fail immediately");
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+    assert_eq!(
+        msg_proto.outbound_queue_bytes(&peer),
+        Some(OUTBOUND_DIALING_QUEUE_MAX_BYTES)
+    );
+
+    // Other dialing peers still get in
+    let other_peer = node_id::random();
+    assert!(send_four_mib(&mut msg_proto, &other_peer).await.is_none());
+    assert_eq!(
+        msg_proto.dialing_outbound_bytes(),
+        OUTBOUND_DIALING_QUEUE_MAX_BYTES + FOUR_MIB
+    );
+}
+
+#[tokio::test]
+async fn a_replaced_session_delivers_a_buffered_frame_if_a_slot_frees_up_in_time() {
+    let (peer_manager, node_identity_1, conn_man_mock, proto_tx, _, mut inbound_msg_rx, _, _shutdown) =
+        spawn_messaging_protocol().await;
+
+    let expected_node_id = node_id::random();
+    let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+    let peer2 = Peer::new(
+        pk,
+        expected_node_id.clone(),
+        MultiaddressesWithStats::default(),
+        PeerFlags::empty(),
+        PeerFeatures::COMMUNICATION_CLIENT,
+        Default::default(),
+        Default::default(),
+    );
+    peer_manager.add_or_update_peer(peer2.clone()).await.unwrap();
+    let (conn1, conn1_state, _, conn2_state) = create_peer_connection_mock_pair(node_identity_1.to_peer(), peer2).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    tokio::spawn({
+        let expected_node_id = expected_node_id.clone();
+        async move {
+            while let Some(stream_theirs) = conn2_state.next_incoming_substream().await {
+                proto_tx
+                    .send(ProtocolNotification::new(
+                        MESSAGING_PROTOCOL_ID.clone(),
+                        ProtocolEvent::NewInboundSubstream(expected_node_id.clone(), stream_theirs),
+                    ))
+                    .await
+                    .unwrap();
+            }
+        }
+    });
+
+    // The consumer holds the first session's messages, so the last one stays buffered waiting for a slot
+    let stream_ours = conn1_state.open_substream().await.unwrap();
+    let mut framed_ours = MessagingProtocol::framed(stream_ours);
+    let buffered = Bytes::from_static(b"BUFFERED");
+    for _ in 0..INBOUND_PER_SESSION_INFLIGHT {
+        framed_ours.send(TEST_MSG1.clone()).await.unwrap();
+    }
+    framed_ours.send(buffered.clone()).await.unwrap();
+    let mut held = Vec::new();
+    for _ in 0..INBOUND_PER_SESSION_INFLIGHT {
+        held.push(
+            time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    time::sleep(Duration::from_millis(100)).await;
+
+    // A second substream replaces the first session; a slot frees up well within the stopping session's wait
+    let stream_ours2 = conn1_state.open_substream().await.unwrap();
+    let mut framed_ours2 = MessagingProtocol::framed(stream_ours2);
+    framed_ours2.send(TEST_MSG2.clone()).await.unwrap();
+    time::sleep(Duration::from_millis(200)).await;
+    held.pop();
+
+    // The buffered frame (and the new session's message) both arrive
+    let mut bodies = Vec::new();
+    for _ in 0..2 {
+        let msg = time::timeout(Duration::from_secs(5), inbound_msg_rx.recv())
+            .await
+            .expect("a buffered frame of the replaced session was dropped")
+            .unwrap();
+        bodies.push(msg.body);
+    }
+    assert!(bodies.contains(&buffered), "{bodies:?}");
+    assert!(bodies.contains(&TEST_MSG2), "{bodies:?}");
 }

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, sync::Arc, task::Poll};
+use std::{io, sync::Arc, task::Poll, time::Duration};
 
 use futures::StreamExt;
 use log::*;
@@ -28,6 +28,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc, oneshot},
+    time,
 };
 
 #[cfg(feature = "metrics")]
@@ -43,6 +44,10 @@ const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 /// has finished. A session holding all of them stops reading its substream, so a flooding peer is held back by its
 /// own yamux window rather than filling the shared channel and starving every other peer.
 pub(super) const INBOUND_PER_SESSION_INFLIGHT: usize = 4;
+/// How long a stopping (replaced or disconnected) session waits for an in-flight slot before each frame it still has
+/// buffered. Those frames were already reported as sent to the peer, so they are worth a short wait, but the session
+/// must not be kept alive by a slow consumer.
+pub(super) const STOPPING_SESSION_PERMIT_WAIT: Duration = Duration::from_secs(2);
 
 /// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
 pub struct InboundMessaging {
@@ -120,12 +125,12 @@ impl InboundMessaging {
             // Take one of this session's in-flight slots before reading the next frame. While the consumer is still
             // processing (or holding) messages for all of them, nothing more is read from the substream, which leaves
             // the peer's yamux window to push back on it. Once stopping (disconnected or replaced), only what is
-            // already buffered is drained, and only while a slot is free right now: a stopping session must not wait
-            // on the consumer.
+            // already buffered is drained - the sender was told those frames were sent - and each waits at most
+            // `STOPPING_SESSION_PERMIT_WAIT` for a slot, so a stopping session never waits on the consumer for long.
             let permit = if disconnected {
-                match Arc::clone(&self.inflight_permits).try_acquire_owned() {
-                    Ok(permit) => permit,
-                    Err(_) => break,
+                match self.wait_for_permit_while_stopping(&peer).await {
+                    Some(permit) => permit,
+                    None => break,
                 }
             } else {
                 tokio::select! {
@@ -136,12 +141,11 @@ impl InboundMessaging {
                         // The semaphore is never closed
                         Err(_) => break,
                     },
+                    // Stopping while waiting for a slot: go round again to wait (for a bounded time) as a stopping
+                    // session. These futures are never polled again once `disconnected` is set.
                     _ = &mut on_disconnect => {
                         disconnected = true;
-                        match Arc::clone(&self.inflight_permits).try_acquire_owned() {
-                            Ok(permit) => permit,
-                            Err(_) => break,
-                        }
+                        continue;
                     },
                     _ = &mut self.replaced => {
                         debug!(
@@ -151,10 +155,7 @@ impl InboundMessaging {
                             peer.short_str()
                         );
                         disconnected = true;
-                        match Arc::clone(&self.inflight_permits).try_acquire_owned() {
-                            Ok(permit) => permit,
-                            Err(_) => break,
-                        }
+                        continue;
                     },
                 }
             };
@@ -223,6 +224,33 @@ impl InboundMessaging {
             "Inbound messaging handler exited for peer `{}`",
             peer.short_str()
         );
+    }
+
+    /// Waits at most `STOPPING_SESSION_PERMIT_WAIT` for an in-flight slot for a frame this stopping session still has
+    /// buffered. Returns `None` if none came free in time, or on shutdown.
+    async fn wait_for_permit_while_stopping(&mut self, peer: &NodeId) -> Option<OwnedSemaphorePermit> {
+        let wait = time::timeout(
+            STOPPING_SESSION_PERMIT_WAIT,
+            Arc::clone(&self.inflight_permits).acquire_owned(),
+        );
+        tokio::select! {
+            biased;
+            _ = self.shutdown_signal.wait() => None,
+            result = wait => match result {
+                Ok(Ok(permit)) => Some(permit),
+                // No slot came free in time (or the semaphore closed, which it never does)
+                _ => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Stopping inbound messaging session for peer '{}' without draining the rest of its \
+                         substream: no in-flight slot came free within {:.0?}",
+                        peer.short_str(),
+                        STOPPING_SESSION_PERMIT_WAIT
+                    );
+                    None
+                },
+            },
+        }
     }
 
     /// Handles a single decoded frame (or read error). Returns `false` if the read loop should stop.

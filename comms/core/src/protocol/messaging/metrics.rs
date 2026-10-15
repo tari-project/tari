@@ -71,6 +71,7 @@ pub fn error_count() -> IntCounter {
 /// - `queue_bytes_full`: the message would take the peer's queue over its byte budget
 /// - `total_bytes_full`: the message would take all outbound queues over the node-wide byte budget
 /// - `dialing_bytes_full`: the message would take the queues still dialing over their byte budget
+/// - `dialing_queue_bytes_full`: the message would take a queue that is still dialing over its own byte budget
 /// - `too_large`: the message is larger than a frame
 /// - `retry_queue_full`: the message could not be put on the retry queue
 /// - `max_retries`: the message was already retried `MAX_SEND_RETRIES` times
