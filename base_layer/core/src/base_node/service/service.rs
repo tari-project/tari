@@ -598,21 +598,28 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 
     // Only answer a peer that is still connected. A direct send to a peer that has gone would dial it, holding the
     // reply in our outbound queues for the whole dial; a requester that disconnects (perhaps with an unreachable
-    // address) does not get to make us do that. It is checked as late as possible, just before sending.
-    let is_connected = connectivity
-        .get_connection(reply_node_id.clone(), RefKind::Weak)
-        .await
-        .ok()
-        .flatten()
-        .is_some_and(|conn| conn.is_connected());
-    if !is_connected {
-        debug!(
-            target: LOG_TARGET,
-            "Not answering request ({}) from peer '{}': it is no longer connected",
-            inner_msg.request_key,
-            reply_node_id.short_str()
-        );
-        return Ok(());
+    // address) does not get to make us do that. It is checked as late as possible, just before sending. If the
+    // connectivity manager cannot answer (e.g. it is busy), the reply is sent anyway: not answering would make an
+    // honest requester time out and ban us.
+    match connectivity.get_connection(reply_node_id.clone(), RefKind::Weak).await {
+        Ok(Some(conn)) if conn.is_connected() => {},
+        Ok(_) => {
+            debug!(
+                target: LOG_TARGET,
+                "Not answering request ({}) from peer '{}': it is no longer connected",
+                inner_msg.request_key,
+                reply_node_id.short_str()
+            );
+            return Ok(());
+        },
+        Err(err) => {
+            warn!(
+                target: LOG_TARGET,
+                "Could not check whether peer '{}' is still connected ({err}); answering request ({}) anyway",
+                reply_node_id.short_str(),
+                inner_msg.request_key
+            );
+        },
     }
 
     let send_message_response = outbound_message_service
@@ -839,24 +846,26 @@ async fn handle_request_timeout(
     Ok(())
 }
 
-/// The error an outbound request fails with when it could not be sent, which decides whether the peer is blamed.
-/// A failure on our side (our queue was full, the message was too large or expired waiting, it was dropped, or its
-/// retries ran out because the connection went away) is a `BroadcastFailed`, which bans nobody. A failure caused by the
-/// peer (it did not read, refused the substream, or could not be reached) is a `RequestTimedOut`, which short-bans it,
-/// as a request it never answered would.
+/// The error an outbound request fails with when it could not be sent, which decides whether the peer is blamed. Only
+/// two outcomes are the peer's doing and fail as `RequestTimedOut`, which short-bans it as a request it never answered
+/// would: our own write of the request timed out because the peer stopped reading (`SendTimeout`), or every retry was
+/// used up by the peer resetting the substream while the connection stayed up (`MaxRetriesReached`). Everything else
+/// is a `BroadcastFailed`, which bans nobody: our side failed (queue full, too large, expired, dropped, queued behind
+/// another message's timeout), the connection went away (which we may have caused), or the dial failed - which covers
+/// our own connectivity problems, our establishment deadline and peers that only accept inbound connections.
 fn request_send_failure(reason: SendFailReason) -> CommsInterfaceError {
     match reason {
+        SendFailReason::SendTimeout | SendFailReason::MaxRetriesReached(_) => CommsInterfaceError::RequestTimedOut,
         SendFailReason::QueueFull |
         SendFailReason::MessageTooLarge |
         SendFailReason::Expired |
         SendFailReason::Dropped |
-        // Ran out of retries at least partly because the connection went away, which we may have caused
-        SendFailReason::ConnectionLost(_) => CommsInterfaceError::BroadcastFailed,
-        SendFailReason::SendTimeout |
+        SendFailReason::QueuedBehindTimeout |
+        SendFailReason::ConnectionLost(_) |
+        SendFailReason::PeerDialFailed |
+        // Not produced by the messaging protocol
         SendFailReason::SubstreamOpenFailed |
-        SendFailReason::SubstreamSendFailed |
-        SendFailReason::MaxRetriesReached(_) |
-        SendFailReason::PeerDialFailed => CommsInterfaceError::RequestTimedOut,
+        SendFailReason::SubstreamSendFailed => CommsInterfaceError::BroadcastFailed,
     }
 }
 
@@ -1086,6 +1095,37 @@ mod test {
         assert_eq!(outbound_state.call_count().await, 0);
     }
 
+    /// If the connectivity manager cannot say whether the requester is connected, the reply is sent anyway
+    #[tokio::test]
+    async fn a_request_is_answered_when_the_connection_check_fails() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::outbound::mock::create_outbound_service_mock;
+
+        let (inbound_nch, db, _mempool, _requests) = create_handlers();
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let outbound_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
+        // The connectivity manager is gone, so asking it for the connection fails
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        drop(connectivity_mock);
+
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        let domain_msg = block_request(&db, source_peer, None);
+        handle_incoming_request(
+            inbound_nch,
+            outbound_requester,
+            connectivity,
+            test_state_machine_handle(),
+            domain_msg,
+        )
+        .await
+        .unwrap();
+        outbound_state
+            .wait_call_count(1, Duration::from_secs(5))
+            .await
+            .expect("the reply was not sent");
+    }
+
     /// A reply is not sent to a requester that is no longer connected: sending it would dial the requester
     #[tokio::test]
     async fn a_request_from_a_peer_that_has_disconnected_is_not_answered() {
@@ -1253,26 +1293,40 @@ mod test {
     /// Every send failure is attributed one way or the other; this lists which way, so a change is deliberate
     #[test]
     fn send_failures_are_attributed() {
-        let ours = [
+        let not_the_peers_fault = [
             SendFailReason::QueueFull,
             SendFailReason::MessageTooLarge,
             SendFailReason::Expired,
             SendFailReason::Dropped,
+            SendFailReason::QueuedBehindTimeout,
             SendFailReason::ConnectionLost(2),
-        ];
-        for reason in ours {
-            assert!(request_send_failure(reason).get_ban_reason().is_none(), "{reason}");
-        }
-        let peers = [
-            SendFailReason::SendTimeout,
+            SendFailReason::PeerDialFailed,
             SendFailReason::SubstreamOpenFailed,
             SendFailReason::SubstreamSendFailed,
-            SendFailReason::MaxRetriesReached(2),
-            SendFailReason::PeerDialFailed,
         ];
-        for reason in peers {
+        for reason in not_the_peers_fault {
+            let err = request_send_failure(reason);
+            assert!(matches!(err, CommsInterfaceError::BroadcastFailed), "{reason}");
+            assert!(err.get_ban_reason().is_none(), "{reason}");
+        }
+        let the_peers_fault = [SendFailReason::SendTimeout, SendFailReason::MaxRetriesReached(2)];
+        for reason in the_peers_fault {
             assert!(request_send_failure(reason).get_ban_reason().is_some(), "{reason}");
         }
+    }
+
+    /// A request whose dial failed is not the peer's fault (it may be our connectivity, or a peer that only accepts
+    /// inbound connections), so it fails without a ban
+    #[tokio::test]
+    async fn an_outbound_request_whose_dial_failed_fails_without_a_ban() {
+        let (send_reply_tx, reply_rx, _timeout_receiver, handler) = outbound_request_with_controlled_send().await;
+        send_reply_tx.send(Err(SendFailReason::PeerDialFailed)).unwrap();
+        handler.await.unwrap();
+        let reply = tokio::time::timeout(Duration::from_secs(5), reply_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(reply, Err(CommsInterfaceError::BroadcastFailed)), "{reply:?}");
     }
 
     /// The request timeout starts when the request has been sent, not when it is queued: a slow dial or a long wait in
