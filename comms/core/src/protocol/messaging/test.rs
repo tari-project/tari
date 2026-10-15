@@ -38,7 +38,14 @@ use super::{
     extension::INBOUND_MESSAGE_BUFFER_SIZE,
     inbound::INBOUND_PER_SESSION_INFLIGHT,
     outbound::{MAX_SEND_RETRIES, OUTBOUND_SEND_TIMEOUT, OutboundMessaging, QueuedOutboundMessage},
-    protocol::{MessagingEventReceiver, MessagingProtocol, OUTBOUND_MESSAGE_TTL, OUTBOUND_QUEUE_CAPACITY},
+    protocol::{
+        MessagingEventReceiver,
+        MessagingProtocol,
+        OUTBOUND_MESSAGE_TTL,
+        OUTBOUND_QUEUE_CAPACITY,
+        OUTBOUND_QUEUE_MAX_BYTES,
+        OUTBOUND_TOTAL_MAX_BYTES,
+    },
 };
 use crate::{
     Minimized,
@@ -1145,6 +1152,7 @@ async fn expired_messages_are_not_requeued_on_disconnect() {
             deadline,
             retries: 0,
             attempts: 0,
+            bytes: None,
         };
         (queued, reply_rx)
     };
@@ -1515,6 +1523,7 @@ async fn assert_unwritten_backlog_survives_two_connection_closes(close: Connecti
             deadline,
             retries: 0,
             attempts: 0,
+            bytes: None,
         };
         (queued, reply_rx)
     };
@@ -1674,4 +1683,190 @@ async fn an_exited_outbound_session_does_not_remove_its_successors_queue() {
     assert_eq!(msg_proto.outbound_queue_len(&peer), Some(1));
     time::sleep(Duration::from_millis(200)).await;
     assert_eq!(num_substreams.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+/// A 4 MiB message body. Clones share one allocation, so queueing many of them is cheap while the byte budgets still
+/// count each one's full length.
+const FOUR_MIB: usize = 4 * 1024 * 1024;
+
+fn four_mib_body() -> Bytes {
+    static BODY: std::sync::OnceLock<Bytes> = std::sync::OnceLock::new();
+    BODY.get_or_init(|| Bytes::from(vec![0u8; FOUR_MIB])).clone()
+}
+
+/// A messaging protocol that is not spawned, so tests can call `send_message` directly and look at its queues
+fn unspawned_messaging_protocol(
+    requester: crate::connectivity::ConnectivityRequester,
+) -> (MessagingProtocol, Shutdown) {
+    let shutdown = Shutdown::new();
+    let (_proto_tx, proto_rx) = mpsc::channel(10);
+    let (_request_tx, request_rx) = mpsc::unbounded_channel();
+    let (inbound_msg_tx, _inbound_msg_rx) = mpsc::channel(10);
+    let (events_tx, _events_rx) = broadcast::channel(10);
+    let msg_proto = MessagingProtocol::new(
+        MESSAGING_PROTOCOL_ID.clone(),
+        requester,
+        proto_rx,
+        request_rx,
+        events_tx,
+        inbound_msg_tx,
+        shutdown.to_signal(),
+    );
+    (msg_proto, shutdown)
+}
+
+/// Queues 4 MiB messages for `peer` until its queue holds `OUTBOUND_QUEUE_MAX_BYTES`, and returns their replies
+fn fill_peer_byte_budget(msg_proto: &mut MessagingProtocol, peer: &NodeId) -> Vec<MessagingReplyRx> {
+    let mut reply_rxs = Vec::new();
+    for _ in 0..OUTBOUND_QUEUE_MAX_BYTES / FOUR_MIB {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        msg_proto
+            .send_message(OutboundMessage::with_reply(
+                peer.clone(),
+                four_mib_body(),
+                reply_tx.into(),
+            ))
+            .unwrap();
+        reply_rxs.push(reply_rx);
+    }
+    reply_rxs
+}
+
+/// Sends a 4 MiB message to `peer` and returns its reply if it was failed straight away
+async fn send_four_mib(msg_proto: &mut MessagingProtocol, peer: &NodeId) -> Option<Result<(), SendFailReason>> {
+    let (reply_tx, reply_rx) = oneshot::channel();
+    msg_proto
+        .send_message(OutboundMessage::with_reply(
+            peer.clone(),
+            four_mib_body(),
+            reply_tx.into(),
+        ))
+        .unwrap();
+    time::timeout(Duration::from_millis(10), reply_rx)
+        .await
+        .ok()
+        .map(|reply| reply.unwrap())
+}
+
+#[tokio::test]
+async fn outbound_queue_byte_budget_fails_new_messages() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    // The peer never reads, so the first message stalls and the rest wait in the queue
+    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(OUTBOUND_QUEUE_MAX_BYTES));
+    // Far below the 500 message cap
+    assert!(reply_rxs.len() < OUTBOUND_QUEUE_CAPACITY);
+
+    let reply = send_four_mib(&mut msg_proto, &peer)
+        .await
+        .expect("a message over the peer's byte budget must fail immediately");
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(OUTBOUND_QUEUE_MAX_BYTES));
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_QUEUE_MAX_BYTES);
+}
+
+#[tokio::test]
+async fn outbound_total_byte_budget_fails_new_messages() {
+    // The connectivity mock is not running, so no outbound session gets past dialing and every message stays queued
+    let (requester, _mock) = create_connectivity_mock();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    let num_peers = OUTBOUND_TOTAL_MAX_BYTES / OUTBOUND_QUEUE_MAX_BYTES;
+    let mut _reply_rxs = Vec::new();
+    for _ in 0..num_peers {
+        let peer = node_id::random();
+        _reply_rxs.extend(fill_peer_byte_budget(&mut msg_proto, &peer));
+    }
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES);
+
+    // Another peer's queue is empty, but the node-wide budget is used up
+    let other_peer = node_id::random();
+    let reply = send_four_mib(&mut msg_proto, &other_peer)
+        .await
+        .expect("a message over the node-wide byte budget must fail immediately");
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+    assert_eq!(msg_proto.outbound_queue_bytes(&other_peer), Some(0));
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES);
+}
+
+#[tokio::test(start_paused = true)]
+async fn outbound_bytes_are_released_after_a_ban_and_send_timeout() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    let peer = peer_node_identity.node_id().clone();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    let mut reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    let reply = send_four_mib(&mut msg_proto, &peer).await.unwrap();
+    unpack_enum!(Err(SendFailReason::QueueFull) = reply);
+
+    // The ban drops the peer's queue; the stalled session still holds the messages until its write times out
+    msg_proto.ban_peer_for_test(peer.clone());
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), None);
+    let first_reply = reply_rxs.remove(0).await.unwrap();
+    unpack_enum!(Err(SendFailReason::SendTimeout) = first_reply);
+    for reply_rx in reply_rxs {
+        let reply = reply_rx.await.unwrap();
+        unpack_enum!(Err(SendFailReason::SendTimeout) = reply);
+    }
+    wait_until(|| msg_proto.total_outbound_bytes() == 0).await;
+
+    // The peer can be sent to again
+    assert!(send_four_mib(&mut msg_proto, &peer).await.is_none());
+    assert_eq!(msg_proto.outbound_queue_bytes(&peer), Some(FOUR_MIB));
+}
+
+#[tokio::test]
+async fn outbound_bytes_are_released_after_a_disconnect() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (conn1, _, _, peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1.clone()).await;
+    let peer = peer_node_identity.node_id().clone();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+
+    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+
+    // Every message is requeued, still charged to the node-wide budget while it waits to be retried. The retries go
+    // to a new session, which cannot open a substream on the closed connection and fails them.
+    for _ in 0..reply_rxs.len() {
+        time::timeout(Duration::from_secs(5), msg_proto.handle_next_retry())
+            .await
+            .expect("a message was not requeued after the disconnect");
+    }
+    for reply_rx in reply_rxs {
+        let reply = time::timeout(Duration::from_secs(5), reply_rx).await.unwrap().unwrap();
+        assert!(reply.is_err());
+    }
+    wait_until(|| msg_proto.total_outbound_bytes() == 0).await;
+
+    // A fresh connection to the peer takes messages again
+    let (conn1, _, _, _peer_conn_mock2) =
+        create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+    conn_man_mock.add_active_connection(conn1).await;
+    assert!(send_four_mib(&mut msg_proto, &peer).await.is_none());
 }

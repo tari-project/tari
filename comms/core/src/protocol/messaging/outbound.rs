@@ -20,7 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, time::Duration};
+use std::{
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use futures::{SinkExt, StreamExt};
 use tokio::{
@@ -73,6 +80,40 @@ pub(super) struct QueuedOutboundMessage {
     pub retries: usize,
     /// How many times a write of this message has been started, for the `MaxRetriesReached` failure
     pub attempts: usize,
+    /// The body bytes this message is charged against the outbound byte budgets, set when it is put on a peer's
+    /// queue. It stays charged against the node-wide budget while the message waits on the retry queue, and is
+    /// released when the message is dropped, whichever way it leaves.
+    pub bytes: Option<QueuedBytes>,
+}
+
+/// Body bytes charged against a peer queue's byte counter and the node-wide byte counter. Dropping it releases them,
+/// so every way a queued message can leave - sent, failed, expired, or dropped along with a closed queue - gives its
+/// bytes back exactly once.
+#[derive(Debug)]
+pub(super) struct QueuedBytes {
+    len: usize,
+    peer_queue_bytes: Arc<AtomicUsize>,
+    total_bytes: Arc<AtomicUsize>,
+}
+
+impl QueuedBytes {
+    /// Charges `len` bytes to both counters
+    pub fn charge(len: usize, peer_queue_bytes: Arc<AtomicUsize>, total_bytes: Arc<AtomicUsize>) -> Self {
+        peer_queue_bytes.fetch_add(len, Ordering::SeqCst);
+        total_bytes.fetch_add(len, Ordering::SeqCst);
+        Self {
+            len,
+            peer_queue_bytes,
+            total_bytes,
+        }
+    }
+}
+
+impl Drop for QueuedBytes {
+    fn drop(&mut self) {
+        self.peer_queue_bytes.fetch_sub(self.len, Ordering::SeqCst);
+        self.total_bytes.fetch_sub(self.len, Ordering::SeqCst);
+    }
 }
 
 impl QueuedOutboundMessage {
