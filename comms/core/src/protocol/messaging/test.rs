@@ -1479,8 +1479,20 @@ async fn actor_keeps_running_while_a_ban_request_is_pending() {
     assert_eq!(banned.len(), 12);
 }
 
-#[tokio::test]
-async fn unwritten_messages_survive_consecutive_connection_disconnects() {
+/// How a connection ends in `assert_unwritten_backlog_survives_two_connection_closes`
+#[derive(Clone, Copy, Debug)]
+enum ConnectionClose {
+    /// We disconnect the connection
+    Local,
+    /// The peer closes the connection. Our substream ends first, and the connection is reported as disconnected
+    /// shortly after, as the connection actor does once the yamux driver ends.
+    Remote,
+}
+
+/// Runs two outbound sessions that each end with the connection closing while a write is stalled and a backlog of
+/// never-written messages is queued behind it, and asserts that the backlog is requeued both times without using up
+/// a retry
+async fn assert_unwritten_backlog_survives_two_connection_closes(close: ConnectionClose) {
     let (requester, mock) = create_connectivity_mock();
     let conn_man_mock = mock.get_shared_state();
     mock.spawn();
@@ -1539,7 +1551,16 @@ async fn unwritten_messages_survive_consecutive_connection_disconnects() {
             messages_tx.send(queued).await.unwrap();
         }
 
-        conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+        match close {
+            ConnectionClose::Local => {
+                conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+            },
+            ConnectionClose::Remote => {
+                peer_conn_mock2.disconnect().await.unwrap();
+                time::sleep(Duration::from_millis(100)).await;
+                conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+            },
+        }
         time::timeout(Duration::from_secs(5), outbound_task)
             .await
             .expect("the outbound session did not exit on disconnect")
@@ -1548,18 +1569,28 @@ async fn unwritten_messages_survive_consecutive_connection_disconnects() {
         // The interrupted write uses up a retry; the never-written backlog is requeued without using one
         while let Ok(queued) = retry_queue_rx.try_recv() {
             if queued.message.tag == stalled_tag {
-                assert_eq!(queued.retries, 1, "round {round}");
+                assert_eq!(queued.retries, 1, "{close:?} round {round}");
             } else {
-                assert_eq!(queued.retries, 0, "round {round}");
+                assert_eq!(queued.retries, 0, "{close:?} round {round}");
                 backlog.push(queued);
             }
         }
         let requeued_tags: Vec<_> = backlog.iter().map(|queued| queued.message.tag).collect();
-        assert_eq!(requeued_tags, backlog_tags, "round {round}");
+        assert_eq!(requeued_tags, backlog_tags, "{close:?} round {round}");
     }
 
     // None of the backlog has failed
     for reply_rx in &mut backlog_reply_rxs {
         assert!(matches!(reply_rx.try_recv(), Err(TryRecvError::Empty)));
     }
+}
+
+#[tokio::test]
+async fn unwritten_messages_survive_consecutive_connection_disconnects() {
+    assert_unwritten_backlog_survives_two_connection_closes(ConnectionClose::Local).await;
+}
+
+#[tokio::test]
+async fn unwritten_messages_survive_consecutive_remote_connection_closes() {
+    assert_unwritten_backlog_survives_two_connection_closes(ConnectionClose::Remote).await;
 }

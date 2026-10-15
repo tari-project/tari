@@ -53,6 +53,12 @@ pub(super) const MAX_SEND_RETRIES: usize = 1;
 /// window forever, so once this passes the message fails, the session exits (resetting the substream) and every
 /// message still queued for the peer fails with it.
 pub(super) const OUTBOUND_SEND_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long to wait for the connection to be reported as disconnected after the substream ended or a write failed.
+/// When the peer closes the whole connection, the yamux driver ends first, so our substream read (or write) fails
+/// before the connection actor reports the disconnect. Waiting briefly tells that apart from the peer resetting just
+/// this substream, which uses up a retry for the queued messages. It also slows down a peer that resets every
+/// substream.
+pub(super) const CONNECTION_CLOSE_GRACE: Duration = Duration::from_secs(1);
 
 /// An outbound message waiting in a peer's queue (or the retry queue), with the instant after which it is no longer
 /// sent or retried. The deadline is set once, when the message is first queued, and is kept across retries.
@@ -329,8 +335,11 @@ impl OutboundMessaging {
         // Whether the backlog still in `messages_rx` uses up a retry when it is requeued below. It does when the peer
         // closed or reset the substream, which a peer can repeat on every new substream; it does not when the
         // connection itself went away, which is routine while simultaneous dials are tie-broken at start-up and
-        // says nothing about the messages that were never written.
+        // says nothing about the messages that were never written. `substream_ended` is set when the substream read
+        // side ended or a write failed, which happens both when the peer resets the substream and when the whole
+        // connection is closing - see `CONNECTION_CLOSE_GRACE`.
         let mut backlog_uses_retry = false;
+        let mut substream_ended = false;
         loop {
             let mut queued = tokio::select! {
                 biased;
@@ -349,7 +358,7 @@ impl OutboundMessaging {
                         target: LOG_TARGET,
                         "Outbound messaging stream {} ended for peer {} (remote closed).", stream_id, peer_node_id
                     );
-                    backlog_uses_retry = true;
+                    substream_ended = true;
                     break;
                 },
                 maybe_msg = messages_rx.recv() => {
@@ -409,11 +418,9 @@ impl OutboundMessaging {
                     );
                     #[cfg(feature = "metrics")]
                     metrics::error_count().inc();
-                    // A write error does not say whether the substream or the whole connection failed. If the
-                    // connection is already reported as disconnected, treat it like the disconnect arms; otherwise
-                    // the peer closed or reset the substream.
-                    let connection_disconnected = futures::poll!(&mut on_disconnect).is_ready();
-                    backlog_uses_retry = !connection_disconnected;
+                    // A write error does not say whether the substream or the whole connection failed; that is
+                    // decided below.
+                    substream_ended = true;
                     Self::requeue_for_retry(&retry_queue_tx, queued, true);
                     break;
                 },
@@ -440,6 +447,15 @@ impl OutboundMessaging {
                     break;
                 },
             }
+        }
+
+        // The substream ended without the connection being reported as disconnected (which only the disconnect
+        // arms above complete, so `on_disconnect` has not completed yet here). If the connection is reported as
+        // disconnected shortly, the whole connection closed and the backlog is not charged a retry; otherwise the
+        // peer closed or reset just this substream.
+        if substream_ended {
+            let connection_disconnected = time::timeout(CONNECTION_CLOSE_GRACE, &mut on_disconnect).await.is_ok();
+            backlog_uses_retry = !connection_disconnected;
         }
 
         // Dropping the substream resets it, so the peer's inbound session sees the end of this session
