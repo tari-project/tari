@@ -488,7 +488,13 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     state_machine_handle: StateMachineHandle,
     domain_request_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
 ) -> Result<(), BaseNodeServiceError> {
-    let (origin_public_key, inner_msg) = domain_request_msg.into_origin_and_inner();
+    // Reply to the connected peer that sent the request, not to the request's authenticated origin. The origin is
+    // whatever identity signed the message: anyone can sign a cheap request with a made-up identity, and replying to
+    // it would make us dial that identity (and run DHT discovery for it) to deliver a large reply. Our own requests
+    // are sent directly to the peer we ask (see `handle_outbound_request`) and are not signed, so a legitimate
+    // request's origin is its source peer anyway.
+    let reply_public_key = domain_request_msg.source_peer.public_key.clone();
+    let inner_msg = domain_request_msg.into_inner();
 
     // Convert proto::BaseNodeServiceRequest to a BaseNodeServiceRequest
     let inner_msg = match inner_msg {
@@ -541,7 +547,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
 
     let send_message_response = outbound_message_service
         .send_direct_unencrypted(
-            origin_public_key,
+            reply_public_key,
             OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
             "Outbound response message from base node".to_string(),
         )
@@ -867,6 +873,58 @@ mod test {
 
     fn decode_permits() -> Arc<Semaphore> {
         Arc::new(Semaphore::new(MAX_CONCURRENT_BLOCK_DECODES))
+    }
+
+    /// A request whose authenticated origin is some other identity is answered to the connected peer that sent it,
+    /// never to the origin
+    #[tokio::test]
+    async fn a_request_is_answered_to_its_source_peer_not_its_origin() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::{broadcast_strategy::BroadcastStrategy, outbound::mock::create_outbound_service_mock};
+        use tokio::sync::watch;
+
+        use crate::base_node::state_machine_service::states::StatusInfo;
+
+        let (inbound_nch, db, _mempool, _requests) = create_handlers();
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let outbound_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
+        let shutdown = tari_shutdown::Shutdown::new();
+        let (state_change_tx, _) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let state_machine_handle = StateMachineHandle::new(state_change_tx, status_rx, shutdown.to_signal());
+
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        let origin = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let tip_hash = *db.fetch_last_chain_header().unwrap().hash();
+        let request = proto::BaseNodeServiceRequest {
+            request_key: 123,
+            request: Some(NodeCommsRequest::GetBlockFromAllChains(tip_hash).try_into().unwrap()),
+        };
+        let domain_msg = DomainMessage {
+            source_peer: source_peer.clone(),
+            dht_header: create_peer_message(TariMessageType::BaseNodeRequest, vec![])
+                .dht_header
+                .clone(),
+            authenticated_origin: Some(origin.public_key().clone()),
+            inner: Ok(request),
+        };
+
+        task::spawn(handle_incoming_request(
+            inbound_nch,
+            outbound_requester,
+            state_machine_handle,
+            domain_msg,
+        ));
+        outbound_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        let (params, _body) = outbound_state.pop_call().await.unwrap();
+        match params.broadcast_strategy {
+            BroadcastStrategy::DirectPublicKey(public_key) => assert_eq!(*public_key, source_peer.public_key),
+            other => panic!("unexpected broadcast strategy {other}"),
+        }
     }
 
     #[tokio::test]
