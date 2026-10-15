@@ -108,6 +108,10 @@ pub enum CommsInitializationError {
     HiddenServiceBuilderError(#[from] tor::HiddenServiceBuilderError),
     #[error("Invalid liveness CIDRs error: `{0}`")]
     InvalidLivenessCidrs(String),
+    #[error("Invalid listener_per_ip_exempt_cidrs: `{0}`")]
+    InvalidPerIpExemptCidrs(String),
+    #[error("Invalid p2p listener configuration: {0}")]
+    InvalidListenerConfig(String),
     #[error("Could not add seed peers to comms layer: `{0}`")]
     FailedToAddSeedPeer(#[from] PeerManagerError),
     #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
@@ -134,6 +138,8 @@ impl CommsInitializationError {
             CommsInitializationError::HiddenServiceControllerError(FailedToLoadCookieFile(_)) => {
                 ExitError::new(ExitCode::TorAuthUnreadableCookie, self)
             },
+            CommsInitializationError::InvalidListenerConfig(_) |
+            CommsInitializationError::InvalidPerIpExemptCidrs(_) => ExitError::new(ExitCode::ConfigError, self),
 
             _ => ExitError::new(ExitCode::NetworkError, self),
         }
@@ -300,12 +306,38 @@ fn initialize_hidden_service(
     Ok(hidden_svc_ctl)
 }
 
+/// Rejects inbound listener limits that would refuse every inbound connection.
+fn validate_listener_limits(config: &P2pConfig) -> Result<(), CommsInitializationError> {
+    if config.listener_handshake_timeout.is_zero() {
+        return Err(CommsInitializationError::InvalidListenerConfig(
+            "listener_handshake_timeout must be greater than zero".to_string(),
+        ));
+    }
+    if config.max_inbound_connections == 0 {
+        return Err(CommsInitializationError::InvalidListenerConfig(
+            "max_inbound_connections must be greater than zero".to_string(),
+        ));
+    }
+    if config.listener_max_handshakes_per_ip == 0 {
+        return Err(CommsInitializationError::InvalidListenerConfig(
+            "listener_max_handshakes_per_ip must be greater than zero".to_string(),
+        ));
+    }
+    if config.max_inbound_connections_per_ip == 0 {
+        return Err(CommsInitializationError::InvalidListenerConfig(
+            "max_inbound_connections_per_ip must be greater than zero".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 async fn configure_comms_and_dht(
     builder: CommsBuilder,
     config: &P2pConfig,
     connector: InboundDomainConnector,
     seed_peer_provider: Arc<dyn SeedPeerProvider>,
 ) -> Result<(UnspawnedCommsNode, Dht), CommsInitializationError> {
+    validate_listener_limits(config)?;
     let database_url = DbConnectionUrl::File(
         PathBuf::from(&config.datastore_path)
             .join(&config.peer_database_name)
@@ -335,10 +367,17 @@ async fn configure_comms_and_dht(
 
     let listener_liveness_allowlist_cidrs = parse_cidrs(&config.listener_liveness_allowlist_cidrs)
         .map_err(CommsInitializationError::InvalidLivenessCidrs)?;
+    let listener_per_ip_exempt_cidrs =
+        parse_cidrs(&config.listener_per_ip_exempt_cidrs).map_err(CommsInitializationError::InvalidPerIpExemptCidrs)?;
 
     let builder = builder
         .with_listener_liveness_max_sessions(config.listener_liveness_max_sessions)
         .with_listener_liveness_allowlist_cidrs(listener_liveness_allowlist_cidrs)
+        .with_listener_handshake_timeout(config.listener_handshake_timeout)
+        .with_listener_max_handshakes_per_ip(config.listener_max_handshakes_per_ip)
+        .with_max_inbound_connections(config.max_inbound_connections)
+        .with_max_inbound_connections_per_ip(config.max_inbound_connections_per_ip)
+        .with_listener_per_ip_exempt_cidrs(listener_per_ip_exempt_cidrs)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_transport_protocols(config.transport.transport_type.get_supported_protocols())
         .with_peer_storage(peer_database)
@@ -724,6 +763,34 @@ mod test {
 
     use super::*;
     use crate::P2pConfig;
+
+    #[test]
+    fn zero_listener_limits_are_rejected_at_config_load() {
+        assert!(validate_listener_limits(&P2pConfig::default()).is_ok());
+
+        let configs = [
+            P2pConfig {
+                listener_handshake_timeout: Duration::ZERO,
+                ..Default::default()
+            },
+            P2pConfig {
+                max_inbound_connections: 0,
+                ..Default::default()
+            },
+            P2pConfig {
+                listener_max_handshakes_per_ip: 0,
+                ..Default::default()
+            },
+            P2pConfig {
+                max_inbound_connections_per_ip: 0,
+                ..Default::default()
+            },
+        ];
+        for config in configs {
+            let err = validate_listener_limits(&config).unwrap_err();
+            assert!(matches!(err, CommsInitializationError::InvalidListenerConfig(_)));
+        }
+    }
 
     #[test]
     fn self_liveness_network_wire_byte_is_consistent() {

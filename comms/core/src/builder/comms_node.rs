@@ -189,6 +189,7 @@ impl UnspawnedCommsNode {
             shutdown_signal.clone(),
         );
 
+        let liveness_tokens = connection_manager.liveness_tokens();
         ext_context.register_complete_signal(connection_manager.complete_signal());
         connection_manager.add_protocols(ext_context.take_protocols().expect("Protocols already taken"));
         connection_manager.add_protocols(protocols);
@@ -227,7 +228,13 @@ impl UnspawnedCommsNode {
             connection_manager_config
                 .self_liveness_self_check_interval
                 .map(|interval| {
-                    SelfLivenessCheck::spawn(transport, public_addresses, interval, shutdown_signal.clone())
+                    SelfLivenessCheck::spawn(
+                        transport,
+                        public_addresses,
+                        interval,
+                        liveness_tokens,
+                        shutdown_signal.clone(),
+                    )
                 })
                 .unwrap_or_else(|| watch::channel(SelfLivenessStatus::Disabled).1)
         };

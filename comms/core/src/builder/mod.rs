@@ -265,6 +265,41 @@ impl CommsBuilder {
         self
     }
 
+    /// The longest the unauthenticated stages of an inbound connection (wire byte, noise and identity exchange) may
+    /// take in total. Must be non-zero; `build` rejects zero.
+    pub fn with_listener_handshake_timeout(mut self, timeout: Duration) -> Self {
+        self.connection_manager_config.inbound_handshake_timeout = timeout;
+        self
+    }
+
+    /// The maximum number of inbound handshakes in flight at once from a single source (IPv4 address or IPv6 /64).
+    /// Loopback, `listener_per_ip_exempt_cidrs` and non-IP sources are exempt. Must be non-zero.
+    pub fn with_listener_max_handshakes_per_ip(mut self, max_handshakes_per_ip: usize) -> Self {
+        self.connection_manager_config.max_inbound_handshakes_per_ip = max_handshakes_per_ip;
+        self
+    }
+
+    /// The maximum number of inbound connections, established and in-handshake combined. Inbound sockets over this
+    /// limit are closed before any handshake. Must be non-zero.
+    pub fn with_max_inbound_connections(mut self, max_inbound_connections: usize) -> Self {
+        self.connection_manager_config.max_inbound_connections = max_inbound_connections;
+        self
+    }
+
+    /// The maximum number of inbound connections, established and in-handshake combined, from a single source (IPv4
+    /// address or IPv6 /64). Same exemptions as the per-source handshake limit. Must be non-zero.
+    pub fn with_max_inbound_connections_per_ip(mut self, max_inbound_connections_per_ip: usize) -> Self {
+        self.connection_manager_config.max_inbound_connections_per_ip = max_inbound_connections_per_ip;
+        self
+    }
+
+    /// Sources exempt from the per-source inbound limits, in addition to loopback. Add a remote Tor forwarder or proxy
+    /// here, since every connection it forwards appears to come from its address.
+    pub fn with_listener_per_ip_exempt_cidrs(mut self, cidrs: Vec<cidr::AnyIpCidr>) -> Self {
+        self.connection_manager_config.listener_per_ip_exempt_cidrs = cidrs;
+        self
+    }
+
     /// The number of dial attempts to make before giving up.
     pub fn with_max_dial_attempts(mut self, max_dial_attempts: usize) -> Self {
         self.connection_manager_config.max_dial_attempts = max_dial_attempts;
@@ -368,6 +403,7 @@ impl CommsBuilder {
 
     /// Build comms services and handles. Services will not be started.
     pub fn build(mut self) -> Result<UnspawnedCommsNode, CommsBuilderError> {
+        self.connection_manager_config.validate()?;
         let node_identity = self.node_identity.take().ok_or(CommsBuilderError::NodeIdentityNotSet)?;
         let shutdown_signal = self
             .shutdown_signal

@@ -29,6 +29,7 @@ use crate::{
 };
 
 mod listener_dialer;
+mod listener_limits;
 mod manager;
 
 pub fn create_test_peer() -> Peer {
