@@ -139,6 +139,7 @@ impl ConnectivityManager {
             ban_persist_retry_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_BAN_PERSIST_RETRIES)),
             last_peer_garbage_collection: None,
             peer_garbage_collection_running: Arc::new(AtomicBool::new(false)),
+            recent_bans: HashMap::new(),
         }
         .spawn()
     }
@@ -204,6 +205,29 @@ struct ConnectivityManagerActor {
     last_peer_garbage_collection: Option<Instant>,
     /// Set while a garbage collection task runs, so that a slow one is never overlapped by the next.
     peer_garbage_collection_running: Arc<AtomicBool>,
+    /// Bans made by this actor, held in memory so that dials and new connections can be checked against them
+    /// without the peer database. See [`RecentBan`].
+    recent_bans: HashMap<NodeId, RecentBan>,
+}
+
+/// A ban this actor made, until it expires or is lifted. A dial to a peer we are already connected to is answered
+/// from the pool without asking the peer database (see `handle_dial_peer`), and a connection that completes after a
+/// ban is not checked against it by the dialer, so this is what keeps a banned peer's connection from being handed
+/// out even when disconnecting it at ban time did not go through. Bans from before a restart are not here; real dials
+/// still check the peer database.
+struct RecentBan {
+    /// `None` for a ban without an end
+    until: Option<Instant>,
+    /// The peer's ban generation when it was banned. An unban (`PeerManager::unban_peer`/`unban_all_peers`) bumps it,
+    /// which lifts this record too.
+    generation: u64,
+}
+
+impl RecentBan {
+    fn is_active(&self, peer_manager: &PeerManager, node_id: &NodeId) -> bool {
+        let not_expired = self.until.is_none_or(|until| Instant::now() < until);
+        not_expired && peer_manager.ban_generation_if_tracked(node_id) == Some(self.generation)
+    }
 }
 
 impl ConnectivityManagerActor {
@@ -268,6 +292,7 @@ impl ConnectivityManagerActor {
                     let task_id = rand::random::<u64>();
                     trace!(target: LOG_TARGET, "Pool refresh peers task ({task_id})");
                     self.cleanup_connection_stats();
+                    self.prune_recent_bans();
                     match tokio::time::timeout(POOL_REFRESH_TIMEOUT, self.refresh_connection_pool(task_id)).await {
                         Ok(res) => {
                             if let Err(err) = res {
@@ -405,19 +430,9 @@ impl ConnectivityManagerActor {
         &mut self,
         node_id: NodeId,
         ref_kind: RefKind,
-        reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+        mut reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
-        // An existing live connection is handed out before the peer database is asked anything, so a slow peer
-        // database cannot fail a "dial" to a peer we are already connected to. This does not let a banned peer stay
-        // usable: banning a peer disconnects its connection (see `ban_peer`), and the connection manager refuses new
-        // connections from a banned peer, so a banned peer has no live connection here for longer than that
-        // disconnect takes.
-        if let Some(state) = self.pool.get(&node_id) &&
-            state.is_connected()
-        {
-            if let Some(reply_tx) = reply_tx {
-                let _result = reply_tx.send(Ok(state.connection().expect("Already checked").clone_with(ref_kind)));
-            }
+        if self.answer_dial_from_pool(&node_id, ref_kind, &mut reply_tx) {
             return;
         }
 
@@ -1020,6 +1035,20 @@ impl ConnectivityManagerActor {
         use ConnectionManagerEvent::*;
         match event {
             PeerConnected(new_conn) => {
+                // A connection that completes after we banned the peer (e.g. a dial that was already in flight) is
+                // closed and not taken into the pool
+                if self.is_recently_banned(new_conn.peer_node_id()) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Disconnecting new connection to banned peer '{}'",
+                        new_conn.peer_node_id().short_str()
+                    );
+                    spawn_disconnect(
+                        (**new_conn).clone(),
+                        "ConnectivityManagerActor new connection to banned peer",
+                    );
+                    return Ok(());
+                }
                 match self.on_new_connection(new_conn).await {
                     TieBreak::KeepExisting => {
                         debug!(
@@ -1159,6 +1188,52 @@ impl ConnectivityManagerActor {
         }
 
         Ok(())
+    }
+
+    /// Answers a dial from the pool if the peer is already connected, before the peer database is asked anything, so
+    /// a slow peer database cannot fail a "dial" to a peer we are already connected to. A peer this actor banned is
+    /// refused instead, even if its connection is still up (disconnecting it at ban time can fail, or a dial that was
+    /// already in flight can complete afterwards), and its connection is closed again. Takes the reply sender if it
+    /// answered, and returns whether it did.
+    fn answer_dial_from_pool(
+        &self,
+        node_id: &NodeId,
+        ref_kind: RefKind,
+        reply_tx: &mut Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
+    ) -> bool {
+        let Some(state) = self.pool.get(node_id) else {
+            return false;
+        };
+        if !state.is_connected() {
+            return false;
+        }
+        if self.is_recently_banned(node_id) {
+            if let Some(conn) = state.connection() {
+                spawn_disconnect(conn.clone(), "ConnectivityManagerActor dial to banned peer");
+            }
+            if let Some(reply_tx) = reply_tx.take() {
+                let _result = reply_tx.send(Err(ConnectionManagerError::PeerBanned));
+            }
+            return true;
+        }
+        if let Some(reply_tx) = reply_tx.take() {
+            let _result = reply_tx.send(Ok(state.connection().expect("Already checked").clone_with(ref_kind)));
+        }
+        true
+    }
+
+    /// Whether this actor banned `node_id` and the ban is still in force (see [`RecentBan`])
+    fn is_recently_banned(&self, node_id: &NodeId) -> bool {
+        self.recent_bans
+            .get(node_id)
+            .is_some_and(|ban| ban.is_active(&self.peer_manager, node_id))
+    }
+
+    /// Drops recorded bans that have expired or been lifted, so the record stays bounded by the bans in force
+    fn prune_recent_bans(&mut self) {
+        let peer_manager = Arc::clone(&self.peer_manager);
+        self.recent_bans
+            .retain(|node_id, ban| ban.is_active(&peer_manager, node_id));
     }
 
     async fn on_new_connection(&mut self, new_conn: &PeerConnection) -> TieBreak {
@@ -1404,6 +1479,12 @@ impl ConnectivityManagerActor {
             format_duration(duration),
             reason
         );
+        // Recorded first, so a dial or new connection to this peer is refused from now on, whether or not the ban
+        // reaches the peer database or the disconnect below goes through
+        self.recent_bans.insert(node_id.clone(), RecentBan {
+            until: Instant::now().checked_add(duration),
+            generation: self.peer_manager.ban_generation(node_id),
+        });
         let ban_result = self
             .peer_manager
             .ban_peer_by_node_id(node_id, duration, reason.clone())
@@ -1477,10 +1558,14 @@ impl ConnectivityManagerActor {
                     );
                 },
                 Err(err) => {
+                    // The connection may already be closing, or its actor may be too busy to take the request in
+                    // time. Keep trying without the time bound in the background; until it closes, the recorded
+                    // ban keeps the connection from being handed out.
                     debug!(
                         target: LOG_TARGET,
-                        "Banned peer {node_id} but its connection was already closing ({err}); nothing to disconnect"
+                        "Could not disconnect banned peer {node_id} in time ({err}); retrying in the background"
                     );
+                    spawn_disconnect(conn.clone(), "ConnectivityManagerActor ban peer (retry)");
                 },
             }
         }
@@ -1686,6 +1771,20 @@ enum TieBreak {
     None,
     UseNew,
     KeepExisting,
+}
+
+/// Disconnects `connection` in the background, without a time bound. Used for connections of banned peers, which must
+/// close even if the connection's actor is too busy to take the request quickly.
+fn spawn_disconnect(mut connection: PeerConnection, requester: &'static str) {
+    tokio::spawn(async move {
+        if let Err(err) = connection.disconnect(Minimized::Yes, requester).await {
+            debug!(
+                target: LOG_TARGET,
+                "Disconnecting peer '{}' ({requester}) failed: {err}",
+                connection.peer_node_id().short_str()
+            );
+        }
+    });
 }
 
 async fn disconnect_with_timeout(
@@ -2044,6 +2143,7 @@ mod speculative_dial_circuit_breaker_tests {
             ban_persist_retry_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_BAN_PERSIST_RETRIES)),
             last_peer_garbage_collection: None,
             peer_garbage_collection_running: Arc::new(AtomicBool::new(false)),
+            recent_bans: HashMap::new(),
         };
 
         (actor, cm_rx, shutdown)
@@ -2164,6 +2264,135 @@ mod speculative_dial_circuit_breaker_tests {
             Ok(ConnectionManagerRequest::DialPeer { node_id: dialed, .. }) => assert_eq!(dialed, node_id),
             other => panic!("a speculative dial to a healthy peer must go through, got {other:?}"),
         }
+    }
+
+    /// A `PeerConnection` whose connection actor never takes a request, as one that is busy negotiating a substream
+    /// would not. Returns the receiver so the test keeps the connection "connected" and can see what was asked of it.
+    fn connection_with_a_stuck_actor(
+        peer: &crate::peer_manager::Peer,
+    ) -> (
+        PeerConnection,
+        mpsc::Receiver<crate::connection_manager::PeerConnectionRequest>,
+    ) {
+        let (request_tx, request_rx) = mpsc::channel(1);
+        let conn = PeerConnection::new(
+            usize::try_from(rand::random::<u32>()).unwrap(),
+            request_tx,
+            peer.node_id.clone(),
+            peer.features,
+            "/memory/0".parse().unwrap(),
+            crate::connection_manager::ConnectionDirection::Outbound,
+            crate::utils::atomic_ref_counter::AtomicRefCounter::new(),
+        );
+        (conn, request_rx)
+    }
+
+    /// Banning disconnects the peer, but if its connection actor does not take the request in time the connection
+    /// stays up. It must still not be handed out to a dial.
+    #[tokio::test]
+    async fn a_banned_peer_whose_disconnect_timed_out_is_not_handed_out() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer.clone()).await.unwrap();
+
+        let (mut actor, _cm_rx, _shutdown) = setup(peer_manager);
+        let (conn, _request_rx) = connection_with_a_stuck_actor(&target_peer);
+        actor.pool.insert_connection(conn);
+
+        actor
+            .ban_peer(&node_id, Duration::from_secs(60 * 60), "test".to_string())
+            .await
+            .unwrap();
+        // The disconnect timed out, so the pool still reads the connection as up
+        assert!(actor.pool.get(&node_id).unwrap().is_connected());
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        actor
+            .handle_dial_peer(node_id.clone(), RefKind::Weak, Some(reply_tx))
+            .await;
+        match reply_rx.await.unwrap() {
+            Err(ConnectionManagerError::PeerBanned) => {},
+            other => panic!("a dial to a banned peer must be refused, got {other:?}"),
+        }
+    }
+
+    /// A connection to a banned peer that completes after the ban (e.g. a dial that was already in flight) is closed
+    /// and not taken into the pool
+    #[tokio::test]
+    async fn a_connection_that_completes_after_a_ban_is_not_handed_out() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer.clone()).await.unwrap();
+
+        let (mut actor, _cm_rx, _shutdown) = setup(peer_manager);
+        actor
+            .ban_peer(&node_id, Duration::from_secs(60 * 60), "test".to_string())
+            .await
+            .unwrap();
+
+        let (conn, mut request_rx) = connection_with_a_stuck_actor(&target_peer);
+        actor
+            .update_state_on_connectivity_event(&ConnectionManagerEvent::PeerConnected(Box::new(conn)))
+            .await
+            .unwrap();
+        assert!(
+            actor.pool.get(&node_id).is_none_or(|state| !state.is_connected()),
+            "a connection to a banned peer was taken into the pool"
+        );
+        // It was asked to disconnect
+        let request = tokio::time::timeout(Duration::from_secs(5), request_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            request,
+            crate::connection_manager::PeerConnectionRequest::Disconnect(..)
+        ));
+
+        // And a dial is refused rather than answered with it
+        let (reply_tx, reply_rx) = oneshot::channel();
+        actor
+            .handle_dial_peer(node_id.clone(), RefKind::Weak, Some(reply_tx))
+            .await;
+        match reply_rx.await.unwrap() {
+            Err(ConnectionManagerError::PeerBanned) => {},
+            other => panic!("a dial to a banned peer must be refused, got {other:?}"),
+        }
+    }
+
+    /// Unbanning lifts the in-memory record too
+    #[tokio::test]
+    async fn an_unbanned_peer_is_handed_out_again() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer.clone()).await.unwrap();
+
+        let (mut actor, _cm_rx, _shutdown) = setup(peer_manager.clone());
+        let (conn, _request_rx) = connection_with_a_stuck_actor(&target_peer);
+        actor.pool.insert_connection(conn);
+        actor
+            .ban_peer(&node_id, Duration::from_secs(60 * 60), "test".to_string())
+            .await
+            .unwrap();
+        peer_manager.unban_peer(&node_id).await.unwrap();
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        actor
+            .handle_dial_peer(node_id.clone(), RefKind::Weak, Some(reply_tx))
+            .await;
+        let conn = reply_rx
+            .await
+            .unwrap()
+            .expect("an unbanned, connected peer must be handed out");
+        assert_eq!(conn.peer_node_id(), &node_id);
+        actor.prune_recent_bans();
+        assert!(actor.recent_bans.is_empty());
     }
 }
 
