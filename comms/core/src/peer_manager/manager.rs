@@ -23,7 +23,11 @@
 use std::{
     collections::HashMap,
     fmt,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -82,6 +86,10 @@ pub struct PeerManager {
     /// is guaranteed (a steady-state ceiling around `BAN_GENERATION_PRUNE_TARGET`, not merely
     /// `BAN_GENERATION_PRUNE_THRESHOLD` unbounded growth prevention).
     ban_generations: Arc<Mutex<HashMap<NodeId, BanGenerationEntry>>>,
+    /// The last generation value handed out, across all peers. Every new or bumped entry in `ban_generations` takes
+    /// the next value, so a value is never reused: a snapshot taken before an entry was pruned can never match the
+    /// entry that replaces it (which a per-peer counter restarting at 0 could, and so read an unban as no change).
+    last_ban_generation: Arc<AtomicU64>,
 }
 
 /// One entry in `PeerManager::ban_generations`: the generation itself, plus when it was last touched (created
@@ -160,6 +168,7 @@ impl PeerManager {
             transport_protocols,
             config,
             ban_generations: Arc::new(Mutex::new(HashMap::new())),
+            last_ban_generation: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -465,11 +474,11 @@ impl PeerManager {
         self.peer_storage.call(PeerStorageSql::unban_all_peers).await
     }
 
-    /// Current ban-state generation for `node_id`; `0` on first read. Compared against a snapshot taken when a
-    /// ban-persistence retry was queued - see `ConnectivityManagerActor::retry_ban_persistence` and the doc
-    /// comment on `ban_generations`.
+    /// Current ban-state generation for `node_id`; a value never handed out before (see `last_ban_generation`) on
+    /// first read. Compared against a snapshot taken when a ban was made - see
+    /// `ConnectivityManagerActor::retry_ban_persistence`, `RecentBan` and the doc comment on `ban_generations`.
     ///
-    /// Deliberately inserts a `0` entry on first read rather than just returning a default: this is always
+    /// Deliberately inserts an entry on first read rather than just returning a default: this is always
     /// called to capture a retry's baseline, and `bump_all_ban_generations` (`unban_all_peers`) only bumps keys
     /// already present in the map. Without this insert, a peer that had never been individually unbanned before
     /// would have no entry for `unban_all_peers` to bump, and a pending retry for it would miss the bump
@@ -481,26 +490,32 @@ impl PeerManager {
         let entry = generations
             .entry(node_id.clone())
             .or_insert_with(|| BanGenerationEntry {
-                generation: 0,
+                generation: self.next_ban_generation(),
                 touched_at: now,
             });
         entry.touched_at = now;
         entry.generation
     }
 
+    /// A ban generation value that has never been handed out before, for any peer
+    fn next_ban_generation(&self) -> u64 {
+        self.last_ban_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .saturating_add(1)
+    }
+
     /// Read-only lookup of `node_id`'s current ban-state generation: unlike `ban_generation`, never inserts a
     /// missing entry and never touches an existing one. Exists solely for
     /// `ConnectivityManagerActor::retry_ban_persistence`'s re-check before every write attempt, which must be
-    /// able to tell "this peer is untracked" apart from "this peer is tracked at generation `0`" - `ban_generation`
-    /// cannot make that distinction, because it always returns a `u64` and inserting a fresh `0` entry on a miss
-    /// makes an evicted entry indistinguishable from a freshly-captured baseline of `0`.
+    /// able to tell "this peer is untracked" apart from "this peer is tracked at some generation" - `ban_generation`
+    /// cannot make that distinction, because it always returns a `u64` and inserts a fresh entry on a miss.
     ///
     /// That distinction matters because `maybe_prune_ban_generations`'s oldest-eviction stage can remove a live
     /// retry's entry: unlike the TTL stage, which is an *absolute* age test a recent touch always defeats,
     /// oldest-eviction is a *relative* ranking - an entry touched a few seconds ago is still evicted as "oldest"
     /// if enough other entries were touched more recently, and nothing bounds how many that can be. If the
-    /// retry's re-check treated "missing" as "unchanged" (e.g. by calling `ban_generation` and comparing its
-    /// freshly-reinserted `0` against a captured baseline that also happened to be `0`), an entry evicted after
+    /// retry's re-check treated "missing" as "unchanged" (e.g. by re-creating the entry and comparing it against the
+    /// captured baseline, which a per-peer counter restarting at 0 could match), an entry evicted after
     /// an operator's `unban_peer` bumped it - but before the retry's next check - would read back as "nothing
     /// changed", and the retry would resurrect a ban the operator had just lifted. Returning `Option` instead
     /// pushes the safe default onto the caller: `None` must be treated the same as "the generation changed" -
@@ -534,13 +549,14 @@ impl PeerManager {
         let mut generations = self.ban_generations.lock().unwrap_or_else(|e| e.into_inner());
         Self::maybe_prune_ban_generations(&mut generations);
         let now = Instant::now();
+        let generation = self.next_ban_generation();
         let entry = generations
             .entry(node_id.clone())
             .or_insert_with(|| BanGenerationEntry {
-                generation: 0,
+                generation,
                 touched_at: now,
             });
-        entry.generation = entry.generation.saturating_add(1);
+        entry.generation = generation;
         entry.touched_at = now;
     }
 
@@ -552,7 +568,7 @@ impl PeerManager {
         let mut generations = self.ban_generations.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         for entry in generations.values_mut() {
-            entry.generation = entry.generation.saturating_add(1);
+            entry.generation = self.next_ban_generation();
             entry.touched_at = now;
         }
     }
@@ -1714,9 +1730,9 @@ mod test {
     }
 
     /// Regression test for the resurrection bug in the *previous* version of the oldest-eviction hysteresis: a
-    /// missing entry at re-check time must never be read as "unchanged". `ban_generation` (insert-on-read) would
-    /// re-insert a fresh `0` on a miss, which compares equal to a captured baseline that also happens to be `0`
-    /// - exactly what a first-ever baseline for any peer is - letting a retry whose entry was evicted mid-flight
+    /// missing entry at re-check time must never be read as "unchanged". With a per-peer counter restarting at 0,
+    /// `ban_generation` (insert-on-read) re-inserted a fresh 0 on a miss, which compared equal to a first-ever
+    /// baseline of 0, letting a retry whose entry was evicted mid-flight
     /// resurrect a ban an operator had since lifted. `ban_generation_if_tracked` exists so the retry's re-check
     /// (`retry_ban_persistence`) can tell the two apart and treat the miss as "abandon", not "proceed".
     #[tokio::test]
@@ -1730,10 +1746,6 @@ mod test {
         // Capture a baseline exactly as `ban_peer` does when it schedules a retry.
         let expected_generation = peer_manager.ban_generation(&node_id);
         assert_eq!(
-            expected_generation, 0,
-            "a peer's first-ever baseline is 0 - the exact value that made the bug possible"
-        );
-        assert_eq!(
             peer_manager.ban_generation_if_tracked(&node_id),
             Some(expected_generation)
         );
@@ -1743,13 +1755,11 @@ mod test {
         // (covered separately by `maybe_prune_ban_generations_evicts_oldest_down_to_target_when_over_threshold`).
         peer_manager.ban_generations.lock().unwrap().remove(&node_id);
 
-        // This is `retry_ban_persistence`'s exact re-check expression. It must reject, even though comparing a
-        // *reinserted* `ban_generation` reading against this same `expected_generation` (0) would have wrongly
-        // accepted.
+        // This is `retry_ban_persistence`'s exact re-check expression. It must reject the missing entry.
         assert_ne!(
             peer_manager.ban_generation_if_tracked(&node_id),
             Some(expected_generation),
-            "a missing entry must never compare equal to a captured baseline, even when that baseline is 0"
+            "a missing entry must never compare equal to a captured baseline"
         );
         assert_eq!(
             peer_manager.ban_generation_if_tracked(&node_id),
@@ -1783,6 +1793,27 @@ mod test {
             previously_unbanned_baseline,
             "unban_all_peers must bump a peer's generation again even if it was already bumped once before"
         );
+    }
+
+    /// Generation values are never reused, so a snapshot taken before a peer's entry was pruned can never match the
+    /// entry that replaces it - whether that is re-created by a read or by an unban
+    #[tokio::test]
+    async fn a_re_created_ban_generation_never_matches_an_old_snapshot() {
+        let peer_manager = create_peer_manager();
+        let node_id = node_id::random();
+
+        peer_manager.unban_peer(&node_id).await.unwrap();
+        let snapshot = peer_manager.ban_generation(&node_id);
+
+        // Pruned, then re-created by an unban
+        peer_manager.forget_ban_generation_for_test(&node_id);
+        peer_manager.unban_peer(&node_id).await.unwrap();
+        assert_ne!(peer_manager.ban_generation_if_tracked(&node_id), Some(snapshot));
+
+        // Pruned, then re-created by a read
+        let snapshot = peer_manager.ban_generation(&node_id);
+        peer_manager.forget_ban_generation_for_test(&node_id);
+        assert_ne!(peer_manager.ban_generation(&node_id), snapshot);
     }
 
     /// Regression test for the hysteresis in `maybe_prune_ban_generations`: once a sweep actually runs and

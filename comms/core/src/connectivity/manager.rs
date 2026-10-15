@@ -1479,11 +1479,14 @@ impl ConnectivityManagerActor {
             format_duration(duration),
             reason
         );
+        // The peer's ban generation now: an unban from here on changes it. Both the in-memory record and a ban
+        // persistence retry are checked against it.
+        let generation = self.peer_manager.ban_generation(node_id);
         // Recorded first, so a dial or new connection to this peer is refused from now on, whether or not the ban
         // reaches the peer database or the disconnect below goes through
         self.recent_bans.insert(node_id.clone(), RecentBan {
             until: Instant::now().checked_add(duration),
-            generation: self.peer_manager.ban_generation(node_id),
+            generation,
         });
         let ban_result = self
             .peer_manager
@@ -1508,14 +1511,13 @@ impl ConnectivityManagerActor {
             // (e.g. banning on a connection that was never added via `add_or_update_peer`), which retrying
             // cannot fix.
             if !matches!(err, PeerManagerError::PeerNotFound(_)) {
-                // Semaphore acquired *before* `ban_generation` reads/creates a tracked entry: a retry shed here
-                // for being over `MAX_CONCURRENT_BAN_PERSIST_RETRIES` is never spawned and never checks its
-                // generation, so it must not leave an entry behind either - see the doc comment on
-                // `PeerManager::ban_generations` for why that map needs to stay bounded.
+                // At most `MAX_CONCURRENT_BAN_PERSIST_RETRIES` retries run at once. The generation they check was
+                // taken above, when the ban was recorded; generation values are never reused, so a retry whose
+                // entry was pruned and re-created (e.g. by an unban) can never mistake it for its own.
                 match Arc::clone(&self.ban_persist_retry_permits).try_acquire_owned() {
                     Ok(permit) => {
                         // This is the generation the retry must still match right before it writes.
-                        let expected_generation = self.peer_manager.ban_generation(node_id);
+                        let expected_generation = generation;
                         // `retry_ban_persistence` is a plain `async fn`, spawned here rather than spawning
                         // internally, so a test can `.await` it directly and observe whether it wrote - see its
                         // doc comment and the `retry_ban_persistence_tests` module for why that matters.
@@ -1633,9 +1635,9 @@ impl ConnectivityManagerActor {
                     // `maybe_prune_ban_generations`'s oldest-eviction stage, which is a *relative* ranking an
                     // unban's re-touch does not defend against the way it does against the TTL stage (see that
                     // method's doc comment). Treating `None` the same as "the generation changed" - abandon,
-                    // do not write - rather than as "unchanged" is the fix: comparing against a
-                    // freshly-reinserted `0` would make an evicted entry indistinguishable from a legitimate
-                    // baseline of `0` and let a stale retry resurrect a lifted ban.
+                    // do not write - rather than as "unchanged" is the fix. Generation values are also never
+                    // reused, so an entry re-created after eviction (e.g. by an unban) can never match the
+                    // baseline either.
                     if peer_manager.ban_generation_if_tracked(&node_id) != Some(expected_generation) {
                         return Ok(BanPersistOutcome::Superseded);
                     }
@@ -2353,7 +2355,10 @@ mod speculative_dial_circuit_breaker_tests {
             crate::connection_manager::PeerConnectionRequest::Disconnect(..)
         ));
 
-        // And a dial is refused rather than answered with it
+        // And a dial is refused, even with a live connection in the pool (as a race could leave one), by the record
+        // of the ban rather than the peer database
+        let (pooled, _pooled_request_rx) = connection_with_a_stuck_actor(&target_peer);
+        actor.pool.insert_connection(pooled);
         let (reply_tx, reply_rx) = oneshot::channel();
         actor
             .handle_dial_peer(node_id.clone(), RefKind::Weak, Some(reply_tx))
@@ -2393,6 +2398,47 @@ mod speculative_dial_circuit_breaker_tests {
         assert_eq!(conn.peer_node_id(), &node_id);
         actor.prune_recent_bans();
         assert!(actor.recent_bans.is_empty());
+    }
+
+    /// Ban generations are never reused: a ban recorded at some generation is lifted by a later unban even if the
+    /// peer's generation entry was pruned and re-created in between (a per-peer counter restarting at 0 would hand
+    /// the re-created entry the recorded value again)
+    #[tokio::test]
+    async fn an_unban_after_the_generation_entry_was_pruned_still_lifts_the_ban() {
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peer_manager = build_peer_manager(&this_peer).unwrap();
+        let target_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let node_id = target_peer.node_id.clone();
+        peer_manager.add_or_update_peer(target_peer.clone()).await.unwrap();
+
+        let (mut actor, _cm_rx, _shutdown) = setup(peer_manager.clone());
+        let (conn, _request_rx) = connection_with_a_stuck_actor(&target_peer);
+        actor.pool.insert_connection(conn);
+
+        actor
+            .ban_peer(&node_id, Duration::from_secs(60 * 60), "first".to_string())
+            .await
+            .unwrap();
+        peer_manager.unban_peer(&node_id).await.unwrap();
+        actor
+            .ban_peer(&node_id, Duration::from_secs(60 * 60), "second".to_string())
+            .await
+            .unwrap();
+        assert!(actor.is_recently_banned(&node_id));
+        // The entry is pruned, then the operator unbans the peer, which re-creates it
+        peer_manager.forget_ban_generation_for_test(&node_id);
+        peer_manager.unban_peer(&node_id).await.unwrap();
+
+        assert!(!actor.is_recently_banned(&node_id));
+        let (reply_tx, reply_rx) = oneshot::channel();
+        actor
+            .handle_dial_peer(node_id.clone(), RefKind::Weak, Some(reply_tx))
+            .await;
+        let conn = reply_rx
+            .await
+            .unwrap()
+            .expect("an unbanned, connected peer must be handed out");
+        assert_eq!(conn.peer_node_id(), &node_id);
     }
 }
 
