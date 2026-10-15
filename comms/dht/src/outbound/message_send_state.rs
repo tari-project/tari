@@ -190,7 +190,13 @@ impl MessageSendStates {
     /// This function expects there to be exactly one MessageSendState contained in this object and will
     /// panic in debug mode if this expectation is not met. It will panic for release builds if called
     /// when empty.
-    pub async fn wait_single(mut self) -> bool {
+    pub async fn wait_single(self) -> bool {
+        self.wait_single_result().await.is_ok()
+    }
+
+    /// Wait for the result of a single send, with the reason it failed if it did. The same expectations and panics as
+    /// [`Self::wait_single`] apply.
+    pub async fn wait_single_result(mut self) -> Result<(), SendFailReason> {
         let state = self
             .inner
             .pop()
@@ -205,7 +211,6 @@ impl MessageSendStates {
             .reply_rx
             .await
             .expect("oneshot should never be canceled before sending")
-            .is_ok()
     }
 
     pub fn into_futures_unordered(
