@@ -39,7 +39,13 @@ use tracing::{Instrument, Level, debug, error, span, trace};
 
 #[cfg(feature = "metrics")]
 use super::metrics;
-use super::{MessagingEvent, MessagingProtocol, SendFailReason, error::MessagingProtocolError};
+use super::{
+    MessagingEvent,
+    MessagingProtocol,
+    SendFailReason,
+    error::MessagingProtocolError,
+    protocol::OUTBOUND_MESSAGE_TTL,
+};
 use crate::{
     RefKind,
     connection_manager::{NegotiatedSubstream, PeerConnection},
@@ -218,20 +224,40 @@ impl OutboundMessaging {
     }
 
     async fn run_inner(mut self) -> Result<(), MessagingProtocolError> {
-        let mut attempts = 0;
+        // Establishing the session is bounded by the message deadline: each dial may take minutes and a cancelled
+        // dial is retried without limit, while the queued messages stay charged to the byte budgets. By the time this
+        // runs out, the message that spawned this session has expired, so the rest fail with it rather than keep
+        // waiting.
+        let established = match time::timeout(OUTBOUND_MESSAGE_TTL, self.establish()).await {
+            Ok(result) => result,
+            Err(_elapsed) => Err(MessagingProtocolError::PeerDialFailed(ConnectivityError::DialTimedOut(
+                OUTBOUND_MESSAGE_TTL,
+            ))),
+        };
+        let (conn, substream) = match established {
+            Ok(conn_and_substream) => conn_and_substream,
+            Err(err) => {
+                self.fail_all_pending_messages(SendFailReason::PeerDialFailed).await;
+                return Err(err);
+            },
+        };
+        self.start_forwarding_messages(conn, substream).await?;
 
-        let (conn, substream) = loop {
+        Ok(())
+    }
+
+    /// Dials the peer and opens a messaging substream, retrying once on failure
+    async fn establish(&mut self) -> Result<(PeerConnection, NegotiatedSubstream<Substream>), MessagingProtocolError> {
+        let mut attempts = 0;
+        loop {
             match self.try_establish().await {
-                Ok(conn_and_substream) => {
-                    break conn_and_substream;
-                },
+                Ok(conn_and_substream) => return Ok(conn_and_substream),
                 Err(err) => {
                     if attempts >= MAX_SEND_RETRIES {
                         debug!(
                             target: LOG_TARGET,
                             "Error establishing messaging protocol: {}. Aborting because maximum retries reached.", err
                         );
-                        self.fail_all_pending_messages(SendFailReason::PeerDialFailed).await;
                         return Err(err);
                     }
                     debug!(
@@ -241,10 +267,7 @@ impl OutboundMessaging {
                     attempts = attempts.saturating_add(1);
                 },
             }
-        };
-        self.start_forwarding_messages(conn, substream).await?;
-
-        Ok(())
+        }
     }
 
     async fn try_dial_peer(&mut self) -> Result<PeerConnection, MessagingProtocolError> {

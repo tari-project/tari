@@ -1790,14 +1790,42 @@ async fn outbound_total_byte_budget_fails_new_messages() {
     }
     assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES);
 
-    // Another peer's queue is empty, but the node-wide budget is used up
+    // A peer with an empty queue still takes one message, so peers that never read cannot shut everyone else out
     let other_peer = node_id::random();
+    assert!(
+        send_four_mib(&mut msg_proto, &other_peer).await.is_none(),
+        "a peer with an empty queue must take one message even when the node-wide budget is used up"
+    );
+    assert_eq!(msg_proto.outbound_queue_bytes(&other_peer), Some(FOUR_MIB));
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES + FOUR_MIB);
+
+    // Its next message is over the node-wide budget, although far under its own
     let reply = send_four_mib(&mut msg_proto, &other_peer)
         .await
         .expect("a message over the node-wide byte budget must fail immediately");
     unpack_enum!(Err(SendFailReason::QueueFull) = reply);
-    assert_eq!(msg_proto.outbound_queue_bytes(&other_peer), Some(0));
-    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES);
+    assert_eq!(msg_proto.outbound_queue_bytes(&other_peer), Some(FOUR_MIB));
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_TOTAL_MAX_BYTES + FOUR_MIB);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_dial_that_does_not_complete_releases_queued_bytes_by_the_message_deadline() {
+    // The connectivity mock is not running, so the dial never completes
+    let (requester, _mock) = create_connectivity_mock();
+    let (mut msg_proto, _shutdown) = unspawned_messaging_protocol(requester);
+    let peer = node_id::random();
+
+    let reply_rxs = fill_peer_byte_budget(&mut msg_proto, &peer);
+    assert_eq!(msg_proto.total_outbound_bytes(), OUTBOUND_QUEUE_MAX_BYTES);
+
+    let start = Instant::now();
+    for reply_rx in reply_rxs {
+        let reply = reply_rx.await.unwrap();
+        unpack_enum!(Err(SendFailReason::PeerDialFailed) = reply);
+    }
+    assert!(start.elapsed() >= OUTBOUND_MESSAGE_TTL);
+    assert!(start.elapsed() < OUTBOUND_MESSAGE_TTL + Duration::from_secs(1));
+    wait_until(|| msg_proto.total_outbound_bytes() == 0).await;
 }
 
 #[tokio::test(start_paused = true)]

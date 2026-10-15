@@ -75,10 +75,13 @@ const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
 pub(super) const OUTBOUND_QUEUE_CAPACITY: usize = 500;
 /// The most body bytes that may wait in one peer's outbound queue. Counting messages alone lets a peer that never reads
 /// hold 500 large messages (e.g. block replies it keeps asking for). A message that would go over this fails
-/// immediately, unless the queue holds nothing, so any single message that fits in a frame can always be queued.
+/// immediately, unless the queue holds nothing and the message fits in a frame (see [`OUTBOUND_TOTAL_MAX_BYTES`]).
 pub(super) const OUTBOUND_QUEUE_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// The most body bytes that may wait in all peers' outbound queues and the retry queue together, which bounds what many
-/// peers that never read can make us hold. A message that would go over this fails immediately.
+/// peers that never read can make us hold. A message that would go over this fails immediately - unless its peer's
+/// queue holds nothing and the message fits in a frame ([`MAX_FRAME_LENGTH`]). That floor stops eight peers that
+/// never read (8 x [`OUTBOUND_QUEUE_MAX_BYTES`]) from shutting every other peer out, at the cost of a looser bound:
+/// at most this budget plus one frame per peer with a queue, i.e. 512 MiB + peers x 8 MiB.
 pub(super) const OUTBOUND_TOTAL_MAX_BYTES: usize = 512 * 1024 * 1024;
 /// The most messages that may wait to be retried, across all peers. A message that does not fit fails immediately.
 const RETRY_QUEUE_CAPACITY: usize = 500;
@@ -596,8 +599,10 @@ impl MessagingProtocol {
         let queued_for_peer = peer_queue_bytes.load(Ordering::SeqCst);
         let queued_in_total = self.total_queued_bytes.load(Ordering::SeqCst);
         // Bytes are only ever added here, on the actor, so these checks cannot race with another charge; sessions
-        // only release bytes, which can only make room.
-        if queued_for_peer > 0 && queued_for_peer.saturating_add(len) > OUTBOUND_QUEUE_MAX_BYTES {
+        // only release bytes, which can only make room. A peer whose queue holds nothing always takes one message that
+        // fits in a frame, whatever either budget says.
+        let empty_queue_floor = queued_for_peer == 0 && len <= MAX_FRAME_LENGTH;
+        if !empty_queue_floor && queued_for_peer.saturating_add(len) > OUTBOUND_QUEUE_MAX_BYTES {
             #[cfg(feature = "metrics")]
             metrics::outbound_dropped("queue_bytes_full").inc();
             queued.message.reply_fail(SendFailReason::QueueFull);
@@ -611,7 +616,7 @@ impl MessagingProtocol {
             ));
             return Ok(());
         }
-        if queued_in_total.saturating_add(len) > OUTBOUND_TOTAL_MAX_BYTES {
+        if !empty_queue_floor && queued_in_total.saturating_add(len) > OUTBOUND_TOTAL_MAX_BYTES {
             #[cfg(feature = "metrics")]
             metrics::outbound_dropped("total_bytes_full").inc();
             queued.message.reply_fail(SendFailReason::QueueFull);
