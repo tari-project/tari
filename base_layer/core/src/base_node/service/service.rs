@@ -840,15 +840,18 @@ async fn handle_request_timeout(
 }
 
 /// The error an outbound request fails with when it could not be sent, which decides whether the peer is blamed.
-/// A failure on our side (our queue was full, the message was too large or expired waiting, or it was dropped) is a
-/// `BroadcastFailed`, which bans nobody. A failure caused by the peer (it did not read, refused the substream, or could
-/// not be reached) is a `RequestTimedOut`, which short-bans it, as a request it never answered would.
+/// A failure on our side (our queue was full, the message was too large or expired waiting, it was dropped, or its
+/// retries ran out because the connection went away) is a `BroadcastFailed`, which bans nobody. A failure caused by the
+/// peer (it did not read, refused the substream, or could not be reached) is a `RequestTimedOut`, which short-bans it,
+/// as a request it never answered would.
 fn request_send_failure(reason: SendFailReason) -> CommsInterfaceError {
     match reason {
         SendFailReason::QueueFull |
         SendFailReason::MessageTooLarge |
         SendFailReason::Expired |
-        SendFailReason::Dropped => CommsInterfaceError::BroadcastFailed,
+        SendFailReason::Dropped |
+        // Ran out of retries at least partly because the connection went away, which we may have caused
+        SendFailReason::ConnectionLost(_) => CommsInterfaceError::BroadcastFailed,
         SendFailReason::SendTimeout |
         SendFailReason::SubstreamOpenFailed |
         SendFailReason::SubstreamSendFailed |
@@ -1255,6 +1258,7 @@ mod test {
             SendFailReason::MessageTooLarge,
             SendFailReason::Expired,
             SendFailReason::Dropped,
+            SendFailReason::ConnectionLost(2),
         ];
         for reason in ours {
             assert!(request_send_failure(reason).get_ban_reason().is_none(), "{reason}");

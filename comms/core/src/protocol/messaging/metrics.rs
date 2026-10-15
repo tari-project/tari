@@ -74,7 +74,10 @@ pub fn error_count() -> IntCounter {
 /// - `dialing_queue_bytes_full`: the message would take a queue that is still dialing over its own byte budget
 /// - `too_large`: the message is larger than a frame
 /// - `retry_queue_full`: the message could not be put on the retry queue
-/// - `max_retries`: the message was already retried `MAX_SEND_RETRIES` times
+/// - `max_retries`: the message was already retried `MAX_SEND_RETRIES` times, each time because the peer closed or
+///   reset the substream
+/// - `max_retries_connection_lost`: the message was already retried `MAX_SEND_RETRIES` times, at least once because the
+///   connection to the peer went away
 /// - `expired`: the message was past its deadline
 /// - `send_timeout`: a write to the peer timed out (the peer stopped reading)
 ///

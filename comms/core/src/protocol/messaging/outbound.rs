@@ -88,6 +88,10 @@ pub(super) struct QueuedOutboundMessage {
     pub retries: usize,
     /// How many times a write of this message has been started, for the `MaxRetriesReached` failure
     pub attempts: usize,
+    /// Whether any retry this message used up was because the whole connection went away, rather than the peer closing
+    /// or resetting the substream. Decides whether running out of retries fails it as `ConnectionLost` (not the peer's
+    /// fault) or `MaxRetriesReached`.
+    pub retried_after_connection_loss: bool,
     /// The body bytes this message is charged against the outbound byte budgets, set when it is put on a peer's
     /// queue. It stays charged against the node-wide budget while the message waits on the retry queue, and is
     /// released when the message is dropped, whichever way it leaves.
@@ -473,6 +477,8 @@ impl OutboundMessaging {
         // The message whose write failed or was interrupted. It is requeued only after this session's queue is
         // closed below, so the protocol handler cannot route its retry back into this ending session.
         let mut interrupted = None;
+        // Set when the connection was reported as disconnected while writing the interrupted message
+        let mut disconnected_while_sending = false;
         loop {
             let mut queued = tokio::select! {
                 biased;
@@ -589,6 +595,7 @@ impl OutboundMessaging {
                          Queuing for retry.",
                         stream_id, peer_node_id
                     );
+                    disconnected_while_sending = true;
                     interrupted = Some(queued);
                     break;
                 },
@@ -605,18 +612,23 @@ impl OutboundMessaging {
         // for them instead. Messages already queued stay in `messages_rx` for the drain.
         messages_rx.close();
 
-        // The interrupted message always uses up a retry
-        if let Some(queued) = interrupted {
-            Self::requeue_for_retry(&retry_queue_tx, queued, true);
-        }
-
         // The substream ended without the connection being reported as disconnected (which only the disconnect
         // arms above complete, so `on_disconnect` has not completed yet here). If the connection is reported as
         // disconnected shortly, the whole connection closed and the backlog is not charged a retry; otherwise the
         // peer closed or reset just this substream.
+        let mut connection_lost = disconnected_while_sending;
         if substream_ended {
-            let connection_disconnected = time::timeout(CONNECTION_CLOSE_GRACE, &mut on_disconnect).await.is_ok();
-            backlog_uses_retry = !connection_disconnected;
+            connection_lost = time::timeout(CONNECTION_CLOSE_GRACE, &mut on_disconnect).await.is_ok();
+            backlog_uses_retry = !connection_lost;
+        }
+
+        // The interrupted message always uses up a retry; whether that was the connection going away decides how it
+        // fails if it runs out
+        if let Some(mut queued) = interrupted {
+            if connection_lost {
+                queued.retried_after_connection_loss = true;
+            }
+            Self::requeue_for_retry(&retry_queue_tx, queued, true);
         }
         if send_timed_out {
             let mut failed_messages_count = 0usize;
@@ -688,11 +700,19 @@ impl OutboundMessaging {
                     queued.attempts,
                     queued
                 );
-                #[cfg(feature = "metrics")]
-                metrics::outbound_dropped("max_retries").inc();
-                queued
-                    .message
-                    .reply_fail(SendFailReason::MaxRetriesReached(queued.attempts));
+                if queued.retried_after_connection_loss {
+                    #[cfg(feature = "metrics")]
+                    metrics::outbound_dropped("max_retries_connection_lost").inc();
+                    queued
+                        .message
+                        .reply_fail(SendFailReason::ConnectionLost(queued.attempts));
+                } else {
+                    #[cfg(feature = "metrics")]
+                    metrics::outbound_dropped("max_retries").inc();
+                    queued
+                        .message
+                        .reply_fail(SendFailReason::MaxRetriesReached(queued.attempts));
+                }
                 return false;
             }
             queued.retries = queued.retries.saturating_add(1);

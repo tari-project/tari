@@ -176,6 +176,11 @@ pub enum SendFailReason {
     MessageTooLarge,
     #[error("Message could not send after {0} attempt(s)")]
     MaxRetriesReached(usize),
+    /// Like `MaxRetriesReached`, but at least one of the retries was used up because the whole connection to the peer
+    /// went away (which we may have caused, e.g. by tie-breaking or reaping connections), not because the peer closed
+    /// the substream
+    #[error("Message could not send after {0} attempt(s) because the connection to the peer was lost")]
+    ConnectionLost(usize),
     #[error("The outbound queue for the peer is full")]
     QueueFull,
     #[error("Message expired before it could be sent")]
@@ -588,6 +593,7 @@ impl MessagingProtocol {
                 deadline,
                 retries: 0,
                 attempts: 0,
+                retried_after_connection_loss: false,
                 bytes: None,
             },
             false,

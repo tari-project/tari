@@ -1155,6 +1155,7 @@ async fn expired_messages_are_not_requeued_on_disconnect() {
             deadline,
             retries: 0,
             attempts: 0,
+            retried_after_connection_loss: false,
             bytes: None,
         };
         (queued, reply_rx)
@@ -1526,6 +1527,7 @@ async fn assert_unwritten_backlog_survives_two_connection_closes(close: Connecti
             deadline,
             retries: 0,
             attempts: 0,
+            retried_after_connection_loss: false,
             bytes: None,
         };
         (queued, reply_rx)
@@ -2114,6 +2116,7 @@ async fn a_message_the_codec_refuses_fails_alone_and_the_session_continues() {
                 deadline,
                 retries: 0,
                 attempts: 0,
+                retried_after_connection_loss: false,
                 bytes: None,
             })
             .await
@@ -2472,4 +2475,70 @@ async fn a_replaced_session_exits_even_if_the_peer_keeps_refilling_its_substream
         .await
         .expect("the replaced session kept draining a substream the peer kept refilling")
         .unwrap();
+}
+
+#[tokio::test]
+async fn an_in_flight_message_that_loses_its_connection_twice_fails_as_connection_lost() {
+    let (requester, mock) = create_connectivity_mock();
+    let conn_man_mock = mock.get_shared_state();
+    mock.spawn();
+    let node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let peer = peer_node_identity.node_id().clone();
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    let mut in_flight = QueuedOutboundMessage {
+        message: OutboundMessage::with_reply(peer.clone(), stalling_body(), reply_tx.into()),
+        deadline: Instant::now().checked_add(OUTBOUND_MESSAGE_TTL).unwrap(),
+        retries: 0,
+        attempts: 0,
+        retried_after_connection_loss: false,
+        bytes: None,
+    };
+
+    for round in 0..=MAX_SEND_RETRIES {
+        // A fresh connection each round, which we then close while the message is being written (as a tie-break or
+        // the connection reaper would)
+        let (conn1, _, _, peer_conn_mock2) =
+            create_peer_connection_mock_pair(node_identity.to_peer(), peer_node_identity.to_peer()).await;
+        conn_man_mock.add_active_connection(conn1.clone()).await;
+        let (events_tx, _events_rx) = mpsc::channel(10);
+        let (messages_tx, messages_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
+        let (retry_queue_tx, mut retry_queue_rx) = mpsc::channel(10);
+        let outbound = OutboundMessaging::new(
+            requester.clone(),
+            events_tx,
+            messages_rx,
+            retry_queue_tx,
+            peer.clone(),
+            MESSAGING_PROTOCOL_ID.clone(),
+            test_queue_accounting(),
+        );
+        let outbound_task = tokio::spawn(outbound.run());
+
+        messages_tx.send(in_flight).await.unwrap();
+        let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
+        wait_until(|| messages_tx.capacity() == OUTBOUND_QUEUE_CAPACITY).await;
+        conn1.clone().disconnect(Minimized::No, "test").await.unwrap();
+        time::timeout(Duration::from_secs(5), outbound_task)
+            .await
+            .expect("the outbound session did not exit on disconnect")
+            .unwrap();
+
+        if round < MAX_SEND_RETRIES {
+            in_flight = retry_queue_rx
+                .try_recv()
+                .expect("the interrupted message was not requeued");
+            assert!(in_flight.retried_after_connection_loss);
+        } else {
+            assert!(retry_queue_rx.try_recv().is_err());
+            break;
+        }
+    }
+
+    let reply = time::timeout(Duration::from_secs(5), reply_rx).await.unwrap().unwrap();
+    match reply {
+        Err(SendFailReason::ConnectionLost(attempts)) => assert_eq!(attempts, MAX_SEND_RETRIES + 1),
+        other => panic!("expected ConnectionLost, got {other:?}"),
+    }
 }
