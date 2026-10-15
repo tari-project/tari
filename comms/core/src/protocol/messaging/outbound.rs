@@ -449,6 +449,16 @@ impl OutboundMessaging {
             }
         }
 
+        // Dropping the substream resets it, so the peer's inbound session sees the end of this session
+        drop(sink);
+        drop(remote_stream);
+
+        // Close so that the protocol handler does not resend to this session. This must happen before the wait
+        // below: until then the protocol handler would keep routing retried and new messages for the peer into
+        // this ending session, whose drain would then charge them a retry. Once closed, it spawns a fresh session
+        // for them instead. Messages already queued stay in `messages_rx` for the drain.
+        messages_rx.close();
+
         // The substream ended without the connection being reported as disconnected (which only the disconnect
         // arms above complete, so `on_disconnect` has not completed yet here). If the connection is reported as
         // disconnected shortly, the whole connection closed and the backlog is not charged a retry; otherwise the
@@ -457,13 +467,6 @@ impl OutboundMessaging {
             let connection_disconnected = time::timeout(CONNECTION_CLOSE_GRACE, &mut on_disconnect).await.is_ok();
             backlog_uses_retry = !connection_disconnected;
         }
-
-        // Dropping the substream resets it, so the peer's inbound session sees the end of this session
-        drop(sink);
-        drop(remote_stream);
-
-        // Close so that the protocol handler does not resend to this session
-        messages_rx.close();
         if send_timed_out {
             let mut failed_messages_count = 0usize;
             while let Some(mut queued) = messages_rx.recv().await {

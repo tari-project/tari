@@ -1391,7 +1391,7 @@ async fn messages_to_a_peer_that_resets_every_substream_fail_after_max_retries()
         reply_rxs.push(reply_rx);
     }
 
-    for reply_rx in reply_rxs {
+    for (i, reply_rx) in reply_rxs.into_iter().enumerate() {
         let reply = time::timeout(Duration::from_secs(10), reply_rx)
             .await
             .expect("a message to a peer that resets every substream must fail, not be retried until its deadline")
@@ -1399,7 +1399,14 @@ async fn messages_to_a_peer_that_resets_every_substream_fail_after_max_retries()
         match reply {
             // Only messages at the front of a session's queue get written before the reset, so a message may have
             // been written fewer times than it was retried, but never more than once per retry plus the first try
-            Err(SendFailReason::MaxRetriesReached(attempts)) => assert!(attempts <= MAX_SEND_RETRIES + 1),
+            Err(SendFailReason::MaxRetriesReached(attempts)) => {
+                assert!(attempts <= MAX_SEND_RETRIES + 1);
+                // The first message is written on every substream: its retry goes to a fresh session, not back
+                // into the ending session's queue to be failed by its drain
+                if i == 0 {
+                    assert_eq!(attempts, MAX_SEND_RETRIES + 1);
+                }
+            },
             other => panic!("expected MaxRetriesReached, got {other:?}"),
         }
     }
