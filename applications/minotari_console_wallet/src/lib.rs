@@ -168,6 +168,7 @@ pub fn run_wallet_with_cli(
     };
 
     let shutdown_signal = shutdown.to_signal();
+    utils::signal_handler::spawn_signal_handler(shutdown.clone(), runtime.handle());
 
     if cli.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
