@@ -43,13 +43,16 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
     MicroMinotari,
     multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
-    offline_signing::models::{
-        PrepareDepositMultisigTransactionResult,
-        PrepareOneSidedTransactionForSigningResult,
-        PrepareWithdrawMultisigTransactionResult,
-        SignedOneSidedDepositMultisigTransactionResult,
-        SignedOneSidedTransactionResult,
-        SignedOneSidedWithdrawMultisigTransactionResult,
+    offline_signing::{
+        ConfirmedPayload,
+        models::{
+            PrepareDepositMultisigTransactionResult,
+            PrepareOneSidedTransactionForSigningResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SignedOneSidedDepositMultisigTransactionResult,
+            SignedOneSidedTransactionResult,
+            SignedOneSidedWithdrawMultisigTransactionResult,
+        },
     },
     rpc::models::FeePerGramStat,
     transaction_components::{MemoField, OutputFeatures, Transaction, TransactionOutput},
@@ -172,14 +175,14 @@ pub enum TransactionServiceRequest {
         payment_id: MemoField,
     },
     SignOneSidedTransaction {
-        request: PrepareOneSidedTransactionForSigningResult,
+        request: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
     },
 
     SignOneSidedDepositMultisigTransaction {
-        request: PrepareDepositMultisigTransactionResult,
+        request: ConfirmedPayload<PrepareDepositMultisigTransactionResult>,
     },
     SignOneSidedWithdrawMultisigTransaction {
-        request: PrepareWithdrawMultisigTransactionResult,
+        request: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
     },
     BroadcastSignedOneSidedTransaction {
         request: SignedOneSidedTransactionResult,
@@ -942,7 +945,7 @@ impl TransactionServiceHandle {
 
     pub async fn sign_one_sided_transaction(
         &mut self,
-        request: PrepareOneSidedTransactionForSigningResult,
+        request: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
     ) -> Result<SignedOneSidedTransactionResult, TransactionServiceError> {
         match self
             .handle
@@ -959,7 +962,7 @@ impl TransactionServiceHandle {
 
     pub async fn sign_one_sided_deposit_multisig_transaction(
         &mut self,
-        request: PrepareDepositMultisigTransactionResult,
+        request: ConfirmedPayload<PrepareDepositMultisigTransactionResult>,
     ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionServiceError> {
         match self
             .handle
@@ -977,7 +980,7 @@ impl TransactionServiceHandle {
 
     pub async fn sign_one_sided_withdraw_multisig_transaction(
         &mut self,
-        request: PrepareWithdrawMultisigTransactionResult,
+        request: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
     ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionServiceError> {
         match self
             .handle
