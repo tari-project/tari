@@ -137,6 +137,12 @@ loggers:
     appenders:
       - http
     additive: false
+  # Offline signing summaries and decisions
+  c::tx::offline_signing:
+    level: info
+    appenders:
+      - base_layer
+    additive: false
 
   # other
   h2:
