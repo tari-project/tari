@@ -2476,21 +2476,25 @@ impl CompletedTransactionSql {
         details: Option<String>,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
-        diesel::update(
-            completed_transactions::table
-                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-                .filter(completed_transactions::cancelled.is_null()),
-        )
-        .set(UpdateCompletedTransactionSql {
-            cancelled: Some(Some(reason as i32)),
-            status: Some(LegacyTransactionStatus::Rejected as i32),
-            rejection_reason: Some(details),
-            ..Default::default()
-        })
-        .execute(conn)
-        .num_rows_affected_or_not_found(1)?;
+        conn.transaction::<_, TransactionStorageError, _>(|conn| {
+            diesel::update(
+                completed_transactions::table
+                    .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+                    .filter(completed_transactions::cancelled.is_null()),
+            )
+            .set(UpdateCompletedTransactionSql {
+                cancelled: Some(Some(reason as i32)),
+                status: Some(LegacyTransactionStatus::Rejected as i32),
+                rejection_reason: Some(details),
+                ..Default::default()
+            })
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+            // A rejected transaction must not keep PayRefs that the real owner of the output could then never take
+            PayrefSql::release_tx(tx_id, conn)?;
 
-        Ok(())
+            Ok(())
+        })
     }
 
     pub fn increment_send_count(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
@@ -2601,7 +2605,14 @@ impl CompletedTransactionSql {
                 tx_id: tx_id.as_u64() as i64,
                 payref: pay_ref.to_vec(),
             };
-            pay_ref_sql.commit_or_update(conn)?;
+            if !pay_ref_sql.commit_or_update(conn)? {
+                warn!(
+                    target: LOG_TARGET,
+                    "PayRef for output {} is held by another transaction; not assigned to tx_id {}",
+                    output.to_hex(),
+                    tx_id
+                );
+            }
         }
 
         let received = match existing_tx.received_output_hashes.as_ref() {
@@ -2615,7 +2626,14 @@ impl CompletedTransactionSql {
                 tx_id: tx_id.as_u64() as i64,
                 payref: pay_ref.to_vec(),
             };
-            pay_ref_sql.commit_or_update(conn)?;
+            if !pay_ref_sql.commit_or_update(conn)? {
+                warn!(
+                    target: LOG_TARGET,
+                    "PayRef for output {} is held by another transaction; not assigned to tx_id {}",
+                    output.to_hex(),
+                    tx_id
+                );
+            }
         }
 
         let change = match existing_tx.change_output_hashes.as_ref() {
@@ -2629,7 +2647,14 @@ impl CompletedTransactionSql {
                 tx_id: tx_id.as_u64() as i64,
                 payref: pay_ref.to_vec(),
             };
-            pay_ref_sql.commit_or_update(conn)?;
+            if !pay_ref_sql.commit_or_update(conn)? {
+                warn!(
+                    target: LOG_TARGET,
+                    "PayRef for output {} is held by another transaction; not assigned to tx_id {}",
+                    output.to_hex(),
+                    tx_id
+                );
+            }
         }
 
         Ok(())
@@ -2646,6 +2671,9 @@ impl CompletedTransactionSql {
                     target: LOG_TARGET,
                     "set_as_unmined: tx_id '{tx_id}' was rejected for an invalid encrypted value, left unchanged"
                 );
+                // The row stays as it is, but its PayRefs must go: a PayRef is only refreshed by its owner, so one
+                // kept here would block the transaction that really owns the output.
+                PayrefSql::release_tx(tx_id, conn)?;
                 return Ok(());
             }
 
@@ -2693,34 +2721,7 @@ impl CompletedTransactionSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-            // Archive existing payrefs to history before deleting, so that
-            // PayRefs from before a reorg can still be looked up.
-            let existing_payrefs = PayrefSql::find_all_by_tx_id(tx_id, conn)?;
-            for pr in &existing_payrefs {
-                PayrefHistorySql::archive_from_payref(pr, conn)?;
-            }
-
-            let sent = match existing_tx.sent_output_hashes.as_ref() {
-                Some(bytes) => bytes_to_fixedhash_vec(bytes),
-                _ => vec![],
-            };
-            for output in sent {
-                PayrefSql::delete(output.as_ref(), conn)?;
-            }
-            let received = match existing_tx.received_output_hashes.as_ref() {
-                Some(bytes) => bytes_to_fixedhash_vec(bytes),
-                _ => vec![],
-            };
-            for output in received {
-                PayrefSql::delete(output.as_ref(), conn)?;
-            }
-            let change = match existing_tx.change_output_hashes.as_ref() {
-                Some(bytes) => bytes_to_fixedhash_vec(bytes),
-                _ => vec![],
-            };
-            for output in change {
-                PayrefSql::delete(output.as_ref(), conn)?;
-            }
+            PayrefSql::release_tx(tx_id, conn)?;
 
             Ok(())
         })
@@ -3058,21 +3059,28 @@ impl PayrefSql {
         Ok(())
     }
 
-    pub fn commit_or_update(self, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        let res = diesel::insert_into(payrefs::table)
-            .values(self.clone())
+    /// Insert the PayRef for `output_hash`, or refresh its payref if the row already belongs to `self.tx_id`.
+    /// A row owned by another transaction is left alone. Returns whether a row was written.
+    pub fn commit_or_update(self, conn: &mut SqliteConnection) -> Result<bool, TransactionStorageError> {
+        use diesel::query_dsl::methods::FilterDsl;
+
+        let rows = diesel::insert_into(payrefs::table)
+            .values(&self)
             .on_conflict(payrefs::output_hash)
             .do_update()
-            .set(self)
-            .execute(conn);
-        res?;
-        Ok(())
+            .set(payrefs::payref.eq(diesel::upsert::excluded(payrefs::payref)))
+            .filter(payrefs::tx_id.eq(self.tx_id))
+            .execute(conn)?;
+        Ok(rows > 0)
     }
 
-    pub fn delete(hash: &[u8], conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
-        diesel::delete(payrefs::table.filter(payrefs::output_hash.eq(hash))).execute(conn)?;
-
-        Ok(())
+    /// Archive the PayRefs of `tx_id` to history, so that they can still be looked up, then delete them so that
+    /// another transaction can take their outputs.
+    pub fn release_tx(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
+        for pr in &PayrefSql::find_all_by_tx_id(tx_id, conn)? {
+            PayrefHistorySql::archive_from_payref(pr, conn)?;
+        }
+        PayrefSql::delete_by_tx_id(tx_id, conn)
     }
 
     pub fn delete_by_tx_id(tx_id: TxId, conn: &mut SqliteConnection) -> Result<(), TransactionStorageError> {
@@ -3176,6 +3184,7 @@ mod test {
     };
     use tari_common_types::{
         encryption::Encryptable,
+        payment_reference::generate_payment_reference,
         tari_address::TariAddress,
         transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
         types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
@@ -3208,6 +3217,7 @@ mod test {
                 InboundTransactionSenderInfo,
                 InboundTransactionSql,
                 OutboundTransactionSql,
+                PayrefSql,
                 TransactionServiceSqliteDatabase,
                 UpdateCompletedTransactionSql,
             },
@@ -3830,6 +3840,148 @@ mod test {
         let read_back = CompletedTransaction::try_from(row, &cipher, &mut conn).unwrap();
         assert!(read_back.source_address_claimed);
         assert_eq!(read_back, completed_tx);
+    }
+
+    /// Transactions A (tx_id 1) receiving output `h` and B (tx_id 2) listing `h` as sent, both mined. Returns `h`
+    /// and A's payref for it.
+    fn mine_a_then_b_sharing_an_output(conn: &mut SqliteConnection) -> (FixedHash, Vec<u8>) {
+        let cipher = random_cipher();
+        let h = FixedHash::from([1u8; 32]);
+        for tx in [
+            completed_tx_with_hashes(1, vec![], vec![h]),
+            completed_tx_with_hashes(2, vec![h], vec![]),
+        ] {
+            CompletedTransactionSql::try_from(tx, &cipher)
+                .unwrap()
+                .commit(conn)
+                .unwrap();
+        }
+        let block_a = FixedHash::from([10u8; 32]);
+        let block_b = FixedHash::from([11u8; 32]);
+        CompletedTransactionSql::update_mined_height(
+            1u64.into(),
+            LegacyTransactionStatus::MinedUnconfirmed,
+            10,
+            block_a,
+            1_700_000_000,
+            conn,
+        )
+        .unwrap();
+        CompletedTransactionSql::update_mined_height(
+            2u64.into(),
+            LegacyTransactionStatus::MinedUnconfirmed,
+            11,
+            block_b,
+            1_700_000_100,
+            conn,
+        )
+        .unwrap();
+        (h, generate_payment_reference(&block_a, &h).to_vec())
+    }
+
+    #[test]
+    fn payref_row_keeps_its_owning_transaction() {
+        let mut conn = migrated_connection();
+        let (h, payref_a) = mine_a_then_b_sharing_an_output(&mut conn);
+
+        let row = PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().unwrap();
+        assert_eq!(row.tx_id, 1);
+        assert_eq!(row.output_hash, h.to_vec());
+        assert!(PayrefSql::find_all_by_tx_id(2u64.into(), &mut conn).unwrap().is_empty());
+
+        let written = PayrefSql {
+            output_hash: h.to_vec(),
+            payref: generate_payment_reference(&FixedHash::from([11u8; 32]), &h).to_vec(),
+            tx_id: 2,
+        }
+        .commit_or_update(&mut conn)
+        .unwrap();
+        assert!(!written);
+        let row = PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().unwrap();
+        assert_eq!(row.tx_id, 1);
+    }
+
+    #[test]
+    fn unmining_a_transaction_only_removes_its_own_payrefs() {
+        let mut conn = migrated_connection();
+        let (_, payref_a) = mine_a_then_b_sharing_an_output(&mut conn);
+
+        CompletedTransactionSql::set_as_unmined(2u64.into(), &mut conn).unwrap();
+        let row = PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().unwrap();
+        assert_eq!(row.tx_id, 1);
+
+        CompletedTransactionSql::set_as_unmined(1u64.into(), &mut conn).unwrap();
+        assert!(PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().is_none());
+    }
+
+    /// Re-mining tx 2 must give it the output `h` that tx 1 held.
+    fn assert_b_takes_the_output(h: FixedHash, conn: &mut SqliteConnection) {
+        let block_c = FixedHash::from([12u8; 32]);
+        CompletedTransactionSql::update_mined_height(
+            2u64.into(),
+            LegacyTransactionStatus::MinedUnconfirmed,
+            12,
+            block_c,
+            1_700_000_200,
+            conn,
+        )
+        .unwrap();
+        let payref_b = generate_payment_reference(&block_c, &h).to_vec();
+        let row = PayrefSql::find_by_payref(&payref_b, conn).unwrap().unwrap();
+        assert_eq!(row.tx_id, 2);
+    }
+
+    #[test]
+    fn rejecting_a_transaction_releases_its_payrefs() {
+        let mut conn = migrated_connection();
+        let (h, payref_a) = mine_a_then_b_sharing_an_output(&mut conn);
+        CompletedTransactionSql::reject_completed_transaction(
+            1u64.into(),
+            crate::transaction_service::storage::models::TxCancellationReason::InvalidEncryptedValue,
+            None,
+            &mut conn,
+        )
+        .unwrap();
+
+        assert!(PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().is_none());
+        assert_eq!(
+            super::PayrefHistorySql::find_by_payref(&payref_a, &mut conn)
+                .unwrap()
+                .len(),
+            1,
+            "the released PayRef is archived"
+        );
+        assert_b_takes_the_output(h, &mut conn);
+    }
+
+    #[test]
+    fn unmining_a_cancelled_transaction_releases_its_payrefs() {
+        use diesel::{ExpressionMethods, QueryDsl};
+
+        let mut conn = migrated_connection();
+        let (h, payref_a) = mine_a_then_b_sharing_an_output(&mut conn);
+        // A row rejected before rejection released PayRefs: sticky-cancelled, still holding its PayRef
+        diesel::update(
+            crate::schema::completed_transactions::table.filter(crate::schema::completed_transactions::tx_id.eq(1i64)),
+        )
+        .set(crate::schema::completed_transactions::cancelled.eq(Some(super::STICKY_CANCELLATION)))
+        .execute(&mut conn)
+        .unwrap();
+        assert!(PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().is_some());
+
+        // The sticky-cancelled row is left as it is, but it no longer holds the PayRef
+        CompletedTransactionSql::set_as_unmined(1u64.into(), &mut conn).unwrap();
+        assert!(PayrefSql::find_by_payref(&payref_a, &mut conn).unwrap().is_none());
+        assert_eq!(
+            super::PayrefHistorySql::find_by_payref(&payref_a, &mut conn)
+                .unwrap()
+                .len(),
+            1,
+            "the released PayRef is archived"
+        );
+        let row = CompletedTransactionSql::find(1u64.into(), &mut conn).unwrap();
+        assert!(super::is_sticky_cancellation(row.cancelled));
+        assert_b_takes_the_output(h, &mut conn);
     }
 
     #[test]
