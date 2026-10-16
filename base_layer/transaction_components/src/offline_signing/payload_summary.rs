@@ -722,8 +722,8 @@ pub enum ConfirmationMode {
 /// Writes `summary` to `out` and returns the operator's decision on it.
 ///
 /// In [`ConfirmationMode::Interactive`] the operator is asked to type `y` or `yes`; anything else, including end of
-/// input, declines. In [`ConfirmationMode::NonInteractive`] the summary is also logged and the confirmation is approved
-/// without reading `input`.
+/// input, declines. In [`ConfirmationMode::NonInteractive`] the confirmation is approved without reading `input`.
+/// Either way the summary is logged with the decision.
 pub fn present_payload_summary<P: OfflinePayload>(
     summary: &PayloadSummary<P>,
     mode: ConfirmationMode,
@@ -753,9 +753,13 @@ pub fn present_payload_summary<P: OfflinePayload>(
             input.read_line(&mut answer)?;
             let answer = answer.trim().to_ascii_lowercase();
             let approved = answer == "y" || answer == "yes";
-            if !approved {
-                info!(target: LOG_TARGET, "Offline payload {} was not confirmed", summary.tx_id);
-            }
+            info!(
+                target: LOG_TARGET,
+                "Offline payload {} {} at the prompt:\n{}",
+                summary.tx_id,
+                if approved { "approved" } else { "declined" },
+                summary
+            );
             approved
         },
     };
