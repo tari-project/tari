@@ -35,6 +35,7 @@ mod encoder;
 mod error;
 mod fields;
 mod filters;
+mod matching;
 mod output_set;
 mod scan;
 mod serde;
@@ -50,6 +51,7 @@ pub use error::CovenantError;
 // Used in macro
 #[allow(unused_imports)]
 pub(crate) use fields::OutputField;
+pub(crate) use matching::hopcroft_karp;
 pub use token::CovenantToken;
 pub(crate) use work::{OutputHashCache, WorkMeter};
 

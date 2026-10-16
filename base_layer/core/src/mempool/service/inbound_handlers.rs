@@ -671,11 +671,12 @@ mod test {
 
         #[tokio::test]
         async fn gossiped_transaction_with_tip_dependent_failure_does_not_ban() {
-            let errors: [fn() -> ValidationError; 3] = [
+            let errors: [fn() -> ValidationError; 4] = [
                 || AggregatedBodyValidationError::MaturityError.into(),
                 // Covenants can read the block height
                 || AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs).into(),
                 || AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit: 1 }.into(),
+                || AggregatedBodyValidationError::CovenantOutputsClaimedTwice { inputs: 2, matched: 1 }.into(),
             ];
             for error in errors {
                 let (mut handlers, mempool, _propagated, mut bans) =

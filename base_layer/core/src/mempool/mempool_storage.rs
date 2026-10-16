@@ -856,7 +856,8 @@ fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Opt
     match error {
         ValidationError::AggregatedBodyValidationError(
             AggregatedBodyValidationError::CovenantError(_) |
-            AggregatedBodyValidationError::CovenantWorkLimitExceeded { .. },
+            AggregatedBodyValidationError::CovenantWorkLimitExceeded { .. } |
+            AggregatedBodyValidationError::CovenantOutputsClaimedTwice { .. },
         ) => None,
         ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error, tx) => Some(BanReason {
             reason: error.to_string(),

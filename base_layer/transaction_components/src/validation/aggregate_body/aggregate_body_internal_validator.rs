@@ -50,7 +50,7 @@ use crate::{
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
-        covenants::{CovenantError, MAX_COVENANT_WORK_PER_BODY, OutputHashCache, WorkMeter},
+        covenants::{CovenantError, MAX_COVENANT_WORK_PER_BODY, OutputHashCache, WorkMeter, hopcroft_karp},
         transaction_output::batch_verify_range_proofs,
     },
     validation::{
@@ -398,7 +398,9 @@ fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), Aggregate
     validate_covenants_with_limit(body, height, MAX_COVENANT_WORK_PER_BODY)
 }
 
-/// Evaluates the covenant of every input against the body's outputs, with at most `limit` work units in total
+/// Evaluates the covenant of every input against the body's outputs, with at most `limit` work units in total. Each
+/// output may satisfy the covenant of at most one input: the body is valid only if every input with a non-empty
+/// covenant can be assigned a distinct output that its covenant admits.
 pub(crate) fn validate_covenants_with_limit(
     body: &AggregateBody,
     height: u64,
@@ -407,18 +409,53 @@ pub(crate) fn validate_covenants_with_limit(
     let outputs = body.outputs();
     let mut meter = WorkMeter::new(limit);
     let hashes = OutputHashCache::new(outputs.len());
+    let mut demands = Vec::new();
     for input in body.inputs() {
         let covenant = input.covenant()?;
         if covenant.is_empty() {
             continue;
         }
         match covenant.matching_outputs(height, input, outputs, &mut meter, Some(&hashes)) {
-            Ok(_) => {},
+            Ok(matching) => demands.push(matching),
             Err(CovenantError::WorkLimitExceeded) => {
                 return Err(AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit });
             },
             Err(e) => return Err(e.into()),
         }
+    }
+    if demands.len() > outputs.len() {
+        return Err(AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+            inputs: demands.len(),
+            matched: outputs.len(),
+        });
+    }
+
+    // Fast path: each input claims the lowest indexed free output it admits
+    let mut claimed = vec![false; outputs.len()];
+    let mut greedy_matched = true;
+    for demand in &demands {
+        let free = demand
+            .iter()
+            .map(|&index| index as usize)
+            .find(|&index| claimed.get(index) == Some(&false));
+        match free.and_then(|index| claimed.get_mut(index)) {
+            Some(is_claimed) => *is_claimed = true,
+            None => {
+                greedy_matched = false;
+                break;
+            },
+        }
+    }
+    if greedy_matched {
+        return Ok(());
+    }
+
+    let matched = hopcroft_karp(&demands, outputs.len());
+    if matched < demands.len() {
+        return Err(AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+            inputs: demands.len(),
+            matched,
+        });
     }
     Ok(())
 }
@@ -911,6 +948,92 @@ mod test {
                 matches!(err, AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit } if limit == MAX_COVENANT_WORK_PER_BODY),
                 "{err}"
             );
+        }
+
+        fn admits_one(output: &TransactionOutput) -> TransactionInput {
+            input_with_covenant(covenant!(output_hash_eq(@hash(output.hash()))).unwrap())
+        }
+
+        fn admits_either(a: &TransactionOutput, b: &TransactionOutput) -> TransactionInput {
+            input_with_covenant(
+                covenant!(or(output_hash_eq(@hash(a.hash()),), output_hash_eq(@hash(b.hash())))).unwrap(),
+            )
+        }
+
+        fn check(
+            inputs: Vec<TransactionInput>,
+            outputs: Vec<TransactionOutput>,
+        ) -> Result<(), AggregatedBodyValidationError> {
+            validate_covenants(&AggregateBody::new_sorted_unchecked(inputs, outputs, Vec::new()), 0)
+        }
+
+        #[test]
+        fn covenant_outputs_are_claimed_once() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let outputs = outputs(2, &key_manager);
+            let (o1, o2) = (outputs[0].clone(), outputs[1].clone());
+
+            let err = check(vec![admits_one(&o1), admits_one(&o1)], vec![o1.clone()]).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                    inputs: 2,
+                    matched: 1
+                }),
+                "{err}"
+            );
+            let err = check(vec![admits_one(&o1), admits_one(&o1)], vec![o1.clone(), o2.clone()]).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                    inputs: 2,
+                    matched: 1
+                }),
+                "{err}"
+            );
+
+            check(vec![admits_either(&o1, &o2), admits_one(&o1)], vec![o1.clone(), o2]).unwrap();
+
+            // Inputs with an empty covenant claim nothing
+            let empty = || input_with_covenant(Covenant::default());
+            check(vec![empty(), admits_one(&o1), empty(), empty()], vec![o1]).unwrap();
+        }
+
+        #[test]
+        fn covenant_claiming_is_order_independent() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let outputs = outputs(2, &key_manager);
+            let (o1, o2) = (outputs[0].clone(), outputs[1].clone());
+            let a = admits_either(&o1, &o2);
+            let b = admits_one(&o2);
+            let c = admits_one(&o1);
+
+            for outputs in [vec![o1.clone(), o2.clone()], vec![o2.clone(), o1.clone()]] {
+                for inputs in [vec![a.clone(), b.clone()], vec![b.clone(), a.clone()]] {
+                    check(inputs, outputs.clone()).unwrap();
+                }
+            }
+            // With o2 first, greedy gives o2 to `a` and leaves nothing for `b`; the matching still finds one
+            let demands = vec![vec![0, 1], vec![0]];
+            assert_eq!(hopcroft_karp(&demands, 2), 2);
+
+            for outputs in [vec![o1.clone(), o2.clone()], vec![o2, o1]] {
+                for inputs in [
+                    vec![a.clone(), b.clone(), c.clone()],
+                    vec![a.clone(), c.clone(), b.clone()],
+                    vec![b.clone(), a.clone(), c.clone()],
+                    vec![b.clone(), c.clone(), a.clone()],
+                    vec![c.clone(), a.clone(), b.clone()],
+                    vec![c.clone(), b.clone(), a.clone()],
+                ] {
+                    let err = check(inputs, outputs.clone()).unwrap_err();
+                    assert!(
+                        matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                            inputs: 3,
+                            ..
+                        }),
+                        "{err}"
+                    );
+                }
+            }
         }
 
         #[test]
