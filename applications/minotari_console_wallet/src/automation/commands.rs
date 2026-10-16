@@ -684,6 +684,15 @@ fn offline_confirmation_mode(non_interactive_mode: bool) -> ConfirmationMode {
     }
 }
 
+/// Where the summary goes: stderr when prompting with stdout redirected, so the operator still sees what they approve.
+fn offline_summary_output(mode: ConfirmationMode) -> Box<dyn Write> {
+    if mode == ConfirmationMode::Interactive && !io::stdout().is_terminal() {
+        Box::new(io::stderr().lock())
+    } else {
+        Box::new(io::stdout().lock())
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 // Schnorr signature / Ristretto scalar arithmetic, not integer arithmetic: cannot overflow.
 #[allow(clippy::arithmetic_side_effects)]
@@ -2824,7 +2833,7 @@ pub async fn command_runner(
                 let review = review_offline_payload(
                     PayloadSummary::from_one_sided(request),
                     mode,
-                    &mut io::stdout().lock(),
+                    &mut offline_summary_output(mode),
                     &mut io::stdin().lock(),
                 );
                 let confirmed = match review {
@@ -2875,7 +2884,7 @@ pub async fn command_runner(
                 let review = review_offline_payload(
                     PayloadSummary::from_multisig(request),
                     mode,
-                    &mut io::stdout().lock(),
+                    &mut offline_summary_output(mode),
                     &mut io::stdin().lock(),
                 );
                 let confirmed = match review {
@@ -2926,7 +2935,7 @@ pub async fn command_runner(
                 let review = review_offline_payload(
                     PayloadSummary::from_withdraw_multisig(request),
                     mode,
-                    &mut io::stdout().lock(),
+                    &mut offline_summary_output(mode),
                     &mut io::stdin().lock(),
                 );
                 let confirmed = match review {

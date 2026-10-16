@@ -290,7 +290,12 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
     } else {
         ConfirmationMode::NonInteractive
     };
-    sign_transaction_with_io(args, mode, &mut io::stdout().lock(), &mut io::stdin().lock())
+    // When prompting with stdout redirected, show the summary and prompt on stderr so the operator still sees them
+    if mode == ConfirmationMode::Interactive && !io::stdout().is_terminal() {
+        sign_transaction_with_io(args, mode, &mut io::stderr().lock(), &mut io::stdin().lock())
+    } else {
+        sign_transaction_with_io(args, mode, &mut io::stdout().lock(), &mut io::stdin().lock())
+    }
 }
 
 fn sign_transaction_with_io(
