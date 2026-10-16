@@ -112,7 +112,10 @@ pub struct RecipientSummary {
     pub address: TariAddress,
     pub amount: MicroMinotari,
     pub features: OutputFeatures,
+    /// The memo the signed output will carry.
     pub payment_id: MemoField,
+    /// The payload's own memo for this recipient differs from `payment_id` and is not used.
+    pub payload_memo_differs: bool,
 }
 
 /// A single directly-specified output in a [`PayloadDetails`].
@@ -198,6 +201,7 @@ impl PayloadDetails {
                     amount: r.amount,
                     features: r.output_features.clone(),
                     payment_id: r.payment_id.clone(),
+                    payload_memo_differs: false,
                 })
                 .collect(),
             outputs: info
@@ -237,7 +241,16 @@ impl PayloadDetails {
         details.multisig_public_keys = info.public_keys.iter().map(|pk| pk.to_hex()).collect();
         // `party_number` holds the threshold m
         details.multisig_required_signatures = Some(info.party_number);
+        details.use_top_level_memo_for_recipients();
         details
+    }
+
+    /// Multisig signers put the top-level memo on the recipient output, so that is the memo shown for it.
+    fn use_top_level_memo_for_recipients(&mut self) {
+        for recipient in &mut self.recipients {
+            recipient.payload_memo_differs = recipient.payment_id != self.payment_id;
+            recipient.payment_id = self.payment_id.clone();
+        }
     }
 
     /// Whether the payload fixes the fee, or only sets the rate it will be charged at.
@@ -386,11 +399,16 @@ impl PayloadDetails {
             };
             writeln!(
                 f,
-                "  [{}] {} -> {}{}",
+                "  [{}] {} -> {}{}{}",
                 i.saturating_add(1),
                 recipient.amount,
                 recipient.address.to_base58(),
-                warning
+                warning,
+                if recipient.payload_memo_differs {
+                    " (WARNING: recipient memo differs, see above)"
+                } else {
+                    ""
+                }
             )?;
         }
         for (i, output) in self.outputs.iter().enumerate() {
@@ -503,6 +521,13 @@ impl Display for PayloadDetails {
             writeln!(f, "      address : {}", recipient.address.to_base58())?;
             writeln!(f, "      emoji   : {}", TerminalSafe(&recipient.address))?;
             write_features(f, &recipient.features)?;
+            if recipient.payload_memo_differs {
+                writeln!(
+                    f,
+                    "      WARNING : the payload's recipient memo differs from the memo that will be put on the \
+                     output; the output memo is the one listed under payment ID"
+                )?;
+            }
         }
         if !self.outputs.is_empty() {
             // Nothing a wallet does today puts an output here, so the operator is told plainly that this is not a
@@ -603,7 +628,8 @@ impl PayloadSummary<PrepareDepositMultisigTransactionResult> {
 
 impl PayloadSummary<PrepareWithdrawMultisigTransactionResult> {
     pub fn from_withdraw_multisig(request: PrepareWithdrawMultisigTransactionResult) -> Self {
-        let details = PayloadDetails::one_sided(PayloadKind::MultisigWithdrawal, request.tx_id, &request.info);
+        let mut details = PayloadDetails::one_sided(PayloadKind::MultisigWithdrawal, request.tx_id, &request.info);
+        details.use_top_level_memo_for_recipients();
         Self::new(details, request)
     }
 }
@@ -1246,6 +1272,58 @@ mod test {
                 .replace("\\xff", "")
                 .replace(')', "");
             assert!(rest.is_empty(), "{line:?} in:\n{rendered}");
+        }
+    }
+
+    #[test]
+    fn multisig_summary_shows_the_output_memo() {
+        let memo = |text: &str| MemoField::new_open(text.as_bytes().to_vec(), TxType::PaymentToOther).unwrap();
+        let memo_info = |recipient_memo: &str| {
+            let mut info = info(&[1000]);
+            info.payment_id = memo("output memo");
+            info.recipients[0].payment_id = memo(recipient_memo);
+            info
+        };
+        let renderings = |recipient_memo: &str| {
+            let deposit = PayloadSummary::from_multisig(PrepareDepositMultisigTransactionResult {
+                version: get_latest_version(),
+                tx_id: TxId::from(1u64),
+                info: OneSidedMultisigTransactionInfo::new(memo_info(recipient_memo), vec![], 1),
+                payload_signature: PayloadIntegritySignature {
+                    signature: Default::default(),
+                },
+            });
+            let withdraw = PayloadSummary::from_withdraw_multisig(PrepareWithdrawMultisigTransactionResult {
+                version: get_latest_version(),
+                tx_id: TxId::from(1u64),
+                info: memo_info(recipient_memo),
+                payload_signature: PayloadIntegritySignature {
+                    signature: Default::default(),
+                },
+            });
+            [deposit.to_string(), withdraw.to_string()]
+        };
+
+        for rendered in renderings("other memo") {
+            let joined = rendered.replace(&format!("\n{MEMO_INDENT}"), "");
+            assert!(
+                joined.contains("  recipient [1]:type(PaymentToOther), data(output memo)"),
+                "{rendered}"
+            );
+            assert!(!joined.contains("other memo"), "{rendered}");
+            assert!(
+                rendered.contains(
+                    "WARNING : the payload's recipient memo differs from the memo that will be put on the output"
+                ),
+                "{rendered}"
+            );
+            assert!(
+                rendered.contains("(WARNING: recipient memo differs, see above)"),
+                "{rendered}"
+            );
+        }
+        for rendered in renderings("output memo") {
+            assert!(!rendered.contains("WARNING"), "{rendered}");
         }
     }
 
