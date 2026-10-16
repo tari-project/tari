@@ -19,13 +19,13 @@ use support::load_fixture;
 #[test]
 fn it_validates_a_correct_proof() {
     let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
-    proof.validate_committed(4, &|_| Ok(true)).unwrap();
+    proof.validate_committed(4, &|_| Ok(1)).unwrap();
 }
 
 #[test]
 fn it_rejects_if_qc_signs_for_unknown_validator() {
     let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
-    proof.validate_committed(4, &|_| Ok(false)).unwrap_err();
+    proof.validate_committed(4, &|_| Ok(0)).unwrap_err();
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn it_rejects_a_qc_with_too_many_signatures() {
             qc.signatures = vec![signature; MAX_QC_SIGNATURES + 1];
         }
     }
-    let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
     let expected = format!(
         "must contain at most {} signatures but contained {}",
         MAX_QC_SIGNATURES,
@@ -79,7 +79,7 @@ fn the_protocol_version_selects_the_hash_schema() {
 fn it_rejects_a_proof_whose_header_claims_another_protocol_version() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     proof.header.protocol_version = 1;
-    let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
     assert!(
         err.to_string().contains("does not match the block ID in the header"),
         "Expected the block ID mismatch error, got: {err}"
@@ -94,7 +94,7 @@ fn it_rejects_a_qc_that_claims_another_protocol_version() {
             qc.protocol_version = 1;
         }
     }
-    let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
     assert!(
         err.to_string().contains("Invalid signature for QC"),
         "Expected the signature error, got: {err}"
@@ -128,7 +128,7 @@ fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     proof.header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
     // The version 0 preimage does not cover the root, so the block ID still matches.
-    let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
     assert!(
         err.to_string().contains("commits to no transaction merkle root"),
         "Expected the transaction merkle root error, got: {err}"
@@ -139,11 +139,11 @@ fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
 fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root() {
     let root = FixedHash::from([1u8; 32]);
     let proof = signed_version_1_proof(Some(root));
-    proof.validate_committed(4, &|_| Ok(true)).unwrap();
+    proof.validate_committed(4, &|_| Ok(1)).unwrap();
 
     let mut tampered = proof.clone();
     tampered.header.transaction_merkle_root = Some(FixedHash::from([2u8; 32]));
-    let err = tampered.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = tampered.validate_committed(4, &|_| Ok(1)).unwrap_err();
     assert!(
         err.to_string().contains("does not match the block ID in the header"),
         "Expected the block ID mismatch error, got: {err}"
@@ -151,16 +151,31 @@ fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root(
 
     let mut stripped = proof;
     stripped.header.transaction_merkle_root = None;
-    let err = stripped.validate_committed(4, &|_| Ok(true)).unwrap_err();
+    let err = stripped.validate_committed(4, &|_| Ok(1)).unwrap_err();
     assert!(
         err.to_string().contains("does not match the block ID in the header"),
         "Expected the block ID mismatch error, got: {err}"
     );
 }
 
+/// The secret key of test validator `i`.
+fn validator_secret(i: u8) -> tari_common_types::types::PrivateKey {
+    use tari_crypto::keys::SecretKey;
+    tari_common_types::types::PrivateKey::from_uniform_bytes(&[i; 64]).unwrap()
+}
+
 /// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that four test validators
 /// sign.
 fn signed_version_1_proof(transaction_merkle_root: Option<FixedHash>) -> SidechainBlockCommitProof {
+    let validators = (1..=4u8).map(validator_secret).collect::<Vec<_>>();
+    signed_version_1_proof_by(&validators, transaction_merkle_root)
+}
+
+/// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that `validators` sign.
+fn signed_version_1_proof_by(
+    validators: &[tari_common_types::types::PrivateKey],
+    transaction_merkle_root: Option<FixedHash>,
+) -> SidechainBlockCommitProof {
     use tari_common_types::types::{CompressedPublicKey, PrivateKey};
     use tari_crypto::keys::SecretKey;
     use tari_sidechain::{
@@ -178,9 +193,6 @@ fn signed_version_1_proof(transaction_merkle_root: Option<FixedHash>) -> Sidecha
     header.protocol_version = PROTOCOL_VERSION;
     header.transaction_merkle_root = transaction_merkle_root;
 
-    let validators = (1..=4u8)
-        .map(|i| PrivateKey::from_uniform_bytes(&[i; 64]).unwrap())
-        .collect::<Vec<_>>();
     let certify = |header_hash: FixedHash, parent_id: FixedHash, height: u64| {
         let block_id = ChainLink { header_hash, parent_id }.calc_block_id();
         let message = ProposalVoteMessage::new(
@@ -230,6 +242,51 @@ fn signed_version_1_proof(transaction_merkle_root: Option<FixedHash>) -> Sidecha
         CommitProofElement::QuorumCertificate(certify(header.calculate_hash(), header.parent_id, header.height)),
     ];
     SidechainBlockCommitProof { header, proof_elements }
+}
+
+mod weighted_committee {
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+
+    use super::*;
+
+    /// Seven validators: 1 to 4 hold power 1 each and 5 to 7 hold power 10 each, 34 in all.
+    fn power_of(public_key: &CompressedPublicKey) -> u64 {
+        (1..=7u8)
+            .find(|&i| CompressedPublicKey::from_secret_key(&validator_secret(i)) == *public_key)
+            .map_or(0, |i| if i <= 4 { 1 } else { 10 })
+    }
+
+    /// More than two thirds of the committee's 34 voting power.
+    const QUORUM_POWER: u64 = 23;
+
+    fn signed_by(validators: impl IntoIterator<Item = u8>) -> SidechainBlockCommitProof {
+        let secrets = validators
+            .into_iter()
+            .map(validator_secret)
+            .collect::<Vec<PrivateKey>>();
+        signed_version_1_proof_by(&secrets, None)
+    }
+
+    #[test]
+    fn it_rejects_a_qc_with_a_supermajority_of_signers_but_too_little_power() {
+        // Five of seven members, more than two thirds by count, but only 14 of 34 power.
+        let proof = signed_by(1..=5);
+        let err = proof
+            .validate_committed(QUORUM_POWER, &|pk| Ok(power_of(pk)))
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("signers hold 14 voting power but at least 23 is required"),
+            "Expected the voting power error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn it_accepts_a_qc_with_few_signers_holding_enough_power() {
+        // Three of seven members, but 30 of 34 power.
+        let proof = signed_by(5..=7);
+        proof.validate_committed(QUORUM_POWER, &|pk| Ok(power_of(pk))).unwrap();
+    }
 }
 
 #[test]
@@ -288,7 +345,7 @@ mod batch_verification {
     }
 
     fn assert_invalid_signature(proof: &SidechainBlockCommitProof) {
-        let err = proof.validate_committed(4, &|_| Ok(true)).unwrap_err();
+        let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
         assert!(
             err.to_string().contains("Invalid signature for QC"),
             "Expected the signature error, got: {err}"

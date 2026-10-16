@@ -30,7 +30,7 @@ pub fn check_proof_elements(
     proof_elements: &[CommitProofElement],
     check_vn: &CheckVnFunc<'_>,
     expected_decision: QuorumDecision,
-    quorum_threshold: usize,
+    quorum_threshold: u64,
 ) -> Result<(), SidechainProofValidationError> {
     check_header_commits_to_its_fields(header)?;
     check_proof_elements_num_qcs(proof_elements, 3)?;
@@ -187,20 +187,10 @@ pub fn check_proof_elements_num_qcs(
 
 fn validate_qc(
     qc: &QuorumCertificate,
-    quorum_threshold: usize,
+    quorum_threshold: u64,
     check_vn: &CheckVnFunc<'_>,
     quorum_decision: QuorumDecision,
 ) -> Result<(), SidechainProofValidationError> {
-    if qc.signatures.len() < quorum_threshold {
-        return Err(SidechainProofValidationError::InvalidProof {
-            details: format!(
-                "Quorum certificate must contain at least {} signatures but contained {}",
-                quorum_threshold,
-                qc.signatures.len()
-            ),
-        });
-    }
-
     if qc.signatures.len() > MAX_QC_SIGNATURES {
         return Err(SidechainProofValidationError::InvalidProof {
             details: format!(
@@ -228,8 +218,10 @@ fn validate_qc(
 
     let block_id = qc.calculate_justified_block();
     let mut decoded = Vec::with_capacity(qc.signatures.len());
+    let mut signed_power = 0u64;
     for sig in &qc.signatures {
-        if !check_vn(&sig.public_key)? {
+        let power = check_vn(&sig.public_key)?;
+        if power == 0 {
             return Err(SidechainProofValidationError::InvalidProof {
                 details: format!(
                     "QC was signed by public key {} that is not in the active validator set",
@@ -237,6 +229,7 @@ fn validate_qc(
                 ),
             });
         }
+        signed_power = signed_power.saturating_add(power);
 
         let Some(pair) = sig.decode() else {
             return Err(invalid_qc_signature(&block_id));
@@ -244,8 +237,19 @@ fn validate_qc(
         decoded.push(pair);
     }
 
-    // Every member of a QC signs the same message. An empty batch verifies, so a QC without signatures is rejected
-    // only by the quorum threshold check.
+    // The signers are distinct and the batch below accepts all of their signatures or none, so this is the power of
+    // the signers whose signatures verify. It is checked first so that a QC short of quorum costs no verification.
+    // An empty QC has no power, so it is rejected here unless the threshold is 0.
+    if signed_power < quorum_threshold {
+        return Err(SidechainProofValidationError::InvalidProof {
+            details: format!(
+                "Quorum certificate signers hold {signed_power} voting power but at least {quorum_threshold} is \
+                 required"
+            ),
+        });
+    }
+
+    // Every member of a QC signs the same message.
     let message =
         ProposalVoteMessage::new(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height).calculate_hash();
     let batch = decoded
