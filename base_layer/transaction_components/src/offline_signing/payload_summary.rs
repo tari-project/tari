@@ -33,30 +33,78 @@
 //!
 //! The only defence that holds against a view-key holder is for the human operating the air-gapped signer to check
 //! what is about to be signed. This module produces the summary that is shown to them, so that the rendering lives
-//! next to the payload types and cannot drift out of sync with the fields that are actually signed.
+//! next to the payload types and cannot drift out of sync with the fields that are actually signed. A
+//! [`PayloadSummary`] owns the payload it describes, so the summary shown is always of the payload that is signed.
 
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    ops::Deref,
+};
 
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_script::TariScript;
+use tari_utilities::hex::Hex;
 
 use crate::{
     MicroMinotari,
     fee::Fee,
-    offline_signing::models::{OneSidedMultisigTransactionInfo, OneSidedTransactionInfo},
-    transaction_components::{MemoField, OutputFeatures},
+    helpers::terminal_safe::TerminalSafe,
+    offline_signing::models::{
+        OneSidedMultisigTransactionInfo,
+        OneSidedTransactionInfo,
+        PrepareDepositMultisigTransactionResult,
+        PrepareOneSidedTransactionForSigningResult,
+        PrepareWithdrawMultisigTransactionResult,
+    },
+    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType},
     weight::TransactionWeight,
 };
 
-/// A single recipient line in a [`PayloadSummary`].
+const RECAP_HEADER: &str = "---------------------------- Recap ----------------------------";
+const RECAP_FOOTER: &str = "---------------------------------------------------------------";
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// A payload that can be signed offline. Implemented only for the three `Prepare*` results.
+pub trait OfflinePayload: sealed::Sealed + Clone + std::fmt::Debug + Send + Sync + 'static {}
+
+impl sealed::Sealed for PrepareOneSidedTransactionForSigningResult {}
+impl OfflinePayload for PrepareOneSidedTransactionForSigningResult {}
+impl sealed::Sealed for PrepareDepositMultisigTransactionResult {}
+impl OfflinePayload for PrepareDepositMultisigTransactionResult {}
+impl sealed::Sealed for PrepareWithdrawMultisigTransactionResult {}
+impl OfflinePayload for PrepareWithdrawMultisigTransactionResult {}
+
+/// Which kind of payload a summary describes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadKind {
+    OneSided,
+    MultisigDeposit,
+    MultisigWithdrawal,
+}
+
+impl Display for PayloadKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PayloadKind::OneSided => write!(f, "one-sided payment"),
+            PayloadKind::MultisigDeposit => write!(f, "multisig deposit"),
+            PayloadKind::MultisigWithdrawal => write!(f, "multisig withdrawal"),
+        }
+    }
+}
+
+/// A single recipient line in a [`PayloadDetails`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecipientSummary {
     pub address: TariAddress,
     pub amount: MicroMinotari,
+    pub features: OutputFeatures,
     pub payment_id: MemoField,
 }
 
-/// A single directly-specified output in a [`PayloadSummary`].
+/// A single directly-specified output in a [`PayloadDetails`].
 ///
 /// These are outputs the payload hands to the signer ready-made, rather than ones the signer derives for a recipient.
 /// They carry value away from the wallet exactly like a recipient does, but their destination is a raw script rather
@@ -69,13 +117,38 @@ pub struct OutputSummary {
     pub payment_id: MemoField,
 }
 
+/// Reasons why output features differ from those of a normal payment, one per non-default feature.
+pub fn unusual_features(features: &OutputFeatures) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if features.maturity > 0 {
+        reasons.push(format!("cannot be spent before block {}", features.maturity));
+    }
+    if features.output_type != OutputType::Standard {
+        reasons.push(format!(
+            "output type {} is not a standard payment",
+            features.output_type
+        ));
+    }
+    if features.range_proof_type == RangeProofType::RevealedValue {
+        reasons.push("amount is revealed on chain (RevealedValue)".to_string());
+    }
+    if features.sidechain_feature.is_some() {
+        reasons.push("carries sidechain data".to_string());
+    }
+    if !features.coinbase_extra.is_empty() {
+        reasons.push("carries coinbase extra data".to_string());
+    }
+    reasons
+}
+
 /// The security-relevant contents of an offline-signing payload, in a form that can be shown to a human before any
 /// spend key is used.
 ///
 /// Every field here is covered by the canonical Borsh bytes that the integrity signature commits to, so a summary that
 /// the operator approves is a summary of what will actually be signed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PayloadSummary {
+pub struct PayloadDetails {
+    pub kind: PayloadKind,
     pub tx_id: TxId,
     pub sender_address: TariAddress,
     pub payment_id: MemoField,
@@ -94,14 +167,15 @@ pub struct PayloadSummary {
     pub num_inputs: usize,
     /// The multisig parties this payload pays into, if it is a multisig deposit.
     pub multisig_public_keys: Vec<String>,
-    /// The party number this signer is acting as, if it is a multisig payload.
-    pub multisig_party_number: Option<u8>,
+    /// The number of signatures (m of n) the multisig output requires, if it is a multisig deposit.
+    pub multisig_required_signatures: Option<u8>,
 }
 
-impl PayloadSummary {
-    /// Builds a summary of a one-sided payload.
-    pub fn from_one_sided(tx_id: TxId, info: &OneSidedTransactionInfo) -> Self {
+impl PayloadDetails {
+    /// Builds the details of a one-sided payload.
+    pub(crate) fn one_sided(kind: PayloadKind, tx_id: TxId, info: &OneSidedTransactionInfo) -> Self {
         Self {
+            kind,
             tx_id,
             sender_address: info.sender_address.clone(),
             payment_id: info.payment_id.clone(),
@@ -111,6 +185,7 @@ impl PayloadSummary {
                 .map(|r| RecipientSummary {
                     address: r.address.clone(),
                     amount: r.amount,
+                    features: r.output_features.clone(),
                     payment_id: r.payment_id.clone(),
                 })
                 .collect(),
@@ -141,18 +216,17 @@ impl PayloadSummary {
                 .fold(MicroMinotari::zero(), |acc, o| acc.saturating_add(o.value())),
             num_inputs: info.inputs.len(),
             multisig_public_keys: Vec::new(),
-            multisig_party_number: None,
+            multisig_required_signatures: None,
         }
     }
 
-    /// Builds a summary of a multisig payload.
-    pub fn from_multisig(tx_id: TxId, info: &OneSidedMultisigTransactionInfo) -> Self {
-        use tari_utilities::hex::Hex;
-
-        let mut summary = Self::from_one_sided(tx_id, &info.base);
-        summary.multisig_public_keys = info.public_keys.iter().map(|pk| pk.to_hex()).collect();
-        summary.multisig_party_number = Some(info.party_number);
-        summary
+    /// Builds the details of a multisig deposit payload.
+    pub(crate) fn multisig(tx_id: TxId, info: &OneSidedMultisigTransactionInfo) -> Self {
+        let mut details = Self::one_sided(PayloadKind::MultisigDeposit, tx_id, &info.base);
+        details.multisig_public_keys = info.public_keys.iter().map(|pk| pk.to_hex()).collect();
+        // `party_number` holds the threshold m
+        details.multisig_required_signatures = Some(info.party_number);
+        details
     }
 
     /// Whether the payload fixes the fee, or only sets the rate it will be charged at.
@@ -230,15 +304,76 @@ impl PayloadSummary {
     pub fn change(&self) -> Option<MicroMinotari> {
         self.total_input_value.checked_sub(self.total_spend())
     }
+
+    /// The "Total spend" and "Change" lines, shared by the fee block and the recap so the two cannot disagree.
+    fn spend_and_change_lines(&self) -> (String, String) {
+        let total_spend = self.total_spend();
+        // The fee is only a number if the payload fixes one. Otherwise it is a rate, and the amount it works out to
+        // depends on outputs that do not exist until after this summary has been approved, so it is described rather
+        // than guessed at, and the totals are qualified to match.
+        if self.fee_is_fixed() {
+            let change = match self.change() {
+                Some(change) => format!("Change         : {change}"),
+                None => "Change         : INPUTS DO NOT COVER THE SPEND".to_string(),
+            };
+            return (format!("Total spend    : {total_spend}"), change);
+        }
+        let change = match (self.change(), self.minimum_fee()) {
+            // The change is computed before the fee, so a payload can cover its outputs and still not cover the fee.
+            // Saying so is the whole point of this screen; showing the leftover as change is not.
+            (Some(change), Some(minimum)) if change < minimum => {
+                format!("Change         : INPUTS DO NOT COVER THE SPEND ONCE THE FEE IS TAKEN (at least {minimum})")
+            },
+            (Some(change), Some(minimum)) => format!("Change         : {change} less the fee (at least {minimum})"),
+            (Some(change), None) => format!("Change         : {change} less the fee"),
+            (None, _) => "Change         : INPUTS DO NOT COVER THE SPEND".to_string(),
+        };
+        (format!("Total spend    : {total_spend} plus the fee"), change)
+    }
+
+    fn write_memos(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let has_memos = !self.payment_id.is_empty() ||
+            self.recipients.iter().any(|r| !r.payment_id.is_empty()) ||
+            self.outputs.iter().any(|o| !o.payment_id.is_empty());
+        if !has_memos {
+            return Ok(());
+        }
+        writeln!(f, "Memos (sender-supplied text, control characters shown escaped):")?;
+        if !self.payment_id.is_empty() {
+            writeln!(f, "  payment ID     : {}", self.payment_id)?;
+        }
+        for (i, recipient) in self.recipients.iter().enumerate() {
+            if !recipient.payment_id.is_empty() {
+                writeln!(f, "  recipient [{}]: {}", i.saturating_add(1), recipient.payment_id)?;
+            }
+        }
+        for (i, output) in self.outputs.iter().enumerate() {
+            if !output.payment_id.is_empty() {
+                writeln!(f, "  output [{}]   : {}", i.saturating_add(1), output.payment_id)?;
+            }
+        }
+        Ok(())
+    }
 }
 
-impl Display for PayloadSummary {
+fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures) -> std::fmt::Result {
+    writeln!(
+        f,
+        "      features: type {}, maturity {}, range proof {}",
+        features.output_type, features.maturity, features.range_proof_type
+    )?;
+    let reasons = unusual_features(features);
+    if !reasons.is_empty() {
+        writeln!(f, "      WARNING : {}", reasons.join("; "))?;
+    }
+    Ok(())
+}
+
+impl Display for PayloadDetails {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Payload        : {}", self.kind)?;
         writeln!(f, "Transaction ID : {}", self.tx_id)?;
         writeln!(f, "From           : {}", self.sender_address.to_base58())?;
-        if !self.payment_id.is_empty() {
-            writeln!(f, "Payment ID     : {}", self.payment_id)?;
-        }
         writeln!(
             f,
             "Inputs         : {} totalling {}",
@@ -249,10 +384,8 @@ impl Display for PayloadSummary {
             writeln!(f, "  [{}] amount  : {}", i.saturating_add(1), recipient.amount)?;
             // Both forms are shown so the operator can check the address against whichever one they were given
             writeln!(f, "      address : {}", recipient.address.to_base58())?;
-            writeln!(f, "      emoji   : {}", recipient.address)?;
-            if !recipient.payment_id.is_empty() {
-                writeln!(f, "      memo    : {}", recipient.payment_id)?;
-            }
+            writeln!(f, "      emoji   : {}", TerminalSafe(&recipient.address))?;
+            write_features(f, &recipient.features)?;
         }
         if !self.outputs.is_empty() {
             // Nothing a wallet does today puts an output here, so the operator is told plainly that this is not a
@@ -265,63 +398,133 @@ impl Display for PayloadSummary {
             for (i, output) in self.outputs.iter().enumerate() {
                 writeln!(f, "  [{}] amount  : {}", i.saturating_add(1), output.amount)?;
                 // There is no address to show: whoever can satisfy this script owns the funds
-                writeln!(f, "      script  : {}", output.script)?;
-                writeln!(
-                    f,
-                    "      type    : {} (maturity {})",
-                    output.features.output_type, output.features.maturity
-                )?;
-                if !output.payment_id.is_empty() {
-                    writeln!(f, "      memo    : {}", output.payment_id)?;
-                }
+                writeln!(f, "      script  : {}", TerminalSafe(&output.script))?;
+                write_features(f, &output.features)?;
             }
         }
-        if let Some(party_number) = self.multisig_party_number {
-            writeln!(f, "Multisig party : {party_number}")?;
+        if let Some(required) = self.multisig_required_signatures {
+            writeln!(
+                f,
+                "Required signatures (m of n) : {} of {}",
+                required,
+                self.multisig_public_keys.len()
+            )?;
             for (i, pk) in self.multisig_public_keys.iter().enumerate() {
-                writeln!(f, "  [{}] key     : {}", i.saturating_add(1), pk)?;
+                writeln!(f, "  [{}] key     : {}", i.saturating_add(1), TerminalSafe(pk))?;
             }
         }
-        // The fee is only a number if the payload fixes one. Otherwise it is a rate, and the amount it works out to
-        // depends on outputs that do not exist until after this summary has been approved, so it is described rather
-        // than guessed at, and the totals below are qualified to match.
         match self.fixed_fee() {
-            Some(fee) => {
-                writeln!(f, "Fee            : {fee}")?;
-                writeln!(f, "Total spend    : {}", self.total_spend())?;
-                match self.change() {
-                    Some(change) => writeln!(f, "Change         : {change}")?,
-                    None => writeln!(f, "Change         : INPUTS DO NOT COVER THE SPEND")?,
-                }
-            },
-            None => {
-                writeln!(
-                    f,
-                    "Fee            : {}/gram, charged when this is signed",
-                    self.fee_per_gram
-                )?;
-                writeln!(f, "Total spend    : {} plus the fee", self.total_spend())?;
-                match (self.change(), self.minimum_fee()) {
-                    // The change is computed before the fee, so a payload can cover its outputs and still not cover
-                    // the fee. Saying so is the whole point of this screen; showing the leftover as change is not.
-                    (Some(change), Some(minimum)) if change < minimum => writeln!(
-                        f,
-                        "Change         : INPUTS DO NOT COVER THE SPEND ONCE THE FEE IS TAKEN (at least {minimum})"
-                    )?,
-                    (Some(change), Some(minimum)) => {
-                        writeln!(f, "Change         : {change} less the fee (at least {minimum})")?
-                    },
-                    (Some(change), None) => writeln!(f, "Change         : {change} less the fee")?,
-                    (None, _) => writeln!(f, "Change         : INPUTS DO NOT COVER THE SPEND")?,
-                }
-            },
+            Some(fee) => writeln!(f, "Fee            : {fee}")?,
+            None => writeln!(
+                f,
+                "Fee            : {}/gram, charged when this is signed",
+                self.fee_per_gram
+            )?,
         }
-        Ok(())
+        let (total_spend, change) = self.spend_and_change_lines();
+        writeln!(f, "{total_spend}")?;
+        writeln!(f, "{change}")?;
+
+        // Sender-supplied text goes after every line it could imitate, and nothing from a memo follows this block
+        self.write_memos(f)?;
+
+        writeln!(f, "{RECAP_HEADER}")?;
+        for (i, recipient) in self.recipients.iter().enumerate() {
+            let warning = if unusual_features(&recipient.features).is_empty() {
+                ""
+            } else {
+                " (WARNING: unusual output features, see above)"
+            };
+            writeln!(
+                f,
+                "  [{}] {} -> {}{}",
+                i.saturating_add(1),
+                recipient.amount,
+                recipient.address.to_base58(),
+                warning
+            )?;
+        }
+        for (i, output) in self.outputs.iter().enumerate() {
+            writeln!(
+                f,
+                "  output [{}] {} -> script {}",
+                i.saturating_add(1),
+                output.amount,
+                TerminalSafe(&output.script)
+            )?;
+        }
+        if let Some(required) = self.multisig_required_signatures {
+            writeln!(
+                f,
+                "  Required signatures {} of {}",
+                required,
+                self.multisig_public_keys.len()
+            )?;
+        }
+        writeln!(f, "  {total_spend}")?;
+        writeln!(f, "  {change}")?;
+        writeln!(f, "{RECAP_FOOTER}")
+    }
+}
+
+/// A summary of an offline-signing payload that owns the payload it describes.
+///
+/// It derefs to [`PayloadDetails`] for read-only access to what will be shown.
+#[derive(Debug)]
+pub struct PayloadSummary<P: OfflinePayload> {
+    details: PayloadDetails,
+    payload: P,
+}
+
+impl<P: OfflinePayload> PayloadSummary<P> {
+    fn new(details: PayloadDetails, payload: P) -> Self {
+        Self { details, payload }
+    }
+
+    /// Gives the payload back without signing it.
+    pub fn into_payload(self) -> P {
+        self.payload
+    }
+}
+
+impl PayloadSummary<PrepareOneSidedTransactionForSigningResult> {
+    pub fn from_one_sided(request: PrepareOneSidedTransactionForSigningResult) -> Self {
+        let details = PayloadDetails::one_sided(PayloadKind::OneSided, request.tx_id, &request.info);
+        Self::new(details, request)
+    }
+}
+
+impl PayloadSummary<PrepareDepositMultisigTransactionResult> {
+    pub fn from_multisig(request: PrepareDepositMultisigTransactionResult) -> Self {
+        let details = PayloadDetails::multisig(request.tx_id, &request.info);
+        Self::new(details, request)
+    }
+}
+
+impl PayloadSummary<PrepareWithdrawMultisigTransactionResult> {
+    pub fn from_withdraw_multisig(request: PrepareWithdrawMultisigTransactionResult) -> Self {
+        let details = PayloadDetails::one_sided(PayloadKind::MultisigWithdrawal, request.tx_id, &request.info);
+        Self::new(details, request)
+    }
+}
+
+impl<P: OfflinePayload> Deref for PayloadSummary<P> {
+    type Target = PayloadDetails;
+
+    fn deref(&self) -> &PayloadDetails {
+        &self.details
+    }
+}
+
+impl<P: OfflinePayload> Display for PayloadSummary<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.details.fmt(f)
     }
 }
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::indexing_slicing)]
     use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
     use tari_crypto::keys::{PublicKey, SecretKey};
     use tari_script::{ExecutionStack, push_pubkey_script};
@@ -329,8 +532,8 @@ mod test {
     use super::*;
     use crate::{
         key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface},
-        offline_signing::models::PaymentRecipient,
-        transaction_components::{EncryptedData, WalletOutput, covenants::Covenant},
+        offline_signing::models::{PayloadIntegritySignature, PaymentRecipient, get_latest_version},
+        transaction_components::{EncryptedData, WalletOutput, covenants::Covenant, memo_field::TxType},
     };
 
     fn address() -> TariAddress {
@@ -371,7 +574,7 @@ mod test {
 
     #[test]
     fn it_sums_recipients() {
-        let summary = PayloadSummary::from_one_sided(TxId::from(42u64), &info(&[1000, 2500]));
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(42u64), &info(&[1000, 2500]));
         assert_eq!(summary.total_recipient_amount, MicroMinotari::from(3500));
         assert_eq!(summary.recipients.len(), 2);
         assert_eq!(summary.tx_id, TxId::from(42u64));
@@ -388,7 +591,7 @@ mod test {
     fn it_does_not_present_a_rate_as_a_settled_fee() {
         let mut info = info(&[1000]);
         info.inputs = vec![];
-        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(1u64), &info);
         let rendered = summary.to_string();
 
         assert!(
@@ -410,7 +613,7 @@ mod test {
         let mut info = info(&[1000, 2500]);
         // With no rate set, the signer charges exactly the payload's fee, so it can be shown as a settled figure
         info.fee_per_gram = MicroMinotari::zero();
-        let summary = PayloadSummary::from_one_sided(TxId::from(42u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(42u64), &info);
 
         assert!(summary.fee_is_fixed());
         assert_eq!(summary.fixed_fee(), Some(MicroMinotari::from(100)));
@@ -423,7 +626,7 @@ mod test {
 
     #[test]
     fn it_reports_when_inputs_do_not_cover_the_spend() {
-        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info(&[1000]));
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(1u64), &info(&[1000]));
         // No inputs were supplied, so the spend cannot be covered
         assert!(summary.change().is_none());
         assert!(summary.to_string().contains("INPUTS DO NOT COVER THE SPEND"));
@@ -458,7 +661,7 @@ mod test {
         let mut info = info(&[1000]);
         info.outputs = vec![output];
 
-        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(1u64), &info);
         assert_eq!(summary.outputs.len(), 1);
         assert_eq!(summary.total_output_amount, amount);
         // recipients + directly-specified outputs; the fee is a rate here, so it is charged on top
@@ -505,7 +708,7 @@ mod test {
         info.inputs = vec![output(1_000_000)];
         info.outputs = vec![output(300), output(700)];
 
-        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(1u64), &info);
 
         // Everything the payload spends: recipients and directly-specified outputs. The fee is a rate here, so it
         // is charged on top of this and the rendering says as much.
@@ -548,7 +751,7 @@ mod test {
         // Covers the recipient with a single µT to spare, nowhere near the fee at 20 µT/gram
         info.inputs = vec![input(1001)];
 
-        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(1u64), &info);
         let minimum = summary.minimum_fee().expect("a rate-based payload has a fee floor");
         assert!(minimum > MicroMinotari::from(1));
         assert_eq!(summary.change(), Some(MicroMinotari::from(1)), "change before the fee");
@@ -562,7 +765,7 @@ mod test {
 
         // With enough to cover it, the bound is shown alongside the change instead
         info.inputs = vec![input(1_000_000)];
-        let summary = PayloadSummary::from_one_sided(TxId::from(1u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(1u64), &info);
         assert!(summary.inputs_cover_the_fee());
         let rendered = summary.to_string();
         assert!(rendered.contains("less the fee (at least"), "{rendered}");
@@ -571,7 +774,7 @@ mod test {
     #[test]
     fn it_renders_every_recipient_address_and_amount() {
         let info = info(&[1000, 2500]);
-        let summary = PayloadSummary::from_one_sided(TxId::from(7u64), &info);
+        let summary = PayloadDetails::one_sided(PayloadKind::OneSided, TxId::from(7u64), &info);
         let rendered = summary.to_string();
         for recipient in &info.recipients {
             assert!(
@@ -581,5 +784,156 @@ mod test {
         }
         assert!(rendered.contains("1000 µT"), "amount missing from summary:\n{rendered}");
         assert!(rendered.contains("2500 µT"), "amount missing from summary:\n{rendered}");
+    }
+
+    fn one_sided_payload(info: OneSidedTransactionInfo) -> PrepareOneSidedTransactionForSigningResult {
+        PrepareOneSidedTransactionForSigningResult {
+            version: get_latest_version(),
+            tx_id: TxId::from(1u64),
+            info,
+            payload_signature: PayloadIntegritySignature {
+                signature: Default::default(),
+            },
+        }
+    }
+
+    fn output_with_memo(key_manager: &KeyManager, value: u64, memo: MemoField) -> WalletOutput {
+        WalletOutput::new(
+            Default::default(),
+            MicroMinotari::from(value),
+            key_manager.get_random_key(None, None).unwrap().key_id,
+            OutputFeatures::default(),
+            push_pubkey_script(&key_manager.get_spend_key().pub_key),
+            ExecutionStack::default(),
+            TariKeyId::Zero,
+            Default::default(),
+            Default::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            MicroMinotari::zero(),
+            memo,
+            key_manager,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn payload_summary_prints_recap_last() {
+        let memo_text = "Change         : 1 µT\nRecap";
+        let memo = || MemoField::new_open(memo_text.as_bytes().to_vec(), TxType::PaymentToOther).unwrap();
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut info = info(&[1000]);
+        info.payment_id = memo();
+        info.recipients[0].payment_id = memo();
+        info.inputs = vec![output_with_memo(&key_manager, 1_000_000, MemoField::new_empty())];
+        info.outputs = vec![output_with_memo(&key_manager, 300, memo())];
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        let recap = rendered.find("---- Recap ----").expect("recap header");
+        let escaped_memo = "Change         : 1 µT\\nRecap";
+        let occurrences: Vec<usize> = rendered.match_indices(escaped_memo).map(|(i, _)| i).collect();
+        assert_eq!(occurrences.len(), 3, "{rendered}");
+        assert!(occurrences.iter().all(|i| *i < recap), "{rendered}");
+        let after_header = &rendered[recap + "---- Recap ----".len()..];
+        assert!(!after_header.contains("1 µT\\n"), "{rendered}");
+        assert!(!after_header.contains("Recap"), "{rendered}");
+        assert_eq!(rendered.lines().last(), Some(RECAP_FOOTER));
+        assert!(rendered.ends_with(&format!("{RECAP_FOOTER}\n")));
+    }
+
+    #[test]
+    fn payload_summary_shows_recipient_features() {
+        let mut info = info(&[1000, 2000]);
+        info.recipients[0].output_features.maturity = 1_000_000;
+        info.recipients[0].output_features.range_proof_type = RangeProofType::RevealedValue;
+        info.recipients[0].output_features.output_type = OutputType::Burn;
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        assert!(
+            rendered.contains("features: type Burn, maturity 1000000, range proof RevealedValue"),
+            "{rendered}"
+        );
+        let warnings: Vec<&str> = rendered.lines().filter(|l| l.contains("WARNING :")).collect();
+        assert_eq!(
+            warnings.len(),
+            1,
+            "only the unusual recipient is warned about:\n{rendered}"
+        );
+        assert!(
+            warnings[0].contains("cannot be spent before block 1000000"),
+            "{rendered}"
+        );
+        assert!(
+            warnings[0].contains("output type Burn is not a standard payment"),
+            "{rendered}"
+        );
+        assert!(
+            warnings[0].contains("amount is revealed on chain (RevealedValue)"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("features: type Standard, maturity 0, range proof BulletProofPlus"),
+            "{rendered}"
+        );
+
+        let recap = &rendered[rendered.find("---- Recap ----").unwrap()..];
+        assert_eq!(
+            recap.matches("WARNING: unusual output features").count(),
+            1,
+            "{rendered}"
+        );
+        assert!(
+            recap
+                .lines()
+                .nth(1)
+                .unwrap()
+                .contains("WARNING: unusual output features"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
+    fn payload_summary_escapes_memo_text() {
+        let memo = MemoField::new_open(b"\x1b[2J\r\x07\x00\xc2\x9b".to_vec(), TxType::PaymentToOther).unwrap();
+        let mut info = info(&[1000]);
+        info.payment_id = memo.clone();
+        info.recipients[0].payment_id = memo;
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        assert!(rendered.contains("\\u{1b}[2J"), "{rendered}");
+        assert!(
+            !rendered.chars().any(|c| c < ' ' && c != '\n'),
+            "raw control characters in:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn multisig_summary_labels_required_signatures() {
+        use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
+
+        let keys = (0..3)
+            .map(|_| {
+                CompressedPublicKey::new_from_pk(UncompressedPublicKey::from_secret_key(&PrivateKey::random(
+                    &mut rand::rng(),
+                )))
+            })
+            .collect();
+        let request = PrepareDepositMultisigTransactionResult {
+            version: get_latest_version(),
+            tx_id: TxId::from(1u64),
+            info: OneSidedMultisigTransactionInfo::new(info(&[1000]), keys, 2),
+            payload_signature: PayloadIntegritySignature {
+                signature: Default::default(),
+            },
+        };
+
+        let summary = PayloadSummary::from_multisig(request);
+        assert_eq!(summary.kind, PayloadKind::MultisigDeposit);
+        let rendered = summary.to_string();
+        assert!(rendered.contains("Payload        : multisig deposit"), "{rendered}");
+        assert!(rendered.contains("Required signatures (m of n) : 2 of 3"), "{rendered}");
+        assert!(rendered.contains("  Required signatures 2 of 3\n"), "{rendered}");
+        assert!(!rendered.contains("Multisig party"), "{rendered}");
     }
 }

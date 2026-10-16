@@ -257,7 +257,10 @@ fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
 /// `sign_locked_transaction` verifies is made with the *view* key, which is shareable, so a party holding the view key
 /// can forge a payload that pays itself and it will verify as authentic. Only a human checking the recipient and the
 /// amount catches that, so this must run before signing and must fail closed.
-fn confirm_payload(summary: &PayloadSummary, assume_yes: bool) -> Result<()> {
+fn confirm_payload(
+    summary: &PayloadSummary<PrepareOneSidedTransactionForSigningResult>,
+    assume_yes: bool,
+) -> Result<()> {
     println!();
     println!("The following transaction is about to be signed with your spend key:");
     println!();
@@ -326,8 +329,9 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
         .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
 
     // Show the operator what is about to be signed and get their confirmation, before any key material is touched
-    let summary = PayloadSummary::from_one_sided(request.tx_id, &request.info);
+    let summary = PayloadSummary::from_one_sided(request);
     confirm_payload(&summary, args.yes)?;
+    let request = summary.into_payload();
 
     // Retrieve keys from keystore
     let (spend_key, view_key) =

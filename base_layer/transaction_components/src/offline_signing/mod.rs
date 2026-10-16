@@ -33,7 +33,14 @@ pub use offline_signer::{
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
 };
-pub use payload_summary::{OutputSummary, PayloadSummary, RecipientSummary};
+pub use payload_summary::{
+    OfflinePayload,
+    OutputSummary,
+    PayloadDetails,
+    PayloadKind,
+    PayloadSummary,
+    RecipientSummary,
+};
 
 #[cfg(test)]
 mod test {
@@ -592,7 +599,7 @@ mod test {
         assert_eq!(init.info.outputs.len(), 1);
 
         // The summary the operator approves must account for the custom output
-        let summary = PayloadSummary::from_one_sided(init.tx_id, &init.info);
+        let summary = PayloadSummary::from_one_sided(init.clone());
         assert_eq!(summary.total_output_amount, custom_value);
         assert_eq!(summary.total_spend(), amount + custom_value);
 
