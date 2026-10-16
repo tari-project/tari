@@ -101,6 +101,8 @@ pub struct TariWorld {
     // Used for offline signing integration test — stores prepared and signed transaction JSON between steps.
     pub offline_signing_prepared: Option<String>,
     pub offline_signing_signed: Option<String>,
+    /// What the standalone offline signer wrote while signing
+    pub offline_signing_summary: Option<String>,
     pub offline_signer_keystores: IndexMap<String, PathBuf>,
     pub key_manager: KeyManager,
     // This will be used for all one-sided coinbase payments
@@ -136,6 +138,7 @@ impl Debug for TariWorld {
             .field("last_merge_miner_response", &self.last_merge_miner_response)
             .field("offline_signing_prepared", &self.offline_signing_prepared)
             .field("offline_signing_signed", &self.offline_signing_signed)
+            .field("offline_signing_summary", &self.offline_signing_summary)
             .field("offline_signer_keystores", &self.offline_signer_keystores)
             .finish()
     }
@@ -180,6 +183,7 @@ impl TariWorld {
             last_merge_miner_response: Default::default(),
             offline_signing_prepared: None,
             offline_signing_signed: None,
+            offline_signing_summary: None,
             offline_signer_keystores: Default::default(),
             key_manager: KeyManager::new_random().unwrap(),
             wallet_private_key,
