@@ -48,6 +48,8 @@ pub enum AggregatedBodyValidationError {
     UnsortedOrDuplicateOutput,
     #[error("Duplicate or unsorted kernel found in block body")]
     UnsortedOrDuplicateKernel,
+    #[error("Duplicate kernel excess found in body")]
+    DuplicateKernelExcess,
     #[error(
         "Script exceeded maximum script size, expected less than {max_script_size} but was
     {actual_script_size}"
