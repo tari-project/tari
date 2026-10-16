@@ -822,7 +822,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     ) -> Result<(), MempoolProtocolError> {
         let txn = Transaction::try_from(txn).map_err(|err| MempoolProtocolError::MessageConversionFailed {
             peer: self.peer_node_id.clone(),
-            message: err,
+            message: err.to_string(),
         })?;
         let excess_sig = txn
             .first_kernel_excess_sig()

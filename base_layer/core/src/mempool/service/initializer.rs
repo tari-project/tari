@@ -38,7 +38,7 @@ use tari_service_framework::{
     async_trait,
     reply_channel,
 };
-use tari_transaction_components::transaction_components::{Transaction, covenants::exceeds_covenant_token_limit};
+use tari_transaction_components::transaction_components::Transaction;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -55,6 +55,7 @@ use crate::{
         },
     },
     proto,
+    proto::transaction::TransactionProtoConversionError,
 };
 const LOG_TARGET: &str = "c::bn::mempool_service::initializer";
 const SUBSCRIPTION_LABEL: &str = "Mempool";
@@ -111,16 +112,22 @@ pub(crate) fn extract_transaction(msg: &PeerMessage) -> Result<DomainMessage<Tra
             Err(ExtractTransactionError::Undecodable(e.to_string()))
         },
         Ok(tx) => {
-            if has_covenant_over_token_limit(&tx) {
-                return Err(ExtractTransactionError::CovenantTokenLimit);
-            }
             let tx = match Transaction::try_from(tx) {
+                Err(TransactionProtoConversionError::CovenantTokenLimit(e)) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Inbound transaction message from {} has a covenant over the token limit. {}",
+                        msg.source_peer.public_key,
+                        e
+                    );
+                    return Err(ExtractTransactionError::CovenantTokenLimit);
+                },
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
                         "Inbound transaction message from {} was ill-formed. {}", msg.source_peer.public_key, e
                     );
-                    return Err(ExtractTransactionError::IllFormed(e));
+                    return Err(ExtractTransactionError::IllFormed(e.to_string()));
                 },
                 Ok(b) => b,
             };
@@ -132,19 +139,6 @@ pub(crate) fn extract_transaction(msg: &PeerMessage) -> Result<DomainMessage<Tra
             })
         },
     }
-}
-
-/// Returns true if any input or output covenant of the transaction fails to decode because it has too many tokens.
-/// An empty covenant is encoded as a single byte and is skipped.
-fn has_covenant_over_token_limit(tx: &proto::types::Transaction) -> bool {
-    let Some(body) = &tx.body else {
-        return false;
-    };
-    let input_covenants = body.inputs.iter().map(|input| &input.covenant);
-    let output_covenants = body.outputs.iter().map(|output| &output.covenant);
-    input_covenants
-        .chain(output_covenants)
-        .any(|covenant| covenant.len() > 1 && exceeds_covenant_token_limit(covenant))
 }
 
 #[async_trait]

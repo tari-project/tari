@@ -11,7 +11,11 @@ use std::{
 
 use borsh::BorshDeserialize;
 use integer_encoding::VarIntWriter;
-use tari_transaction_components::transaction_components::covenants::{Covenant, exceeds_covenant_token_limit};
+use tari_transaction_components::transaction_components::covenants::{
+    Covenant,
+    CovenantDecodeError,
+    decode_borsh_covenant,
+};
 
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
@@ -115,7 +119,10 @@ fn covenant_decode_retains_only_encoded_bytes() {
     }
     assert_eq!(covenant.len(), 4081);
     let field = borsh_field(&covenant);
-    assert!(exceeds_covenant_token_limit(&field));
+    assert!(matches!(
+        decode_borsh_covenant(&mut field.as_slice()),
+        Err(CovenantDecodeError::ExceededMaxTokens { .. })
+    ));
 
     let before = LIVE.load(Ordering::SeqCst);
     PEAK.store(before, Ordering::SeqCst);

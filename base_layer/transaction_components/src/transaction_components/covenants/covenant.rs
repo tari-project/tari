@@ -523,26 +523,39 @@ mod test {
     }
 
     #[test]
-    fn exceeds_covenant_token_limit_detects_only_the_token_limit() {
-        use crate::transaction_components::covenants::exceeds_covenant_token_limit;
+    fn decode_borsh_covenant_matches_borsh_and_keeps_the_error() {
+        use crate::transaction_components::covenants::decode_borsh_covenant;
 
-        assert!(exceeds_covenant_token_limit(&borsh_field(&identity_levels(&[63, 65]))));
+        let fields = [
+            borsh_field(&identity_levels(&[63, 65])),
+            borsh_field(&[]),
+            borsh_field(&identity_levels(&[63, 64])),
+            borsh_field(&[0xff]),
+            borsh_field(&vec![byte_codes::FILTER_IDENTITY; 4097]),
+            borsh_field(&[byte_codes::ARG_COVENANT, 0x81, 0x00, byte_codes::FILTER_IDENTITY]),
+            // A malformed length prefix
+            vec![0xff],
+        ];
+        for field in &fields {
+            let typed = decode_borsh_covenant(&mut field.as_slice());
+            let borsh = Covenant::deserialize(&mut field.as_slice());
+            match (&typed, &borsh) {
+                (Ok(a), Ok(b)) => assert_eq!(a, b),
+                (Err(a), Err(b)) => assert_eq!(a.to_string(), b.to_string()),
+                _ => panic!("decoders disagree on {field:?}: {typed:?} vs {borsh:?}"),
+            }
+        }
 
-        assert!(!exceeds_covenant_token_limit(&borsh_field(&[])));
-        assert!(!exceeds_covenant_token_limit(&borsh_field(&identity_levels(&[63, 64]))));
-        assert!(!exceeds_covenant_token_limit(&borsh_field(&[0xff])));
-        assert!(!exceeds_covenant_token_limit(&borsh_field(&vec![
-            byte_codes::FILTER_IDENTITY;
-            4097
-        ])));
-        assert!(!exceeds_covenant_token_limit(&borsh_field(&[
-            byte_codes::ARG_COVENANT,
-            0x81,
-            0x00,
-            byte_codes::FILTER_IDENTITY
-        ])));
-        // A malformed length prefix
-        assert!(!exceeds_covenant_token_limit(&[0xff]));
+        assert!(matches!(
+            decode_borsh_covenant(&mut fields[0].as_slice()),
+            Err(CovenantDecodeError::ExceededMaxTokens { .. })
+        ));
+        for field in &fields[1..] {
+            assert!(!matches!(
+                decode_borsh_covenant(&mut field.as_slice()),
+                Err(CovenantDecodeError::ExceededMaxTokens { .. })
+            ));
+        }
     }
 
     #[test]

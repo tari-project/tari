@@ -47,6 +47,7 @@ pub(crate) use arguments::MAX_BYTES_ARG_SIZE;
 pub use covenant::{Covenant, MAX_COVENANT_WORK_PER_BODY};
 #[cfg(test)]
 pub(crate) use covenant::{MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS};
+pub use decoder::CovenantDecodeError;
 pub use error::CovenantError;
 // Used in macro
 #[allow(unused_imports)]
@@ -65,20 +66,13 @@ use borsh::BorshDeserialize;
 use tari_crypto::hash_domain;
 use tari_max_size::EncodedBytes;
 
-use self::decoder::CovenantDecodeError;
-
 hash_domain!(BaseLayerCovenantsDomain, "com.tari.base_layer.covenants", 1);
 
 pub(crate) const COVENANTS_FIELD_HASHER_LABEL: &str = "fields";
 
-/// Returns true if `borsh_field` (a borsh encoded covenant) holds a covenant with more tokens than allowed. Any other
-/// decode failure returns false.
-pub fn exceeds_covenant_token_limit(borsh_field: &[u8]) -> bool {
-    let Ok(raw) = EncodedBytes::<{ covenant::MAX_COVENANT_BYTES }>::deserialize(&mut &*borsh_field) else {
-        return false;
-    };
-    matches!(
-        Covenant::from_bytes(&mut raw.as_bytes()),
-        Err(CovenantDecodeError::ExceededMaxTokens { .. })
-    )
+/// Decodes a borsh encoded covenant from `reader` exactly as `Covenant`'s `BorshDeserialize` does, but keeps the typed
+/// error so that a caller can tell which rule the covenant broke.
+pub fn decode_borsh_covenant(reader: &mut &[u8]) -> Result<Covenant, CovenantDecodeError> {
+    let raw = EncodedBytes::<{ covenant::MAX_COVENANT_BYTES }>::deserialize(reader)?;
+    Covenant::from_bytes(&mut raw.as_bytes())
 }

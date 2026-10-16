@@ -647,6 +647,30 @@ mod test {
             // `submit_transaction_rejects_a_covenant_over_the_token_limit`
         }
 
+        /// The decoder ignores the covenant field of a compact input, so an over-limit covenant there is not a reason
+        /// to ban
+        #[tokio::test]
+        async fn gossiped_transaction_with_covenant_over_token_limit_on_a_compact_input_does_not_ban() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+            let mut tx = transaction_proto_with_covenant(&[]);
+            let input = tx.body.as_mut().unwrap().inputs.first_mut().unwrap();
+            input.commitment = None;
+            input.output_hash = vec![1; 32];
+            let covenant = covenant_over_token_limit();
+            input.covenant.clear();
+            prost::encoding::encode_varint(covenant.len() as u64, &mut input.covenant);
+            input.covenant.extend_from_slice(&covenant);
+            let msg = create_peer_message(TariMessageType::NewTransaction, tx.encode_to_vec());
+
+            handlers.handle_transaction_message(msg).await.unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+        }
+
         #[tokio::test]
         async fn gossiped_transaction_with_malformed_covenant_is_dropped_without_ban() {
             let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
