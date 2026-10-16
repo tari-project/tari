@@ -69,6 +69,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::tx::offline_signing";
+const MEMO_INDENT: &str = "      | ";
+const MEMO_LINE_WIDTH: usize = 48;
 const RECAP_HEADER: &str = "---------------------------- Recap ----------------------------";
 const RECAP_FOOTER: &str = "---------------------------------------------------------------";
 
@@ -349,16 +351,24 @@ impl PayloadDetails {
         }
         writeln!(f, "Memos (sender-supplied text, control characters shown escaped):")?;
         if !self.payment_id.is_empty() {
-            writeln!(f, "  payment ID     : {}", self.payment_id)?;
+            write_memo(f, "  payment ID     :", &self.payment_id)?;
         }
         for (i, recipient) in self.recipients.iter().enumerate() {
             if !recipient.payment_id.is_empty() {
-                writeln!(f, "  recipient [{}]: {}", i.saturating_add(1), recipient.payment_id)?;
+                write_memo(
+                    f,
+                    &format!("  recipient [{}]:", i.saturating_add(1)),
+                    &recipient.payment_id,
+                )?;
             }
         }
         for (i, output) in self.outputs.iter().enumerate() {
             if !output.payment_id.is_empty() {
-                writeln!(f, "  output [{}]   : {}", i.saturating_add(1), output.payment_id)?;
+                write_memo(
+                    f,
+                    &format!("  output [{}]   :", i.saturating_add(1)),
+                    &output.payment_id,
+                )?;
             }
         }
         Ok(())
@@ -413,6 +423,54 @@ impl PayloadDetails {
         writeln!(f, "  {change}")?;
         writeln!(f, "{RECAP_FOOTER}")
     }
+}
+
+/// Writes a memo's escaped text in short indented lines, so it cannot soft-wrap back to column 0 on a terminal of 80
+/// columns or more. Escape sequences are kept whole, and non-ASCII characters count as two columns.
+fn write_memo(f: &mut Formatter<'_>, label: &str, memo: &MemoField) -> std::fmt::Result {
+    writeln!(f, "{label}")?;
+    let text = memo.to_string();
+    let mut chars = text.chars();
+    let mut line = String::new();
+    let mut width = 0usize;
+    while let Some(c) = chars.next() {
+        // The memo is already escaped, so every backslash starts an escape sequence
+        let mut unit = String::from(c);
+        if c == '\\' {
+            match chars.next() {
+                Some('u') => {
+                    unit.push('u');
+                    for n in chars.by_ref() {
+                        unit.push(n);
+                        if n == '}' {
+                            break;
+                        }
+                    }
+                },
+                Some('x') => {
+                    unit.push('x');
+                    unit.extend(chars.by_ref().take(2));
+                },
+                Some(n) => unit.push(n),
+                None => {},
+            }
+        }
+        let unit_width = unit
+            .chars()
+            .map(|c| if c.is_ascii() { 1usize } else { 2 })
+            .sum::<usize>();
+        if width > 0 && width.saturating_add(unit_width) > MEMO_LINE_WIDTH {
+            writeln!(f, "{MEMO_INDENT}{line}")?;
+            line.clear();
+            width = 0;
+        }
+        line.push_str(&unit);
+        width = width.saturating_add(unit_width);
+    }
+    if width > 0 {
+        writeln!(f, "{MEMO_INDENT}{line}")?;
+    }
+    Ok(())
 }
 
 fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures) -> std::fmt::Result {
@@ -1016,6 +1074,8 @@ mod test {
         info.outputs = vec![output_with_memo(&key_manager, 300, memo())];
 
         let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        // Rejoin the wrapped memo lines so the memo text can be found whole
+        let rendered = rendered.replace(&format!("\n{MEMO_INDENT}"), "");
         let recap = rendered.find("---- Recap ----").expect("recap header");
         let escaped_memo = "Change         : 1 µT\\nRecap";
         let occurrences: Vec<usize> = rendered.match_indices(escaped_memo).map(|(i, _)| i).collect();
@@ -1087,7 +1147,10 @@ mod test {
         info.recipients[0].payment_id = memo;
 
         let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
-        assert!(rendered.contains("\\u{1b}[2J"), "{rendered}");
+        assert!(
+            rendered.replace(&format!("\n{MEMO_INDENT}"), "").contains("\\u{1b}[2J"),
+            "{rendered}"
+        );
         assert!(
             !rendered.chars().any(|c| c < ' ' && c != '\n'),
             "raw control characters in:\n{rendered}"
@@ -1133,6 +1196,53 @@ mod test {
             line.ends_with("(WARNING: unusual output features, see above)"),
             "{rendered}"
         );
+    }
+
+    #[test]
+    fn payload_summary_wraps_memo_text() {
+        let mut text = " ".repeat(200);
+        text.push_str("---- Recap ----");
+        let memo = MemoField::new_open(text.into_bytes(), TxType::PaymentToOther).unwrap();
+        let mut info = info(&[1000]);
+        info.payment_id = memo.clone();
+        info.recipients[0].payment_id = memo;
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        for line in rendered.lines() {
+            if line.starts_with('-') || line.starts_with('[') {
+                assert!(line == RECAP_HEADER || line == RECAP_FOOTER, "{line:?} in:\n{rendered}");
+            }
+        }
+        let memos_start = rendered.find("Memos (").unwrap();
+        let recap_start = rendered.find(RECAP_HEADER).unwrap();
+        let memo_lines: Vec<&str> = rendered[memos_start..recap_start].lines().skip(1).collect();
+        assert!(memo_lines.len() > 4, "{rendered}");
+        for line in memo_lines {
+            assert!(
+                line == "  payment ID     :" || line == "  recipient [1]:" || line.starts_with(MEMO_INDENT),
+                "{line:?} in:\n{rendered}"
+            );
+            assert!(line.chars().count() <= MEMO_INDENT.len() + MEMO_LINE_WIDTH, "{line:?}");
+        }
+    }
+
+    #[test]
+    fn memo_wrapping_keeps_escape_sequences_whole() {
+        let bytes: Vec<u8> = [0x1bu8; 30].iter().chain([0xffu8; 30].iter()).copied().collect();
+        let mut info = info(&[1000]);
+        info.payment_id = MemoField::new_open(bytes, TxType::PaymentToOther).unwrap();
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        let memo_lines: Vec<&str> = rendered.lines().filter(|l| l.starts_with(MEMO_INDENT)).collect();
+        assert!(memo_lines.len() > 2, "{rendered}");
+        for line in memo_lines {
+            // Only whole escape sequences on each line: removing them leaves nothing behind
+            let rest = line[MEMO_INDENT.len()..]
+                .replace("type(PaymentToOther), data(", "")
+                .replace("\\u{1b}", "")
+                .replace("\\xff", "")
+                .replace(')', "");
+            assert!(rest.is_empty(), "{line:?} in:\n{rendered}");
+        }
     }
 
     #[test]

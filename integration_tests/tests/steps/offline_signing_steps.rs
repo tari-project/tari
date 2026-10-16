@@ -375,12 +375,14 @@ async fn offline_signing_summary_shows_memo_escaped(world: &mut TariWorld) {
         .offline_signing_summary
         .as_ref()
         .expect("No offline signing summary captured — sign with the standalone offline signer first");
+    // Memo text is wrapped onto indented lines; rejoin it to find the escaped sequence whole
+    let memo_text = summary.replace("\n      | ", "");
     assert!(
-        summary.contains("\\u{1b}[2J\\r\\n"),
+        memo_text.contains("\\u{1b}[2J\\r\\n"),
         "memo control characters not escaped:\n{summary}"
     );
     assert!(
-        summary.contains("\\u{202e}"),
+        memo_text.contains("\\u{202e}"),
         "memo bidi control not escaped:\n{summary}"
     );
     assert!(
