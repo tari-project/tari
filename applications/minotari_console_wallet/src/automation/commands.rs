@@ -24,7 +24,7 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     fs::{self, File},
-    io::{self, BufRead, BufReader, LineWriter, Write},
+    io::{self, BufRead, BufReader, IsTerminal, LineWriter, Write},
     path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant},
@@ -83,12 +83,19 @@ use tari_transaction_components::{
     helpers::terminal_safe::escape_bytes_for_terminal,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
     multisig::script::is_multisig_utxo,
-    offline_signing::models::{
-        PrepareDepositMultisigTransactionResult,
-        PrepareOneSidedTransactionForSigningResult,
-        PrepareWithdrawMultisigTransactionResult,
-        SignedOneSidedTransactionResult,
-        TransactionResult,
+    offline_signing::{
+        ConfirmationMode,
+        ConfirmedPayload,
+        OfflinePayload,
+        PayloadSummary,
+        models::{
+            PrepareDepositMultisigTransactionResult,
+            PrepareOneSidedTransactionForSigningResult,
+            PrepareWithdrawMultisigTransactionResult,
+            SignedOneSidedTransactionResult,
+            TransactionResult,
+        },
+        present_payload_summary,
     },
     rpc::models::TxLocation,
     tari_amount::{MicroMinotari, Minotari},
@@ -654,6 +661,29 @@ pub async fn monitor_transactions(
     results
 }
 
+/// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
+fn review_offline_payload<P: OfflinePayload>(
+    summary: PayloadSummary<P>,
+    mode: ConfirmationMode,
+    out: &mut dyn Write,
+    input: &mut dyn BufRead,
+) -> Result<ConfirmedPayload<P>, CommandError> {
+    let confirmation =
+        present_payload_summary(&summary, mode, out, input).map_err(|e| CommandError::General(e.to_string()))?;
+    summary
+        .confirm(confirmation)
+        .map_err(|e| CommandError::General(e.to_string()))
+}
+
+/// Prompt on a terminal unless running non-interactively; otherwise print the summary and sign.
+fn offline_confirmation_mode(non_interactive_mode: bool) -> ConfirmationMode {
+    if !non_interactive_mode && io::stdin().is_terminal() {
+        ConfirmationMode::Interactive
+    } else {
+        ConfirmationMode::NonInteractive
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 // Schnorr signature / Ristretto scalar arithmetic, not integer arithmetic: cannot overflow.
 #[allow(clippy::arithmetic_side_effects)]
@@ -661,6 +691,7 @@ pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<CliCommands>,
     wallet: WalletSqlite,
+    non_interactive_mode: bool,
 ) -> Result<bool, CommandError> {
     let wait_stage = config.command_send_wait_stage;
 
@@ -2788,10 +2819,26 @@ pub async fn command_runner(
                     err,
                 })?;
                 let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)?;
+                let tx_id = request.tx_id;
+                let mode = offline_confirmation_mode(non_interactive_mode);
+                let review = review_offline_payload(
+                    PayloadSummary::from_one_sided(request),
+                    mode,
+                    &mut io::stdout().lock(),
+                    &mut io::stdin().lock(),
+                );
+                let confirmed = match review {
+                    Ok(confirmed) => confirmed,
+                    Err(e) => {
+                        eprintln!("SignOneSidedTransaction not signed: {e}");
+                        continue;
+                    },
+                };
+                info!(target: LOG_TARGET, "Offline payload {tx_id} confirmed ({mode:?})");
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
-                    .sign_one_sided_transaction(request)
+                    .sign_one_sided_transaction(confirmed)
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {
@@ -2823,10 +2870,26 @@ pub async fn command_runner(
                     err,
                 })?;
                 let request = PrepareDepositMultisigTransactionResult::from_json(&data)?;
+                let tx_id = request.tx_id;
+                let mode = offline_confirmation_mode(non_interactive_mode);
+                let review = review_offline_payload(
+                    PayloadSummary::from_multisig(request),
+                    mode,
+                    &mut io::stdout().lock(),
+                    &mut io::stdin().lock(),
+                );
+                let confirmed = match review {
+                    Ok(confirmed) => confirmed,
+                    Err(e) => {
+                        eprintln!("SignOneSidedDepositMultisigTransaction not signed: {e}");
+                        continue;
+                    },
+                };
+                info!(target: LOG_TARGET, "Offline payload {tx_id} confirmed ({mode:?})");
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
-                    .sign_one_sided_deposit_multisig_transaction(request)
+                    .sign_one_sided_deposit_multisig_transaction(confirmed)
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {
@@ -2858,10 +2921,26 @@ pub async fn command_runner(
                     err,
                 })?;
                 let request = PrepareWithdrawMultisigTransactionResult::from_json(&data)?;
+                let tx_id = request.tx_id;
+                let mode = offline_confirmation_mode(non_interactive_mode);
+                let review = review_offline_payload(
+                    PayloadSummary::from_withdraw_multisig(request),
+                    mode,
+                    &mut io::stdout().lock(),
+                    &mut io::stdin().lock(),
+                );
+                let confirmed = match review {
+                    Ok(confirmed) => confirmed,
+                    Err(e) => {
+                        eprintln!("SignOneSidedWithdrawMultisigTransaction not signed: {e}");
+                        continue;
+                    },
+                };
+                info!(target: LOG_TARGET, "Offline payload {tx_id} confirmed ({mode:?})");
 
                 let mut wallet_transaction_service = transaction_service.clone();
                 let result = wallet_transaction_service
-                    .sign_one_sided_withdraw_multisig_transaction(request)
+                    .sign_one_sided_withdraw_multisig_transaction(confirmed)
                     .await
                     .map_err(CommandError::TransactionServiceError);
                 match result {
@@ -3935,6 +4014,71 @@ mod test {
     };
 
     use super::*;
+
+    fn payload_with_memo(memo: &[u8]) -> PrepareOneSidedTransactionForSigningResult {
+        use tari_transaction_components::offline_signing::models::{
+            OneSidedTransactionInfo,
+            PayloadIntegritySignature,
+            PaymentRecipient,
+            get_latest_version,
+        };
+
+        let memo = MemoField::new_open(memo.to_vec(), TxType::PaymentToOther).unwrap();
+        PrepareOneSidedTransactionForSigningResult {
+            version: get_latest_version(),
+            tx_id: TxId::from(1u64),
+            info: OneSidedTransactionInfo {
+                payment_id: memo.clone(),
+                recipients: vec![PaymentRecipient {
+                    amount: MicroMinotari(1000),
+                    output_features: OutputFeatures::default(),
+                    address: TariAddress::default(),
+                    payment_id: memo,
+                }],
+                inputs: vec![],
+                outputs: vec![],
+                fee: MicroMinotari(0),
+                fee_per_gram: MicroMinotari(5),
+                sender_address: TariAddress::default(),
+            },
+            payload_signature: PayloadIntegritySignature {
+                signature: Default::default(),
+            },
+        }
+    }
+
+    #[test]
+    fn offline_payload_review_renders_control_characters_escaped() {
+        let summary = PayloadSummary::from_one_sided(payload_with_memo(b"\x1b[2J\r\nRecap"));
+        let mut out = Vec::new();
+        let result = review_offline_payload(summary, ConfirmationMode::NonInteractive, &mut out, &mut io::empty());
+        assert!(result.is_ok());
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains("\\u{1b}"), "{written}");
+        assert!(!written.contains('\u{1b}'), "{written}");
+        let recap = written.find("---- Recap ----").expect("recap");
+        assert!(written.find("\\u{1b}").unwrap() < recap, "{written}");
+        assert!(
+            written
+                .trim_end()
+                .ends_with("No terminal: signing without a prompt. The summary above has been logged.")
+        );
+    }
+
+    #[test]
+    fn offline_payload_review_declined_is_not_signed() {
+        let summary = PayloadSummary::from_one_sided(payload_with_memo(b"memo"));
+        let result = review_offline_payload(
+            summary,
+            ConfirmationMode::Interactive,
+            &mut Vec::new(),
+            &mut "n\n".as_bytes(),
+        );
+        match result {
+            Err(CommandError::General(e)) => assert!(e.contains("not confirmed"), "{e}"),
+            other => panic!("expected a General error, got {other:?}"),
+        }
+    }
 
     #[test]
     fn utxo_csv_export_hex_encodes_coinbase_extra_and_is_owner_only() {
