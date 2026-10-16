@@ -98,7 +98,9 @@ pub trait TransactionResult: HasVersion + Serialize + DeserializeOwned + Sized {
 ///
 /// This signature is consequently a **transit-integrity** check, not an authenticity check.
 /// The authoritative authorisation step is the human operating the air-gapped signer
-/// confirming a [`crate::offline_signing::PayloadSummary`] of what is about to be signed.
+/// confirming a [`crate::offline_signing::PayloadSummary`] of what is about to be signed. The
+/// type system requires it: the `sign_locked_*` functions only accept a
+/// [`crate::offline_signing::ConfirmedPayload`], which is produced by confirming a presented summary.
 /// Closing the gap in the protocol itself requires a dedicated authentication key that is
 /// provisioned to the online wallet separately from the view key, which is a breaking change
 /// to the key-export format and the payload version.
@@ -298,7 +300,8 @@ impl HasVersion for PrepareWithdrawMultisigTransactionResult {
 /// This only addresses recovery through the script offset. It does not make it safe to treat the online wallet as
 /// untrusted in general: anyone holding the view key can produce a payload that passes the integrity check, so the
 /// operator must still check every recipient, amount and "Other outputs" entry, and the fee, total spend and change,
-/// in the [`crate::offline_signing::PayloadSummary`] before approving.
+/// in the [`crate::offline_signing::PayloadSummary`] before approving. The `sign_locked_*` functions only accept a
+/// [`crate::offline_signing::ConfirmedPayload`], so a summary is always presented before signing.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SignedTransaction {
     pub transaction: Transaction,

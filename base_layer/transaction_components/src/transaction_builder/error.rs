@@ -6,7 +6,12 @@ use tari_script::ScriptError;
 use tari_utilities::ByteArrayError;
 use thiserror::Error;
 
-use crate::{MicroMinotari, key_manager::error::KeyManagerError, transaction_components::TransactionError};
+use crate::{
+    MicroMinotari,
+    key_manager::error::KeyManagerError,
+    offline_signing::PayloadNotConfirmed,
+    transaction_components::TransactionError,
+};
 
 #[derive(Debug, Error)]
 pub enum TransactionBuilderError {
@@ -108,6 +113,8 @@ pub enum TransactionBuilderError {
     },
     #[error("Offline signing payload field `{field}` carries key id `{key_id}`, which is not allowed there")]
     OfflinePayloadKeyIdNotAllowed { field: String, key_id: String },
+    #[error("{0}")]
+    PayloadNotConfirmed(#[from] PayloadNotConfirmed),
     #[error("Transaction builder error: {0}")]
     Other(String),
 }

@@ -34,6 +34,7 @@ use crate::{
     consensus::ConsensusConstants,
     key_manager::TransactionKeyManagerInterface,
     offline_signing::{
+        ConfirmedPayload,
         models::{
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
@@ -107,9 +108,9 @@ pub(crate) fn sign_payload<KM: TransactionKeyManagerInterface>(
 /// The view key is a shareable key, so a party that holds it can forge this signature over
 /// an arbitrary payload.  Passing this check therefore means "the payload was not mangled by
 /// someone without view access", **not** "the payload is what the wallet owner asked for".
-/// Callers that use a spend key MUST additionally have the operator confirm a
-/// [`crate::offline_signing::PayloadSummary`] of the payload.  See the docs on
-/// [`PayloadIntegritySignature`] for the full rationale.
+/// The `sign_locked_*` functions therefore only accept a [`crate::offline_signing::ConfirmedPayload`], which can only
+/// be obtained by presenting a [`crate::offline_signing::PayloadSummary`] of the payload and confirming it.  See the
+/// docs on [`PayloadIntegritySignature`] for the full rationale.
 fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     payload_sig: &PayloadIntegritySignature,
@@ -303,8 +304,9 @@ pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
-    request: PrepareOneSidedTransactionForSigningResult,
+    confirmed: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
+    let request = confirmed.into_payload();
     // Verify the payload was not tampered with between prepare and sign.
     let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
@@ -324,8 +326,9 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
-    request: PrepareDepositMultisigTransactionResult,
+    confirmed: ConfirmedPayload<PrepareDepositMultisigTransactionResult>,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
+    let request = confirmed.into_payload();
     // Verify the payload was not tampered with between prepare and sign.
     let canonical = borsh_canonical_multisig(&request.version, request.tx_id, &request.info)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
@@ -345,8 +348,9 @@ pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterf
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
-    request: PrepareWithdrawMultisigTransactionResult,
+    confirmed: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
+    let request = confirmed.into_payload();
     // Verify the payload was not tampered with between prepare and sign.
     let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;

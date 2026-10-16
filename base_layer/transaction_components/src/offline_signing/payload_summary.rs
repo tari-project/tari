@@ -35,12 +35,19 @@
 //! what is about to be signed. This module produces the summary that is shown to them, so that the rendering lives
 //! next to the payload types and cannot drift out of sync with the fields that are actually signed. A
 //! [`PayloadSummary`] owns the payload it describes, so the summary shown is always of the payload that is signed.
+//!
+//! The type system enforces the confirmation: the `sign_locked_*` functions only accept a [`ConfirmedPayload`], and
+//! the only way to get one is to write a [`PayloadSummary`] out with [`present_payload_summary`] and pass the
+//! resulting [`Confirmation`] to [`PayloadSummary::confirm`].
 
 use std::{
     fmt::{Display, Formatter},
+    io::{BufRead, Write},
     ops::Deref,
+    sync::atomic::{AtomicU64, Ordering},
 };
 
+use log::info;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId};
 use tari_script::TariScript;
 use tari_utilities::hex::Hex;
@@ -49,6 +56,7 @@ use crate::{
     MicroMinotari,
     fee::Fee,
     helpers::terminal_safe::TerminalSafe,
+    key_manager::TariKeyId,
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
         OneSidedTransactionInfo,
@@ -56,10 +64,11 @@ use crate::{
         PrepareOneSidedTransactionForSigningResult,
         PrepareWithdrawMultisigTransactionResult,
     },
-    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType},
+    transaction_components::{MemoField, OutputFeatures, OutputType, RangeProofType, WalletOutput},
     weight::TransactionWeight,
 };
 
+const LOG_TARGET: &str = "c::tx::offline_signing";
 const RECAP_HEADER: &str = "---------------------------- Recap ----------------------------";
 const RECAP_FOOTER: &str = "---------------------------------------------------------------";
 
@@ -467,6 +476,8 @@ impl Display for PayloadDetails {
     }
 }
 
+static NEXT_SUMMARY_ID: AtomicU64 = AtomicU64::new(0);
+
 /// A summary of an offline-signing payload that owns the payload it describes.
 ///
 /// It derefs to [`PayloadDetails`] for read-only access to what will be shown.
@@ -474,11 +485,27 @@ impl Display for PayloadDetails {
 pub struct PayloadSummary<P: OfflinePayload> {
     details: PayloadDetails,
     payload: P,
+    id: u64,
 }
 
 impl<P: OfflinePayload> PayloadSummary<P> {
     fn new(details: PayloadDetails, payload: P) -> Self {
-        Self { details, payload }
+        Self {
+            details,
+            payload,
+            id: NEXT_SUMMARY_ID.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+
+    /// Turns an approved [`Confirmation`] of this summary into a payload that can be signed.
+    pub fn confirm(self, decision: Confirmation) -> Result<ConfirmedPayload<P>, PayloadNotConfirmed> {
+        if decision.summary_id != self.id {
+            return Err(PayloadNotConfirmed::DifferentSummary);
+        }
+        if !decision.approved {
+            return Err(PayloadNotConfirmed::Declined);
+        }
+        Ok(ConfirmedPayload { payload: self.payload })
     }
 
     /// Gives the payload back without signing it.
@@ -520,6 +547,150 @@ impl<P: OfflinePayload> Display for PayloadSummary<P> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         self.details.fmt(f)
     }
+}
+
+/// The operator's decision on one presented [`PayloadSummary`]. Only [`present_payload_summary`] produces one.
+#[derive(Debug)]
+pub struct Confirmation {
+    summary_id: u64,
+    approved: bool,
+}
+
+impl Confirmation {
+    pub fn is_approved(&self) -> bool {
+        self.approved
+    }
+}
+
+/// Why a [`PayloadSummary`] could not be turned into a [`ConfirmedPayload`].
+#[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
+pub enum PayloadNotConfirmed {
+    #[error("The transaction was not confirmed. Nothing was signed.")]
+    Declined,
+    #[error("The confirmation was given for a different transaction summary. Nothing was signed.")]
+    DifferentSummary,
+}
+
+/// A payload whose summary has been presented and confirmed. The `sign_locked_*` functions only accept this.
+///
+/// A raw payload cannot be signed:
+/// ```compile_fail
+/// use tari_common::configuration::Network;
+/// use tari_transaction_components::{
+///     consensus::ConsensusConstants,
+///     key_manager::KeyManager,
+///     offline_signing::{models::PrepareOneSidedTransactionForSigningResult, sign_locked_transaction},
+/// };
+///
+/// fn sign(km: &KeyManager, cc: ConsensusConstants, net: Network, prepared: PrepareOneSidedTransactionForSigningResult) {
+///     let _ = sign_locked_transaction(km, cc, net, prepared);
+/// }
+/// ```
+///
+/// and a `ConfirmedPayload` cannot be built outside this module:
+/// ```compile_fail
+/// use tari_transaction_components::offline_signing::{
+///     ConfirmedPayload,
+///     models::PrepareOneSidedTransactionForSigningResult,
+/// };
+///
+/// fn wrap(payload: PrepareOneSidedTransactionForSigningResult) -> ConfirmedPayload<PrepareOneSidedTransactionForSigningResult> {
+///     ConfirmedPayload { payload }
+/// }
+/// ```
+#[derive(Clone)]
+pub struct ConfirmedPayload<P: OfflinePayload> {
+    payload: P,
+}
+
+impl<P: OfflinePayload> ConfirmedPayload<P> {
+    pub fn payload(&self) -> &P {
+        &self.payload
+    }
+
+    pub(crate) fn into_payload(self) -> P {
+        self.payload
+    }
+}
+
+impl<P: OfflinePayload> std::fmt::Debug for ConfirmedPayload<P> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConfirmedPayload")
+            .field("payload", &self.payload)
+            .finish()
+    }
+}
+
+impl ConfirmedPayload<PrepareWithdrawMultisigTransactionResult> {
+    /// Sets each input's `script_key_id` from `f`. Touches nothing else; the script key id is
+    /// not shown in the summary, and the integrity signature and the signer's payload key-id
+    /// allowlist (`check_payload_key_ids`) still run over the result inside `sign_locked_*`.
+    pub fn set_input_script_key_ids<E>(
+        &mut self,
+        mut f: impl FnMut(&WalletOutput) -> Result<TariKeyId, E>,
+    ) -> Result<(), E> {
+        for o in &mut self.payload.info.inputs {
+            let k = f(o)?;
+            o.set_script_key_id(k);
+        }
+        Ok(())
+    }
+}
+
+/// How [`present_payload_summary`] gets the operator's decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfirmationMode {
+    /// Ask y/N on `input`.
+    Interactive,
+    /// There is no one to ask: write and log the summary, then approve.
+    NonInteractive,
+}
+
+/// Writes `summary` to `out` and returns the operator's decision on it.
+///
+/// In [`ConfirmationMode::Interactive`] the operator is asked to type `y` or `yes`; anything else, including end of
+/// input, declines. In [`ConfirmationMode::NonInteractive`] the summary is also logged and the confirmation is approved
+/// without reading `input`.
+pub fn present_payload_summary<P: OfflinePayload>(
+    summary: &PayloadSummary<P>,
+    mode: ConfirmationMode,
+    out: &mut dyn Write,
+    input: &mut dyn BufRead,
+) -> std::io::Result<Confirmation> {
+    write!(
+        out,
+        "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\n"
+    )?;
+    let approved = match mode {
+        ConfirmationMode::NonInteractive => {
+            writeln!(
+                out,
+                "No terminal: signing without a prompt. The summary above has been logged."
+            )?;
+            info!(
+                target: LOG_TARGET,
+                "Signing offline payload {} without a prompt (no terminal):\n{}", summary.tx_id, summary
+            );
+            true
+        },
+        ConfirmationMode::Interactive => {
+            write!(out, "Sign this transaction? [y/N]: ")?;
+            out.flush()?;
+            let mut answer = String::new();
+            input.read_line(&mut answer)?;
+            let answer = answer.trim().to_ascii_lowercase();
+            let approved = answer == "y" || answer == "yes";
+            if !approved {
+                info!(target: LOG_TARGET, "Offline payload {} was not confirmed", summary.tx_id);
+            }
+            approved
+        },
+    };
+    out.flush()?;
+    Ok(Confirmation {
+        summary_id: summary.id,
+        approved,
+    })
 }
 
 #[cfg(test)]
@@ -935,5 +1106,102 @@ mod test {
         assert!(rendered.contains("Required signatures (m of n) : 2 of 3"), "{rendered}");
         assert!(rendered.contains("  Required signatures 2 of 3\n"), "{rendered}");
         assert!(!rendered.contains("Multisig party"), "{rendered}");
+    }
+
+    /// Reading from this input is a test failure.
+    struct UnreadableInput;
+
+    impl std::io::Read for UnreadableInput {
+        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+            panic!("input must not be read")
+        }
+    }
+
+    impl BufRead for UnreadableInput {
+        fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+            panic!("input must not be read")
+        }
+
+        fn consume(&mut self, _amt: usize) {
+            panic!("input must not be read")
+        }
+    }
+
+    #[test]
+    fn confirmation_for_another_summary_is_refused() {
+        let summary_a = PayloadSummary::from_one_sided(one_sided_payload(info(&[1000])));
+        let summary_b = PayloadSummary::from_one_sided(one_sided_payload(info(&[1000])));
+        let confirmation_a = present_payload_summary(
+            &summary_a,
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        assert!(confirmation_a.is_approved());
+        assert_eq!(
+            summary_b.confirm(confirmation_a).unwrap_err(),
+            PayloadNotConfirmed::DifferentSummary
+        );
+    }
+
+    #[test]
+    fn declined_confirmation_is_refused() {
+        for answer in ["n\n", "", "maybe\n"] {
+            let summary = PayloadSummary::from_one_sided(one_sided_payload(info(&[1000])));
+            let mut out = Vec::new();
+            let confirmation = present_payload_summary(
+                &summary,
+                ConfirmationMode::Interactive,
+                &mut out,
+                &mut answer.as_bytes(),
+            )
+            .unwrap();
+            assert!(!confirmation.is_approved(), "{answer:?}");
+            assert_eq!(
+                summary.confirm(confirmation).unwrap_err(),
+                PayloadNotConfirmed::Declined,
+                "{answer:?}"
+            );
+            assert!(
+                String::from_utf8(out)
+                    .unwrap()
+                    .ends_with("Sign this transaction? [y/N]: ")
+            );
+        }
+        for answer in ["y\n", "YES\n", " y \n"] {
+            let summary = PayloadSummary::from_one_sided(one_sided_payload(info(&[1000])));
+            let confirmation = present_payload_summary(
+                &summary,
+                ConfirmationMode::Interactive,
+                &mut Vec::new(),
+                &mut answer.as_bytes(),
+            )
+            .unwrap();
+            assert!(confirmation.is_approved(), "{answer:?}");
+            assert!(summary.confirm(confirmation).is_ok(), "{answer:?}");
+        }
+    }
+
+    #[test]
+    fn non_interactive_presentation_writes_summary() {
+        let summary = PayloadSummary::from_one_sided(one_sided_payload(info(&[1000])));
+        let mut out = Vec::new();
+        let confirmation = present_payload_summary(
+            &summary,
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut UnreadableInput,
+        )
+        .unwrap();
+        assert!(confirmation.is_approved());
+        let written = String::from_utf8(out).unwrap();
+        assert_eq!(
+            written,
+            format!(
+                "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nNo terminal: \
+                 signing without a prompt. The summary above has been logged.\n"
+            )
+        );
     }
 }

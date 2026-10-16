@@ -34,12 +34,17 @@ pub use offline_signer::{
     sign_locked_withdraw_multisig_transaction,
 };
 pub use payload_summary::{
+    Confirmation,
+    ConfirmationMode,
+    ConfirmedPayload,
     OfflinePayload,
     OutputSummary,
     PayloadDetails,
     PayloadKind,
+    PayloadNotConfirmed,
     PayloadSummary,
     RecipientSummary,
+    present_payload_summary,
 };
 
 #[cfg(test)]
@@ -76,6 +81,10 @@ mod test {
         },
         multisig::script::derive_multisig_ephemeral_pubkeys,
         offline_signing::{
+            ConfirmationMode,
+            ConfirmedPayload,
+            OfflinePayload,
+            PayloadSummary,
             PaymentRecipient,
             models::SignedOneSidedTransactionResult,
             offline_signer::sign_locked_transaction,
@@ -83,6 +92,7 @@ mod test {
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
             prepare_withdraw_multisig_transaction,
+            present_payload_summary,
             sign_locked_deposit_multisig_transaction,
             sign_locked_withdraw_multisig_transaction,
         },
@@ -98,6 +108,17 @@ mod test {
         },
         validation::transaction::TransactionInternalConsistencyValidator,
     };
+
+    fn confirmed<P: OfflinePayload>(summary: PayloadSummary<P>) -> ConfirmedPayload<P> {
+        let c = present_payload_summary(
+            &summary,
+            ConfirmationMode::NonInteractive,
+            &mut Vec::new(),
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        summary.confirm(c).unwrap()
+    }
 
     fn create_view_key_manager(view_wallet: ViewWallet) -> Result<KeyManager, KeyManagerError> {
         let wallet = WalletType::ViewWallet(view_wallet);
@@ -200,7 +221,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_one_sided(init)),
         )
         .unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
@@ -268,7 +289,7 @@ mod test {
             spend_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_one_sided(init)),
         )
     }
 
@@ -514,10 +535,7 @@ mod test {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn offline_sign_with_a_custom_output_is_valid() {
-        use crate::{
-            offline_signing::PayloadSummary,
-            test_helpers::{TestParams, create_wallet_output_with_data},
-        };
+        use crate::test_helpers::{TestParams, create_wallet_output_with_data};
 
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
@@ -607,7 +625,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(summary),
         )
         .unwrap();
 
@@ -746,7 +764,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_one_sided(init)),
         )
         .unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
@@ -845,7 +863,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_one_sided(init)),
         )
         .unwrap();
         assert!(signed.signed_transaction.change_output.is_some());
@@ -967,7 +985,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_multisig(init)),
         )
         .unwrap();
 
@@ -1023,7 +1041,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_multisig(init)),
         )
         .unwrap_err();
         assert!(
@@ -1239,7 +1257,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_withdraw_multisig(init)),
         )
         .unwrap_err();
         // Measured the way the signer measures it: with the memo and the recipient declared.
@@ -1284,7 +1302,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_withdraw_multisig(init)),
         )
         .unwrap();
         assert_eq!(
@@ -1374,7 +1392,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            init,
+            confirmed(PayloadSummary::from_one_sided(init)),
         )
         .unwrap();
         let tx = signed.signed_transaction.transaction.clone();
@@ -1517,7 +1535,7 @@ mod test {
                 &alice_view_key_manager,
                 rules.consensus_constants(0).clone(),
                 Network::LocalNet,
-                init
+                confirmed(PayloadSummary::from_one_sided(init))
             )
             .is_err()
         );
@@ -1612,7 +1630,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         assert!(
             result.is_err(),
@@ -1623,6 +1641,83 @@ mod test {
             err_msg.contains("tampered") || err_msg.contains("integrity") || err_msg.contains("invalid"),
             "Expected an integrity-check error message, got: {err_msg}"
         );
+    }
+
+    #[test]
+    fn sign_locked_requires_confirmed_payload() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_keys = ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        );
+        let alice_view_key_manager = create_view_key_manager(alice_keys).unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+
+        let input = create_test_input(MicroMinotari(20000), 0, &alice_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+        let bob_address = TariAddress::new_dual_address(
+            bob_key_manager.get_view_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let alice_address = TariAddress::new_dual_address(
+            alice_view_key_manager.get_view_key().pub_key,
+            alice_view_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let recipients = [PaymentRecipient {
+            amount: MicroMinotari(5000),
+            output_features: OutputFeatures::default(),
+            address: bob_address.clone(),
+            payment_id: MemoField::new_empty(),
+        }];
+        let prepared = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            &recipients,
+            MemoField::new_empty(),
+            alice_address,
+        )
+        .unwrap();
+
+        let summary = PayloadSummary::from_one_sided(prepared);
+        let mut out = Vec::new();
+        let confirmation = present_payload_summary(
+            &summary,
+            ConfirmationMode::NonInteractive,
+            &mut out,
+            &mut std::io::empty(),
+        )
+        .unwrap();
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains(&bob_address.to_base58()), "{written}");
+        let confirmed = summary.confirm(confirmation).unwrap();
+
+        sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed,
+        )
+        .unwrap();
     }
 
     /// Verify that a payload signed by a *different* wallet's view key is
@@ -1697,7 +1792,7 @@ mod test {
             &bob_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         assert!(
             result.is_err(),
@@ -1848,7 +1943,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
     }
@@ -1879,7 +1974,7 @@ mod test {
                 &alice_key_manager,
                 rules.consensus_constants(0).clone(),
                 Network::LocalNet,
-                prepared,
+                confirmed(PayloadSummary::from_one_sided(prepared)),
             );
             assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
 
@@ -1896,7 +1991,7 @@ mod test {
                 &alice_key_manager,
                 rules.consensus_constants(0).clone(),
                 Network::LocalNet,
-                prepared,
+                confirmed(PayloadSummary::from_one_sided(prepared)),
             );
             assert_key_id_refused(result, "outputs[0].script_key_id");
         }
@@ -1920,7 +2015,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         assert_key_id_refused(result, "outputs[0].commitment_mask_key_id");
 
@@ -1933,7 +2028,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         assert_key_id_refused(result, "outputs[0].script_key_id");
     }
@@ -1956,7 +2051,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         match result {
             Err(crate::TransactionBuilderError::OfflinePayloadKeyIdNotAllowed { field, key_id }) => {
@@ -1994,7 +2089,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         );
         assert_key_id_refused(result, "inputs[0].commitment_mask_key_id");
     }
@@ -2098,7 +2193,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         )
         .unwrap();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
@@ -2142,7 +2237,7 @@ mod test {
                 &alice_key_manager,
                 rules.consensus_constants(0).clone(),
                 Network::LocalNet,
-                prepared,
+                confirmed(PayloadSummary::from_one_sided(prepared)),
             );
             assert_key_id_refused(result, "inputs[0].script_key_id");
         }
@@ -2192,7 +2287,7 @@ mod test {
                 &alice_key_manager,
                 rules.consensus_constants(0).clone(),
                 Network::LocalNet,
-                prepared,
+                confirmed(PayloadSummary::from_one_sided(prepared)),
             );
             assert_key_id_refused(result, field);
         }
@@ -2285,7 +2380,7 @@ mod test {
             &alice_key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         )
         .unwrap();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, CryptoFactories::default());
@@ -2352,7 +2447,7 @@ mod test {
             key_manager,
             rules.consensus_constants(0).clone(),
             Network::LocalNet,
-            prepared,
+            confirmed(PayloadSummary::from_one_sided(prepared)),
         )
     }
 
