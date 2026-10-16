@@ -36,8 +36,13 @@ impl Filter for OutputHashEqFilter {
     // based on the covenant context; either returning the output or nothing
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let hash = context.next_arg()?.require_hash()?;
+        context.charge(output_set.len() as u64)?;
+        let hashes = context.hashes();
         // An output's hash is unique so the output set is either 1 or 0 outputs will match
-        output_set.find_inplace(|output| output.hash() == hash);
+        output_set.find_inplace_indexed(|index, output| match hashes {
+            Some(hashes) => hashes.get(index, output) == hash,
+            None => output.hash() == hash,
+        });
         Ok(())
     }
 }

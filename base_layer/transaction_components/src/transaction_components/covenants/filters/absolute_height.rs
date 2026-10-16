@@ -58,6 +58,7 @@ impl Filter for AbsoluteHeightFilter {
     // the absolute height provided in the covenant context.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let abs_height = context.next_arg()?.require_uint()?;
+        context.charge(output_set.len() as u64)?;
         let current_height = context.block_height();
         if current_height < abs_height {
             output_set.clear();

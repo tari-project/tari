@@ -35,20 +35,26 @@ mod encoder;
 mod error;
 mod fields;
 mod filters;
+mod matching;
 mod output_set;
+mod scan;
 mod serde;
 mod token;
+mod work;
 
 #[cfg(test)]
 pub(crate) use arguments::MAX_BYTES_ARG_SIZE;
-pub use covenant::Covenant;
+pub use covenant::{Covenant, MAX_COVENANT_WORK_PER_BODY};
 #[cfg(test)]
 pub(crate) use covenant::{MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS};
+pub use decoder::CovenantDecodeError;
 pub use error::CovenantError;
 // Used in macro
 #[allow(unused_imports)]
 pub(crate) use fields::OutputField;
+pub(crate) use matching::hopcroft_karp;
 pub use token::CovenantToken;
+pub(crate) use work::{OutputHashCache, WorkMeter};
 
 #[macro_use]
 mod macros;
@@ -56,8 +62,17 @@ mod macros;
 #[cfg(test)]
 mod test;
 
+use borsh::BorshDeserialize;
 use tari_crypto::hash_domain;
+use tari_max_size::EncodedBytes;
 
 hash_domain!(BaseLayerCovenantsDomain, "com.tari.base_layer.covenants", 1);
 
 pub(crate) const COVENANTS_FIELD_HASHER_LABEL: &str = "fields";
+
+/// Decodes a borsh encoded covenant from `reader` exactly as `Covenant`'s `BorshDeserialize` does, but keeps the typed
+/// error so that a caller can tell which rule the covenant broke.
+pub fn decode_borsh_covenant(reader: &mut &[u8]) -> Result<Covenant, CovenantDecodeError> {
+    let raw = EncodedBytes::<{ covenant::MAX_COVENANT_BYTES }>::deserialize(reader)?;
+    Covenant::from_bytes(&mut raw.as_bytes())
+}

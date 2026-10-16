@@ -2779,7 +2779,7 @@ mod test {
 
         use crate::transaction_components::{
             CoinBaseExtra,
-            covenants::{MAX_BYTES_ARG_SIZE, MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS},
+            covenants::{MAX_BYTES_ARG_SIZE, MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS, MAX_COVENANT_WORK_PER_BODY},
             encrypted_data::{MAX_ENCRYPTED_DATA_SIZE, STATIC_ENCRYPTED_DATA_SIZE_TOTAL},
         };
 
@@ -2796,6 +2796,8 @@ mod test {
         // cap is therefore not "covered" by anything here; it is its own decode-time rule and is only pinned so a
         // change to it is visible.
         const { assert!(MAX_COVENANT_BYTES == 4096) };
+        // The covenant evaluation budget per body is a stand-alone consensus rule, pinned so a change is visible.
+        const { assert!(MAX_COVENANT_WORK_PER_BODY == 250_000) };
         // The script opcode cap does NOT cover `max_script_byte_size`: the smallest opcode encodes to one byte, so a
         // script of `max_script_byte_size` (512) bytes could hold up to 512 opcodes, but every decoder rejects more
         // than `MAX_SCRIPT_OPCODES` (128). That makes the opcode cap a separate, stricter consensus rule rather than

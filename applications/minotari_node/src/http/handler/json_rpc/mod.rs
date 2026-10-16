@@ -111,7 +111,7 @@ fn decode_transaction(value: serde_json::Value) -> Result<Transaction, (StatusCo
     let bad_request = |e: String| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e)));
     let transaction = serde_json::from_value::<Transaction>(value).map_err(|e| bad_request(e.to_string()))?;
     let proto = proto::types::Transaction::try_from(transaction).map_err(bad_request)?;
-    Transaction::try_from(proto).map_err(bad_request)
+    Transaction::try_from(proto).map_err(|e| bad_request(e.to_string()))
 }
 
 #[derive(Deserialize, Debug, Serialize)]

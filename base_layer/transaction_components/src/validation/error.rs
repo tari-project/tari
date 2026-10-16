@@ -105,6 +105,10 @@ pub enum AggregatedBodyValidationError {
     ValidatorNodeInvalidSidechainIdKnowledgeProof,
     #[error("Covenant too large. Max size: {max_size}, Actual size: {actual_size}")]
     CovenantTooLarge { max_size: usize, actual_size: usize },
+    #[error("Covenant evaluation exceeded the work limit of {limit}")]
+    CovenantWorkLimitExceeded { limit: u64 },
+    #[error("Covenants of {inputs} inputs need distinct outputs, but at most {matched} can be satisfied")]
+    CovenantOutputsClaimedTwice { inputs: usize, matched: usize },
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
 }

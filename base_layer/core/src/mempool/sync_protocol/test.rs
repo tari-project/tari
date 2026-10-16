@@ -78,6 +78,7 @@ use crate::{
             MempoolSyncProtocol,
             decode_frame,
         },
+        test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
     },
     proto as shared_proto,
     validation::mocks::MockValidator,
@@ -1106,4 +1107,48 @@ async fn the_initiator_rejects_more_indexes_than_it_sent_items() {
         "unexpected result: {result:?}"
     );
     assert!(sent.is_empty());
+}
+
+/// A peer that answers the request for its announced transaction with one whose covenant is over the token limit is
+/// cut off with `MessageConversionFailed` before the mempool sees it, and is not banned
+#[tokio::test]
+async fn responder_rejects_a_transaction_with_a_covenant_over_the_token_limit_without_a_ban() {
+    let (protocol_notif, connectivity_manager_state, mempool, transactions, _shutdown) = setup(1).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let mut framed = park_responder_awaiting_transactions(&protocol_notif, &peer).await;
+
+    let over_limit = proto::TransactionItem {
+        transaction: Some(transaction_proto_with_covenant(&covenant_over_token_limit())),
+    };
+    write_message(&mut framed, over_limit).await;
+    // The responder drops the exchange on the conversion error
+    assert!(framed.next().await.is_none());
+
+    assert_eq!(get_snapshot(&mempool).await.len(), transactions.len());
+    assert!(connectivity_manager_state.take_banned_peers().await.is_empty());
+}
+
+/// The conversion error the responder above stops on
+#[tokio::test]
+async fn validate_and_insert_reports_a_covenant_over_the_token_limit_as_a_conversion_failure() {
+    let (mempool, _) = new_mempool_with_transactions(0).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock, _other) = MemorySocket::new_pair();
+    let mut protocol = MempoolPeerProtocol::new(
+        Default::default(),
+        framing::canonical(sock, MAX_FRAME_SIZE),
+        peer.node_id().clone(),
+        mempool.clone(),
+    );
+    let err = protocol
+        .validate_and_insert_transaction(transaction_proto_with_covenant(&covenant_over_token_limit()))
+        .await
+        .unwrap_err();
+    match err {
+        MempoolProtocolError::MessageConversionFailed { message, .. } => {
+            assert!(message.contains("exceeded the maximum of 128 tokens"), "{message}")
+        },
+        other => panic!("unexpected error: {other}"),
+    }
+    assert!(get_snapshot(&mempool).await.is_empty());
 }

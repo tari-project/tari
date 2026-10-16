@@ -22,6 +22,8 @@
 
 use tari_max_size::MaxSizeVecError;
 
+use super::decoder::CovenantDecodeError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum CovenantError {
     #[error("Reached the end of tokens but another token was expected")]
@@ -40,4 +42,8 @@ pub enum CovenantError {
     InvalidArgument { filter: &'static str, details: String },
     #[error("Max sized vector error: {0}")]
     MaxSizeVecError(#[from] MaxSizeVecError),
+    #[error("Covenant evaluation exceeded the work limit")]
+    WorkLimitExceeded,
+    #[error("Covenant decode error: {0}")]
+    Decode(#[from] CovenantDecodeError),
 }

@@ -195,9 +195,9 @@ mod test {
     #[test]
     fn simple() {
         let covenant = covenant!(identity()).unwrap();
-        assert_eq!(covenant.tokens().len(), 1);
+        assert_eq!(covenant.tokens().unwrap().len(), 1);
         assert!(matches!(
-            covenant.tokens()[0],
+            covenant.tokens().unwrap()[0],
             CovenantToken::Filter(CovenantFilter::Identity(_))
         ));
     }
@@ -218,7 +218,8 @@ mod test {
 
         let decoded = Covenant::from_bytes(&mut covenant.to_bytes().as_bytes()).unwrap();
         assert_eq!(covenant, decoded);
-        unpack_enum!(CovenantArg::TariScript(decoded_script) = decoded.tokens()[2].as_arg().unwrap());
+        let tokens = decoded.tokens().unwrap();
+        unpack_enum!(CovenantArg::TariScript(decoded_script) = tokens[2].as_arg().unwrap());
         assert_eq!(script, *decoded_script);
     }
 }

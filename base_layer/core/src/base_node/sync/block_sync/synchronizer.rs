@@ -398,7 +398,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .body
                 .map(AggregateBody::try_from)
                 .ok_or_else(|| BlockSyncError::InvalidBlockBody("Peer sent empty block".to_string()))?
-                .map_err(BlockSyncError::InvalidBlockBody)?;
+                .map_err(|e| BlockSyncError::InvalidBlockBody(e.to_string()))?;
 
             debug!(
                 target: LOG_TARGET,

@@ -27,6 +27,7 @@ use crate::transaction_components::{
         error::CovenantError,
         filters::CovenantFilter,
         token::{CovenantToken, CovenantTokenCollection},
+        work::{OutputHashCache, WorkMeter},
     },
 };
 
@@ -37,15 +38,46 @@ pub struct CovenantContext<'a> {
     input: &'a TransactionInput,
     tokens: CovenantTokenCollection,
     block_height: u64,
+    meter: WorkMeter,
+    hashes: Option<&'a OutputHashCache>,
 }
 
 impl<'a> CovenantContext<'a> {
+    #[cfg(test)]
     pub fn new(tokens: CovenantTokenCollection, input: &'a TransactionInput, block_height: u64) -> Self {
+        Self::with_limits(tokens, input, block_height, WorkMeter::unlimited(), None)
+    }
+
+    /// As [`CovenantContext::new`], charging evaluation work to `meter` and looking up output hashes in `hashes`.
+    pub(crate) fn with_limits(
+        tokens: CovenantTokenCollection,
+        input: &'a TransactionInput,
+        block_height: u64,
+        meter: WorkMeter,
+        hashes: Option<&'a OutputHashCache>,
+    ) -> Self {
         Self {
             input,
             tokens,
             block_height,
+            meter,
+            hashes,
         }
+    }
+
+    /// Charges `units` of evaluation work, failing if the work limit is exceeded
+    pub fn charge(&mut self, units: u64) -> Result<(), CovenantError> {
+        self.meter.charge(units)
+    }
+
+    /// Returns the work meter, with what is left of its limit
+    pub(crate) fn into_meter(self) -> WorkMeter {
+        self.meter
+    }
+
+    /// The output hash cache of the body being evaluated, if any
+    pub(crate) fn hashes(&self) -> Option<&'a OutputHashCache> {
+        self.hashes
     }
 
     /// Returns true if there are more tokens to consume, otherwise false

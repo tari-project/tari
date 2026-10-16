@@ -38,6 +38,7 @@ impl Filter for FieldEqFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let field = context.next_arg()?.require_outputfield()?;
         let arg = context.next_arg()?;
+        context.charge(output_set.len() as u64)?;
         output_set.retain(|output| {
             #[allow(clippy::enum_glob_use)]
             use CovenantArg::*;

@@ -50,6 +50,7 @@ use crate::{
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
+        covenants::{CovenantError, MAX_COVENANT_WORK_PER_BODY, OutputHashCache, WorkMeter, hopcroft_karp},
         transaction_output::batch_verify_range_proofs,
     },
     validation::{
@@ -114,8 +115,9 @@ impl AggregateBodyInternalConsistencyValidator {
 
         let constants = self.consensus_manager.consensus_constants(height);
 
-        // Structural checks first. Everything below this point costs at least one signature
-        // verification per kernel or output, so the bound on how many of those there can be has to
+        // Structural checks first. Most checks below this point cost at least one signature
+        // verification per kernel or output (covenant evaluation does no crypto and is bounded by
+        // its own work limit), so the bound on how many of those there can be has to
         // be applied before any of it runs - otherwise a peer can spend a single oversized
         // `submit_transaction` to buy an unbounded amount of our CPU for a body we were always
         // going to reject. Neither of these does any crypto.
@@ -138,6 +140,9 @@ impl AggregateBodyInternalConsistencyValidator {
         // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
         check_kernel_lock_height(height, body.kernels())?;
+        // Covenants need no crypto and their evaluation cost is bounded, so they run before the kernel sum, range
+        // proofs and scripts.
+        validate_covenants(body, height)?;
 
         let total_offset =
             CompressedCommitment::from_commitment(self.factories.commitment.commit_value(tx_offset, total_reward.0));
@@ -149,7 +154,6 @@ impl AggregateBodyInternalConsistencyValidator {
 
         let script_offset_g = CompressedPublicKey::from_secret_key(script_offset);
         validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
-        validate_covenants(body, height)?;
 
         check_total_burned(body)?;
 
@@ -394,8 +398,67 @@ fn validate_script_and_script_offset(
 }
 
 fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), AggregatedBodyValidationError> {
+    validate_covenants_with_limit(body, height, MAX_COVENANT_WORK_PER_BODY)
+}
+
+/// Evaluates the covenant of every input against the body's outputs, with at most `limit` work units in total. Each
+/// output may satisfy the covenant of at most one input: the body is valid only if every input with a non-empty
+/// covenant can be assigned a distinct output that its covenant admits.
+pub(crate) fn validate_covenants_with_limit(
+    body: &AggregateBody,
+    height: u64,
+    limit: u64,
+) -> Result<(), AggregatedBodyValidationError> {
+    let outputs = body.outputs();
+    let mut meter = WorkMeter::new(limit);
+    let hashes = OutputHashCache::new(outputs.len());
+    let mut demands = Vec::new();
     for input in body.inputs() {
-        input.covenant()?.execute(height, input, body.outputs())?;
+        let covenant = input.covenant()?;
+        if covenant.is_empty() {
+            continue;
+        }
+        match covenant.matching_outputs(height, input, outputs, &mut meter, Some(&hashes)) {
+            Ok(matching) => demands.push(matching),
+            Err(CovenantError::WorkLimitExceeded) => {
+                return Err(AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit });
+            },
+            Err(e) => return Err(e.into()),
+        }
+    }
+    if demands.len() > outputs.len() {
+        return Err(AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+            inputs: demands.len(),
+            matched: outputs.len(),
+        });
+    }
+
+    // Fast path: each input claims the lowest indexed free output it admits
+    let mut claimed = vec![false; outputs.len()];
+    let mut greedy_matched = true;
+    for demand in &demands {
+        let free = demand
+            .iter()
+            .map(|&index| index as usize)
+            .find(|&index| claimed.get(index) == Some(&false));
+        match free.and_then(|index| claimed.get_mut(index)) {
+            Some(is_claimed) => *is_claimed = true,
+            None => {
+                greedy_matched = false;
+                break;
+            },
+        }
+    }
+    if greedy_matched {
+        return Ok(());
+    }
+
+    let matched = hopcroft_karp(&demands, outputs.len());
+    if matched < demands.len() {
+        return Err(AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+            inputs: demands.len(),
+            matched,
+        });
     }
     Ok(())
 }
@@ -807,6 +870,201 @@ mod test {
                 check_sorting_and_duplicates(&body),
                 Err(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
             ));
+        }
+    }
+
+    mod covenants {
+        use super::*;
+        use crate::covenant;
+
+        pub(super) fn input_with_covenant(covenant: Covenant) -> TransactionInput {
+            TransactionInput::new_with_output_data(
+                TransactionInputVersion::get_current_version(),
+                OutputFeatures::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                covenant,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                MicroMinotari::zero(),
+            )
+        }
+
+        pub(super) fn outputs(n: usize, key_manager: &KeyManager) -> Vec<TransactionOutput> {
+            let mut outputs = Vec::new();
+            for _ in 0..n {
+                let (output, _, _) = test_helpers::create_utxo(
+                    100.into(),
+                    key_manager,
+                    &OutputFeatures::default(),
+                    &script!(Nop).unwrap(),
+                    &Covenant::default(),
+                    0.into(),
+                );
+                outputs.push(output);
+            }
+            outputs
+        }
+
+        #[test]
+        #[allow(clippy::arithmetic_side_effects)]
+        fn covenant_evaluation_respects_work_limit() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let n = 10;
+            let mut outputs = outputs(n, &key_manager);
+            outputs[3].features.maturity = 42;
+            let covenant = covenant!(or(
+                field_eq(@field::features_maturity, @uint(42),),
+                field_eq(@field::features_maturity, @uint(7))
+            ))
+            .unwrap();
+            let body = AggregateBody::new_sorted_unchecked(
+                vec![input_with_covenant(covenant.clone())],
+                outputs.clone(),
+                Vec::new(),
+            );
+
+            // 7 tokens, the initial set of n, 3 filters, 2n for `or` and n for each `field_eq`
+            let exact_cost = 7 + n as u64 + 3 + 2 * n as u64 + 2 * n as u64;
+            validate_covenants_with_limit(&body, 0, exact_cost).unwrap();
+            let err = validate_covenants_with_limit(&body, 0, exact_cost - 1).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit } if limit == exact_cost - 1),
+                "{err}"
+            );
+
+            // The public path uses MAX_COVENANT_WORK_PER_BODY
+            const { assert!(MAX_COVENANT_WORK_PER_BODY == 250_000) };
+            validate_covenants(&body, 0).unwrap();
+            let inputs_over_limit = usize::try_from(MAX_COVENANT_WORK_PER_BODY / exact_cost + 1).unwrap();
+            let body = AggregateBody::new_sorted_unchecked(
+                vec![input_with_covenant(covenant); inputs_over_limit],
+                outputs,
+                Vec::new(),
+            );
+            let err = validate_covenants(&body, 0).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit } if limit == MAX_COVENANT_WORK_PER_BODY),
+                "{err}"
+            );
+        }
+
+        fn admits_one(output: &TransactionOutput) -> TransactionInput {
+            input_with_covenant(covenant!(output_hash_eq(@hash(output.hash()))).unwrap())
+        }
+
+        fn admits_either(a: &TransactionOutput, b: &TransactionOutput) -> TransactionInput {
+            input_with_covenant(
+                covenant!(or(output_hash_eq(@hash(a.hash()),), output_hash_eq(@hash(b.hash())))).unwrap(),
+            )
+        }
+
+        fn check(
+            inputs: Vec<TransactionInput>,
+            outputs: Vec<TransactionOutput>,
+        ) -> Result<(), AggregatedBodyValidationError> {
+            validate_covenants(&AggregateBody::new_sorted_unchecked(inputs, outputs, Vec::new()), 0)
+        }
+
+        #[test]
+        fn covenant_outputs_are_claimed_once() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let outputs = outputs(2, &key_manager);
+            let (o1, o2) = (outputs[0].clone(), outputs[1].clone());
+
+            let err = check(vec![admits_one(&o1), admits_one(&o1)], vec![o1.clone()]).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                    inputs: 2,
+                    matched: 1
+                }),
+                "{err}"
+            );
+            let err = check(vec![admits_one(&o1), admits_one(&o1)], vec![o1.clone(), o2.clone()]).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                    inputs: 2,
+                    matched: 1
+                }),
+                "{err}"
+            );
+
+            check(vec![admits_either(&o1, &o2), admits_one(&o1)], vec![o1.clone(), o2]).unwrap();
+
+            // Inputs with an empty covenant claim nothing
+            let empty = || input_with_covenant(Covenant::default());
+            check(vec![empty(), admits_one(&o1), empty(), empty()], vec![o1]).unwrap();
+        }
+
+        #[test]
+        fn covenant_claiming_is_order_independent() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let outputs = outputs(2, &key_manager);
+            let (o1, o2) = (outputs[0].clone(), outputs[1].clone());
+            let a = admits_either(&o1, &o2);
+            let b = admits_one(&o2);
+            let c = admits_one(&o1);
+
+            for outputs in [vec![o1.clone(), o2.clone()], vec![o2.clone(), o1.clone()]] {
+                for inputs in [vec![a.clone(), b.clone()], vec![b.clone(), a.clone()]] {
+                    check(inputs, outputs.clone()).unwrap();
+                }
+            }
+            // With o2 first, greedy gives o2 to `a` and leaves nothing for `b`; the matching still finds one
+            let demands = vec![vec![0, 1], vec![0]];
+            assert_eq!(hopcroft_karp(&demands, 2), 2);
+
+            for outputs in [vec![o1.clone(), o2.clone()], vec![o2, o1]] {
+                for inputs in [
+                    vec![a.clone(), b.clone(), c.clone()],
+                    vec![a.clone(), c.clone(), b.clone()],
+                    vec![b.clone(), a.clone(), c.clone()],
+                    vec![b.clone(), c.clone(), a.clone()],
+                    vec![c.clone(), a.clone(), b.clone()],
+                    vec![c.clone(), b.clone(), a.clone()],
+                ] {
+                    let err = check(inputs, outputs.clone()).unwrap_err();
+                    assert!(
+                        matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                            inputs: 3,
+                            ..
+                        }),
+                        "{err}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn covenant_checks_run_before_range_proofs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut outputs = outputs(2, &key_manager);
+            // A proof for a different commitment does not verify, but the metadata signature does not cover it
+            outputs[0].proof = outputs[1].proof.clone();
+            let output = outputs.remove(0);
+            let input = input_with_covenant(covenant!(field_eq(@field::features_maturity, @uint(99))).unwrap());
+            let body = AggregateBody::new_sorted_unchecked(vec![input], vec![output], Vec::new());
+            let factories = CryptoFactories::new(RANGE_PROOF_AGGREGATION_FACTOR);
+            assert!(validate_range_proofs(&body, &factories.range_proof).is_err());
+
+            let err = AggregateBodyInternalConsistencyValidator::new(
+                false,
+                ConsensusManager::builder(Network::LocalNet).build(),
+                factories,
+            )
+            .validate(&body, &Default::default(), &Default::default(), None, None, 0)
+            .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs)
+                ),
+                "{err}"
+            );
         }
     }
 

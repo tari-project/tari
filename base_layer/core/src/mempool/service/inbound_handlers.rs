@@ -30,7 +30,7 @@ use tari_comms::{
 };
 use tari_comms_dht::envelope::DhtMessageHeader;
 use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
-use tari_transaction_components::{BanReason, transaction_components::Transaction};
+use tari_transaction_components::{BanPeriod, BanReason, transaction_components::Transaction};
 use tari_utilities::hex::Hex;
 use tokio::task;
 
@@ -50,7 +50,7 @@ use crate::{
             MempoolServiceError,
             OutboundMempoolServiceInterface,
             PeerBanPeriods,
-            initializer::extract_transaction,
+            initializer::{ExtractTransactionError, extract_transaction},
         },
     },
 };
@@ -154,20 +154,37 @@ impl MempoolInboundHandlers {
     /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and
     /// validating the transaction, so that the number of inbound transactions being decoded or validated at once is
     /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit. The peer is banned if the
-    /// transaction fails a final internal consistency check, unless it relayed the message on another's behalf.
+    /// transaction fails a final internal consistency check or has a covenant over the token limit, unless it relayed
+    /// the message on another's behalf.
     pub async fn handle_transaction_message(&mut self, msg: Arc<PeerMessage>) -> Result<(), MempoolServiceError> {
         let permit = self.mempool.acquire_validation_permit().await?;
-        let decoded = task::spawn_blocking(move || extract_transaction(&msg))
+        let raw = msg.clone();
+        let decoded = task::spawn_blocking(move || extract_transaction(&raw))
             .await
             .map_err(MempoolError::from)?;
-        let Some(DomainMessage::<_> {
+        let DomainMessage::<_> {
             source_peer,
             dht_header,
             authenticated_origin,
             inner,
-        }) = decoded
-        else {
-            return Ok(());
+        } = match decoded {
+            Ok(decoded) => decoded,
+            Err(ExtractTransactionError::CovenantTokenLimit) => {
+                drop(permit);
+                let reason = BanReason {
+                    reason: ExtractTransactionError::CovenantTokenLimit.to_string(),
+                    ban_duration: BanPeriod::Long,
+                };
+                self.ban_source(
+                    &msg.dht_header,
+                    msg.authenticated_origin.as_ref(),
+                    &msg.source_peer,
+                    reason,
+                )
+                .await;
+                return Ok(());
+            },
+            Err(_) => return Ok(()),
         };
 
         debug!(
@@ -190,17 +207,29 @@ impl MempoolInboundHandlers {
         let Some(reason) = ban_reason else {
             return Ok(());
         };
-        if is_relayed_on_behalf_of_another(&dht_header, authenticated_origin.as_ref(), &source_peer) {
+        self.ban_source(&dht_header, authenticated_origin.as_ref(), &source_peer, reason)
+            .await;
+        Ok(())
+    }
+
+    /// Bans the peer a gossiped transaction came from, unless it relayed the message on another's behalf
+    async fn ban_source(
+        &mut self,
+        dht_header: &DhtMessageHeader,
+        authenticated_origin: Option<&CommsPublicKey>,
+        source_peer: &Peer,
+        reason: BanReason,
+    ) {
+        if is_relayed_on_behalf_of_another(dht_header, authenticated_origin, source_peer) {
             debug!(
                 target: LOG_TARGET,
                 "Not banning peer '{}' for a relayed transaction: {}",
                 source_peer.node_id.short_str(),
                 reason.reason
             );
-            return Ok(());
+            return;
         }
         self.ban_peer(&source_peer.node_id, reason).await;
-        Ok(())
     }
 
     /// Handle inbound transactions from remote wallets and local services.
@@ -470,6 +499,7 @@ mod test {
 
         use super::*;
         use crate::{
+            mempool::test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
             test_helpers::blockchain::{TestBlockchain, create_test_blockchain_db},
             validation::{TransactionValidator, ValidationError, transaction::TransactionFullValidator},
         };
@@ -586,6 +616,75 @@ mod test {
             assert_eq!(banned.first().unwrap().0, source);
         }
 
+        /// A transaction message whose output covenant field holds `covenant`, behind its borsh (varint) length prefix
+        fn transaction_message_with_covenant(covenant: &[u8]) -> PeerMessage {
+            let tx = transaction_proto_with_covenant(covenant);
+            let msg = create_peer_message(TariMessageType::NewTransaction, tx.encode_to_vec());
+            Arc::try_unwrap(msg).unwrap()
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_with_covenant_over_token_limit_bans_source() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+            let msg = transaction_message_with_covenant(&covenant_over_token_limit());
+            let source = msg.source_peer.node_id.clone();
+
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+            let banned = bans.take().await;
+            assert_eq!(banned.len(), 1);
+            let (node_id, duration, reason) = banned.first().unwrap();
+            assert_eq!(*node_id, source);
+            assert_eq!(*duration, LONG_BAN);
+            assert_eq!(reason, "Transaction covenant exceeds token limit");
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+
+            // Mempool sync and RPC `submit_transaction` reject the same transaction without a ban: see
+            // `responder_rejects_a_transaction_with_a_covenant_over_the_token_limit_without_a_ban` and
+            // `submit_transaction_rejects_a_covenant_over_the_token_limit`
+        }
+
+        /// The decoder ignores the covenant field of a compact input, so an over-limit covenant there is not a reason
+        /// to ban
+        #[tokio::test]
+        async fn gossiped_transaction_with_covenant_over_token_limit_on_a_compact_input_does_not_ban() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+            let mut tx = transaction_proto_with_covenant(&[]);
+            let input = tx.body.as_mut().unwrap().inputs.first_mut().unwrap();
+            input.commitment = None;
+            input.output_hash = vec![1; 32];
+            let covenant = covenant_over_token_limit();
+            input.covenant.clear();
+            prost::encoding::encode_varint(covenant.len() as u64, &mut input.covenant);
+            input.covenant.extend_from_slice(&covenant);
+            let msg = create_peer_message(TariMessageType::NewTransaction, tx.encode_to_vec());
+
+            handlers.handle_transaction_message(msg).await.unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_with_malformed_covenant_is_dropped_without_ban() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+            let msg = transaction_message_with_covenant(&[0xff]);
+
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+        }
+
         #[tokio::test]
         async fn gossiped_transaction_signed_by_other_key_bans_source() {
             let (mut handlers, _mempool, _propagated, mut bans) = create_handlers_with_bans(chain_validator());
@@ -671,10 +770,12 @@ mod test {
 
         #[tokio::test]
         async fn gossiped_transaction_with_tip_dependent_failure_does_not_ban() {
-            let errors: [fn() -> ValidationError; 2] = [
+            let errors: [fn() -> ValidationError; 4] = [
                 || AggregatedBodyValidationError::MaturityError.into(),
                 // Covenants can read the block height
                 || AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs).into(),
+                || AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit: 1 }.into(),
+                || AggregatedBodyValidationError::CovenantOutputsClaimedTwice { inputs: 2, matched: 1 }.into(),
             ];
             for error in errors {
                 let (mut handlers, mempool, _propagated, mut bans) =

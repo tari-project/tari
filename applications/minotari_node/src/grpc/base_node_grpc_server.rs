@@ -306,7 +306,7 @@ fn normalise_transaction_via_p2p_proto(
         )
     };
     let proto = tari_core::proto::types::Transaction::try_from(transaction).map_err(malformed)?;
-    Transaction::try_from(proto).map_err(malformed)
+    Transaction::try_from(proto).map_err(|e| malformed(e.to_string()))
 }
 
 /// Decodes the block of a gRPC `submit_block` request: the gRPC conversion, then [`normalise_block_via_p2p_proto`].

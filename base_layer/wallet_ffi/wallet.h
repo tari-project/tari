@@ -57,6 +57,8 @@ struct CompressedKey_RistrettoPublicKey;
 /**
  * A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
  * See https://rfc.tari.com/RFC-0250_Covenants.html for details.
+ *
+ * The covenant is kept as its canonical encoding and is only split into tokens when it is evaluated.
  */
 struct Covenant;
 

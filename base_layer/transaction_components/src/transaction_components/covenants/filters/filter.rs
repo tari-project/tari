@@ -168,6 +168,7 @@ impl Filter for CovenantFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
+        context.charge(1)?;
         match self {
             Identity(identity) => identity.filter(context, output_set),
             And(and) => and.filter(context, output_set),
