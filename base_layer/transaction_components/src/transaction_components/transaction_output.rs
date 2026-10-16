@@ -173,6 +173,26 @@ impl TransactionOutput {
         }
     }
 
+    /// Whether the proof field is present exactly when the declared range proof type carries a proof.
+    pub fn check_range_proof_presence(&self) -> Result<(), RangeProofError> {
+        let range_proof_type = self.features.range_proof_type;
+        let matches = match range_proof_type {
+            RangeProofType::RevealedValue => self.proof.is_none(),
+            RangeProofType::BulletProofPlus => self.proof.is_some(),
+        };
+        if matches {
+            Ok(())
+        } else {
+            Err(RangeProofError::InvalidRangeProof {
+                reason: format!(
+                    "Range proof presence does not match range proof type {} for commitment {}",
+                    range_proof_type,
+                    self.commitment.to_hex()
+                ),
+            })
+        }
+    }
+
     /// Accessor method for the range proof hex option display
     pub fn proof_hex_display(&self, full: bool) -> String {
         if let Some(proof) = self.proof.as_ref() {
@@ -232,6 +252,8 @@ impl TransactionOutput {
 
     // Verify that range proof is valid
     pub fn verify_range_proof(&self, prover: &RangeProofService) -> Result<(), TransactionError> {
+        self.check_range_proof_presence()
+            .map_err(|e| TransactionError::RangeProofError(e.to_string()))?;
         match self.features.range_proof_type {
             RangeProofType::RevealedValue => match self.revealed_value_range_proof_check() {
                 Ok(_) => Ok(()),
@@ -586,6 +608,9 @@ pub fn batch_verify_range_proofs(
     prover: &RangeProofService,
     outputs: &[&TransactionOutput],
 ) -> Result<(), RangeProofError> {
+    for output in outputs {
+        output.check_range_proof_presence()?;
+    }
     let bulletproof_plus_proofs = outputs
         .iter()
         .filter(|o| o.features.range_proof_type == RangeProofType::BulletProofPlus)
@@ -922,6 +947,9 @@ mod metadata_preimage_test {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::MAX_RANGE_PROOF_BYTES;
+    use tari_utilities::ByteArray;
+
     use super::{TransactionOutput, batch_verify_range_proofs};
     use crate::{
         MicroMinotari,
@@ -1115,6 +1143,14 @@ mod test {
         ];
 
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
+    }
+
+    #[test]
+    fn range_proof_decode_cap_matches_a_real_proof() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mask = key_manager.get_random_key(None, None).unwrap();
+        let proof = key_manager.construct_range_proof(&mask.key_id, 100, 0).unwrap();
+        assert_eq!(proof.as_bytes().len(), MAX_RANGE_PROOF_BYTES);
     }
 
     fn create_output<KM: TransactionKeyManagerInterface>(

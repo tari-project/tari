@@ -59,6 +59,7 @@ use crate::{
             check_covenant_length,
             check_permitted_output_types,
             check_permitted_range_proof_types,
+            check_range_proof_presence,
             check_sidechain_data_rules,
             check_tari_encrypted_data_byte_size,
             check_tari_script_byte_size,
@@ -188,6 +189,7 @@ pub fn validate_individual_output(
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
     check_permitted_range_proof_types(consensus_constants, output)?;
+    check_range_proof_presence(output)?;
     check_sidechain_data_rules(output)?;
     check_burn_claim_script(output)?;
     output.verify_metadata_signature()?;
@@ -887,6 +889,101 @@ mod test {
             validator
                 .validate(&body, &offset, &Default::default(), None, None, 0)
                 .unwrap();
+        }
+    }
+
+    mod range_proof_presence {
+        use tari_common_types::types::RangeProof;
+
+        use super::*;
+        use crate::transaction_components::RangeProofType;
+
+        fn utxo(key_manager: &KeyManager, range_proof_type: RangeProofType) -> TransactionOutput {
+            let value = MicroMinotari(100);
+            let minimum_value_promise = if range_proof_type == RangeProofType::RevealedValue {
+                value
+            } else {
+                MicroMinotari::zero()
+            };
+            let (output, _, _) = test_helpers::create_utxo(
+                value,
+                key_manager,
+                &OutputFeatures {
+                    range_proof_type,
+                    ..Default::default()
+                },
+                &script!(Nop).unwrap(),
+                &Covenant::default(),
+                minimum_value_promise,
+            );
+            output
+        }
+
+        #[test]
+        fn revealed_value_output_with_proof_is_rejected() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let factories = CryptoFactories::default();
+            let valid = utxo(&key_manager, RangeProofType::RevealedValue);
+            validate_individual_output(&valid, constants, Network::LocalNet).unwrap();
+
+            for proof in [RangeProof::from(vec![1; 32]), RangeProof::default()] {
+                let mut output = valid.clone();
+                output.proof = Some(proof);
+                let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+                assert!(matches!(
+                    err,
+                    AggregatedBodyValidationError::RangeProofPresenceMismatch {
+                        range_proof_type: RangeProofType::RevealedValue,
+                        proof_present: true
+                    }
+                ));
+                assert!(output.verify_range_proof(&factories.range_proof).is_err());
+                assert!(batch_verify_range_proofs(&factories.range_proof, &[&output]).is_err());
+                output.verify_metadata_signature().unwrap();
+            }
+        }
+
+        #[test]
+        fn bulletproof_output_without_proof_is_rejected() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let mut output = utxo(&key_manager, RangeProofType::BulletProofPlus);
+            validate_individual_output(&output, constants, Network::LocalNet).unwrap();
+
+            output.proof = None;
+            let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::RangeProofPresenceMismatch {
+                    range_proof_type: RangeProofType::BulletProofPlus,
+                    proof_present: false
+                }
+            ));
+        }
+
+        #[test]
+        fn range_proof_presence_is_checked_when_range_proof_verification_is_bypassed() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut output = utxo(&key_manager, RangeProofType::RevealedValue);
+            output.proof = Some(RangeProof::from(vec![1; 32]));
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), vec![output], Vec::new());
+            let err = AggregateBodyInternalConsistencyValidator::new(
+                true,
+                test_helpers::create_consensus_manager(),
+                CryptoFactories::default(),
+            )
+            .validate(&body, &Default::default(), &Default::default(), None, None, 0)
+            .unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::RangeProofPresenceMismatch {
+                    range_proof_type: RangeProofType::RevealedValue,
+                    proof_present: true
+                }
+            ));
         }
     }
 }

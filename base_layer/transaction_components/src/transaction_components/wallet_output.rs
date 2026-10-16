@@ -717,6 +717,8 @@ impl WalletOutput {
         &self.features
     }
 
+    /// The range proof is not regenerated; the proof must match `features.range_proof_type` (see
+    /// `TransactionOutput::check_range_proof_presence`).
     pub fn set_features(&mut self, features: OutputFeatures) {
         self.input = OnceLock::new();
         self.output = OnceLock::new();
@@ -814,6 +816,8 @@ impl WalletOutput {
         &self.range_proof
     }
 
+    /// The range proof is not regenerated; the proof must match `features.range_proof_type` (see
+    /// `TransactionOutput::check_range_proof_presence`).
     pub fn set_range_proof(&mut self, proof: Option<RangeProof>) {
         self.input = OnceLock::new();
         self.output = OnceLock::new();

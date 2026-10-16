@@ -33,6 +33,9 @@ enum TariUtxoSort {
  */
 struct Balance;
 
+/**
+ * Decoded through [`ValidatedDecode`], so every decoder rejects more than `MAX_RANGE_PROOF_BYTES` bytes.
+ */
 struct BulletRangeProof;
 
 struct ByteVector;

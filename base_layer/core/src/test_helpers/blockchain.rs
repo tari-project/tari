@@ -978,6 +978,12 @@ impl TestBlockchain {
         Self::new(create_custom_blockchain(rules.clone()), rules)
     }
 
+    /// Sets the range proof type of the coinbases this blockchain creates.
+    pub fn with_coinbase_range_proof_type(mut self, range_proof_type: RangeProofType) -> Self {
+        self.range_proof_type = range_proof_type;
+        self
+    }
+
     pub fn append_chain(
         &mut self,
         block_specs: BlockSpecs,

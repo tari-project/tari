@@ -480,7 +480,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_common_types::{
         tari_address::TariAddress,
-        types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
+        types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, MAX_RANGE_PROOF_BYTES, PrivateKey},
     };
     use tari_crypto::keys::SecretKey;
     use tari_utilities::ByteArray;
@@ -613,6 +613,36 @@ mod test {
                 u64::MAX,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn coinbase_builder_revealed_value_has_no_proof() {
+        for range_proof_type in [RangeProofType::RevealedValue, RangeProofType::BulletProofPlus] {
+            let (builder, rules, _, key_manager) = get_builder();
+            let p = TestParams::new(&key_manager);
+            let (tx, _) = builder
+                .with_block_height(42)
+                .with_fees(145 * uT)
+                .with_commitment_mask_id(p.commitment_mask_key_id.clone())
+                .with_encryption_key_id(key_manager.get_random_key(None, None).unwrap().key_id)
+                .with_sender_offset_key_id(p.sender_offset_key_id)
+                .with_script_key_id(p.script_key_id)
+                .with_script(push_pubkey_script(TariAddress::default().public_spend_key()))
+                .with_range_proof_type(range_proof_type)
+                .build(
+                    rules.consensus_constants(42),
+                    rules.emission_schedule(),
+                    MemoField::new_empty(),
+                )
+                .unwrap();
+            let proof = tx.body.outputs()[0].proof.as_ref();
+            match range_proof_type {
+                RangeProofType::RevealedValue => assert!(proof.is_none()),
+                RangeProofType::BulletProofPlus => {
+                    assert_eq!(proof.unwrap().as_bytes().len(), MAX_RANGE_PROOF_BYTES)
+                },
+            }
+        }
     }
 
     #[test]

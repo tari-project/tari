@@ -22,7 +22,11 @@
 
 use std::fmt;
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{
+    BorshDeserialize,
+    BorshSerialize,
+    io::{Error, ErrorKind, Read},
+};
 use serde::{
     Deserialize,
     Deserializer,
@@ -31,12 +35,14 @@ use serde::{
     de::{self, Visitor},
 };
 use tari_crypto::hashing::AsFixedBytes;
+use tari_max_size::{ValidatedDecode, impl_validated_decode};
 use tari_utilities::{ByteArray, ByteArrayError, hex::*};
 
 use super::BulletRangeProofHasherBlake256;
-use crate::types::FixedHash;
+use crate::types::{FixedHash, MAX_RANGE_PROOF_BYTES};
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, BorshSerialize, BorshDeserialize)]
+/// Decoded through [`ValidatedDecode`], so every decoder rejects more than `MAX_RANGE_PROOF_BYTES` bytes.
+#[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, BorshSerialize)]
 pub struct BulletRangeProof(pub Vec<u8>);
 impl BulletRangeProof {
     /// Implement the hashing function for RangeProof for use in the MMR
@@ -61,10 +67,11 @@ impl ByteArray for BulletRangeProof {
     }
 
     fn from_vec(v: &Vec<u8>) -> Result<Self, ByteArrayError> {
-        Ok(BulletRangeProof(v.clone()))
+        Self::from_canonical_bytes(v)
     }
 
     fn from_canonical_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        check_range_proof_len(bytes.len()).map_err(|reason| ByteArrayError::ConversionError { reason })?;
         Ok(BulletRangeProof(bytes.to_vec()))
     }
 
@@ -96,29 +103,132 @@ impl Serialize for BulletRangeProof {
     }
 }
 
-impl<'de> Deserialize<'de> for BulletRangeProof {
+fn check_range_proof_len(len: usize) -> Result<(), String> {
+    if len > MAX_RANGE_PROOF_BYTES {
+        return Err(format!(
+            "Range proof of {len} bytes exceeds the maximum of {MAX_RANGE_PROOF_BYTES} bytes"
+        ));
+    }
+    Ok(())
+}
+
+/// The raw form of [`BulletRangeProof`]: a hex string (human readable serde), a byte array (binary serde), or the
+/// bytes behind a `u32` length prefix (borsh). The length is checked before the bytes are kept.
+pub struct BulletRangeProofRaw(Vec<u8>);
+
+impl<'de> Deserialize<'de> for BulletRangeProofRaw {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where D: Deserializer<'de> {
         struct RangeProofVisitor;
 
         impl Visitor<'_> for RangeProofVisitor {
-            type Value = BulletRangeProof;
+            type Value = BulletRangeProofRaw;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a bulletproof range proof in binary format")
             }
 
-            fn visit_bytes<E>(self, v: &[u8]) -> Result<BulletRangeProof, E>
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<BulletRangeProofRaw, E>
             where E: de::Error {
-                BulletRangeProof::from_canonical_bytes(v).map_err(E::custom)
+                check_range_proof_len(v.len()).map_err(E::custom)?;
+                Ok(BulletRangeProofRaw(v.to_vec()))
             }
         }
 
         if deserializer.is_human_readable() {
             let s: String = Deserialize::deserialize(deserializer)?;
-            BulletRangeProof::from_hex(s.as_str()).map_err(de::Error::custom)
+            let bytes = from_hex(s.as_str()).map_err(de::Error::custom)?;
+            check_range_proof_len(bytes.len()).map_err(de::Error::custom)?;
+            Ok(BulletRangeProofRaw(bytes))
         } else {
             deserializer.deserialize_bytes(RangeProofVisitor)
         }
+    }
+}
+
+impl BorshDeserialize for BulletRangeProofRaw {
+    fn deserialize_reader<R: Read>(reader: &mut R) -> borsh::io::Result<Self> {
+        let len = u32::deserialize_reader(reader)? as usize;
+        check_range_proof_len(len).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
+        let mut bytes = vec![0u8; len];
+        reader.read_exact(&mut bytes)?;
+        Ok(BulletRangeProofRaw(bytes))
+    }
+}
+
+impl ValidatedDecode for BulletRangeProof {
+    type Error = ByteArrayError;
+    type Raw = BulletRangeProofRaw;
+
+    fn validate(raw: Self::Raw) -> Result<Self, Self::Error> {
+        Self::from_canonical_bytes(&raw.0)
+    }
+}
+
+impl_validated_decode!(BulletRangeProof);
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn proof_bytes(len: usize) -> Vec<u8> {
+        vec![0xab; len]
+    }
+
+    #[test]
+    fn range_proof_decoders_reject_more_than_the_cap() {
+        for (len, accept) in [(MAX_RANGE_PROOF_BYTES, true), (MAX_RANGE_PROOF_BYTES + 1, false)] {
+            let bytes = proof_bytes(len);
+            let hex = to_hex(&bytes);
+            assert_eq!(BulletRangeProof::from_canonical_bytes(&bytes).is_ok(), accept, "{len}");
+            assert_eq!(BulletRangeProof::from_vec(&bytes).is_ok(), accept, "{len}");
+            assert_eq!(BulletRangeProof::from_hex(&hex).is_ok(), accept, "{len}");
+
+            let json = format!("\"{hex}\"");
+            assert_eq!(serde_json::from_str::<BulletRangeProof>(&json).is_ok(), accept, "{len}");
+
+            // Encode with the unchecked constructor, so the oversized proof reaches the decoders
+            let proof = BulletRangeProof(bytes);
+            let bincode_bytes = bincode::serialize(&proof).unwrap();
+            assert_eq!(
+                bincode::deserialize::<BulletRangeProof>(&bincode_bytes).is_ok(),
+                accept,
+                "{len}"
+            );
+            let borsh_bytes = borsh::to_vec(&proof).unwrap();
+            let decoded = borsh::from_slice::<BulletRangeProof>(&borsh_bytes);
+            assert_eq!(decoded.is_ok(), accept, "{len}");
+            if accept {
+                assert_eq!(decoded.unwrap(), proof);
+            }
+        }
+
+        // Only the length prefix: rejected before any allocation or read
+        let err = borsh::from_slice::<BulletRangeProof>(&u32::MAX.to_le_bytes()).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn range_proof_encoding_is_unchanged() {
+        let bytes = proof_bytes(MAX_RANGE_PROOF_BYTES);
+        let proof = BulletRangeProof::from_canonical_bytes(&bytes).unwrap();
+
+        let mut expected_borsh = vec![0x41, 0x02, 0x00, 0x00];
+        expected_borsh.extend_from_slice(&bytes);
+        assert_eq!(borsh::to_vec(&proof).unwrap(), expected_borsh);
+
+        let mut expected_bincode = vec![0x41, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        expected_bincode.extend_from_slice(&bytes);
+        assert_eq!(bincode::serialize(&proof).unwrap(), expected_bincode);
+
+        let expected_json = format!("\"{}\"", "ab".repeat(MAX_RANGE_PROOF_BYTES));
+        assert_eq!(serde_json::to_string(&proof).unwrap(), expected_json);
+
+        assert_eq!(borsh::from_slice::<BulletRangeProof>(&expected_borsh).unwrap(), proof);
+        assert_eq!(
+            bincode::deserialize::<BulletRangeProof>(&expected_bincode).unwrap(),
+            proof
+        );
+        assert_eq!(serde_json::from_str::<BulletRangeProof>(&expected_json).unwrap(), proof);
     }
 }
