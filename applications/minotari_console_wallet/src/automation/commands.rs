@@ -80,6 +80,7 @@ use tari_p2p::{PeerSeedsConfig, auto_update::AutoUpdateConfig};
 use tari_script::{CompressedCheckSigSchnorrSignature, push_pubkey_script};
 use tari_shutdown::Shutdown;
 use tari_transaction_components::{
+    helpers::terminal_safe::escape_bytes_for_terminal,
     key_manager::{TariKeyId, TransactionKeyManagerInterface, error::KeyManagerError, wallet_types::WalletType},
     multisig::script::is_multisig_utxo,
     offline_signing::models::{
@@ -2555,7 +2556,7 @@ pub async fn command_runner(
                             println!("Timestamp: {timestamp}");
                         }
                         if let Some(payment_id) = &payment_details.payment_id {
-                            println!("Payment ID: {}", String::from_utf8_lossy(payment_id));
+                            println!("Payment ID: {}", escape_bytes_for_terminal(payment_id));
                         }
                     },
                     Ok(None) => {
