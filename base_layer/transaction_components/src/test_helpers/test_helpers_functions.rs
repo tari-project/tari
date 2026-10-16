@@ -678,6 +678,22 @@ pub fn spend_utxos<KM: TransactionKeyManagerInterface>(
     (txn, outputs)
 }
 
+/// As [spend_utxos], with the given kernel features on the transaction kernel.
+pub fn spend_utxos_with_kernel_features<KM: TransactionKeyManagerInterface>(
+    schema: TransactionSchema,
+    features: KernelFeatures,
+    key_manager: &KM,
+) -> (Transaction, Vec<WalletOutput>) {
+    let mut outputs = Vec::with_capacity(schema.to.len());
+    let mut builder = create_test_transaction_internal(schema, key_manager, &mut outputs);
+    builder.with_kernel_features(features);
+    let finalized_tx = builder.build().unwrap();
+    if let Some(change) = &finalized_tx.change {
+        outputs.push(change.clone());
+    }
+    (finalized_tx.transaction, outputs)
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn create_test_transaction<KM: TransactionKeyManagerInterface>(
     schema: TransactionSchema,

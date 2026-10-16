@@ -36,15 +36,21 @@ use tari_common_types::types::{
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
     base_node::state_machine_service::states::{StateInfo, StatusInfo, events_and_states::ListeningInfo},
-    chain_storage::BlockchainDatabaseConfig,
+    chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proto,
+    test_helpers::blockchain::create_test_db,
     validation::{
+        DifficultyCalculator,
         ValidationError,
+        block_body::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator},
+        header::HeaderFullValidator,
         transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
     },
 };
+use tari_crypto::keys::SecretKey;
+use tari_node_components::blocks::ChainBlock;
 use tari_p2p::{P2pConfig, services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_script::{ExecutionStack, Opcode, ScriptError, TariScript, script};
 use tari_test_utils::async_assert_eventually;
@@ -60,9 +66,11 @@ use tari_transaction_components::{
         TestParams,
         TransactionSchema,
         UtxoTestParams,
+        create_kernel_only_transaction,
         create_wallet_output_with_data,
         schema_to_transaction,
         spend_utxos,
+        spend_utxos_with_kernel_features,
     },
     transaction_components::{
         KernelBuilder,
@@ -81,17 +89,22 @@ use tari_transaction_components::{
 };
 use tempfile::tempdir;
 
-use crate::helpers::{
-    block_builders::{
-        chain_block,
-        create_genesis_block,
-        create_genesis_block_with_coinbase_value,
-        find_header_with_achieved_difficulty,
-        generate_block,
-        generate_new_block,
+use crate::{
+    helpers::{
+        block_builders::{
+            chain_block,
+            chain_block_with_new_coinbase,
+            create_genesis_block,
+            create_genesis_block_with_coinbase_value,
+            create_genesis_block_with_utxos,
+            find_header_with_achieved_difficulty,
+            generate_block,
+            generate_new_block,
+        },
+        nodes::create_network_with_multiple_base_nodes_with_config,
+        sample_blockchains::{consensus_constants, create_new_blockchain, create_new_blockchain_with_constants},
     },
-    nodes::create_network_with_multiple_base_nodes_with_config,
-    sample_blockchains::{consensus_constants, create_new_blockchain, create_new_blockchain_with_constants},
+    tests::assert_block_add_result_added,
 };
 
 #[tokio::test]
@@ -331,6 +344,68 @@ async fn test_time_locked() {
 
     // Block height increased, so tx2 should no go in.
     assert_eq!(mempool.insert(tx2).await.unwrap(), TxStorageResponse::UnconfirmedPool);
+}
+
+/// A script that passes at height `h` and fails at any other height
+fn script_passing_only_at(h: u64) -> TariScript {
+    script!(CheckHeight(h) GtZero IfThen Return Else Nop EndIf).unwrap()
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn mempool_validates_scripts_at_next_height() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager, key_manager) = create_new_blockchain(network);
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+
+    let h = 2;
+    let mut schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![2 * T, 2 * T]);
+    schema.script = script_passing_only_at(h);
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![schema],
+        &consensus_manager,
+        &key_manager,
+    )
+    .unwrap();
+    let mut schema = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1 * T]);
+    schema.script = script!(CheckHeightVerify(h + 1)).unwrap();
+    generate_new_block(
+        &mut store,
+        &mut blocks,
+        &mut outputs,
+        vec![schema],
+        &consensus_manager,
+        &key_manager,
+    )
+    .unwrap();
+    assert_eq!(store.get_height().unwrap(), h);
+
+    let (tx, _) = spend_utxos(
+        txn_schema!(from: vec![outputs[1][1].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    let response = mempool.insert(Arc::new(tx)).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+
+    let (tx, _) = spend_utxos(
+        txn_schema!(from: vec![outputs[2][0].clone()], to: vec![500_000 * uT]),
+        &key_manager,
+    );
+    let response = mempool.insert(Arc::new(tx)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::UnconfirmedPool);
 }
 
 // maturities not being checked before
@@ -1668,6 +1743,112 @@ async fn consensus_validation_unique_excess_sig() {
     let tx = Arc::new(tx1);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredAlreadyMined));
+}
+
+#[tokio::test]
+async fn mempool_rejects_kernel_excess_already_in_chain() {
+    let network = Network::LocalNet;
+    let (store, mut blocks, _outputs, consensus_manager, key_manager) = create_new_blockchain(network);
+    let mempool_validator = TransactionFullValidator::new(
+        CryptoFactories::default(),
+        true,
+        store.clone(),
+        consensus_manager.clone(),
+    );
+    let mut config = MempoolConfig::default();
+    config.unconfirmed_pool.min_fee = 0;
+    let mempool = Mempool::new(config, consensus_manager.clone(), Box::new(mempool_validator));
+
+    let k = PrivateKey::random(&mut rand::rng());
+    let tx1 = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+    let result = generate_block(&store, &mut blocks, vec![tx1.clone()], &consensus_manager, &key_manager).unwrap();
+    assert!(result.is_added());
+
+    let tx2 = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+    assert_eq!(tx1.body.kernels()[0].excess, tx2.body.kernels()[0].excess);
+    assert_ne!(tx1.body.kernels()[0].excess_sig, tx2.body.kernels()[0].excess_sig);
+    let response = mempool.insert(Arc::new(tx2)).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+
+    let response = mempool.insert(Arc::new(tx1)).await.unwrap();
+    assert_eq!(response, TxStorageResponse::NotStoredAlreadyMined);
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn block_template_validates_after_rejected_admissions() {
+    let factories = CryptoFactories::default();
+    let network = Network::LocalNet;
+    let consensus_constants = ConsensusConstantsBuilder::new(network).build();
+    let key_manager = KeyManager::new_random().unwrap();
+    let (genesis, outputs) =
+        create_genesis_block_with_utxos(&[5 * T, 5 * T, 5 * T], &consensus_constants, &key_manager);
+    let rules = BaseNodeConsensusManager::builder(network)
+        .add_consensus_constants(consensus_constants)
+        .with_block(genesis.clone())
+        .build()
+        .unwrap();
+    let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+    let validators = Validators::new(
+        BlockBodyFullValidator::new(rules.clone(), true),
+        HeaderFullValidator::new(rules.clone(), difficulty_calculator.clone()),
+        BlockBodyInternalConsistencyValidator::new(rules.clone(), false, factories.clone()),
+    );
+    let db = BlockchainDatabase::start_new(
+        create_test_db(),
+        rules.clone(),
+        validators,
+        BlockchainDatabaseConfig::default(),
+        difficulty_calculator,
+    )
+    .unwrap();
+    let mine = |tip: &ChainBlock, txs: Vec<Transaction>| {
+        let (template, _) = chain_block_with_new_coinbase(tip, txs, &rules, None, &key_manager);
+        let block = db.prepare_new_block(template).unwrap();
+        assert_block_add_result_added(&db.add_block(Arc::new(block)).unwrap().result)
+    };
+
+    let h = 2;
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T]);
+    schema.script = script_passing_only_at(h);
+    let (height_limited_tx, height_limited_outputs) = spend_utxos(schema, &key_manager);
+    let k = PrivateKey::random(&mut rand::rng());
+    let kernel_only_tx = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+    let block_1 = mine(&genesis, vec![height_limited_tx, kernel_only_tx]);
+    let tip = mine(&block_1, vec![]);
+    assert_eq!(tip.height(), h);
+
+    let mempool_validator = TransactionFullValidator::new(factories, true, db.clone(), rules.clone());
+    let mut config = MempoolConfig::default();
+    config.unconfirmed_pool.min_fee = 0;
+    let mempool = Mempool::new(config, rules.clone(), Box::new(mempool_validator));
+
+    let (coinbase_kernel_tx, _) = spend_utxos_with_kernel_features(
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![1 * T]),
+        KernelFeatures::COINBASE_KERNEL,
+        &key_manager,
+    );
+    let (height_limited_spend, _) = spend_utxos(
+        txn_schema!(from: vec![height_limited_outputs[0].clone()], to: vec![500_000 * uT]),
+        &key_manager,
+    );
+    let same_excess_tx = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+    for tx in [coinbase_kernel_tx, height_limited_spend, same_excess_tx] {
+        let response = mempool.insert(Arc::new(tx)).await.unwrap();
+        assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+    }
+    let (ordinary_tx, _) = spend_utxos(
+        txn_schema!(from: vec![outputs[3].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    let response = mempool.insert(Arc::new(ordinary_tx.clone())).await.unwrap();
+    assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+
+    let max_weight = rules.consensus_constants(h + 1).max_block_transaction_weight();
+    let txs = mempool.retrieve(max_weight).await.unwrap();
+    assert_eq!(txs.len(), 1);
+    let block = mine(&tip, txs.iter().map(|tx| (**tx).clone()).collect());
+    assert!(block.block().body.kernels().contains(&ordinary_tx.body.kernels()[0]));
 }
 
 #[tokio::test]

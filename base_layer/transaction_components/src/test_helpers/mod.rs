@@ -43,4 +43,5 @@ pub use test_helpers_functions::{
     new_public_key,
     schema_to_transaction,
     spend_utxos,
+    spend_utxos_with_kernel_features,
 };
