@@ -664,14 +664,38 @@ pub async fn monitor_transactions(
 /// Largest offline-signing payload file that is read.
 const MAX_PAYLOAD_FILE_SIZE: u64 = 10_000_000; // 10MB limit
 
+/// Opens a payload file without waiting on a FIFO: on unix the open does not block, and the caller then refuses
+/// anything that is not a regular file.
+#[cfg(unix)]
+fn open_payload_file(path: &Path) -> io::Result<File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_payload_file(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
 /// Reads an offline-signing payload file. Only regular files are read, and never more than the size limit, so a
-/// device or pipe in place of the file cannot stall the command or exhaust memory.
+/// device or pipe in place of the file cannot stall the command or exhaust memory. All checks run on the opened
+/// handle.
 fn read_payload_file(path: &Path) -> Result<String, CommandError> {
     let read_error = |err| CommandError::FileReadError {
         file_path: path.to_path_buf(),
         err,
     };
-    let metadata = fs::metadata(path).map_err(read_error)?;
+    #[cfg(not(unix))]
+    if !fs::metadata(path).map_err(read_error)?.is_file() {
+        return Err(CommandError::InvalidArgument(
+            "Input file is not a regular file".to_string(),
+        ));
+    }
+    let file = open_payload_file(path).map_err(read_error)?;
+    let metadata = file.metadata().map_err(read_error)?;
     if !metadata.is_file() {
         return Err(CommandError::InvalidArgument(
             "Input file is not a regular file".to_string(),
@@ -679,13 +703,6 @@ fn read_payload_file(path: &Path) -> Result<String, CommandError> {
     }
     if metadata.len() > MAX_PAYLOAD_FILE_SIZE {
         return Err(CommandError::InvalidArgument("Input file too large".to_string()));
-    }
-    // Check the opened handle too, in case the path changed after the check above
-    let file = File::open(path).map_err(read_error)?;
-    if !file.metadata().map_err(read_error)?.is_file() {
-        return Err(CommandError::InvalidArgument(
-            "Input file is not a regular file".to_string(),
-        ));
     }
     let mut data = String::new();
     file.take(MAX_PAYLOAD_FILE_SIZE.saturating_add(1))
@@ -4074,6 +4091,28 @@ mod test {
         let dir = tempfile::tempdir().unwrap();
         let err = read_payload_file(dir.path()).unwrap_err();
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn payload_file_read_refuses_a_fifo_without_waiting() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload.fifo");
+        let status = std::process::Command::new("mkfifo").arg(&path).status().unwrap();
+        assert!(status.success());
+
+        // Nothing ever writes to the FIFO, so a blocking open would never return
+        let (tx, rx) = std::sync::mpsc::channel();
+        let fifo = path.clone();
+        std::thread::spawn(move || {
+            let result = read_payload_file(&fifo).map_err(|e| e.to_string());
+            tx.send(result).unwrap();
+        });
+        let err = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("reading a FIFO must not block")
+            .unwrap_err();
+        assert!(err.contains("not a regular file"), "{err}");
     }
 
     #[test]

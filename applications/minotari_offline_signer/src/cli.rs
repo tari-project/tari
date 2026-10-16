@@ -300,21 +300,37 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
 
 const MAX_FILE_SIZE: u64 = 10_000_000; // 10MB limit
 
+/// Opens the payload file without waiting on a FIFO: on unix the open does not block, and the caller then refuses
+/// anything that is not a regular file.
+#[cfg(unix)]
+fn open_input_file(path: &Path) -> io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_input_file(path: &Path) -> io::Result<fs::File> {
+    fs::File::open(path)
+}
+
 /// Reads the payload file. Only regular files are read, and never more than the size limit, so a device or pipe in
-/// place of the file cannot stall the signer or exhaust memory.
+/// place of the file cannot stall the signer or exhaust memory. All checks run on the opened handle.
 fn read_input_file(path: &Path) -> Result<String> {
     let context = || format!("Failed to read input file: {:?}", path);
-    let metadata = fs::metadata(path).with_context(context)?;
+    #[cfg(not(unix))]
+    if !fs::metadata(path).with_context(context)?.is_file() {
+        return Err(anyhow!("Input file is not a regular file: {:?}", path));
+    }
+    let file = open_input_file(path).with_context(context)?;
+    let metadata = file.metadata().with_context(context)?;
     if !metadata.is_file() {
         return Err(anyhow!("Input file is not a regular file: {:?}", path));
     }
     if metadata.len() > MAX_FILE_SIZE {
         return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
-    }
-    // Check the opened handle too, in case the path changed after the check above
-    let file = fs::File::open(path).with_context(context)?;
-    if !file.metadata().with_context(context)?.is_file() {
-        return Err(anyhow!("Input file is not a regular file: {:?}", path));
     }
     let mut data = String::new();
     file.take(MAX_FILE_SIZE.saturating_add(1))
@@ -504,6 +520,27 @@ mod test {
     #[test]
     fn input_file_read_refuses_a_directory() {
         let err = read_input_file(&std::env::temp_dir()).unwrap_err().to_string();
+        assert!(err.contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn input_file_read_refuses_a_fifo_without_waiting() {
+        let path = std::env::temp_dir().join(format!("offline_signer_fifo_{}", std::process::id()));
+        drop(fs::remove_file(&path));
+        let status = std::process::Command::new("mkfifo").arg(&path).status().unwrap();
+        assert!(status.success());
+
+        // Nothing ever writes to the FIFO, so a blocking open would never return
+        let (tx, rx) = std::sync::mpsc::channel();
+        let fifo = path.clone();
+        std::thread::spawn(move || {
+            let result = read_input_file(&fifo).map_err(|e| e.to_string());
+            tx.send(result).unwrap();
+        });
+        let result = rx.recv_timeout(std::time::Duration::from_secs(10));
+        fs::remove_file(&path).unwrap();
+        let err = result.expect("reading a FIFO must not block").unwrap_err();
         assert!(err.contains("not a regular file"), "{err}");
     }
 
