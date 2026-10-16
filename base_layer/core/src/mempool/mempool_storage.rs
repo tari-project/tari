@@ -144,13 +144,13 @@ impl MempoolStorage {
     /// since the mempool reconciles every stored transaction with it when it does process it.
     ///
     /// Most failures are final. Only a failure that depends on the chain tip (inputs not in the chain or pool, input
-    /// maturity and lock heights, and scripts that read the block height; see `is_tip_dependent`) may be due to the
-    /// chain changing during validation. Such a failure is validated again, in the same way, if the mempool processed
-    /// a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks do not
-    /// depend on the chain and are not repeated. Failure-driven retries are capped at the unlocked attempts and never
-    /// take the lock: if the last unlocked attempt failed, that failure is returned. Only a stale success falls back to
-    /// the locked attempt, so a transaction that keeps failing (e.g. a never-valid spend of an output whose script
-    /// reads the block height, during block sync) costs at most the unlocked attempts.
+    /// maturity and lock heights, and scripts that read the height of the next block; see `is_tip_dependent`) may be
+    /// due to the chain changing during validation. Such a failure is validated again, in the same way, if the mempool
+    /// processed a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks
+    /// do not depend on the chain and are not repeated. Failure-driven retries are capped at the unlocked attempts and
+    /// never take the lock: if the last unlocked attempt failed, that failure is returned. Only a stale success falls
+    /// back to the locked attempt, so a transaction that keeps failing (e.g. a never-valid spend of an output whose
+    /// script reads the block height, during block sync) costs at most the unlocked attempts.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
@@ -826,10 +826,10 @@ fn validate_attempt(
 /// transaction may be valid at a different tip:
 /// - inputs that are not (or no longer) in the chain,
 /// - input maturity and kernel lock heights,
-/// - a failing input script, but only if one of the transaction's input scripts reads the block height. Any output in
-///   the chain can be spent with made-up input data to produce a failing script, so script failures in general are
-///   final. The script error does not identify which input failed, so any input with such a script counts; since
-///   failure-driven retries never take the lock, this costs at most the unlocked attempts.
+/// - a failing input script, but only if one of the transaction's input scripts reads the height of the next block. Any
+///   output in the chain can be spent with made-up input data to produce a failing script, so script failures in
+///   general are final. The script error does not identify which input failed, so any input with such a script counts;
+///   since failure-driven retries never take the lock, this costs at most the unlocked attempts.
 ///
 /// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
 /// sizes, sorting, weight, versions etc.). That includes an input that is already spent and a kernel that is already
