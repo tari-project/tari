@@ -363,6 +363,56 @@ impl PayloadDetails {
         }
         Ok(())
     }
+
+    /// The fixed closing block: every destination, the multisig keys and the totals again, after all memo text.
+    fn write_recap(&self, f: &mut Formatter<'_>, total_spend: &str, change: &str) -> std::fmt::Result {
+        const UNUSUAL: &str = " (WARNING: unusual output features, see above)";
+        writeln!(f, "{RECAP_HEADER}")?;
+        for (i, recipient) in self.recipients.iter().enumerate() {
+            let warning = if unusual_features(&recipient.features).is_empty() {
+                ""
+            } else {
+                UNUSUAL
+            };
+            writeln!(
+                f,
+                "  [{}] {} -> {}{}",
+                i.saturating_add(1),
+                recipient.amount,
+                recipient.address.to_base58(),
+                warning
+            )?;
+        }
+        for (i, output) in self.outputs.iter().enumerate() {
+            let warning = if unusual_features(&output.features).is_empty() {
+                ""
+            } else {
+                UNUSUAL
+            };
+            writeln!(
+                f,
+                "  output [{}] {} -> script {} (NOT a normal payment){}",
+                i.saturating_add(1),
+                output.amount,
+                TerminalSafe(&output.script),
+                warning
+            )?;
+        }
+        if let Some(required) = self.multisig_required_signatures {
+            writeln!(
+                f,
+                "  Required signatures {} of {}",
+                required,
+                self.multisig_public_keys.len()
+            )?;
+            for (i, pk) in self.multisig_public_keys.iter().enumerate() {
+                writeln!(f, "    key [{}] {}", i.saturating_add(1), TerminalSafe(pk))?;
+            }
+        }
+        writeln!(f, "  {total_spend}")?;
+        writeln!(f, "  {change}")?;
+        writeln!(f, "{RECAP_FOOTER}")
+    }
 }
 
 fn write_features(f: &mut Formatter<'_>, features: &OutputFeatures) -> std::fmt::Result {
@@ -437,42 +487,7 @@ impl Display for PayloadDetails {
         // Sender-supplied text goes after every line it could imitate, and nothing from a memo follows this block
         self.write_memos(f)?;
 
-        writeln!(f, "{RECAP_HEADER}")?;
-        for (i, recipient) in self.recipients.iter().enumerate() {
-            let warning = if unusual_features(&recipient.features).is_empty() {
-                ""
-            } else {
-                " (WARNING: unusual output features, see above)"
-            };
-            writeln!(
-                f,
-                "  [{}] {} -> {}{}",
-                i.saturating_add(1),
-                recipient.amount,
-                recipient.address.to_base58(),
-                warning
-            )?;
-        }
-        for (i, output) in self.outputs.iter().enumerate() {
-            writeln!(
-                f,
-                "  output [{}] {} -> script {}",
-                i.saturating_add(1),
-                output.amount,
-                TerminalSafe(&output.script)
-            )?;
-        }
-        if let Some(required) = self.multisig_required_signatures {
-            writeln!(
-                f,
-                "  Required signatures {} of {}",
-                required,
-                self.multisig_public_keys.len()
-            )?;
-        }
-        writeln!(f, "  {total_spend}")?;
-        writeln!(f, "  {change}")?;
-        writeln!(f, "{RECAP_FOOTER}")
+        self.write_recap(f, &total_spend, &change)
     }
 }
 
@@ -1080,6 +1095,47 @@ mod test {
     }
 
     #[test]
+    fn payload_summary_recap_flags_other_outputs() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let features = OutputFeatures {
+            maturity: 50,
+            ..Default::default()
+        };
+        let output = WalletOutput::new(
+            Default::default(),
+            MicroMinotari::from(300),
+            key_manager.get_random_key(None, None).unwrap().key_id,
+            features,
+            push_pubkey_script(&key_manager.get_spend_key().pub_key),
+            ExecutionStack::default(),
+            TariKeyId::Zero,
+            Default::default(),
+            Default::default(),
+            0,
+            Covenant::default(),
+            EncryptedData::default(),
+            MicroMinotari::zero(),
+            MemoField::new_empty(),
+            &key_manager,
+        )
+        .unwrap();
+        let mut info = info(&[1000]);
+        info.outputs = vec![output];
+
+        let rendered = PayloadSummary::from_one_sided(one_sided_payload(info)).to_string();
+        let recap = &rendered[rendered.find("---- Recap ----").unwrap()..];
+        let line = recap
+            .lines()
+            .find(|l| l.starts_with("  output [1] "))
+            .expect("other output in recap");
+        assert!(line.contains("(NOT a normal payment)"), "{rendered}");
+        assert!(
+            line.ends_with("(WARNING: unusual output features, see above)"),
+            "{rendered}"
+        );
+    }
+
+    #[test]
     fn multisig_summary_labels_required_signatures() {
         use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
 
@@ -1106,6 +1162,10 @@ mod test {
         assert!(rendered.contains("Required signatures (m of n) : 2 of 3"), "{rendered}");
         assert!(rendered.contains("  Required signatures 2 of 3\n"), "{rendered}");
         assert!(!rendered.contains("Multisig party"), "{rendered}");
+        let recap = &rendered[rendered.find("---- Recap ----").unwrap()..];
+        for (i, key) in summary.multisig_public_keys.iter().enumerate() {
+            assert!(recap.contains(&format!("    key [{}] {key}\n", i + 1)), "{rendered}");
+        }
     }
 
     /// Reading from this input is a test failure.
