@@ -24,7 +24,12 @@ use blake2::Blake2b;
 use digest::consts::U64;
 
 mod interface;
-pub use interface::{SecretTransactionKeyManagerInterface, TransactionKeyManagerInterface, TxoStage};
+pub use interface::{
+    RecoveryProvenance,
+    SecretTransactionKeyManagerInterface,
+    TransactionKeyManagerInterface,
+    TxoStage,
+};
 pub mod key_id;
 pub use key_id::*;
 

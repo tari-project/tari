@@ -423,6 +423,8 @@ call.on('status', (status) => {
 });
 ```
 
+Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
+
 This is a basic implementation; some additional items you may want to consider for a production environment are: 
 
 * Using `grpc.credentials.createSsl()` to secure the connection between the wallet and any application calling it. We'll not discuss the process of creating a server key or certificate here; you can read more about the process [here](https://www.ibm.com/docs/en/api-connect/10.0.x?topic=profile-generating-self-signed-certificate-using-openssl). Below is an example:

@@ -31,6 +31,7 @@ use minotari_wallet::output_manager_service::{
 };
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
+use tari_transaction_components::key_manager::RecoveryProvenance;
 use tari_transaction_key_manager::legacy_key_manager::MemoryKeyManager;
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
 
@@ -111,6 +112,7 @@ impl OutputManagerServiceMock {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
                                 hash: dbuo.hash,
+                                provenance: RecoveryProvenance::OwnViewKey,
                             })
                         } else {
                             None
@@ -134,6 +136,7 @@ impl OutputManagerServiceMock {
                             Some(RecoveredOutput {
                                 output: dbuo.wallet_output,
                                 hash: dbuo.hash,
+                                provenance: RecoveryProvenance::OwnViewKey,
                             })
                         } else {
                             None

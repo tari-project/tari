@@ -219,6 +219,10 @@ pub struct CompletedTransaction {
     pub lock_height: u64,
     /// The rejection reason text returned by the base node when this transaction was rejected.
     pub rejection_reason: Option<String>,
+    /// True when `source_address` was taken from a memo the sender wrote (an output recovered via Diffie-Hellman, or
+    /// an external import). It is a claim by the sender and is not authenticated.
+    #[serde(default)]
+    pub source_address_claimed: bool,
 }
 
 impl CompletedTransaction {
@@ -268,6 +272,7 @@ impl CompletedTransaction {
             change_output_hashes: Vec::new(),
             lock_height,
             rejection_reason: None,
+            source_address_claimed: false,
         })
     }
 
@@ -473,6 +478,7 @@ impl CompletedTransaction {
             change_output_hashes,
             lock_height,
             rejection_reason: None,
+            source_address_claimed: false,
         })
     }
 
@@ -559,6 +565,7 @@ impl CompletedTransaction {
             change_output_hashes,
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         }
     }
 }
@@ -690,6 +697,7 @@ impl From<InboundTransaction> for CompletedTransaction {
             change_output_hashes: Vec::new(),
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         }
     }
 }
@@ -951,6 +959,7 @@ mod test {
             change_output_hashes: vec![],
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         }
     }
 

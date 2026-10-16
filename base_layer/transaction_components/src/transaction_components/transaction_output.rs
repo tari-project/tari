@@ -978,7 +978,7 @@ mod test {
 
         assert!(tx_output.verify_range_proof(&factories.range_proof).is_ok());
         assert!(tx_output.verify_metadata_signature().is_ok());
-        let (_, recovered_value, _) = key_manager
+        let (_, recovered_value, _, _) = key_manager
             .try_output_key_recovery(
                 tx_output.commitment(),
                 tx_output.encrypted_data(),

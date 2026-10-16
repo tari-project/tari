@@ -427,7 +427,7 @@ mod test {
                     .verify_mask(output.commitment(), &commitment_mask_key.key_id, value.into())
                     .unwrap();
 
-                let (recovered_key_id, recovered_value, _) = key_manager
+                let (recovered_key_id, recovered_value, _, _) = key_manager
                     .try_output_key_recovery(
                         output.commitment(),
                         output.encrypted_data(),

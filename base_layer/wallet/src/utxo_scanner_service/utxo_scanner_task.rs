@@ -41,6 +41,7 @@ use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::C
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     MicroMinotari,
+    key_manager::RecoveryProvenance,
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
         EncryptedData,
@@ -67,6 +68,7 @@ use crate::{
     utxo_scanner_service::{
         RECOVERY_KEY,
         handle::UtxoScannerEvent,
+        imported_output_source_address,
         service::{ScannedBlock, UtxoScannerResources},
         uxto_scanner_service_builder::UtxoScannerMode,
     },
@@ -716,7 +718,7 @@ where
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TransactionOutput)>, anyhow::Error> {
+    ) -> Result<Vec<(WalletOutput, LegacyImportStatus, TransactionOutput, RecoveryProvenance)>, anyhow::Error> {
         let start = Instant::now();
         let outputs_by_hash: HashMap<_, _> = outputs.iter().cloned().map(|o| (o.hash(), o)).collect();
         let mut found_outputs = Vec::new();
@@ -737,7 +739,7 @@ where
                     let output = outputs_by_hash
                         .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, output.clone()))
+                    Ok((ro.output, status, output.clone(), ro.provenance))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -762,7 +764,7 @@ where
                     let output = outputs_by_hash
                         .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, output.clone()))
+                    Ok((ro.output, status, output.clone(), ro.provenance))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -789,7 +791,7 @@ where
                     let output = outputs_by_hash
                         .get(&ro.hash)
                         .ok_or_else(|| anyhow!("Output '{}' not found", ro.hash.to_hex()))?;
-                    Ok((ro.output, status, output.clone()))
+                    Ok((ro.output, status, output.clone(), ro.provenance))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         );
@@ -807,24 +809,16 @@ where
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: &[(WalletOutput, LegacyImportStatus, TransactionOutput)],
+        utxos: &[(WalletOutput, LegacyImportStatus, TransactionOutput, RecoveryProvenance)],
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
     ) -> Result<(u64, MicroMinotari), anyhow::Error> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroMinotari::from(0);
         let view_key = self.key_manager.get_view_key().pub_key;
-        for (wo, import_status, to) in utxos {
-            let source_address = if wo.is_coinbase() {
-                // It's a coinbase, so we know we mined it (we do mining with cold wallets).
-                self.resources.one_sided_tari_address.clone()
-            } else if let Some(address) = wo.payment_id().get_sender_address() {
-                address
-            } else if wo.payment_id().is_transaction_info() {
-                self.resources.one_sided_tari_address.clone()
-            } else {
-                TariAddress::default()
-            };
+        for (wo, import_status, to, provenance) in utxos {
+            let source_address =
+                imported_output_source_address(wo, *provenance, &self.resources.one_sided_tari_address);
             match self
                 .import_key_manager_utxo_to_transaction_service(
                     wo.clone(),
@@ -833,6 +827,7 @@ where
                     current_height,
                     mined_timestamp,
                     to.clone(),
+                    *provenance,
                 )
                 .await
             {
@@ -883,6 +878,7 @@ where
         current_height: u64,
         mined_timestamp: DateTime<Utc>,
         scanned_output: TransactionOutput,
+        provenance: RecoveryProvenance,
     ) -> Result<(), WalletError> {
         self.resources
             .transaction_service
@@ -896,6 +892,7 @@ where
                 wallet_output.payment_id().clone(),
                 None,
                 wallet_output.max_lock_height(),
+                provenance,
             )
             .await?;
 

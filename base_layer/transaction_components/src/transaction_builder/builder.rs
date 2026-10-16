@@ -3486,7 +3486,7 @@ mod test {
         let mut bob_count = 0;
         for output in outputs {
             // alice change output
-            if let Ok(Some((commitment_key, _, _))) = alice_key_manager.try_output_key_recovery(
+            if let Ok(Some((commitment_key, _, _, _))) = alice_key_manager.try_output_key_recovery(
                 &output.commitment,
                 &output.encrypted_data,
                 &output.sender_offset_public_key,
@@ -3503,7 +3503,7 @@ mod test {
                     panic!("unexpected script");
                 }
             }
-            if let Ok(Some((commitment_key, _, _))) = bob_key_manager.try_output_key_recovery(
+            if let Ok(Some((commitment_key, _, _, _))) = bob_key_manager.try_output_key_recovery(
                 &output.commitment,
                 &output.encrypted_data,
                 &output.sender_offset_public_key,

@@ -89,7 +89,7 @@ fn key_manager_input() {
         .expect("Should be able to create transaction output");
 
     assert_eq!(*input.features().unwrap(), OutputFeatures::default());
-    let (_, value, _) = key_manager
+    let (_, value, _, _) = key_manager
         .try_output_key_recovery(
             output.commitment(),
             output.encrypted_data(),
@@ -548,7 +548,7 @@ fn test_output_recover_openings() {
         .unwrap();
     let output = wallet_output.to_transaction_output().unwrap();
 
-    let (_mask, value, _) = key_manager
+    let (_mask, value, _, _) = key_manager
         .try_output_key_recovery(
             output.commitment(),
             output.encrypted_data(),
