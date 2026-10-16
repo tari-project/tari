@@ -30,6 +30,12 @@ use crate::{
 pub mod branch_and_bound;
 pub trait UtxoValue: Clone + Debug + PartialEq {
     fn value(&self) -> MicroMinotari;
+
+    /// True when `self` and `other` are the same UTXO. Defaults to `==`; override when `PartialEq` compares values
+    /// only.
+    fn is_same_utxo(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 impl UtxoValue for MicroMinotari {
@@ -42,10 +48,18 @@ impl UtxoValue for UnblindedOutput {
     fn value(&self) -> MicroMinotari {
         self.value
     }
+
+    fn is_same_utxo(&self, other: &Self) -> bool {
+        self.value == other.value && self.commitment_mask_key == other.commitment_mask_key
+    }
 }
 
 impl UtxoValue for WalletOutput {
     fn value(&self) -> MicroMinotari {
         self.value()
+    }
+
+    fn is_same_utxo(&self, other: &Self) -> bool {
+        self.commitment() == other.commitment()
     }
 }

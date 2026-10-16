@@ -101,6 +101,10 @@ impl UtxoValue for DbWalletOutput {
     fn value(&self) -> MicroMinotari {
         self.wallet_output.value()
     }
+
+    fn is_same_utxo(&self, other: &Self) -> bool {
+        self.commitment == other.commitment
+    }
 }
 
 impl From<DbWalletOutput> for WalletOutput {

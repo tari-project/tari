@@ -111,10 +111,17 @@ where T: UtxoValue
             allow_dust_waste: self.allow_dust_waste,
         };
 
-        Ok(BranchAndBoundUtxoSelector::new(
-            self.available_utxos,
-            selection_params,
-            params,
-        ))
+        // Outputs worth no more than `fee_per_input` are left out of the search. Such an input raises the target by
+        // `fee_per_input` and the selected value by at most that, so it never moves a selection toward the target
+        // and only adds waste. With dust waste allowed, no selection containing one is strictly better than the
+        // same selection without it, and the descending search visits that selection first, so the result is
+        // unchanged (and with the iteration cap reached, never worse). If kept and dust outputs together meet the
+        // target, the kept outputs alone do. Dust is still used when must-selected.
+        let (kept, dust): (Vec<T>, Vec<T>) = self
+            .available_utxos
+            .into_iter()
+            .partition(|utxo| !self.allow_dust_waste || utxo.value() > fee_per_input);
+
+        Ok(BranchAndBoundUtxoSelector::new(kept, selection_params, params).with_excluded_dust(dust))
     }
 }
