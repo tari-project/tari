@@ -508,7 +508,11 @@ impl Display for PayloadDetails {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Payload        : {}", self.kind)?;
         writeln!(f, "Transaction ID : {}", self.tx_id)?;
-        writeln!(f, "From           : {}", self.sender_address.to_base58())?;
+        writeln!(
+            f,
+            "From           : {} (as stated by the payload, not checked)",
+            self.sender_address.to_base58()
+        )?;
         writeln!(
             f,
             "Inputs         : {} totalling {}",
@@ -1351,6 +1355,13 @@ mod test {
         assert_eq!(summary.kind, PayloadKind::MultisigDeposit);
         let rendered = summary.to_string();
         assert!(rendered.contains("Payload        : multisig deposit"), "{rendered}");
+        assert!(
+            rendered.contains(&format!(
+                "From           : {} (as stated by the payload, not checked)\n",
+                summary.sender_address.to_base58()
+            )),
+            "{rendered}"
+        );
         assert!(rendered.contains("Required signatures (m of n) : 2 of 3"), "{rendered}");
         assert!(rendered.contains("  Required signatures 2 of 3\n"), "{rendered}");
         assert!(!rendered.contains("Multisig party"), "{rendered}");
