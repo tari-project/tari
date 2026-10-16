@@ -22,7 +22,7 @@
 
 use std::io;
 
-use integer_encoding::VarIntReader;
+use integer_encoding::VarInt;
 use tari_script::ScriptError;
 
 use crate::transaction_components::covenants::token::CovenantToken;
@@ -91,6 +91,10 @@ pub enum CovenantDecodeError {
     ExceededMaxTokens { max: usize },
     #[error("Covenant nested more than {max} levels deep")]
     ExceededMaxDepth { max: usize },
+    #[error("Covenant length prefix is not minimally encoded")]
+    NonCanonicalLength,
+    #[error("Covenant length {value} is out of range")]
+    LengthOutOfRange { value: u64 },
     #[error("Covenant had {remaining} trailing byte(s) after a complete decode")]
     TrailingBytes { remaining: usize },
     #[error(transparent)]
@@ -101,7 +105,7 @@ pub enum CovenantDecodeError {
 /// and `read_variable_length_bytes`.
 pub(super) trait CovenantReadExt: io::Read {
     fn read_next_byte_code(&mut self) -> Result<Option<u8>, io::Error>;
-    fn read_variable_length_bytes(&mut self, size: usize) -> Result<Vec<u8>, io::Error>;
+    fn read_variable_length_bytes(&mut self, size: usize) -> Result<Vec<u8>, CovenantDecodeError>;
 }
 
 impl<R: io::Read> CovenantReadExt for R {
@@ -123,18 +127,39 @@ impl<R: io::Read> CovenantReadExt for R {
     }
 
     /// Reads a variable length byte array
-    fn read_variable_length_bytes(&mut self, max_size: usize) -> Result<Vec<u8>, io::Error> {
-        let len = self.read_varint::<u16>()? as usize;
-        if len > max_size {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Received variable length bytes that exceed {len} bytes (max: {max_size})"),
-            ));
-        }
+    fn read_variable_length_bytes(&mut self, max_size: usize) -> Result<Vec<u8>, CovenantDecodeError> {
+        let len = read_canonical_len(self, max_size)?;
         let mut buf = vec![0u8; len];
         self.read_exact(&mut buf)?;
         Ok(buf)
     }
+}
+
+/// Reads a varint length of at most 3 bytes, rejecting non-minimal encodings and values > u16::MAX or > max.
+pub(super) fn read_canonical_len<R: io::Read>(reader: &mut R, max: usize) -> Result<usize, CovenantDecodeError> {
+    let mut buf = [0u8; 3];
+    for slot in &mut buf {
+        let byte = reader
+            .read_next_byte_code()?
+            .ok_or(CovenantDecodeError::UnexpectedEof { expected: "length" })?;
+        *slot = byte;
+        if byte & 0x80 == 0 {
+            break;
+        }
+    }
+    // Fails if all three bytes have the continuation bit set
+    let (value, bytes_read) = u64::decode_var(&buf).ok_or(CovenantDecodeError::NonCanonicalLength)?;
+    if value > u64::from(u16::MAX) {
+        return Err(CovenantDecodeError::LengthOutOfRange { value });
+    }
+    if bytes_read != value.required_space() {
+        return Err(CovenantDecodeError::NonCanonicalLength);
+    }
+    let len = usize::try_from(value).map_err(|_| CovenantDecodeError::LengthOutOfRange { value })?;
+    if len > max {
+        return Err(CovenantDecodeError::LengthOutOfRange { value });
+    }
+    Ok(len)
 }
 
 #[cfg(test)]
@@ -222,6 +247,45 @@ mod test {
             let data = vec![0x03u8, 0x01, 0x02, 0x03];
             let bytes = CovenantReadExt::read_variable_length_bytes(&mut data.as_slice(), 3).unwrap();
             assert_eq!(bytes, [1u8, 2, 3]);
+        }
+
+        #[test]
+        fn covenant_length_prefix_must_be_minimal() {
+            use crate::transaction_components::covenants::{
+                Covenant,
+                byte_codes::{ARG_COVENANT, ARG_OUTPUT_FIELDS, FIELD_COMMITMENT, FIELD_FEATURES, FILTER_IDENTITY},
+            };
+
+            let err = Covenant::from_bytes(&mut [ARG_COVENANT, 0x81, 0x00, FILTER_IDENTITY].as_slice()).unwrap_err();
+            assert!(matches!(err, CovenantDecodeError::NonCanonicalLength), "{err}");
+            let err =
+                Covenant::from_bytes(&mut [ARG_COVENANT, 0x83, 0x80, 0x04, FILTER_IDENTITY].as_slice()).unwrap_err();
+            assert!(
+                matches!(err, CovenantDecodeError::LengthOutOfRange { value: 65539 }),
+                "{err}"
+            );
+            let err =
+                Covenant::from_bytes(&mut [ARG_OUTPUT_FIELDS, 0x82, 0x00, FIELD_COMMITMENT, FIELD_FEATURES].as_slice())
+                    .unwrap_err();
+            assert!(matches!(err, CovenantDecodeError::NonCanonicalLength), "{err}");
+            let err = read_canonical_len(&mut [0x80u8, 0x80, 0x80].as_slice(), 4096).unwrap_err();
+            assert!(matches!(err, CovenantDecodeError::NonCanonicalLength), "{err}");
+
+            // Minimal prefixes decode
+            let nested = Covenant::from_bytes(&mut [ARG_COVENANT, 0x01, FILTER_IDENTITY].as_slice()).unwrap();
+            assert_eq!(nested.to_bytes(), [ARG_COVENANT, 0x01, FILTER_IDENTITY]);
+            let fields =
+                Covenant::from_bytes(&mut [ARG_OUTPUT_FIELDS, 0x02, FIELD_COMMITMENT, FIELD_FEATURES].as_slice())
+                    .unwrap();
+            assert_eq!(fields.to_bytes(), [
+                ARG_OUTPUT_FIELDS,
+                0x02,
+                FIELD_COMMITMENT,
+                FIELD_FEATURES
+            ]);
+            let mut long = vec![0x80, 0x01];
+            long.extend_from_slice(&[0u8; 128]);
+            assert_eq!(read_canonical_len(&mut long.as_slice(), 4096).unwrap(), 128);
         }
 
         #[test]

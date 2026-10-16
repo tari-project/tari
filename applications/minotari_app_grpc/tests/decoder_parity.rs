@@ -1581,6 +1581,12 @@ fn body_samples() -> Vec<Sample> {
         Mutation::OutputCovenant(over_token_limit),
         false,
     ));
+    // A nested covenant (0x05) holding `identity()` (0x20), with its length 1 encoded in two bytes
+    samples.push(sample(
+        "a covenant with a non-minimal length",
+        Mutation::OutputCovenant(vec![0x05, 0x81, 0x00, 0x20]),
+        false,
+    ));
 
     // Versions
     samples.extend(version_samples("output version", &[0, 1], Mutation::OutputVersion));

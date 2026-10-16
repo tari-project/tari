@@ -1,13 +1,13 @@
 // Copyright 2026 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use integer_encoding::{VarIntReader, VarIntWriter};
+use integer_encoding::VarIntWriter;
 
 use crate::transaction_components::covenants::{
     arguments::{CovenantArg, MAX_COVENANT_ARG_SIZE},
     byte_codes::ARG_COVENANT,
     covenant::{MAX_COVENANT_BYTES, MAX_COVENANT_DEPTH, MAX_COVENANT_TOKENS},
-    decoder::{CovenantDecodeError, CovenantReadExt},
+    decoder::{CovenantDecodeError, CovenantReadExt, read_canonical_len},
     filters::CovenantFilter,
 };
 
@@ -43,10 +43,7 @@ pub(super) fn scan(
             CovenantFilter::try_from_byte_code(code)?;
             out.push(code);
         } else if code == ARG_COVENANT {
-            let len = usize::from(reader.read_varint::<u16>()?);
-            if len > MAX_COVENANT_ARG_SIZE {
-                return Err(CovenantDecodeError::ExceededMaxBytes);
-            }
+            let len = read_canonical_len(&mut reader, MAX_COVENANT_ARG_SIZE)?;
             let (nested_bytes, rest) = reader.split_at_checked(len).ok_or(CovenantDecodeError::UnexpectedEof {
                 expected: "covenant argument",
             })?;
