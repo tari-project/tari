@@ -25,6 +25,7 @@ use tari_common::configuration::Network;
 use tari_common_types::{
     epoch::VnEpoch,
     types::{
+        BulletRangeProof,
         ComAndPubSignature,
         CompressedCommitment,
         CompressedPublicKey,
@@ -1615,12 +1616,18 @@ fn body_samples() -> Vec<Sample> {
         ));
     }
 
-    // Range proof bytes: not validated when decoded (the proof is verified by consensus validation)
-    for (name, bytes) in [("empty", vec![]), ("1 byte", vec![1]), ("garbage", vec![0xff; 100])] {
+    // Range proof bytes: only the length is checked when decoded
+    for (name, bytes, accept) in [
+        ("empty", vec![], true),
+        ("1 byte", vec![1], true),
+        ("garbage", vec![0xff; 100], true),
+        ("at the cap", vec![0xff; 577], true),
+        ("one over the cap", vec![0xff; 578], false),
+    ] {
         samples.push(sample(
             format!("range proof: {name}"),
             Mutation::OutputRangeProof(bytes),
-            true,
+            accept,
         ));
     }
 
@@ -1890,6 +1897,7 @@ fn every_invariant_type_decodes_through_validated_decode() {
     assert_validated::<MemoField>();
     assert_validated::<Difficulty>();
     assert_validated::<TariKeyId>();
+    assert_validated::<BulletRangeProof>();
 }
 
 #[test]

@@ -947,6 +947,9 @@ mod metadata_preimage_test {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::MAX_RANGE_PROOF_BYTES;
+    use tari_utilities::ByteArray;
+
     use super::{TransactionOutput, batch_verify_range_proofs};
     use crate::{
         MicroMinotari,
@@ -1140,6 +1143,14 @@ mod test {
         ];
 
         assert!(batch_verify_range_proofs(&factories.range_proof, &outputs).is_err());
+    }
+
+    #[test]
+    fn range_proof_decode_cap_matches_a_real_proof() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mask = key_manager.get_random_key(None, None).unwrap();
+        let proof = key_manager.construct_range_proof(&mask.key_id, 100, 0).unwrap();
+        assert_eq!(proof.as_bytes().len(), MAX_RANGE_PROOF_BYTES);
     }
 
     fn create_output<KM: TransactionKeyManagerInterface>(
