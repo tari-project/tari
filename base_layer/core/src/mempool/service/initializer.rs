@@ -38,7 +38,7 @@ use tari_service_framework::{
     async_trait,
     reply_channel,
 };
-use tari_transaction_components::transaction_components::Transaction;
+use tari_transaction_components::transaction_components::{Transaction, covenants::exceeds_covenant_token_limit};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -88,29 +88,43 @@ impl MempoolServiceInitializer {
     }
 }
 
-/// Decode an inbound transaction message. Returns `None` (after logging a warning) if the message cannot be decoded or
-/// the transaction is ill-formed. This is CPU-bound, and must be run on a blocking thread.
-pub(crate) fn extract_transaction(msg: &PeerMessage) -> Option<DomainMessage<Transaction>> {
+/// Why an inbound transaction message was not decoded
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ExtractTransactionError {
+    #[error("Could not decode inbound transaction message: {0}")]
+    Undecodable(String),
+    #[error("Inbound transaction message was ill-formed: {0}")]
+    IllFormed(String),
+    #[error("Transaction covenant exceeds token limit")]
+    CovenantTokenLimit,
+}
+
+/// Decode an inbound transaction message. Returns an error (after logging a warning) if the message cannot be decoded
+/// or the transaction is ill-formed. This is CPU-bound, and must be run on a blocking thread.
+pub(crate) fn extract_transaction(msg: &PeerMessage) -> Result<DomainMessage<Transaction>, ExtractTransactionError> {
     match msg.decode_message_with_max_items::<proto::types::Transaction>(proto::MESSAGE_MAX_DECODE_ITEMS) {
         Err(e) => {
             warn!(
                 target: LOG_TARGET,
                 "Could not decode inbound transaction message. {e}"
             );
-            None
+            Err(ExtractTransactionError::Undecodable(e.to_string()))
         },
         Ok(tx) => {
+            if has_covenant_over_token_limit(&tx) {
+                return Err(ExtractTransactionError::CovenantTokenLimit);
+            }
             let tx = match Transaction::try_from(tx) {
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
                         "Inbound transaction message from {} was ill-formed. {}", msg.source_peer.public_key, e
                     );
-                    return None;
+                    return Err(ExtractTransactionError::IllFormed(e));
                 },
                 Ok(b) => b,
             };
-            Some(DomainMessage {
+            Ok(DomainMessage {
                 source_peer: msg.source_peer.clone(),
                 dht_header: msg.dht_header.clone(),
                 authenticated_origin: msg.authenticated_origin.clone(),
@@ -118,6 +132,19 @@ pub(crate) fn extract_transaction(msg: &PeerMessage) -> Option<DomainMessage<Tra
             })
         },
     }
+}
+
+/// Returns true if any input or output covenant of the transaction fails to decode because it has too many tokens.
+/// An empty covenant is encoded as a single byte and is skipped.
+fn has_covenant_over_token_limit(tx: &proto::types::Transaction) -> bool {
+    let Some(body) = &tx.body else {
+        return false;
+    };
+    let input_covenants = body.inputs.iter().map(|input| &input.covenant);
+    let output_covenants = body.outputs.iter().map(|output| &output.covenant);
+    input_covenants
+        .chain(output_covenants)
+        .any(|covenant| covenant.len() > 1 && exceeds_covenant_token_limit(covenant))
 }
 
 #[async_trait]
@@ -191,6 +218,6 @@ mod test {
             .decode_message_with_max_items::<proto::types::Transaction>(proto::MESSAGE_MAX_DECODE_ITEMS)
             .unwrap_err();
         assert!(err.to_string().contains("decode budget"), "{err}");
-        assert!(extract_transaction(&msg).is_none());
+        assert!(extract_transaction(&msg).is_err());
     }
 }
