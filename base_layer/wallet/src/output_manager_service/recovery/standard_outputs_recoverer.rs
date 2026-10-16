@@ -234,7 +234,7 @@ where
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value, payment_id) = match self.master_key_manager.try_output_key_recovery(
+        let (key, committed_value, payment_id, _) = match self.master_key_manager.try_output_key_recovery(
             output.commitment(),
             output.encrypted_data(),
             &output.sender_offset_public_key,

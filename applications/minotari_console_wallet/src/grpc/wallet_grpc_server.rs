@@ -3216,7 +3216,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 &output.encrypted_data,
                 &output.sender_offset_public_key,
             ) {
-                Ok(Some((commitment_mask, value, memo))) => {
+                Ok(Some((commitment_mask, value, memo, _))) => {
                     debug_info.push(format!("Successfully recovered keys for UTXO with hash {}", hex));
                     (commitment_mask, value, memo)
                 },
@@ -3380,7 +3380,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 self.wallet
                     .get_wallet_one_sided_address()
                     .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
-            } else if let Some(address) = wallet_output.payment_id().get_sender_address() {
+            } else if let Some(address) = wallet_output.payment_id().claimed_sender_address() {
                 address
             } else if wallet_output.payment_id().is_transaction_info() {
                 self.wallet

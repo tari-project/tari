@@ -3419,7 +3419,7 @@ where
                     pubkeys
                 );
 
-                if let Some((commitment_mask_key_id, committed_value, payment_id)) =
+                if let Some((commitment_mask_key_id, committed_value, payment_id, _)) =
                     self.resources.key_manager.try_output_key_recovery(
                         output.commitment(),
                         output.encrypted_data(),

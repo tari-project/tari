@@ -818,7 +818,7 @@ where
             let source_address = if wo.is_coinbase() {
                 // It's a coinbase, so we know we mined it (we do mining with cold wallets).
                 self.resources.one_sided_tari_address.clone()
-            } else if let Some(address) = wo.payment_id().get_sender_address() {
+            } else if let Some(address) = wo.payment_id().claimed_sender_address() {
                 address
             } else if wo.payment_id().is_transaction_info() {
                 self.resources.one_sided_tari_address.clone()

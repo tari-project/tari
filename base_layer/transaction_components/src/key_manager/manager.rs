@@ -90,6 +90,7 @@ use crate::{
     crypto_factories::CryptoFactories,
     key_manager::{
         ConfidentialOutputHasher,
+        RecoveryProvenance,
         SecretTransactionKeyManagerInterface,
         TxoStage,
         error::KeyManagerError,
@@ -1334,12 +1335,12 @@ impl TransactionKeyManagerInterface for KeyManager {
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, KeyManagerError> {
-        let (value, private_key, payment_id, key_id) =
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField, RecoveryProvenance)>, KeyManagerError> {
+        let (value, private_key, payment_id, key_id, provenance) =
             match EncryptedData::decrypt_data(&self.get_private_view_key(), commitment, encrypted_data) {
                 Ok((value, private_key, payment_id)) => {
                     let key = self.create_encrypted_key(private_key.clone(), None)?;
-                    (value, private_key, payment_id, key)
+                    (value, private_key, payment_id, key, RecoveryProvenance::OwnViewKey)
                 },
                 Err(_) => {
                     // so this is not change, lets try with the offset key
@@ -1354,10 +1355,10 @@ impl TransactionKeyManagerInterface for KeyManager {
                                 private_key: view_key.into(),
                             };
                             if self.get_private_key(&key)? == private_key {
-                                (value, private_key, payment_id, key)
+                                (value, private_key, payment_id, key, RecoveryProvenance::DiffieHellman)
                             } else {
                                 let key = self.create_encrypted_key(private_key.clone(), None)?;
-                                (value, private_key, payment_id, key)
+                                (value, private_key, payment_id, key, RecoveryProvenance::DiffieHellman)
                             }
                         },
                         Err(_) => return Ok(None),
@@ -1374,7 +1375,7 @@ impl TransactionKeyManagerInterface for KeyManager {
             Err(e) => return Err(e.into()),
         }
 
-        Ok(Some((key_id, value, payment_id)))
+        Ok(Some((key_id, value, payment_id, provenance)))
     }
 
     fn is_this_output_ours(
@@ -2081,12 +2082,19 @@ mod tests {
         MicroMinotari,
         key_manager::{
             KeyManager,
+            RecoveryProvenance,
             SecretTransactionKeyManagerInterface,
             TransactionKeyManagerInterface,
             error::KeyManagerError,
             key_id::{SerializedKeyString, TariKeyId},
         },
-        transaction_components::{EncryptedData, MemoField, RangeProofType, TransactionOutputVersion},
+        transaction_components::{
+            EncryptedData,
+            MemoField,
+            RangeProofType,
+            TransactionOutputVersion,
+            one_sided::public_key_to_output_encryption_key,
+        },
     };
 
     /// The plain sum of the input script private keys is `H("script key", b) + alpha` summed over blinding factors
@@ -3219,7 +3227,7 @@ mod tests {
         let (commitment, matching, mismatched) = output_with_matching_and_mismatched_encrypted_data(&key_manager);
         let sender_offset_public_key = CompressedPublicKey::default();
 
-        let (_, value, _) = key_manager
+        let (_, value, _, _) = key_manager
             .try_output_key_recovery(&commitment, &matching, &sender_offset_public_key)
             .unwrap()
             .expect("the matching output should be recovered");
@@ -3228,6 +3236,62 @@ mod tests {
         assert!(
             key_manager
                 .try_output_key_recovery(&commitment, &mismatched, &sender_offset_public_key)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn try_output_key_recovery_reports_how_the_output_was_recovered() {
+        let key_manager = KeyManager::new_random().unwrap();
+
+        // Data under our own view key
+        let (commitment, matching, _) = output_with_matching_and_mismatched_encrypted_data(&key_manager);
+        let (_, _, _, provenance) = key_manager
+            .try_output_key_recovery(&commitment, &matching, &CompressedPublicKey::default())
+            .unwrap()
+            .expect("the view-key output should be recovered");
+        assert_eq!(provenance, RecoveryProvenance::OwnViewKey);
+
+        // Data under the Diffie-Hellman key of a sender offset key and our view key
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let shared_secret = key_manager
+            .get_diffie_hellman_shared_secret(&sender_offset.key_id, &key_manager.get_view_key().pub_key)
+            .unwrap();
+        let encryption_key = public_key_to_output_encryption_key(&shared_secret).unwrap();
+        let value = 250u64;
+        let mask = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
+        let commitment = key_manager
+            .get_commitment(&mask.key_id, &PrivateKey::from(value))
+            .unwrap();
+        let mask_key = key_manager.get_private_key(&mask.key_id).unwrap();
+        let dh_data = EncryptedData::encrypt_data(
+            &encryption_key,
+            &commitment,
+            MicroMinotari::from(value),
+            &mask_key,
+            MemoField::new_empty(),
+        )
+        .unwrap();
+        let (_, recovered_value, _, provenance) = key_manager
+            .try_output_key_recovery(&commitment, &dh_data, &sender_offset.pub_key)
+            .unwrap()
+            .expect("the Diffie-Hellman output should be recovered");
+        assert_eq!(provenance, RecoveryProvenance::DiffieHellman);
+        assert_eq!(recovered_value, MicroMinotari::from(value));
+
+        // Data under the Diffie-Hellman key whose mask does not open the commitment
+        let dh_mismatched = EncryptedData::encrypt_data(
+            &encryption_key,
+            &commitment,
+            MicroMinotari::from(value + 1),
+            &mask_key,
+            MemoField::new_empty(),
+        )
+        .unwrap();
+        assert!(
+            key_manager
+                .try_output_key_recovery(&commitment, &dh_mismatched, &sender_offset.pub_key)
                 .unwrap()
                 .is_none()
         );

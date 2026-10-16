@@ -47,6 +47,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     key_manager::{
         KeyManager,
+        RecoveryProvenance,
         SecretTransactionKeyManagerInterface,
         TariKeyAndId,
         TariKeyId,
@@ -659,6 +660,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
             .encrypt_data_for_recovery(commitment_mask_key_id, custom_recovery_key_id, value, payment_id)
     }
 
+    /// A memo read here is self-authored only when no custom key is passed.
     pub fn extract_payment_id_from_encrypted_data(
         &self,
         encrypted_data: &EncryptedData,
@@ -679,7 +681,7 @@ where TBackend: TransactionKeyManagerBackend + 'static
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, KeyManagerError> {
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField, RecoveryProvenance)>, KeyManagerError> {
         self.key_manager
             .try_output_key_recovery(commitment, encrypted_data, sender_offset_public_key)
     }
