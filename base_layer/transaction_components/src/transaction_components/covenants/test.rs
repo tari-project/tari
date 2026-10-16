@@ -58,7 +58,7 @@ pub fn create_input<KM: TransactionKeyManagerInterface>(key_manager: &KM) -> Tra
 }
 
 pub fn create_context<'a>(covenant: &Covenant, input: &'a TransactionInput, block_height: u64) -> CovenantContext<'a> {
-    let tokens = covenant.tokens().to_vec();
+    let tokens = covenant.tokens().unwrap();
     CovenantContext::new(tokens.into(), input, block_height)
 }
 

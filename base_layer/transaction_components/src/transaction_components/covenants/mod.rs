@@ -36,6 +36,7 @@ mod error;
 mod fields;
 mod filters;
 mod output_set;
+mod scan;
 mod serde;
 mod token;
 

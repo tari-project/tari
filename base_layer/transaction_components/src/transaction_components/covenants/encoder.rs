@@ -22,12 +22,15 @@
 
 use std::io;
 
+#[cfg(test)]
 use crate::transaction_components::covenants::token::CovenantToken;
 
+#[cfg(test)]
 pub struct CovenantTokenEncoder<'a> {
     tokens: &'a [CovenantToken],
 }
 
+#[cfg(test)]
 impl<'a> CovenantTokenEncoder<'a> {
     pub fn new(tokens: &'a [CovenantToken]) -> Self {
         Self { tokens }
@@ -77,7 +80,8 @@ mod tests {
     #[test]
     fn it_encodes_tokens_correctly() {
         let covenant = covenant!(and(identity(), or(identity()))).unwrap();
-        let encoder = CovenantTokenEncoder::new(covenant.tokens());
+        let tokens = covenant.tokens().unwrap();
+        let encoder = CovenantTokenEncoder::new(&tokens);
         let mut buf = Vec::<u8>::new();
         encoder.write_to(&mut buf).unwrap();
         assert_eq!(buf, [FILTER_AND, FILTER_IDENTITY, FILTER_OR, FILTER_IDENTITY]);
@@ -87,7 +91,8 @@ mod tests {
     fn it_encodes_args_correctly() {
         let dummy = FixedHash::zero();
         let covenant = covenant!(field_eq(@field::features, @hash(dummy))).unwrap();
-        let encoder = CovenantTokenEncoder::new(covenant.tokens());
+        let tokens = covenant.tokens().unwrap();
+        let encoder = CovenantTokenEncoder::new(&tokens);
         let mut buf = Vec::<u8>::new();
         encoder.write_to(&mut buf).unwrap();
         assert_eq!(buf[..4], [

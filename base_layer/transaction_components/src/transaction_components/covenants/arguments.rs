@@ -49,7 +49,7 @@ use crate::transaction_components::{
 ///
 /// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
 /// a node can decode at all and is a flag-day (hard) fork.
-const MAX_COVENANT_ARG_SIZE: usize = 4096;
+pub(super) const MAX_COVENANT_ARG_SIZE: usize = 4096;
 /// The maximum size of a `Bytes` covenant argument.
 ///
 /// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions

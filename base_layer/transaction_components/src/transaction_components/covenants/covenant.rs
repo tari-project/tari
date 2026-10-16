@@ -20,27 +20,28 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{self, Write};
+use std::{
+    fmt,
+    io::{self, Write},
+};
 
 use borsh::BorshSerialize;
 use integer_encoding::VarIntWriter;
-use tari_max_size::{EncodedBytes, MaxSizeVec, ValidatedDecode, impl_validated_decode};
+use tari_max_size::{EncodedBytes, ValidatedDecode, impl_validated_decode};
+use tari_utilities::hex::Hex;
 
 use super::decoder::CovenantDecodeError;
-use crate::{
-    helpers::byte_counter::ByteCounter,
-    transaction_components::{
-        TransactionInput,
-        TransactionOutput,
-        covenants::{
-            context::CovenantContext,
-            decoder::CovenantTokenDecoder,
-            encoder::CovenantTokenEncoder,
-            error::CovenantError,
-            filters::Filter,
-            output_set::OutputSet,
-            token::{CovenantToken, CovenantTokenCollection},
-        },
+use crate::transaction_components::{
+    TransactionInput,
+    TransactionOutput,
+    covenants::{
+        context::CovenantContext,
+        decoder::CovenantTokenDecoder,
+        error::CovenantError,
+        filters::Filter,
+        output_set::OutputSet,
+        scan::scan,
+        token::{CovenantToken, CovenantTokenCollection},
     },
 };
 
@@ -64,27 +65,28 @@ pub(crate) const MAX_COVENANT_TOKENS: usize = 128;
 /// real covenant needs so that it bounds the recursion without constraining legitimate use.
 pub(crate) const MAX_COVENANT_DEPTH: usize = 16;
 
-/// The tokens of a covenant, at most [`MAX_COVENANT_TOKENS`].
-///
-/// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
-/// a node can decode at all and is a flag-day (hard) fork.
-pub(crate) type CovenantTokens = MaxSizeVec<CovenantToken, MAX_COVENANT_TOKENS>;
-
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 /// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
 /// See https://rfc.tari.com/RFC-0250_Covenants.html for details.
+///
+/// The covenant is kept as its canonical encoding and is only split into tokens when it is evaluated.
 pub struct Covenant {
-    tokens: CovenantTokens,
+    /// Canonical encoding, as produced by `scan`. Never more than `MAX_COVENANT_BYTES`.
+    bytes: Vec<u8>,
+    /// Number of top-level tokens, at most `MAX_COVENANT_TOKENS`.
+    num_tokens: u8,
+}
+
+impl fmt::Debug for Covenant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Covenant({})", self.bytes.to_hex())
+    }
 }
 
 impl BorshSerialize for Covenant {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        let bytes = self.to_bytes();
-        writer.write_varint(bytes.len())?;
-        for b in &bytes {
-            b.serialize(writer)?;
-        }
-        Ok(())
+        writer.write_varint(self.bytes.len())?;
+        writer.write_all(&self.bytes)
     }
 }
 
@@ -103,9 +105,7 @@ impl_validated_decode!(Covenant);
 
 impl Covenant {
     pub fn new() -> Self {
-        Self {
-            tokens: CovenantTokens::default(),
-        }
+        Self::default()
     }
 
     /// Produces a new `Covenant` instance, out of a byte buffer. It errors
@@ -116,54 +116,46 @@ impl Covenant {
 
     /// As [`Covenant::from_bytes`], but tracking how deeply this covenant is nested inside an enclosing one so that
     /// the recursion through `ARG_COVENANT` stays bounded.
+    ///
+    /// The whole buffer is consumed. The stored bytes are the decoded tokens re-encoded, which is what is hashed.
     pub(super) fn from_bytes_at_depth(bytes: &mut &[u8], depth: usize) -> Result<Self, CovenantDecodeError> {
-        if depth > MAX_COVENANT_DEPTH {
-            return Err(CovenantDecodeError::ExceededMaxDepth {
-                max: MAX_COVENANT_DEPTH,
-            });
-        }
-        if bytes.is_empty() {
-            return Ok(Self::new());
-        }
-        if bytes.len() > MAX_COVENANT_BYTES {
-            return Err(CovenantDecodeError::ExceededMaxBytes);
-        }
-
-        // Every token must be kept: dropping tokens past the cap would make the decoded covenant differ from the
-        // bytes it came from — two distinct encodings would map to the same `Covenant`, and the re-serialised
-        // (truncated) form is what gets hashed. Too many tokens is an error.
-        let tokens = CovenantTokenDecoder::new(bytes, depth).collect::<Result<Vec<_>, _>>()?;
-        let tokens = CovenantTokens::try_from(tokens).map_err(|_| CovenantDecodeError::ExceededMaxTokens {
-            max: MAX_COVENANT_TOKENS,
-        })?;
-
-        // A complete decode consumes the whole buffer; anything left over means the token stream did not describe
-        // these bytes and must not be accepted as if it did.
-        if !bytes.is_empty() {
-            return Err(CovenantDecodeError::TrailingBytes { remaining: bytes.len() });
-        }
-
-        Ok(Self { tokens })
+        let mut out = Vec::with_capacity(bytes.len().min(MAX_COVENANT_BYTES));
+        let mut remaining = MAX_COVENANT_TOKENS;
+        let num_tokens = scan(bytes, depth, &mut out, &mut remaining)?;
+        out.shrink_to_fit();
+        *bytes = &[];
+        Ok(Self { bytes: out, num_tokens })
     }
 
-    /// Given a `Covenant` instance, it writes its bytes content to a
-    /// new byte buffer.
+    /// Builds a covenant from a sequence of tokens. The encoding goes through the same checks as decoding.
+    pub fn from_tokens(tokens: &[CovenantToken]) -> Result<Self, CovenantDecodeError> {
+        let mut encoded = Vec::new();
+        for token in tokens {
+            token.write_to(&mut encoded)?;
+        }
+        let covenant = Self::from_bytes(&mut encoded.as_slice())?;
+        debug_assert_eq!(covenant.bytes, encoded);
+        Ok(covenant)
+    }
+
+    /// Returns the canonical encoding of this covenant.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(self.get_byte_length());
-        self.write_to(&mut buf).unwrap();
-        buf
+        self.bytes.clone()
+    }
+
+    /// Returns the canonical encoding of this covenant.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
     }
 
     /// Writes a `Covenant` instance byte to a writer.
     pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<(), io::Error> {
-        CovenantTokenEncoder::new(&self.tokens).write_to(writer)
+        writer.write_all(&self.bytes)
     }
 
     /// Gets the byte lenght of the underlying byte buffer
     pub(super) fn get_byte_length(&self) -> usize {
-        let mut counter = ByteCounter::new();
-        self.write_to(&mut counter).unwrap();
-        counter.get()
+        self.bytes.len()
     }
 
     /// It executes the covenant on the transaction input being spent, it filters the transaction outputs which should
@@ -174,12 +166,12 @@ impl Covenant {
         input: &TransactionInput,
         outputs: &[TransactionOutput],
     ) -> Result<usize, CovenantError> {
-        if self.tokens.is_empty() {
+        if self.is_empty() {
             // Empty covenants always pass
             return Ok(outputs.len());
         }
 
-        let tokens = CovenantTokenCollection::from(self.tokens.clone().into_vec());
+        let tokens = CovenantTokenCollection::from(self.tokens()?);
         let mut cx = CovenantContext::new(tokens, input, block_height);
         let root = cx.require_next_filter()?;
         let mut output_set = OutputSet::new(outputs);
@@ -200,31 +192,43 @@ impl Covenant {
     /// There is intentionally no `FromIterator` impl: it can not fail, so it would have to silently drop tokens and
     /// the resulting covenant would not match its input.
     pub fn try_from_iter<I: IntoIterator<Item = CovenantToken>>(iter: I) -> Result<Self, CovenantDecodeError> {
-        let tokens = CovenantTokens::try_from_iter(iter).map_err(|_| CovenantDecodeError::ExceededMaxTokens {
-            max: MAX_COVENANT_TOKENS,
-        })?;
-        Ok(Self { tokens })
+        let mut encoded = Vec::new();
+        let mut count = 0usize;
+        for token in iter {
+            count = count.saturating_add(1);
+            if count > MAX_COVENANT_TOKENS {
+                return Err(CovenantDecodeError::ExceededMaxTokens {
+                    max: MAX_COVENANT_TOKENS,
+                });
+            }
+            token.write_to(&mut encoded)?;
+        }
+        Self::from_bytes(&mut encoded.as_slice())
     }
 
-    /// Adds a new `CovenantToken` to the current `tokens` vector field.
+    /// Appends a `CovenantToken` to this covenant.
     pub fn push_token(&mut self, token: CovenantToken) -> Result<(), CovenantError> {
-        Ok(self.tokens.push(token)?)
+        let mut encoded = self.bytes.clone();
+        token.write_to(&mut encoded).map_err(CovenantDecodeError::from)?;
+        *self = Self::from_bytes(&mut encoded.as_slice())?;
+        Ok(())
     }
 
-    #[cfg(test)]
-    /// Outputs a slice of the instance existing `CovenantToken`'s.
-    pub(super) fn tokens(&self) -> &[CovenantToken] {
-        &self.tokens
+    /// Splits the covenant into its top-level tokens.
+    pub(super) fn tokens(&self) -> Result<Vec<CovenantToken>, CovenantError> {
+        let mut reader = self.bytes.as_slice();
+        let tokens = CovenantTokenDecoder::new(&mut reader, 0).collect::<Result<Vec<_>, _>>()?;
+        Ok(tokens)
     }
 
-    /// Outputs the length of `tokens` field.
+    /// Outputs the number of top-level tokens.
     pub fn num_tokens(&self) -> usize {
-        self.tokens.len()
+        usize::from(self.num_tokens)
     }
 
-    /// Checks if the `tokens` field is empty.
+    /// Checks if the covenant is empty.
     pub fn is_empty(&self) -> bool {
-        self.tokens.is_empty()
+        self.bytes.is_empty()
     }
 }
 
@@ -384,6 +388,50 @@ mod test {
             byte_codes::FILTER_IDENTITY;
             MAX_COVENANT_TOKENS
         ]);
+    }
+
+    #[test]
+    fn covenant_canonical_bytes_match_previous_encoding() {
+        use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, FixedHash};
+        use tari_script::script;
+
+        use crate::transaction_components::covenants::{arguments::BytesArg, encoder::CovenantTokenEncoder};
+
+        let hash = FixedHash::from([7u8; 32]);
+        let script = script!(Nop Dup Drop).unwrap();
+        let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42))))).unwrap();
+        let covenants = vec![
+            covenant!().unwrap(),
+            covenant!(identity()).unwrap(),
+            covenant!(and(identity(), or(identity()))).unwrap(),
+            covenant!(and(identity(), identity())).unwrap(),
+            covenant!(absolute_height(@uint(42))).unwrap(),
+            covenant!(field_eq(@field::features_output_type, @output_type(Coinbase))).unwrap(),
+            covenant!(field_eq(@field::script, @script(script.clone()))).unwrap(),
+            covenant!(field_eq(@field::features, @uint(42))).unwrap(),
+            covenant!(field_eq(@field::features, @hash(hash))).unwrap(),
+            covenant!(field_eq(@field::covenant, @covenant(next_cov.clone()))).unwrap(),
+            covenant!(field_eq(@field::sender_offset_public_key, @public_key(CompressedPublicKey::default()))).unwrap(),
+            covenant!(field_eq(@field::commitment, @commitment(CompressedCommitment::default()))).unwrap(),
+            covenant!(field_eq(@field::features, @bytes(BytesArg::try_from(vec![1u8, 2, 3]).unwrap()))).unwrap(),
+            covenant!(fields_hashed_eq(@fields(@field::commitment), @hash(hash))).unwrap(),
+            covenant!(fields_preserved(@fields(@field::features_maturity, @field::features_output_type))).unwrap(),
+            covenant!(output_hash_eq(@hash(hash))).unwrap(),
+            covenant!(not(or(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script.clone()))))).unwrap(),
+            covenant!(xor(field_eq(@field::features_maturity, @uint(42),), field_eq(@field::script, @script(script)))).unwrap(),
+            covenant!(or(absolute_height(@uint(42),), field_eq(@field::features_maturity, @uint(8)))).unwrap(),
+        ];
+        for covenant in covenants {
+            let mut previous = Vec::new();
+            CovenantTokenEncoder::new(&covenant.tokens().unwrap())
+                .write_to(&mut previous)
+                .unwrap();
+            assert_eq!(covenant.to_bytes(), previous);
+            assert_eq!(
+                Covenant::from_bytes(&mut covenant.to_bytes().as_slice()).unwrap(),
+                covenant
+            );
+        }
     }
 
     #[test]
