@@ -1182,6 +1182,7 @@ mod read_tests {
 
     mod kernels {
         use super::*;
+        use crate::chain_storage::BlockchainBackend;
 
         #[test]
         fn fetch_kernels_in_block_matches_expected() {
@@ -1237,6 +1238,40 @@ mod read_tests {
             let state = &*SHARED_STATE;
             let bogus = CompressedSignature::default();
             let result = state.db.fetch_kernel_by_excess_sig(bogus).unwrap();
+            assert!(result.is_none());
+        }
+
+        #[test]
+        fn fetch_kernel_by_excess_finds_all_canonical() {
+            let state = &*SHARED_STATE;
+            let db = state.db.db_read_access().unwrap();
+            for (block, exp) in state.data.canonical_blocks.iter().zip(&state.data.expected).skip(1) {
+                for kernel in block.body.kernels() {
+                    let (found_kernel, found_hash) = db
+                        .fetch_kernel_by_excess(&kernel.excess)
+                        .unwrap_or_else(|e| panic!("fetch_kernel_by_excess failed at height {}: {}", exp.height, e))
+                        .unwrap_or_else(|| panic!("Kernel with excess at height {} not found", exp.height));
+
+                    assert_eq!(found_kernel.excess, kernel.excess, "Excess mismatch");
+                    assert_eq!(
+                        found_hash, exp.block_hash,
+                        "Block hash mismatch for kernel at height {}",
+                        exp.height
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn fetch_kernel_by_excess_returns_none_for_unknown() {
+            let state = &*SHARED_STATE;
+            let bogus = CompressedCommitment::default();
+            let result = state
+                .db
+                .db_read_access()
+                .unwrap()
+                .fetch_kernel_by_excess(&bogus)
+                .unwrap();
             assert!(result.is_none());
         }
 
