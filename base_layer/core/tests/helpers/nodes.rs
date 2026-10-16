@@ -52,7 +52,7 @@ use tari_core::{
         MempoolServiceConfig,
         MempoolServiceInitializer,
         OutboundMempoolServiceInterface,
-        service::{LocalMempoolService, MempoolHandle},
+        service::{LocalMempoolService, MempoolHandle, PeerBanPeriods},
     },
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::{TempDatabase, create_store_with_consensus_and_validators_and_config},
@@ -370,7 +370,11 @@ async fn setup_base_node_services(
             randomx_factory,
             Default::default(),
         ))
-        .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
+        .add_initializer(MempoolServiceInitializer::new(
+            mempool.clone(),
+            subscription_factory,
+            PeerBanPeriods::default(),
+        ))
         .add_initializer(mock_state_machine.get_initializer())
         .add_initializer(ChainMetadataServiceInitializer)
         .build()

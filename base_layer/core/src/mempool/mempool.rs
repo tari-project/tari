@@ -25,7 +25,7 @@ use std::sync::{Arc, RwLock};
 use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
-use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_components::Transaction};
+use tari_transaction_components::{BanReason, rpc::models::FeePerGramStat, transaction_components::Transaction};
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, watch},
     task,
@@ -137,7 +137,8 @@ impl Mempool {
     /// is then validated without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]), with at
     /// most a bounded number of transactions being validated at once.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
-        self.insert_inner(tx, None).await
+        let (response, _) = self.insert_with_ban_reason(tx, None).await?;
+        Ok(response)
     }
 
     /// Identical to [Mempool::insert], except that validation uses the given, already acquired, permit instead of
@@ -147,20 +148,23 @@ impl Mempool {
         tx: Arc<Transaction>,
         permit: ValidationPermit,
     ) -> Result<TxStorageResponse, MempoolError> {
-        self.insert_inner(tx, Some(permit)).await
+        let (response, _) = self.insert_with_ban_reason(tx, Some(permit)).await?;
+        Ok(response)
     }
 
-    async fn insert_inner(
+    /// As [Mempool::insert] (or [Mempool::insert_with_permit] if a permit is given), also returning a ban reason if
+    /// the transaction failed a final internal consistency check.
+    pub async fn insert_with_ban_reason(
         &self,
         tx: Arc<Transaction>,
         permit: Option<ValidationPermit>,
-    ) -> Result<TxStorageResponse, MempoolError> {
+    ) -> Result<(TxStorageResponse, Option<BanReason>), MempoolError> {
         let tx_clone = tx.clone();
         if let Some(response) = self
             .with_read_access(move |storage| Ok(storage.pre_check(&tx_clone)))
             .await?
         {
-            return Ok(response);
+            return Ok((response, None));
         }
         let permit = match permit {
             Some(permit) => permit,
@@ -171,7 +175,7 @@ impl Mempool {
             // The permit is held by the blocking task, so that it is only released once validation is done, even if
             // the caller stops waiting for it
             let _permit = permit;
-            MempoolStorage::insert_unlocked(&storage, tx)
+            MempoolStorage::insert_unlocked_with_ban_reason(&storage, tx)
         })
         .await?
     }

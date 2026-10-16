@@ -49,7 +49,13 @@ use tari_core::{
     },
     chain_storage::{BlockchainBackend, BlockchainDatabase, async_db::AsyncBlockchainDb},
     consensus::BaseNodeConsensusManager,
-    mempool::{self, Mempool, MempoolServiceInitializer, MempoolSyncInitializer, service::MempoolHandle},
+    mempool::{
+        self,
+        Mempool,
+        MempoolServiceInitializer,
+        MempoolSyncInitializer,
+        service::{MempoolHandle, PeerBanPeriods},
+    },
     proof_of_work::randomx_factory::RandomXFactory,
 };
 use tari_p2p::{
@@ -166,6 +172,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(MempoolServiceInitializer::new(
                 self.mempool.clone(),
                 peer_message_subscriptions.clone(),
+                PeerBanPeriods::from(&base_node_config.state_machine.blockchain_sync_config),
             ))
             .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(

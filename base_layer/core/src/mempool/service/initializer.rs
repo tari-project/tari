@@ -24,6 +24,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 use futures::Stream;
 use log::*;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
@@ -46,6 +47,7 @@ use crate::{
         mempool::Mempool,
         service::{
             MempoolHandle,
+            PeerBanPeriods,
             inbound_handlers::MempoolInboundHandlers,
             local_service::LocalMempoolService,
             outbound_interface::OutboundMempoolServiceInterface,
@@ -61,14 +63,20 @@ const SUBSCRIPTION_LABEL: &str = "Mempool";
 pub struct MempoolServiceInitializer {
     mempool: Mempool,
     inbound_message_subscription_factory: Arc<SubscriptionFactory>,
+    ban_periods: PeerBanPeriods,
 }
 
 impl MempoolServiceInitializer {
     /// Create a new MempoolServiceInitializer from the inbound message subscriber.
-    pub fn new(mempool: Mempool, inbound_message_subscription_factory: Arc<SubscriptionFactory>) -> Self {
+    pub fn new(
+        mempool: Mempool,
+        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
+        ban_periods: PeerBanPeriods,
+    ) -> Self {
         Self {
             mempool,
             inbound_message_subscription_factory,
+            ban_periods,
         }
     }
 
@@ -128,6 +136,7 @@ impl ServiceInitializer for MempoolServiceInitializer {
         let outbound_mp_interface = OutboundMempoolServiceInterface::new(outbound_tx_sender);
         let local_mp_interface = LocalMempoolService::new(local_request_sender_service);
         let inbound_handlers = MempoolInboundHandlers::new(self.mempool.clone(), outbound_mp_interface.clone());
+        let ban_periods = self.ban_periods;
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         context.register_handle(outbound_mp_interface);
@@ -136,6 +145,8 @@ impl ServiceInitializer for MempoolServiceInitializer {
         context.spawn_until_shutdown(move |handles| {
             let outbound_message_service = handles.expect_handle::<Dht>().outbound_requester();
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
+            let inbound_handlers = inbound_handlers.with_peer_bans(connectivity, ban_periods);
 
             let streams = MempoolStreams {
                 outbound_tx_stream,

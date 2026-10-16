@@ -23,9 +23,14 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::peer_manager::NodeId;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeId, Peer},
+    types::CommsPublicKey,
+};
+use tari_comms_dht::envelope::DhtMessageHeader;
 use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
-use tari_transaction_components::transaction_components::Transaction;
+use tari_transaction_components::{BanReason, transaction_components::Transaction};
 use tari_utilities::hex::Hex;
 use tokio::task;
 
@@ -44,6 +49,7 @@ use crate::{
             MempoolResponse,
             MempoolServiceError,
             OutboundMempoolServiceInterface,
+            PeerBanPeriods,
             initializer::extract_transaction,
         },
     },
@@ -57,6 +63,7 @@ pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
 pub struct MempoolInboundHandlers {
     mempool: Mempool,
     outbound_service: OutboundMempoolServiceInterface,
+    peer_bans: Option<(ConnectivityRequester, PeerBanPeriods)>,
 }
 
 impl MempoolInboundHandlers {
@@ -65,7 +72,14 @@ impl MempoolInboundHandlers {
         Self {
             mempool,
             outbound_service,
+            peer_bans: None,
         }
+    }
+
+    /// Ban peers that send transactions which are never valid on the gossip path.
+    pub fn with_peer_bans(mut self, connectivity: ConnectivityRequester, periods: PeerBanPeriods) -> Self {
+        self.peer_bans = Some((connectivity, periods));
+        self
     }
 
     /// Handle inbound Mempool service requests from remote nodes and local services.
@@ -96,7 +110,7 @@ impl MempoolInboundHandlers {
                     "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
                 );
                 Ok(MempoolResponse::TxStorage(
-                    self.submit_transaction(tx, None, None).await?,
+                    self.submit_transaction(tx, None, None).await?.0,
                 ))
             },
             GetFeePerGramStats { count, tip_height } => {
@@ -131,7 +145,7 @@ impl MempoolInboundHandlers {
             "Transaction ({first_tx_kernel_excess_sig}) submitted using request."
         );
         Ok(MempoolResponse::TxStorage(
-            self.submit_transaction(tx, None, Some(permit)).await?,
+            self.submit_transaction(tx, None, Some(permit)).await?.0,
         ))
     }
 
@@ -139,13 +153,20 @@ impl MempoolInboundHandlers {
     ///
     /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and
     /// validating the transaction, so that the number of inbound transactions being decoded or validated at once is
-    /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit.
+    /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit. The peer is banned if the
+    /// transaction fails a final internal consistency check, unless it relayed the message on another's behalf.
     pub async fn handle_transaction_message(&mut self, msg: Arc<PeerMessage>) -> Result<(), MempoolServiceError> {
         let permit = self.mempool.acquire_validation_permit().await?;
         let decoded = task::spawn_blocking(move || extract_transaction(&msg))
             .await
             .map_err(MempoolError::from)?;
-        let Some(DomainMessage::<_> { source_peer, inner, .. }) = decoded else {
+        let Some(DomainMessage::<_> {
+            source_peer,
+            dht_header,
+            authenticated_origin,
+            inner,
+        }) = decoded
+        else {
             return Ok(());
         };
 
@@ -163,8 +184,23 @@ impl MempoolInboundHandlers {
             inner,
             source_peer.public_key
         );
-        self.handle_transaction_inner(inner, Some(source_peer.node_id), Some(permit))
-            .await
+        let ban_reason = self
+            .handle_transaction_inner(inner, Some(source_peer.node_id.clone()), Some(permit))
+            .await?;
+        let Some(reason) = ban_reason else {
+            return Ok(());
+        };
+        if is_relayed_on_behalf_of_another(&dht_header, authenticated_origin.as_ref(), &source_peer) {
+            debug!(
+                target: LOG_TARGET,
+                "Not banning peer '{}' for a relayed transaction: {}",
+                source_peer.node_id.short_str(),
+                reason.reason
+            );
+            return Ok(());
+        }
+        self.ban_peer(&source_peer.node_id, reason).await;
+        Ok(())
     }
 
     /// Handle inbound transactions from remote wallets and local services.
@@ -173,15 +209,17 @@ impl MempoolInboundHandlers {
         tx: Transaction,
         source_peer: Option<NodeId>,
     ) -> Result<(), MempoolServiceError> {
-        self.handle_transaction_inner(tx, source_peer, None).await
+        self.handle_transaction_inner(tx, source_peer, None).await?;
+        Ok(())
     }
 
+    /// Returns a ban reason if the transaction failed a final internal consistency check
     async fn handle_transaction_inner(
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
         permit: Option<ValidationPermit>,
-    ) -> Result<(), MempoolServiceError> {
+    ) -> Result<Option<BanReason>, MempoolServiceError> {
         let first_tx_kernel_excess_sig = tx
             .first_kernel_excess_sig()
             .ok_or(MempoolServiceError::TransactionNoKernels)?
@@ -196,18 +234,19 @@ impl MempoolInboundHandlers {
                 .map(|p| format!("remote peer: {p}"))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        self.submit_transaction(tx, source_peer, permit).await?;
-        Ok(())
+        let (_, ban_reason) = self.submit_transaction(tx, source_peer, permit).await?;
+        Ok(ban_reason)
     }
 
     /// Submits a transaction to the mempool and propagate valid transactions. If a validation `permit` is given, it
-    /// is used for validation instead of acquiring a new one.
+    /// is used for validation instead of acquiring a new one. Also returns a ban reason if the transaction failed a
+    /// final internal consistency check; only the gossip path acts on it.
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
         source_peer: Option<NodeId>,
         permit: Option<ValidationPermit>,
-    ) -> Result<TxStorageResponse, MempoolServiceError> {
+    ) -> Result<(TxStorageResponse, Option<BanReason>), MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {tx}");
 
         let tx = Arc::new(tx);
@@ -222,14 +261,11 @@ impl MempoolInboundHandlers {
                 target: LOG_TARGET,
                 "Mempool already has transaction: {kernel_excess_sig}"
             );
-            return Ok(tx_storage);
+            return Ok((tx_storage, None));
         }
-        let result = match permit {
-            Some(permit) => self.mempool.insert_with_permit(tx.clone(), permit).await,
-            None => self.mempool.insert(tx.clone()).await,
-        };
+        let result = self.mempool.insert_with_ban_reason(tx.clone(), permit).await;
         match result {
-            Ok(tx_storage) => {
+            Ok((tx_storage, ban_reason)) => {
                 #[cfg(feature = "metrics")]
                 if tx_storage.is_stored() {
                     metrics::inbound_transactions().inc();
@@ -252,9 +288,30 @@ impl MempoolInboundHandlers {
                         .propagate_tx(tx, source_peer.into_iter().collect())
                         .await?;
                 }
-                Ok(tx_storage)
+                Ok((tx_storage, ban_reason))
             },
             Err(e) => Err(MempoolServiceError::MempoolError(e)),
+        }
+    }
+
+    async fn ban_peer(&mut self, node_id: &NodeId, reason: BanReason) {
+        let Some((connectivity, periods)) = &mut self.peer_bans else {
+            debug!(
+                target: LOG_TARGET,
+                "Peer bans are not enabled, not banning peer {node_id}: {}", reason.reason
+            );
+            return;
+        };
+        let duration = periods.duration(reason.ban_duration);
+        warn!(
+            target: LOG_TARGET,
+            "Banning peer {node_id} for {duration:?}: {}", reason.reason
+        );
+        if let Err(e) = connectivity
+            .ban_peer_until(node_id.clone(), duration, reason.reason)
+            .await
+        {
+            error!(target: LOG_TARGET, "Failed to ban peer: {e:?}");
         }
     }
 
@@ -311,6 +368,16 @@ impl MempoolInboundHandlers {
 
         Ok(())
     }
+}
+
+/// Returns true if the peer forwarded an encrypted message signed by another identity, so the message is not
+/// necessarily the peer's fault. Only encrypted messages are forwarded on another's behalf.
+fn is_relayed_on_behalf_of_another(
+    dht_header: &DhtMessageHeader,
+    authenticated_origin: Option<&CommsPublicKey>,
+    source_peer: &Peer,
+) -> bool {
+    dht_header.flags.is_encrypted() && authenticated_origin.is_some_and(|origin| *origin != source_peer.public_key)
 }
 
 #[cfg(test)]
@@ -381,6 +448,328 @@ mod test {
         let (propagated_tx, excluded) = propagated.try_recv().unwrap();
         assert_eq!(propagated_tx, tx);
         assert_eq!(excluded, vec![source]);
+    }
+
+    mod peer_bans {
+        use std::time::Duration;
+
+        use tari_common_types::{
+            chain_metadata::ChainMetadata,
+            types::{CompressedPublicKey, PrivateKey},
+        };
+        use tari_comms::test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock};
+        use tari_comms_dht::envelope::DhtMessageFlags;
+        use tari_crypto::keys::SecretKey;
+        use tari_script::script;
+        use tari_transaction_components::{
+            crypto_factories::CryptoFactories,
+            test_helpers::{create_kernel_only_transaction, create_signature},
+            transaction_components::{KernelFeatures, SpentOutput, TransactionError, covenants::CovenantError},
+            validation::AggregatedBodyValidationError,
+        };
+
+        use super::*;
+        use crate::{
+            test_helpers::blockchain::{TestBlockchain, create_test_blockchain_db},
+            validation::{TransactionValidator, ValidationError, transaction::TransactionFullValidator},
+        };
+
+        const LONG_BAN: Duration = Duration::from_secs(2 * 60 * 60);
+
+        struct Bans {
+            connectivity: ConnectivityRequester,
+            state: ConnectivityManagerMockState,
+        }
+
+        impl Bans {
+            /// The mock handles requests in order, so once a later request is answered every earlier ban is recorded.
+            async fn take(&mut self) -> Vec<(NodeId, Duration, String)> {
+                self.connectivity.get_connectivity_status().await.unwrap();
+                self.state.take_banned_peers().await
+            }
+        }
+
+        /// Chain-linked validation passes; internal consistency validation fails with the given error
+        struct InternalFailureValidator(fn() -> ValidationError);
+
+        impl TransactionValidator for InternalFailureValidator {
+            fn validate_full(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+                Err((self.0)())
+            }
+
+            fn validate_chain_linked(&self, _tx: &Transaction) -> Result<(), ValidationError> {
+                Ok(())
+            }
+
+            fn validate_internal_consistency(
+                &self,
+                _tx: &Transaction,
+                _tip: Option<&ChainMetadata>,
+            ) -> Result<(), ValidationError> {
+                Err((self.0)())
+            }
+        }
+
+        fn create_handlers_with_bans(
+            validator: Box<dyn TransactionValidator>,
+        ) -> (MempoolInboundHandlers, Mempool, PropagatedTxs, Bans) {
+            let mut config = MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(config, create_consensus_rules(), validator);
+            let (tx_sender, propagated) = mpsc::unbounded_channel();
+            let (connectivity, mock) = create_connectivity_mock();
+            let state = mock.spawn();
+            let handlers =
+                MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender))
+                    .with_peer_bans(connectivity.clone(), PeerBanPeriods::default());
+            (handlers, mempool, propagated, Bans { connectivity, state })
+        }
+
+        fn chain_validator() -> Box<dyn TransactionValidator> {
+            let db = create_test_blockchain_db();
+            let rules = db.rules().clone();
+            Box::new(TransactionFullValidator::new(
+                CryptoFactories::default(),
+                true,
+                db,
+                rules,
+            ))
+        }
+
+        fn coinbase_kernel_tx() -> Transaction {
+            create_kernel_only_transaction(
+                &PrivateKey::random(&mut rand::rng()),
+                0,
+                KernelFeatures::COINBASE_KERNEL,
+            )
+        }
+
+        fn unbalanced_tx() -> Transaction {
+            let mut tx =
+                create_kernel_only_transaction(&PrivateKey::random(&mut rand::rng()), 0, KernelFeatures::empty());
+            tx.offset = PrivateKey::default();
+            tx
+        }
+
+        fn transaction_message(tx: Transaction) -> PeerMessage {
+            let body = proto::types::Transaction::try_from(tx).unwrap().encode_to_vec();
+            Arc::try_unwrap(create_peer_message(TariMessageType::NewTransaction, body)).unwrap()
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_failing_internal_validation_bans_source() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+
+            for tx in [coinbase_kernel_tx(), unbalanced_tx()] {
+                let msg = transaction_message(tx);
+                let source = msg.source_peer.node_id.clone();
+                handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+                let banned = bans.take().await;
+                assert_eq!(banned.len(), 1);
+                let (node_id, duration, _) = banned.first().unwrap();
+                assert_eq!(*node_id, source);
+                assert_eq!(*duration, LONG_BAN);
+            }
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+
+            // Signed by the sending peer itself
+            let mut msg = transaction_message(coinbase_kernel_tx());
+            msg.authenticated_origin = Some(msg.source_peer.public_key.clone());
+            let source = msg.source_peer.node_id.clone();
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+            let banned = bans.take().await;
+            assert_eq!(banned.len(), 1);
+            assert_eq!(banned.first().unwrap().0, source);
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_signed_by_other_key_bans_source() {
+            let (mut handlers, _mempool, _propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let mut msg = transaction_message(coinbase_kernel_tx());
+            let (_, other_origin) = CompressedPublicKey::random_keypair(&mut rand::rng());
+            assert!(!msg.dht_header.flags.is_encrypted());
+            msg.authenticated_origin = Some(other_origin);
+            let source = msg.source_peer.node_id.clone();
+
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+            let banned = bans.take().await;
+            assert_eq!(banned.len(), 1);
+            assert_eq!(banned.first().unwrap().0, source);
+        }
+
+        #[tokio::test]
+        async fn relayed_transaction_failing_internal_validation_does_not_ban() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+            let mut msg = transaction_message(coinbase_kernel_tx());
+            let (_, other_origin) = CompressedPublicKey::random_keypair(&mut rand::rng());
+            assert_ne!(other_origin, msg.source_peer.public_key);
+            msg.authenticated_origin = Some(other_origin);
+            msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
+
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_failing_chain_validation_does_not_ban() {
+            let mut blockchain = TestBlockchain::create(create_consensus_rules());
+            let (block, _) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+            let mined_kernel = block.block().body.kernels().first().unwrap().clone();
+            let db = blockchain.db().clone();
+            let rules = db.rules().clone();
+            let validator = TransactionFullValidator::new(CryptoFactories::default(), true, db, rules);
+            let (mut handlers, mempool, _propagated, mut bans) = create_handlers_with_bans(Box::new(validator));
+
+            // Spends outputs that are not in the chain
+            let key_manager = KeyManager::new_random().unwrap();
+            let orphan = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0;
+            // Reuses a kernel excess that is already in the chain
+            let mut excess_in_chain = mined_kernel;
+            excess_in_chain.excess_sig = create_signature(
+                PrivateKey::random(&mut rand::rng()),
+                0.into(),
+                0,
+                KernelFeatures::empty(),
+            );
+            let excess_in_chain = Transaction::new(
+                vec![],
+                vec![],
+                vec![excess_in_chain],
+                PrivateKey::default(),
+                PrivateKey::default(),
+            );
+
+            let response = mempool.insert(Arc::new(orphan.clone())).await.unwrap();
+            assert_eq!(response, TxStorageResponse::NotStoredOrphan);
+            let response = mempool.insert(Arc::new(excess_in_chain.clone())).await.unwrap();
+            assert!(
+                matches!(&response, TxStorageResponse::NotStored(Some(msg)) if msg.contains("already exists in the chain")),
+                "{response:?}"
+            );
+
+            for tx in [orphan, excess_in_chain] {
+                handlers
+                    .handle_transaction_message(Arc::new(transaction_message(tx)))
+                    .await
+                    .unwrap();
+                assert!(bans.take().await.is_empty());
+            }
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_with_tip_dependent_failure_does_not_ban() {
+            let errors: [fn() -> ValidationError; 2] = [
+                || AggregatedBodyValidationError::MaturityError.into(),
+                // Covenants can read the block height
+                || AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs).into(),
+            ];
+            for error in errors {
+                let (mut handlers, mempool, _propagated, mut bans) =
+                    create_handlers_with_bans(Box::new(InternalFailureValidator(error)));
+                handlers
+                    .handle_transaction_message(Arc::new(transaction_message(unbalanced_tx())))
+                    .await
+                    .unwrap();
+                assert!(bans.take().await.is_empty());
+                assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            }
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_with_height_reading_script_does_not_ban() {
+            let (mut handlers, mempool, _propagated, mut bans) =
+                create_handlers_with_bans(Box::new(InternalFailureValidator(|| {
+                    AggregatedBodyValidationError::TransactionError(TransactionError::InvalidSignatureError(
+                        "Verifying script signature".to_string(),
+                    ))
+                    .into()
+                })));
+            let key_manager = KeyManager::new_random().unwrap();
+            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0;
+            let mut inputs = tx.body.inputs().clone();
+            match &mut inputs.first_mut().unwrap().spent_output {
+                SpentOutput::OutputData { script, .. } => {
+                    *script = script!(CheckHeight(1) GtZero IfThen Nop Else Nop EndIf).unwrap()
+                },
+                SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+            }
+            let height_reading = Transaction::new(
+                inputs,
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                tx.offset.clone(),
+                tx.script_offset.clone(),
+            );
+
+            handlers
+                .handle_transaction_message(Arc::new(transaction_message(height_reading)))
+                .await
+                .unwrap();
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+
+            // The same failure without a height-reading script
+            handlers
+                .handle_transaction_message(Arc::new(transaction_message(tx)))
+                .await
+                .unwrap();
+            assert_eq!(bans.take().await.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn submitted_transaction_failing_internal_validation_does_not_ban() {
+            let (mut handlers, mempool, _propagated, mut bans) = create_handlers_with_bans(chain_validator());
+
+            handlers
+                .handle_request(MempoolRequest::SubmitTransaction(coinbase_kernel_tx()))
+                .await
+                .unwrap();
+            let permit = handlers.acquire_validation_permit().await.unwrap();
+            handlers
+                .submit_transaction_request(coinbase_kernel_tx(), permit)
+                .await
+                .unwrap();
+            handlers
+                .handle_transaction(coinbase_kernel_tx(), Some(NodeId::default()))
+                .await
+                .unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+        }
+
+        #[tokio::test]
+        async fn gossiped_valid_transaction_does_not_ban() {
+            let (mut handlers, mempool, _propagated, mut bans) =
+                create_handlers_with_bans(Box::new(MockValidator::new(true)));
+            let key_manager = KeyManager::new_random().unwrap();
+            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0;
+
+            handlers
+                .handle_transaction_message(Arc::new(transaction_message(tx)))
+                .await
+                .unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        }
     }
 
     mod add_block_errored {
