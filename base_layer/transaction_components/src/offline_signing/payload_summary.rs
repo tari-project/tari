@@ -766,10 +766,16 @@ pub fn present_payload_summary<P: OfflinePayload>(
     )?;
     let approved = match mode {
         ConfirmationMode::NonInteractive => {
-            writeln!(
-                out,
-                "Signing without a prompt (non-interactive mode or no terminal). The summary above has been logged."
-            )?;
+            // Only claim a log record when a logger will actually write one
+            if log::log_enabled!(target: LOG_TARGET, log::Level::Info) {
+                writeln!(
+                    out,
+                    "Signing without a prompt (non-interactive mode or no terminal). The summary above has been \
+                     logged."
+                )?;
+            } else {
+                writeln!(out, "Signing without a prompt (non-interactive mode or no terminal).")?;
+            }
             info!(
                 target: LOG_TARGET,
                 "Signing offline payload {} without a prompt (non-interactive mode or no terminal):\n{}", summary.tx_id, summary
@@ -1459,11 +1465,17 @@ mod test {
         .unwrap();
         assert!(confirmation.is_approved());
         let written = String::from_utf8(out).unwrap();
+        // Tests run without a logger unless one was installed, so expect whichever form applies
+        let logged = if log::log_enabled!(target: LOG_TARGET, log::Level::Info) {
+            " The summary above has been logged."
+        } else {
+            ""
+        };
         assert_eq!(
             written,
             format!(
                 "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nSigning without \
-                 a prompt (non-interactive mode or no terminal). The summary above has been logged.\n"
+                 a prompt (non-interactive mode or no terminal).{logged}\n"
             )
         );
     }

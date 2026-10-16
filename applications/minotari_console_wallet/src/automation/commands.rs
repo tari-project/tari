@@ -4081,9 +4081,12 @@ mod test {
         assert!(!written.contains('\u{1b}'), "{written}");
         let recap = written.find("---- Recap ----").expect("recap");
         assert!(written.find("\\u{1b}").unwrap() < recap, "{written}");
-        assert!(written.trim_end().ends_with(
-            "Signing without a prompt (non-interactive mode or no terminal). The summary above has been logged."
-        ));
+        // The "has been logged" sentence depends on whether a logger is installed, which it is not in unit tests
+        let last_line = written.trim_end().lines().last().unwrap();
+        assert!(
+            last_line.starts_with("Signing without a prompt (non-interactive mode or no terminal)."),
+            "{written}"
+        );
     }
 
     #[test]
