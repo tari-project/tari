@@ -256,6 +256,20 @@ pub fn create_signature(
     CompressedSignature::new_from_schnorr(sig)
 }
 
+/// Create a transaction with a single zero-fee kernel with excess `k·G` and no inputs or outputs.
+pub fn create_kernel_only_transaction(k: &PrivateKey, lock_height: u64, features: KernelFeatures) -> Transaction {
+    let excess = CompressedCommitment::from_compressed_key(CompressedPublicKey::from_secret_key(k));
+    let sig = create_signature(k.clone(), 0.into(), lock_height, features);
+    let kernel = TransactionKernel::new_current_version(features, 0.into(), lock_height, excess, sig, None);
+    Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        &PrivateKey::default() - k,
+        PrivateKey::default(),
+    )
+}
+
 /// Generate a random transaction signature given a key, returning the public key (excess) and the signature.
 pub fn create_random_signature_from_secret_key<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,

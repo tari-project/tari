@@ -30,6 +30,7 @@ pub use test_helpers_functions::{
     create_coinbase_wallet_output,
     create_consensus_constants,
     create_consensus_manager,
+    create_kernel_only_transaction,
     create_random_signature_from_secret_key,
     create_signature,
     create_test_input,

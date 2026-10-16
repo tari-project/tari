@@ -23,6 +23,7 @@
 use tari_script::{Opcode, TariScript};
 
 use crate::{
+    aggregated_body::AggregateBody,
     consensus::consensus_constants::ConsensusConstants,
     helpers::borsh::SerializedSize,
     transaction_components::{
@@ -55,6 +56,18 @@ pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd
     }
 
     true
+}
+
+/// Transactions may not carry a coinbase kernel; only a block's own coinbase may.
+pub fn check_no_coinbase_kernels(body: &AggregateBody) -> Result<(), AggregatedBodyValidationError> {
+    for kernel in body.kernels() {
+        if kernel.is_coinbase() {
+            return Err(AggregatedBodyValidationError::KernelFeaturesNotPermitted {
+                features: kernel.features,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
@@ -266,7 +279,33 @@ mod test {
     use tari_test_utils::unpack_enum;
 
     use super::*;
-    use crate::{crypto_factories::CryptoFactories, test_helpers, test_helpers::TestParams};
+    use crate::{
+        crypto_factories::CryptoFactories,
+        test_helpers,
+        test_helpers::TestParams,
+        transaction_components::KernelFeatures,
+    };
+    #[test]
+    fn check_no_coinbase_kernels_rejects_coinbase_and_combined_flags() {
+        let body_with = |features: KernelFeatures| {
+            AggregateBody::new_unsorted(vec![], vec![], vec![test_helpers::create_test_kernel(
+                0.into(),
+                0,
+                features,
+            )])
+        };
+
+        for features in [KernelFeatures::COINBASE_KERNEL, KernelFeatures::all()] {
+            let err = check_no_coinbase_kernels(&body_with(features)).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::KernelFeaturesNotPermitted { features: f } if f == features
+            ));
+        }
+        check_no_coinbase_kernels(&body_with(KernelFeatures::empty())).unwrap();
+        check_no_coinbase_kernels(&body_with(KernelFeatures::BURN_KERNEL)).unwrap();
+    }
+
     mod is_all_unique_and_sorted {
         use super::*;
 

@@ -24,7 +24,7 @@ use thiserror::Error;
 
 use crate::{
     MicroMinotari,
-    transaction_components::{OutputType, RangeProofType, TransactionError, covenants::CovenantError},
+    transaction_components::{KernelFeatures, OutputType, RangeProofType, TransactionError, covenants::CovenantError},
 };
 
 #[derive(Debug, Error)]
@@ -74,6 +74,8 @@ pub enum AggregatedBodyValidationError {
     InvalidBurnError(String),
     #[error("Output type '{output_type}' is not permitted")]
     OutputTypeNotPermitted { output_type: OutputType },
+    #[error("Kernel features {features:?} are not permitted in a transaction")]
+    KernelFeaturesNotPermitted { features: KernelFeatures },
     #[error("Output type '{output_type}' does not permit this side-chain feature data")]
     SideChainFeatureNotPermitted { output_type: OutputType },
     #[error("Output type '{output_type}' requires side-chain feature data")]

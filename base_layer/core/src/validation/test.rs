@@ -623,8 +623,11 @@ async fn chain_balance_validation_burned() {
 mod transaction_validator {
     use std::convert::TryFrom;
 
+    use tari_common_types::types::PrivateKey;
+    use tari_crypto::keys::SecretKey;
     use tari_transaction_components::{
-        transaction_components::{CoinBaseExtra, OutputType, TransactionError},
+        test_helpers::create_kernel_only_transaction,
+        transaction_components::{CoinBaseExtra, KernelFeatures, OutputType, TransactionError},
         validation::{AggregatedBodyValidationError, transaction::TransactionInternalConsistencyValidator},
     };
 
@@ -652,6 +655,31 @@ mod transaction_validator {
                 output_type: OutputType::Coinbase
             } = err
         );
+    }
+
+    #[tokio::test]
+    async fn mempool_rejects_kernel_with_coinbase_features() {
+        let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::LocalNet).build().unwrap();
+        let db = create_store_with_consensus(consensus_manager.clone());
+        let validator = TransactionInternalConsistencyValidator::new(
+            true,
+            consensus_manager.consensus_manager(),
+            CryptoFactories::default(),
+        );
+        let tip = db.get_chain_metadata().unwrap();
+
+        let k = PrivateKey::random(&mut rand::rng());
+        let tx = create_kernel_only_transaction(&k, 0, KernelFeatures::COINBASE_KERNEL);
+        let err = validator.validate_with_current_tip(&tx, tip.clone()).unwrap_err();
+        assert!(matches!(
+            err,
+            AggregatedBodyValidationError::KernelFeaturesNotPermitted {
+                features: KernelFeatures::COINBASE_KERNEL
+            }
+        ));
+
+        let tx = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+        validator.validate_with_current_tip(&tx, tip).unwrap();
     }
 
     #[tokio::test]

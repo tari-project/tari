@@ -27,7 +27,11 @@ use crate::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     transaction_components::{OutputType::Coinbase, Transaction},
-    validation::{AggregatedBodyValidationError, aggregate_body::AggregateBodyInternalConsistencyValidator},
+    validation::{
+        AggregatedBodyValidationError,
+        aggregate_body::AggregateBodyInternalConsistencyValidator,
+        helpers::check_no_coinbase_kernels,
+    },
 };
 
 pub struct TransactionInternalConsistencyValidator {
@@ -74,6 +78,7 @@ impl TransactionInternalConsistencyValidator {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
             return Err(AggregatedBodyValidationError::OutputTypeNotPermitted { output_type: Coinbase });
         }
+        check_no_coinbase_kernels(&tx.body)?;
 
         // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
         // only coinbases may have the extra field set (the only field that the fn argument affects).
