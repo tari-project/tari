@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use blake2::{Blake2b, Digest};
 use digest::consts::U64;
+use log::{info, warn};
 use tari_common::configuration::Network;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 use tari_crypto::hashing::DomainSeparatedHasher;
@@ -51,6 +52,7 @@ use crate::{
             get_latest_version,
         },
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
+        payload_summary::LOG_TARGET,
     },
     transaction_components::{MemoField, OutputFeatures, WalletOutput},
 };
@@ -300,6 +302,18 @@ pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKe
 // Sign functions (offline signer side) — verify payload integrity first
 // ---------------------------------------------------------------------------
 
+/// Records whether an offline payload was signed, after the integrity and key-id checks have run.
+fn log_signing_outcome<T>(
+    tx_id: TxId,
+    result: Result<T, TransactionBuilderError>,
+) -> Result<T, TransactionBuilderError> {
+    match &result {
+        Ok(_) => info!(target: LOG_TARGET, "Offline payload {tx_id} signed"),
+        Err(e) => warn!(target: LOG_TARGET, "Offline payload {tx_id} not signed: {e}"),
+    }
+    result
+}
+
 pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
@@ -307,6 +321,19 @@ pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
     confirmed: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
 ) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
     let request = confirmed.into_payload();
+    let tx_id = request.tx_id;
+    log_signing_outcome(
+        tx_id,
+        verify_and_sign_one_sided(key_manager, consensus_constants, network, request),
+    )
+}
+
+fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    request: PrepareOneSidedTransactionForSigningResult,
+) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
     let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
@@ -329,6 +356,19 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
     confirmed: ConfirmedPayload<PrepareDepositMultisigTransactionResult>,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
     let request = confirmed.into_payload();
+    let tx_id = request.tx_id;
+    log_signing_outcome(
+        tx_id,
+        verify_and_sign_deposit_multisig(key_manager, consensus_constants, network, request),
+    )
+}
+
+fn verify_and_sign_deposit_multisig<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    request: PrepareDepositMultisigTransactionResult,
+) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
     let canonical = borsh_canonical_multisig(&request.version, request.tx_id, &request.info)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
@@ -351,6 +391,19 @@ pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterf
     confirmed: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
 ) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
     let request = confirmed.into_payload();
+    let tx_id = request.tx_id;
+    log_signing_outcome(
+        tx_id,
+        verify_and_sign_withdraw_multisig(key_manager, consensus_constants, network, request),
+    )
+}
+
+fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    request: PrepareWithdrawMultisigTransactionResult,
+) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
     let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
         .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;

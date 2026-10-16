@@ -68,7 +68,7 @@ use crate::{
     weight::TransactionWeight,
 };
 
-const LOG_TARGET: &str = "c::tx::offline_signing";
+pub(crate) const LOG_TARGET: &str = "c::tx::offline_signing";
 const MEMO_INDENT: &str = "      | ";
 const MEMO_LINE_WIDTH: usize = 48;
 const RECAP_HEADER: &str = "---------------------------- Recap ----------------------------";
