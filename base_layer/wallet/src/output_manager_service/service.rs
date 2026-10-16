@@ -67,7 +67,7 @@ use tari_transaction_components::{
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
-    key_manager::{SerializedKeyString, TariKeyAndId, TariKeyId},
+    key_manager::{RecoveryProvenance, SerializedKeyString, TariKeyAndId, TariKeyId},
     transaction_builder::{FinalizedTransaction, PendingOutput, RecipientKeys, RecipientSpec},
     transaction_components::{
         EncryptedData,
@@ -3334,7 +3334,11 @@ where
                             script_private_key,
                         );
 
-                        scanned_outputs.push((rewound_output, OutputSource::OneSided));
+                        scanned_outputs.push((
+                            rewound_output,
+                            OutputSource::OneSided,
+                            RecoveryProvenance::DiffieHellman,
+                        ));
                     }
                 }
                 // it is not some known key, so lets try and see if this is a stealth tx for us
@@ -3385,7 +3389,11 @@ where
                             script_key,
                         );
 
-                        scanned_outputs.push((recovered_output, OutputSource::StealthOneSided));
+                        scanned_outputs.push((
+                            recovered_output,
+                            OutputSource::StealthOneSided,
+                            RecoveryProvenance::DiffieHellman,
+                        ));
                     }
                 }
             }
@@ -3419,7 +3427,7 @@ where
                     pubkeys
                 );
 
-                if let Some((commitment_mask_key_id, committed_value, payment_id, _)) =
+                if let Some((commitment_mask_key_id, committed_value, payment_id, provenance)) =
                     self.resources.key_manager.try_output_key_recovery(
                         output.commitment(),
                         output.encrypted_data(),
@@ -3447,7 +3455,7 @@ where
                         ExecutionStack::new(vec![]),
                         script_key,
                     );
-                    scanned_outputs.push((recovered_output, OutputSource::Multisig));
+                    scanned_outputs.push((recovered_output, OutputSource::Multisig, provenance));
                 }
             }
         }
@@ -3458,12 +3466,12 @@ where
     // Import scanned outputs into the wallet
     fn import_onesided_outputs(
         &self,
-        scanned_outputs: Vec<(WalletOutput, OutputSource)>,
+        scanned_outputs: Vec<(WalletOutput, OutputSource, RecoveryProvenance)>,
         view_key: &CompressedPublicKey,
     ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let mut rewound_outputs = Vec::with_capacity(scanned_outputs.len());
 
-        for (output, output_source) in scanned_outputs {
+        for (output, output_source, provenance) in scanned_outputs {
             let tx_id = output.calculate_tx_id(view_key.as_bytes());
             let db_output = DbWalletOutput::from_wallet_output(output.clone(), None, output_source, Some(tx_id), None);
             let hash = db_output.hash;
@@ -3481,7 +3489,11 @@ where
                         db_output.wallet_output.value(),
                     );
 
-                    rewound_outputs.push(RecoveredOutput { output, hash })
+                    rewound_outputs.push(RecoveredOutput {
+                        output,
+                        hash,
+                        provenance,
+                    })
                 },
                 Err(OutputManagerStorageError::DuplicateOutput) => {
                     warn!(

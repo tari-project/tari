@@ -2306,6 +2306,7 @@ pub struct CompletedTransactionSql {
     user_payment_id: Option<Vec<u8>>,
     lock_height: Option<i64>,
     rejection_reason: Option<String>,
+    source_address_claimed: bool,
 }
 
 impl CompletedTransactionSql {
@@ -2773,6 +2774,7 @@ impl CompletedTransactionSql {
             change_output_hashes: Some(fixedhash_vec_to_bytes(&c.change_output_hashes)),
             lock_height: Some(c.lock_height as i64),
             rejection_reason: c.rejection_reason.clone(),
+            source_address_claimed: c.source_address_claimed,
         };
 
         output.encrypt(cipher).map_err(TransactionStorageError::AeadError)
@@ -2913,6 +2915,7 @@ impl CompletedTransaction {
             change_output_hashes: bytes_to_fixedhash_vec(&c.change_output_hashes.unwrap_or_default()),
             lock_height,
             rejection_reason: c.rejection_reason.clone(),
+            source_address_claimed: c.source_address_claimed,
         };
 
         // zeroize sensitive data
@@ -3175,7 +3178,7 @@ mod test {
         encryption::Encryptable,
         tari_address::TariAddress,
         transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
-        types::{CompressedPublicKey, CompressedSignature, PrivateKey},
+        types::{CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
     };
     use tari_crypto::keys::SecretKey as SecretKeyTrait;
     use tari_script::script;
@@ -3461,6 +3464,7 @@ mod test {
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         };
         let source_address = TariAddress::new_dual_address_with_default_features(
             CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
@@ -3500,6 +3504,7 @@ mod test {
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         };
 
         CompletedTransactionSql::try_from(completed_tx1.clone(), &cipher)
@@ -3755,6 +3760,7 @@ mod test {
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         };
 
         let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
@@ -3765,6 +3771,65 @@ mod test {
         let db_completed_tx = db_completed_tx.decrypt(&cipher).unwrap();
         let decrypted_completed_tx = CompletedTransaction::try_from(db_completed_tx, &cipher, &mut conn).unwrap();
         assert_eq!(completed_tx, decrypted_completed_tx);
+        assert!(!decrypted_completed_tx.source_address_claimed);
+    }
+
+    fn migrated_connection() -> SqliteConnection {
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.run_pending_migrations(MIGRATIONS).unwrap();
+        conn
+    }
+
+    fn random_cipher() -> XChaCha20Poly1305 {
+        let mut key = [0u8; size_of::<Key>()];
+        rand::rng().fill_bytes(&mut key);
+        XChaCha20Poly1305::new(Key::from_slice(&key))
+    }
+
+    fn completed_tx_with_hashes(tx_id: u64, sent: Vec<FixedHash>, received: Vec<FixedHash>) -> CompletedTransaction {
+        CompletedTransaction {
+            tx_id: tx_id.into(),
+            source_address: TariAddress::default(),
+            destination_address: TariAddress::default(),
+            amount: MicroMinotari::from(100),
+            fee: MicroMinotari::from(1),
+            transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
+            status: LegacyTransactionStatus::Completed,
+            timestamp: Utc::now(),
+            cancelled: None,
+            direction: TransactionDirection::Inbound,
+            send_count: 0,
+            last_send_timestamp: None,
+            sent_output_hashes: sent,
+            received_output_hashes: received,
+            change_output_hashes: vec![],
+            transaction_signature: CompressedSignature::default(),
+            mined_height: None,
+            mined_in_block: None,
+            mined_timestamp: None,
+            payment_id: MemoField::new_empty(),
+            lock_height: 0,
+            rejection_reason: None,
+            source_address_claimed: false,
+        }
+    }
+
+    #[test]
+    fn completed_transaction_round_trips_source_address_claimed() {
+        let mut conn = migrated_connection();
+        let cipher = random_cipher();
+        let mut completed_tx = completed_tx_with_hashes(1, vec![], vec![]);
+        completed_tx.source_address_claimed = true;
+
+        CompletedTransactionSql::try_from(completed_tx.clone(), &cipher)
+            .unwrap()
+            .commit(&mut conn)
+            .unwrap();
+        let row = CompletedTransactionSql::find(1u64.into(), &mut conn).unwrap();
+        let read_back = CompletedTransaction::try_from(row, &cipher, &mut conn).unwrap();
+        assert!(read_back.source_address_claimed);
+        assert_eq!(read_back, completed_tx);
     }
 
     #[test]
@@ -3894,6 +3959,7 @@ mod test {
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
                 lock_height: 0,
                 rejection_reason: None,
+                source_address_claimed: false,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx, &cipher).unwrap();
 
@@ -4008,6 +4074,7 @@ mod test {
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
                 lock_height: 0,
                 rejection_reason: None,
+                source_address_claimed: false,
             };
             CompletedTransactionSql::try_from(completed_tx, &cipher)
                 .unwrap()
@@ -4163,6 +4230,7 @@ mod test {
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
                 lock_height: 0,
                 rejection_reason: None,
+                source_address_claimed: false,
             };
             let completed_tx_sql = CompletedTransactionSql::try_from(completed_tx.clone(), &cipher).unwrap();
 
