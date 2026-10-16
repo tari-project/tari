@@ -32,6 +32,8 @@ use crate::ui::{
 const LOG_TARGET: &str = "wallet::console_wallet::transaction_tab";
 const ADDRESS_DISPLAY_SIZE: u16 = 95;
 const MAX_ADDRESS_LENGTH: u16 = ADDRESS_DISPLAY_SIZE - 1 - 3; // column border: 1 space, selection arrows: 3 spaces
+/// Appended to a source address that was taken from a memo written by the sender.
+const CLAIMED_MARKER: &str = " (claimed)";
 
 pub struct TransactionsTab {
     balance: Balance,
@@ -227,7 +229,14 @@ impl TransactionsTab {
 
             let mut transaction_status = tx.status;
             let mut transaction_type = if tx.burn { TxType::Burn } else { TxType::PaymentToOther };
-            if let Some(tx_type) = tx.payment_id.as_ref().and_then(|p| p.get_tx_type()) {
+            // A memo written by the sender (a claimed source address, or a coinbase anyone could have paid us) does
+            // not get to relabel the row or its status
+            if let Some(tx_type) = tx
+                .payment_id
+                .as_ref()
+                .and_then(|p| p.get_tx_type())
+                .filter(|_| !tx.source_address_claimed && !tx.coinbase)
+            {
                 match tx.status {
                     LegacyTransactionStatus::OneSidedUnconfirmed => {
                         transaction_status = LegacyTransactionStatus::MinedUnconfirmed
@@ -252,6 +261,9 @@ impl TransactionsTab {
                 }
             }
 
+            let destination_text = tx.destination_address.to_base58();
+            let source_text = tx.source_address.to_base58();
+            let mut shows_source_address = false;
             let address_text = match (&tx.direction, &tx.coinbase, transaction_type) {
                 (_, true, _) => "Mining reward",
                 (_, _, TxType::Burn) => "Burned output",
@@ -263,11 +275,26 @@ impl TransactionsTab {
                 (_, _, TxType::CodeTemplateRegistration) => "Code template registration",
                 (_, _, TxType::HtlcAtomicSwapRefund) => "HTLC atomic swap refund",
                 (_, _, TxType::ClaimAtomicSwap) => "Claim atomic swap",
-                (TransactionDirection::Outbound, _, _) => &tx.destination_address.to_base58(),
-                _ => &tx.source_address.to_base58(),
+                (TransactionDirection::Outbound, _, _) => destination_text.as_str(),
+                _ => {
+                    shows_source_address = true;
+                    source_text.as_str()
+                },
+            };
+            let address_cell = if shows_source_address && tx.source_address_claimed {
+                // Clip first so the marker is never cut off
+                format!(
+                    "{}{CLAIMED_MARKER}",
+                    get_alias_and_clip(
+                        address_text.to_string(),
+                        MAX_ADDRESS_LENGTH.saturating_sub(u16::try_from(CLAIMED_MARKER.len()).unwrap_or(u16::MAX))
+                    )
+                )
+            } else {
+                get_alias_and_clip(address_text.to_string(), MAX_ADDRESS_LENGTH)
             };
             column0_items.push(ListItem::new(Span::styled(
-                get_alias_and_clip(address_text.to_string(), MAX_ADDRESS_LENGTH),
+                address_cell,
                 Style::default().fg(text_color),
             )));
             if tx.direction == TransactionDirection::Outbound {
@@ -344,7 +371,7 @@ impl TransactionsTab {
 
         let columns = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(24), Constraint::Min(2)].as_ref())
+            .constraints([Constraint::Length(25), Constraint::Min(2)].as_ref())
             .margin(1)
             .split(area);
 
@@ -354,7 +381,16 @@ impl TransactionsTab {
 
         let payment_ref = Span::styled("PayRef:", Style::default().fg(Color::Magenta));
         let excess_sig = Span::styled("Excess sig(sig, nonce):", Style::default().fg(Color::Magenta));
-        let source_address = Span::styled("Source Address:", Style::default().fg(Color::Magenta));
+        let source_address_label = if self
+            .detailed_transaction
+            .as_ref()
+            .is_some_and(|tx| tx.source_address_claimed)
+        {
+            "Source Address (claimed):"
+        } else {
+            "Source Address:"
+        };
+        let source_address = Span::styled(source_address_label, Style::default().fg(Color::Magenta));
         let destination_address = Span::styled("Destination address:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
         let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
@@ -405,7 +441,13 @@ impl TransactionsTab {
             let excess_sig = Span::styled(format!("({})", tx.excess_signature), Style::default().fg(Color::White));
 
             let (status, direction, amount, fee, weight, inputs_count, outputs_count, payment_id, source, destination) =
-                if let Some(fee) = tx.payment_id.as_ref().and_then(|p| p.get_fee()) {
+                // A memo written by the sender (claimed source address or coinbase) does not supply the fee or status
+                if let Some(fee) = tx
+                    .payment_id
+                    .as_ref()
+                    .and_then(|p| p.get_fee())
+                    .filter(|_| !tx.source_address_claimed && !tx.coinbase)
+                {
                     let status = match tx.status {
                         LegacyTransactionStatus::OneSidedUnconfirmed => LegacyTransactionStatus::MinedUnconfirmed,
                         LegacyTransactionStatus::OneSidedConfirmed => LegacyTransactionStatus::MinedConfirmed,

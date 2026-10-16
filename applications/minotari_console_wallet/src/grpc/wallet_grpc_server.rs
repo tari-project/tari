@@ -1826,6 +1826,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .clone()
                             .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                         lock_height: txn.lock_height,
+                        source_address_claimed: txn.source_address_claimed,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1969,6 +1970,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .clone()
                         .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                     lock_height: txn.lock_height,
+                    source_address_claimed: txn.source_address_claimed,
                 });
             }
 
@@ -2135,6 +2137,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .clone()
                             .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                         lock_height: txn.lock_height,
+                        source_address_claimed: txn.source_address_claimed,
                     };
 
                     let response = GetCompletedTransactionsResponse {
@@ -2282,6 +2285,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .clone()
                     .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: txn.lock_height,
+                source_address_claimed: txn.source_address_claimed,
             });
         }
 
@@ -4202,6 +4206,7 @@ fn completed_tx_to_transaction_info(
             .clone()
             .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
         lock_height: txn.lock_height,
+        source_address_claimed: txn.source_address_claimed,
     }
 }
 
@@ -4238,6 +4243,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_change: vec![],
                 rejected_reason: String::new(),
                 lock_height: 0,
+                source_address_claimed: false,
             }
         },
         PendingOutbound(tx) => {
@@ -4276,6 +4282,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_change: vec![],
                 rejected_reason: String::new(),
                 lock_height: 0,
+                source_address_claimed: false,
             }
         },
         Completed(tx) => {
@@ -4339,6 +4346,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     .clone()
                     .unwrap_or_else(|| tx.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: tx.lock_height,
+                source_address_claimed: tx.source_address_claimed,
             }
         },
     }

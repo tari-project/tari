@@ -2134,6 +2134,8 @@ message GetTransactionInfoResponse {
 
 message TransactionInfo {
   uint64 tx_id = 1;
+  // For inbound transactions recovered from the chain this is the sender address written in the output's memo by the
+  // sender; see source_address_claimed.
   bytes source_address = 2;
   bytes dest_address = 3;
   TransactionStatus status = 4;
@@ -2157,6 +2159,9 @@ message TransactionInfo {
   // The highest lock height among all outputs (max of maturity and script_lock_height).
   // Outputs cannot be spent until this height is reached.
   uint64 lock_height = 21;
+  // True when source_address came from a memo written by the sender (an output recovered via Diffie-Hellman, or an
+  // external import). It is not authenticated: any sender can put any address there. Do not attribute funds by it.
+  bool source_address_claimed = 22;
 }
 
 enum TransactionDirection {
