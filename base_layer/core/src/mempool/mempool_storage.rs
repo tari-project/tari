@@ -847,13 +847,17 @@ fn validate_attempt(
 
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
 /// never be valid. Covenant failures, and any failure of a transaction with an input script that reads the block
-/// height, are excluded since the outcome can depend on the height.
+/// height, are excluded since the outcome can depend on the height. Exceeding the covenant work limit is not banned
+/// either.
 fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Option<BanReason> {
     if has_height_dependent_input_script(tx) {
         return None;
     }
     match error {
-        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::CovenantError(_)) => None,
+        ValidationError::AggregatedBodyValidationError(
+            AggregatedBodyValidationError::CovenantError(_) |
+            AggregatedBodyValidationError::CovenantWorkLimitExceeded { .. },
+        ) => None,
         ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error, tx) => Some(BanReason {
             reason: error.to_string(),
             ban_duration: BanPeriod::Long,

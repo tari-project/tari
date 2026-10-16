@@ -50,6 +50,7 @@ use crate::{
         TransactionInput,
         TransactionKernel,
         TransactionOutput,
+        covenants::{CovenantError, MAX_COVENANT_WORK_PER_BODY, OutputHashCache, WorkMeter},
         transaction_output::batch_verify_range_proofs,
     },
     validation::{
@@ -137,6 +138,9 @@ impl AggregateBodyInternalConsistencyValidator {
         // Check that inputs are allowed to be spent
         check_maturity(height, body.inputs())?;
         check_kernel_lock_height(height, body.kernels())?;
+        // Covenants need no crypto and their evaluation cost is bounded, so they run before the kernel sum, range
+        // proofs and scripts.
+        validate_covenants(body, height)?;
 
         let total_offset =
             CompressedCommitment::from_commitment(self.factories.commitment.commit_value(tx_offset, total_reward.0));
@@ -148,7 +152,6 @@ impl AggregateBodyInternalConsistencyValidator {
 
         let script_offset_g = CompressedPublicKey::from_secret_key(script_offset);
         validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)?;
-        validate_covenants(body, height)?;
 
         check_total_burned(body)?;
 
@@ -392,8 +395,30 @@ fn validate_script_and_script_offset(
 }
 
 fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), AggregatedBodyValidationError> {
+    validate_covenants_with_limit(body, height, MAX_COVENANT_WORK_PER_BODY)
+}
+
+/// Evaluates the covenant of every input against the body's outputs, with at most `limit` work units in total
+pub(crate) fn validate_covenants_with_limit(
+    body: &AggregateBody,
+    height: u64,
+    limit: u64,
+) -> Result<(), AggregatedBodyValidationError> {
+    let outputs = body.outputs();
+    let mut meter = WorkMeter::new(limit);
+    let hashes = OutputHashCache::new(outputs.len());
     for input in body.inputs() {
-        input.covenant()?.execute(height, input, body.outputs())?;
+        let covenant = input.covenant()?;
+        if covenant.is_empty() {
+            continue;
+        }
+        match covenant.matching_outputs(height, input, outputs, &mut meter, Some(&hashes)) {
+            Ok(_) => {},
+            Err(CovenantError::WorkLimitExceeded) => {
+                return Err(AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit });
+            },
+            Err(e) => return Err(e.into()),
+        }
     }
     Ok(())
 }
@@ -805,6 +830,115 @@ mod test {
                 check_sorting_and_duplicates(&body),
                 Err(AggregatedBodyValidationError::UnsortedOrDuplicateInput)
             ));
+        }
+    }
+
+    mod covenants {
+        use super::*;
+        use crate::covenant;
+
+        pub(super) fn input_with_covenant(covenant: Covenant) -> TransactionInput {
+            TransactionInput::new_with_output_data(
+                TransactionInputVersion::get_current_version(),
+                OutputFeatures::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                covenant,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                MicroMinotari::zero(),
+            )
+        }
+
+        pub(super) fn outputs(n: usize, key_manager: &KeyManager) -> Vec<TransactionOutput> {
+            let mut outputs = Vec::new();
+            for _ in 0..n {
+                let (output, _, _) = test_helpers::create_utxo(
+                    100.into(),
+                    key_manager,
+                    &OutputFeatures::default(),
+                    &script!(Nop).unwrap(),
+                    &Covenant::default(),
+                    0.into(),
+                );
+                outputs.push(output);
+            }
+            outputs
+        }
+
+        #[test]
+        #[allow(clippy::arithmetic_side_effects)]
+        fn covenant_evaluation_respects_work_limit() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let n = 10;
+            let mut outputs = outputs(n, &key_manager);
+            outputs[3].features.maturity = 42;
+            let covenant = covenant!(or(
+                field_eq(@field::features_maturity, @uint(42),),
+                field_eq(@field::features_maturity, @uint(7))
+            ))
+            .unwrap();
+            let body = AggregateBody::new_sorted_unchecked(
+                vec![input_with_covenant(covenant.clone())],
+                outputs.clone(),
+                Vec::new(),
+            );
+
+            // 7 tokens, the initial set of n, 3 filters, 2n for `or` and n for each `field_eq`
+            let exact_cost = 7 + n as u64 + 3 + 2 * n as u64 + 2 * n as u64;
+            validate_covenants_with_limit(&body, 0, exact_cost).unwrap();
+            let err = validate_covenants_with_limit(&body, 0, exact_cost - 1).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit } if limit == exact_cost - 1),
+                "{err}"
+            );
+
+            // The public path uses MAX_COVENANT_WORK_PER_BODY
+            const { assert!(MAX_COVENANT_WORK_PER_BODY == 250_000) };
+            validate_covenants(&body, 0).unwrap();
+            let inputs_over_limit = usize::try_from(MAX_COVENANT_WORK_PER_BODY / exact_cost + 1).unwrap();
+            let body = AggregateBody::new_sorted_unchecked(
+                vec![input_with_covenant(covenant); inputs_over_limit],
+                outputs,
+                Vec::new(),
+            );
+            let err = validate_covenants(&body, 0).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit } if limit == MAX_COVENANT_WORK_PER_BODY),
+                "{err}"
+            );
+        }
+
+        #[test]
+        fn covenant_checks_run_before_range_proofs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut outputs = outputs(2, &key_manager);
+            // A proof for a different commitment does not verify, but the metadata signature does not cover it
+            outputs[0].proof = outputs[1].proof.clone();
+            let output = outputs.remove(0);
+            let input = input_with_covenant(covenant!(field_eq(@field::features_maturity, @uint(99))).unwrap());
+            let body = AggregateBody::new_sorted_unchecked(vec![input], vec![output], Vec::new());
+            let factories = CryptoFactories::new(RANGE_PROOF_AGGREGATION_FACTOR);
+            assert!(validate_range_proofs(&body, &factories.range_proof).is_err());
+
+            let err = AggregateBodyInternalConsistencyValidator::new(
+                false,
+                ConsensusManager::builder(Network::LocalNet).build(),
+                factories,
+            )
+            .validate(&body, &Default::default(), &Default::default(), None, None, 0)
+            .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs)
+                ),
+                "{err}"
+            );
         }
     }
 

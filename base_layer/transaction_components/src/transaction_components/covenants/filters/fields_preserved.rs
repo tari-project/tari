@@ -36,6 +36,7 @@ impl Filter for FieldsPreservedFilter {
     // in the set.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let fields = context.next_arg()?.require_outputfields()?;
+        context.charge(output_set.len() as u64)?;
         let input = context.input();
         output_set.retain(|output| Ok(fields.iter().all(|field| field.is_eq_input(input, output))))?;
         Ok(())

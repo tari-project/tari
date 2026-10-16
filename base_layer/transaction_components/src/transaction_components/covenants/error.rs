@@ -42,6 +42,8 @@ pub enum CovenantError {
     InvalidArgument { filter: &'static str, details: String },
     #[error("Max sized vector error: {0}")]
     MaxSizeVecError(#[from] MaxSizeVecError),
+    #[error("Covenant evaluation exceeded the work limit")]
+    WorkLimitExceeded,
     #[error("Covenant decode error: {0}")]
     Decode(#[from] CovenantDecodeError),
 }

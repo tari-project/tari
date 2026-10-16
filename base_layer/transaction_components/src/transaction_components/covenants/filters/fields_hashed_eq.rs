@@ -39,6 +39,8 @@ impl Filter for FieldsHashedEqFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let fields = context.next_arg()?.require_outputfields()?;
         let hash = context.next_arg()?.require_hash()?;
+        let per_output = fields.len().max(1) as u64;
+        context.charge((output_set.len() as u64).saturating_mul(per_output))?;
         output_set.retain(|output| {
             let challenge = fields.construct_challenge_from(output).finalize();
             Ok(challenge[..] == *hash)

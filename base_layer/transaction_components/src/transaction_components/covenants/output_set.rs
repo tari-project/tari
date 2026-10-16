@@ -90,10 +90,10 @@ impl<'a> OutputSet<'a> {
     }
 
     /// Finds a single matching output, modifying the output set in place. If no matching output is found, the output
-    /// set will be empty.
-    pub fn find_inplace<F>(&mut self, mut pred: F)
-    where F: FnMut(&TransactionOutput) -> bool {
-        match self.0.iter().find(|indexed| pred(indexed)) {
+    /// set will be empty. The predicate is given the index of each output as well.
+    pub fn find_inplace_indexed<F>(&mut self, mut pred: F)
+    where F: FnMut(usize, &TransactionOutput) -> bool {
+        match self.0.iter().find(|indexed| pred(indexed.index, indexed.value)) {
             Some(output) => {
                 let output = *output;
                 self.clear();
@@ -103,6 +103,11 @@ impl<'a> OutputSet<'a> {
                 self.clear();
             },
         }
+    }
+
+    /// Returns the indexes of the outputs in the set, in ascending order.
+    pub fn indexes(&self) -> impl Iterator<Item = usize> + '_ {
+        self.0.iter().map(|indexed| indexed.index)
     }
 
     /// Clears an instance.

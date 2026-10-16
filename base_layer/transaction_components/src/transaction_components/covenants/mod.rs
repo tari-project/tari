@@ -39,10 +39,11 @@ mod output_set;
 mod scan;
 mod serde;
 mod token;
+mod work;
 
 #[cfg(test)]
 pub(crate) use arguments::MAX_BYTES_ARG_SIZE;
-pub use covenant::Covenant;
+pub use covenant::{Covenant, MAX_COVENANT_WORK_PER_BODY};
 #[cfg(test)]
 pub(crate) use covenant::{MAX_COVENANT_BYTES, MAX_COVENANT_TOKENS};
 pub use error::CovenantError;
@@ -50,6 +51,7 @@ pub use error::CovenantError;
 #[allow(unused_imports)]
 pub(crate) use fields::OutputField;
 pub use token::CovenantToken;
+pub(crate) use work::{OutputHashCache, WorkMeter};
 
 #[macro_use]
 mod macros;

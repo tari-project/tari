@@ -34,6 +34,7 @@ pub struct NotFilter;
 impl Filter for NotFilter {
     /// The not filter removes all outputs in the covenant context that are not in the compliment of the filter.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
+        context.charge(output_set.len() as u64)?;
         let filter = context.require_next_filter()?;
         let mut output_set_copy = output_set.clone();
         filter.filter(context, &mut output_set_copy)?;

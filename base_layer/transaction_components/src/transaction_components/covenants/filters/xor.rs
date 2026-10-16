@@ -36,6 +36,7 @@ impl Filter for XorFilter {
     // covenant context independently from each other, but only returns outputs that are in either of the two sets (not
     // in both). The  symmetric difference of the two filtered sets are returned.
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
+        context.charge((output_set.len() as u64).saturating_mul(2))?;
         let a = context.require_next_filter()?;
         let mut output_set_a = output_set.clone();
         a.filter(context, &mut output_set_a)?;

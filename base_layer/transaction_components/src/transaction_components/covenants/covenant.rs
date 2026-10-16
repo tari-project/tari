@@ -42,6 +42,7 @@ use crate::transaction_components::{
         output_set::OutputSet,
         scan::scan,
         token::{CovenantToken, CovenantTokenCollection},
+        work::{OutputHashCache, WorkMeter},
     },
 };
 
@@ -65,6 +66,13 @@ pub(crate) const MAX_COVENANT_TOKENS: usize = 128;
 /// levels deep and overflows the stack of whichever thread is validating it. The limit is set far above anything a
 /// real covenant needs so that it bounds the recursion without constraining legitimate use.
 pub(crate) const MAX_COVENANT_DEPTH: usize = 16;
+
+/// The most work units that evaluating the covenants of one aggregate body may cost. Each filter, token and output a
+/// filter visits costs work units; hashing an output or a set of fields is the most expensive unit.
+///
+/// The bound is consensus critical: a body whose covenants cost more is invalid, so changing it changes which blocks
+/// are valid and is a fork.
+pub const MAX_COVENANT_WORK_PER_BODY: u64 = 250_000;
 
 #[derive(Default, Clone, PartialEq, Eq)]
 /// A covenant allows a UTXO to specify some restrictions on how it is spent in a future transaction.
@@ -171,9 +179,24 @@ impl Covenant {
             // Empty covenants always pass
             return Ok(outputs.len());
         }
+        let matching = self.matching_outputs(block_height, input, outputs, &mut WorkMeter::unlimited(), None)?;
+        Ok(matching.len())
+    }
 
+    /// Indexes (ascending, into `outputs`) of the outputs this covenant admits. Err(NoMatchingOutputs) if none. The
+    /// work is charged to `meter`. Must not be called on an empty covenant.
+    pub(crate) fn matching_outputs(
+        &self,
+        block_height: u64,
+        input: &TransactionInput,
+        outputs: &[TransactionOutput],
+        meter: &mut WorkMeter,
+        hashes: Option<&OutputHashCache>,
+    ) -> Result<Vec<u32>, CovenantError> {
+        meter.charge(self.num_tokens() as u64)?;
         let tokens = CovenantTokenCollection::from(self.tokens()?);
-        let mut cx = CovenantContext::new(tokens, input, block_height);
+        meter.charge(outputs.len() as u64)?;
+        let mut cx = CovenantContext::with_limits(tokens, input, block_height, *meter, hashes);
         let root = cx.require_next_filter()?;
         let mut output_set = OutputSet::new(outputs);
         root.filter(&mut cx, &mut output_set)?;
@@ -183,8 +206,12 @@ impl Covenant {
         if output_set.is_empty() {
             return Err(CovenantError::NoMatchingOutputs);
         }
-
-        Ok(output_set.len())
+        let mut indexes = Vec::with_capacity(output_set.len());
+        for index in output_set.indexes() {
+            indexes.push(u32::try_from(index).map_err(|_| CovenantError::WorkLimitExceeded)?);
+        }
+        *meter = cx.into_meter();
+        Ok(indexes)
     }
 
     /// Builds a covenant from a sequence of tokens, failing with [`CovenantDecodeError::ExceededMaxTokens`] if there
@@ -516,6 +543,25 @@ mod test {
         ])));
         // A malformed length prefix
         assert!(!exceeds_covenant_token_limit(&[0xff]));
+    }
+
+    #[test]
+    fn covenant_output_hash_lookups_are_cached() {
+        use tari_common_types::types::FixedHash;
+
+        use crate::transaction_components::covenants::{OutputHashCache, WorkMeter};
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let outputs = create_outputs(50, UtxoTestParams::default(), &key_manager);
+        let hashes = OutputHashCache::new(outputs.len());
+        let mut meter = WorkMeter::unlimited();
+        for hash in [outputs[49].hash(), outputs[10].hash(), FixedHash::zero()] {
+            let input = create_input(&key_manager);
+            let covenant = covenant!(output_hash_eq(@hash(hash))).unwrap();
+            let _matching = covenant.matching_outputs(0, &input, &outputs, &mut meter, Some(&hashes));
+        }
+        assert_eq!(hashes.initialized(), 50);
+        assert_eq!(hashes.computed(), 50);
     }
 
     #[test]
