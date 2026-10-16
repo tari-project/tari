@@ -342,10 +342,24 @@ pub enum IdentityError {
     NotFound,
     #[error("Path is not a file")]
     NotFile,
-    #[error("Malformed identity file: {0}")]
-    JsonError(#[from] json5::Error),
+    #[error("Malformed identity file at line {line}, column {column}")]
+    Malformed { line: usize, column: usize },
     #[error(transparent)]
     Io(#[from] io::Error),
+}
+
+impl From<json5::Error> for IdentityError {
+    fn from(err: json5::Error) -> Self {
+        match err {
+            json5::Error::Message {
+                location: Some(loc), ..
+            } => IdentityError::Malformed {
+                line: loc.line,
+                column: loc.column,
+            },
+            json5::Error::Message { location: None, .. } => IdentityError::Malformed { line: 0, column: 0 },
+        }
+    }
 }
 
 #[cfg(all(test, target_family = "unix"))]
@@ -382,5 +396,36 @@ mod test {
         assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
         let contents = fs::read_to_string(&path).unwrap();
         assert!(contents.ends_with("\"identity\""), "unexpected contents: {contents}");
+    }
+
+    #[test]
+    fn malformed_identity_does_not_leak_secret_key() {
+        let path = temp_path("malformed_leak");
+        let secret_key_hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let malformed_content = format!("// Comment line 1\n{{\"secret_key\":\"{secret_key_hex}\",\"broken_json\":");
+        fs::write(&path, malformed_content.as_bytes()).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let err = load_node_identity(&path, TransportType::Tcp).unwrap_err();
+        let err_display = err.to_string();
+        assert!(
+            !err_display.contains(secret_key_hex),
+            "error display must not leak secret key: {err_display}"
+        );
+        assert!(
+            err_display.contains("Malformed identity file at line"),
+            "expected line/column in error, got: {err_display}"
+        );
+
+        let tor_err = load_from_json::<_, TorIdentity>(&path).unwrap_err();
+        let tor_err_display = tor_err.to_string();
+        assert!(
+            !tor_err_display.contains(secret_key_hex),
+            "Tor error display must not leak secret key: {tor_err_display}"
+        );
+        assert!(
+            tor_err_display.contains("Malformed identity file at line"),
+            "expected line/column in Tor error, got: {tor_err_display}"
+        );
     }
 }
