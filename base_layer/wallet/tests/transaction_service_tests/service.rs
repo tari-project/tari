@@ -104,9 +104,14 @@ use tari_transaction_components::{
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::{ConfidentialOutputHasher, TariKeyId, TransactionKeyManagerInterface},
     offline_signing::{
+        ConfirmationMode,
+        ConfirmedPayload,
+        OfflinePayload,
+        PayloadSummary,
         PaymentRecipient,
         one_sided_signer::withdraw_pending_output,
         prepare_withdraw_multisig_transaction,
+        present_payload_summary,
     },
     rpc::models::TipInfoResponse,
     tari_amount::*,
@@ -155,6 +160,17 @@ pub fn get_next_memory_address() -> Multiaddr {
 }
 
 pub type MemoryDBKeyManager = LegacyTransactionKeyManagerWrapper<TransactionKeyManagerSqliteDatabase<DbConnection>>;
+
+fn confirmed<P: OfflinePayload>(summary: PayloadSummary<P>) -> ConfirmedPayload<P> {
+    let c = present_payload_summary(
+        &summary,
+        ConfirmationMode::NonInteractive,
+        &mut Vec::new(),
+        &mut std::io::empty(),
+    )
+    .unwrap();
+    summary.confirm(c).unwrap()
+}
 
 async fn setup_transaction_service(
     node_identity: Arc<NodeIdentity>,
@@ -2829,7 +2845,7 @@ async fn sign_one_sided_withdraw_multisig_transaction_uses_the_outputs_own_commi
     // "Script-spend key mismatch: script[1]=... derived(k')=...".
     let result = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_withdraw_multisig_transaction(prepared)
+        .sign_one_sided_withdraw_multisig_transaction(confirmed(PayloadSummary::from_withdraw_multisig(prepared)))
         .await;
 
     let signed = result.unwrap_or_else(|e| {
@@ -2932,7 +2948,7 @@ async fn prepare_one_sided_transaction_for_signing_refuses_a_payload_without_cha
         .unwrap();
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_transaction(prepared)
+        .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
         .await
         .unwrap();
     assert_eq!(
@@ -3040,7 +3056,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_an_input_to_get_change()
     assert_eq!(prepared.info.inputs.len(), 2, "the spare output should have been added");
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_transaction(prepared)
+        .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
         .await
         .unwrap();
     assert!(signed.signed_transaction.change_output.is_some());
@@ -3126,7 +3142,7 @@ async fn prepare_deposit_multisig_transaction_refuses_a_payload_without_change()
         .unwrap();
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_deposit_multisig_transaction(prepared)
+        .sign_one_sided_deposit_multisig_transaction(confirmed(PayloadSummary::from_multisig(prepared)))
         .await
         .unwrap();
     assert_eq!(
@@ -3293,7 +3309,7 @@ async fn prepare_one_sided_transaction_for_signing_adds_no_input_when_the_builde
     assert_eq!(prepared.info.inputs.len(), 1, "no spare input should have been added");
     let signed = alice_ts_interface
         .transaction_service_handle
-        .sign_one_sided_transaction(prepared)
+        .sign_one_sided_transaction(confirmed(PayloadSummary::from_one_sided(prepared)))
         .await
         .unwrap();
     assert_eq!(

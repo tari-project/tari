@@ -791,8 +791,7 @@ where
                 async {
                     let key_manager = self.resources.transaction_key_manager_service.clone();
                     let mut request = request;
-
-                    for pair_output in &mut request.info.inputs.iter_mut() {
+                    request.set_input_script_key_ids(|pair_output| -> Result<TariKeyId, TransactionServiceError> {
                         let spend_key = key_manager.get_spend_key();
 
                         let commitment_mask_key_id = pair_output.commitment_mask_key_id().clone();
@@ -830,8 +829,8 @@ where
                         }
 
                         // 5) Attach k' so signer uses the correct key
-                        pair_output.set_script_key_id(script_key);
-                    }
+                        Ok(script_key)
+                    })?;
 
                     let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
                     let res = sign_locked_withdraw_multisig_transaction(

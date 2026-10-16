@@ -93,7 +93,12 @@ pub(crate) fn command_mode(
     println!("{CUCUMBER_TEST_MARKER_A}");
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    let exit_override = handle.block_on(command_runner(config, vec![command.clone()], wallet.clone()))?;
+    let exit_override = handle.block_on(command_runner(
+        config,
+        vec![command.clone()],
+        wallet.clone(),
+        cli.non_interactive_mode,
+    ))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Minotari Console Wallet running... (Command mode completed)";
@@ -185,7 +190,12 @@ pub(crate) fn script_mode(
         println!("{CUCUMBER_TEST_MARKER_A}");
 
         println!("Starting the command runner!");
-        let exit_override = handle.block_on(command_runner(config, commands, wallet.clone()))?;
+        let exit_override = handle.block_on(command_runner(
+            config,
+            commands,
+            wallet.clone(),
+            cli.non_interactive_mode,
+        ))?;
         if exit_override {
             force_exit = true;
             force_interactive = false;

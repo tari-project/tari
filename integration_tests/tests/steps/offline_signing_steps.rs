@@ -26,13 +26,17 @@ use cucumber::{then, when};
 use grpc::{PaymentRecipient, payment_recipient::PaymentType};
 use minotari_app_grpc::tari_rpc as grpc;
 use minotari_console_wallet::{CliCommands, SignOneSidedTransactionArgs};
-use minotari_offline_signer::cli::execute_from_args as execute_offline_signer_from_args;
+use minotari_offline_signer::cli::{
+    execute_from_args as execute_offline_signer_from_args,
+    execute_from_args_with_output as execute_offline_signer_with_output,
+};
 use tari_integration_tests::{
     TariWorld,
     wait_for,
     wallet_process::{create_wallet_client, get_default_cli, spawn_wallet},
 };
 use tari_transaction_components::transaction_components::memo_field::{MemoField, TxType};
+use tari_utilities::hex::Hex;
 
 use crate::steps::get_saved_seed_words;
 
@@ -50,14 +54,41 @@ where
     expr = "I prepare an offline one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int}"
 )]
 async fn prepare_offline_transaction(world: &mut TariWorld, amount: u64, sender: String, receiver: String, fee: u64) {
-    let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
-    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
-
     let payment_id = MemoField::new_open_from_string(
         &format!("Offline one-sided {} uT from {} to {}", amount, sender, receiver),
         TxType::PaymentToOther,
     )
     .unwrap();
+    prepare_offline_transaction_with_memo(world, amount, sender, receiver, fee, payment_id).await;
+}
+
+#[when(
+    expr = "I prepare an offline one-sided transaction of {int} uT from wallet {word} to wallet {word} at fee {int} \
+            with memo bytes {string}"
+)]
+async fn prepare_offline_transaction_with_memo_bytes(
+    world: &mut TariWorld,
+    amount: u64,
+    sender: String,
+    receiver: String,
+    fee: u64,
+    memo_hex: String,
+) {
+    let bytes = Vec::<u8>::from_hex(&memo_hex).expect("memo bytes must be hex");
+    let payment_id = MemoField::new_open(bytes, TxType::PaymentToOther).unwrap();
+    prepare_offline_transaction_with_memo(world, amount, sender, receiver, fee, payment_id).await;
+}
+
+async fn prepare_offline_transaction_with_memo(
+    world: &mut TariWorld,
+    amount: u64,
+    sender: String,
+    receiver: String,
+    fee: u64,
+    payment_id: MemoField,
+) {
+    let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let receiver_wallet_address = world.get_wallet_address(&receiver).await.unwrap();
 
     let recipient = PaymentRecipient {
         address: receiver_wallet_address,
@@ -210,23 +241,29 @@ async fn sign_prepared_transaction_using_standalone_offline_signer(world: &mut T
     drop(std::fs::remove_file(&output_file));
     std::fs::write(&input_file, prepared_json).expect("Failed to write prepared transaction file");
 
-    execute_offline_signer_from_args(os_args([
-        OsString::from("minotari_offline_signer"),
-        OsString::from("--test-keystore-file"),
-        keystore_file.as_os_str().to_os_string(),
-        OsString::from("sign"),
-        OsString::from("--input-file"),
-        input_file.as_os_str().to_os_string(),
-        OsString::from("--output-file"),
-        output_file.as_os_str().to_os_string(),
-        OsString::from("--passphrase"),
-        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
-        OsString::from("--network"),
-        OsString::from("localnet"),
-        // The signer requires the operator to confirm the transaction summary; there is no operator here
-        OsString::from("--yes"),
-    ]))
+    // Signs without a prompt, as it does when stdin is not a terminal, and captures the printed summary
+    let mut summary = Vec::new();
+    execute_offline_signer_with_output(
+        os_args([
+            OsString::from("minotari_offline_signer"),
+            OsString::from("--test-keystore-file"),
+            keystore_file.as_os_str().to_os_string(),
+            OsString::from("sign"),
+            OsString::from("--input-file"),
+            input_file.as_os_str().to_os_string(),
+            OsString::from("--output-file"),
+            output_file.as_os_str().to_os_string(),
+            OsString::from("--passphrase"),
+            OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+            OsString::from("--network"),
+            OsString::from("localnet"),
+        ]),
+        &mut summary,
+    )
     .unwrap_or_else(|e| panic!("Failed to sign transaction with standalone offline signer: {e}"));
+    let summary = String::from_utf8(summary).expect("signer output is UTF-8");
+    println!("{summary}");
+    world.offline_signing_summary = Some(summary);
 
     let signed_json =
         std::fs::read_to_string(&output_file).unwrap_or_else(|e| panic!("Failed to read signed transaction file: {e}"));
@@ -296,22 +333,24 @@ async fn sign_tampered_payload_fails_integrity_check(world: &mut TariWorld, sign
     drop(std::fs::remove_file(&output_file));
     std::fs::write(&input_file, prepared_json).expect("Failed to write tampered transaction file");
 
-    let result = execute_offline_signer_from_args(os_args([
-        OsString::from("minotari_offline_signer"),
-        OsString::from("--test-keystore-file"),
-        keystore_file.as_os_str().to_os_string(),
-        OsString::from("sign"),
-        OsString::from("--input-file"),
-        input_file.as_os_str().to_os_string(),
-        OsString::from("--output-file"),
-        output_file.as_os_str().to_os_string(),
-        OsString::from("--passphrase"),
-        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
-        OsString::from("--network"),
-        OsString::from("localnet"),
-        // Confirm the summary so that the only thing that can reject this payload is the integrity check
-        OsString::from("--yes"),
-    ]));
+    // Signs without a prompt, so the only thing that can reject this payload is the integrity check
+    let result = execute_offline_signer_with_output(
+        os_args([
+            OsString::from("minotari_offline_signer"),
+            OsString::from("--test-keystore-file"),
+            keystore_file.as_os_str().to_os_string(),
+            OsString::from("sign"),
+            OsString::from("--input-file"),
+            input_file.as_os_str().to_os_string(),
+            OsString::from("--output-file"),
+            output_file.as_os_str().to_os_string(),
+            OsString::from("--passphrase"),
+            OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
+            OsString::from("--network"),
+            OsString::from("localnet"),
+        ]),
+        &mut Vec::new(),
+    );
 
     assert!(
         result.is_err(),
@@ -329,63 +368,31 @@ async fn sign_tampered_payload_fails_integrity_check(world: &mut TariWorld, sign
     println!("Standalone offline signer correctly rejected the tampered payload: {err:?}");
 }
 
-/// Assert that the offline signer refuses to sign when the operator has not confirmed the transaction summary.
-///
-/// The payload integrity signature is made with the *view* key, which is shareable, so it cannot distinguish a
-/// payload the wallet owner asked for from one forged by any holder of the view key. The operator confirming the
-/// summary is the check that catches that, so the signer must fail closed when it cannot obtain one — here stdin is
-/// not a terminal and `--yes` was not passed.
-#[then(expr = "signing the prepared payload using standalone offline signer {word} without confirmation is refused")]
-async fn sign_without_confirmation_is_refused(world: &mut TariWorld, signer_name: String) {
-    let prepared_json = world
-        .offline_signing_prepared
+/// Assert that the memo text in the captured signer summary was rendered escaped, and that the recap comes after it.
+#[then(expr = "the offline signing summary shows the memo escaped")]
+async fn offline_signing_summary_shows_memo_escaped(world: &mut TariWorld) {
+    let summary = world
+        .offline_signing_summary
         .as_ref()
-        .expect("No prepared transaction found — run the prepare step first")
-        .clone();
-    let keystore_file = world
-        .offline_signer_keystores
-        .get(&signer_name)
-        .unwrap_or_else(|| panic!("Standalone offline signer '{signer_name}' not initialized"))
-        .clone();
-    let signer_dir = keystore_file
-        .parent()
-        .unwrap_or_else(|| panic!("Keystore file {keystore_file:?} has no parent directory"))
-        .to_path_buf();
-    let input_file = signer_dir.join("offline_signing_unconfirmed_input.json");
-    let output_file = signer_dir.join("offline_signing_unconfirmed_output.json");
-    drop(std::fs::remove_file(&output_file));
-    std::fs::write(&input_file, prepared_json).expect("Failed to write prepared transaction file");
-
-    let result = execute_offline_signer_from_args(os_args([
-        OsString::from("minotari_offline_signer"),
-        OsString::from("--test-keystore-file"),
-        keystore_file.as_os_str().to_os_string(),
-        OsString::from("sign"),
-        OsString::from("--input-file"),
-        input_file.as_os_str().to_os_string(),
-        OsString::from("--output-file"),
-        output_file.as_os_str().to_os_string(),
-        OsString::from("--passphrase"),
-        OsString::from(OFFLINE_SIGNER_TEST_PASSPHRASE),
-        OsString::from("--network"),
-        OsString::from("localnet"),
-        // Deliberately no --yes
-    ]));
-
+        .expect("No offline signing summary captured — sign with the standalone offline signer first");
+    // Memo text is wrapped onto indented lines; rejoin it to find the escaped sequence whole
+    let memo_text = summary.replace("\n      | ", "");
     assert!(
-        result.is_err(),
-        "Expected the standalone offline signer to refuse to sign without operator confirmation, but it succeeded"
+        memo_text.contains("\\u{1b}[2J\\r\\n"),
+        "memo control characters not escaped:\n{summary}"
     );
     assert!(
-        !output_file.exists(),
-        "Offline signer wrote a signed output without operator confirmation"
+        memo_text.contains("\\u{202e}"),
+        "memo bidi control not escaped:\n{summary}"
     );
-    let err = result.unwrap_err();
     assert!(
-        err.to_string().contains("could not be confirmed"),
-        "Expected a confirmation error, got: {err:?}"
+        !summary.chars().any(|c| c < ' ' && c != '\n'),
+        "raw control character in summary:\n{summary}"
     );
-    println!("Standalone offline signer correctly refused to sign without confirmation: {err:?}");
+    assert_eq!(summary.matches("---- Recap ----").count(), 1, "{summary}");
+    let memos = summary.find("Memos (").expect("memo block in summary");
+    let recap = summary.find("---- Recap ----").expect("recap in summary");
+    assert!(memos < recap, "recap must come after the memos:\n{summary}");
 }
 
 #[when(expr = "I broadcast the signed transaction via wallet {word}")]

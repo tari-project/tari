@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use blake2::{Blake2b, Digest};
 use digest::consts::U64;
+use log::{info, warn};
 use tari_common::configuration::Network;
 use tari_common_types::{tari_address::TariAddress, transaction::TxId, types::CompressedPublicKey};
 use tari_crypto::hashing::DomainSeparatedHasher;
@@ -34,6 +35,7 @@ use crate::{
     consensus::ConsensusConstants,
     key_manager::TransactionKeyManagerInterface,
     offline_signing::{
+        ConfirmedPayload,
         models::{
             OneSidedMultisigTransactionInfo,
             OneSidedTransactionInfo,
@@ -50,6 +52,7 @@ use crate::{
             get_latest_version,
         },
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
+        payload_summary::LOG_TARGET,
     },
     transaction_components::{MemoField, OutputFeatures, WalletOutput},
 };
@@ -107,9 +110,9 @@ pub(crate) fn sign_payload<KM: TransactionKeyManagerInterface>(
 /// The view key is a shareable key, so a party that holds it can forge this signature over
 /// an arbitrary payload.  Passing this check therefore means "the payload was not mangled by
 /// someone without view access", **not** "the payload is what the wallet owner asked for".
-/// Callers that use a spend key MUST additionally have the operator confirm a
-/// [`crate::offline_signing::PayloadSummary`] of the payload.  See the docs on
-/// [`PayloadIntegritySignature`] for the full rationale.
+/// The `sign_locked_*` functions therefore only accept a [`crate::offline_signing::ConfirmedPayload`], which can only
+/// be obtained by presenting a [`crate::offline_signing::PayloadSummary`] of the payload and confirming it.  See the
+/// docs on [`PayloadIntegritySignature`] for the full rationale.
 fn verify_payload_signature<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     payload_sig: &PayloadIntegritySignature,
@@ -299,7 +302,33 @@ pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKe
 // Sign functions (offline signer side) — verify payload integrity first
 // ---------------------------------------------------------------------------
 
+/// Records whether an offline payload was signed, after the integrity and key-id checks have run.
+fn log_signing_outcome<T>(
+    tx_id: TxId,
+    result: Result<T, TransactionBuilderError>,
+) -> Result<T, TransactionBuilderError> {
+    match &result {
+        Ok(_) => info!(target: LOG_TARGET, "Offline payload {tx_id} signed"),
+        Err(e) => warn!(target: LOG_TARGET, "Offline payload {tx_id} not signed: {e}"),
+    }
+    result
+}
+
 pub fn sign_locked_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    confirmed: ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>,
+) -> Result<SignedOneSidedTransactionResult, TransactionBuilderError> {
+    let request = confirmed.into_payload();
+    let tx_id = request.tx_id;
+    log_signing_outcome(
+        tx_id,
+        verify_and_sign_one_sided(key_manager, consensus_constants, network, request),
+    )
+}
+
+fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
@@ -324,6 +353,20 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
+    confirmed: ConfirmedPayload<PrepareDepositMultisigTransactionResult>,
+) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
+    let request = confirmed.into_payload();
+    let tx_id = request.tx_id;
+    log_signing_outcome(
+        tx_id,
+        verify_and_sign_deposit_multisig(key_manager, consensus_constants, network, request),
+    )
+}
+
+fn verify_and_sign_deposit_multisig<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
     request: PrepareDepositMultisigTransactionResult,
 ) -> Result<SignedOneSidedDepositMultisigTransactionResult, TransactionBuilderError> {
     // Verify the payload was not tampered with between prepare and sign.
@@ -342,6 +385,20 @@ pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterfa
 }
 
 pub fn sign_locked_withdraw_multisig_transaction<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    consensus_constants: ConsensusConstants,
+    network: Network,
+    confirmed: ConfirmedPayload<PrepareWithdrawMultisigTransactionResult>,
+) -> Result<SignedOneSidedWithdrawMultisigTransactionResult, TransactionBuilderError> {
+    let request = confirmed.into_payload();
+    let tx_id = request.tx_id;
+    log_signing_outcome(
+        tx_id,
+        verify_and_sign_withdraw_multisig(key_manager, consensus_constants, network, request),
+    )
+}
+
+fn verify_and_sign_withdraw_multisig<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,

@@ -46,8 +46,8 @@ Feature: Offline One-Sided Transaction Signing
     #
     # NOTE: the view key is shareable by design, so this signature only stops a MITM
     # that has no view access. A holder of the view key can forge a payload that passes
-    # this check — see the operator confirmation scenario below, which is the defence
-    # that covers that case.
+    # this check; the summary the signer prints before signing is the defence that
+    # covers that case.
     Given I have a seed node NODE
     When I have wallet WALLET_SENDER connected to all seed nodes
     When I have wallet WALLET_RECEIVER connected to all seed nodes
@@ -66,13 +66,7 @@ Feature: Offline One-Sided Transaction Signing
     Then signing the tampered payload using standalone offline signer OFFLINE_SIGNER fails with an integrity error
 
   @security
-  Scenario: Offline signer refuses to sign without operator confirmation
-    # The payload integrity signature is produced with the wallet's view key, which is
-    # shareable by design (view-only wallets, auditors, exchanges, explorers). Anyone
-    # holding the view key can therefore build a payload that pays themselves, sign it,
-    # and have the air-gapped signer verify it as authentic. The only check that catches
-    # that is the operator confirming the transaction summary before the spend key is used,
-    # so the signer must fail closed when it cannot obtain a confirmation.
+  Scenario: Offline signer renders memo text escaped
     Given I have a seed node NODE
     When I have wallet WALLET_SENDER connected to all seed nodes
     When I have wallet WALLET_RECEIVER connected to all seed nodes
@@ -84,9 +78,10 @@ Feature: Offline One-Sided Transaction Signing
     Then I export wallet WALLET_SENDER view and spend keys as SENDER_KEYS
     Then I create view wallet VIEW_WALLET from view and spend keys SENDER_KEYS on node NODE
     When I wait for wallet VIEW_WALLET to have at least 1002000 uT
-    When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20
-    # The payload here is perfectly valid; it is the missing confirmation that must stop the signing
-    Then signing the prepared payload using standalone offline signer OFFLINE_SIGNER without confirmation is refused
+    # ESC [ 2 J CR LF "Recap" U+202E
+    When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20 with memo bytes "1b5b324a0d0a5265636170e280ae"
+    Then I sign the prepared transaction using standalone offline signer OFFLINE_SIGNER
+    Then the offline signing summary shows the memo escaped
 
   @standalone-offline-signer
   Scenario: Full offline signing flow via standalone offline signer

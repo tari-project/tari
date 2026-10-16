@@ -44,6 +44,7 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     MicroMinotari,
+    helpers::terminal_safe::escape_bytes_for_terminal,
     transaction_components::encrypted_data::{SIZE_U256, SIZE_VALUE},
 };
 // We pad the bytes to min this size, so that we can use the same size for AddressAndData and TransactionInfo
@@ -1128,7 +1129,8 @@ impl MemoField {
         Err("No valid TariAddress found".to_string())
     }
 
-    /// Helper function to convert a byte slice to a string for the open and data variants
+    /// Helper function to convert a byte slice to a string for the open and data variants.
+    /// Not for display: displayed memo text goes through `Display` or `payment_id_as_string`, which escape it.
     pub fn stringify_bytes(bytes: &[u8]) -> String {
         String::from_utf8_lossy(bytes).to_string()
     }
@@ -1138,9 +1140,9 @@ impl MemoField {
         match &self.inner {
             InnerMemoField::Empty => self.to_string(),
             InnerMemoField::U256(v) => format!("{v}"),
-            InnerMemoField::Open { payment_id, .. } => MemoField::stringify_bytes(payment_id),
-            InnerMemoField::AddressAndData { payment_id, .. } => MemoField::stringify_bytes(payment_id),
-            InnerMemoField::TransactionInfo { payment_id, .. } => MemoField::stringify_bytes(payment_id),
+            InnerMemoField::Open { payment_id, .. } => escape_bytes_for_terminal(payment_id),
+            InnerMemoField::AddressAndData { payment_id, .. } => escape_bytes_for_terminal(payment_id),
+            InnerMemoField::TransactionInfo { payment_id, .. } => escape_bytes_for_terminal(payment_id),
             InnerMemoField::Raw(bytes) => bytes.to_hex(),
         }
     }
@@ -1406,7 +1408,7 @@ impl Display for MemoField {
             InnerMemoField::Empty => write!(f, "None"),
             InnerMemoField::U256(v) => write!(f, "u256({v})"),
             InnerMemoField::Open { payment_id, tx_type } => {
-                write!(f, "type({}), data({})", tx_type, MemoField::stringify_bytes(payment_id))
+                write!(f, "type({}), data({})", tx_type, escape_bytes_for_terminal(payment_id))
             },
             InnerMemoField::AddressAndData {
                 sender_address,
@@ -1421,7 +1423,7 @@ impl Display for MemoField {
                 sender_one_sided,
                 fee,
                 tx_type,
-                MemoField::stringify_bytes(payment_id)
+                escape_bytes_for_terminal(payment_id)
             ),
             InnerMemoField::TransactionInfo {
                 recipient_address,
@@ -1439,7 +1441,7 @@ impl Display for MemoField {
                 amount,
                 fee,
                 tx_meta_data,
-                MemoField::stringify_bytes(payment_id),
+                escape_bytes_for_terminal(payment_id),
             ),
             InnerMemoField::Raw(bytes) => write!(f, "Raw({})", bytes.to_hex()),
         }
@@ -1866,6 +1868,33 @@ mod test {
             let payment_id_from_bytes = MemoField::from_bytes(&payment_id_bytes);
             assert_eq!(payment_id, payment_id_from_bytes);
         }
+    }
+
+    #[test]
+    fn memo_display_escapes_control_characters() {
+        let bytes: Vec<u8> = b"a\x1b[2Jb\rc\nd"
+            .iter()
+            .chain("\u{202e}".as_bytes())
+            .chain(&[0xff, b'e'])
+            .copied()
+            .collect();
+        let memo = MemoField::new_open(bytes, TxType::PaymentToOther).unwrap();
+        for rendered in [memo.to_string(), memo.payment_id_as_string()] {
+            for expected in ["\\u{1b}[2J", "\\r", "\\n", "\\u{202e}", "\\xff"] {
+                assert!(rendered.contains(expected), "{rendered} should contain {expected}");
+            }
+            assert!(
+                !rendered
+                    .chars()
+                    .any(|c| c < '\u{20}' || c == '\u{7f}' || c == '\u{202e}' || c == '\u{fffd}'),
+                "{rendered}"
+            );
+        }
+
+        let memo = MemoField::new_open("héllo 👍".as_bytes().to_vec(), TxType::PaymentToOther).unwrap();
+        assert_eq!(memo.payment_id_as_string(), "héllo 👍");
+        let memo = MemoField::new_open(b"a\\b".to_vec(), TxType::PaymentToOther).unwrap();
+        assert_eq!(memo.payment_id_as_string(), "a\\\\b");
     }
 
     #[test]

@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{ffi::OsString, fs, io::IsTerminal, path::PathBuf, str::FromStr};
+use std::{
+    ffi::OsString,
+    fs,
+    io::{self, BufRead, IsTerminal, Read, Write},
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
@@ -36,8 +42,11 @@ use tari_transaction_components::{
         wallet_types::{SeedWordsWallet, SpendWallet, WalletType},
     },
     offline_signing::{
+        ConfirmationMode,
+        ConfirmedPayload,
         PayloadSummary,
         models::{PrepareOneSidedTransactionForSigningResult, TransactionResult},
+        present_payload_summary,
         sign_locked_transaction,
     },
 };
@@ -144,18 +153,18 @@ pub struct SignArgs {
     #[clap(short, long, default_value = "mainnet")]
     pub network: String,
 
-    /// Sign without asking the operator to confirm the transaction summary.
-    ///
-    /// SECURITY: the payload integrity signature is produced with the wallet's *view* key, which is shareable by
-    /// design. Anyone holding the view key can forge a payload that redirects the funds and it will still verify as
-    /// authentic. Confirming the printed summary is the only check that catches this, so only use this flag where the
-    /// payload's origin is trusted by other means.
-    #[clap(long, alias = "assume-yes")]
+    /// Deprecated; has no effect.
+    #[clap(long, alias = "assume-yes", hide = true)]
     pub yes: bool,
 }
 
 impl Cli {
     pub fn execute(self) -> Result<()> {
+        self.run(None)
+    }
+
+    /// Runs the command. With `out`, `sign` writes to it and signs without a prompt.
+    fn run(self, out: Option<&mut dyn Write>) -> Result<()> {
         #[cfg(feature = "test-keystore")]
         let _test_keystore_guard = keystore::set_test_keystore_file(self.test_keystore_file.clone());
 
@@ -164,7 +173,10 @@ impl Cli {
                 InitMethod::Keys(args) => init_with_keys(args),
                 InitMethod::SeedWords(args) => init_with_seed_words(args),
             },
-            Commands::Sign(args) => sign_transaction(args),
+            Commands::Sign(args) => match out {
+                Some(out) => sign_transaction_with_io(args, ConfirmationMode::NonInteractive, out, &mut io::empty()),
+                None => sign_transaction(args),
+            },
             Commands::Status => check_status(),
             Commands::Clear => clear_keystore(),
         }
@@ -177,6 +189,15 @@ where
     T: Into<OsString> + Clone,
 {
     Cli::try_parse_from(args)?.execute()
+}
+
+/// Like [`execute_from_args`], but `sign` writes its summary and results to `out` and signs without a prompt.
+pub fn execute_from_args_with_output<I, T>(args: I, out: &mut dyn Write) -> Result<()>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    Cli::try_parse_from(args)?.run(Some(out))
 }
 
 fn check_already_initialized() -> Result<()> {
@@ -251,46 +272,89 @@ fn init_with_seed_words(args: InitSeedWordsArgs) -> Result<()> {
     Ok(())
 }
 
-/// Asks the operator to confirm the transaction before any spend key is used.
-///
-/// SECURITY: this is the authoritative authorisation step for offline signing. The payload integrity signature that
-/// `sign_locked_transaction` verifies is made with the *view* key, which is shareable, so a party holding the view key
-/// can forge a payload that pays itself and it will verify as authentic. Only a human checking the recipient and the
-/// amount catches that, so this must run before signing and must fail closed.
-fn confirm_payload(summary: &PayloadSummary, assume_yes: bool) -> Result<()> {
-    println!();
-    println!("The following transaction is about to be signed with your spend key:");
-    println!();
-    print!("{summary}");
-    println!();
-
-    if assume_yes {
-        println!("Confirmation skipped (--yes).");
-        return Ok(());
-    }
-
-    if !std::io::stdin().is_terminal() {
-        return Err(anyhow!(
-            "Refusing to sign: the transaction summary could not be confirmed because stdin is not a terminal. Run \
-             this command interactively, or pass --yes if the payload's origin is trusted by other means."
-        ));
-    }
-
-    print!("Sign this transaction? [y/N]: ");
-    std::io::Write::flush(&mut std::io::stdout())?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    if input.trim().to_lowercase() != "y" {
-        return Err(anyhow!(
-            "Aborted: the transaction was not confirmed. Nothing was signed."
-        ));
-    }
-
-    Ok(())
+/// Shows the operator the transaction and returns it confirmed, before any spend key is used.
+fn review_payload(
+    summary: PayloadSummary<PrepareOneSidedTransactionForSigningResult>,
+    mode: ConfirmationMode,
+    out: &mut dyn Write,
+    input: &mut dyn BufRead,
+) -> Result<ConfirmedPayload<PrepareOneSidedTransactionForSigningResult>> {
+    let confirmation = present_payload_summary(&summary, mode, out, input)?;
+    summary.confirm(confirmation).map_err(|e| anyhow!("Aborted: {e}"))
 }
 
 fn sign_transaction(args: SignArgs) -> Result<()> {
+    // Prompt on a terminal; otherwise print the summary and sign
+    let mode = if io::stdin().is_terminal() {
+        ConfirmationMode::Interactive
+    } else {
+        ConfirmationMode::NonInteractive
+    };
+    // When prompting with stdout redirected, show the summary and prompt on stderr so the operator still sees them
+    if mode == ConfirmationMode::Interactive && !io::stdout().is_terminal() {
+        sign_transaction_with_io(args, mode, &mut io::stderr().lock(), &mut io::stdin().lock())
+    } else {
+        sign_transaction_with_io(args, mode, &mut io::stdout().lock(), &mut io::stdin().lock())
+    }
+}
+
+const MAX_FILE_SIZE: u64 = 10_000_000; // 10MB limit
+
+/// Opens the payload file without waiting on a FIFO: on unix the open does not block, and the caller then refuses
+/// anything that is not a regular file.
+#[cfg(unix)]
+fn open_input_file(path: &Path) -> io::Result<fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn open_input_file(path: &Path) -> io::Result<fs::File> {
+    fs::File::open(path)
+}
+
+/// Reads the payload file. Only regular files are read, and never more than the size limit, so a device or pipe in
+/// place of the file cannot stall the signer or exhaust memory. All checks run on the opened handle.
+fn read_input_file(path: &Path) -> Result<String> {
+    let context = || format!("Failed to read input file: {:?}", path);
+    #[cfg(not(unix))]
+    if !fs::metadata(path).with_context(context)?.is_file() {
+        return Err(anyhow!("Input file is not a regular file: {:?}", path));
+    }
+    let file = open_input_file(path).with_context(context)?;
+    let metadata = file.metadata().with_context(context)?;
+    if !metadata.is_file() {
+        return Err(anyhow!("Input file is not a regular file: {:?}", path));
+    }
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
+    }
+    let mut data = String::new();
+    file.take(MAX_FILE_SIZE.saturating_add(1))
+        .read_to_string(&mut data)
+        .with_context(context)?;
+    if u64::try_from(data.len()).unwrap_or(u64::MAX) > MAX_FILE_SIZE {
+        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
+    }
+    Ok(data)
+}
+
+fn sign_transaction_with_io(
+    args: SignArgs,
+    mode: ConfirmationMode,
+    out: &mut dyn Write,
+    input: &mut dyn BufRead,
+) -> Result<()> {
+    if args.yes {
+        eprintln!(
+            "--yes is deprecated and has no effect: without a terminal the signer signs after printing the summary; \
+             with a terminal it always asks."
+        );
+    }
+
     // Check if initialized
     if !keystore::is_initialized() {
         return Err(anyhow!("Offline signer not initialized. Run 'init' command first."));
@@ -309,25 +373,14 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
     // Make the process-wide network (used for signature domains) follow --network
     set_network_if_choice_valid(network).map_err(|e| anyhow!("Invalid network '{}': {}", args.network, e))?;
 
-    // Validate input file
-    let metadata =
-        fs::metadata(&args.input_file).with_context(|| format!("Failed to read input file: {:?}", args.input_file))?;
-
-    const MAX_FILE_SIZE: u64 = 10_000_000; // 10MB limit
-    if metadata.len() > MAX_FILE_SIZE {
-        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
-    }
-
     // Read and parse the input file
-    let data = fs::read_to_string(&args.input_file)
-        .with_context(|| format!("Failed to read input file: {:?}", args.input_file))?;
+    let data = read_input_file(&args.input_file)?;
 
     let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)
         .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
 
     // Show the operator what is about to be signed and get their confirmation, before any key material is touched
-    let summary = PayloadSummary::from_one_sided(request.tx_id, &request.info);
-    confirm_payload(&summary, args.yes)?;
+    let confirmed = review_payload(PayloadSummary::from_one_sided(request), mode, out, input)?;
 
     // Retrieve keys from keystore
     let (spend_key, view_key) =
@@ -344,7 +397,7 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
     let consensus_constants = consensus_manager.consensus_constants(0).clone();
 
     // Sign the transaction
-    let result = sign_locked_transaction(&key_manager, consensus_constants, network, request)
+    let result = sign_locked_transaction(&key_manager, consensus_constants, network, confirmed)
         .map_err(|e| OfflineSignerError::SigningError(format!("Failed to sign transaction: {}", e)))?;
 
     // Write the signed transaction to the output file
@@ -355,8 +408,8 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
     fs::write(&args.output_file, json_data)
         .with_context(|| format!("Failed to write output file: {:?}", args.output_file))?;
 
-    println!("✓ Transaction signed successfully!");
-    println!("  Output written to: {:?}", args.output_file);
+    writeln!(out, "✓ Transaction signed successfully!")?;
+    writeln!(out, "  Output written to: {:?}", args.output_file)?;
 
     Ok(())
 }
@@ -395,4 +448,125 @@ fn clear_keystore() -> Result<()> {
     println!("✓ Keystore cleared successfully");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::{tari_address::TariAddress, transaction::TxId};
+    use tari_transaction_components::{
+        MicroMinotari,
+        offline_signing::models::{
+            OneSidedTransactionInfo,
+            PayloadIntegritySignature,
+            PaymentRecipient,
+            get_latest_version,
+        },
+        transaction_components::{MemoField, OutputFeatures, memo_field::TxType},
+    };
+
+    use super::*;
+
+    fn payload_with_memo(memo: &[u8]) -> PrepareOneSidedTransactionForSigningResult {
+        let memo = MemoField::new_open(memo.to_vec(), TxType::PaymentToOther).unwrap();
+        PrepareOneSidedTransactionForSigningResult {
+            version: get_latest_version(),
+            tx_id: TxId::from(1u64),
+            info: OneSidedTransactionInfo {
+                payment_id: memo.clone(),
+                recipients: vec![PaymentRecipient {
+                    amount: MicroMinotari(1000),
+                    output_features: OutputFeatures::default(),
+                    address: TariAddress::default(),
+                    payment_id: memo,
+                }],
+                inputs: vec![],
+                outputs: vec![],
+                fee: MicroMinotari(0),
+                fee_per_gram: MicroMinotari(5),
+                sender_address: TariAddress::default(),
+            },
+            payload_signature: PayloadIntegritySignature {
+                signature: Default::default(),
+            },
+        }
+    }
+
+    #[test]
+    fn sign_review_renders_control_characters_escaped() {
+        let summary = PayloadSummary::from_one_sided(payload_with_memo(b"\x1b[2J\r\nRecap"));
+        let mut out = Vec::new();
+        let result = review_payload(summary, ConfirmationMode::NonInteractive, &mut out, &mut io::empty());
+        assert!(result.is_ok());
+        let written = String::from_utf8(out).unwrap();
+        assert!(written.contains("\\u{1b}"), "{written}");
+        assert!(!written.contains('\u{1b}'), "{written}");
+        let recap = written.find("---- Recap ----").expect("recap");
+        assert!(written.find("\\u{1b}").unwrap() < recap, "{written}");
+    }
+
+    #[test]
+    fn sign_review_declined_is_not_signed() {
+        let summary = PayloadSummary::from_one_sided(payload_with_memo(b"memo"));
+        let result = review_payload(
+            summary,
+            ConfirmationMode::Interactive,
+            &mut Vec::new(),
+            &mut "n\n".as_bytes(),
+        );
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Aborted"), "{err}");
+    }
+
+    #[test]
+    fn input_file_read_refuses_a_directory() {
+        let err = read_input_file(&std::env::temp_dir()).unwrap_err().to_string();
+        assert!(err.contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn input_file_read_refuses_a_fifo_without_waiting() {
+        let path = std::env::temp_dir().join(format!("offline_signer_fifo_{}", std::process::id()));
+        drop(fs::remove_file(&path));
+        let status = std::process::Command::new("mkfifo").arg(&path).status().unwrap();
+        assert!(status.success());
+
+        // Nothing ever writes to the FIFO, so a blocking open would never return
+        let (tx, rx) = std::sync::mpsc::channel();
+        let fifo = path.clone();
+        std::thread::spawn(move || {
+            let result = read_input_file(&fifo).map_err(|e| e.to_string());
+            tx.send(result).unwrap();
+        });
+        let result = rx.recv_timeout(std::time::Duration::from_secs(10));
+        fs::remove_file(&path).unwrap();
+        let err = result.expect("reading a FIFO must not block").unwrap_err();
+        assert!(err.contains("not a regular file"), "{err}");
+    }
+
+    #[test]
+    fn input_file_read_refuses_an_oversized_file() {
+        let path = std::env::temp_dir().join(format!("offline_signer_oversized_{}.json", std::process::id()));
+        fs::write(&path, vec![b' '; 10_000_001]).unwrap();
+        let result = read_input_file(&path);
+        fs::remove_file(&path).unwrap();
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("too large"), "{err}");
+    }
+
+    #[test]
+    fn deprecated_yes_flag_still_parses() {
+        let cli = Cli::try_parse_from([
+            "minotari_offline_signer",
+            "sign",
+            "-i",
+            "a",
+            "-o",
+            "b",
+            "--passphrase",
+            "p",
+            "--yes",
+        ]);
+        assert!(cli.is_ok());
+    }
 }

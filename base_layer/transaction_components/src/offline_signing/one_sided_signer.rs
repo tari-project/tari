@@ -256,7 +256,7 @@ pub struct RecipientSignedMessage {
 
 /// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
 /// output; see [`SignedTransaction`] for why.
-pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
+pub(crate) fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
@@ -328,7 +328,7 @@ pub fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
 
 /// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
 /// output; see [`SignedTransaction`] for why.
-pub fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
+pub(crate) fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
@@ -487,7 +487,7 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
 
 /// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
 /// output; see [`SignedTransaction`] for why.
-pub fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
+pub(crate) fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,

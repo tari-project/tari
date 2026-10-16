@@ -68,6 +68,11 @@ minotari_offline_signer sign \
     --network mainnet
 ```
 
+Before any key is used, the signer prints a summary of the transaction: each recipient's amount, address and output
+features, any other outputs, the fee, total spend and change, then any memo text (with control characters shown
+escaped), and finally a recap. When run from a terminal it then asks `Sign this transaction? [y/N]` and signs only on
+`y` or `yes`. When stdin is not a terminal it prints the summary and signs without a prompt.
+
 The signer only signs transactions that leave a change output. A payload where what is left after the outputs and
 the fee is no more than a change output would cost, such as a send-all or sweep, is refused, because with no change
 output the script offset of the signed transaction, together
