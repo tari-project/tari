@@ -105,6 +105,13 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         excess_sig: &CompressedSignature,
     ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
 
+    /// Fetch the kernel with this excess and the hash of the block it is in, if any. Backed by the unique kernel
+    /// excess index, so at most one kernel in the chain has a given excess.
+    fn fetch_kernel_by_excess(
+        &self,
+        excess: &CompressedCommitment,
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError>;
+
     /// Fetch the burn kernel that carries this burn commitment, along with the hash of the block it is in, if any.
     /// Backed by the burn commitment index, this is used to enforce that a burn commitment appears at most once in the
     /// chain.

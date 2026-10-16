@@ -24,7 +24,7 @@ use thiserror::Error;
 
 use crate::{
     MicroMinotari,
-    transaction_components::{OutputType, RangeProofType, TransactionError, covenants::CovenantError},
+    transaction_components::{KernelFeatures, OutputType, RangeProofType, TransactionError, covenants::CovenantError},
 };
 
 #[derive(Debug, Error)]
@@ -48,6 +48,8 @@ pub enum AggregatedBodyValidationError {
     UnsortedOrDuplicateOutput,
     #[error("Duplicate or unsorted kernel found in block body")]
     UnsortedOrDuplicateKernel,
+    #[error("Duplicate kernel excess found in body")]
+    DuplicateKernelExcess,
     #[error(
         "Script exceeded maximum script size, expected less than {max_script_size} but was
     {actual_script_size}"
@@ -72,6 +74,8 @@ pub enum AggregatedBodyValidationError {
     InvalidBurnError(String),
     #[error("Output type '{output_type}' is not permitted")]
     OutputTypeNotPermitted { output_type: OutputType },
+    #[error("Kernel features {features:?} are not permitted in a transaction")]
+    KernelFeaturesNotPermitted { features: KernelFeatures },
     #[error("Output type '{output_type}' does not permit this side-chain feature data")]
     SideChainFeatureNotPermitted { output_type: OutputType },
     #[error("Output type '{output_type}' requires side-chain feature data")]

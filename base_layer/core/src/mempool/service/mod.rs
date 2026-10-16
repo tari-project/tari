@@ -32,7 +32,10 @@ pub use initializer::MempoolServiceInitializer;
 
 mod local_service;
 
+mod peer_bans;
+
 pub use local_service::LocalMempoolService;
+pub use peer_bans::PeerBanPeriods;
 
 mod outbound_interface;
 

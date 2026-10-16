@@ -3489,6 +3489,26 @@ impl BlockchainBackend for LMDBDatabase {
         }
     }
 
+    fn fetch_kernel_by_excess(
+        &self,
+        excess: &CompressedCommitment,
+    ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        if let Some((header_hash, mmr_position, hash)) =
+            lmdb_get::<_, (HashOutput, u64, HashOutput)>(&txn, &self.kernel_excess_index, excess.as_bytes())?
+        {
+            let key = KernelKey::try_from_parts(&[
+                header_hash.as_slice(),
+                mmr_position.to_be_bytes().as_slice(),
+                hash.as_slice(),
+            ])?;
+            Ok(lmdb_get(&txn, &self.kernels_db, &key)?
+                .map(|kernel: TransactionKernelRowData| (kernel.kernel, header_hash)))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn fetch_kernel_by_burn_commitment(
         &self,
         burn_commitment: &CompressedCommitment,

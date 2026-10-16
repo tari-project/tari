@@ -72,7 +72,7 @@ pub trait TransactionValidator: Send + Sync {
     /// Validate the internal consistency of a transaction (scripts, signatures, range proofs, balance). This is the
     /// expensive part of validation and does not depend on the transaction's inputs being in the chain. It does depend
     /// on the chain tip (e.g. scripts can check the block height), so the caller may provide the tip to validate
-    /// against; if `None`, the current tip is used.
+    /// against the block after `tip`; if `None`, the current tip is used.
     ///
     /// Required, with no default, so that an implementation cannot silently skip these checks.
     fn validate_internal_consistency(

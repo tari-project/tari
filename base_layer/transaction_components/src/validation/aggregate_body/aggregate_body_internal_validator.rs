@@ -36,7 +36,7 @@ use tari_common_types::types::{
 };
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::ScriptContext;
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     MicroMinotari,
@@ -264,6 +264,14 @@ fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), AggregatedBo
 
     if !is_all_unique_and_sorted(body.kernels()) {
         return Err(AggregatedBodyValidationError::UnsortedOrDuplicateKernel);
+    }
+
+    // Kernels are ordered by signature only, so the sort check above does not catch a repeated excess.
+    let mut excesses = HashSet::new();
+    for kernel in body.kernels() {
+        if !excesses.insert(kernel.excess.as_bytes()) {
+            return Err(AggregatedBodyValidationError::DuplicateKernelExcess);
+        }
     }
 
     Ok(())
@@ -576,6 +584,7 @@ mod test {
     use rand::seq::SliceRandom;
     use tari_common::configuration::Network;
     use tari_common_types::types::RANGE_PROOF_AGGREGATION_FACTOR;
+    use tari_crypto::keys::SecretKey;
     use tari_script::script;
 
     use super::*;
@@ -843,6 +852,41 @@ mod test {
             .unwrap_err();
 
             assert!(matches!(err, AggregatedBodyValidationError::UnsortedOrDuplicateOutput));
+        }
+
+        fn kernel_with_excess(k: &PrivateKey) -> TransactionKernel {
+            let excess = CompressedCommitment::from_compressed_key(CompressedPublicKey::from_secret_key(k));
+            let sig = test_helpers::create_signature(k.clone(), 0.into(), 0, KernelFeatures::empty());
+            TransactionKernel::new_current_version(KernelFeatures::empty(), 0.into(), 0, excess, sig, None)
+        }
+
+        #[test]
+        fn aggregate_body_rejects_duplicate_kernel_excess() {
+            let validator = AggregateBodyInternalConsistencyValidator::new(
+                true,
+                ConsensusManager::builder(Network::LocalNet).build(),
+                CryptoFactories::new(RANGE_PROOF_AGGREGATION_FACTOR),
+            );
+
+            let k = PrivateKey::random(&mut rand::rng());
+            let mut kernels = vec![kernel_with_excess(&k), kernel_with_excess(&k)];
+            kernels.sort();
+            assert_ne!(kernels[0].excess_sig, kernels[1].excess_sig);
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), Vec::new(), kernels);
+            let offset = PrivateKey::default() - &k - &k;
+            let err = validator
+                .validate(&body, &offset, &Default::default(), None, None, 0)
+                .unwrap_err();
+            assert!(matches!(err, AggregatedBodyValidationError::DuplicateKernelExcess));
+
+            let k2 = PrivateKey::random(&mut rand::rng());
+            let mut kernels = vec![kernel_with_excess(&k), kernel_with_excess(&k2)];
+            kernels.sort();
+            let body = AggregateBody::new_sorted_unchecked(Vec::new(), Vec::new(), kernels);
+            let offset = PrivateKey::default() - &k - &k2;
+            validator
+                .validate(&body, &offset, &Default::default(), None, None, 0)
+                .unwrap();
         }
     }
 }

@@ -27,7 +27,11 @@ use crate::{
     consensus::ConsensusManager,
     crypto_factories::CryptoFactories,
     transaction_components::{OutputType::Coinbase, Transaction},
-    validation::{AggregatedBodyValidationError, aggregate_body::AggregateBodyInternalConsistencyValidator},
+    validation::{
+        AggregatedBodyValidationError,
+        aggregate_body::AggregateBodyInternalConsistencyValidator,
+        helpers::check_no_coinbase_kernels,
+    },
 };
 
 pub struct TransactionInternalConsistencyValidator {
@@ -66,6 +70,7 @@ impl TransactionInternalConsistencyValidator {
             .validate(&tx.body, &tx.offset, &tx.script_offset, reward, prev_header, height)
     }
 
+    /// Validate the transaction as if it is mined in the block after `tip_metadata`.
     pub fn validate_with_current_tip(
         &self,
         tx: &Transaction,
@@ -74,18 +79,50 @@ impl TransactionInternalConsistencyValidator {
         if tx.body.outputs().iter().any(|o| o.features.is_coinbase()) {
             return Err(AggregatedBodyValidationError::OutputTypeNotPermitted { output_type: Coinbase });
         }
+        check_no_coinbase_kernels(&tx.body)?;
 
         // We can call this function with a constant value, because we've just shown that this is NOT a coinbase, and
         // only coinbases may have the extra field set (the only field that the fn argument affects).
         tx.body.check_output_features(1)?;
 
+        // Maturity and lock height are monotonic in height, so the next height is never stricter than the tip for
+        // them. Scripts and covenants are not, so they must be evaluated at the height the block will use.
         self.aggregate_body_validator.validate(
             &tx.body,
             &tx.offset,
             &tx.script_offset,
             None,
             Some(*tip_metadata.best_block_hash()),
-            tip_metadata.best_block_height(),
+            tip_metadata.best_block_height().saturating_add(1),
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::types::{FixedHash, PrivateKey};
+    use tari_crypto::keys::SecretKey;
+
+    use super::*;
+    use crate::{test_helpers::create_kernel_only_transaction, transaction_components::KernelFeatures};
+
+    #[test]
+    fn validate_with_current_tip_uses_next_block_height() {
+        let validator = TransactionInternalConsistencyValidator::new(
+            true,
+            ConsensusManager::builder(Network::LocalNet).build(),
+            CryptoFactories::default(),
+        );
+        let h = 10;
+        let tip = ChainMetadata::new(h, FixedHash::zero(), 0, 0, 1u64.into(), 0).unwrap();
+        let k = PrivateKey::random(&mut rand::rng());
+
+        let tx = create_kernel_only_transaction(&k, h + 1, KernelFeatures::empty());
+        validator.validate_with_current_tip(&tx, tip.clone()).unwrap();
+
+        let tx = create_kernel_only_transaction(&k, h + 2, KernelFeatures::empty());
+        let err = validator.validate_with_current_tip(&tx, tip).unwrap_err();
+        assert!(matches!(err, AggregatedBodyValidationError::MaturityError));
     }
 }

@@ -30,7 +30,9 @@ pub use test_helpers_functions::{
     create_coinbase_wallet_output,
     create_consensus_constants,
     create_consensus_manager,
+    create_kernel_only_transaction,
     create_random_signature_from_secret_key,
+    create_signature,
     create_test_input,
     create_test_kernel,
     create_transaction_with,
@@ -41,4 +43,5 @@ pub use test_helpers_functions::{
     new_public_key,
     schema_to_transaction,
     spend_utxos,
+    spend_utxos_with_kernel_features,
 };

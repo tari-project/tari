@@ -60,7 +60,13 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
     }
 
     fn validate_chain_linked(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let consensus_constants = self.db.consensus_constants()?;
+        let db = self.db.db_read_access()?;
+        let tip_header = db.fetch_tip_header()?;
+        // The transaction can be mined at the earliest in the block after the tip.
+        let consensus_constants = self
+            .db
+            .rules()
+            .consensus_constants(tip_header.height().saturating_add(1));
         // validate maximum tx weight
         if tx
             .calculate_weight(consensus_constants.transaction_weight_params())
@@ -72,12 +78,8 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
 
-        {
-            let db = self.db.db_read_access()?;
-            let tip_header = db.fetch_tip_header()?;
-            self.aggregate_body_validator
-                .validate_transaction_body(&tx.body, tip_header.header(), &*db)?;
-        };
+        self.aggregate_body_validator
+            .validate_transaction_body(&tx.body, tip_header.header(), &*db)?;
 
         Ok(())
     }

@@ -99,30 +99,29 @@ impl AggregateBodyChainLinkedValidator {
     /// can then look for those outputs elsewhere (i.e. in the mempool), knowing that nothing else about the body is
     /// invalid with respect to the chain.
     ///
-    /// `header` is the chain tip. The transaction can be mined at the earliest in the next block, so the validator node
-    /// epoch rules - registration/exit `max_epoch`, exit activation, and the registration spend lock - are evaluated
-    /// at `header.height + 1`: otherwise e.g. a registration or exit whose `max_epoch` is the tip's epoch, or a spend
-    /// of a registration that activates in the next epoch, would be accepted here while the tip is the last block of
-    /// its epoch, and then fail every block template it is selected into.
+    /// `header` is the chain tip. The transaction can be mined at the earliest in the next block, so the consensus
+    /// constants, input maturity and the validator node epoch rules - registration/exit `max_epoch`, exit activation,
+    /// and the registration spend lock - are evaluated at `header.height + 1`: otherwise e.g. a registration or exit
+    /// whose `max_epoch` is the tip's epoch, or a spend of a registration that activates in the next epoch, would be
+    /// accepted here while the tip is the last block of its epoch, and then fail every block template it is selected
+    /// into.
     pub fn validate_transaction_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         header: &BlockHeader,
         db: &B,
     ) -> Result<(), ValidationError> {
-        let constants = self.consensus_manager.consensus_constants(header.height);
         let next_height = header.height.saturating_add(1);
-        let vn_epoch = self
-            .consensus_manager
-            .consensus_constants(next_height)
-            .block_height_to_epoch(next_height);
+        let constants = self.consensus_manager.consensus_constants(next_height);
+        let vn_epoch = constants.block_height_to_epoch(next_height);
 
         self.validate_consensus(body, db)?;
-        self.check_body(body, db, constants, header, vn_epoch, true)
+        self.check_body(body, db, constants, header, next_height, vn_epoch, true)
     }
 
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
+        validate_excess_not_in_db(body, db)?;
         validate_burn_commitment_not_in_db(body, db)?;
         Ok(())
     }
@@ -136,22 +135,24 @@ impl AggregateBodyChainLinkedValidator {
         header: &BlockHeader,
     ) -> Result<(), ValidationError> {
         let vn_epoch = constants.block_height_to_epoch(header.height);
-        self.check_body(body, db, constants, header, vn_epoch, false)
+        self.check_body(body, db, constants, header, header.height, vn_epoch, false)
     }
 
     /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
-    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `vn_epoch` is the epoch the
-    /// validator node registration/exit rules are evaluated in.
+    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `spend_height` is the height input
+    /// maturity is checked at, and `vn_epoch` is the epoch the validator node registration/exit rules are evaluated in.
+    #[allow(clippy::too_many_arguments)]
     fn check_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
         header: &BlockHeader,
+        spend_height: u64,
         vn_epoch: VnEpoch,
         defer_unknown_inputs: bool,
     ) -> Result<(), ValidationError> {
-        validate_input_maturity(body, header.height)?;
+        validate_input_maturity(body, spend_height)?;
         let unknown_inputs = find_unknown_inputs(db, vn_epoch, body)?;
         if !defer_unknown_inputs && !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
@@ -238,6 +239,19 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
             );
             return Err(ValidationError::DuplicateKernelError(msg));
         };
+    }
+    Ok(())
+}
+
+fn validate_excess_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+    for kernel in body.kernels() {
+        if let Some((_, header_hash)) = db.fetch_kernel_by_excess(&kernel.excess)? {
+            return Err(ValidationError::KernelExcessAlreadyInChain(format!(
+                "excess {} in block {}",
+                kernel.excess.to_hex(),
+                header_hash.to_hex()
+            )));
+        }
     }
     Ok(())
 }
@@ -584,18 +598,29 @@ fn check_validator_node_registration_spend<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
     use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, PrivateKey};
     use tari_crypto::keys::SecretKey;
-    use tari_transaction_components::transaction_components::{
-        KernelFeatures,
-        OutputFeatures,
-        TransactionKernel,
-        TransactionOutput,
-        ValidatorNodeSignature,
+    use tari_transaction_components::{
+        BanPeriod,
+        test_helpers::create_signature,
+        transaction_components::{
+            KernelFeatures,
+            OutputFeatures,
+            TransactionKernel,
+            TransactionOutput,
+            ValidatorNodeSignature,
+        },
     };
 
     use super::*;
-    use crate::test_helpers::blockchain::TempDatabase;
+    use crate::{
+        block_spec,
+        test_helpers::{
+            BlockSpec,
+            blockchain::{TempDatabase, TestBlockchain},
+        },
+    };
 
     const NETWORK: u8 = 0x10;
 
@@ -722,6 +747,43 @@ mod test {
         ]);
         let err = validate_burn_commitment_not_in_db(&body, &db).unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBurnError(_)));
+    }
+
+    #[tokio::test]
+    async fn chain_linked_validation_rejects_kernel_excess_already_in_chain() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let (block, _) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+        let mined_kernel = block.block().body.kernels().first().unwrap().clone();
+        let tip_header = block.header().clone();
+        let next_header = blockchain.create_next_tip(BlockSpec::new()).0.header().clone();
+        let validator = AggregateBodyChainLinkedValidator::new(rules);
+        let db = blockchain.db().db_read_access().unwrap();
+
+        let other_sig = create_signature(
+            PrivateKey::random(&mut rand::rng()),
+            0.into(),
+            0,
+            KernelFeatures::empty(),
+        );
+        let same_excess = TransactionKernel {
+            excess_sig: other_sig,
+            ..mined_kernel.clone()
+        };
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![same_excess]);
+        let err = validator
+            .validate_transaction_body(&body, &tip_header, &*db)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::KernelExcessAlreadyInChain(_)));
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        let err = validator.validate(&body, &next_header, &*db).unwrap_err();
+        assert!(matches!(err, ValidationError::KernelExcessAlreadyInChain(_)));
+
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![mined_kernel]);
+        let err = validator
+            .validate_transaction_body(&body, &tip_header, &*db)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
     }
 
     mod duplicated_inputs_outputs {

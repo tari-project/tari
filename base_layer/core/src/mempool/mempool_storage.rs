@@ -33,6 +33,8 @@ use tari_common_types::{
 use tari_node_components::blocks::Block;
 use tari_script::Opcode;
 use tari_transaction_components::{
+    BanPeriod,
+    BanReason,
     helpers::borsh::SerializedSize,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
@@ -144,17 +146,26 @@ impl MempoolStorage {
     /// since the mempool reconciles every stored transaction with it when it does process it.
     ///
     /// Most failures are final. Only a failure that depends on the chain tip (inputs not in the chain or pool, input
-    /// maturity and lock heights, and scripts that read the block height; see `is_tip_dependent`) may be due to the
-    /// chain changing during validation. Such a failure is validated again, in the same way, if the mempool processed
-    /// a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks do not
-    /// depend on the chain and are not repeated. Failure-driven retries are capped at the unlocked attempts and never
-    /// take the lock: if the last unlocked attempt failed, that failure is returned. Only a stale success falls back to
-    /// the locked attempt, so a transaction that keeps failing (e.g. a never-valid spend of an output whose script
-    /// reads the block height, during block sync) costs at most the unlocked attempts.
+    /// maturity and lock heights, and scripts that read the height of the next block; see `is_tip_dependent`) may be
+    /// due to the chain changing during validation. Such a failure is validated again, in the same way, if the mempool
+    /// processed a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks
+    /// do not depend on the chain and are not repeated. Failure-driven retries are capped at the unlocked attempts and
+    /// never take the lock: if the last unlocked attempt failed, that failure is returned. Only a stale success falls
+    /// back to the locked attempt, so a transaction that keeps failing (e.g. a never-valid spend of an output whose
+    /// script reads the block height, during block sync) costs at most the unlocked attempts.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
     ) -> Result<TxStorageResponse, MempoolError> {
+        Self::insert_unlocked_with_ban_reason(storage, tx).map(|(response, _)| response)
+    }
+
+    /// As [`MempoolStorage::insert_unlocked`], also returning a ban reason if the transaction failed a final internal
+    /// consistency check (see `internal_failure_ban_reason`).
+    pub fn insert_unlocked_with_ban_reason(
+        storage: &RwLock<MempoolStorage>,
+        tx: Arc<Transaction>,
+    ) -> Result<(TxStorageResponse, Option<BanReason>), MempoolError> {
         // The failure of the last attempt, if it failed (rather than succeeding at a stale chain state)
         let mut last_failure = None;
         for attempt in 1..MAX_VALIDATION_ATTEMPTS {
@@ -162,7 +173,7 @@ impl MempoolStorage {
             let (validator, generation) = {
                 let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
                 if let Some(response) = lock.pre_check(&tx) {
-                    return Ok(response);
+                    return Ok((response, None));
                 }
                 (lock.validator.clone(), lock.chain_generation)
             };
@@ -176,6 +187,7 @@ impl MempoolStorage {
                 Err(AttemptFailure {
                     response,
                     tip_dependent,
+                    ban_reason,
                 }) => {
                     // A failure that depends on the tip (e.g. a mempool parent that was mined and removed from the
                     // pool, or a height check) may be due to the chain changing during validation, so it is only
@@ -193,7 +205,7 @@ impl MempoolStorage {
                         last_failure = Some(response);
                         continue;
                     }
-                    return Ok(response);
+                    return Ok((response, ban_reason));
                 },
             };
             debug!(
@@ -220,15 +232,16 @@ impl MempoolStorage {
             if let Some(dependent_outputs) = &dependent_outputs &&
                 let Err(response) = check_pool_parents(&lock.unconfirmed_pool, dependent_outputs)
             {
-                return Ok(response);
+                return Ok((response, None));
             }
             return lock
                 .insert_into_unconfirmed_pool(tx, dependent_outputs)
+                .map(|response| (response, None))
                 .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
         // A transaction that failed its last attempt is rejected; failure-driven retries never take the lock
         if let Some(response) = last_failure {
-            return Ok(response);
+            return Ok((response, None));
         }
         // The last attempt succeeded, but at a stale chain state. The final attempt validates under the write lock, so
         // that the chain cannot change during it. Rejecting the transaction instead would make a wallet treat a valid
@@ -243,7 +256,9 @@ impl MempoolStorage {
             tx_id(&tx)
         );
         let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
-        lock.insert(tx).map_err(|e| MempoolError::InternalError(e.to_string()))
+        lock.insert(tx)
+            .map(|response| (response, None))
+            .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
     /// The near-free checks done before a new transaction is validated: its fee and its weight. Returns the response
@@ -786,6 +801,8 @@ struct AttemptFailure {
     /// Whether the failure may be due to the chain tip the transaction was validated against, so that it may be
     /// retried if the chain changed during validation
     tip_dependent: bool,
+    /// Set if the failure is a final internal consistency failure
+    ban_reason: Option<BanReason>,
 }
 
 /// One unlocked validation attempt: chain-linked checks, then the mempool parents of any inputs not in the chain
@@ -800,6 +817,7 @@ fn validate_attempt(
     let failure = |error: ValidationError| AttemptFailure {
         tip_dependent: is_tip_dependent(&error, tx),
         response: validation_error_to_response(error),
+        ban_reason: None,
     };
     let dependent_outputs = match validator.validate_chain_linked(tx) {
         Ok(()) => None,
@@ -813,23 +831,45 @@ fn validate_attempt(
             return Ok(Err(AttemptFailure {
                 response,
                 tip_dependent: true,
+                ban_reason: None,
             }));
         }
     }
     if let Err(e) = validator.validate_internal_consistency(tx, tip) {
-        return Ok(Err(failure(e)));
+        let ban_reason = internal_failure_ban_reason(&e, tx);
+        return Ok(Err(AttemptFailure {
+            ban_reason,
+            ..failure(e)
+        }));
     }
     Ok(Ok(dependent_outputs))
+}
+
+/// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
+/// never be valid. Covenant failures, and any failure of a transaction with an input script that reads the block
+/// height, are excluded since the outcome can depend on the height.
+fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Option<BanReason> {
+    if has_height_dependent_input_script(tx) {
+        return None;
+    }
+    match error {
+        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::CovenantError(_)) => None,
+        ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error, tx) => Some(BanReason {
+            reason: error.to_string(),
+            ban_duration: BanPeriod::Long,
+        }),
+        _ => None,
+    }
 }
 
 /// Returns true if a validation error may be due to the chain tip the transaction was validated against, i.e. the
 /// transaction may be valid at a different tip:
 /// - inputs that are not (or no longer) in the chain,
 /// - input maturity and kernel lock heights,
-/// - a failing input script, but only if one of the transaction's input scripts reads the block height. Any output in
-///   the chain can be spent with made-up input data to produce a failing script, so script failures in general are
-///   final. The script error does not identify which input failed, so any input with such a script counts; since
-///   failure-driven retries never take the lock, this costs at most the unlocked attempts.
+/// - a failing input script, but only if one of the transaction's input scripts reads the height of the next block. Any
+///   output in the chain can be spent with made-up input data to produce a failing script, so script failures in
+///   general are final. The script error does not identify which input failed, so any input with such a script counts;
+///   since failure-driven retries never take the lock, this costs at most the unlocked attempts.
 ///
 /// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
 /// sizes, sorting, weight, versions etc.). That includes an input that is already spent and a kernel that is already
