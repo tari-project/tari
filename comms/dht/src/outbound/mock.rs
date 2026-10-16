@@ -120,6 +120,11 @@ impl OutboundServiceMockState {
         }
     }
 
+    /// Sets the response the mock gives to the next send request, instead of a queued message that succeeds
+    pub async fn set_next_response(&self, response: SendMessageResponse) {
+        *self.next_response.write().await = Some(response);
+    }
+
     pub async fn take_next_response(&self) -> Option<SendMessageResponse> {
         self.next_response.write().await.take()
     }

@@ -20,14 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, task::Poll};
+use std::{io, sync::Arc, task::Poll, time::Duration};
 
 use futures::StreamExt;
 use log::*;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc, oneshot},
+    sync::{OwnedSemaphorePermit, Semaphore, broadcast, mpsc, oneshot},
+    time,
 };
 
 #[cfg(feature = "metrics")]
@@ -37,17 +38,31 @@ use crate::{PeerConnection, message::InboundMessage, peer_manager::NodeId};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
+/// The most messages one session may have delivered to the node-wide inbound channel (see
+/// `INBOUND_MESSAGE_BUFFER_SIZE`) that the consumer has not yet finished processing. A message keeps its slot while it
+/// waits in the channel and for as long as the consumer holds it - for the DHT, until its whole inbound pipeline call
+/// has finished. A session holding all of them stops reading its substream, so a flooding peer is held back by its
+/// own yamux window rather than filling the shared channel and starving every other peer.
+pub(super) const INBOUND_PER_SESSION_INFLIGHT: usize = 4;
+/// How long a stopping (replaced or disconnected) session may keep draining the frames it still has buffered, in total,
+/// counted from when it starts stopping. Those frames were already reported as sent to the peer, so they are worth a
+/// short wait for an in-flight slot, but the session must not be kept alive by a slow consumer, nor by a peer that
+/// keeps refilling the old substream (reading it sends the peer more window).
+pub(super) const STOPPING_SESSION_PERMIT_WAIT: Duration = Duration::from_secs(2);
+
 /// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
 pub struct InboundMessaging {
     connection: PeerConnection,
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     messaging_events_tx: broadcast::Sender<MessagingEvent>,
     /// The `MessagingProtocol` actor's internal channel - distinct from `messaging_events_tx` above, which is
-    /// the external broadcast. Used only to report this session's exit, keyed by `session_id`, so the actor can
-    /// prune its `active_inbound`/`replacement_budgets` bookkeeping precisely. See
-    /// `MessagingEvent::InboundSessionExited`.
+    /// the external broadcast. Used to report this session's exit, keyed by `session_id`, so the actor can
+    /// prune its `active_inbound`/`replacement_budgets` bookkeeping precisely (see
+    /// `MessagingEvent::InboundSessionExited`), and to report protocol violations, which the actor bans for.
     internal_events_tx: mpsc::Sender<MessagingEvent>,
     session_id: u64,
+    /// This session's in-flight slots. See [INBOUND_PER_SESSION_INFLIGHT].
+    inflight_permits: Arc<Semaphore>,
     enable_message_received_event: bool,
     shutdown_signal: ShutdownSignal,
     replaced: oneshot::Receiver<()>,
@@ -71,6 +86,7 @@ impl InboundMessaging {
             messaging_events_tx,
             internal_events_tx,
             session_id,
+            inflight_permits: Arc::new(Semaphore::new(INBOUND_PER_SESSION_INFLIGHT)),
             enable_message_received_event,
             shutdown_signal,
             replaced,
@@ -99,14 +115,61 @@ impl InboundMessaging {
         // already local and ready to read. Racing `stream.next()` against the stop signal directly (as
         // `StreamExt::take_until` does) never gives the stream a chance to be polled once that fires, discarding
         // that buffered data outright. Once stopping, keep draining whatever is immediately available - without
-        // waiting for more, since nothing further will be read on this substream either way - before actually
-        // stopping. Note this only ever races *between* frames: once a frame has been read off the wire,
+        // waiting for more data - until nothing is left or `stop_deadline` passes, whichever is first: reading frees
+        // yamux window, so a peer could otherwise keep the old substream full forever. Note this only ever races
+        // *between* frames: once a frame has been read off the wire,
         // `handle_frame_result` below runs to completion outside the select, so a replacement can never abort a
         // message that has already been decoded - at worst it delays taking over until the in-flight
         // `inbound_message_tx.send` finishes.
         let mut disconnected = false;
+        // When a stopping session must exit, drained or not. Set once, when it starts stopping.
+        let mut stop_deadline: Option<time::Instant> = None;
 
         loop {
+            // Take one of this session's in-flight slots before reading the next frame. While the consumer is still
+            // processing (or holding) messages for all of them, nothing more is read from the substream, which leaves
+            // the peer's yamux window to push back on it. Once stopping (disconnected or replaced), only what is
+            // already buffered is drained - the sender was told those frames were sent - and only until
+            // `stop_deadline`, `STOPPING_SESSION_PERMIT_WAIT` after it started stopping, which also bounds the wait for
+            // slots, so a stopping session never outlives that by waiting on the consumer or on a refilling peer.
+            let permit = if disconnected {
+                let deadline = *stop_deadline.get_or_insert_with(|| {
+                    time::Instant::now()
+                        .checked_add(STOPPING_SESSION_PERMIT_WAIT)
+                        .unwrap_or_else(time::Instant::now)
+                });
+                match self.wait_for_permit_while_stopping(&peer, deadline).await {
+                    Some(permit) => permit,
+                    None => break,
+                }
+            } else {
+                tokio::select! {
+                    biased;
+                    _ = self.shutdown_signal.wait() => break,
+                    permit = Arc::clone(&self.inflight_permits).acquire_owned() => match permit {
+                        Ok(permit) => permit,
+                        // The semaphore is never closed
+                        Err(_) => break,
+                    },
+                    // Stopping while waiting for a slot: go round again to wait (for a bounded time) as a stopping
+                    // session. These futures are never polled again once `disconnected` is set.
+                    _ = &mut on_disconnect => {
+                        disconnected = true;
+                        continue;
+                    },
+                    _ = &mut self.replaced => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Inbound messaging session for peer '{}' replaced by a newer substream while waiting for \
+                             an in-flight slot",
+                            peer.short_str()
+                        );
+                        disconnected = true;
+                        continue;
+                    },
+                }
+            };
+
             let maybe_result = if disconnected {
                 match futures::poll!(stream.next()) {
                     Poll::Ready(item) => item,
@@ -139,7 +202,7 @@ impl InboundMessaging {
             };
             let Some(result) = maybe_result else { break };
 
-            if !self.handle_frame_result(result, &peer).await {
+            if !self.handle_frame_result(result, &peer, permit).await {
                 break;
             }
         }
@@ -173,14 +236,58 @@ impl InboundMessaging {
         );
     }
 
+    /// Waits until `deadline` (at most) for an in-flight slot for a frame this stopping session still has buffered.
+    /// Returns `None` if the deadline has passed or no slot came free before it, or on shutdown.
+    async fn wait_for_permit_while_stopping(
+        &mut self,
+        peer: &NodeId,
+        deadline: time::Instant,
+    ) -> Option<OwnedSemaphorePermit> {
+        // Checked first: a slot that is free right away would otherwise be taken even past the deadline
+        if time::Instant::now() >= deadline {
+            debug!(
+                target: LOG_TARGET,
+                "Stopping inbound messaging session for peer '{}' without draining the rest of its substream: it has \
+                 been draining for {:.0?}",
+                peer.short_str(),
+                STOPPING_SESSION_PERMIT_WAIT
+            );
+            return None;
+        }
+        let wait = time::timeout_at(deadline, Arc::clone(&self.inflight_permits).acquire_owned());
+        tokio::select! {
+            biased;
+            _ = self.shutdown_signal.wait() => None,
+            result = wait => match result {
+                Ok(Ok(permit)) => Some(permit),
+                // No slot came free in time (or the semaphore closed, which it never does)
+                _ => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Stopping inbound messaging session for peer '{}' without draining the rest of its \
+                         substream: no in-flight slot came free within {:.0?} of it stopping",
+                        peer.short_str(),
+                        STOPPING_SESSION_PERMIT_WAIT
+                    );
+                    None
+                },
+            },
+        }
+    }
+
     /// Handles a single decoded frame (or read error). Returns `false` if the read loop should stop.
-    async fn handle_frame_result(&mut self, result: io::Result<bytes::BytesMut>, peer: &NodeId) -> bool {
+    async fn handle_frame_result(
+        &mut self,
+        result: io::Result<bytes::BytesMut>,
+        peer: &NodeId,
+        permit: OwnedSemaphorePermit,
+    ) -> bool {
         match result {
             Ok(raw_msg) => {
                 #[cfg(feature = "metrics")]
                 metrics::inbound_message_count().inc();
                 let msg_len = raw_msg.len();
-                let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
+                let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze()).with_inflight_permit(permit);
                 debug!(
                     target: LOG_TARGET,
                     "Received message {} from peer '{}' ({} bytes)",
@@ -219,10 +326,15 @@ impl InboundMessaging {
                     peer.short_str(),
                     err
                 );
-                let _result = self.messaging_events_tx.send(MessagingEvent::ProtocolViolation {
-                    peer_node_id: peer.clone(),
-                    details: err.to_string(),
-                });
+                // Sent to the actor, which bans the peer and then forwards the event to the external broadcast for
+                // subscribers. Nothing bans for events sent straight to the external broadcast.
+                let _result = self
+                    .internal_events_tx
+                    .send(MessagingEvent::ProtocolViolation {
+                        peer_node_id: peer.clone(),
+                        details: err.to_string(),
+                    })
+                    .await;
                 false
             },
             Err(err) => {

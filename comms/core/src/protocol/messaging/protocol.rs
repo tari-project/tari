@@ -24,7 +24,10 @@ use std::{
     collections::{HashMap, hash_map::Entry},
     fmt,
     fmt::Display,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 
@@ -36,13 +39,18 @@ use tari_shutdown::{
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{Semaphore, broadcast, mpsc, oneshot},
+    sync::{Semaphore, broadcast, mpsc, mpsc::error::TrySendError, oneshot},
     task::JoinHandle,
     time,
 };
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
-use super::error::MessagingProtocolError;
+#[cfg(feature = "metrics")]
+use super::metrics;
+use super::{
+    error::MessagingProtocolError,
+    outbound::{QueueAccounting, QueuedBytes, QueuedOutboundMessage},
+};
 use crate::{
     PeerConnection,
     RefKind,
@@ -61,6 +69,39 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::protocol::messaging";
 const INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE: usize = 10;
+
+/// The most messages that may wait in one peer's outbound queue. A message sent to a peer whose queue is full fails
+/// immediately (so the DHT can pick another route) instead of growing the queue.
+pub(super) const OUTBOUND_QUEUE_CAPACITY: usize = 500;
+/// The most body bytes that may wait in one peer's outbound queue. Counting messages alone lets a peer that never reads
+/// hold 500 large messages (e.g. block replies it keeps asking for). A message that would go over this fails
+/// immediately, unless the queue's reserve applies (see [`OUTBOUND_QUEUE_RESERVED_BYTES`]).
+pub(super) const OUTBOUND_QUEUE_MAX_BYTES: usize = 64 * 1024 * 1024;
+/// The most body bytes that may wait in all peers' outbound queues and the retry queue together, which bounds what many
+/// peers that never read can make us hold. A message that would go over this fails immediately, unless its queue's
+/// reserve applies (see [`OUTBOUND_QUEUE_RESERVED_BYTES`]). With the reserve, the worst case is this budget plus,
+/// per established queue, the reserve and one frame, plus the dialing budget:
+/// 512 MiB + established peers x (1 MiB + 8 MiB) + 64 MiB. Each dialing queue holds at most
+/// [`OUTBOUND_DIALING_QUEUE_MAX_BYTES`] of that 64 MiB.
+pub(super) const OUTBOUND_TOTAL_MAX_BYTES: usize = 512 * 1024 * 1024;
+/// A queue whose session has established a substream and that holds less than this always takes another message that
+/// fits in a frame ([`MAX_FRAME_LENGTH`]), whatever the peer and node-wide budgets say. Without it, a few peers that
+/// never read could pin the node-wide budget and cut every connected peer down to one message at a time.
+pub(super) const OUTBOUND_QUEUE_RESERVED_BYTES: usize = 1024 * 1024;
+/// The most body bytes that may wait in queues whose session has not yet established a substream (still dialing),
+/// across all peers. Replies to peers we cannot reach would otherwise be held for the whole dial, each in a fresh
+/// queue. A message for a dialing queue that would go over this fails immediately; dialing queues get no reserve.
+pub(super) const OUTBOUND_DIALING_MAX_BYTES: usize = 64 * 1024 * 1024;
+/// The most body bytes of new messages one queue may hold while its session is still dialing, so one unreachable peer
+/// cannot take the whole dialing budget. A single frame always fits, so a queue's first message is only held to the
+/// dialing budget. Retried messages (a previous session's backlog) are not held to this, only to the dialing budget,
+/// so a backlog survives a reconnect.
+pub(super) const OUTBOUND_DIALING_QUEUE_MAX_BYTES: usize = MAX_FRAME_LENGTH;
+/// The most messages that may wait to be retried, across all peers. A message that does not fit fails immediately.
+const RETRY_QUEUE_CAPACITY: usize = 500;
+/// How long after it was queued a message may still be sent. An expired message fails instead of being sent, and is
+/// not requeued when its session ends, so a redial backlog cannot accumulate.
+pub(super) const OUTBOUND_MESSAGE_TTL: Duration = Duration::from_secs(60);
 
 /// Maximum frame size of a messaging protocol frame. The RPC frame size is derived from this so that anything that can
 /// be propagated over messaging (e.g. a block) can also be fetched over RPC (e.g. during sync).
@@ -125,14 +166,32 @@ pub type MessagingEventReceiver = broadcast::Receiver<MessagingEvent>;
 pub enum SendFailReason {
     #[error("Dial was attempted, but failed")]
     PeerDialFailed,
+    /// Not currently produced by the messaging protocol
     #[error("Failed to open a messaging substream to peer")]
     SubstreamOpenFailed,
+    /// Not currently produced by the messaging protocol
     #[error("Failed to send on substream channel")]
     SubstreamSendFailed,
     #[error("Message was dropped before sending")]
     Dropped,
+    #[error("Message is larger than the maximum frame length")]
+    MessageTooLarge,
     #[error("Message could not send after {0} attempt(s)")]
     MaxRetriesReached(usize),
+    /// Like `MaxRetriesReached`, but at least one of the retries was used up because the whole connection to the peer
+    /// went away (which we may have caused, e.g. by tie-breaking or reaping connections), not because the peer closed
+    /// the substream
+    #[error("Message could not send after {0} attempt(s) because the connection to the peer was lost")]
+    ConnectionLost(usize),
+    #[error("The outbound queue for the peer is full")]
+    QueueFull,
+    #[error("Message expired before it could be sent")]
+    Expired,
+    #[error("Timed out sending the message to the peer")]
+    SendTimeout,
+    /// The message was queued behind another message whose write to the peer timed out, so it was never attempted
+    #[error("Message was queued behind a message that timed out sending to the peer")]
+    QueuedBehindTimeout,
 }
 
 /// Events emitted by the messaging protocol.
@@ -247,12 +306,37 @@ impl ReplacementBudget {
     }
 }
 
+/// Which peer queue, if any, a warning about a full outbound budget names
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LargestQueue {
+    NotNamed,
+    /// The largest queue of all
+    Any,
+    /// The largest queue that is still dialing
+    Dialing,
+}
+
+/// The outbound queue of one outbound session for a peer, with its byte accounting. The accounting belongs to the
+/// queue rather than the peer: a fresh session gets a fresh queue and accounting, and a message retried into it is
+/// charged to the new queue and released from the old one. The old session's remaining messages are bounded by the
+/// node-wide budget, which they stay charged to until they are dropped.
+struct PeerQueue {
+    sender: mpsc::Sender<QueuedOutboundMessage>,
+    accounting: Arc<QueueAccounting>,
+}
+
 /// Actor responsible for lazily spawning inbound (protocol notifications) and outbound (mpsc channel) messaging actors.
 pub struct MessagingProtocol {
     protocol_id: ProtocolId,
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
-    active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
+    active_queues: HashMap<NodeId, PeerQueue>,
+    /// Body bytes of all messages waiting in the outbound queues and the retry queue. See
+    /// [`OUTBOUND_TOTAL_MAX_BYTES`].
+    total_queued_bytes: Arc<AtomicUsize>,
+    /// Body bytes of the messages in queues whose session has not established a substream yet. See
+    /// [`OUTBOUND_DIALING_MAX_BYTES`].
+    dialing_queued_bytes: Arc<AtomicUsize>,
     active_inbound: HashMap<NodeId, PeerInboundSessions>,
     replacement_budgets: HashMap<NodeId, ReplacementBudget>,
     /// Monotonically increasing id assigned to each spawned `InboundMessaging` session (see
@@ -266,8 +350,8 @@ pub struct MessagingProtocol {
     inbound_message_tx: mpsc::Sender<InboundMessage>,
     internal_messaging_event_tx: mpsc::Sender<MessagingEvent>,
     internal_messaging_event_rx: mpsc::Receiver<MessagingEvent>,
-    retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
-    retry_queue_rx: mpsc::UnboundedReceiver<OutboundMessage>,
+    retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
+    retry_queue_rx: mpsc::Receiver<QueuedOutboundMessage>,
     /// Substreams that resolved to a connection off the actor's `select!` loop (see
     /// `handle_protocol_notification`). The actor drains this and calls `spawn_inbound_handler` synchronously.
     resolved_substream_tx: mpsc::Sender<(PeerConnection, Substream)>,
@@ -279,6 +363,9 @@ pub struct MessagingProtocol {
     /// is node-wide, not per-peer, so unlike the `ReplacementBudget` throttles it needs only one clock. See
     /// [`SHED_LOG_INTERVAL`].
     last_pending_resolution_shed_log: Option<time::Instant>,
+    /// Throttles the `warn!` logged when a message fails because a peer's outbound queue is full. See
+    /// [`SHED_LOG_INTERVAL`].
+    last_queue_full_log: Option<time::Instant>,
     shutdown_signal: ShutdownSignal,
     /// Never broadcast: dropped when this service exits, which resolves `complete_signal` with `None`.
     complete_trigger: OneshotTrigger<()>,
@@ -297,7 +384,7 @@ impl MessagingProtocol {
     ) -> Self {
         let (internal_messaging_event_tx, internal_messaging_event_rx) =
             mpsc::channel(INTERNAL_MESSAGING_EVENT_CHANNEL_SIZE);
-        let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded_channel();
+        let (retry_queue_tx, retry_queue_rx) = mpsc::channel(RETRY_QUEUE_CAPACITY);
         let (resolved_substream_tx, resolved_substream_rx) = mpsc::channel(MAX_PENDING_SUBSTREAM_RESOLUTIONS);
 
         Self {
@@ -307,6 +394,8 @@ impl MessagingProtocol {
             outbound_message_rx,
             active_inbound: Default::default(),
             active_queues: Default::default(),
+            total_queued_bytes: Arc::new(AtomicUsize::new(0)),
+            dialing_queued_bytes: Arc::new(AtomicUsize::new(0)),
             replacement_budgets: Default::default(),
             next_inbound_session_id: 0,
             messaging_events_tx,
@@ -321,6 +410,7 @@ impl MessagingProtocol {
             resolved_substream_rx,
             pending_resolution_permits: Arc::new(Semaphore::new(MAX_PENDING_SUBSTREAM_RESOLUTIONS)),
             last_pending_resolution_shed_log: None,
+            last_queue_full_log: None,
             shutdown_signal,
             complete_trigger: OneshotTrigger::new(),
         }
@@ -351,7 +441,7 @@ impl MessagingProtocol {
         loop {
             tokio::select! {
                 Some(event) = self.internal_messaging_event_rx.recv() => {
-                    self.handle_internal_messaging_event(event).await;
+                    self.handle_internal_messaging_event(event);
                 },
 
                 Some(msg) = self.retry_queue_rx.recv() => {
@@ -401,7 +491,7 @@ impl MessagingProtocol {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }
 
-    async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
+    fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
         use MessagingEvent::*;
         trace!(target: LOG_TARGET, "Internal messaging event '{event}'" );
         match &event {
@@ -411,13 +501,31 @@ impl MessagingProtocol {
                     "Outbound protocol handler exited for peer `{}`",
                     node_id.short_str()
                 );
-                if self.active_queues.remove(node_id).is_none() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound protocol \
-                         for peer `{}`",
-                        node_id.short_str()
-                    );
+                // Only remove the peer's queue if it belongs to the session that exited. Every outbound session
+                // closes or drops its own queue receiver before it reports its exit, so that session's sender reads
+                // as closed here. An open sender belongs to a newer session, spawned after the exited one closed its
+                // queue (e.g. for a retry sent while the exited session waited out `CONNECTION_CLOSE_GRACE`), and
+                // removing it would orphan that live session and let the next message spawn a second one.
+                match self.active_queues.get(node_id) {
+                    Some(queue) if queue.sender.is_closed() => {
+                        self.active_queues.remove(node_id);
+                    },
+                    Some(_) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "OutboundProtocolExited event for peer `{}`, but a newer outbound session is running; \
+                             keeping it",
+                            node_id.short_str()
+                        );
+                    },
+                    None => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "OutboundProtocolExited event, but MessagingProtocol has no record of the outbound \
+                             protocol for peer `{}`",
+                            node_id.short_str()
+                        );
+                    },
                 }
             },
             // `InboundMessaging` reports its exit to external subscribers on the broadcast
@@ -432,7 +540,7 @@ impl MessagingProtocol {
                 return;
             },
             ProtocolViolation { peer_node_id, details } => {
-                self.ban_peer(peer_node_id.clone(), details.to_string()).await;
+                self.ban_peer(peer_node_id.clone(), details.to_string());
             },
             _ => {},
         }
@@ -472,45 +580,182 @@ impl MessagingProtocol {
         }
     }
 
-    fn handle_retry_queue_messages(&mut self, msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+    fn handle_retry_queue_messages(&mut self, msg: QueuedOutboundMessage) -> Result<(), MessagingProtocolError> {
         debug!(target: LOG_TARGET, "Retrying outbound message ({msg})");
-        self.send_message(msg)?;
+        self.enqueue_message(msg, true)?;
         Ok(())
     }
 
-    fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
+    /// Queues a new message for its peer, with a deadline [`OUTBOUND_MESSAGE_TTL`] from now.
+    pub(super) fn send_message(&mut self, out_msg: OutboundMessage) -> Result<(), MessagingProtocolError> {
         trace!(target: LOG_TARGET, "Received request to send message ({out_msg})");
-        let peer_node_id = out_msg.peer_node_id.clone();
-        let sender = loop {
+        let deadline = time::Instant::now()
+            .checked_add(OUTBOUND_MESSAGE_TTL)
+            .unwrap_or_else(time::Instant::now);
+        self.enqueue_message(
+            QueuedOutboundMessage {
+                message: out_msg,
+                deadline,
+                retries: 0,
+                attempts: 0,
+                retried_after_connection_loss: false,
+                bytes: None,
+            },
+            false,
+        )
+    }
+
+    /// Puts a message on its peer's outbound queue, spawning the peer's outbound handler if it has none. If the message
+    /// is larger than a frame, the queue is full, or the message would go over a byte budget, it fails immediately.
+    /// `is_retry` is set for a message coming off the retry queue: a session's backlog requeued into a fresh (dialing)
+    /// queue is not held to [`OUTBOUND_DIALING_QUEUE_MAX_BYTES`], so it survives a reconnect, but it still counts
+    /// against every other budget, including [`OUTBOUND_DIALING_MAX_BYTES`].
+    #[allow(clippy::too_many_lines)]
+    fn enqueue_message(
+        &mut self,
+        mut queued: QueuedOutboundMessage,
+        is_retry: bool,
+    ) -> Result<(), MessagingProtocolError> {
+        let peer_node_id = queued.message.peer_node_id.clone();
+        let len = queued.message.body.len();
+        // A message that cannot be framed would only fail when it is written, holding a session and bytes until then
+        if len > MAX_FRAME_LENGTH {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("too_large").inc();
+            queued.message.reply_fail(SendFailReason::MessageTooLarge);
+            warn!(
+                target: LOG_TARGET,
+                "Message ({}) for peer '{}' is {} bytes, larger than the {} byte frame limit; failing it",
+                queued.message.tag,
+                peer_node_id.short_str(),
+                len,
+                MAX_FRAME_LENGTH
+            );
+            return Ok(());
+        }
+
+        let queue = loop {
             match self.active_queues.entry(peer_node_id.clone()) {
                 Entry::Occupied(entry) => {
-                    if entry.get().is_closed() {
+                    if entry.get().sender.is_closed() {
                         entry.remove();
                         continue;
                     }
                     break entry.into_mut();
                 },
                 Entry::Vacant(entry) => {
+                    let accounting = Arc::new(QueueAccounting::new(
+                        Arc::clone(&self.total_queued_bytes),
+                        Arc::clone(&self.dialing_queued_bytes),
+                    ));
                     let sender = Self::spawn_outbound_handler(
                         self.connectivity.clone(),
                         self.internal_messaging_event_tx.clone(),
-                        peer_node_id,
+                        peer_node_id.clone(),
                         self.retry_queue_tx.clone(),
                         self.protocol_id.clone(),
+                        Arc::clone(&accounting),
                     );
-                    break entry.insert(sender);
+                    break entry.insert(PeerQueue { sender, accounting });
                 },
             }
         };
+        let sender = queue.sender.clone();
+        let accounting = Arc::clone(&queue.accounting);
 
-        trace!(target: LOG_TARGET, "Sending message {out_msg}");
-        let tag = out_msg.tag;
-        match sender.send(out_msg) {
+        // A retried message is still charged to the queue it came from. Release that first, so it is charged once,
+        // to this queue.
+        queued.bytes = None;
+        let (queued_for_peer, established) = accounting.snapshot();
+        let queued_in_total = self.total_queued_bytes.load(Ordering::SeqCst);
+        let queued_dialing = self.dialing_queued_bytes.load(Ordering::SeqCst);
+        // Bytes are only ever added here, on the actor, so these checks cannot race with another charge; sessions
+        // only release bytes or become established, which can only make room. An established queue below its reserve
+        // always takes one more message (which fits in a frame, checked above), whatever the budgets say.
+        let reserve_applies = established && queued_for_peer < OUTBOUND_QUEUE_RESERVED_BYTES;
+        if !reserve_applies && queued_for_peer.saturating_add(len) > OUTBOUND_QUEUE_MAX_BYTES {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("queue_bytes_full").inc();
+            queued.message.reply_fail(SendFailReason::QueueFull);
+            let msg = format!(
+                "Outbound queue for peer '{}' holds {} bytes, over the {} byte budget with this message; failing \
+                 message ({})",
+                peer_node_id.short_str(),
+                queued_for_peer,
+                OUTBOUND_QUEUE_MAX_BYTES,
+                queued.message.tag
+            );
+            self.log_queue_full(msg, LargestQueue::NotNamed);
+            return Ok(());
+        }
+        if !established && !is_retry && queued_for_peer.saturating_add(len) > OUTBOUND_DIALING_QUEUE_MAX_BYTES {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("dialing_queue_bytes_full").inc();
+            queued.message.reply_fail(SendFailReason::QueueFull);
+            let msg = format!(
+                "Outbound queue for peer '{}' is still dialing and holds {} bytes, over the {} byte budget for a \
+                 dialing queue with this message; failing message ({})",
+                peer_node_id.short_str(),
+                queued_for_peer,
+                OUTBOUND_DIALING_QUEUE_MAX_BYTES,
+                queued.message.tag
+            );
+            self.log_queue_full(msg, LargestQueue::NotNamed);
+            return Ok(());
+        }
+        if !established && queued_dialing.saturating_add(len) > OUTBOUND_DIALING_MAX_BYTES {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("dialing_bytes_full").inc();
+            queued.message.reply_fail(SendFailReason::QueueFull);
+            let msg = format!(
+                "Outbound queues still dialing hold {} bytes, over the {} byte dialing budget with this message; \
+                 failing message ({}) for peer '{}'",
+                queued_dialing,
+                OUTBOUND_DIALING_MAX_BYTES,
+                queued.message.tag,
+                peer_node_id.short_str()
+            );
+            self.log_queue_full(msg, LargestQueue::Dialing);
+            return Ok(());
+        }
+        if !reserve_applies && queued_in_total.saturating_add(len) > OUTBOUND_TOTAL_MAX_BYTES {
+            #[cfg(feature = "metrics")]
+            metrics::outbound_dropped("total_bytes_full").inc();
+            queued.message.reply_fail(SendFailReason::QueueFull);
+            let msg = format!(
+                "Outbound queues hold {} bytes, over the node-wide {} byte budget with this message; failing message \
+                 ({}) for peer '{}'",
+                queued_in_total,
+                OUTBOUND_TOTAL_MAX_BYTES,
+                queued.message.tag,
+                peer_node_id.short_str()
+            );
+            self.log_queue_full(msg, LargestQueue::Any);
+            return Ok(());
+        }
+        queued.bytes = Some(QueuedBytes::charge(len, accounting));
+
+        trace!(target: LOG_TARGET, "Sending message {queued}");
+        let tag = queued.message.tag;
+        match sender.try_send(queued) {
             Ok(_) => {
                 trace!(target: LOG_TARGET, "Message ({tag}) dispatched to outbound handler");
                 Ok(())
             },
-            Err(err) => {
+            Err(TrySendError::Full(mut queued)) => {
+                #[cfg(feature = "metrics")]
+                metrics::outbound_dropped("queue_full").inc();
+                queued.message.reply_fail(SendFailReason::QueueFull);
+                let msg = format!(
+                    "Outbound queue for peer '{}' is full ({} messages); failing message ({})",
+                    peer_node_id.short_str(),
+                    OUTBOUND_QUEUE_CAPACITY,
+                    tag
+                );
+                self.log_queue_full(msg, LargestQueue::NotNamed);
+                Ok(())
+            },
+            Err(err @ TrySendError::Closed(_)) => {
                 debug!(
                     target: LOG_TARGET,
                     "Failed to send message on channel because '{err:?}'"
@@ -520,14 +765,122 @@ impl MessagingProtocol {
         }
     }
 
+    /// Logs a message that failed because an outbound queue or byte budget was full, at `warn!` at most once per
+    /// [`SHED_LOG_INTERVAL`] and at `debug!` otherwise. For a node-wide budget, the `warn!` also names the peer whose
+    /// queue holds the most bytes (among the queues that count against that budget), which is most likely the cause.
+    fn log_queue_full(&mut self, msg: String, largest_queue: LargestQueue) {
+        let now = time::Instant::now();
+        let should_warn = match self.last_queue_full_log {
+            Some(last) => now.saturating_duration_since(last) >= SHED_LOG_INTERVAL,
+            None => true,
+        };
+        if !should_warn {
+            debug!(target: LOG_TARGET, "{msg}");
+            return;
+        }
+        self.last_queue_full_log = Some(now);
+        if largest_queue == LargestQueue::NotNamed {
+            warn!(target: LOG_TARGET, "{msg}");
+            return;
+        }
+        // At most once per SHED_LOG_INTERVAL, so a scan of all queues is fine
+        let mut largest: Option<(&NodeId, usize)> = None;
+        for (node_id, queue) in &self.active_queues {
+            let (queued_bytes, established) = queue.accounting.snapshot();
+            if largest_queue == LargestQueue::Dialing && established {
+                continue;
+            }
+            if largest.is_none_or(|(_, most)| queued_bytes > most) {
+                largest = Some((node_id, queued_bytes));
+            }
+        }
+        match largest {
+            Some((node_id, queued_bytes)) => warn!(
+                target: LOG_TARGET,
+                "{msg}. The largest such queue is for peer '{}' with {} bytes",
+                node_id.short_str(),
+                queued_bytes
+            ),
+            None => warn!(target: LOG_TARGET, "{msg}"),
+        }
+    }
+
+    /// A sender for this actor's internal event channel, for tests that inject events such as protocol violations
+    #[cfg(test)]
+    pub(super) fn internal_event_sender(&self) -> mpsc::Sender<MessagingEvent> {
+        self.internal_messaging_event_tx.clone()
+    }
+
+    /// Waits for the next internal event, handles it as the running actor would, and returns it
+    #[cfg(test)]
+    pub(super) async fn handle_next_internal_event(&mut self) -> MessagingEvent {
+        let event = self
+            .internal_messaging_event_rx
+            .recv()
+            .await
+            .expect("internal event channel closed");
+        self.handle_internal_messaging_event(event.clone());
+        event
+    }
+
+    /// Waits for the next message on the retry queue and handles it as the running actor would
+    #[cfg(test)]
+    pub(super) async fn handle_next_retry(&mut self) {
+        let msg = self.retry_queue_rx.recv().await.expect("retry queue closed");
+        self.handle_retry_queue_messages(msg).unwrap();
+    }
+
+    /// The number of messages waiting in the outbound queue for `peer_node_id`, if it has one
+    #[cfg(test)]
+    pub(super) fn outbound_queue_len(&self, peer_node_id: &NodeId) -> Option<usize> {
+        self.active_queues
+            .get(peer_node_id)
+            .map(|queue| queue.sender.max_capacity().saturating_sub(queue.sender.capacity()))
+    }
+
+    /// The body bytes charged to the current outbound queue for `peer_node_id`, if it has one
+    #[cfg(test)]
+    pub(super) fn outbound_queue_bytes(&self, peer_node_id: &NodeId) -> Option<usize> {
+        self.active_queues
+            .get(peer_node_id)
+            .map(|queue| queue.accounting.snapshot().0)
+    }
+
+    /// The body bytes charged across all outbound queues and the retry queue
+    #[cfg(test)]
+    pub(super) fn total_outbound_bytes(&self) -> usize {
+        self.total_queued_bytes.load(Ordering::SeqCst)
+    }
+
+    /// The body bytes charged to queues whose session has not established a substream yet
+    #[cfg(test)]
+    pub(super) fn dialing_outbound_bytes(&self) -> usize {
+        self.dialing_queued_bytes.load(Ordering::SeqCst)
+    }
+
+    /// Whether the session of the current outbound queue for `peer_node_id` has established a substream
+    #[cfg(test)]
+    pub(super) fn outbound_queue_established(&self, peer_node_id: &NodeId) -> Option<bool> {
+        self.active_queues
+            .get(peer_node_id)
+            .map(|queue| queue.accounting.snapshot().1)
+    }
+
+    /// Bans `peer_node_id` as a protocol violation would
+    #[cfg(test)]
+    pub(super) fn ban_peer_for_test(&mut self, peer_node_id: NodeId) {
+        self.ban_peer(peer_node_id, "test");
+    }
+
     fn spawn_outbound_handler(
         connectivity: ConnectivityRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
-        retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
+        retry_queue_tx: mpsc::Sender<QueuedOutboundMessage>,
         protocol_id: ProtocolId,
-    ) -> mpsc::UnboundedSender<OutboundMessage> {
-        let (msg_tx, msg_rx) = mpsc::unbounded_channel();
+        queue_accounting: Arc<QueueAccounting>,
+    ) -> mpsc::Sender<QueuedOutboundMessage> {
+        let (msg_tx, msg_rx) = mpsc::channel(OUTBOUND_QUEUE_CAPACITY);
         let outbound_messaging = OutboundMessaging::new(
             connectivity,
             events_tx,
@@ -535,6 +888,7 @@ impl MessagingProtocol {
             retry_queue_tx,
             peer_node_id,
             protocol_id,
+            queue_accounting,
         );
         tokio::spawn(outbound_messaging.run());
         msg_tx
@@ -761,7 +1115,12 @@ impl MessagingProtocol {
         Ok(())
     }
 
-    async fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {
+    /// Tears down everything this actor holds for the peer and asks the ConnectivityManager to ban it. The ban
+    /// request is sent from a spawned task: it can wait up to the requester's timeout (10s) when the
+    /// ConnectivityManager's request buffer is full, and awaiting it here would stall this actor - and every other
+    /// peer's messaging - once per banned peer, which a stream of fresh identities sending oversized frames could
+    /// repeat indefinitely.
+    fn ban_peer<T: Display>(&mut self, peer_node_id: NodeId, reason: T) {
         warn!(
             target: LOG_TARGET,
             "Banning peer '{}' because it violated the messaging protocol: {}", peer_node_id.short_str(), reason
@@ -782,16 +1141,19 @@ impl MessagingProtocol {
         drop(self.active_queues.remove(&peer_node_id));
         match self.ban_duration {
             Some(ban_duration) => {
-                if let Err(err) = self
-                    .connectivity
-                    .ban_peer_until(peer_node_id.clone(), ban_duration, reason.to_string())
-                    .await
-                {
-                    error!(
-                        target: LOG_TARGET,
-                        "Failed to ban peer '{}' because '{:?}'", peer_node_id.short_str(), err
-                    );
-                }
+                let mut connectivity = self.connectivity.clone();
+                let reason = reason.to_string();
+                tokio::spawn(async move {
+                    if let Err(err) = connectivity
+                        .ban_peer_until(peer_node_id.clone(), ban_duration, reason)
+                        .await
+                    {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to ban peer '{}' because '{:?}'", peer_node_id.short_str(), err
+                        );
+                    }
+                });
             },
             None => {
                 warn!(

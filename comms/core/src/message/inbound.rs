@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use bytes::Bytes;
+use tokio::sync::OwnedSemaphorePermit;
 
 use super::MessageTag;
 use crate::peer_manager::NodeId;
@@ -33,6 +36,12 @@ pub struct InboundMessage {
     pub source_peer: NodeId,
     /// The raw message envelope
     pub body: Bytes,
+    /// One of the in-flight slots of the messaging session that received this message. The session reads no further
+    /// frames while all of its slots are held. The slot is held until the consumer has finished processing the message
+    /// and the last clone of it is dropped - not when the message is taken off the inbound channel. The DHT
+    /// deserializer destructures the message with `..`, so the slot stays in the partly moved message until the whole
+    /// DHT pipeline call for it has finished, which caps each session at a few concurrent pipeline tasks.
+    inflight_permit: Option<Arc<OwnedSemaphorePermit>>,
 }
 
 impl InboundMessage {
@@ -42,6 +51,14 @@ impl InboundMessage {
             tag: MessageTag::new(),
             source_peer,
             body,
+            inflight_permit: None,
         }
+    }
+
+    /// Attaches an in-flight slot of the receiving messaging session, which is held until this message (and every
+    /// clone of it) is dropped, i.e. until the consumer has finished processing it
+    pub(crate) fn with_inflight_permit(mut self, permit: OwnedSemaphorePermit) -> Self {
+        self.inflight_permit = Some(Arc::new(permit));
+        self
     }
 }

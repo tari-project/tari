@@ -846,7 +846,9 @@ impl PeerDatabaseSql {
         })
     }
 
-    /// Set the banned metadata for a peer, returning 'Some(node_id)' if successful, 'None' otherwise
+    /// Set the banned metadata for a peer, returning 'Some(node_id)' if successful, 'None' otherwise. A ban never
+    /// shortens an existing one: if the peer is already banned until later than this ban would last, the existing ban
+    /// (and its reason) is kept. Use `reset_banned` to lift a ban.
     pub fn set_banned(
         &self,
         node_id: &NodeId,
@@ -859,6 +861,19 @@ impl PeerDatabaseSql {
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let banned_until =
                 clamp_to_max_stored_datetime(safe_future_datetime_from_duration(ban_duration).naive_utc());
+
+            let existing = peers::table
+                .filter(peers::node_id.eq(node_id.to_string()))
+                .select(peers::banned_until)
+                .first::<Option<NaiveDateTime>>(conn)
+                .optional()?;
+            let Some(existing) = existing else {
+                return Ok(None);
+            };
+            // An indefinite ban is stored as the latest representable time, so it is never replaced
+            if existing.is_some_and(|existing| existing >= banned_until) {
+                return Ok(Some(node_id.clone()));
+            }
 
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_string())))
                 .set((
@@ -879,6 +894,8 @@ impl PeerDatabaseSql {
     /// Peers are often banned during the connection handshake, before they have been stored, and a ban that only
     /// updated an existing row was lost for them. The row added here has no addresses and no features, so it is never a
     /// dial candidate; it exists only to carry the ban. Such rows are capped separately by garbage collection.
+    ///
+    /// As with [`Self::set_banned`], a stored ban that ends later is kept, with its reason.
     pub fn ban_or_add_banned_peer(
         &self,
         public_key: &CommsPublicKey,
@@ -892,6 +909,14 @@ impl PeerDatabaseSql {
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let banned_until =
                 clamp_to_max_stored_datetime(safe_future_datetime_from_duration(ban_duration).naive_utc());
+            let existing = peers::table
+                .filter(peers::node_id.eq(node_id.to_hex()))
+                .select(peers::banned_until)
+                .first::<Option<NaiveDateTime>>(conn)
+                .optional()?;
+            if existing.flatten().is_some_and(|existing| existing >= banned_until) {
+                return Ok(node_id.clone());
+            }
             let affected = diesel::update(peers::table.filter(peers::node_id.eq(node_id.to_hex())))
                 .set((
                     peers::banned_until.eq(banned_until),
@@ -2849,6 +2874,118 @@ mod tests {
         let peer = peers_db.get_peer_by_node_id(&node_peers[5].node_id).unwrap().unwrap();
         assert_eq!(peer.metadata.get(&111).unwrap(), &[1, 2, 3]);
         assert_eq!(peer.metadata.get(&222).unwrap(), &[4, 5, 6]);
+    }
+
+    #[test]
+    fn a_shorter_ban_does_not_shorten_a_longer_one() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+        let banned_until = |peers_db: &PeerDatabaseSql| {
+            peers_db
+                .get_peer_by_node_id(&peer.node_id)
+                .unwrap()
+                .unwrap()
+                .banned_until
+        };
+
+        // A long ban, then a short one: the long one stays, with its reason
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(24 * 60 * 60), "long".to_string())
+            .unwrap()
+            .unwrap();
+        let long_ban = banned_until(&peers_db).unwrap();
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(60), "short".to_string())
+            .unwrap()
+            .unwrap();
+        assert_eq!(banned_until(&peers_db), Some(long_ban));
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert_eq!(stored.banned_reason, "long");
+
+        // A longer ban does extend it
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(48 * 60 * 60), "longer".to_string())
+            .unwrap()
+            .unwrap();
+        assert!(banned_until(&peers_db).unwrap() > long_ban);
+
+        // An indefinite ban is never shortened either
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(u64::MAX), "forever".to_string())
+            .unwrap()
+            .unwrap();
+        let indefinite = banned_until(&peers_db).unwrap();
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(60), "short".to_string())
+            .unwrap()
+            .unwrap();
+        assert_eq!(banned_until(&peers_db), Some(indefinite));
+
+        // Unbanning still clears it, and a new short ban then applies
+        peers_db.reset_banned(&peer.node_id).unwrap().unwrap();
+        assert_eq!(banned_until(&peers_db), None);
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(60), "short".to_string())
+            .unwrap()
+            .unwrap();
+        assert!(banned_until(&peers_db).unwrap() < long_ban);
+
+        // A peer that is not stored is reported as such
+        let unknown = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        assert!(
+            peers_db
+                .set_banned(&unknown.node_id, Duration::from_secs(60), "short".to_string())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_handshake_ban_does_not_shorten_a_longer_one() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+        let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        peers_db.add_or_update_peer(peer.clone()).unwrap();
+        peers_db
+            .set_banned(&peer.node_id, Duration::from_secs(24 * 60 * 60), "long".to_string())
+            .unwrap()
+            .unwrap();
+        let long_ban = peers_db
+            .get_peer_by_node_id(&peer.node_id)
+            .unwrap()
+            .unwrap()
+            .banned_until
+            .unwrap();
+
+        // A shorter handshake ban keeps the long one, with its reason
+        peers_db
+            .ban_or_add_banned_peer(&peer.public_key, Duration::from_secs(60), "short".to_string())
+            .unwrap();
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert_eq!(stored.banned_until, Some(long_ban));
+        assert_eq!(stored.banned_reason, "long");
+
+        // A longer one extends it
+        peers_db
+            .ban_or_add_banned_peer(
+                &peer.public_key,
+                Duration::from_secs(48 * 60 * 60),
+                "longer".to_string(),
+            )
+            .unwrap();
+        let stored = peers_db.get_peer_by_node_id(&peer.node_id).unwrap().unwrap();
+        assert!(stored.banned_until.unwrap() > long_ban);
+        assert_eq!(stored.banned_reason, "longer");
     }
 
     #[test]

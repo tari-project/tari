@@ -655,9 +655,17 @@ async fn select_connections_is_served_while_the_peer_database_is_slow() {
          saturated; it should shed the peer lookup, not park on it"
     );
 
+    // The dial is to a peer we are already connected to, so it is answered from the pool without asking the peer
+    // database - well within `PEER_LOOKUP_TIMEOUT`, while the database is still locked
+    let dialed = tokio::time::timeout(Duration::from_secs(2), dial)
+        .await
+        .expect("a dial to a connected peer waited on the slow peer database")
+        .unwrap()
+        .expect("a dial to a connected peer failed while the peer database was slow");
+    assert_eq!(dialed.peer_node_id(), &peers[0].node_id);
+
     lock_holder.batch_execute("COMMIT;").unwrap();
     drop(lock_holder);
-    let _result = dial.await.unwrap();
     for writer in writers {
         // Under this much artificial contention an individual write may legitimately give up with
         // "database is locked". What matters is that none of them took the actor down with them.

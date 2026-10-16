@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use once_cell::sync::Lazy;
-use tari_metrics::{IntCounter, IntGauge};
+use tari_metrics::{IntCounter, IntCounterVec, IntGauge};
 
 pub fn num_sessions() -> IntGauge {
     static METER: Lazy<IntGauge> = Lazy::new(|| {
@@ -64,4 +64,35 @@ pub fn error_count() -> IntCounter {
         Lazy::new(|| tari_metrics::register_int_counter("comms::messaging::errors", "The number of errors").unwrap());
 
     METER.clone()
+}
+
+/// Outbound messages that failed without being sent, by reason:
+/// - `queue_full`: the peer's queue held the most messages it may
+/// - `queue_bytes_full`: the message would take the peer's queue over its byte budget
+/// - `total_bytes_full`: the message would take all outbound queues over the node-wide byte budget
+/// - `dialing_bytes_full`: the message would take the queues still dialing over their byte budget
+/// - `dialing_queue_bytes_full`: the message would take a queue that is still dialing over its own byte budget
+/// - `too_large`: the message is larger than a frame
+/// - `retry_queue_full`: the message could not be put on the retry queue
+/// - `max_retries`: the message was already retried `MAX_SEND_RETRIES` times, each time because the peer closed or
+///   reset the substream
+/// - `max_retries_connection_lost`: the message was already retried `MAX_SEND_RETRIES` times, at least once because the
+///   connection to the peer went away
+/// - `expired`: the message was past its deadline
+/// - `send_timeout`: a write to the peer timed out (the peer stopped reading)
+/// - `queued_behind_timeout`: the message was queued behind one whose write timed out, and was never attempted
+///
+/// There is deliberately no peer label (cardinality); the `warn!` logged for a full node-wide or dialing budget names
+/// the peer holding the most bytes.
+pub fn outbound_dropped(reason: &str) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::messaging::outbound_dropped_total",
+            "The number of outbound messages that failed without being sent, by reason",
+            &["reason"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[reason])
 }

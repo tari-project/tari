@@ -64,6 +64,21 @@ use crate::{
     transports::MemoryTransport,
 };
 
+/// Receives `count` messages and keeps only their bodies. Each message is dropped as soon as it arrives, which gives
+/// the sending session its in-flight slot back: holding more than a few messages from one peer would stop that peer's
+/// session from reading further.
+async fn collect_bodies(inbound_rx: &mut mpsc::Receiver<InboundMessage>, count: usize) -> Vec<Bytes> {
+    let mut bodies = Vec::with_capacity(count);
+    while bodies.len() < count {
+        let msg = time::timeout(Duration::from_secs(10), inbound_rx.recv())
+            .await
+            .unwrap_or_else(|_| panic!("Timeout before {count} message(s) arrived. Got {}.", bodies.len()))
+            .expect("inbound channel closed");
+        bodies.push(msg.body);
+    }
+    bodies
+}
+
 async fn spawn_node(
     protocols: Protocols<Substream>,
     shutdown_sig: ShutdownSignal,
@@ -287,7 +302,7 @@ async fn peer_to_peer_messaging() {
         outbound_tx1.send(outbound_msg).unwrap();
     }
 
-    let messages1_to_2 = collect_recv!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages1_to_2 = collect_bodies(&mut inbound_rx2, NUM_MSGS).await;
     let send_results = collect_stream!(replies, take = NUM_MSGS, timeout = Duration::from_secs(10));
     send_results.into_iter().for_each(|r| {
         r.unwrap().unwrap();
@@ -307,14 +322,14 @@ async fn peer_to_peer_messaging() {
         outbound_tx2.send(outbound_msg).unwrap();
     }
 
-    let messages2_to_1 = collect_recv!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages2_to_1 = collect_bodies(&mut inbound_rx1, NUM_MSGS).await;
 
     // Check that we got all the messages
-    let check_messages = |msgs: Vec<InboundMessage>| {
-        for (i, msg) in msgs.iter().enumerate() {
+    let check_messages = |bodies: Vec<Bytes>| {
+        for (i, body) in bodies.iter().enumerate() {
             let expected_msg_prefix = format!("#{i:0>3}");
             // 0..4 zero padded prefix bytes e.g. #003, #023, #100
-            assert_eq!(&msg.body[0..4], expected_msg_prefix.as_bytes());
+            assert_eq!(&body[0..4], expected_msg_prefix.as_bytes());
         }
     };
     assert_eq!(messages1_to_2.len(), NUM_MSGS);
@@ -417,11 +432,11 @@ async fn peer_to_peer_messaging_simultaneous() {
     handle2.await.unwrap();
 
     // Tasks are finished, let's see if all the messages made it though
-    let messages1_to_2 = collect_recv!(inbound_rx2, take = NUM_MSGS, timeout = Duration::from_secs(10));
-    let messages2_to_1 = collect_recv!(inbound_rx1, take = NUM_MSGS, timeout = Duration::from_secs(10));
+    let messages1_to_2 = collect_bodies(&mut inbound_rx2, NUM_MSGS).await;
+    let messages2_to_1 = collect_bodies(&mut inbound_rx1, NUM_MSGS).await;
 
-    assert!(has_unique_elements(messages1_to_2.into_iter().map(|m| m.body)));
-    assert!(has_unique_elements(messages2_to_1.into_iter().map(|m| m.body)));
+    assert!(has_unique_elements(messages1_to_2));
+    assert!(has_unique_elements(messages2_to_1));
 
     drop(o1);
     drop(o2);
