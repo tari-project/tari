@@ -51,7 +51,8 @@ use crate::transaction_components::{
 /// a node can decode at all and is a flag-day (hard) fork.
 pub(crate) const MAX_COVENANT_BYTES: usize = 4096;
 
-/// The maximum number of tokens in a covenant.
+/// The maximum number of tokens in a covenant, counted across all nesting levels: an `ARG_COVENANT` token counts at
+/// its own level, and every token inside it counts as well.
 ///
 /// The bound is consensus critical: it is applied at decode time, so changing it changes which blocks and transactions
 /// a node can decode at all and is a flag-day (hard) fork.
@@ -432,6 +433,89 @@ mod test {
                 covenant
             );
         }
+    }
+
+    /// Builds a covenant of `identity()` tokens, one entry of `levels` per nesting level (outermost first). Every
+    /// level but the innermost ends in an `ARG_COVENANT` token holding the next level.
+    fn identity_levels(levels: &[usize]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        let mut innermost = true;
+        for count in levels.iter().rev() {
+            let mut level = vec![byte_codes::FILTER_IDENTITY; *count];
+            if !innermost {
+                level.push(byte_codes::ARG_COVENANT);
+                level.write_varint(buf.len()).unwrap();
+                level.extend_from_slice(&buf);
+            }
+            innermost = false;
+            buf = level;
+        }
+        buf
+    }
+
+    fn borsh_field(bytes: &[u8]) -> Vec<u8> {
+        let mut field = Vec::new();
+        field.write_varint(bytes.len()).unwrap();
+        field.extend_from_slice(bytes);
+        field
+    }
+
+    #[test]
+    fn covenant_total_token_limit_boundary() {
+        // 63 + 1 (ARG_COVENANT) + 64 = 128 tokens in total
+        let at_limit = identity_levels(&[63, 64]);
+        let covenant = Covenant::from_bytes(&mut at_limit.as_slice()).unwrap();
+        assert_eq!(covenant.num_tokens(), 64);
+        assert_eq!(covenant.to_bytes(), at_limit);
+        let mut buf = Vec::new();
+        covenant.serialize(&mut buf).unwrap();
+        assert_eq!(Covenant::deserialize(&mut buf.as_slice()).unwrap().to_bytes(), at_limit);
+
+        // Spread over three levels: 40 + 1 + 40 + 1 + 46 = 128
+        let three_levels = identity_levels(&[40, 40, 46]);
+        assert_eq!(
+            Covenant::from_bytes(&mut three_levels.as_slice()).unwrap().to_bytes(),
+            three_levels
+        );
+
+        for over_limit in [identity_levels(&[63, 65]), identity_levels(&[40, 40, 47])] {
+            let err = Covenant::from_bytes(&mut over_limit.as_slice()).unwrap_err();
+            assert!(
+                matches!(err, CovenantDecodeError::ExceededMaxTokens {
+                    max: MAX_COVENANT_TOKENS
+                }),
+                "{err}"
+            );
+        }
+
+        let single_level = identity_levels(&[MAX_COVENANT_TOKENS]);
+        assert_eq!(
+            Covenant::from_bytes(&mut single_level.as_slice()).unwrap().num_tokens(),
+            MAX_COVENANT_TOKENS
+        );
+    }
+
+    #[test]
+    fn exceeds_covenant_token_limit_detects_only_the_token_limit() {
+        use crate::transaction_components::covenants::exceeds_covenant_token_limit;
+
+        assert!(exceeds_covenant_token_limit(&borsh_field(&identity_levels(&[63, 65]))));
+
+        assert!(!exceeds_covenant_token_limit(&borsh_field(&[])));
+        assert!(!exceeds_covenant_token_limit(&borsh_field(&identity_levels(&[63, 64]))));
+        assert!(!exceeds_covenant_token_limit(&borsh_field(&[0xff])));
+        assert!(!exceeds_covenant_token_limit(&borsh_field(&vec![
+            byte_codes::FILTER_IDENTITY;
+            4097
+        ])));
+        assert!(!exceeds_covenant_token_limit(&borsh_field(&[
+            byte_codes::ARG_COVENANT,
+            0x81,
+            0x00,
+            byte_codes::FILTER_IDENTITY
+        ])));
+        // A malformed length prefix
+        assert!(!exceeds_covenant_token_limit(&[0xff]));
     }
 
     #[test]

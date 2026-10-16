@@ -57,8 +57,24 @@ mod macros;
 #[cfg(test)]
 mod test;
 
+use borsh::BorshDeserialize;
 use tari_crypto::hash_domain;
+use tari_max_size::EncodedBytes;
+
+use self::decoder::CovenantDecodeError;
 
 hash_domain!(BaseLayerCovenantsDomain, "com.tari.base_layer.covenants", 1);
 
 pub(crate) const COVENANTS_FIELD_HASHER_LABEL: &str = "fields";
+
+/// Returns true if `borsh_field` (a borsh encoded covenant) holds a covenant with more tokens than allowed. Any other
+/// decode failure returns false.
+pub fn exceeds_covenant_token_limit(borsh_field: &[u8]) -> bool {
+    let Ok(raw) = EncodedBytes::<{ covenant::MAX_COVENANT_BYTES }>::deserialize(&mut &*borsh_field) else {
+        return false;
+    };
+    matches!(
+        Covenant::from_bytes(&mut raw.as_bytes()),
+        Err(CovenantDecodeError::ExceededMaxTokens { .. })
+    )
+}

@@ -12,7 +12,7 @@ use crate::transaction_components::covenants::{
 };
 
 /// Validates `bytes` as a covenant nested `depth` levels deep, appends its canonical encoding to `out`, and charges
-/// every token of this level against `remaining`. Returns the number of top-level tokens.
+/// every token (all levels) against `remaining`. Returns the number of top-level tokens.
 pub(super) fn scan(
     bytes: &[u8],
     depth: usize,
@@ -52,12 +52,7 @@ pub(super) fn scan(
             })?;
             reader = rest;
             let mut nested = Vec::with_capacity(len);
-            scan(
-                nested_bytes,
-                depth.saturating_add(1),
-                &mut nested,
-                &mut MAX_COVENANT_TOKENS.clone(),
-            )?;
+            scan(nested_bytes, depth.saturating_add(1), &mut nested, remaining)?;
             out.push(ARG_COVENANT);
             out.write_varint(nested.len())?;
             out.extend_from_slice(&nested);
