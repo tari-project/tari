@@ -26,7 +26,7 @@ use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::TariAddress,
-    types::{CompressedPublicKey, PrivateKey},
+    types::{CompressedPublicKey, PrivateKey, RangeProof},
 };
 use tari_node_components::blocks::{Block, BlockValidationError};
 use tari_script::{
@@ -776,6 +776,36 @@ fn with_mmr_roots(blockchain: &TestBlockchain, block: &Block) -> Block {
     block.header.validator_node_mr = mmr_roots.validator_node_mr;
     block.header.validator_node_size = mmr_roots.validator_node_size;
     block
+}
+
+#[tokio::test]
+async fn it_rejects_a_block_whose_revealed_value_coinbase_carries_a_proof() {
+    // Range proof verification is bypassed, to show the presence rule still runs
+    let (blockchain, validator) = setup(true);
+    let mut blockchain = blockchain.with_coinbase_range_proof_type(RangeProofType::RevealedValue);
+    let (chain_block, _) = blockchain.create_next_tip(block_spec!("A"));
+    let block = with_mmr_roots(&blockchain, chain_block.block());
+    let txn = blockchain.db().db_read_access().unwrap();
+    validator.validate_body(&*txn, block.clone()).unwrap();
+
+    let (header, inputs, mut outputs, kernels) = block.dissolve();
+    let coinbase = outputs.iter_mut().find(|o| o.is_coinbase()).unwrap();
+    assert_eq!(coinbase.features.range_proof_type, RangeProofType::RevealedValue);
+    assert!(coinbase.proof.is_none());
+    coinbase.proof = Some(RangeProof::from(vec![1; 32]));
+    let block = Block::new(header, AggregateBody::new_sorted_unchecked(inputs, outputs, kernels));
+    let block = with_mmr_roots(&blockchain, &block);
+    let err = validator.validate_body(&*txn, block).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::RangeProofPresenceMismatch {
+                range_proof_type: RangeProofType::RevealedValue,
+                proof_present: true
+            })
+        ),
+        "{err:?}"
+    );
 }
 
 #[tokio::test]

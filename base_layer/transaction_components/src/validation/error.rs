@@ -86,6 +86,13 @@ pub enum AggregatedBodyValidationError {
     RangeProofTypeNotPermitted { range_proof_type: RangeProofType },
     #[error("Output type '{output_type}' is not matched to any range proof type")]
     OutputTypeNotMatchedToRangeProofType { output_type: OutputType },
+    #[error(
+        "Range proof presence does not match range proof type '{range_proof_type}' (proof present: {proof_present})"
+    )]
+    RangeProofPresenceMismatch {
+        range_proof_type: RangeProofType,
+        proof_present: bool,
+    },
     #[error("Validator registration has invalid minimum amount {actual}, must be at least {min}")]
     ValidatorNodeRegistrationMinDepositAmount { min: MicroMinotari, actual: MicroMinotari },
     #[error("Validator registration has invalid maturity {actual}, must be at least {min}")]

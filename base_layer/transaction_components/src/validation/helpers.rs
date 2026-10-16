@@ -201,6 +201,18 @@ pub fn check_permitted_range_proof_types(
     Ok(())
 }
 
+/// A RevealedValue output must carry no range proof and a BulletProofPlus output must carry one.
+pub fn check_range_proof_presence(output: &TransactionOutput) -> Result<(), AggregatedBodyValidationError> {
+    if output.check_range_proof_presence().is_err() {
+        return Err(AggregatedBodyValidationError::RangeProofPresenceMismatch {
+            range_proof_type: output.features.range_proof_type,
+            proof_present: output.proof.is_some(),
+        });
+    }
+
+    Ok(())
+}
+
 pub fn validate_input_version(
     consensus_constants: &ConsensusConstants,
     input: &TransactionInput,

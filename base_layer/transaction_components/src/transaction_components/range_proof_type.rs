@@ -45,7 +45,7 @@ pub enum RangeProofType {
     /// Range proof is a BulletProofPlus
     #[default]
     BulletProofPlus = 0,
-    /// Range proof is a revealed value
+    /// Range proof is a revealed value. Outputs of this type carry no range proof.
     RevealedValue = 1,
 }
 
