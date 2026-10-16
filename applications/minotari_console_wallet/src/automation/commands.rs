@@ -24,7 +24,7 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     fs::{self, File},
-    io::{self, BufRead, BufReader, IsTerminal, LineWriter, Write},
+    io::{self, BufRead, BufReader, IsTerminal, LineWriter, Read, Write},
     path::{Path, PathBuf},
     str::FromStr,
     time::{Duration, Instant},
@@ -659,6 +659,42 @@ pub async fn monitor_transactions(
     }
 
     results
+}
+
+/// Largest offline-signing payload file that is read.
+const MAX_PAYLOAD_FILE_SIZE: u64 = 10_000_000; // 10MB limit
+
+/// Reads an offline-signing payload file. Only regular files are read, and never more than the size limit, so a
+/// device or pipe in place of the file cannot stall the command or exhaust memory.
+fn read_payload_file(path: &Path) -> Result<String, CommandError> {
+    let read_error = |err| CommandError::FileReadError {
+        file_path: path.to_path_buf(),
+        err,
+    };
+    let metadata = fs::metadata(path).map_err(read_error)?;
+    if !metadata.is_file() {
+        return Err(CommandError::InvalidArgument(
+            "Input file is not a regular file".to_string(),
+        ));
+    }
+    if metadata.len() > MAX_PAYLOAD_FILE_SIZE {
+        return Err(CommandError::InvalidArgument("Input file too large".to_string()));
+    }
+    // Check the opened handle too, in case the path changed after the check above
+    let file = File::open(path).map_err(read_error)?;
+    if !file.metadata().map_err(read_error)?.is_file() {
+        return Err(CommandError::InvalidArgument(
+            "Input file is not a regular file".to_string(),
+        ));
+    }
+    let mut data = String::new();
+    file.take(MAX_PAYLOAD_FILE_SIZE.saturating_add(1))
+        .read_to_string(&mut data)
+        .map_err(read_error)?;
+    if u64::try_from(data.len()).unwrap_or(u64::MAX) > MAX_PAYLOAD_FILE_SIZE {
+        return Err(CommandError::InvalidArgument("Input file too large".to_string()));
+    }
+    Ok(data)
 }
 
 /// Writes the summary of an offline payload and returns it confirmed, or an error if it was not confirmed.
@@ -2814,19 +2850,7 @@ pub async fn command_runner(
             },
 
             SignOneSidedTransaction(args) => {
-                let metadata = fs::metadata(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file.clone(),
-                    err,
-                })?;
-                let max_size = 10_000_000; // 10MB limit
-                if metadata.len() > max_size {
-                    return Err(CommandError::InvalidArgument("Input file too large".to_string()));
-                }
-
-                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file,
-                    err,
-                })?;
+                let data = read_payload_file(&args.input_file)?;
                 let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
@@ -2865,19 +2889,7 @@ pub async fn command_runner(
             },
 
             SignOneSidedDepositMultisigTransaction(args) => {
-                let metadata = fs::metadata(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file.clone(),
-                    err,
-                })?;
-                let max_size = 10_000_000; // 10MB limit
-                if metadata.len() > max_size {
-                    return Err(CommandError::InvalidArgument("Input file too large".to_string()));
-                }
-
-                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file,
-                    err,
-                })?;
+                let data = read_payload_file(&args.input_file)?;
                 let request = PrepareDepositMultisigTransactionResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
@@ -2916,19 +2928,7 @@ pub async fn command_runner(
             },
 
             SignOneSidedWithdrawMultisigTransaction(args) => {
-                let metadata = fs::metadata(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file.clone(),
-                    err,
-                })?;
-                let max_size = 10_000_000; // 10MB limit
-                if metadata.len() > max_size {
-                    return Err(CommandError::InvalidArgument("Input file too large".to_string()));
-                }
-
-                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file,
-                    err,
-                })?;
+                let data = read_payload_file(&args.input_file)?;
                 let request = PrepareWithdrawMultisigTransactionResult::from_json(&data)?;
                 let tx_id = request.tx_id;
                 let mode = offline_confirmation_mode(non_interactive_mode);
@@ -2966,10 +2966,7 @@ pub async fn command_runner(
                 }
             },
             BroadcastSignedOneSidedTransaction(args) => {
-                let data = fs::read_to_string(&args.input_file).map_err(|err| CommandError::FileReadError {
-                    file_path: args.input_file,
-                    err,
-                })?;
+                let data = read_payload_file(&args.input_file)?;
                 let request = SignedOneSidedTransactionResult::from_json(&data)?;
 
                 let mut wallet_transaction_service = transaction_service.clone();
@@ -4070,6 +4067,25 @@ mod test {
         assert!(written.trim_end().ends_with(
             "Signing without a prompt (non-interactive mode or no terminal). The summary above has been logged."
         ));
+    }
+
+    #[test]
+    fn payload_file_read_refuses_a_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = read_payload_file(dir.path()).unwrap_err();
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[test]
+    fn payload_file_read_refuses_an_oversized_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("payload.json");
+        fs::write(&path, vec![b' '; 10_000_001]).unwrap();
+        let err = read_payload_file(&path).unwrap_err();
+        assert!(err.to_string().contains("too large"), "{err}");
+
+        fs::write(&path, b"{}").unwrap();
+        assert_eq!(read_payload_file(&path).unwrap(), "{}");
     }
 
     #[test]

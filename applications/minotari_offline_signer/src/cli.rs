@@ -23,8 +23,8 @@
 use std::{
     ffi::OsString,
     fs,
-    io::{self, BufRead, IsTerminal, Write},
-    path::PathBuf,
+    io::{self, BufRead, IsTerminal, Read, Write},
+    path::{Path, PathBuf},
     str::FromStr,
 };
 
@@ -298,6 +298,34 @@ fn sign_transaction(args: SignArgs) -> Result<()> {
     }
 }
 
+const MAX_FILE_SIZE: u64 = 10_000_000; // 10MB limit
+
+/// Reads the payload file. Only regular files are read, and never more than the size limit, so a device or pipe in
+/// place of the file cannot stall the signer or exhaust memory.
+fn read_input_file(path: &Path) -> Result<String> {
+    let context = || format!("Failed to read input file: {:?}", path);
+    let metadata = fs::metadata(path).with_context(context)?;
+    if !metadata.is_file() {
+        return Err(anyhow!("Input file is not a regular file: {:?}", path));
+    }
+    if metadata.len() > MAX_FILE_SIZE {
+        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
+    }
+    // Check the opened handle too, in case the path changed after the check above
+    let file = fs::File::open(path).with_context(context)?;
+    if !file.metadata().with_context(context)?.is_file() {
+        return Err(anyhow!("Input file is not a regular file: {:?}", path));
+    }
+    let mut data = String::new();
+    file.take(MAX_FILE_SIZE.saturating_add(1))
+        .read_to_string(&mut data)
+        .with_context(context)?;
+    if u64::try_from(data.len()).unwrap_or(u64::MAX) > MAX_FILE_SIZE {
+        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
+    }
+    Ok(data)
+}
+
 fn sign_transaction_with_io(
     args: SignArgs,
     mode: ConfirmationMode,
@@ -329,18 +357,8 @@ fn sign_transaction_with_io(
     // Make the process-wide network (used for signature domains) follow --network
     set_network_if_choice_valid(network).map_err(|e| anyhow!("Invalid network '{}': {}", args.network, e))?;
 
-    // Validate input file
-    let metadata =
-        fs::metadata(&args.input_file).with_context(|| format!("Failed to read input file: {:?}", args.input_file))?;
-
-    const MAX_FILE_SIZE: u64 = 10_000_000; // 10MB limit
-    if metadata.len() > MAX_FILE_SIZE {
-        return Err(anyhow!("Input file too large (max {} bytes)", MAX_FILE_SIZE));
-    }
-
     // Read and parse the input file
-    let data = fs::read_to_string(&args.input_file)
-        .with_context(|| format!("Failed to read input file: {:?}", args.input_file))?;
+    let data = read_input_file(&args.input_file)?;
 
     let request = PrepareOneSidedTransactionForSigningResult::from_json(&data)
         .map_err(|e| OfflineSignerError::ParseError(format!("Failed to parse transaction: {}", e)))?;
@@ -481,6 +499,22 @@ mod test {
         );
         let err = result.unwrap_err().to_string();
         assert!(err.contains("Aborted"), "{err}");
+    }
+
+    #[test]
+    fn input_file_read_refuses_a_directory() {
+        let err = read_input_file(&std::env::temp_dir()).unwrap_err().to_string();
+        assert!(err.contains("not a regular file"), "{err}");
+    }
+
+    #[test]
+    fn input_file_read_refuses_an_oversized_file() {
+        let path = std::env::temp_dir().join(format!("offline_signer_oversized_{}.json", std::process::id()));
+        fs::write(&path, vec![b' '; 10_000_001]).unwrap();
+        let result = read_input_file(&path);
+        fs::remove_file(&path).unwrap();
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("too large"), "{err}");
     }
 
     #[test]
