@@ -76,6 +76,8 @@ pub enum AggregatedBodyValidationError {
     SideChainFeatureNotPermitted { output_type: OutputType },
     #[error("Output type '{output_type}' requires side-chain feature data")]
     SideChainFeatureRequired { output_type: OutputType },
+    #[error("A burn claimable on a side chain must carry the Nop or the empty script")]
+    BurnScriptNotPermitted,
     #[error("Range proof type '{range_proof_type}' is not permitted")]
     RangeProofTypeNotPermitted { range_proof_type: RangeProofType },
     #[error("Output type '{output_type}' is not matched to any range proof type")]

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_script::TariScript;
+use tari_script::{Opcode, TariScript};
 
 use crate::{
     consensus::consensus_constants::ConsensusConstants,
@@ -132,6 +132,23 @@ pub fn check_sidechain_data_rules(output: &TransactionOutput) -> Result<(), Aggr
     };
     if !permitted {
         return Err(AggregatedBodyValidationError::SideChainFeatureNotPermitted { output_type });
+    }
+
+    Ok(())
+}
+
+/// A burn claimable on a side chain (one carrying `ConfidentialOutput` data) must carry the canonical script, `Nop`
+/// or the empty script. Neither chain ever runs a burn's script: the base layer never spends a burn output, and the
+/// side-chain claim is authorised by the claim key alone. Any other script would only suggest spending conditions
+/// that are never enforced, so the burn is refused before its funds are destroyed.
+pub fn check_burn_claim_script(output: &TransactionOutput) -> Result<(), AggregatedBodyValidationError> {
+    let is_claimable_burn = output.features.output_type == OutputType::Burn &&
+        matches!(
+            output.features.sidechain_feature.as_ref().map(|f| f.data()),
+            Some(SideChainFeatureData::ConfidentialOutput(_))
+        );
+    if is_claimable_burn && !matches!(output.script().as_slice(), [] | [Opcode::Nop]) {
+        return Err(AggregatedBodyValidationError::BurnScriptNotPermitted);
     }
 
     Ok(())
@@ -496,6 +513,64 @@ mod test {
                     output_type: OutputType::Standard
                 }
             ));
+        }
+    }
+
+    mod check_burn_claim_script {
+        use borsh::to_vec;
+        use tari_common_types::types::CompressedPublicKey;
+        use tari_script::script;
+
+        use super::*;
+        use crate::transaction_components::OutputFeatures;
+
+        fn burn(features: OutputFeatures, script: TariScript) -> TransactionOutput {
+            TransactionOutput {
+                features,
+                script,
+                ..Default::default()
+            }
+        }
+
+        fn claimable_burn(script: TariScript) -> TransactionOutput {
+            burn(
+                OutputFeatures::create_burn_confidential_output(CompressedPublicKey::default(), None),
+                script,
+            )
+        }
+
+        #[test]
+        fn it_accepts_the_canonical_scripts() {
+            let nop = script!(Nop).unwrap();
+            let empty = TariScript::new(vec![]).unwrap();
+            assert_eq!(to_vec(&nop).unwrap(), [0x01, 0x73]);
+            assert_eq!(to_vec(&empty).unwrap(), [0x00]);
+            check_burn_claim_script(&claimable_burn(nop)).unwrap();
+            check_burn_claim_script(&claimable_burn(empty)).unwrap();
+        }
+
+        #[test]
+        fn it_rejects_any_other_script_on_a_claimable_burn() {
+            for script in [
+                script!(PushPubKey(Box::default())).unwrap(),
+                script!(Nop Nop).unwrap(),
+                script!(Drop).unwrap(),
+            ] {
+                let err = check_burn_claim_script(&claimable_burn(script.clone())).unwrap_err();
+                assert!(
+                    matches!(err, AggregatedBodyValidationError::BurnScriptNotPermitted),
+                    "{script}: {err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn it_ignores_burns_without_a_claim_and_other_output_types() {
+            let script = script!(PushPubKey(Box::default())).unwrap();
+            check_burn_claim_script(&burn(OutputFeatures::create_burn_output(), script.clone())).unwrap();
+            let mut features = OutputFeatures::create_burn_confidential_output(CompressedPublicKey::default(), None);
+            features.output_type = OutputType::Standard;
+            check_burn_claim_script(&burn(features, script)).unwrap();
         }
     }
 }
