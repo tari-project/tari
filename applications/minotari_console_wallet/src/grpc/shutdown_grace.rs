@@ -266,4 +266,41 @@ mod test {
         }
         assert_eq!(Arc::strong_count(&held), 1, "service clones released");
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grpc_server_exits_on_sigterm() {
+        const GRACE: Duration = Duration::from_millis(200);
+        let held = Arc::new(());
+        let (started_tx, _started_rx) = mpsc::unbounded_channel();
+        let service = StallingService {
+            held: held.clone(),
+            started: started_tx,
+        };
+        let listener = bind_grpc_listener(([127, 0, 0, 1], 0).into()).unwrap();
+        let shutdown = Shutdown::new();
+        let handle = tokio::runtime::Handle::current();
+
+        crate::utils::signal_handler::spawn_signal_handler(shutdown.clone(), &handle);
+
+        let server = tokio::spawn(serve_with_shutdown_grace(
+            Server::builder().add_service(service),
+            listener,
+            shutdown.to_signal(),
+            GRACE,
+        ));
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        unsafe extern "C" {
+            fn raise(sig: std::ffi::c_int) -> std::ffi::c_int;
+        }
+
+        unsafe {
+            raise(15);
+        }
+
+        let res = tokio::time::timeout(Duration::from_secs(5), server).await;
+        assert!(res.is_ok(), "server exited promptly on SIGTERM");
+    }
 }
