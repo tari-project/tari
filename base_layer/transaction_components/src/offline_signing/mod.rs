@@ -1644,6 +1644,21 @@ mod test {
     }
 
     #[test]
+    fn payload_parse_error_is_rendered_escaped() {
+        use crate::offline_signing::models::{PrepareOneSidedTransactionForSigningResult, TransactionResult};
+
+        // An unknown enum variant: serde quotes the decoded string in its error
+        let json =
+            r#"{"info":{"recipients":[{"output_features":{"output_type":"x\u001b[2J\u202e"}}]},"version":"5.0.0"}"#;
+        let err = PrepareOneSidedTransactionForSigningResult::from_json(json)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("\\u{1b}[2J"), "{err}");
+        assert!(err.contains("\\u{202e}"), "{err}");
+        assert!(!err.chars().any(|c| c < ' ' || c == '\u{202e}'), "{err:?}");
+    }
+
+    #[test]
     fn sign_locked_requires_confirmed_payload() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
