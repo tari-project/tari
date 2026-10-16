@@ -137,6 +137,20 @@ impl ConfigOverrideProvider for CommonCliArgs {
     }
 }
 
+mod defaults {
+    use tari_common::dir_utils;
+
+    const DEFAULT_CONFIG: &str = "config/config.toml";
+
+    pub(super) fn base_path() -> String {
+        dir_utils::default_path("", None).to_string_lossy().to_string()
+    }
+
+    pub(super) fn config() -> String {
+        DEFAULT_CONFIG.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
