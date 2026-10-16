@@ -114,8 +114,9 @@ impl AggregateBodyInternalConsistencyValidator {
 
         let constants = self.consensus_manager.consensus_constants(height);
 
-        // Structural checks first. Everything below this point costs at least one signature
-        // verification per kernel or output, so the bound on how many of those there can be has to
+        // Structural checks first. Most checks below this point cost at least one signature
+        // verification per kernel or output (covenant evaluation does no crypto and is bounded by
+        // its own work limit), so the bound on how many of those there can be has to
         // be applied before any of it runs - otherwise a peer can spend a single oversized
         // `submit_transaction` to buy an unbounded amount of our CPU for a body we were always
         // going to reject. Neither of these does any crypto.
