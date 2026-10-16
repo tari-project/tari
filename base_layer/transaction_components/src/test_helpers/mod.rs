@@ -31,6 +31,7 @@ pub use test_helpers_functions::{
     create_consensus_constants,
     create_consensus_manager,
     create_random_signature_from_secret_key,
+    create_signature,
     create_test_input,
     create_test_kernel,
     create_transaction_with,

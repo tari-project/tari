@@ -93,6 +93,8 @@ pub enum ValidationError {
     ConsensusError(String),
     #[error("Duplicate kernel error: {0}")]
     DuplicateKernelError(String),
+    #[error("Kernel excess already exists in the chain: {0}")]
+    KernelExcessAlreadyInChain(String),
     #[error("Missing kernel error: {0}")]
     MissingKernelError(String),
     #[error("Header height mismatch error: {0}")]
@@ -192,6 +194,7 @@ impl ValidationError {
             err @ ValidationError::BadBlockFound { .. } |
             err @ ValidationError::ConsensusError(_) |
             err @ ValidationError::DuplicateKernelError(_) |
+            err @ ValidationError::KernelExcessAlreadyInChain(_) |
             err @ ValidationError::CovenantError(_) |
             err @ ValidationError::InvalidBlockchainVersion { .. } |
             err @ ValidationError::InvalidBurnError(_) |

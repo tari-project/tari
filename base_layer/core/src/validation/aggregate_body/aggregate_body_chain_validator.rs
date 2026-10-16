@@ -123,6 +123,7 @@ impl AggregateBodyChainLinkedValidator {
 
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
         validate_excess_sig_not_in_db(body, db)?;
+        validate_excess_not_in_db(body, db)?;
         validate_burn_commitment_not_in_db(body, db)?;
         Ok(())
     }
@@ -238,6 +239,19 @@ fn validate_excess_sig_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db:
             );
             return Err(ValidationError::DuplicateKernelError(msg));
         };
+    }
+    Ok(())
+}
+
+fn validate_excess_not_in_db<B: BlockchainBackend>(body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
+    for kernel in body.kernels() {
+        if let Some((_, header_hash)) = db.fetch_kernel_by_excess(&kernel.excess)? {
+            return Err(ValidationError::KernelExcessAlreadyInChain(format!(
+                "excess {} in block {}",
+                kernel.excess.to_hex(),
+                header_hash.to_hex()
+            )));
+        }
     }
     Ok(())
 }
@@ -584,18 +598,29 @@ fn check_validator_node_registration_spend<B: BlockchainBackend>(
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
     use tari_common_types::types::{CompressedCommitment, CompressedPublicKey, PrivateKey};
     use tari_crypto::keys::SecretKey;
-    use tari_transaction_components::transaction_components::{
-        KernelFeatures,
-        OutputFeatures,
-        TransactionKernel,
-        TransactionOutput,
-        ValidatorNodeSignature,
+    use tari_transaction_components::{
+        BanPeriod,
+        test_helpers::create_signature,
+        transaction_components::{
+            KernelFeatures,
+            OutputFeatures,
+            TransactionKernel,
+            TransactionOutput,
+            ValidatorNodeSignature,
+        },
     };
 
     use super::*;
-    use crate::test_helpers::blockchain::TempDatabase;
+    use crate::{
+        block_spec,
+        test_helpers::{
+            BlockSpec,
+            blockchain::{TempDatabase, TestBlockchain},
+        },
+    };
 
     const NETWORK: u8 = 0x10;
 
@@ -722,6 +747,43 @@ mod test {
         ]);
         let err = validate_burn_commitment_not_in_db(&body, &db).unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBurnError(_)));
+    }
+
+    #[tokio::test]
+    async fn chain_linked_validation_rejects_kernel_excess_already_in_chain() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let (block, _) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+        let mined_kernel = block.block().body.kernels().first().unwrap().clone();
+        let tip_header = block.header().clone();
+        let next_header = blockchain.create_next_tip(BlockSpec::new()).0.header().clone();
+        let validator = AggregateBodyChainLinkedValidator::new(rules);
+        let db = blockchain.db().db_read_access().unwrap();
+
+        let other_sig = create_signature(
+            PrivateKey::random(&mut rand::rng()),
+            0.into(),
+            0,
+            KernelFeatures::empty(),
+        );
+        let same_excess = TransactionKernel {
+            excess_sig: other_sig,
+            ..mined_kernel.clone()
+        };
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![same_excess]);
+        let err = validator
+            .validate_transaction_body(&body, &tip_header, &*db)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::KernelExcessAlreadyInChain(_)));
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        let err = validator.validate(&body, &next_header, &*db).unwrap_err();
+        assert!(matches!(err, ValidationError::KernelExcessAlreadyInChain(_)));
+
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![mined_kernel]);
+        let err = validator
+            .validate_transaction_body(&body, &tip_header, &*db)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
     }
 
     mod duplicated_inputs_outputs {
