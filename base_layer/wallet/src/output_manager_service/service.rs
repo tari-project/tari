@@ -1983,7 +1983,11 @@ where
         let mut must_select = Vec::new();
         if let UtxoSelectionFilter::SpecificOutputs { commitments } = &selection_criteria.filter {
             for co in commitments {
-                if let Some(u) = uo.iter().find(|u| u.wallet_output.commitment() == co) {
+                if let Some(u) = uo.iter().find(|u| u.wallet_output.commitment() == co) &&
+                    !must_select
+                        .iter()
+                        .any(|m: &DbWalletOutput| m.commitment == u.commitment)
+                {
                     must_select.push(u.clone());
                 }
             }
@@ -1991,7 +1995,11 @@ where
 
         if let UtxoSelectionFilter::MustInclude { commitments } = &selection_criteria.filter {
             for co in commitments {
-                if let Some(u) = uo.iter().find(|u| u.wallet_output.commitment() == co) {
+                if let Some(u) = uo.iter().find(|u| u.wallet_output.commitment() == co) &&
+                    !must_select
+                        .iter()
+                        .any(|m: &DbWalletOutput| m.commitment == u.commitment)
+                {
                     must_select.push(u.clone());
                 }
             }
@@ -2065,6 +2073,12 @@ where
             .map_err(|e| OutputManagerError::ServiceError(e.to_string()))?;
 
         if selection_result.is_none() {
+            let (dust_count, dust_total) = bnb.excluded_dust_summary();
+            debug!(
+                target: LOG_TARGET,
+                "no selection found; {dust_count} outputs totalling {dust_total} were at or below the per-input fee and \
+                 were not considered"
+            );
             return Err(OutputManagerError::NotEnoughFunds);
         }
         let selection = selection_result.expect("Selection should be valid here");
