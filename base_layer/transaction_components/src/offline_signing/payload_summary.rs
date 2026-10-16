@@ -764,11 +764,11 @@ pub fn present_payload_summary<P: OfflinePayload>(
         ConfirmationMode::NonInteractive => {
             writeln!(
                 out,
-                "No terminal: signing without a prompt. The summary above has been logged."
+                "Signing without a prompt (non-interactive mode or no terminal). The summary above has been logged."
             )?;
             info!(
                 target: LOG_TARGET,
-                "Signing offline payload {} without a prompt (no terminal):\n{}", summary.tx_id, summary
+                "Signing offline payload {} without a prompt (non-interactive mode or no terminal):\n{}", summary.tx_id, summary
             );
             true
         },
@@ -1451,8 +1451,8 @@ mod test {
         assert_eq!(
             written,
             format!(
-                "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nNo terminal: \
-                 signing without a prompt. The summary above has been logged.\n"
+                "\nThe following transaction is about to be signed with your spend key:\n\n{summary}\nSigning without \
+                 a prompt (non-interactive mode or no terminal). The summary above has been logged.\n"
             )
         );
     }

@@ -4067,11 +4067,9 @@ mod test {
         assert!(!written.contains('\u{1b}'), "{written}");
         let recap = written.find("---- Recap ----").expect("recap");
         assert!(written.find("\\u{1b}").unwrap() < recap, "{written}");
-        assert!(
-            written
-                .trim_end()
-                .ends_with("No terminal: signing without a prompt. The summary above has been logged.")
-        );
+        assert!(written.trim_end().ends_with(
+            "Signing without a prompt (non-interactive mode or no terminal). The summary above has been logged."
+        ));
     }
 
     #[test]
