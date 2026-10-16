@@ -499,6 +499,7 @@ mod test {
 
         use super::*;
         use crate::{
+            mempool::test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
             test_helpers::blockchain::{TestBlockchain, create_test_blockchain_db},
             validation::{TransactionValidator, ValidationError, transaction::TransactionFullValidator},
         };
@@ -616,27 +617,17 @@ mod test {
         }
 
         /// A transaction message whose output covenant field holds `covenant`, behind its borsh (varint) length prefix
-        fn transaction_message_with_covenant(covenant: &[u8]) -> (proto::types::Transaction, PeerMessage) {
-            let key_manager = KeyManager::new_random().unwrap();
-            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
-                .expect("Failed to get tx")
-                .0;
-            let mut tx = proto::types::Transaction::try_from(tx).unwrap();
-            let mut field = Vec::new();
-            prost::encoding::encode_varint(covenant.len() as u64, &mut field);
-            field.extend_from_slice(covenant);
-            tx.body.as_mut().unwrap().outputs.first_mut().unwrap().covenant = field;
+        fn transaction_message_with_covenant(covenant: &[u8]) -> PeerMessage {
+            let tx = transaction_proto_with_covenant(covenant);
             let msg = create_peer_message(TariMessageType::NewTransaction, tx.encode_to_vec());
-            (tx, Arc::try_unwrap(msg).unwrap())
+            Arc::try_unwrap(msg).unwrap()
         }
 
         #[tokio::test]
         async fn gossiped_transaction_with_covenant_over_token_limit_bans_source() {
             let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
             let permits = mempool.available_validation_permits();
-            // 63 `identity()` tokens and a nested covenant (0x05, length 65) of 65 more: 129 tokens in total
-            let covenant = [vec![0x20; 63], vec![0x05, 65], vec![0x20; 65]].concat();
-            let (tx, msg) = transaction_message_with_covenant(&covenant);
+            let msg = transaction_message_with_covenant(&covenant_over_token_limit());
             let source = msg.source_peer.node_id.clone();
 
             handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
@@ -651,18 +642,16 @@ mod test {
             assert!(propagated.try_recv().is_err());
             assert_eq!(mempool.available_validation_permits(), permits);
 
-            // Mempool sync (`validate_and_insert_transaction`) and RPC `submit_transaction` reject the message at
-            // this conversion, before reaching the mempool, and neither can ban
-            let err = Transaction::try_from(tx).unwrap_err();
-            assert!(err.contains("exceeded the maximum of 128 tokens"), "{err}");
-            assert!(bans.take().await.is_empty());
+            // Mempool sync and RPC `submit_transaction` reject the same transaction without a ban: see
+            // `responder_rejects_a_transaction_with_a_covenant_over_the_token_limit_without_a_ban` and
+            // `submit_transaction_rejects_a_covenant_over_the_token_limit`
         }
 
         #[tokio::test]
         async fn gossiped_transaction_with_malformed_covenant_is_dropped_without_ban() {
             let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
             let permits = mempool.available_validation_permits();
-            let (_, msg) = transaction_message_with_covenant(&[0xff]);
+            let msg = transaction_message_with_covenant(&[0xff]);
 
             handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
 

@@ -734,3 +734,51 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_comms::protocol::rpc::RpcStatusCode;
+    use tari_shutdown::Shutdown;
+    use tokio::sync::{broadcast, watch};
+
+    use super::*;
+    use crate::{
+        base_node::state_machine_service::states::StatusInfo,
+        mempool::test_utils::{
+            covenant_over_token_limit,
+            mock::create_mempool_service_mock,
+            transaction_proto_with_covenant,
+        },
+        test_helpers::blockchain::create_new_blockchain_with_network,
+    };
+
+    /// The service has no connectivity handle, so it cannot ban: a rejection here is only ever a bad request
+    #[tokio::test]
+    async fn submit_transaction_rejects_a_covenant_over_the_token_limit() {
+        let db = AsyncBlockchainDb::from(create_new_blockchain_with_network(Network::LocalNet));
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let shutdown = Shutdown::new();
+        let state_machine = StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal());
+        let service = BaseNodeWalletRpcService::new(db, mempool, state_machine, None);
+
+        let err = service
+            .submit_transaction(Request::new(
+                0.into(),
+                transaction_proto_with_covenant(&covenant_over_token_limit()),
+            ))
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::BadRequest);
+        assert!(mempool_state.submitted_transactions().await.is_empty());
+
+        // The same transaction with a covenant at the limit reaches the mempool
+        service
+            .submit_transaction(Request::new(0.into(), transaction_proto_with_covenant(&[0x20; 128])))
+            .await
+            .unwrap();
+        assert_eq!(mempool_state.submitted_transactions().await.len(), 1);
+    }
+}
