@@ -120,7 +120,7 @@ where T: UtxoValue
         let (kept, dust): (Vec<T>, Vec<T>) = self
             .available_utxos
             .into_iter()
-            .partition(|utxo| utxo.value() > fee_per_input);
+            .partition(|utxo| !self.allow_dust_waste || utxo.value() > fee_per_input);
 
         Ok(BranchAndBoundUtxoSelector::new(kept, selection_params, params).with_excluded_dust(dust))
     }
