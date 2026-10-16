@@ -26,7 +26,9 @@ pub type ValidatorBlockSignature =
     CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
 /// A [`ValidatorBlockSignature`] decoded to curve points, the form it is verified in.
 pub type DecodedValidatorBlockSignature = SchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
-pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<bool, SidechainProofValidationError> + 'a;
+/// Returns the voting power of the validator with the given public key in the committee that signed the proof, or 0 if
+/// it is not a member. A committee in which every member has equal weight returns 1 for each member.
+pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<u64, SidechainProofValidationError> + 'a;
 
 /// The JMT hash scheme a sidechain block's `command_merkle_root` was built with, selected by the header's
 /// `protocol_version`. Ootle builds the root, so this mapping must match Ootle's for every protocol version. A new
@@ -80,7 +82,7 @@ impl<C: ToCommand> CommandCommitProof<C> {
 
     pub fn validate_committed(
         &self,
-        quorum_threshold: usize,
+        quorum_threshold: u64,
         check_vn: &CheckVnFunc<'_>,
     ) -> Result<(), SidechainProofValidationError> {
         #[allow(clippy::single_match)]
@@ -126,7 +128,7 @@ impl<C: ToCommand> CommandCommitProofV1<C> {
 
     pub fn validate_committed(
         &self,
-        quorum_threshold: usize,
+        quorum_threshold: u64,
         check_vn: &CheckVnFunc<'_>,
     ) -> Result<(), SidechainProofValidationError> {
         let command = self.command.to_command();
@@ -144,7 +146,7 @@ pub struct SidechainBlockCommitProof {
 impl SidechainBlockCommitProof {
     pub fn validate_committed(
         &self,
-        quorum_threshold: usize,
+        quorum_threshold: u64,
         check_vn: &CheckVnFunc<'_>,
     ) -> Result<(), SidechainProofValidationError> {
         check_proof_elements(
