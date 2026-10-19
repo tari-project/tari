@@ -100,7 +100,8 @@ impl IdentitySignature {
     }
 
     /// Verify this identity signature for the given public key, features and addresses. Returns
-    /// `Err(PeerManagerError::InvalidIdentitySignature)` if it is not valid.
+    /// `Err(PeerManagerError::InvalidIdentitySignature)` if it is not valid, or
+    /// `Err(PeerManagerError::IdentitySignatureFromFuture)` if it is dated more than a day ahead of this node's clock.
     pub fn verify<'a, I: IntoIterator<Item = &'a Multiaddr>>(
         &self,
         public_key: &CommsPublicKey,
@@ -111,14 +112,6 @@ impl IdentitySignature {
         if self.updated_at.timestamp() < 0 {
             return Err(PeerManagerError::InvalidIdentitySignature);
         }
-        // Do not accept timestamp more than 1 day in the future
-        let max_updated_at = Utc::now()
-            .checked_add_signed(chrono::Duration::days(1))
-            .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
-        if self.updated_at > max_updated_at {
-            return Err(PeerManagerError::InvalidIdentitySignature);
-        }
-
         let challenge = Self::construct_challenge(
             public_key,
             self.signature.get_compressed_public_nonce(),
@@ -135,11 +128,18 @@ impl IdentitySignature {
             .signature
             .to_schnorr_signature()
             .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
-        if ristretto_signature.verify_raw_uniform(&ristretto_key, challenge.as_ref()) {
-            Ok(())
-        } else {
-            Err(PeerManagerError::InvalidIdentitySignature)
+        if !ristretto_signature.verify_raw_uniform(&ristretto_key, challenge.as_ref()) {
+            return Err(PeerManagerError::InvalidIdentitySignature);
         }
+        // Do not accept timestamp more than 1 day in the future. Checked after the signature so that only the key
+        // owner can produce this error.
+        let max_updated_at = Utc::now()
+            .checked_add_signed(chrono::Duration::days(1))
+            .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
+        if self.updated_at > max_updated_at {
+            return Err(PeerManagerError::IdentitySignatureFromFuture);
+        }
+        Ok(())
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -217,6 +217,26 @@ mod test {
 
     mod is_valid_for_peer {
         use super::*;
+
+        #[test]
+        fn it_distinguishes_a_future_timestamp_from_an_invalid_signature() {
+            let secret = CommsSecretKey::random(&mut rand::rng());
+            let public_key = CommsPublicKey::from_secret_key(&secret);
+            let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
+            let updated_at = Utc::now() + chrono::Duration::days(2);
+            let identity =
+                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
+            assert!(matches!(
+                identity.verify(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),
+                Err(PeerManagerError::IdentitySignatureFromFuture)
+            ));
+
+            let other = CommsPublicKey::from_secret_key(&CommsSecretKey::random(&mut rand::rng()));
+            assert!(matches!(
+                identity.verify(&other, PeerFeatures::COMMUNICATION_NODE, [&address]),
+                Err(PeerManagerError::InvalidIdentitySignature)
+            ));
+        }
 
         #[test]
         fn it_returns_true_for_valid_signature() {

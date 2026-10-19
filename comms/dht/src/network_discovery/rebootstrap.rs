@@ -729,11 +729,8 @@ pub(super) async fn store_peers(
         let peer = match UnvalidatedPeerInfo::try_from(peer_info) {
             Ok(peer) => peer,
             Err(err) => {
-                debug!(target: REBOOTSTRAP_LOG_TARGET, "Invalid peer info from '{source}': {err}");
-                hostile_claims = hostile_claims.saturating_add(1);
-                if hostile_claims > MAX_HOSTILE_RELAYED_CLAIMS {
-                    return Err(NetworkDiscoveryError::TooManyInvalidPeersReceived);
-                }
+                // May come from a newer version, so it is not counted against the source
+                debug!(target: REBOOTSTRAP_LOG_TARGET, "Peer info from '{source}' does not convert: {err}");
                 continue;
             },
         };

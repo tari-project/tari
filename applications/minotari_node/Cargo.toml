@@ -87,7 +87,7 @@ http-body-util = "0.1"
 
 [features]
 default = ["libtor", "mimalloc"]
-metrics = ["tari_metrics", "tari_comms/metrics"]
+metrics = ["tari_metrics", "tari_comms/metrics", "tari_comms_dht/metrics"]
 safe = []
 libtor = ["tari_libtor"]
 # Use mimalloc as the global allocator of the `minotari_node` binary instead of the system allocator (glibc malloc on

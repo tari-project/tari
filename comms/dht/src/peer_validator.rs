@@ -47,13 +47,14 @@ pub enum DhtPeerValidatorError {
 impl DhtPeerValidatorError {
     /// Returns whether the peer should be banned for this validation failure.
     ///
-    /// A peer with no usable advertised addresses may simply be behind NAT or
-    /// misconfigured. Dropping that update is sufficient; it is not evidence of
-    /// hostile behavior.
+    /// Only an identity signature that fails over a parsed, unmodified claim is an offence. Every other failure (no
+    /// usable addresses, too many claims or addresses, an address this node does not accept) can come from an honest
+    /// peer behind NAT, misconfigured, or on a different software version with other limits, so the claim is only
+    /// dropped. This is stricter than `PeerValidatorError::is_ban_offence`, which also covers a peer's own handshake.
     pub fn is_ban_offence(&self) -> bool {
         match self {
-            Self::ValidatorError(err) => err.is_ban_offence(),
-            Self::IdentityTooManyClaims { .. } => true,
+            Self::ValidatorError(err) => matches!(err, PeerValidatorError::InvalidPeerSignature { .. }),
+            Self::IdentityTooManyClaims { .. } => false,
             Self::NewAndExistingMismatch { .. } => false,
         }
     }
@@ -194,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn peers_without_usable_addresses_are_not_ban_offences() {
+    fn only_an_invalid_identity_signature_is_a_ban_offence() {
         let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerHasNoAddresses {
             peer: NodeId::default(),
         });
@@ -206,6 +207,31 @@ mod tests {
         assert!(!error.is_ban_offence());
 
         let error = DhtPeerValidatorError::IdentityTooManyClaims { length: 2, max: 1 };
+        assert!(!error.is_ban_offence());
+
+        let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidMultiaddr("bad".to_string()));
+        assert!(!error.is_ban_offence());
+
+        let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerIdentityTooManyAddresses {
+            length: 6,
+            max: 5,
+        });
+        assert!(!error.is_ban_offence());
+
+        let error = DhtPeerValidatorError::NewAndExistingMismatch {
+            existing: String::new(),
+            new: String::new(),
+        };
+        assert!(!error.is_ban_offence());
+
+        let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerSignatureFromFuture {
+            peer: NodeId::default(),
+        });
+        assert!(!error.is_ban_offence());
+
+        let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature {
+            peer: NodeId::default(),
+        });
         assert!(error.is_ban_offence());
     }
 
@@ -239,6 +265,7 @@ mod tests {
             err,
             DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature { .. })
         ));
+        assert!(err.is_ban_offence());
     }
 
     #[test]
@@ -253,7 +280,7 @@ mod tests {
             err,
             DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidMultiaddr(_))
         ));
-        assert!(err.is_ban_offence());
+        assert!(!err.is_ban_offence());
 
         let fine = Multiaddr::from_str("/dns4/node.example.com/tcp/18189").unwrap();
         let peer = validator

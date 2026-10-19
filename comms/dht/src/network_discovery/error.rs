@@ -51,8 +51,6 @@ pub enum NetworkDiscoveryError {
     TooManyInvalidPeersReceived,
     #[error("Sync peer sent duplicate peer")]
     DuplicatePeerReceived,
-    #[error("Sync peer sent invalid peer data: {0}")]
-    InvalidPeerDataReceived(anyhow::Error),
     #[error("Tokio task join error: `{0}`")]
     JoinError(#[from] JoinError),
     #[error("Timeout waiting for {operation} to {peer} after {duration}")]
@@ -95,7 +93,6 @@ impl PartialEq for NetworkDiscoveryError {
                 (Self::TooManyPeersReceived, Self::TooManyPeersReceived) |
                 (Self::TooManyInvalidPeersReceived, Self::TooManyInvalidPeersReceived) |
                 (Self::DuplicatePeerReceived, Self::DuplicatePeerReceived) |
-                (Self::InvalidPeerDataReceived(_), Self::InvalidPeerDataReceived(_)) |
                 (Self::PeerConnectionClosed { .. }, Self::PeerConnectionClosed { .. })
         )
     }

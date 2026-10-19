@@ -237,7 +237,7 @@ mod rebootstrap {
         peer_manager::{NodeId, PeerFlags},
         protocol::{
             ProtocolId,
-            rpc::{RpcError, mock::MockRpcServer},
+            rpc::{Request, RpcError, RpcStatus, Streaming, mock::MockRpcServer},
         },
         test_utils::{
             mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
@@ -254,7 +254,7 @@ mod rebootstrap {
             NetworkDiscoveryError,
             RebootstrapInfo,
             SeedPeerProvider,
-            discovering::Discovering,
+            discovering::{Discovering, MAX_HOSTILE_RELAYED_CLAIMS},
             on_connect::OnConnect,
             ready::DiscoveryReady,
             rebootstrap::{
@@ -271,8 +271,8 @@ mod rebootstrap {
             seed_strap::SeedStrap,
             state_machine::{DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
         },
-        proto::rpc::PeerInfo,
-        rpc::{DhtRpcServiceImpl, DhtService, UnvalidatedPeerInfo},
+        proto::rpc::{GetPeersRequest, GetPeersResponse, PeerInfo},
+        rpc::{DhtRpcService, DhtRpcServiceImpl, DhtService, UnvalidatedPeerInfo},
         test_utils::create_good_standing_peer,
     };
 
@@ -346,17 +346,26 @@ mod rebootstrap {
         assert_eq!(learned.len(), MAX_LEARNED_PEERS / 4 + 1);
     }
 
-    /// A connected peer that relays a stream of invalid peer records is banned, the same way Discovering does it.
+    /// A peer record whose identity signature does not cover its (parseable) claim: an address was swapped
+    fn forged_peer_info() -> PeerInfo {
+        let identity = make_node_identity();
+        let mut peer_info: PeerInfo = UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into();
+        peer_info.claims[0].addresses = vec![
+            "/ip4/23.23.23.23/tcp/18189"
+                .parse::<tari_comms::multiaddr::Multiaddr>()
+                .unwrap()
+                .to_vec(),
+        ];
+        peer_info
+    }
+
+    /// A connected peer that relays a stream of records with forged identity signatures is banned, the same way
+    /// Discovering does it.
     #[tokio::test]
     async fn a_connected_peer_relaying_invalid_records_is_banned() {
         let (context, mock, _events) = context(None);
         let source = NodeId::from_public_key(make_node_identity().public_key());
-        let invalid = (0..10)
-            .map(|_| PeerInfo {
-                public_key: vec![1u8; 3],
-                claims: vec![],
-            })
-            .collect();
+        let invalid = (0..10).map(|_| forged_peer_info()).collect();
         let err = store_peers(&context, &source, invalid).await.unwrap_err();
         assert!(matches!(err, NetworkDiscoveryError::TooManyInvalidPeersReceived));
 
@@ -688,6 +697,100 @@ mod rebootstrap {
         assert_eq!(context.peer_manager.count().await, 50);
     }
 
+    /// A source relaying records that do not convert (say, an address protocol or feature bit from a newer version) is
+    /// not counted as hostile: the records are skipped and the rest are stored.
+    #[tokio::test]
+    async fn records_with_unparseable_addresses_are_not_hostile() {
+        let (context, _mock, _events) = context(None);
+        let source = NodeId::from_public_key(make_node_identity().public_key());
+        let mut peers = build_many_node_identities(10, PeerFeatures::COMMUNICATION_NODE)
+            .into_iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect::<Vec<PeerInfo>>();
+        for peer in peers.iter_mut().take(MAX_HOSTILE_RELAYED_CLAIMS + 1) {
+            peer.claims[0].addresses.push(vec![0xff, 0xff, 0xff]);
+        }
+        peers.extend((0..=MAX_HOSTILE_RELAYED_CLAIMS).map(|_| PeerInfo {
+            public_key: vec![1u8; 3],
+            claims: vec![],
+        }));
+        let stored = store_peers(&context, &source, peers).await.unwrap();
+        assert_eq!(stored.len(), 10 - (MAX_HOSTILE_RELAYED_CLAIMS + 1));
+    }
+
+    /// Serves a fixed list of peer records over get_peers, whatever was asked for
+    struct FixedPeersService {
+        peers: Vec<PeerInfo>,
+    }
+
+    #[tari_comms::async_trait]
+    impl DhtRpcService for FixedPeersService {
+        async fn get_peers(&self, _: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
+            let (tx, rx) = tokio::sync::mpsc::channel(self.peers.len());
+            for peer in &self.peers {
+                tx.send(Ok(GetPeersResponse {
+                    peer: Some(peer.clone()),
+                }))
+                .await
+                .unwrap();
+            }
+            Ok(Streaming::new(rx))
+        }
+    }
+
+    /// A sync peer whose get_peers stream carries more than `MAX_HOSTILE_RELAYED_CLAIMS` records that do not convert
+    /// (an address protocol from a newer version) is not banned: Discovering skips those records and stores the rest.
+    #[tokio::test]
+    async fn discovering_skips_records_that_do_not_convert_without_a_ban() {
+        let (context, mock, _events) = context(None);
+        let valid = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let mut peers = valid
+            .iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect::<Vec<PeerInfo>>();
+        for identity in build_many_node_identities(MAX_HOSTILE_RELAYED_CLAIMS + 2, PeerFeatures::COMMUNICATION_NODE) {
+            let mut peer: PeerInfo = UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into();
+            peer.claims[0].addresses.push(vec![0xff, 0xff, 0xff]);
+            peers.push(peer);
+        }
+        let num_records = u32::try_from(peers.len()).unwrap();
+
+        let sync_identity = make_node_identity();
+        let sync_peer = sync_identity.to_peer();
+        let mut server = MockRpcServer::new(DhtService::new(FixedPeersService { peers }), sync_identity);
+        server.serve();
+        let conn = server
+            .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        mock.add_active_connection(conn).await;
+        context
+            .peer_manager
+            .add_or_update_peer(sync_peer.clone())
+            .await
+            .unwrap();
+
+        let mut discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![sync_peer.node_id.clone()],
+                num_peers_to_request: num_records,
+            },
+            context.clone(),
+        );
+        let event = discovering.next_event().await;
+        let StateEvent::DiscoveryComplete(stats) = event else {
+            panic!("unexpected event {event}");
+        };
+
+        // The sync succeeded, so request_peers returned Ok
+        assert_eq!(stats.num_succeeded, 1);
+        for identity in &valid {
+            assert!(context.peer_manager.exists(identity.public_key()).await.unwrap());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+        assert!(!context.peer_manager.is_peer_banned(&sync_peer.node_id).await.unwrap());
+    }
+
     /// Records after the first `MAX_STORED_PER_SOURCE` valid peers are still checked: hostile ones count towards a
     /// ban.
     #[tokio::test]
@@ -698,10 +801,7 @@ mod rebootstrap {
             .into_iter()
             .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
             .collect::<Vec<PeerInfo>>();
-        peers.extend((0..6).map(|_| PeerInfo {
-            public_key: vec![1u8; 3],
-            claims: vec![],
-        }));
+        peers.extend((0..6).map(|_| forged_peer_info()));
         let err = store_peers(&context, &source, peers).await.unwrap_err();
         assert!(
             matches!(err, NetworkDiscoveryError::TooManyInvalidPeersReceived),

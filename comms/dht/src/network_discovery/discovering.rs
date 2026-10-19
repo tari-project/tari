@@ -359,15 +359,18 @@ impl Discovering {
                         "Discovering: Sync peer `{sync_peer}` sent an empty peer message: {err:?}"
                     );
                 })?;
-            let new_peer: UnvalidatedPeerInfo = peer
-                .try_into()
-                .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)
-                .inspect_err(|err| {
-                    warn!(
+            // A record that does not convert may come from a newer version (an unknown address protocol or
+            // feature bit), so it is skipped without counting against the sync peer
+            let new_peer: UnvalidatedPeerInfo = match peer.try_into() {
+                Ok(new_peer) => new_peer,
+                Err(err) => {
+                    debug!(
                         target: LOG_TARGET,
-                        "Discovering: Sync peer `{sync_peer}` sent invalid peer data: {err:?}"
+                        "Discovering: Skipping peer relayed by sync peer `{sync_peer}` that does not convert: {err:?}"
                     );
-                })?;
+                    continue;
+                },
+            };
 
             if !peers_received.insert(new_peer.public_key.clone()) {
                 let err = NetworkDiscoveryError::DuplicatePeerReceived;
@@ -497,7 +500,6 @@ pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
     matches!(
         err,
         NetworkDiscoveryError::EmptyPeerMessageReceived |
-            NetworkDiscoveryError::InvalidPeerDataReceived(_) |
             NetworkDiscoveryError::DuplicatePeerReceived |
             NetworkDiscoveryError::TooManyPeersReceived |
             NetworkDiscoveryError::TooManyInvalidPeersReceived
@@ -508,7 +510,6 @@ pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
 pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSeverity> {
     match err {
         NetworkDiscoveryError::EmptyPeerMessageReceived |
-        NetworkDiscoveryError::InvalidPeerDataReceived(_) |
         NetworkDiscoveryError::DuplicatePeerReceived |
         NetworkDiscoveryError::TooManyPeersReceived |
         NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
@@ -608,23 +609,25 @@ mod test {
             Some(false)
         );
 
-        // A forged signature or malformed address is skipped too, but counts against the sync peer.
-        assert_eq!(
-            classify_relay_failure(&validation_error(PeerValidatorError::InvalidPeerSignature {
-                peer: NodeId::default()
-            })),
-            Some(true)
-        );
+        // So is a claim over this node's limits, which a peer on another version may accept
         assert_eq!(
             classify_relay_failure(&validation_error(PeerValidatorError::InvalidMultiaddr(
                 "bad address".to_string()
             ))),
-            Some(true)
+            Some(false)
         );
         assert_eq!(
             classify_relay_failure(&NetworkDiscoveryError::PeerValidationError(
                 DhtPeerValidatorError::IdentityTooManyClaims { length: 2, max: 1 }
             )),
+            Some(false)
+        );
+
+        // A forged signature is skipped too, but counts against the sync peer.
+        assert_eq!(
+            classify_relay_failure(&validation_error(PeerValidatorError::InvalidPeerSignature {
+                peer: NodeId::default()
+            })),
             Some(true)
         );
     }

@@ -182,20 +182,24 @@ impl DhtDiscoveryService {
                     start_ts,
                 } = request;
 
-                // Make sure that the response is for the expected public key
+                // Make sure that the response is for the expected public key. The DHT handler only passes on a
+                // response whose signer, source and claimed key are the same, so the responder is to blame.
                 if discovery_msg.public_key.as_bytes() != public_key.as_bytes() {
                     warn!(
                         target: LOG_TARGET,
-                        "Received a discovery response does not match the expected public key '{public_key:#.5}'"
-
+                        "Received a discovery response from '{}' that does not match the expected public key \
+                         '{public_key:#.5}'",
+                        discovery_msg.public_key.to_hex()
                     );
-                    self.dht
-                        .ban_peer(
-                            *public_key,
-                            OffenceSeverity::Medium,
-                            "Received a discovery response does not match the public key we requested",
-                        )
-                        .await;
+                    if let Ok(responder) = CommsPublicKey::from_canonical_bytes(&discovery_msg.public_key) {
+                        self.dht
+                            .ban_peer(
+                                responder,
+                                OffenceSeverity::Medium,
+                                "Sent a discovery response for a public key that was not requested",
+                            )
+                            .await;
+                    }
 
                     return Ok(());
                 }
@@ -280,7 +284,9 @@ impl DhtDiscoveryService {
         match result {
             Ok(peer) => Ok(peer),
             Err(err) if err.is_ban_offence() => {
-                self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
+                self.dht
+                    .ban_peer(public_key.clone(), OffenceSeverity::Medium, &err)
+                    .await;
                 Err(err)
             },
             Err(err) => Err(err),
@@ -427,5 +433,44 @@ mod test {
         let (params, _) = oms_mock_state.pop_call().await.unwrap();
         assert_eq!(params.dht_message_type, DhtMessageType::Discovery);
         assert_eq!(params.encryption, OutboundEncryption::EncryptFor(dest_public_key));
+    }
+
+    /// A response that matches a pending request's nonce but carries another key bans the responder, not the peer
+    /// that was asked for.
+    #[tokio::test]
+    async fn a_mismatched_response_bans_the_responder() {
+        let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht_tx, mut dht_rx) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let mut service = DhtDiscoveryService::new(
+            Default::default(),
+            make_node_identity(),
+            build_peer_manager(),
+            DhtRequester::new(dht_tx),
+            outbound_requester,
+            receiver,
+            shutdown.to_signal(),
+        );
+
+        let requested = make_node_identity();
+        let responder = make_node_identity();
+        let (reply_tx, _reply_rx) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            123,
+            DiscoveryRequestState::new(Box::new(requested.public_key().clone()), reply_tx),
+        );
+        let response = DiscoveryResponseMessage {
+            public_key: responder.public_key().to_vec(),
+            nonce: 123,
+            ..Default::default()
+        };
+        service.handle_discovery_response(Box::new(response)).await.unwrap();
+
+        match dht_rx.try_recv().unwrap() {
+            crate::actor::DhtRequest::BanPeer { public_key, .. } => assert_eq!(public_key, *responder.public_key()),
+            request => panic!("unexpected request {request}"),
+        }
+        assert!(dht_rx.try_recv().is_err());
     }
 }

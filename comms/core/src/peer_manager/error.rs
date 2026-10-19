@@ -47,6 +47,8 @@ pub enum PeerManagerError {
     MigrationError(String),
     #[error("Identity signature is invalid")]
     InvalidIdentitySignature,
+    #[error("Identity signature timestamp is more than a day in the future")]
+    IdentitySignatureFromFuture,
     #[error("Identity signature missing")]
     MissingIdentitySignature,
     #[error("Invalid peer address: {0}")]

@@ -28,7 +28,7 @@ use log::debug;
 use crate::{
     multiaddr::{Multiaddr, Protocol},
     net_address::is_external_address,
-    peer_manager::{NodeId, PeerIdentityClaim},
+    peer_manager::{NodeId, PeerIdentityClaim, PeerManagerError},
     peer_validator::{PeerValidatorConfig, error::PeerValidatorError},
     types::CommsPublicKey,
 };
@@ -55,11 +55,14 @@ fn validate_peer_identity_claim_signature(
     public_key: &CommsPublicKey,
     claim: &PeerIdentityClaim,
 ) -> Result<(), PeerValidatorError> {
-    claim
-        .verify(public_key)
-        .map_err(|_| PeerValidatorError::InvalidPeerSignature {
+    claim.verify(public_key).map_err(|err| match err {
+        PeerManagerError::IdentitySignatureFromFuture => PeerValidatorError::PeerSignatureFromFuture {
             peer: NodeId::from_public_key(public_key),
-        })
+        },
+        _ => PeerValidatorError::InvalidPeerSignature {
+            peer: NodeId::from_public_key(public_key),
+        },
+    })
 }
 
 /// Verifies a signed claim and returns only the addresses permitted by the
@@ -429,6 +432,40 @@ mod test {
             signature: node_identity.identity_signature_read().clone().unwrap(),
         };
         (node_identity.public_key().clone(), claim)
+    }
+
+    /// A claim dated more than a day ahead may come from an honest signer whose clock runs fast, so it is rejected
+    /// without a ban.
+    #[test]
+    fn future_dated_claim_is_rejected_without_a_ban() {
+        use tari_crypto::keys::SecretKey;
+
+        use crate::types::CommsSecretKey;
+
+        let config = PeerValidatorConfig::default();
+        let (public_key, mut claim) = signed_claim(vec!["/ip4/23.23.23.23/tcp/18189".parse().unwrap()]);
+        let secret = CommsSecretKey::random(&mut rand::rng());
+        let public_key_future = CommsPublicKey::from_secret_key(&secret);
+        claim.signature = crate::peer_manager::IdentitySignature::sign_new(
+            &secret,
+            claim.features,
+            &claim.addresses,
+            chrono::Utc::now() + chrono::Duration::days(2),
+        );
+        let err = validate_and_filter_peer_identity_claim_addresses(&config, &public_key_future, &claim).unwrap_err();
+        assert!(
+            matches!(err, PeerValidatorError::PeerSignatureFromFuture { .. }),
+            "{err:?}"
+        );
+        assert!(!err.is_ban_offence());
+
+        // A forged claim cannot avoid the ban by being future-dated
+        let err = validate_and_filter_peer_identity_claim_addresses(&config, &public_key, &claim).unwrap_err();
+        assert!(
+            matches!(err, PeerValidatorError::InvalidPeerSignature { .. }),
+            "{err:?}"
+        );
+        assert!(err.is_ban_offence());
     }
 
     /// A `/` in a DNS name changes what the address's text form reads back as. No honest node produces one, so it
