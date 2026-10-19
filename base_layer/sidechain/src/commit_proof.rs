@@ -17,6 +17,7 @@ use tari_utilities::ByteArray;
 use super::error::SidechainProofValidationError;
 use crate::{
     command::{Command, ToCommand},
+    qc_signatures::{QcSignatures, SigningCommittee},
     serde::{hex_or_bytes, option_hex_or_bytes},
     shard_group::ShardGroup,
     validations::check_proof_elements,
@@ -26,9 +27,6 @@ pub type ValidatorBlockSignature =
     CompressedSchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
 /// A [`ValidatorBlockSignature`] decoded to curve points, the form it is verified in.
 pub type DecodedValidatorBlockSignature = SchnorrSignature<UncompressedPublicKey, PrivateKey, ValidatorNodeHashDomain>;
-/// Returns the voting power of the validator with the given public key in the committee that signed the proof, or 0 if
-/// it is not a member. A committee in which every member has equal weight returns 1 for each member.
-pub type CheckVnFunc<'a> = dyn Fn(&CompressedPublicKey) -> Result<u64, SidechainProofValidationError> + 'a;
 
 /// The JMT hash scheme a sidechain block's `command_merkle_root` was built with, selected by the header's
 /// `protocol_version`. Ootle builds the root, so this mapping must match Ootle's for every protocol version. A new
@@ -83,11 +81,11 @@ impl<C: ToCommand> CommandCommitProof<C> {
     pub fn validate_committed(
         &self,
         quorum_threshold: u64,
-        check_vn: &CheckVnFunc<'_>,
+        committee: &dyn SigningCommittee,
     ) -> Result<(), SidechainProofValidationError> {
         #[allow(clippy::single_match)]
         match self {
-            CommandCommitProof::V1(v1) => v1.validate_committed(quorum_threshold, check_vn),
+            CommandCommitProof::V1(v1) => v1.validate_committed(quorum_threshold, committee),
         }
     }
 }
@@ -129,11 +127,11 @@ impl<C: ToCommand> CommandCommitProofV1<C> {
     pub fn validate_committed(
         &self,
         quorum_threshold: u64,
-        check_vn: &CheckVnFunc<'_>,
+        committee: &dyn SigningCommittee,
     ) -> Result<(), SidechainProofValidationError> {
         let command = self.command.to_command();
         self.validate_inclusion_proof(&command)?;
-        self.commit_proof.validate_committed(quorum_threshold, check_vn)
+        self.commit_proof.validate_committed(quorum_threshold, committee)
     }
 }
 
@@ -147,12 +145,12 @@ impl SidechainBlockCommitProof {
     pub fn validate_committed(
         &self,
         quorum_threshold: u64,
-        check_vn: &CheckVnFunc<'_>,
+        committee: &dyn SigningCommittee,
     ) -> Result<(), SidechainProofValidationError> {
         check_proof_elements(
             &self.header,
             &self.proof_elements,
-            check_vn,
+            committee,
             QuorumDecision::Accept,
             quorum_threshold,
         )?;
@@ -335,7 +333,7 @@ pub struct QuorumCertificate {
     /// The height of the justified block. See `epoch`.
     #[serde(default)]
     pub height: u64,
-    pub signatures: Vec<ValidatorQcSignature>,
+    pub signatures: QcSignatures,
     pub decision: QuorumDecision,
 }
 
@@ -405,46 +403,6 @@ impl Display for QuorumDecision {
 #[derive(Debug, thiserror::Error)]
 #[error("Invalid quorum decision byte: {0}")]
 pub struct InvalidQuorumDecisionByteError(u8);
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, BorshSerialize, BorshDeserialize)]
-pub struct ValidatorQcSignature {
-    pub public_key: CompressedPublicKey,
-    pub signature: ValidatorBlockSignature,
-}
-
-impl ValidatorQcSignature {
-    #[must_use]
-    pub fn verify(
-        &self,
-        protocol_version: u32,
-        block_id: &FixedHash,
-        decision: QuorumDecision,
-        epoch: u64,
-        height: u64,
-    ) -> bool {
-        let Some((public_key, signature)) = self.decode() else {
-            return false;
-        };
-
-        let message = ProposalVoteMessage::new(protocol_version, block_id, decision, epoch, height).calculate_hash();
-        signature.verify(&public_key, message)
-    }
-
-    /// Decodes the public key and signature to curve points, or returns `None` if either is not a valid encoding.
-    pub fn decode(&self) -> Option<(UncompressedPublicKey, DecodedValidatorBlockSignature)> {
-        let public_key = self.public_key.to_public_key().ok()?;
-        let signature = self.signature.to_schnorr_signature().ok()?;
-        Some((public_key, signature))
-    }
-
-    pub fn public_key(&self) -> &CompressedPublicKey {
-        &self.public_key
-    }
-
-    pub fn signature(&self) -> &ValidatorBlockSignature {
-        &self.signature
-    }
-}
 
 /// The message a proposal vote signs, in the shape the block's protocol version calls for. Signing and verifying
 /// both go through this so that the two cannot select different shapes.

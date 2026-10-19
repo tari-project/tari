@@ -7,6 +7,8 @@ use tari_sidechain::{
     CommitProofElement,
     MAX_QC_SIGNATURES,
     ProposalVoteMessage,
+    QcSignatures,
+    QuorumCertificate,
     QuorumDecision,
     SidechainBlockCommitProof,
     SidechainBlockHeader,
@@ -14,18 +16,28 @@ use tari_sidechain::{
 };
 
 mod support;
-use support::load_fixture;
+use support::{TestCommittee, fixture_committee, load_fixture};
+
+fn schnorr_signatures(qc: &mut QuorumCertificate) -> &mut Vec<tari_sidechain::ValidatorBlockSignature> {
+    let QcSignatures::Schnorr { signatures, .. } = &mut qc.signatures;
+    signatures
+}
 
 #[test]
 fn it_validates_a_correct_proof() {
     let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
-    proof.validate_committed(4, &|_| Ok(1)).unwrap();
+    proof.validate_committed(4, &fixture_committee()).unwrap();
 }
 
 #[test]
-fn it_rejects_if_qc_signs_for_unknown_validator() {
+fn it_rejects_a_proof_checked_against_another_committee() {
     let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
-    proof.validate_committed(4, &|_| Ok(0)).unwrap_err();
+    let committee = test_committee(1..=4, |_| 1);
+    let err = proof.validate_committed(4, &committee).unwrap_err();
+    assert!(
+        err.to_string().contains("Invalid signature for QC"),
+        "Expected the signature error, got: {err}"
+    );
 }
 
 #[test]
@@ -33,15 +45,15 @@ fn it_rejects_a_qc_with_too_many_signatures() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     for elem in &mut proof.proof_elements {
         if let CommitProofElement::QuorumCertificate(qc) = elem {
-            let signature = qc
-                .signatures
+            let signatures = schnorr_signatures(qc);
+            let signature = signatures
                 .first()
                 .expect("commit_proof.json fixture must have at least one signature to clone")
                 .clone();
-            qc.signatures = vec![signature; MAX_QC_SIGNATURES + 1];
+            *signatures = vec![signature; MAX_QC_SIGNATURES + 1];
         }
     }
-    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    let err = proof.validate_committed(4, &fixture_committee()).unwrap_err();
     let expected = format!(
         "must contain at most {} signatures but contained {}",
         MAX_QC_SIGNATURES,
@@ -79,7 +91,7 @@ fn the_protocol_version_selects_the_hash_schema() {
 fn it_rejects_a_proof_whose_header_claims_another_protocol_version() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     proof.header.protocol_version = 1;
-    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    let err = proof.validate_committed(4, &fixture_committee()).unwrap_err();
     assert!(
         err.to_string().contains("does not match the block ID in the header"),
         "Expected the block ID mismatch error, got: {err}"
@@ -94,7 +106,7 @@ fn it_rejects_a_qc_that_claims_another_protocol_version() {
             qc.protocol_version = 1;
         }
     }
-    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    let err = proof.validate_committed(4, &fixture_committee()).unwrap_err();
     assert!(
         err.to_string().contains("Invalid signature for QC"),
         "Expected the signature error, got: {err}"
@@ -128,7 +140,7 @@ fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
     let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
     proof.header.transaction_merkle_root = Some(FixedHash::from([1u8; 32]));
     // The version 0 preimage does not cover the root, so the block ID still matches.
-    let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    let err = proof.validate_committed(4, &fixture_committee()).unwrap_err();
     assert!(
         err.to_string().contains("commits to no transaction merkle root"),
         "Expected the transaction merkle root error, got: {err}"
@@ -138,12 +150,13 @@ fn it_rejects_a_version_0_header_that_carries_a_transaction_merkle_root() {
 #[test]
 fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root() {
     let root = FixedHash::from([1u8; 32]);
-    let proof = signed_version_1_proof(Some(root));
-    proof.validate_committed(4, &|_| Ok(1)).unwrap();
+    let committee = test_committee(1..=4, |_| 1);
+    let proof = signed_version_1_proof(&committee, 1..=4, Some(root));
+    proof.validate_committed(4, &committee).unwrap();
 
     let mut tampered = proof.clone();
     tampered.header.transaction_merkle_root = Some(FixedHash::from([2u8; 32]));
-    let err = tampered.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    let err = tampered.validate_committed(4, &committee).unwrap_err();
     assert!(
         err.to_string().contains("does not match the block ID in the header"),
         "Expected the block ID mismatch error, got: {err}"
@@ -151,7 +164,7 @@ fn it_validates_a_signed_version_1_proof_that_carries_a_transaction_merkle_root(
 
     let mut stripped = proof;
     stripped.header.transaction_merkle_root = None;
-    let err = stripped.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    let err = stripped.validate_committed(4, &committee).unwrap_err();
     assert!(
         err.to_string().contains("does not match the block ID in the header"),
         "Expected the block ID mismatch error, got: {err}"
@@ -164,30 +177,46 @@ fn validator_secret(i: u8) -> tari_common_types::types::PrivateKey {
     tari_common_types::types::PrivateKey::from_uniform_bytes(&[i; 64]).unwrap()
 }
 
-/// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that four test validators
-/// sign.
-fn signed_version_1_proof(transaction_merkle_root: Option<FixedHash>) -> SidechainBlockCommitProof {
-    let validators = (1..=4u8).map(validator_secret).collect::<Vec<_>>();
-    signed_version_1_proof_by(&validators, transaction_merkle_root)
+fn validator_public_key(i: u8) -> tari_common_types::types::CompressedPublicKey {
+    tari_common_types::types::CompressedPublicKey::from_secret_key(&validator_secret(i))
 }
 
-/// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that `validators` sign.
-fn signed_version_1_proof_by(
-    validators: &[tari_common_types::types::PrivateKey],
+/// A committee of test validators `validators`, where validator `i` holds `power_of(i)`.
+fn test_committee(validators: impl IntoIterator<Item = u8>, power_of: impl Fn(u8) -> u64) -> TestCommittee {
+    TestCommittee::new(validators.into_iter().map(|i| (validator_public_key(i), power_of(i))))
+}
+
+/// A version 1 proof over the fixture's header, committed by a 3-chain of certificates that test validators `signers`
+/// of `committee` sign.
+fn signed_version_1_proof(
+    committee: &TestCommittee,
+    signers: impl IntoIterator<Item = u8>,
     transaction_merkle_root: Option<FixedHash>,
 ) -> SidechainBlockCommitProof {
-    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_common_types::types::PrivateKey;
     use tari_crypto::keys::SecretKey;
     use tari_sidechain::{
         ChainLink,
         DecodedValidatorBlockSignature,
-        QuorumCertificate,
+        SignerBitmap,
+        SigningCommittee,
         ValidatorBlockSignature,
-        ValidatorQcSignature,
     };
     use tari_utilities::ByteArray;
 
     const PROTOCOL_VERSION: u32 = 1;
+
+    let mut signers = signers
+        .into_iter()
+        .map(|i| {
+            let index = committee
+                .index_of(&validator_public_key(i))
+                .expect("signer must be a committee member");
+            (index, validator_secret(i))
+        })
+        .collect::<Vec<_>>();
+    signers.sort_by_key(|(index, _)| *index);
+    let bitmap = SignerBitmap::from_indices(committee.len(), signers.iter().map(|(index, _)| *index)).unwrap();
 
     let mut header = load_fixture::<SidechainBlockCommitProof>("commit_proof.json").header;
     header.protocol_version = PROTOCOL_VERSION;
@@ -203,17 +232,14 @@ fn signed_version_1_proof_by(
             height,
         )
         .calculate_hash();
-        let signatures = validators
+        let signatures = signers
             .iter()
-            .map(|secret| {
+            .map(|(_, secret)| {
                 let nonce_seed = [secret.as_bytes(), message.as_slice()].concat();
                 let nonce = PrivateKey::from_uniform_bytes(&nonce_seed).unwrap();
                 let signature =
                     DecodedValidatorBlockSignature::sign_with_nonce_and_message(secret, nonce, message).unwrap();
-                ValidatorQcSignature {
-                    public_key: CompressedPublicKey::from_secret_key(secret),
-                    signature: ValidatorBlockSignature::new_from_schnorr(signature),
-                }
+                ValidatorBlockSignature::new_from_schnorr(signature)
             })
             .collect();
         QuorumCertificate {
@@ -222,7 +248,10 @@ fn signed_version_1_proof_by(
             protocol_version: PROTOCOL_VERSION,
             epoch: header.epoch,
             height,
-            signatures,
+            signatures: QcSignatures::Schnorr {
+                signers: bitmap.clone(),
+                signatures,
+            },
             decision: QuorumDecision::Accept,
         }
     };
@@ -245,35 +274,22 @@ fn signed_version_1_proof_by(
 }
 
 mod weighted_committee {
-    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
-
     use super::*;
 
     /// Seven validators: 1 to 4 hold power 1 each and 5 to 7 hold power 10 each, 34 in all.
-    fn power_of(public_key: &CompressedPublicKey) -> u64 {
-        (1..=7u8)
-            .find(|&i| CompressedPublicKey::from_secret_key(&validator_secret(i)) == *public_key)
-            .map_or(0, |i| if i <= 4 { 1 } else { 10 })
+    fn committee() -> TestCommittee {
+        test_committee(1..=7, |i| if i <= 4 { 1 } else { 10 })
     }
 
     /// More than two thirds of the committee's 34 voting power.
     const QUORUM_POWER: u64 = 23;
 
-    fn signed_by(validators: impl IntoIterator<Item = u8>) -> SidechainBlockCommitProof {
-        let secrets = validators
-            .into_iter()
-            .map(validator_secret)
-            .collect::<Vec<PrivateKey>>();
-        signed_version_1_proof_by(&secrets, None)
-    }
-
     #[test]
     fn it_rejects_a_qc_with_a_supermajority_of_signers_but_too_little_power() {
         // Five of seven members, more than two thirds by count, but only 14 of 34 power.
-        let proof = signed_by(1..=5);
-        let err = proof
-            .validate_committed(QUORUM_POWER, &|pk| Ok(power_of(pk)))
-            .unwrap_err();
+        let committee = committee();
+        let proof = signed_version_1_proof(&committee, 1..=5, None);
+        let err = proof.validate_committed(QUORUM_POWER, &committee).unwrap_err();
         assert!(
             err.to_string()
                 .contains("signers hold 14 voting power but at least 23 is required"),
@@ -284,8 +300,119 @@ mod weighted_committee {
     #[test]
     fn it_accepts_a_qc_with_few_signers_holding_enough_power() {
         // Three of seven members, but 30 of 34 power.
-        let proof = signed_by(5..=7);
-        proof.validate_committed(QUORUM_POWER, &|pk| Ok(power_of(pk))).unwrap();
+        let committee = committee();
+        let proof = signed_version_1_proof(&committee, 5..=7, None);
+        proof.validate_committed(QUORUM_POWER, &committee).unwrap();
+    }
+}
+
+mod signer_bitmap {
+    use tari_sidechain::{SidechainProofValidationError, SignerBitmap};
+
+    use super::*;
+
+    fn with_first_qc(mutate: impl FnOnce(&mut QuorumCertificate)) -> SidechainBlockCommitProof {
+        let mut proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+        let Some(CommitProofElement::QuorumCertificate(qc)) = proof.proof_elements.first_mut() else {
+            panic!("commit_proof.json fixture must begin with a quorum certificate");
+        };
+        mutate(qc);
+        proof
+    }
+
+    fn set_signers(qc: &mut QuorumCertificate, bitmap: SignerBitmap) {
+        let QcSignatures::Schnorr { signers, .. } = &mut qc.signatures;
+        *signers = bitmap;
+    }
+
+    #[test]
+    fn it_rejects_a_bitmap_sized_for_another_committee() {
+        let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+        // Nine members need a two byte bitmap, but the fixture's is one byte.
+        let committee = TestCommittee::new(
+            fixture_committee()
+                .public_keys()
+                .cloned()
+                .chain((1..=5).map(validator_public_key))
+                .map(|pk| (pk, 1)),
+        );
+        let err = proof.validate_committed(4, &committee).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("is 1 bytes, but a committee of 9 members requires 2"),
+            "Expected the bitmap length error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn it_rejects_a_bitmap_that_marks_a_padding_bit() {
+        let proof = with_first_qc(|qc| set_signers(qc, SignerBitmap::from_bytes(vec![0b0001_0111])));
+        let err = proof.validate_committed(3, &fixture_committee()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("marks member 4, but the committee has 4 members"),
+            "Expected the padding bit error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn it_rejects_a_signature_count_that_differs_from_the_signer_count() {
+        let proof = with_first_qc(|qc| set_signers(qc, SignerBitmap::from_indices(4, [0, 1, 2]).unwrap()));
+        let err = proof.validate_committed(3, &fixture_committee()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("marks 3 signers, but the certificate carries 4 signatures"),
+            "Expected the signature count error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn it_rejects_signatures_out_of_committee_order() {
+        let proof = with_first_qc(|qc| schnorr_signatures(qc).swap(0, 1));
+        let err = proof.validate_committed(4, &fixture_committee()).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid signature for QC"),
+            "Expected the signature error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn it_attributes_signatures_to_the_members_the_bitmap_marks() {
+        let committee = test_committee(1..=5, |_| 1);
+        let mut proof = signed_version_1_proof(&committee, 1..=4, None);
+        proof.validate_committed(4, &committee).unwrap();
+
+        // Validator 5 did not sign. Moving any signer's bit to it misattributes that signature.
+        let five = committee.index_of(&validator_public_key(5)).unwrap();
+        for elem in &mut proof.proof_elements {
+            if let CommitProofElement::QuorumCertificate(qc) = elem {
+                let indices = (0..5).filter(|&i| i != five).skip(1).chain([five]);
+                set_signers(qc, SignerBitmap::from_indices(5, indices).unwrap());
+            }
+        }
+        let err = proof.validate_committed(4, &committee).unwrap_err();
+        assert!(
+            err.to_string().contains("Invalid signature for QC"),
+            "Expected the signature error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn it_reports_a_committee_out_of_public_key_order_as_an_internal_error() {
+        let proof = load_fixture::<SidechainBlockCommitProof>("commit_proof.json");
+        let mut members = fixture_committee()
+            .public_keys()
+            .cloned()
+            .map(|pk| (pk, 1))
+            .collect::<Vec<_>>();
+        members.swap(0, 1);
+        let err = proof
+            .validate_committed(4, &TestCommittee::in_order(members))
+            .unwrap_err();
+        assert!(
+            matches!(err, SidechainProofValidationError::InternalError { .. }),
+            "Expected an internal error, got: {err}"
+        );
     }
 }
 
@@ -329,9 +456,10 @@ fn the_protocol_version_selects_the_vote_message() {
 }
 
 mod batch_verification {
-    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey, UncompressedPublicKey};
     use tari_crypto::keys::SecretKey;
-    use tari_sidechain::{QuorumCertificate, ValidatorBlockSignature, ValidatorQcSignature};
+    use tari_sidechain::ValidatorBlockSignature;
+    use tari_utilities::ByteArray;
 
     use super::*;
 
@@ -344,8 +472,8 @@ mod batch_verification {
         proof
     }
 
-    fn assert_invalid_signature(proof: &SidechainBlockCommitProof) {
-        let err = proof.validate_committed(4, &|_| Ok(1)).unwrap_err();
+    fn assert_invalid_signature(proof: &SidechainBlockCommitProof, committee: &TestCommittee) {
+        let err = proof.validate_committed(4, committee).unwrap_err();
         assert!(
             err.to_string().contains("Invalid signature for QC"),
             "Expected the signature error, got: {err}"
@@ -364,40 +492,53 @@ mod batch_verification {
     fn it_rejects_two_invalid_signatures_whose_errors_cancel() {
         let delta = PrivateKey::from_uniform_bytes(&[9u8; 64]).unwrap();
         let proof = with_first_qc(|qc| {
-            let [first, second, ..] = qc.signatures.as_mut_slice() else {
+            let [first, second, ..] = schnorr_signatures(qc).as_mut_slice() else {
                 panic!("commit_proof.json fixture QC must have at least two signatures");
             };
             // Each signature is individually invalid, and the two errors sum to zero.
-            first.signature = shift_s(&first.signature, &delta, true);
-            second.signature = shift_s(&second.signature, &delta, false);
+            *first = shift_s(first, &delta, true);
+            *second = shift_s(second, &delta, false);
         });
 
-        let (block_id, qc) = match proof.proof_elements.first() {
-            Some(CommitProofElement::QuorumCertificate(qc)) => (qc.calculate_justified_block(), qc),
-            _ => panic!("commit_proof.json fixture must begin with a quorum certificate"),
+        let Some(CommitProofElement::QuorumCertificate(qc)) = proof.proof_elements.first() else {
+            panic!("commit_proof.json fixture must begin with a quorum certificate");
         };
-        for sig in qc.signatures.iter().take(2) {
-            assert!(!sig.verify(qc.protocol_version, &block_id, qc.decision, qc.epoch, qc.height));
+        let block_id = qc.calculate_justified_block();
+        let message =
+            ProposalVoteMessage::new(qc.protocol_version, &block_id, qc.decision, qc.epoch, qc.height).calculate_hash();
+        let QcSignatures::Schnorr { signatures, .. } = &qc.signatures;
+        let committee = fixture_committee();
+        for (public_key, signature) in committee.public_keys().zip(signatures).take(2) {
+            let public_key = public_key.to_public_key().unwrap();
+            assert!(!signature.to_schnorr_signature().unwrap().verify(&public_key, message));
         }
-        assert_invalid_signature(&proof);
+        assert_invalid_signature(&proof, &committee);
     }
 
     #[test]
     fn it_rejects_a_signature_under_the_identity_public_key() {
         let s = PrivateKey::from_uniform_bytes(&[11u8; 64]).unwrap();
+        // The identity encodes as zero bytes, so it is the committee's first member and the first signer.
+        let identity = CompressedPublicKey::default();
+        assert!(UncompressedPublicKey::from_canonical_bytes(identity.as_bytes()).is_ok());
+        let committee = TestCommittee::new(
+            fixture_committee()
+                .public_keys()
+                .skip(1)
+                .cloned()
+                .chain([identity])
+                .map(|pk| (pk, 1)),
+        );
         let proof = with_first_qc(|qc| {
-            let first = qc.signatures.first_mut().expect("fixture QC must have a signature");
+            let signatures = schnorr_signatures(qc);
+            signatures.remove(0);
             // With `P` the identity, `s·G == R` satisfies the verification equation for any message.
-            *first = ValidatorQcSignature {
-                public_key: CompressedPublicKey::default(),
-                signature: ValidatorBlockSignature::new(CompressedPublicKey::from_secret_key(&s), s),
-            };
-            assert!(
-                first.decode().is_some(),
-                "the identity must decode, so the batch sees it"
+            signatures.insert(
+                0,
+                ValidatorBlockSignature::new(CompressedPublicKey::from_secret_key(&s), s),
             );
         });
-        assert_invalid_signature(&proof);
+        assert_invalid_signature(&proof, &committee);
     }
 }
 

@@ -7,6 +7,8 @@ pub enum SidechainProofValidationError {
     UnexpectedCommand { details: String },
     #[error("Invalid proof: {details}")]
     InvalidProof { details: String },
+    #[error("Invalid quorum certificate signatures: {0}")]
+    InvalidQcSignatures(#[from] crate::QcSignaturesError),
     #[error("Internal error: {details}")]
     InternalError { details: String },
     #[error("Jellyfish proof verification error: {0}")]

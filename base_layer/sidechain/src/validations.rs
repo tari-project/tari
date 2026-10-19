@@ -1,34 +1,35 @@
 // Copyright 2024 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{collections::HashSet, hash::Hash};
-
 use log::debug;
-use tari_common_types::types::FixedHash;
+use tari_common_types::types::{FixedHash, UncompressedPublicKey};
+use tari_utilities::ByteArray;
 
 use crate::{
-    CheckVnFunc,
     CommitProofElement,
     DecodedValidatorBlockSignature,
     ProposalVoteMessage,
+    QcSignatures,
     QuorumCertificate,
     QuorumDecision,
     SidechainBlockHeader,
     SidechainProofValidationError,
+    SignerBitmap,
+    SigningCommittee,
 };
 
 const LOG_TARGET: &str = "c::sidechain::validations";
 
 /// The maximum number of signatures a quorum certificate may contain. A valid quorum certificate contains at most one
 /// signature per committee member, so this is an upper bound for any committee size. It is enforced at the proto
-/// deserialization boundary and again during proof validation, in both cases before any signature is verified or
-/// duplicates are collected, so that the work an untrusted quorum certificate can cause is bounded.
+/// deserialization boundary and again during proof validation, in both cases before any signature is verified, so that
+/// the work an untrusted quorum certificate can cause is bounded.
 pub const MAX_QC_SIGNATURES: usize = 1000;
 
 pub fn check_proof_elements(
     header: &SidechainBlockHeader,
     proof_elements: &[CommitProofElement],
-    check_vn: &CheckVnFunc<'_>,
+    committee: &dyn SigningCommittee,
     expected_decision: QuorumDecision,
     quorum_threshold: u64,
 ) -> Result<(), SidechainProofValidationError> {
@@ -42,7 +43,7 @@ pub fn check_proof_elements(
             CommitProofElement::QuorumCertificate(qc) => {
                 let justifies = qc.calculate_justified_block();
                 debug!(target: LOG_TARGET, "Validating quorum certificate that justifies: {justifies}");
-                validate_qc(qc, quorum_threshold, check_vn, expected_decision)?;
+                validate_qc(qc, quorum_threshold, committee, expected_decision)?;
                 debug!(target: LOG_TARGET, "Quorum certificate OK");
 
                 if let Some(last_parent) = last_parent &&
@@ -188,15 +189,15 @@ pub fn check_proof_elements_num_qcs(
 fn validate_qc(
     qc: &QuorumCertificate,
     quorum_threshold: u64,
-    check_vn: &CheckVnFunc<'_>,
+    committee: &dyn SigningCommittee,
     quorum_decision: QuorumDecision,
 ) -> Result<(), SidechainProofValidationError> {
-    if qc.signatures.len() > MAX_QC_SIGNATURES {
+    if qc.signatures.num_signatures() > MAX_QC_SIGNATURES {
         return Err(SidechainProofValidationError::InvalidProof {
             details: format!(
                 "Quorum certificate must contain at most {} signatures but contained {}",
                 MAX_QC_SIGNATURES,
-                qc.signatures.len()
+                qc.signatures.num_signatures()
             ),
         });
     }
@@ -210,74 +211,85 @@ fn validate_qc(
         });
     }
 
-    if has_duplicates(qc.signatures.iter().map(|s| &s.public_key)) {
-        return Err(SidechainProofValidationError::InvalidProof {
-            details: "Quorum certificate contains more than one signature from a single validator".to_string(),
-        });
-    }
+    qc.signatures.check_well_formed(committee.len())?;
 
     let block_id = qc.calculate_justified_block();
-    let mut decoded = Vec::with_capacity(qc.signatures.len());
-    let mut signed_power = 0u64;
-    for sig in &qc.signatures {
-        let power = check_vn(&sig.public_key)?;
-        if power == 0 {
-            return Err(SidechainProofValidationError::InvalidProof {
-                details: format!(
-                    "QC was signed by public key {} that is not in the active validator set",
-                    sig.public_key
-                ),
-            });
-        }
-        signed_power = signed_power.saturating_add(power);
+    match &qc.signatures {
+        QcSignatures::Schnorr { signers, signatures } => {
+            let members = resolve_signers(signers, committee)?;
 
-        let Some(pair) = sig.decode() else {
-            return Err(invalid_qc_signature(&block_id));
-        };
-        decoded.push(pair);
-    }
+            // Each signer is a distinct member and the batch below accepts all of their signatures or none, so this
+            // is the power of the signers whose signatures verify. It is checked first so that a QC short of quorum
+            // costs no verification. An empty QC has no power, so it is rejected here unless the threshold is 0.
+            let signed_power = members.iter().fold(0u64, |acc, (_, power)| acc.saturating_add(*power));
+            if signed_power < quorum_threshold {
+                return Err(SidechainProofValidationError::InvalidProof {
+                    details: format!(
+                        "Quorum certificate signers hold {signed_power} voting power but at least {quorum_threshold} \
+                         is required"
+                    ),
+                });
+            }
 
-    // The signers are distinct and the batch below accepts all of their signatures or none, so this is the power of
-    // the signers whose signatures verify. It is checked first so that a QC short of quorum costs no verification.
-    // An empty QC has no power, so it is rejected here unless the threshold is 0.
-    if signed_power < quorum_threshold {
-        return Err(SidechainProofValidationError::InvalidProof {
-            details: format!(
-                "Quorum certificate signers hold {signed_power} voting power but at least {quorum_threshold} is \
-                 required"
-            ),
-        });
-    }
+            let mut decoded = Vec::with_capacity(signatures.len());
+            for ((public_key, _), signature) in members.iter().zip(signatures) {
+                let public_key = UncompressedPublicKey::from_canonical_bytes(public_key).map_err(|e| {
+                    SidechainProofValidationError::internal_error(format!(
+                        "Committee member public key {} is not a valid public key: {e}",
+                        hex::encode(public_key)
+                    ))
+                })?;
+                let signature = signature
+                    .to_schnorr_signature()
+                    .map_err(|_| invalid_qc_signature(&block_id))?;
+                decoded.push((public_key, signature));
+            }
 
-    // Every member of a QC signs the same message.
-    let message =
-        ProposalVoteMessage::new(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height).calculate_hash();
-    let batch = decoded
-        .iter()
-        .map(|(public_key, signature)| (signature, public_key, message))
-        .collect::<Vec<_>>();
-    if !DecodedValidatorBlockSignature::verify_batch(&batch) {
-        return Err(invalid_qc_signature(&block_id));
+            // Every member of a QC signs the same message.
+            let message =
+                ProposalVoteMessage::new(qc.protocol_version, &block_id, quorum_decision, qc.epoch, qc.height)
+                    .calculate_hash();
+            let batch = decoded
+                .iter()
+                .map(|(public_key, signature)| (signature, public_key, message))
+                .collect::<Vec<_>>();
+            if !DecodedValidatorBlockSignature::verify_batch(&batch) {
+                return Err(invalid_qc_signature(&block_id));
+            }
+        },
     }
     Ok(())
+}
+
+/// The public key and voting power of each signer in `signers`, in committee order.
+fn resolve_signers<'a>(
+    signers: &SignerBitmap,
+    committee: &'a dyn SigningCommittee,
+) -> Result<Vec<(&'a [u8], u64)>, SidechainProofValidationError> {
+    let mut members = Vec::<(&[u8], u64)>::with_capacity(signers.count());
+    for index in signers.iter() {
+        let member = committee.member(index).ok_or_else(|| {
+            SidechainProofValidationError::internal_error(format!(
+                "Committee of {} members has no member at index {index}",
+                committee.len()
+            ))
+        })?;
+        // Ascending keys mean every signer is a distinct validator whose power counts once.
+        if let Some((previous, _)) = members.last() &&
+            *previous >= member.0
+        {
+            return Err(SidechainProofValidationError::internal_error(format!(
+                "Committee lists public key {} at index {index}, which is not after the key before it",
+                hex::encode(member.0)
+            )));
+        }
+        members.push(member);
+    }
+    Ok(members)
 }
 
 fn invalid_qc_signature(block_id: &FixedHash) -> SidechainProofValidationError {
     SidechainProofValidationError::InvalidProof {
         details: format!("Invalid signature for QC for block ID {block_id}"),
     }
-}
-
-fn has_duplicates<I, T>(iter: I) -> bool
-where
-    I: IntoIterator<Item = T> + ExactSizeIterator,
-    T: Eq + Hash,
-{
-    let mut set = HashSet::with_capacity(iter.len());
-    for item in iter {
-        if !set.insert(item) {
-            return true;
-        }
-    }
-    false
 }
