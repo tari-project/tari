@@ -224,6 +224,11 @@ mod tests {
         };
         assert!(!error.is_ban_offence());
 
+        let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::PeerSignatureFromFuture {
+            peer: NodeId::default(),
+        });
+        assert!(!error.is_ban_offence());
+
         let error = DhtPeerValidatorError::ValidatorError(PeerValidatorError::InvalidPeerSignature {
             peer: NodeId::default(),
         });

@@ -29,6 +29,8 @@ use crate::{bans::BAN_DURATION_LONG, peer_manager::NodeId};
 pub enum PeerValidatorError {
     #[error("Peer signature was invalid for peer '{peer}'")]
     InvalidPeerSignature { peer: NodeId },
+    #[error("Peer signature for '{peer}' is dated more than a day in the future")]
+    PeerSignatureFromFuture { peer: NodeId },
     #[error("One or more peer addresses were invalid for '{peer}'")]
     InvalidPeerAddresses { peer: NodeId },
     #[error("Peer '{peer}' has no address claims")]
@@ -65,6 +67,8 @@ impl PeerValidatorError {
             Self::PeerHasNoAddresses { .. } |
             Self::PeerHasNoUsableAddresses { .. } |
             Self::NonPrintableIdentityString { .. } |
+            // An honest signer whose clock runs ahead of ours
+            Self::PeerSignatureFromFuture { .. } |
             // Older nodes accept and relay any DNS name, so an unusual one is dropped, not punished
             Self::UnusableDnsName(_) => false,
             Self::InvalidPeerSignature { .. } |
