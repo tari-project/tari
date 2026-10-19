@@ -7,6 +7,7 @@
 //   python3 -I scripts/gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt \
 //       > base_layer/transaction_components/src/helpers/terminal_safe_table.rs
 
+#[cfg(test)]
 pub const UCD_VERSION: &str = "18.0.0";
 
 /// Sorted, non-overlapping, inclusive code point ranges.

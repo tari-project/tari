@@ -73,6 +73,7 @@ def main():
     out.write("// Regenerate (see the script header for downloading the UCD files):\n")
     out.write("//   python3 -I scripts/gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt \\\n")
     out.write("//       > base_layer/transaction_components/src/helpers/terminal_safe_table.rs\n\n")
+    out.write("#[cfg(test)]\n")
     out.write(f'pub const UCD_VERSION: &str = "{gc_version}";\n\n')
     out.write("/// Sorted, non-overlapping, inclusive code point ranges.\n")
     out.write("pub const ESCAPE_RANGES: &[(u32, u32)] = &[\n")
