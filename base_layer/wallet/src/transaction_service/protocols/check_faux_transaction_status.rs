@@ -133,8 +133,8 @@ pub async fn check_detected_transactions<
         let output_info_for_tx_id = match output_manager.get_output_info_for_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
-                error!(target: LOG_TARGET, "Problem retrieving output statuses: {e}");
-                return;
+                error!(target: LOG_TARGET, "Problem retrieving output statuses for TxId {}: {e}", tx.tx_id);
+                continue;
             },
         };
         debug!(
@@ -153,7 +153,10 @@ pub async fn check_detected_transactions<
         );
         // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
         // be different.
-        let output_status = output_info_for_tx_id.statuses.first().expect("Cannot be empty");
+        let Some(output_status) = output_info_for_tx_id.statuses.first() else {
+            error!(target: LOG_TARGET, "TxId {}: no output statuses", tx.tx_id);
+            continue;
+        };
         if output_info_for_tx_id.mined_height.is_none() || output_info_for_tx_id.block_hash.is_none() {
             // this means the transaction is not detected as mined
             if let Err(e) = db.set_transaction_as_unmined(tx.tx_id) {
