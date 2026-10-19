@@ -257,10 +257,9 @@ impl MultiaddrWithStats {
 
     pub fn update_source_if_better(&mut self, source: &PeerAddressSource) {
         match (self.source.peer_identity_claim(), source.peer_identity_claim()) {
-            (None, None) => (),
-            (None, Some(_)) => {
-                self.source = source.clone();
-            },
+            // An address from config stays a config address when the peer also claims it: config addresses are dialled
+            // under the operator's rules (e.g. a DNS name for a node on the local network)
+            (None, _) => (),
             (Some(_), None) => (),
             (Some(self_source), Some(other_source)) => {
                 if other_source.signature.updated_at() > self_source.signature.updated_at() {

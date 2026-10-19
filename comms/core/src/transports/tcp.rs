@@ -300,6 +300,18 @@ mod test {
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
     }
 
+    #[tokio::test]
+    async fn literal_nat64_address_of_loopback_is_not_dialled() {
+        let tcp = TcpTransport::new();
+        let addr = "/ip6/64:ff9b::7f00:1/tcp/18189".parse().unwrap();
+        let policy = DialAddressPolicy {
+            allow_internal: false,
+            excluded: vec![],
+        };
+        let err = tcp.dial_with_policy(&addr, &policy).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
     #[test]
     fn configure() {
         let mut tcp = TcpTransport::new();

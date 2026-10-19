@@ -47,21 +47,27 @@ pub struct DialAddressPolicy {
 }
 
 impl DialAddressPolicy {
-    /// Checks the resolved `socket_addr` of `addr`. Addresses that are not DNS names are not checked.
+    /// Checks the resolved `socket_addr` of `addr`. A DNS address gets the full check. A literal IP address is only
+    /// checked if it is a NAT64 address, as the IPv4 address it reaches; other literal addresses are not checked.
     pub fn check_resolved(&self, addr: &Multiaddr, socket_addr: &SocketAddr) -> io::Result<()> {
-        if !is_dns_address(addr) {
+        let is_dns = is_dns_address(addr);
+        let nat64_ipv4 = nat64_embedded_ipv4(socket_addr.ip());
+        let is_local_nat64 = is_local_use_nat64(socket_addr.ip());
+        if !is_dns && nat64_ipv4.is_none() && !is_local_nat64 {
             return Ok(());
         }
-        // A NAT64 address reaches the IPv4 address embedded in it, so both are checked
-        let mut resolved = vec![socketaddr_to_multiaddr(socket_addr)];
-        if let Some(ipv4) = nat64_embedded_ipv4(socket_addr.ip()) {
+        // A NAT64 address reaches the IPv4 address embedded in it, so that is checked too
+        let mut resolved = Vec::with_capacity(2);
+        if is_dns {
+            resolved.push(socketaddr_to_multiaddr(socket_addr));
+        }
+        if let Some(ipv4) = nat64_ipv4 {
             resolved.push(socketaddr_to_multiaddr(&SocketAddr::new(
                 ipv4.into(),
                 socket_addr.port(),
             )));
         }
-        let is_internal =
-            is_local_use_nat64(socket_addr.ip()) || resolved.iter().any(|resolved| !is_external_address(resolved));
+        let is_internal = is_local_nat64 || resolved.iter().any(|resolved| !is_external_address(resolved));
         if !self.allow_internal && is_internal {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -182,6 +188,35 @@ mod test {
         let err = policy(false, &[]).check_resolved(&addr, &local_use).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
         policy(true, &[]).check_resolved(&addr, &local_use).unwrap();
+    }
+
+    #[test]
+    fn literal_nat64_address_is_checked_as_its_ipv4_address() {
+        let check = |policy: DialAddressPolicy, addr: &str| {
+            let addr: Multiaddr = addr.parse().unwrap();
+            let Some(Protocol::Ip6(ip)) = addr.iter().next() else {
+                panic!("not an IPv6 address");
+            };
+            policy.check_resolved(&addr, &SocketAddr::new(ip.into(), 18189))
+        };
+
+        let embeds_loopback = "/ip6/64:ff9b::7f00:1/tcp/18189";
+        let err = check(policy(false, &[]), embeds_loopback).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        check(policy(true, &[]), embeds_loopback).unwrap();
+
+        let embeds_public = "/ip6/64:ff9b::1717:1717/tcp/18189";
+        check(policy(false, &[]), embeds_public).unwrap();
+        let err = check(policy(true, &["/ip4/23.23.*.*/tcp/*"]), embeds_public).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+
+        let local_use = "/ip6/64:ff9b:1::1717:1717/tcp/18189";
+        let err = check(policy(false, &[]), local_use).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+        check(policy(true, &[]), local_use).unwrap();
+
+        // Other literal IPv6 addresses are unchanged
+        check(policy(false, &[]), "/ip6/::1/tcp/18189").unwrap();
     }
 
     #[test]
