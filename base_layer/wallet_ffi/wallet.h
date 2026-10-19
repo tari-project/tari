@@ -3537,7 +3537,7 @@ TariCompletedTransaction *wallet_get_completed_transaction_by_id(struct TariWall
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
- * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
+ * `max_search_limit` - Unused, the transaction is looked up directly; kept for compatibility
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
@@ -3560,7 +3560,7 @@ TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_id(stru
  * ## Arguments
  * `wallet` - The TariWallet pointer
  * `transaction_id` - The TransactionId
- * `max_search_limit` - The maximum number of transactions to return, if 0 then all transactions will be returned
+ * `max_search_limit` - Unused, the transaction is looked up directly; kept for compatibility
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
  * as an out parameter. Returns a null pointer if any pointer argument is null.
  *
