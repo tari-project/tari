@@ -48,10 +48,15 @@ VERSION = re.compile(r"^# \w+-(\d+\.\d+\.\d+)\.txt")
 
 
 def read_ranges(path, file_name, wanted):
+    """Returns (version, wanted ranges, code points listed under any property), after checking the file is whole."""
     version = None
     ranges = []
+    listed = 0
+    complete = False
     with open(path, encoding="utf-8") as f:
         for line in f:
+            if line.rstrip() == "# EOF":
+                complete = True
             if version is None:
                 m = VERSION.match(line)
                 if m:
@@ -63,12 +68,13 @@ def read_ranges(path, file_name, wanted):
                 if DATA_LINE.match(line):
                     sys.exit(f"{path}: unrecognised data line: {line.rstrip()}")
                 continue
-            if m.group(3) not in wanted:
-                continue
             start = int(m.group(1), 16)
             end = int(m.group(2), 16) if m.group(2) else start
             if start > end or end > 0x10FFFF:
                 sys.exit(f"{path}: bad range: {line.rstrip()}")
+            listed += end - start + 1
+            if m.group(3) not in wanted:
+                continue
             if start <= KEEP <= end:
                 if start < KEEP:
                     ranges.append((start, KEEP - 1))
@@ -78,16 +84,21 @@ def read_ranges(path, file_name, wanted):
                 ranges.append((start, end))
     if version is None:
         sys.exit(f"{path}: no version header")
+    if not complete:
+        sys.exit(f"{path}: no '# EOF' marker; the file is truncated")
     if not ranges:
         sys.exit(f"{path}: no ranges for {sorted(wanted)}")
-    return version, ranges
+    return version, ranges, listed
 
 
 def main():
     if len(sys.argv) != 3:
         sys.exit("usage: gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt")
-    gc_version, gc_ranges = read_ranges(sys.argv[1], "DerivedGeneralCategory", GENERAL_CATEGORIES)
-    cp_version, cp_ranges = read_ranges(sys.argv[2], "DerivedCoreProperties", CORE_PROPERTIES)
+    gc_version, gc_ranges, gc_listed = read_ranges(sys.argv[1], "DerivedGeneralCategory", GENERAL_CATEGORIES)
+    cp_version, cp_ranges, _ = read_ranges(sys.argv[2], "DerivedCoreProperties", CORE_PROPERTIES)
+    # The general category file assigns every code point exactly once, so anything else means lines are missing
+    if gc_listed != 0x110000:
+        sys.exit(f"{sys.argv[1]}: lists {gc_listed:#x} code points, expected 0x110000; the file is incomplete")
     if gc_version != cp_version:
         sys.exit(f"UCD version mismatch: {gc_version} vs {cp_version}")
 
