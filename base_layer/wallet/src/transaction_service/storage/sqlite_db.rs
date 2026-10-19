@@ -112,6 +112,33 @@ fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {
         .collect()
 }
 
+/// Decodes a batch of completed transaction rows, skipping and logging rows that cannot be decoded.
+fn decode_completed_transactions(
+    rows: Vec<CompletedTransactionSql>,
+    cipher: &XChaCha20Poly1305,
+    conn: &mut SqliteConnection,
+) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    let mut result = Vec::with_capacity(rows.len());
+    let mut first_error = None;
+    for row in rows {
+        let tx_id = row.tx_id;
+        match CompletedTransaction::try_from(row, cipher, conn) {
+            Ok(tx) => result.push(tx),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Skipping undecodable completed transaction {tx_id}: {e}");
+                first_error.get_or_insert(e);
+            },
+        }
+    }
+    // If every row fails the failure is systemic (for example a wrong key), so it is still an error
+    if let Some(e) = first_error &&
+        result.is_empty()
+    {
+        return Err(e.into());
+    }
+    Ok(result)
+}
+
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
 pub struct TransactionServiceSqliteDatabase {
@@ -351,10 +378,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CompletedTransactions(max_limit) => {
-                let mut result = Vec::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, false, *max_limit)? {
-                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher, &mut conn)?);
-                }
+                let rows = CompletedTransactionSql::index_by_cancelled(&mut conn, false, *max_limit)?;
+                let result = decode_completed_transactions(rows, &self.cipher, &mut conn)?;
 
                 Some(DbValue::CompletedTransactions(result))
             },
@@ -403,10 +428,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Some(DbValue::PendingInboundTransactions(result))
             },
             DbKey::CancelledCompletedTransactions(max_limit) => {
-                let mut result = Vec::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&mut conn, true, *max_limit)? {
-                    result.push(CompletedTransaction::try_from((c).clone(), &self.cipher, &mut conn)?);
-                }
+                let rows = CompletedTransactionSql::index_by_cancelled(&mut conn, true, *max_limit)?;
+                let result = decode_completed_transactions(rows, &self.cipher, &mut conn)?;
 
                 Some(DbValue::CompletedTransactions(result))
             },
@@ -1004,7 +1027,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let tx = completed_transactions::table
+        let rows = completed_transactions::table
             // Note: Check 'mined_in_block' as well as 'mined_height' is populated for faux transactions before it is confirmed
             .filter(completed_transactions::mined_in_block.is_not_null())
             .filter(completed_transactions::mined_height.is_not_null())
@@ -1016,12 +1039,29 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     .or(completed_transactions::cancelled.ne(STICKY_CANCELLATION)),
             )
             .order_by(completed_transactions::mined_height.desc())
-            .first::<CompletedTransactionSql>(&mut conn)
-            .optional()?;
-        let result = match tx {
-            Some(tx) => Some(CompletedTransaction::try_from(tx, &self.cipher, &mut conn)?),
-            None => None,
-        };
+            .limit(10)
+            .load::<CompletedTransactionSql>(&mut conn)?;
+        // Fall through to the next mined transaction if the newest rows cannot be decoded
+        let mut result = None;
+        let mut first_error = None;
+        for row in rows {
+            let tx_id = row.tx_id;
+            match CompletedTransaction::try_from(row, &self.cipher, &mut conn) {
+                Ok(tx) => {
+                    result = Some(tx);
+                    break;
+                },
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Skipping undecodable completed transaction {tx_id}: {e}");
+                    first_error.get_or_insert(e);
+                },
+            }
+        }
+        if let Some(e) = first_error &&
+            result.is_none()
+        {
+            return Err(e.into());
+        }
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -1073,10 +1113,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .order_by(completed_transactions::tx_id)
             .load::<CompletedTransactionSql>(&mut conn)?;
 
-        let mut result = vec![];
-        for tx in txs {
-            result.push(CompletedTransaction::try_from(tx, &self.cipher, &mut conn)?);
-        }
+        let result = decode_completed_transactions(txs, &self.cipher, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -1228,82 +1265,35 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
-        CompletedTransactionSql::index_by_status_and_cancelled(LegacyTransactionStatus::Imported, false, &mut conn)?
-            .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+        let rows = CompletedTransactionSql::index_by_status_and_cancelled(
+            LegacyTransactionStatus::Imported,
+            false,
+            &mut conn,
+        )?;
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn fetch_unconfirmed_detected_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
-        let mut results = HashMap::new();
-
-        let one_sided = CompletedTransactionSql::index_by_status_and_cancelled(
+        // Decode all categories together so a bad row in one category does not abort the others
+        let mut rows = Vec::new();
+        for status in [
             LegacyTransactionStatus::OneSidedUnconfirmed,
-            false,
-            &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        for tx in one_sided {
-            results.insert(tx.tx_id, tx);
-        }
-
-        let one_sided_locked = CompletedTransactionSql::index_by_status_and_cancelled(
             LegacyTransactionStatus::OneSidedConfirmedLocked,
-            false,
-            &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        for tx in one_sided_locked {
-            results.insert(tx.tx_id, tx);
-        }
-
-        let coinbases = CompletedTransactionSql::index_by_status_and_cancelled(
             LegacyTransactionStatus::CoinbaseUnconfirmed,
-            false,
-            &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        for tx in coinbases {
-            results.insert(tx.tx_id, tx);
-        }
-
-        let coinbases_locked = CompletedTransactionSql::index_by_status_and_cancelled(
             LegacyTransactionStatus::CoinbaseConfirmedLocked,
-            false,
-            &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        for tx in coinbases_locked {
-            results.insert(tx.tx_id, tx);
+        ] {
+            rows.extend(CompletedTransactionSql::index_by_status_and_cancelled(
+                status, false, &mut conn,
+            )?);
         }
+        rows.extend(CompletedTransactionSql::fetch_transactions_with_not_mined_height(
+            false, &mut conn,
+        )?);
 
-        let not_validated = CompletedTransactionSql::fetch_transactions_with_not_mined_height(false, &mut conn)?
-            .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        for tx in not_validated {
+        let mut results = HashMap::new();
+        for tx in decode_completed_transactions(rows, &self.cipher, &mut conn)? {
             results.insert(tx.tx_id, tx);
         }
 
@@ -1325,13 +1315,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             query = query.filter(completed_transactions::destination_address.eq(destination_address.to_vec()));
         }
 
-        query
-            .load::<CompletedTransactionSql>(&mut conn)?
-            .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+        let rows = query.load::<CompletedTransactionSql>(&mut conn)?;
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn find_completed_transactions_filter_payment_id_block_hash(
@@ -1355,14 +1340,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             query = query.filter(completed_transactions::mined_height.eq(height as i64));
         }
 
-        query
-            .limit(limit)
-            .load::<CompletedTransactionSql>(&mut conn)?
-            .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+        let rows = query.limit(limit).load::<CompletedTransactionSql>(&mut conn)?;
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn fetch_unmined_coinbase_transactions_from_height(
@@ -1371,18 +1350,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let mut conn = self.database_connection.get_pooled_connection()?;
 
-        let coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+        let rows = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
             LegacyTransactionStatus::CoinbaseNotInBlockChain,
             false,
             height as i64,
             &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        Ok(coinbases)
+        )?;
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn get_transaction_with_payref(
@@ -1413,19 +1387,19 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let history_entries = PayrefHistorySql::find_by_payref(&payref.to_vec(), &mut conn)?;
         // Deduplicate by tx_id to avoid returning the same transaction multiple times
         let mut seen_tx_ids = std::collections::HashSet::new();
-        let mut transactions = Vec::new();
+        let mut rows = Vec::new();
         for entry in history_entries {
             if !seen_tx_ids.insert(entry.tx_id) {
                 continue;
             }
             let tx_id = (entry.tx_id as u64).into();
             match CompletedTransactionSql::find(tx_id, &mut conn) {
-                Ok(c) => transactions.push(CompletedTransaction::try_from(c, &self.cipher, &mut conn)?),
+                Ok(c) => rows.push(c),
                 Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {},
                 Err(e) => return Err(e),
             }
         }
-        Ok(transactions)
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn get_payref_history_by_tx_id(
@@ -1479,16 +1453,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             }
         }
 
-        query
+        // A page may come back short when rows are skipped; offsets stay row based
+        let rows = query
             .order(completed_transactions::timestamp.desc())
             .offset(offset as i64)
             .limit(limit as i64)
-            .load::<CompletedTransactionSql>(&mut conn)?
-            .into_iter()
-            .map(|ct: CompletedTransactionSql| {
-                CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+            .load::<CompletedTransactionSql>(&mut conn)?;
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn fetch_confirmed_detected_transactions_from_height(
@@ -1502,25 +1473,15 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             false,
             height as i64,
             &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        let mut coinbases = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+        )?;
+        let mut rows = CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
             LegacyTransactionStatus::CoinbaseConfirmed,
             false,
             height as i64,
             &mut conn,
-        )?
-        .into_iter()
-        .map(|ct: CompletedTransactionSql| {
-            CompletedTransaction::try_from(ct, &self.cipher, &mut conn).map_err(TransactionStorageError::from)
-        })
-        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()?;
-        coinbases.append(&mut one_sided);
-        Ok(coinbases)
+        )?;
+        rows.append(&mut one_sided);
+        decode_completed_transactions(rows, &self.cipher, &mut conn)
     }
 
     fn insert_burn_proof(
@@ -4139,31 +4100,65 @@ mod test {
         assert!(db3.fetch(&DbKey::CompletedTransactions(0)).is_err());
     }
 
+    /// Opens a migrated wallet database with a single pooled connection.
+    fn single_connection_wallet_db(dir: &std::path::Path) -> WalletDbConnection {
+        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
+        let db_path = format!("{}/{}.sqlite3", dir.to_str().unwrap(), string(8));
+        let mut pool = SqliteConnectionPool::new(db_path, 1, DbProfile::KeyMaterial).unwrap();
+        pool.create_pool().unwrap();
+        // The pooled connection must be dropped before reuse, as the pool size is one
+        pool.get_pooled_connection()
+            .unwrap()
+            .run_pending_migrations(MIGRATIONS)
+            .unwrap();
+        WalletDbConnection::new(pool, None)
+    }
+
+    fn commit_completed(connection: &WalletDbConnection, cipher: &XChaCha20Poly1305, tx: CompletedTransaction) {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        CompletedTransactionSql::try_from(tx, cipher)
+            .unwrap()
+            .commit(&mut conn)
+            .unwrap();
+    }
+
+    /// Fails the AEAD check by zeroing the encrypted transaction
+    const TAMPERED_CIPHERTEXT: &str = "transaction_protocol = zeroblob(length(transaction_protocol))";
+    /// Fails address decoding
+    const BAD_SOURCE_ADDRESS: &str = "source_address = x'0102'";
+
+    fn corrupt_completed(connection: &WalletDbConnection, tx_id: u64, corruption: &str) {
+        let mut conn = connection.get_pooled_connection().unwrap();
+        sql_query(format!(
+            "UPDATE completed_transactions SET {corruption} WHERE tx_id = {tx_id}"
+        ))
+        .execute(&mut conn)
+        .unwrap();
+    }
+
+    fn mined_tx(tx_id: u64, height: u64) -> CompletedTransaction {
+        let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
+        tx.status = LegacyTransactionStatus::MinedConfirmed;
+        tx.mined_height = Some(height);
+        tx.mined_in_block = Some(FixedHash::from([1u8; 32]));
+        tx
+    }
+
+    fn tx_ids(txs: &[CompletedTransaction]) -> Vec<u64> {
+        let mut ids: Vec<u64> = txs.iter().map(|tx| tx.tx_id.as_u64()).collect();
+        ids.sort();
+        ids
+    }
+
     #[test]
     #[allow(clippy::too_many_lines)]
-    fn undecodable_rows_are_skipped_in_pending_lists_only() {
-        let db_name = format!("{}.sqlite3", string(8).as_str());
+    fn undecodable_rows_are_skipped_in_lists() {
         let temp_dir = tempdir().unwrap();
-        let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{db_folder}/{db_name}");
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
 
-        const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
-
-        let mut pool = SqliteConnectionPool::new(db_path.clone(), 1, DbProfile::KeyMaterial).unwrap();
-        pool.create_pool()
-            .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
-
-        let mut key = [0u8; size_of::<Key>()];
-        rand::rng().fill_bytes(&mut key);
-        let cipher = XChaCha20Poly1305::new(Key::from_slice(&key));
-
-        // The pooled connection must go out of scope to be released, as the pool size is one
         {
-            let mut conn = pool
-                .get_pooled_connection()
-                .unwrap_or_else(|_| panic!("Error connecting to {db_path}"));
-            conn.run_pending_migrations(MIGRATIONS).expect("Migrations failed");
-
+            let mut conn = connection.get_pooled_connection().unwrap();
             for tx_id in [1u64, 2] {
                 let destination_address = TariAddress::new_dual_address_with_default_features(
                     CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
@@ -4195,49 +4190,25 @@ mod test {
             sql_query("UPDATE outbound_transactions SET destination_address = x'0102' WHERE tx_id = 2")
                 .execute(&mut conn)
                 .unwrap();
-
-            // And an undecodable completed transaction
-            let completed_tx = CompletedTransaction {
-                tx_id: 3u64.into(),
-                source_address: TariAddress::default(),
-                destination_address: TariAddress::default(),
-                amount: MicroMinotari::from(100),
-                fee: MicroMinotari::from(10),
-                transaction: Transaction::new(
-                    vec![],
-                    vec![],
-                    vec![],
-                    PrivateKey::random(&mut rand::rng()),
-                    PrivateKey::random(&mut rand::rng()),
-                ),
-                status: LegacyTransactionStatus::Completed,
-                timestamp: Utc::now(),
-                cancelled: None,
-                direction: TransactionDirection::Unknown,
-                send_count: 0,
-                last_send_timestamp: None,
-                sent_output_hashes: vec![],
-                received_output_hashes: vec![],
-                change_output_hashes: vec![],
-                transaction_signature: CompressedSignature::default(),
-                mined_height: None,
-                mined_in_block: None,
-                mined_timestamp: None,
-                payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-                lock_height: 0,
-                rejection_reason: None,
-                source_address_claimed: false,
-            };
-            CompletedTransactionSql::try_from(completed_tx, &cipher)
-                .unwrap()
-                .commit(&mut conn)
-                .unwrap();
-            sql_query("UPDATE completed_transactions SET source_address = x'0102' WHERE tx_id = 3")
-                .execute(&mut conn)
-                .unwrap();
         }
 
-        let connection = WalletDbConnection::new(pool, None);
+        // Completed: 3 is good, 4 and 5 are bad; newest first by timestamp
+        for (tx_id, age) in [(3u64, 0i64), (4, 1), (5, 2)] {
+            let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
+            tx.timestamp = Utc::now() - chrono::TimeDelta::seconds(age);
+            commit_completed(&connection, &cipher, tx);
+        }
+        corrupt_completed(&connection, 4, BAD_SOURCE_ADDRESS);
+        corrupt_completed(&connection, 5, TAMPERED_CIPHERTEXT);
+        // Cancelled: 6 is good, 7 is bad
+        for tx_id in [6u64, 7] {
+            let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
+            tx.status = LegacyTransactionStatus::Rejected;
+            tx.cancelled = Some(TxCancellationReason::UserCancelled);
+            commit_completed(&connection, &cipher, tx);
+        }
+        corrupt_completed(&connection, 7, TAMPERED_CIPHERTEXT);
+
         let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
         match db.fetch(&DbKey::PendingOutboundTransactions).unwrap() {
             Some(DbValue::PendingOutboundTransactions(txs)) => {
@@ -4247,13 +4218,35 @@ mod test {
             },
             other => panic!("Unexpected value: {other:?}"),
         }
-        // Fetching the undecodable row on its own is still an error
+        match db.fetch(&DbKey::CompletedTransactions(0)).unwrap() {
+            Some(DbValue::CompletedTransactions(txs)) => assert_eq!(tx_ids(&txs), vec![3]),
+            other => panic!("Unexpected value: {other:?}"),
+        }
+        match db.fetch(&DbKey::CancelledCompletedTransactions(0)).unwrap() {
+            Some(DbValue::CompletedTransactions(txs)) => assert_eq!(tx_ids(&txs), vec![6]),
+            other => panic!("Unexpected value: {other:?}"),
+        }
+        assert_eq!(tx_ids(&db.get_transactions_to_be_broadcast().unwrap()), vec![3]);
+        assert_eq!(db.fetch_last_mined_transaction().unwrap(), None);
+
+        // Pages are row based, so a page with a skipped row comes back short
+        let completed_only = Some(1u64 << (LegacyTransactionStatus::Completed as u64));
+        assert_eq!(
+            tx_ids(&db.find_completed_transactions_paginated(0, 2, completed_only).unwrap()),
+            vec![3]
+        );
+        // A page whose only row is bad is still an error
+        assert!(db.find_completed_transactions_paginated(2, 2, completed_only).is_err());
+
+        // Fetching an undecodable row on its own is still an error
         assert!(db.fetch(&DbKey::AnyTransaction(2u64.into())).is_err());
         assert!(db.fetch(&DbKey::AnyTransaction(1u64.into())).unwrap().is_some());
-        // Completed transactions are never skipped
-        assert!(db.fetch(&DbKey::CompletedTransactions(0)).is_err());
+        assert!(db.fetch(&DbKey::CompletedTransaction(4u64.into())).is_err());
+        assert!(db.fetch(&DbKey::AnyTransaction(5u64.into())).is_err());
+        assert!(db.fetch_any_cancelled_transaction(7u64.into()).is_err());
+        assert!(db.fetch(&DbKey::CompletedTransaction(3u64.into())).unwrap().is_some());
 
-        // When every pending row is undecodable the list is an error, not empty
+        // When every row is undecodable the list is an error, not empty
         {
             let mut conn = connection.get_pooled_connection().unwrap();
             sql_query("UPDATE outbound_transactions SET destination_address = x'0102' WHERE tx_id = 1")
@@ -4261,6 +4254,58 @@ mod test {
                 .unwrap();
         }
         assert!(db.fetch(&DbKey::PendingOutboundTransactions).is_err());
+        corrupt_completed(&connection, 3, BAD_SOURCE_ADDRESS);
+        assert!(db.fetch(&DbKey::CompletedTransactions(0)).is_err());
+        assert!(db.get_transactions_to_be_broadcast().is_err());
+        corrupt_completed(&connection, 6, BAD_SOURCE_ADDRESS);
+        assert!(db.fetch(&DbKey::CancelledCompletedTransactions(0)).is_err());
+    }
+
+    #[test]
+    fn undecodable_row_in_one_detected_category_does_not_hide_the_others() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        // The coinbase is the only row in its category and is bad
+        for (tx_id, status) in [
+            (10u64, LegacyTransactionStatus::OneSidedUnconfirmed),
+            (11, LegacyTransactionStatus::CoinbaseUnconfirmed),
+            (12, LegacyTransactionStatus::OneSidedConfirmedLocked),
+        ] {
+            let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
+            tx.status = status;
+            commit_completed(&connection, &cipher, tx);
+        }
+        corrupt_completed(&connection, 11, TAMPERED_CIPHERTEXT);
+
+        let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
+        assert_eq!(tx_ids(&db.fetch_unconfirmed_detected_transactions().unwrap()), vec![
+            10, 12
+        ]);
+
+        // When every row is undecodable it is an error
+        corrupt_completed(&connection, 10, BAD_SOURCE_ADDRESS);
+        corrupt_completed(&connection, 12, TAMPERED_CIPHERTEXT);
+        assert!(db.fetch_unconfirmed_detected_transactions().is_err());
+    }
+
+    #[test]
+    fn last_mined_transaction_skips_undecodable_rows() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        commit_completed(&connection, &cipher, mined_tx(20, 100));
+        commit_completed(&connection, &cipher, mined_tx(21, 200));
+        corrupt_completed(&connection, 21, TAMPERED_CIPHERTEXT);
+
+        let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
+        let last_mined = db.fetch_last_mined_transaction().unwrap().unwrap();
+        assert_eq!(last_mined.tx_id, TxId::from(20u64));
+
+        corrupt_completed(&connection, 20, BAD_SOURCE_ADDRESS);
+        assert!(db.fetch_last_mined_transaction().is_err());
     }
 
     #[ignore]
