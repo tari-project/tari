@@ -50,8 +50,6 @@ pub enum DnsResolverError {
     DnsAddressNotFound,
     #[error("DNS lookup timed out after {0:.0?}")]
     Timeout(Duration),
-    #[error("DNS lookup refused: {0} lookups are already in progress")]
-    TooManyLookups(usize),
     #[error("Failed to join on blocking task: {0}")]
     BlockingJoinError(#[from] JoinError),
 }

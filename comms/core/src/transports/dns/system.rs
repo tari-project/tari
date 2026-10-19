@@ -64,29 +64,33 @@ impl DnsResolver for SystemDnsResolver {
     }
 }
 
-/// Performs an non-blocking DNS lookup of the given address. The lookup gives up after [DNS_LOOKUP_TIMEOUT]; the
-/// blocking thread cannot be cancelled and finishes in the background. Fails immediately if
-/// [MAX_CONCURRENT_DNS_LOOKUPS] lookups are already in progress.
+/// Performs an non-blocking DNS lookup of the given address. If [MAX_CONCURRENT_DNS_LOOKUPS] lookups are in progress,
+/// waits for one to finish. Gives up after [DNS_LOOKUP_TIMEOUT], which covers the wait and the lookup; the blocking
+/// thread cannot be cancelled and finishes in the background.
 async fn dns_lookup<T>(addr: T) -> Result<SocketAddr, DnsResolverError>
 where T: ToSocketAddrs + Display + Send + Sync + 'static {
-    let permit = DNS_LOOKUP_PERMITS
-        .try_acquire()
-        .map_err(|_| DnsResolverError::TooManyLookups(MAX_CONCURRENT_DNS_LOOKUPS))?;
-    let lookup = tokio::task::spawn_blocking(move || {
-        // Held until the system resolver returns, even if the caller timed out
-        let _permit = permit;
-        debug!(target: LOG_TARGET, "Resolving address `{addr}` using system resolver");
-        addr.to_socket_addrs()
-            .map_err(|err| DnsResolverError::NameResolutionFailed {
-                source: err,
-                address_str: addr.to_string(),
-            })?
-            .next()
-            .ok_or(DnsResolverError::DnsAddressNotFound)
-    });
+    let lookup = async move {
+        let permit = DNS_LOOKUP_PERMITS
+            .acquire()
+            .await
+            .expect("DNS lookup semaphore is never closed");
+        tokio::task::spawn_blocking(move || {
+            // Held until the system resolver returns, even if the caller timed out
+            let _permit = permit;
+            debug!(target: LOG_TARGET, "Resolving address `{addr}` using system resolver");
+            addr.to_socket_addrs()
+                .map_err(|err| DnsResolverError::NameResolutionFailed {
+                    source: err,
+                    address_str: addr.to_string(),
+                })?
+                .next()
+                .ok_or(DnsResolverError::DnsAddressNotFound)
+        })
+        .await?
+    };
     tokio::time::timeout(DNS_LOOKUP_TIMEOUT, lookup)
         .await
-        .map_err(|_| DnsResolverError::Timeout(DNS_LOOKUP_TIMEOUT))??
+        .map_err(|_| DnsResolverError::Timeout(DNS_LOOKUP_TIMEOUT))?
 }
 
 #[inline]
@@ -99,15 +103,20 @@ mod test {
     use super::*;
 
     #[tokio::test]
-    async fn concurrent_lookups_are_capped() {
+    async fn lookups_wait_for_a_free_slot() {
         let all_permits = DNS_LOOKUP_PERMITS
             .acquire_many(u32::try_from(MAX_CONCURRENT_DNS_LOOKUPS).unwrap())
             .await
             .unwrap();
-        let err = dns_lookup("localhost:18189").await.unwrap_err();
-        assert!(matches!(err, DnsResolverError::TooManyLookups(_)), "{err:?}");
+        let lookup = tokio::spawn(dns_lookup("localhost:18189"));
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!lookup.is_finished(), "the lookup did not wait for a slot");
 
         drop(all_permits);
-        dns_lookup("localhost:18189").await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), lookup)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
     }
 }
