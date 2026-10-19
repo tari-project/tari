@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 // Generated from UCD 18.0.0 by scripts/gen_terminal_safe_table.py; do not edit by hand.
-// Covers General_Category Cf, Co, Cn, Default_Ignorable_Code_Point, Hangul fillers and U+2800.
+// Covers General_Category Cf, Co, Cn, Zs (except U+0020), Default_Ignorable_Code_Point,
+// Hangul fillers, U+2800 and U+16FE4.
 // Regenerate (see the script header for downloading the UCD files):
 //   python3 -I scripts/gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt \
 //       > base_layer/transaction_components/src/helpers/terminal_safe_table.rs
@@ -12,6 +13,7 @@ pub const UCD_VERSION: &str = "18.0.0";
 
 /// Sorted, non-overlapping, inclusive code point ranges.
 pub const ESCAPE_RANGES: &[(u32, u32)] = &[
+    (0x00A0, 0x00A0),
     (0x00AD, 0x00AD),
     (0x034F, 0x034F),
     (0x0378, 0x0379),
@@ -199,6 +201,7 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x139A, 0x139F),
     (0x13F6, 0x13F7),
     (0x13FE, 0x13FF),
+    (0x1680, 0x1680),
     (0x169D, 0x169F),
     (0x16F9, 0x16FF),
     (0x1716, 0x171E),
@@ -255,10 +258,9 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x1FDC, 0x1FDC),
     (0x1FF0, 0x1FF1),
     (0x1FF5, 0x1FF5),
-    (0x1FFF, 0x1FFF),
-    (0x200B, 0x200F),
-    (0x202A, 0x202E),
-    (0x2060, 0x206F),
+    (0x1FFF, 0x200F),
+    (0x202A, 0x202F),
+    (0x205F, 0x206F),
     (0x2072, 0x2073),
     (0x20C5, 0x20CF),
     (0x20F1, 0x20FF),
@@ -287,6 +289,7 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x2E9A, 0x2E9A),
     (0x2EF4, 0x2EFF),
     (0x2FD6, 0x2FEF),
+    (0x3000, 0x3000),
     (0x3040, 0x3040),
     (0x3097, 0x3098),
     (0x3100, 0x3104),
@@ -586,7 +589,7 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x16F4B, 0x16F4E),
     (0x16F88, 0x16F8E),
     (0x16FA0, 0x16FDF),
-    (0x16FE5, 0x16FEF),
+    (0x16FE4, 0x16FEF),
     (0x16FF7, 0x16FFF),
     (0x18CDB, 0x18CFE),
     (0x18D21, 0x18D7F),

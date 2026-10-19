@@ -147,11 +147,18 @@ mod test {
         points.extend(0xe0020..=0xe007f);
         // Private use, noncharacter, unassigned
         points.extend([0xe000, 0xf0000, 0xfffe, 0xffff, 0x0378]);
+        // Space separators and the Khitan filler
+        points.extend([0x00a0, 0x1680, 0x2000, 0x200a, 0x202f, 0x205f, 0x3000, 0x16fe4]);
         for cp in points {
             let c = char::from_u32(cp).unwrap();
             assert!(needs_escape(c), "U+{cp:04X} not escaped");
             assert_eq!(escape_str_for_terminal(&c.to_string()), format!("\\u{{{cp:x}}}"));
         }
+    }
+
+    #[test]
+    fn plain_space_is_not_escaped() {
+        assert!(!needs_escape(' '));
     }
 
     #[test]

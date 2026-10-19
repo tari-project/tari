@@ -6,24 +6,39 @@
 # Stdlib only. Must be run from the repo root.
 #
 #   mkdir /tmp/ucd && cd /tmp/ucd
-#   curl -O https://www.unicode.org/Public/UCD/latest/ucd/extracted/DerivedGeneralCategory.txt
-#   curl -O https://www.unicode.org/Public/UCD/latest/ucd/DerivedCoreProperties.txt
+#   curl -O https://www.unicode.org/Public/18.0.0/ucd/extracted/DerivedGeneralCategory.txt
+#   curl -O https://www.unicode.org/Public/18.0.0/ucd/DerivedCoreProperties.txt
 #   cd -
 #   python3 -I scripts/gen_terminal_safe_table.py /tmp/ucd/DerivedGeneralCategory.txt \
 #       /tmp/ucd/DerivedCoreProperties.txt > base_layer/transaction_components/src/helpers/terminal_safe_table.rs
 #
 # Code points unassigned (Cn) in the chosen UCD version stay escaped until the table is regenerated against a newer
-# version; refresh it when Unicode releases, and update the pinned version in terminal_safe.rs tests.
+# version; refresh it when Unicode releases: bump the version in both URLs above and the pinned version in
+# terminal_safe.rs tests.
 
 import re
 import sys
 
-GENERAL_CATEGORIES = {"Cf", "Co", "Cn"}
+GENERAL_CATEGORIES = {"Cf", "Co", "Cn", "Zs"}
 CORE_PROPERTIES = {"Default_Ignorable_Code_Point"}
-# Hangul fillers and the Braille blank render as blank space
-EXTRA = [(0x115F, 0x115F), (0x1160, 0x1160), (0x3164, 0x3164), (0xFFA0, 0xFFA0), (0x2800, 0x2800)]
+# Hangul fillers, the Braille blank and the Khitan filler render as blank space
+EXTRA = [
+    (0x115F, 0x115F),
+    (0x1160, 0x1160),
+    (0x3164, 0x3164),
+    (0xFFA0, 0xFFA0),
+    (0x2800, 0x2800),
+    (0x16FE4, 0x16FE4),
+]
+# Plain space (Zs) stays unescaped
+KEEP = 0x20
+# One code point from each class; generation fails if any is missing
+KNOWN_MEMBERS = [
+    0x00AD, 0x061C, 0x200D, 0xFE0F, 0xE0001, 0xE000, 0x0378, 0xFFFE, 0x115F, 0x2800, 0x3000, 0x16FE4,
+]
 
-LINE = re.compile(r"^([0-9A-F]{4,6})(?:\.\.([0-9A-F]{4,6}))?\s*;\s*([A-Za-z_]+)\s*(?:#|$)")
+LINE = re.compile(r"^([0-9A-F]{4,6})(?:\.\.([0-9A-F]{4,6}))?\s*;\s*([A-Za-z_]+)\s*(?:;[^#]*)?(?:#|$)")
+DATA_LINE = re.compile(r"^[0-9A-Fa-f]")
 VERSION = re.compile(r"^# \w+-(\d+\.\d+\.\d+)\.txt")
 
 
@@ -39,9 +54,22 @@ def read_ranges(path, file_name, wanted):
                         sys.exit(f"{path}: expected {file_name}")
                     version = m.group(1)
             m = LINE.match(line)
-            if m and m.group(3) in wanted:
-                start = int(m.group(1), 16)
-                end = int(m.group(2), 16) if m.group(2) else start
+            if m is None:
+                if DATA_LINE.match(line):
+                    sys.exit(f"{path}: unrecognised data line: {line.rstrip()}")
+                continue
+            if m.group(3) not in wanted:
+                continue
+            start = int(m.group(1), 16)
+            end = int(m.group(2), 16) if m.group(2) else start
+            if start > end or end > 0x10FFFF:
+                sys.exit(f"{path}: bad range: {line.rstrip()}")
+            if start <= KEEP <= end:
+                if start < KEEP:
+                    ranges.append((start, KEEP - 1))
+                if KEEP < end:
+                    ranges.append((KEEP + 1, end))
+            else:
                 ranges.append((start, end))
     if version is None:
         sys.exit(f"{path}: no version header")
@@ -64,12 +92,16 @@ def main():
             merged[-1] = (merged[-1][0], max(merged[-1][1], end))
         else:
             merged.append((start, end))
+    for cp in KNOWN_MEMBERS:
+        if not any(start <= cp <= end for start, end in merged):
+            sys.exit(f"known member U+{cp:04X} missing from the table")
 
     out = sys.stdout
     out.write("// Copyright 2026 The Tari Project\n")
     out.write("// SPDX-License-Identifier: BSD-3-Clause\n\n")
     out.write(f"// Generated from UCD {gc_version} by scripts/gen_terminal_safe_table.py; do not edit by hand.\n")
-    out.write("// Covers General_Category Cf, Co, Cn, Default_Ignorable_Code_Point, Hangul fillers and U+2800.\n")
+    out.write("// Covers General_Category Cf, Co, Cn, Zs (except U+0020), Default_Ignorable_Code_Point,\n")
+    out.write("// Hangul fillers, U+2800 and U+16FE4.\n")
     out.write("// Regenerate (see the script header for downloading the UCD files):\n")
     out.write("//   python3 -I scripts/gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt \\\n")
     out.write("//       > base_layer/transaction_components/src/helpers/terminal_safe_table.rs\n\n")
