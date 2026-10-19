@@ -4325,6 +4325,35 @@ mod test {
     }
 
     #[test]
+    fn undecodable_row_in_one_confirmed_detected_query_does_not_hide_the_other() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        // 40 is the only one-sided row in range and is bad; 42 is good but below the height
+        for (tx_id, status, height) in [
+            (40u64, LegacyTransactionStatus::OneSidedConfirmed, 100u64),
+            (41, LegacyTransactionStatus::CoinbaseConfirmed, 100),
+            (42, LegacyTransactionStatus::OneSidedConfirmed, 10),
+        ] {
+            let mut tx = mined_tx(tx_id, height);
+            tx.status = status;
+            commit_completed(&connection, &cipher, tx);
+        }
+        corrupt_completed(&connection, 40, TAMPERED_CIPHERTEXT);
+
+        let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
+        assert_eq!(
+            tx_ids(&db.fetch_confirmed_detected_transactions_from_height(50).unwrap()),
+            vec![41]
+        );
+
+        // When every row in range is undecodable it is an error
+        corrupt_completed(&connection, 41, BAD_SOURCE_ADDRESS);
+        assert!(db.fetch_confirmed_detected_transactions_from_height(50).is_err());
+    }
+
+    #[test]
     fn unconfirmed_transactions_info_skips_undecodable_rows() {
         let temp_dir = tempdir().unwrap();
         let connection = single_connection_wallet_db(temp_dir.path());
