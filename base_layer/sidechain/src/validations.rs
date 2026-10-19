@@ -36,6 +36,7 @@ pub fn check_proof_elements(
     check_header_commits_to_its_fields(header)?;
     check_proof_elements_num_qcs(proof_elements, 3)?;
 
+    let mut member_keys = MemberKeys::new(committee.len());
     let mut last_parent = None::<&FixedHash>;
     let mut proven_3_chain = 0usize;
     for elem in proof_elements {
@@ -43,7 +44,7 @@ pub fn check_proof_elements(
             CommitProofElement::QuorumCertificate(qc) => {
                 let justifies = qc.calculate_justified_block();
                 debug!(target: LOG_TARGET, "Validating quorum certificate that justifies: {justifies}");
-                validate_qc(qc, quorum_threshold, committee, expected_decision)?;
+                validate_qc(qc, quorum_threshold, committee, &mut member_keys, expected_decision)?;
                 debug!(target: LOG_TARGET, "Quorum certificate OK");
 
                 if let Some(last_parent) = last_parent &&
@@ -190,6 +191,7 @@ fn validate_qc(
     qc: &QuorumCertificate,
     quorum_threshold: u64,
     committee: &dyn SigningCommittee,
+    member_keys: &mut MemberKeys,
     quorum_decision: QuorumDecision,
 ) -> Result<(), SidechainProofValidationError> {
     if qc.signatures.num_signatures() > MAX_QC_SIGNATURES {
@@ -221,7 +223,9 @@ fn validate_qc(
             // Each signer is a distinct member and the batch below accepts all of their signatures or none, so this
             // is the power of the signers whose signatures verify. It is checked first so that a QC short of quorum
             // costs no verification. An empty QC has no power, so it is rejected here unless the threshold is 0.
-            let signed_power = members.iter().fold(0u64, |acc, (_, power)| acc.saturating_add(*power));
+            let signed_power = members
+                .iter()
+                .fold(0u64, |acc, signer| acc.saturating_add(signer.power));
             if signed_power < quorum_threshold {
                 return Err(SidechainProofValidationError::InvalidProof {
                     details: format!(
@@ -232,13 +236,8 @@ fn validate_qc(
             }
 
             let mut decoded = Vec::with_capacity(signatures.len());
-            for ((public_key, _), signature) in members.iter().zip(signatures) {
-                let public_key = UncompressedPublicKey::from_canonical_bytes(public_key).map_err(|e| {
-                    SidechainProofValidationError::internal_error(format!(
-                        "Committee member public key {} is not a valid public key: {e}",
-                        hex::encode(public_key)
-                    ))
-                })?;
+            for (signer, signature) in members.iter().zip(signatures) {
+                let public_key = member_keys.decode(signer.index, signer.public_key)?;
                 let signature = signature
                     .to_schnorr_signature()
                     .map_err(|_| invalid_qc_signature(&block_id))?;
@@ -261,12 +260,18 @@ fn validate_qc(
     Ok(())
 }
 
-/// The public key and voting power of each signer in `signers`, in committee order.
+struct Signer<'a> {
+    index: usize,
+    public_key: &'a [u8],
+    power: u64,
+}
+
+/// The committee member behind each signer in `signers`, in committee order.
 fn resolve_signers<'a>(
     signers: &SignerBitmap,
     committee: &'a dyn SigningCommittee,
-) -> Result<Vec<(&'a [u8], u64)>, SidechainProofValidationError> {
-    let mut members = Vec::<(&[u8], u64)>::with_capacity(signers.count());
+) -> Result<Vec<Signer<'a>>, SidechainProofValidationError> {
+    let mut members = Vec::<Signer<'_>>::with_capacity(signers.count());
     for index in signers.iter() {
         let member = committee.member(index).ok_or_else(|| {
             SidechainProofValidationError::internal_error(format!(
@@ -275,17 +280,48 @@ fn resolve_signers<'a>(
             ))
         })?;
         // Ascending keys mean every signer is a distinct validator whose power counts once.
-        if let Some((previous, _)) = members.last() &&
-            *previous >= member.0
+        let (public_key, power) = member;
+        if let Some(previous) = members.last() &&
+            previous.public_key >= public_key
         {
             return Err(SidechainProofValidationError::internal_error(format!(
                 "Committee lists public key {} at index {index}, which is not after the key before it",
-                hex::encode(member.0)
+                hex::encode(public_key)
             )));
         }
-        members.push(member);
+        members.push(Signer {
+            index,
+            public_key,
+            power,
+        });
     }
     Ok(members)
+}
+
+/// The committee's public keys, each decoded on first use, so that the certificates of a proof decode each signer's key
+/// once.
+struct MemberKeys(Vec<Option<UncompressedPublicKey>>);
+
+impl MemberKeys {
+    fn new(committee_size: usize) -> Self {
+        Self(vec![None; committee_size])
+    }
+
+    fn decode(&mut self, index: usize, encoded: &[u8]) -> Result<UncompressedPublicKey, SidechainProofValidationError> {
+        let slot = self.0.get_mut(index).ok_or_else(|| {
+            SidechainProofValidationError::internal_error(format!("Committee has no member at index {index}"))
+        })?;
+        if let Some(public_key) = slot {
+            return Ok(public_key.clone());
+        }
+        let public_key = UncompressedPublicKey::from_canonical_bytes(encoded).map_err(|e| {
+            SidechainProofValidationError::internal_error(format!(
+                "Committee member public key {} is not a valid public key: {e}",
+                hex::encode(encoded)
+            ))
+        })?;
+        Ok(slot.insert(public_key).clone())
+    }
 }
 
 fn invalid_qc_signature(block_id: &FixedHash) -> SidechainProofValidationError {

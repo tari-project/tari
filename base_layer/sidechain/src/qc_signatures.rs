@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{ValidatorBlockSignature, serde::hex_or_bytes};
 
-/// The committee that signs a quorum certificate, in ascending order of public key with each key listed once. A
-/// [`SignerBitmap`] addresses members by their index in this order.
+/// The committee that signs a quorum certificate, in ascending lexicographic order of the members' 32-byte compressed
+/// Ristretto public keys, with each key listed once. A [`SignerBitmap`] addresses members by their index in this order.
 pub trait SigningCommittee {
     /// The number of members in the committee.
     fn len(&self) -> usize;
 
-    /// The encoded public key and voting power of the member at `index`, or `None` if `index` is not less than
-    /// [`Self::len`].
+    /// The compressed Ristretto public key bytes and voting power of the member at `index`, or `None` if `index` is
+    /// not less than [`Self::len`]. Keys are bytes so that a committee can lend them from whatever key type it stores.
     fn member(&self, index: usize) -> Option<(&[u8], u64)>;
 
     fn is_empty(&self) -> bool {
