@@ -48,13 +48,7 @@ use crate::{
     actor::OffenceSeverity,
     network_discovery::{
         NetworkDiscoveryError,
-        discovering::{
-            MAX_HOSTILE_RELAYED_CLAIMS,
-            ban_peer,
-            is_bad_data_offence,
-            is_connected,
-            is_unparseable_address,
-        },
+        discovering::{MAX_HOSTILE_RELAYED_CLAIMS, ban_peer, is_bad_data_offence, is_connected},
         seed_strap::fetch_peers_from_connection,
         state_machine::{NetworkDiscoveryContext, StateEvent},
     },
@@ -735,14 +729,8 @@ pub(super) async fn store_peers(
         let peer = match UnvalidatedPeerInfo::try_from(peer_info) {
             Ok(peer) => peer,
             Err(err) => {
-                debug!(target: REBOOTSTRAP_LOG_TARGET, "Invalid peer info from '{source}': {err}");
-                if is_unparseable_address(&err) {
-                    continue;
-                }
-                hostile_claims = hostile_claims.saturating_add(1);
-                if hostile_claims > MAX_HOSTILE_RELAYED_CLAIMS {
-                    return Err(NetworkDiscoveryError::TooManyInvalidPeersReceived);
-                }
+                // May come from a newer version, so it is not counted against the source
+                debug!(target: REBOOTSTRAP_LOG_TARGET, "Peer info from '{source}' does not convert: {err}");
                 continue;
             },
         };

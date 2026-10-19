@@ -76,12 +76,6 @@ fn classify_relay_failure(err: &NetworkDiscoveryError) -> Option<bool> {
     }
 }
 
-/// Returns true if a relayed peer record failed to convert only because one of its addresses did not parse. A newer
-/// node may advertise an address protocol this node does not know, so this is skipped and not counted as hostile.
-pub(super) fn is_unparseable_address(err: &anyhow::Error) -> bool {
-    err.downcast_ref::<tari_comms::multiaddr::Error>().is_some()
-}
-
 #[derive(Debug)]
 pub(super) struct Discovering {
     params: DiscoveryParams,
@@ -365,22 +359,16 @@ impl Discovering {
                         "Discovering: Sync peer `{sync_peer}` sent an empty peer message: {err:?}"
                     );
                 })?;
+            // A record that does not convert may come from a newer version (an unknown address protocol or
+            // feature bit), so it is skipped without counting against the sync peer
             let new_peer: UnvalidatedPeerInfo = match peer.try_into() {
                 Ok(new_peer) => new_peer,
-                Err(err) if is_unparseable_address(&err) => {
+                Err(err) => {
                     debug!(
                         target: LOG_TARGET,
-                        "Discovering: Skipping peer relayed by sync peer `{sync_peer}` with an unparseable address: \
-                         {err:?}"
+                        "Discovering: Skipping peer relayed by sync peer `{sync_peer}` that does not convert: {err:?}"
                     );
                     continue;
-                },
-                Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Discovering: Sync peer `{sync_peer}` sent invalid peer data: {err:?}"
-                    );
-                    return Err(NetworkDiscoveryError::InvalidPeerDataReceived(err));
                 },
             };
 
@@ -512,7 +500,6 @@ pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
     matches!(
         err,
         NetworkDiscoveryError::EmptyPeerMessageReceived |
-            NetworkDiscoveryError::InvalidPeerDataReceived(_) |
             NetworkDiscoveryError::DuplicatePeerReceived |
             NetworkDiscoveryError::TooManyPeersReceived |
             NetworkDiscoveryError::TooManyInvalidPeersReceived
@@ -523,7 +510,6 @@ pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
 pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSeverity> {
     match err {
         NetworkDiscoveryError::EmptyPeerMessageReceived |
-        NetworkDiscoveryError::InvalidPeerDataReceived(_) |
         NetworkDiscoveryError::DuplicatePeerReceived |
         NetworkDiscoveryError::TooManyPeersReceived |
         NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
@@ -644,43 +630,6 @@ mod test {
             })),
             Some(true)
         );
-    }
-
-    /// A relayed record with an address this node cannot parse is skipped without counting against the sync peer; a
-    /// record that is malformed in another way still ends the round.
-    #[test]
-    fn a_relayed_claim_with_an_unparseable_address_is_not_hostile() {
-        use std::convert::TryFrom;
-
-        use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
-
-        use crate::{proto::rpc::PeerInfo, rpc::UnvalidatedPeerInfo};
-
-        let node_identity = NodeIdentity::random(
-            &mut rand::rng(),
-            "/ip4/23.23.23.23/tcp/18189".parse().unwrap(),
-            PeerFeatures::COMMUNICATION_NODE,
-        );
-        let mut peer_info = PeerInfo::from(UnvalidatedPeerInfo::from_peer_limited_claims(
-            node_identity.to_peer(),
-            5,
-            5,
-        ));
-        peer_info
-            .claims
-            .first_mut()
-            .unwrap()
-            .addresses
-            .push(vec![0xff, 0xff, 0xff]);
-        let err = UnvalidatedPeerInfo::try_from(peer_info).unwrap_err();
-        assert!(is_unparseable_address(&err));
-
-        let bad_key = PeerInfo {
-            public_key: vec![1u8; 3],
-            claims: vec![],
-        };
-        let err = UnvalidatedPeerInfo::try_from(bad_key).unwrap_err();
-        assert!(!is_unparseable_address(&err));
     }
 
     /// Older nodes accept and relay any DNS name. A sync peer relaying many claims with names we do not use

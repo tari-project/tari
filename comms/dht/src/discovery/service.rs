@@ -284,7 +284,9 @@ impl DhtDiscoveryService {
         match result {
             Ok(peer) => Ok(peer),
             Err(err) if err.is_ban_offence() => {
-                self.dht.ban_peer(public_key.clone(), OffenceSeverity::High, &err).await;
+                self.dht
+                    .ban_peer(public_key.clone(), OffenceSeverity::Medium, &err)
+                    .await;
                 Err(err)
             },
             Err(err) => Err(err),

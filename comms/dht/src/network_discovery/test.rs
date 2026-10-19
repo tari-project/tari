@@ -346,17 +346,26 @@ mod rebootstrap {
         assert_eq!(learned.len(), MAX_LEARNED_PEERS / 4 + 1);
     }
 
-    /// A connected peer that relays a stream of invalid peer records is banned, the same way Discovering does it.
+    /// A peer record whose identity signature does not cover its (parseable) claim: an address was swapped
+    fn forged_peer_info() -> PeerInfo {
+        let identity = make_node_identity();
+        let mut peer_info: PeerInfo = UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into();
+        peer_info.claims[0].addresses = vec![
+            "/ip4/23.23.23.23/tcp/18189"
+                .parse::<tari_comms::multiaddr::Multiaddr>()
+                .unwrap()
+                .to_vec(),
+        ];
+        peer_info
+    }
+
+    /// A connected peer that relays a stream of records with forged identity signatures is banned, the same way
+    /// Discovering does it.
     #[tokio::test]
     async fn a_connected_peer_relaying_invalid_records_is_banned() {
         let (context, mock, _events) = context(None);
         let source = NodeId::from_public_key(make_node_identity().public_key());
-        let invalid = (0..10)
-            .map(|_| PeerInfo {
-                public_key: vec![1u8; 3],
-                claims: vec![],
-            })
-            .collect();
+        let invalid = (0..10).map(|_| forged_peer_info()).collect();
         let err = store_peers(&context, &source, invalid).await.unwrap_err();
         assert!(matches!(err, NetworkDiscoveryError::TooManyInvalidPeersReceived));
 
@@ -688,8 +697,8 @@ mod rebootstrap {
         assert_eq!(context.peer_manager.count().await, 50);
     }
 
-    /// A source relaying records with an address this node cannot parse (say, a newer protocol) is not counted as
-    /// hostile: the records are skipped and the rest are stored.
+    /// A source relaying records that do not convert (say, an address protocol or feature bit from a newer version) is
+    /// not counted as hostile: the records are skipped and the rest are stored.
     #[tokio::test]
     async fn records_with_unparseable_addresses_are_not_hostile() {
         let (context, _mock, _events) = context(None);
@@ -701,6 +710,10 @@ mod rebootstrap {
         for peer in peers.iter_mut().take(MAX_HOSTILE_RELAYED_CLAIMS + 1) {
             peer.claims[0].addresses.push(vec![0xff, 0xff, 0xff]);
         }
+        peers.extend((0..=MAX_HOSTILE_RELAYED_CLAIMS).map(|_| PeerInfo {
+            public_key: vec![1u8; 3],
+            claims: vec![],
+        }));
         let stored = store_peers(&context, &source, peers).await.unwrap();
         assert_eq!(stored.len(), 10 - (MAX_HOSTILE_RELAYED_CLAIMS + 1));
     }
@@ -715,10 +728,7 @@ mod rebootstrap {
             .into_iter()
             .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
             .collect::<Vec<PeerInfo>>();
-        peers.extend((0..6).map(|_| PeerInfo {
-            public_key: vec![1u8; 3],
-            claims: vec![],
-        }));
+        peers.extend((0..6).map(|_| forged_peer_info()));
         let err = store_peers(&context, &source, peers).await.unwrap_err();
         assert!(
             matches!(err, NetworkDiscoveryError::TooManyInvalidPeersReceived),

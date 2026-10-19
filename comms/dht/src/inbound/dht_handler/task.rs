@@ -178,14 +178,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
-        let join_msg = self
+        let Some(join_msg) = self
             .ban_on_offence(
                 &authenticated_pk,
                 body.decode_part_with_max_items::<JoinMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
                     .map_err(Into::into)
                     .and_then(|o| o.ok_or(DhtInboundError::InvalidMessageBody)),
             )
-            .await?;
+            .await?
+        else {
+            return Ok(());
+        };
 
         if join_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
             warn!(
@@ -216,16 +219,26 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             "Received join Message from '{authenticated_pk}' {join_msg}"
         );
 
-        let validator = PeerValidator::new(&self.config);
-        let maybe_existing = self.peer_manager.find_by_public_key(&authenticated_pk).await?;
-        let valid_peer = self
+        let Some(new_peer) = self
             .ban_on_offence(
                 &authenticated_pk,
-                validator
-                    .validate_peer(join_msg.try_into()?, maybe_existing)
-                    .map_err(Into::into),
+                join_msg.try_into().map_err(DhtInboundError::InvalidDiscoveryMessage),
             )
-            .await?;
+            .await?
+        else {
+            return Ok(());
+        };
+        let validator = PeerValidator::new(&self.config);
+        let maybe_existing = self.peer_manager.find_by_public_key(&authenticated_pk).await?;
+        let Some(valid_peer) = self
+            .ban_on_offence(
+                &authenticated_pk,
+                validator.validate_peer(new_peer, maybe_existing).map_err(Into::into),
+            )
+            .await?
+        else {
+            return Ok(());
+        };
 
         let is_banned = valid_peer.is_banned();
         let valid_peer_node_id = valid_peer.node_id.clone();
@@ -328,14 +341,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        let discover_msg = self
+        let Some(discover_msg) = self
             .ban_on_offence(
                 authenticated_origin,
                 msg.decode_part_with_max_items::<DiscoveryResponseMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
                     .map_err(Into::into)
                     .and_then(|o| o.ok_or(DhtInboundError::InvalidMessageBody)),
             )
-            .await?;
+            .await?
+        else {
+            return Ok(());
+        };
 
         if authenticated_origin.as_bytes() != discover_msg.public_key.as_slice() {
             warn!(
@@ -362,6 +378,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn handle_discover(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         let msg = message
             .success()
@@ -383,14 +400,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         };
 
-        let discover_msg = self
+        let Some(discover_msg) = self
             .ban_on_offence(
                 authenticated_pk,
                 msg.decode_part_with_max_items::<DiscoveryMessage>(0, DHT_MESSAGE_MAX_DECODE_ITEMS)
                     .map_err(Into::into)
                     .and_then(|o| o.ok_or(DhtInboundError::InvalidMessageBody)),
             )
-            .await?;
+            .await?
+        else {
+            return Ok(());
+        };
 
         if discover_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
             warn!(
@@ -415,14 +435,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             "Received discovery message from '{}', forwarded by {}", authenticated_pk, message.source_peer
         );
 
-        let new_peer: UnvalidatedPeerInfo = self
+        let Some(new_peer): Option<UnvalidatedPeerInfo> = self
             .ban_on_offence(
                 authenticated_pk,
                 discover_msg
                     .try_into()
                     .map_err(DhtInboundError::InvalidDiscoveryMessage),
             )
-            .await?;
+            .await?
+        else {
+            return Ok(());
+        };
         if new_peer.public_key != *authenticated_pk {
             warn!(
                 target: LOG_TARGET,
@@ -442,14 +465,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let peer_validator = PeerValidator::new(&self.config);
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
-        let peer = self
+        let Some(peer) = self
             .ban_on_offence(
                 authenticated_pk,
                 peer_validator
                     .validate_peer(new_peer, maybe_existing_peer)
                     .map_err(Into::into),
             )
-            .await?;
+            .await?
+        else {
+            return Ok(());
+        };
         self.peer_manager.add_or_update_peer(peer).await?;
         let origin_peer = self
             .peer_manager
@@ -512,44 +538,48 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// Bans the signer of a message that honest software cannot produce: one that does not decode, or a claim whose
     /// identity signature fails. Anything else (a claim that parses differently on another version, or is over this
     /// node's limits) is dropped without a ban.
+    /// Bans the signer of a message that honest software cannot produce: one that does not decode, or a claim whose
+    /// identity signature fails. Anything else (a claim that parses differently on another version, or is over this
+    /// node's limits) is dropped without a ban and returns `Ok(None)`.
     async fn ban_on_offence<T>(
         &mut self,
         authenticated_pk: &CommsPublicKey,
         result: Result<T, DhtInboundError>,
-    ) -> Result<T, DhtInboundError> {
-        match result {
-            Ok(r) => Ok(r),
-            Err(err) => {
-                match &err {
-                    // The message decoded, but the claim it carries failed validation
-                    DhtInboundError::PeerValidatorError(err) if err.is_ban_offence() => {
-                        self.dht
-                            .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
-                            .await;
-                    },
-                    DhtInboundError::PeerValidatorError(err) => {
-                        debug!(target: LOG_TARGET, "Dropping peer claim from {authenticated_pk:#.6}: {err}");
-                    },
-                    // The message decoded, but its claim could not be converted (for example an address protocol
-                    // this node does not know)
-                    DhtInboundError::InvalidDiscoveryMessage(err) => {
-                        debug!(target: LOG_TARGET, "Dropping peer claim from {authenticated_pk:#.6}: {err}");
-                    },
-                    // The message did not decode
-                    err @ DhtInboundError::MessageError(_) | err @ DhtInboundError::InvalidMessageBody => {
-                        self.dht
-                            .ban_peer(authenticated_pk.clone(), OffenceSeverity::High, err)
-                            .await;
-                    },
-                    DhtInboundError::PeerManagerError(_) => {},
-                    DhtInboundError::DhtOutboundError(_) => {},
-                    DhtInboundError::DhtDiscoveryError(_) => {},
-                    DhtInboundError::OriginRequired(_) => {},
-                    DhtInboundError::ConnectivityError(_) => {},
-                }
-                Err(err)
+    ) -> Result<Option<T>, DhtInboundError> {
+        let err = match result {
+            Ok(r) => return Ok(Some(r)),
+            Err(err) => err,
+        };
+        match &err {
+            // The message decoded, but the claim it carries failed validation
+            DhtInboundError::PeerValidatorError(err) if err.is_ban_offence() => {
+                self.dht
+                    .ban_peer(authenticated_pk.clone(), OffenceSeverity::Medium, err)
+                    .await;
             },
+            DhtInboundError::PeerValidatorError(err) => {
+                debug!(target: LOG_TARGET, "Dropping peer claim from {authenticated_pk:#.6}: {err}");
+                return Ok(None);
+            },
+            // The message decoded, but its claim could not be converted (for example an address protocol this node
+            // does not know)
+            DhtInboundError::InvalidDiscoveryMessage(err) => {
+                debug!(target: LOG_TARGET, "Dropping peer claim from {authenticated_pk:#.6}: {err}");
+                return Ok(None);
+            },
+            // The message did not decode
+            err @ DhtInboundError::MessageError(_) | err @ DhtInboundError::InvalidMessageBody => {
+                self.dht
+                    .ban_peer(authenticated_pk.clone(), OffenceSeverity::High, err)
+                    .await;
+            },
+            DhtInboundError::PeerManagerError(_) => {},
+            DhtInboundError::DhtOutboundError(_) => {},
+            DhtInboundError::DhtDiscoveryError(_) => {},
+            DhtInboundError::OriginRequired(_) => {},
+            DhtInboundError::ConnectivityError(_) => {},
         }
+        Err(err)
     }
 }
 
@@ -576,6 +606,7 @@ mod test {
     };
 
     struct Received {
+        result: Result<(), PipelineError>,
         bans: Vec<(CommsPublicKey, OffenceSeverity)>,
         outbound_sends: usize,
         discovery_notifications: usize,
@@ -598,8 +629,7 @@ mod test {
             message,
             Arc::new(config),
         );
-        // A dropped message may come back as an error; only its side effects matter here
-        let _result = task.run().await;
+        let result = task.run().await;
 
         let mut bans = Vec::new();
         while let Ok(request) = dht_rx.try_recv() {
@@ -619,6 +649,7 @@ mod test {
             discovery_notifications = discovery_notifications.saturating_add(1);
         }
         Received {
+            result,
             bans,
             outbound_sends,
             discovery_notifications,
@@ -762,6 +793,7 @@ mod test {
         let message = make_message(&signer, &signer, DhtMessageType::Discovery, discovery_from(&signer));
 
         let received = process(config, message).await;
+        assert!(received.result.is_ok());
         assert!(received.bans.is_empty());
         assert_eq!(received.outbound_sends, 0);
     }
@@ -779,12 +811,14 @@ mod test {
         config.max_permitted_peer_claims = 0;
         let message = make_message(&relay, &signer, DhtMessageType::Join, JoinMessage::from(&signer));
         let received = process(config, message).await;
+        assert!(received.result.is_ok());
         assert!(received.bans.is_empty());
 
         let mut config = DhtConfig::default_local_test();
         config.peer_validator_config.max_permitted_peer_addresses_per_claim = 2;
         let message = make_message(&relay, &signer, DhtMessageType::Join, JoinMessage::from(&signer));
         let received = process(config, message).await;
+        assert!(received.result.is_ok());
         assert!(received.bans.is_empty());
     }
 
@@ -797,6 +831,22 @@ mod test {
         let message = make_message(&relay, &signer, DhtMessageType::Join, JoinMessage::from(&signer));
 
         let received = process(config, message).await;
+        assert!(received.result.is_ok());
+        assert!(received.bans.is_empty());
+        assert_eq!(received.outbound_sends, 0);
+    }
+
+    #[tokio::test]
+    async fn a_join_whose_claim_does_not_convert_is_dropped_without_a_ban() {
+        let relay = make_node_identity();
+        let signer = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        let mut join = JoinMessage::from(&signer);
+        // An address protocol this node does not know
+        join.addresses.push(vec![0xff, 0xff, 0xff]);
+        let message = make_message(&relay, &signer, DhtMessageType::Join, join);
+
+        let received = process(DhtConfig::default_local_test(), message).await;
+        assert!(received.result.is_ok());
         assert!(received.bans.is_empty());
         assert_eq!(received.outbound_sends, 0);
     }

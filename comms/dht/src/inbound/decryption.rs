@@ -287,7 +287,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 );
 
                 if message.dht_header.destination.equals_node_identity(&node_identity) {
-                    warn!(
+                    debug!(
                         target: LOG_TARGET,
                         "Received message from peer '{}' that is destined for this node that could not be decrypted. \
                          Discarding message {} (Trace: {})",
