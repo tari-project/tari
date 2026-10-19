@@ -36,6 +36,13 @@ pub struct DomainSeparatedConsensusHasher<M, D> {
 impl<M: DomainSeparation, D: Digest> DomainSeparatedConsensusHasher<M, D>
 where D: Default
 {
+    /// Create a new hasher with the specified label, using the process-wide network.
+    ///
+    /// # Warning
+    /// The network byte is taken from, in order: the process global set by [`Network::set_current`], the
+    /// `TARI_NETWORK` environment variable, then the build's default network. The network of any validator, builder
+    /// or other caller is NOT consulted. Embedders that do not call [`Network::set_current`] early may hash for the
+    /// wrong network; use [`Self::new_with_network`] when the network must be explicit.
     pub fn new(label: &'static str) -> Self {
         Self::new_with_network(label, Network::get_current_or_user_setting_or_default())
     }

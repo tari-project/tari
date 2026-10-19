@@ -23,3 +23,4 @@
 pub mod borsh;
 pub mod byte_counter;
 pub mod terminal_safe;
+mod terminal_safe_table;

@@ -24,12 +24,16 @@
 
 use std::{
     borrow::Cow,
+    cmp::Ordering,
     fmt::{self, Display, Formatter, Write},
 };
 
-/// True for characters that must never reach a terminal raw.
+use super::terminal_safe_table::ESCAPE_RANGES;
+
+/// True for characters that must never reach a terminal raw: controls, bidi controls, format, private-use,
+/// unassigned and default-ignorable code points, blank-rendering fillers, and backslash.
 pub fn needs_escape(c: char) -> bool {
-    matches!(
+    let fixed = matches!(
         c,
         '\u{0}'..='\u{1f}' |
             '\u{7f}'..='\u{9f}' |
@@ -40,7 +44,22 @@ pub fn needs_escape(c: char) -> bool {
             '\u{2066}'..='\u{2069}' |
             '\u{feff}' |
             '\\'
-    )
+    );
+    if fixed {
+        return true;
+    }
+    let cp = u32::from(c);
+    ESCAPE_RANGES
+        .binary_search_by(|&(start, end)| {
+            if end < cp {
+                Ordering::Less
+            } else if start > cp {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        })
+        .is_ok()
 }
 
 fn push_escaped(out: &mut String, c: char) {
@@ -53,7 +72,7 @@ fn push_escaped(out: &mut String, c: char) {
     }
 }
 
-/// Escapes control, bidi and invisible characters and backslashes in `s`. Printable text, including non-ASCII,
+/// Escapes every character `needs_escape` matches in `s`. Printable text, including non-ASCII,
 /// passes through unchanged. Borrowed when nothing needs escaping.
 pub fn escape_str_for_terminal(s: &str) -> Cow<'_, str> {
     if !s.chars().any(needs_escape) {
@@ -115,5 +134,60 @@ mod test {
         );
         assert_eq!(escape_bytes_for_terminal(&[b'a', 0xff, 0xfe, b'b']), "a\\xff\\xfeb");
         assert_eq!(TerminalSafe("x\u{1b}y").to_string(), "x\\u{1b}y");
+    }
+
+    #[test]
+    fn invisible_and_unassigned_code_points_are_escaped() {
+        let mut points = vec![
+            0x00ad, 0x034f, 0x115f, 0x1160, 0x17b4, 0x17b5, 0x180e, 0x2800, 0x3164, 0xffa0, 0xe0001,
+        ];
+        points.extend(0x206a..=0x206f);
+        points.extend(0xfe00..=0xfe0f);
+        points.extend(0xfff9..=0xfffb);
+        points.extend(0xe0020..=0xe007f);
+        // Private use, noncharacter, unassigned
+        points.extend([0xe000, 0xf0000, 0xfffe, 0xffff, 0x0378]);
+        // Space separators and the Khitan filler
+        points.extend([0x00a0, 0x1680, 0x2000, 0x200a, 0x202f, 0x205f, 0x3000, 0x16fe4]);
+        // Font-dependent blank glyphs
+        points.extend([0x1d159, 0x2d7f, 0x303f]);
+        for cp in points {
+            let c = char::from_u32(cp).unwrap();
+            assert!(needs_escape(c), "U+{cp:04X} not escaped");
+            assert_eq!(escape_str_for_terminal(&c.to_string()), format!("\\u{{{cp:x}}}"));
+        }
+    }
+
+    #[test]
+    fn plain_space_is_not_escaped() {
+        assert!(!needs_escape(' '));
+    }
+
+    #[test]
+    fn multi_script_text_passes_through() {
+        for s in [
+            "Hello, world",
+            "塔里 区块链",
+            "مرحبا بالعالم",
+            "Привет",
+            "😀🚀✓",
+            "e\u{301}",
+        ] {
+            assert!(matches!(escape_str_for_terminal(s), Cow::Borrowed(b) if b == s), "{s}");
+        }
+    }
+
+    #[test]
+    fn table_is_sorted_and_versioned() {
+        assert_eq!(crate::helpers::terminal_safe_table::UCD_VERSION, "18.0.0");
+        let mut prev_end: Option<u32> = None;
+        for &(start, end) in ESCAPE_RANGES {
+            assert!(start <= end);
+            if let Some(prev_end) = prev_end {
+                // Sorted and merged: a gap of at least one code point between ranges
+                assert!(prev_end < start.saturating_sub(1));
+            }
+            prev_end = Some(end);
+        }
     }
 }
