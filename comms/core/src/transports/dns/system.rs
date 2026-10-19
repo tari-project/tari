@@ -28,6 +28,7 @@ use std::{
 
 use futures::{FutureExt, future, future::BoxFuture};
 use log::*;
+use tokio::sync::Semaphore;
 
 use super::{DnsResolver, DnsResolverError};
 use crate::{
@@ -37,6 +38,10 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dns::system_resolver";
 const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Lookups that time out keep their blocking thread until the system resolver returns, so the number of lookups in
+/// progress is capped.
+const MAX_CONCURRENT_DNS_LOOKUPS: usize = 16;
+static DNS_LOOKUP_PERMITS: Semaphore = Semaphore::const_new(MAX_CONCURRENT_DNS_LOOKUPS);
 
 /// Resolves DNS addresses using the system settings
 pub struct SystemDnsResolver;
@@ -60,10 +65,16 @@ impl DnsResolver for SystemDnsResolver {
 }
 
 /// Performs an non-blocking DNS lookup of the given address. The lookup gives up after [DNS_LOOKUP_TIMEOUT]; the
-/// blocking thread cannot be cancelled and finishes in the background.
+/// blocking thread cannot be cancelled and finishes in the background. Fails immediately if
+/// [MAX_CONCURRENT_DNS_LOOKUPS] lookups are already in progress.
 async fn dns_lookup<T>(addr: T) -> Result<SocketAddr, DnsResolverError>
 where T: ToSocketAddrs + Display + Send + Sync + 'static {
+    let permit = DNS_LOOKUP_PERMITS
+        .try_acquire()
+        .map_err(|_| DnsResolverError::TooManyLookups(MAX_CONCURRENT_DNS_LOOKUPS))?;
     let lookup = tokio::task::spawn_blocking(move || {
+        // Held until the system resolver returns, even if the caller timed out
+        let _permit = permit;
         debug!(target: LOG_TARGET, "Resolving address `{addr}` using system resolver");
         addr.to_socket_addrs()
             .map_err(|err| DnsResolverError::NameResolutionFailed {
@@ -81,4 +92,22 @@ where T: ToSocketAddrs + Display + Send + Sync + 'static {
 #[inline]
 fn boxed_ready<T: Send + 'static>(t: T) -> BoxFuture<'static, T> {
     Box::pin(future::ready(t))
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn concurrent_lookups_are_capped() {
+        let all_permits = DNS_LOOKUP_PERMITS
+            .acquire_many(u32::try_from(MAX_CONCURRENT_DNS_LOOKUPS).unwrap())
+            .await
+            .unwrap();
+        let err = dns_lookup("localhost:18189").await.unwrap_err();
+        assert!(matches!(err, DnsResolverError::TooManyLookups(_)), "{err:?}");
+
+        drop(all_permits);
+        dns_lookup("localhost:18189").await.unwrap();
+    }
 }

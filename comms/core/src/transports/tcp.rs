@@ -287,6 +287,19 @@ mod test {
         futures::StreamExt::next(&mut listener).await.unwrap().unwrap();
     }
 
+    #[tokio::test]
+    async fn ipv4_mapped_answer_does_not_bypass_ipv4_exclusion() {
+        let mut tcp = TcpTransport::new();
+        tcp.set_dns_resolver(StubResolver("[::ffff:23.23.23.23]:18189".parse().unwrap()));
+        let addr = "/dns4/rebind.example.com/tcp/18189".parse().unwrap();
+        let policy = DialAddressPolicy {
+            allow_internal: false,
+            excluded: vec!["/ip4/23.23.*.*/tcp/*".parse().unwrap()],
+        };
+        let err = tcp.dial_with_policy(&addr, &policy).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+    }
+
     #[test]
     fn configure() {
         let mut tcp = TcpTransport::new();

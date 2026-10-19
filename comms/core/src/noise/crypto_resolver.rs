@@ -125,7 +125,8 @@ impl Dh for CommsDiffieHellman {
             return Err(snow::Error::Dh);
         }
         let shared = CommsDHKE::new(&self.secret_key, &pk);
-        if shared.as_bytes().iter().all(|b| *b == 0) {
+        // OR every byte together so the check takes the same time for any secret
+        if shared.as_bytes().iter().fold(0u8, |acc, b| acc | b) == 0 {
             return Err(snow::Error::Dh);
         }
         let hash = noise_kdf(&shared);

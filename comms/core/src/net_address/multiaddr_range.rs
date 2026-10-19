@@ -50,11 +50,29 @@ impl fmt::Display for MultiaddrRange {
 impl MultiaddrRange {
     /// Check if the given Multiaddr is contained within the MultiaddrRange range
     pub fn contains(&self, addr: &Multiaddr) -> bool {
+        let ipv4_addr = ipv6_to_embedded_ipv4(addr);
         match self {
-            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => ipv4_addr_range.contains(addr),
-            MultiaddrRange::Multiaddr(multiaddr) => multiaddr == addr,
+            MultiaddrRange::Ipv4AddrRange(ipv4_addr_range) => ipv4_addr_range.contains(&ipv4_addr),
+            MultiaddrRange::Multiaddr(multiaddr) => multiaddr == addr || multiaddr == &ipv4_addr,
         }
     }
+}
+
+/// An IPv4-mapped or IPv4-compatible IPv6 address reaches the embedded IPv4 host, so it is matched as that IPv4
+/// address. Any other address is returned unchanged.
+fn ipv6_to_embedded_ipv4(addr: &Multiaddr) -> Multiaddr {
+    let mut protocols = addr.iter();
+    let Some(Protocol::Ip6(ip)) = protocols.next() else {
+        return addr.clone();
+    };
+    let Some(ipv4) = ip.to_ipv4() else {
+        return addr.clone();
+    };
+    let mut ipv4_addr = Multiaddr::from(Protocol::Ip4(ipv4));
+    for protocol in protocols {
+        ipv4_addr.push(protocol);
+    }
+    ipv4_addr
 }
 
 /// ----------------- Ipv4AddrRange -----------------
@@ -507,5 +525,22 @@ mod test {
         assert!(my_addr_range.contains(&addr));
         let addr = Multiaddr::from(IpAddr::V6(Ipv6Addr::new(0x2001, 0x2, 0, 0, 0, 0, 0, 0)));
         assert!(!my_addr_range.contains(&addr));
+    }
+
+    #[test]
+    fn ipv4_embedded_in_ipv6_matches_ipv4_ranges() {
+        let range = MultiaddrRange::from_str("/ip4/23.23.*.*/tcp/*").unwrap();
+        let exact = MultiaddrRange::from_str("/ip4/23.23.23.23/tcp/18189").unwrap();
+        for addr in ["/ip6/::ffff:23.23.23.23/tcp/18189", "/ip6/::23.23.23.23/tcp/18189"] {
+            let addr = Multiaddr::from_str(addr).unwrap();
+            assert!(range.contains(&addr), "{addr}");
+            assert!(exact.contains(&addr), "{addr}");
+        }
+
+        let addr = Multiaddr::from_str("/ip6/2001:4860::1/tcp/18189").unwrap();
+        assert!(!range.contains(&addr));
+        // Exact IPv6 exclusions still match the address as written
+        let loopback = Multiaddr::from_str("/ip6/::1/tcp/18189").unwrap();
+        assert!(MultiaddrRange::Multiaddr(loopback.clone()).contains(&loopback));
     }
 }

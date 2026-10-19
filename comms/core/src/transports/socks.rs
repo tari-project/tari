@@ -138,7 +138,8 @@ impl Transport for SocksTransport {
             return self.tcp_transport.dial_with_policy(addr, policy).await;
         }
 
-        // The proxy resolves DNS names, so the resolved address is not visible here
+        // The proxy resolves DNS names, so the internal-range and exclusion checks of `policy` cannot be applied
+        // here. With a generic SOCKS5 proxy (`TransportType::Socks5`) they rely on the proxy's own egress policy.
         let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
         Ok(socket)
     }
