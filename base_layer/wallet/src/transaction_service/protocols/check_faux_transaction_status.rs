@@ -69,7 +69,7 @@ pub async fn check_detected_transactions<
         Ok(txs) => txs,
         Err(e) => {
             error!(target: LOG_TARGET, "Problem retrieving imported transactions: {e}");
-            return;
+            Vec::new()
         },
     };
     debug!(
@@ -84,7 +84,7 @@ pub async fn check_detected_transactions<
                 target: LOG_TARGET,
                 "Problem retrieving unconfirmed detected transactions: {e}"
             );
-            return;
+            Vec::new()
         },
     };
     debug!(
@@ -101,7 +101,7 @@ pub async fn check_detected_transactions<
                 target: LOG_TARGET,
                 "Problem retrieving unmined coinbase transactions: {e}"
             );
-            return;
+            Vec::new()
         },
     };
     debug!(
@@ -118,7 +118,7 @@ pub async fn check_detected_transactions<
                 target: LOG_TARGET,
                 "Problem retrieving confirmed detected transactions: {e}"
             );
-            return;
+            Vec::new()
         },
     };
     debug!(

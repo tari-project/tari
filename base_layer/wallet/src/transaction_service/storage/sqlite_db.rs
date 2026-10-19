@@ -1079,11 +1079,27 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let mut tx_info: Vec<UnconfirmedTransactionInfo> = vec![];
         let info = UnconfirmedTransactionInfoSql::fetch_unconfirmed_transactions_info(&mut conn)?;
+        let mut tx_info: Vec<UnconfirmedTransactionInfo> = Vec::with_capacity(info.len());
+        let mut first_error = None;
         for item in info {
-            let item = item.decrypt(&self.cipher)?;
-            tx_info.push(UnconfirmedTransactionInfo::try_from(item)?);
+            let tx_id = item.tx_id;
+            match item
+                .decrypt(&self.cipher)
+                .and_then(UnconfirmedTransactionInfo::try_from)
+            {
+                Ok(i) => tx_info.push(i),
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Skipping undecodable unconfirmed transaction {tx_id}: {e}");
+                    first_error.get_or_insert(e);
+                },
+            }
+        }
+        // If every row fails the failure is systemic (for example a wrong key), so it is still an error
+        if let Some(e) = first_error &&
+            tx_info.is_empty()
+        {
+            return Err(e);
         }
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -4306,6 +4322,39 @@ mod test {
 
         corrupt_completed(&connection, 20, BAD_SOURCE_ADDRESS);
         assert!(db.fetch_last_mined_transaction().is_err());
+    }
+
+    #[test]
+    fn unconfirmed_transactions_info_skips_undecodable_rows() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        // Rows that pass the query filter: a kernel signature, unmined and not cancelled
+        for (tx_id, status) in [
+            (30u64, LegacyTransactionStatus::Completed),
+            (31, LegacyTransactionStatus::Broadcast),
+            (32, LegacyTransactionStatus::Completed),
+        ] {
+            let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
+            tx.status = status;
+            let nonce = PrivateKey::random(&mut rand::rng());
+            tx.transaction_signature = CompressedSignature::new(
+                CompressedPublicKey::from_secret_key(&nonce),
+                PrivateKey::random(&mut rand::rng()),
+            );
+            commit_completed(&connection, &cipher, tx);
+        }
+        corrupt_completed(&connection, 31, TAMPERED_CIPHERTEXT);
+
+        let db = TransactionServiceSqliteDatabase::new(connection.clone(), cipher);
+        let info = db.fetch_unconfirmed_transactions_info().unwrap();
+        assert_eq!(info.iter().map(|i| i.tx_id.as_u64()).collect::<Vec<_>>(), vec![30, 32]);
+
+        // When every row is undecodable it is an error
+        corrupt_completed(&connection, 30, TAMPERED_CIPHERTEXT);
+        corrupt_completed(&connection, 32, TAMPERED_CIPHERTEXT);
+        assert!(db.fetch_unconfirmed_transactions_info().is_err());
     }
 
     #[ignore]
