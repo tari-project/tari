@@ -652,7 +652,8 @@ async fn outbound_identity_timeout_does_not_ban() {
     let dialer_fut = tokio::spawn(dialer.run());
 
     let mut peer = node_identity1.to_peer();
-    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(vec![address], &PeerAddressSource::Config);
+    peer.addresses =
+        MultiaddressesWithStats::from_addresses_with_source(vec![address.clone()], &PeerAddressSource::Config);
     peer.set_id_for_test(1);
 
     let (reply_tx, reply_rx) = oneshot::channel();
@@ -676,6 +677,27 @@ async fn outbound_identity_timeout_does_not_ban() {
         .unwrap()
         .unwrap();
     assert!(!peer.is_banned());
+
+    // Completing Noise alone does not mark the address seen: the failed identity exchange is recorded instead
+    let mut stored = None;
+    for _ in 0..100 {
+        let peer = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
+        if peer
+            .as_ref()
+            .and_then(|p| p.addresses.iter().find(|a| a.address() == &address))
+            .is_some_and(|a| a.last_failed_reason().is_some())
+        {
+            stored = peer;
+            break;
+        }
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    let stored = stored.expect("the dialer did not record the failed attempt");
+    let stalled = stored.addresses.iter().find(|a| a.address() == &address).unwrap();
+    assert!(stalled.last_seen().is_none());
+    assert!(stalled.connection_attempts() > 0);
+    assert!(stalled.last_failed_reason().is_some());
+    assert!(stored.addresses.last_seen().is_none());
 
     shutdown.trigger();
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();

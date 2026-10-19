@@ -84,7 +84,15 @@ const LOG_TARGET: &str = "comms::connection_manager::dialer";
 /// `request_rx`, which is what lets the ConnectionManager make progress again.
 const CONN_MAN_NOTIFY_TIMEOUT: Duration = Duration::from_secs(10);
 
-type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr), ConnectionManagerError>;
+type DialResult<TSocket> = Result<(NoiseSocket<TSocket>, Multiaddr, DialTimings), ConnectionManagerError>;
+
+/// Timings measured while dialling an address. They are only recorded on the address once the connection is fully
+/// established, so a peer that completes Noise and then stalls does not look recently seen.
+#[derive(Debug, Clone, Copy)]
+struct DialTimings {
+    initial_dial_time: Duration,
+    noise_upgrade_time: Duration,
+}
 type DialFuturesUnordered = FuturesUnordered<
     BoxFuture<
         'static,
@@ -425,7 +433,7 @@ where
             let cancel_signal = dial_state.get_cancel_signal();
 
             match dial_result {
-                Ok((socket, addr)) => {
+                Ok((socket, addr, timings)) => {
                     // dial_peer only returns a socket authenticated with the peer's public key
                     let authenticated_public_key = dial_state.peer().public_key.clone();
                     let result = Self::perform_socket_upgrade_procedure(
@@ -441,16 +449,26 @@ where
                     )
                     .await;
 
-                    if let Err(err) = &result {
-                        let mut dial_state = dial_state;
-                        dial_state
-                            .peer_mut()
-                            .addresses
-                            .mark_failed_connection_attempt(&addr, err.to_string());
-                        (dial_state, result)
-                    } else {
-                        (dial_state, result)
+                    let mut dial_state = dial_state;
+                    match &result {
+                        // Only a fully established connection marks the address seen and records its timings
+                        Ok(_) => {
+                            let addresses = &mut dial_state.peer_mut().addresses;
+                            addresses.mark_last_seen_now(&addr);
+                            addresses.update_address_stats(&addr, |a| {
+                                // Initial dial time can be much slower due to tor discovery.
+                                a.update_initial_dial_time(timings.initial_dial_time);
+                                a.update_latency(timings.noise_upgrade_time);
+                            });
+                        },
+                        Err(err) => {
+                            dial_state
+                                .peer_mut()
+                                .addresses
+                                .mark_failed_connection_attempt(&addr, err.to_string());
+                        },
                     }
+                    (dial_state, result)
                 },
                 Err(err) => (dial_state, Err(err)),
             }
@@ -604,13 +622,13 @@ where
                     )
                     .await
                     {
-                        (state, Ok((socket, addr))) => {
+                        (state, Ok((socket, addr, timings))) => {
                             debug!(
                                 target: LOG_TARGET,
                                 "Dial succeeded for peer '{}' after {} attempt(s)",
                                 state.peer().node_id.short_str(), state.num_attempts()
                             );
-                            break (state, Ok((socket, addr)));
+                            break (state, Ok((socket, addr, timings)));
                         },
                         // Inflight dial was cancelled
                         (state, Err(ConnectionManagerError::DialCancelled)) => {
@@ -660,10 +678,7 @@ where
         network_byte: u8,
         excluded_dial_addresses: Vec<MultiaddrRange>,
         allow_test_addresses: bool,
-    ) -> (
-        DialState,
-        Result<(NoiseSocket<WriteStallSocket<TTransport::Output>>, Multiaddr), ConnectionManagerError>,
-    ) {
+    ) -> (DialState, DialResult<WriteStallSocket<TTransport::Output>>) {
         let supported_transport_protocols = transport.supported_protocols();
         trace!(target: LOG_TARGET, "Supported transport protocols: {:?}", supported_transport_protocols);
 
@@ -794,13 +809,12 @@ where
             let either = future::select(dial_fut, cancel_signal.clone()).await;
             match either {
                 Either::Left((Ok((initial_dial_time, noise_upgrade_time, noise_socket)), _)) => {
-                    dial_state.peer_mut().addresses.mark_last_seen_now(&address);
-                    dial_state.peer_mut().addresses.update_address_stats(&address, |addr| {
-                        // Initial dial time can be much slower due to tor discovery.
-                        addr.update_initial_dial_time(initial_dial_time);
-                        addr.update_latency(noise_upgrade_time);
-                    });
-                    return (dial_state, Ok((noise_socket, address.clone())));
+                    // The address is marked seen by the caller once the socket upgrade procedure succeeds
+                    let timings = DialTimings {
+                        initial_dial_time,
+                        noise_upgrade_time,
+                    };
+                    return (dial_state, Ok((noise_socket, address.clone(), timings)));
                 },
                 Either::Left((Err(err), _)) => {
                     debug!(
