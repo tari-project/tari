@@ -33,7 +33,7 @@ tokio = { workspace = true, features = ["macros"] }
 tokio-stream = { version = "0.1.9", default-features = false, features = [
     "time",
 ] }
-tower = "0.4.11"
+tower = "0.5"
 hickory-resolver = { version = "0.26.3", features = [
     "tokio",
     "tls-ring",

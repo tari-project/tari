@@ -660,9 +660,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
                 // Hand over streams accepted before the connection closed, their buffered data is still readable.
                 // The connection has no more I/O to drive, so waiting on the channel is fine, for a bounded time.
                 let deliver = async {
-                    if poll_fn(|cx| self.incoming_substreams.poll_send_done(cx)).await.is_err() {
-                        return;
-                    }
                     while let Some(stream) = self.pop_pending_inbound() {
                         if incoming_tx.send(stream).await.is_err() {
                             return;
@@ -898,7 +895,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
     }
 
     /// Returns the number of streams on the connection that this worker knows of: streams handed out and not yet
-    /// dropped, plus inbound streams waiting to be accepted, in the incoming channel or being handed to it. yamux may
+    /// dropped, plus inbound streams waiting to be accepted or in the incoming channel. yamux may
     /// still hold dropped streams that it has not cleaned up, which happens while the socket is busy writing (see
     /// [LOCAL_OPEN_HEADROOM]).
     fn num_streams(&self) -> usize {
@@ -906,13 +903,10 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
             .incoming_tx
             .max_capacity()
             .saturating_sub(self.incoming_tx.capacity());
-        // A stream passed to start_send is held by the PollSender until the channel has room for it
-        let num_being_handed_over = usize::from(!self.incoming_substreams.is_ready());
         self.counter
             .get()
             .saturating_add(self.pending_inbound.len())
             .saturating_add(num_in_channel)
-            .saturating_add(num_being_handed_over)
     }
 
     fn is_inbound_queue_full(&self) -> bool {
@@ -940,7 +934,10 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
     /// has been dropped.
     fn flush_inbound(&mut self, cx: &mut Context<'_>) -> bool {
         loop {
-            match self.incoming_substreams.poll_send_done(cx) {
+            if self.pending_inbound.is_empty() {
+                return true;
+            }
+            match self.incoming_substreams.poll_reserve(cx) {
                 Poll::Ready(Ok(())) => {},
                 Poll::Ready(Err(_)) => return false,
                 Poll::Pending => return true,
@@ -948,7 +945,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
             let Some(stream) = self.pop_pending_inbound() else {
                 return true;
             };
-            if self.incoming_substreams.start_send(stream).is_err() {
+            if self.incoming_substreams.send_item(stream).is_err() {
                 return false;
             }
         }
@@ -1432,9 +1429,8 @@ mod test {
     #[tokio::test]
     async fn the_local_cap_counts_inbound_streams_that_are_not_accepted() {
         const LOCAL_CAP: usize = YAMUX_MAX_NUM_STREAMS - LOCAL_OPEN_HEADROOM;
-        // The worker holds this many unaccepted streams: its queue, the incoming channel, and one passed to the channel
-        // sender that is waiting for room
-        const NUM_HELD: usize = MAX_QUEUED_INBOUND_STREAMS + INCOMING_CHANNEL_SIZE + 1;
+        // The worker holds this many unaccepted streams: its queue and the incoming channel
+        const NUM_HELD: usize = MAX_QUEUED_INBOUND_STREAMS + INCOMING_CHANNEL_SIZE;
         let (dialer, listener) = MemorySocket::new_pair();
 
         let dialer =
@@ -1578,7 +1574,8 @@ mod test {
             held <= max_bytes_read,
             "read {held} bytes, more than the bound of {max_bytes_read}"
         );
-        assert!(held >= MAX_HELD_STREAMS * STREAM_WINDOW, "read only {held} bytes");
+        // Reads pause when the last held stream is accepted, which can be before its data is read
+        assert!(held >= (MAX_HELD_STREAMS - 1) * STREAM_WINDOW, "read only {held} bytes");
         tokio::time::sleep(Duration::from_secs(1)).await;
         assert_eq!(bytes_read.load(Ordering::SeqCst), held, "reads did not stop");
 
