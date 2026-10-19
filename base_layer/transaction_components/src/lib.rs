@@ -1,6 +1,13 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+//! # Embedding this crate
+//!
+//! Consensus hashes (and therefore validation and signing) include a network byte that is read from the process-wide
+//! network, falling back to the `TARI_NETWORK` environment variable and then the build default. Embedders must call
+//! [`tari_common::configuration::Network::set_current`] before any validation or signing. See
+//! [`consensus::DomainSeparatedConsensusHasher::new`].
+
 pub mod aggregated_body;
 
 pub mod crypto_factories;

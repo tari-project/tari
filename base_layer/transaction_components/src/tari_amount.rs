@@ -190,31 +190,78 @@ impl From<MicroMinotari> for u64 {
     }
 }
 
+/// Parses an amount: optional surrounding whitespace, digits, an optional `.` with 1-6 digits, at most one space and
+/// an optional case-insensitive unit `T`, `uT`, `µT` or `μT`. Without a unit, the amount is µT when
+/// `no_unit_integer_is_micro` is set and there is no `.`, otherwise T.
+fn parse_amount(s: &str, no_unit_integer_is_micro: bool) -> Result<MicroMinotari, MicroMinotariError> {
+    let grammar_error = || {
+        MicroMinotariError::ParseError(
+            "expected digits, an optional '.' with 1 to 6 decimals, and an optional unit T or µT".to_string(),
+        )
+    };
+    if s.contains(',') {
+        return Err(MicroMinotariError::ParseError(
+            "',' is not allowed; the decimal separator is '.' and thousands separators are not supported".to_string(),
+        ));
+    }
+    let s = s.trim();
+
+    let int_end = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+    let (int_digits, rest) = s.split_at(int_end);
+    if int_digits.is_empty() {
+        return Err(grammar_error());
+    }
+
+    let mut frac_digits = None;
+    let mut rest = rest;
+    if let Some(after_dot) = rest.strip_prefix('.') {
+        let frac_end = after_dot.find(|c: char| !c.is_ascii_digit()).unwrap_or(after_dot.len());
+        if frac_end == 0 || frac_end > 6 {
+            return Err(grammar_error());
+        }
+        frac_digits = Some(&after_dot[..frac_end]);
+        rest = &after_dot[frac_end..];
+    }
+
+    let unit = rest.strip_prefix(' ').unwrap_or(rest);
+    if unit.starts_with(|c: char| c.is_ascii_digit()) {
+        return Err(MicroMinotariError::ParseError(
+            "thousands separators are not supported".to_string(),
+        ));
+    }
+    let unit = unit.to_ascii_lowercase();
+    let is_micro = match unit.as_str() {
+        "" => no_unit_integer_is_micro && frac_digits.is_none(),
+        "t" => false,
+        "ut" | "µt" | "μt" => true,
+        _ => return Err(grammar_error()),
+    };
+
+    let overflow = || MicroMinotariError::from(DecimalConvertError::Overflow);
+    let whole = int_digits.parse::<u64>().map_err(|_| overflow())?;
+    if is_micro {
+        if frac_digits.is_some() {
+            return Err(MicroMinotariError::ParseError(
+                "µT amounts cannot have decimals".to_string(),
+            ));
+        }
+        return Ok(MicroMinotari(whole));
+    }
+    let mut micro = whole.checked_mul(1_000_000).ok_or_else(overflow)?;
+    if let Some(frac) = frac_digits {
+        let padded = format!("{frac:0<6}");
+        let frac_micro = padded.parse::<u64>().map_err(|_| overflow())?;
+        micro = micro.checked_add(frac_micro).ok_or_else(overflow)?;
+    }
+    Ok(MicroMinotari(micro))
+}
+
+/// Strict amount grammar, e.g. `5`, `5.25 T`, `100 µT`. Without a unit, an integer is µT and a value with a `.` is T.
 impl FromStr for MicroMinotari {
     type Err = MicroMinotariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let processed = s.replace([',', ' '], "").to_ascii_lowercase();
-
-        // Is this Tari or MicroMinotari
-        let is_micro_tari = matches!(
-            processed.as_str(),
-            s if s.ends_with("ut") || s.ends_with("µt")
-        ) || (!processed.ends_with('t') && !processed.contains('.'));
-
-        let processed = processed.replace("ut", "").replace("µt", "").replace('t', "");
-        if is_micro_tari {
-            processed
-                .parse::<u64>()
-                .map(MicroMinotari::from)
-                .map_err(|e| MicroMinotariError::ParseError(e.to_string()))
-        } else {
-            processed
-                .parse::<Decimal>()
-                .map_err(|e| MicroMinotariError::ParseError(e.to_string()))
-                .and_then(Minotari::try_from)
-                .map(MicroMinotari::from)
-        }
+        parse_amount(s, true)
     }
 }
 
@@ -373,17 +420,12 @@ impl TryFrom<Decimal> for Minotari {
     }
 }
 
+/// Strict amount grammar, e.g. `5`, `5.25 T`, `100 µT`. Without a unit, the value is T.
 impl FromStr for Minotari {
     type Err = MicroMinotariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.to_ascii_lowercase().contains('t') {
-            let val = MicroMinotari::from_str(s)?;
-            Ok(Minotari::from(val))
-        } else {
-            let d = Decimal::from_str(s).map_err(|e| MicroMinotariError::ParseError(e.to_string()))?;
-            Self::try_from(d)
-        }
+        parse_amount(s, false).map(Minotari::from)
     }
 }
 
@@ -523,20 +565,97 @@ mod test {
         );
         assert_eq!(
             MicroMinotari::from(5_000_000),
-            MicroMinotari::from_str("5,000,000").unwrap()
-        );
-        assert_eq!(
-            MicroMinotari::from(5_000_000),
-            MicroMinotari::from_str("5,000,000 uT").unwrap()
-        );
-        assert_eq!(
-            MicroMinotari::from(5_000_000),
             MicroMinotari::from_str("5000000 uT").unwrap()
         );
         assert_eq!(MicroMinotari::from(5_000_000), MicroMinotari::from_str("5 T").unwrap());
         assert!(MicroMinotari::from_str("-5 T").is_err());
         assert!(MicroMinotari::from_str("-5 uT").is_err());
         assert!(MicroMinotari::from_str("5garbage T").is_err());
+    }
+
+    #[test]
+    fn amount_grammar_accepts() {
+        let cases = [
+            ("5", 5),
+            ("5.5", 5_500_000),
+            ("  7 T  ", 7_000_000),
+            ("7T", 7_000_000),
+            ("7 t", 7_000_000),
+            ("0.000001 T", 1),
+            ("1.123456", 1_123_456),
+            ("42 uT", 42),
+            ("42UT", 42),
+            ("42 \u{b5}T", 42),
+            ("42 \u{3bc}T", 42),
+            ("42 \u{3bc}t", 42),
+            ("007", 7),
+        ];
+        for (input, micro) in cases {
+            assert_eq!(MicroMinotari::from_str(input), Ok(MicroMinotari(micro)), "{input}");
+        }
+        // Minotari defaults to T without a unit
+        assert_eq!(Minotari::from_str("5"), Ok(Minotari::from(5u64)));
+        assert_eq!(Minotari::from_str("5.5"), Ok(MicroMinotari(5_500_000).into()));
+        assert_eq!(Minotari::from_str("5 uT"), Ok(MicroMinotari(5).into()));
+    }
+
+    #[test]
+    fn amount_display_roundtrips() {
+        for micro in [0, 1, 999_999, 1_500_000, 123_456_789_012, u64::MAX] {
+            let m = MicroMinotari(micro);
+            assert_eq!(MicroMinotari::from_str(&m.to_string()), Ok(m));
+            let t = Minotari::from(m);
+            assert_eq!(Minotari::from_str(&t.to_string()), Ok(t));
+        }
+        assert_eq!(MicroMinotari::from_str("1.500000 T"), Ok(MicroMinotari(1_500_000)));
+        assert_eq!(MicroMinotari::from_str("1500000 µT"), Ok(MicroMinotari(1_500_000)));
+        assert_eq!(Minotari::from_str("1.500000 T"), Ok(MicroMinotari(1_500_000).into()));
+        assert_eq!(Minotari::from_str("1500000 µT"), Ok(MicroMinotari(1_500_000).into()));
+    }
+
+    #[test]
+    fn amount_grammar_rejects() {
+        let cases = [
+            "1,5 T",
+            "0,001 T",
+            "2t5",
+            "1 000",
+            "1,000,000 T",
+            "1.5 uT",
+            "1.5 µT",
+            "1.1234567 T",
+            "",
+            "   ",
+            "T",
+            "uT",
+            ".5",
+            "5.",
+            "5. T",
+            "5  T",
+            "+5",
+            "-5",
+            "5 T T",
+            "5 Tari",
+            "5\tT",
+            "1e6",
+            "18446744073709551616",
+            "18446744073709551616 uT",
+            "18446744073709.551616 T",
+            "99999999999999999999 T",
+            "5 \u{39c}T",
+            "5 \u{ff34}",
+        ];
+        for input in cases {
+            assert!(
+                MicroMinotari::from_str(input).is_err(),
+                "MicroMinotari accepted {input:?}"
+            );
+            assert!(Minotari::from_str(input).is_err(), "Minotari accepted {input:?}");
+        }
+        let err = MicroMinotari::from_str("1,5 T").unwrap_err().to_string();
+        assert!(err.contains("decimal separator is '.'"), "{err}");
+        let err = MicroMinotari::from_str("1 000 000").unwrap_err().to_string();
+        assert!(err.contains("thousands separators"), "{err}");
     }
 
     #[test]
