@@ -1,6 +1,56 @@
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-# Changelog## 
+# Changelog## ## [6.2.0](https://github.com/tari-project/tari/compare/v6.1.0...v6.2.0) (2026-10-19)
+
+### ⚠ BREAKING CHANGES
+
+* **common_sqlite:** owner-only database files, WAL set in create_pool, per-database profiles (#8107)
+* **jellyfish:** native minicbor encoding, inline NibblePath and bitmap InternalNode children (#8101)
+* **wallet:** remove private-key UTXO export, which leaked the spend key (#8102)
+* **jellyfish:** make the JMT hash scheme an explicit parameter (#8096)
+* **jellyfish:** remove public-API panics, bound traversal, check store integrity (#8094)
+
+### Features
+
+* **mempool:** add bans for gossip transactions ([#8127](https://github.com/tari-project/tari/issues/8127)) ([71de518](https://github.com/tari-project/tari/commit/71de51850621f1d42871fe17e21305c2ea4ea45b))
+* **offline-signing:** render payload summaries before signing and show recipient output features ([#8130](https://github.com/tari-project/tari/issues/8130)) ([9e34e1a](https://github.com/tari-project/tari/commit/9e34e1a9232e27a724c0b0b7977d17fe9dd224ba))
+* **base_node:** use mimalloc as the global allocator ([#8111](https://github.com/tari-project/tari/issues/8111)) ([e2adb3c](https://github.com/tari-project/tari/commit/e2adb3c959a139832ea98ffa571db249269d1dc9))
+* **jellyfish:** make the JMT hash scheme an explicit parameter ([#8096](https://github.com/tari-project/tari/issues/8096)) ([29c9caa](https://github.com/tari-project/tari/commit/29c9caac9813a7c88cc267ba7d53268a6e8e0b03))
+* **jellyfish:** native minicbor encoding, inline NibblePath and bitmap InternalNode children ([#8101](https://github.com/tari-project/tari/issues/8101)) ([0f21a29](https://github.com/tari-project/tari/commit/0f21a29cb867cf665776862bba115966a4029136))
+
+
+### Bug Fixes
+
+* **cli:** merge duplicate test modules in common_cli_args ([#8121](https://github.com/tari-project/tari/issues/8121)) ([ea909aa](https://github.com/tari-project/tari/commit/ea909aae0faf5897cf9319842584ba619fdef5aa))
+* **cli:** parse key-value overrides using split_once to preserve values with equals and whitespace ([#8114](https://github.com/tari-project/tari/issues/8114)) ([9d9c44d](https://github.com/tari-project/tari/commit/9d9c44d2087c47a1f350e9b90d36b337ea75d947)), closes [#8037](https://github.com/tari-project/tari/issues/8037)
+* **cli:** use resolved network when computing common.base_path ([#8113](https://github.com/tari-project/tari/issues/8113)) ([8206dc2](https://github.com/tari-project/tari/commit/8206dc2bc839deebbda1de38d1474a77e6f22288)), closes [#8038](https://github.com/tari-project/tari/issues/8038)
+* **common:** replace serde_yaml with serde-saphyr to drop unsafe-libyaml ([#8116](https://github.com/tari-project/tari/issues/8116)) ([5cc7a6e](https://github.com/tari-project/tari/commit/5cc7a6e6e8f12be1f5e5ea6900e6bd95c7cf6dca)), closes [/github.com/tari-project/tari/pull/8116#discussion_r4267570814](https://github.com/tari-project//github.com/tari-project/tari/pull/8116/issues/discussion_r4267570814)
+* **comms:** admit liveness by token, bound inbound handshakes and cap inbound connections ([#8119](https://github.com/tari-project/tari/issues/8119)) ([0e2c368](https://github.com/tari-project/tari/commit/0e2c36871e54d455f34f1a989d9ac86d7824dcdd)), closes [#8118](https://github.com/tari-project/tari/issues/8118)
+* **comms:** bound messaging queues, fair inbound delivery, yamux window cap ([#8125](https://github.com/tari-project/tari/issues/8125)) ([e61fdcc](https://github.com/tari-project/tari/commit/e61fdcc851f1fb5faca31ed5cd7428e0038755a6)), closes [#8124](https://github.com/tari-project/tari/issues/8124) [/github.com/tari-project/tari/pull/8125#discussion_r4286726269](https://github.com/tari-project//github.com/tari-project/tari/pull/8125/issues/discussion_r4286726269) [/github.com/tari-project/tari/pull/8125#discussion_r4286726280](https://github.com/tari-project//github.com/tari-project/tari/pull/8125/issues/discussion_r4286726280) [/github.com/tari-project/tari/pull/8125#discussion_r4286726294](https://github.com/tari-project//github.com/tari-project/tari/pull/8125/issues/discussion_r4286726294)
+* **comms:** lossless peer DB addresses, row cap and GC, direction-aware reaper, persisted bans ([#8124](https://github.com/tari-project/tari/issues/8124)) ([5c0b764](https://github.com/tari-project/tari/commit/5c0b764ef83b665be0a1149418c17d59ffb38b23)), closes [/github.com/tari-project/tari/pull/8124#discussion_r4280261505](https://github.com/tari-project//github.com/tari-project/tari/pull/8124/issues/discussion_r4280261505) [/github.com/tari-project/tari/pull/8124#discussion_r4280261508](https://github.com/tari-project//github.com/tari-project/tari/pull/8124/issues/discussion_r4280261508)
+* **comms:** stop culled and idle RPC sessions promptly and bound internal channel sends ([#8118](https://github.com/tari-project/tari/issues/8118)) ([30d1302](https://github.com/tari-project/tari/commit/30d1302c63c345178dd01903dd10ecf2e0bd0d47))
+* harden validation ([#8132](https://github.com/tari-project/tari/issues/8132)) ([9943038](https://github.com/tari-project/tari/commit/9943038f023621956ec4da584e1db3b7ea987f52))
+* **identity:** prevent secret key leakage from malformed identity errors ([#8115](https://github.com/tari-project/tari/issues/8115)) ([758a331](https://github.com/tari-project/tari/commit/758a33191cde57c4987976307cf0df137d23822a)), closes [#8032](https://github.com/tari-project/tari/issues/8032)
+* **sidechain:** weigh quorum certificates by signer voting power ([#8128](https://github.com/tari-project/tari/issues/8128)) ([0947574](https://github.com/tari-project/tari/commit/094757422bc3606786cd7f982efea9f1c0231b89))
+* **validation:** require the canonical script on side-chain claimable burns ([#8126](https://github.com/tari-project/tari/issues/8126)) ([53eb690](https://github.com/tari-project/tari/commit/53eb690eab46aed7df7dc374e8576315570f15b8))
+* **wallet:** derive imported transaction details from recovered output data ([#8133](https://github.com/tari-project/tari/issues/8133)) ([a243e1e](https://github.com/tari-project/tari/commit/a243e1e26387cbeab24522944777735f942646ac))
+* **wallet:** reject coin_split_even when fee exceeds total input value ([#8112](https://github.com/tari-project/tari/issues/8112)) ([6a8313b](https://github.com/tari-project/tari/commit/6a8313ba189593acb27301c0ed575e6e0c2d758a)), closes [#8073](https://github.com/tari-project/tari/issues/8073) [/github.com/tari-project/tari/pull/8112#discussion_r4266959504](https://github.com/tari-project//github.com/tari-project/tari/pull/8112/issues/discussion_r4266959504)
+* **common_sqlite:** owner-only database files, WAL set in create_pool, per-database profiles ([#8107](https://github.com/tari-project/tari/issues/8107)) ([b3fe279](https://github.com/tari-project/tari/commit/b3fe279e2ce594a2832aedf465ffbe5435531ffc)), closes [/github.com/tari-project/tari/pull/8107#discussion_r4256061979](https://github.com/tari-project//github.com/tari-project/tari/pull/8107/issues/discussion_r4256061979) [/github.com/tari-project/tari/pull/8107#discussion_r4256061988](https://github.com/tari-project//github.com/tari-project/tari/pull/8107/issues/discussion_r4256061988)
+* **comms/dht:** bound per-peer flood-ban metrics and drop stale entries ([#8110](https://github.com/tari-project/tari/issues/8110)) ([859cde7](https://github.com/tari-project/tari/commit/859cde7d332cf7b31088b2376ea15320e42efb0a))
+* **comms:** bound memory held for stalled yamux peers, RPC/sync streams and gRPC GetBlocks ([#8108](https://github.com/tari-project/tari/issues/8108)) ([48babe2](https://github.com/tari-project/tari/commit/48babe28a68856402028cda419f3b4b99a67a5ed))
+* **key_manager:** low-impact hardening from the key manager security analysis ([#8106](https://github.com/tari-project/tari/issues/8106)) ([42977a2](https://github.com/tari-project/tari/commit/42977a22f7a8f38e811672451c16875fc21de167)), closes [#8077](https://github.com/tari-project/tari/issues/8077) [#8104](https://github.com/tari-project/tari/issues/8104)
+* **ledger:** sign device sender-offset keys only through the reviewed metadata instruction ([#8104](https://github.com/tari-project/tari/issues/8104)) ([897835c](https://github.com/tari-project/tari/commit/897835c76d19e3e6c24daa89a7328b119d9eae19)), closes [#8098](https://github.com/tari-project/tari/issues/8098)
+* **node:** enable HTTP/2 and TCP keepalives on the base node gRPC server ([#8109](https://github.com/tari-project/tari/issues/8109)) ([3506c52](https://github.com/tari-project/tari/commit/3506c52460d73a8094ca031550b2156528ed10ff)), closes [#8108](https://github.com/tari-project/tari/issues/8108)
+* bound protobuf decode on every peer-reachable path ([#8095](https://github.com/tari-project/tari/issues/8095)) ([89f9ebd](https://github.com/tari-project/tari/commit/89f9ebd61648e5a44059ad65ee9a1d195f61266f))
+* **jellyfish:** reject non-monotonic versions in batch_put_value_set ([#8092](https://github.com/tari-project/tari/issues/8092)) ([109da2b](https://github.com/tari-project/tari/commit/109da2bf1fcd85fcf8405fb6d0567aff5c8da314))
+* **jellyfish:** remove public-API panics, bound traversal, check store integrity ([#8094](https://github.com/tari-project/tari/issues/8094)) ([faa66c8](https://github.com/tari-project/tari/commit/faa66c89e4c24033302ede227df8fe96aa36531c))
+* **key_manager:** refuse degenerate nonces ([#8103](https://github.com/tari-project/tari/issues/8103)) ([6495266](https://github.com/tari-project/tari/commit/649526689842ef2017a255f39d4dd4c386969e10)), closes [#8099](https://github.com/tari-project/tari/issues/8099)
+* **ledger:** keep alpha out of reach of the legacy host-indexed nonce instruction ([#8098](https://github.com/tari-project/tari/issues/8098)) ([74d1bcb](https://github.com/tari-project/tari/commit/74d1bcb737a548d827ac908caf4d2fbd64216f60))
+* refuse root-bearing key ids as commitment masks and in offline signing payloads ([#8099](https://github.com/tari-project/tari/issues/8099)) ([7cc4d55](https://github.com/tari-project/tari/commit/7cc4d551a218fc226fea79bd231cc6ddc0c9235f))
+* refuse to sign offline transactions that leave no change output ([#8093](https://github.com/tari-project/tari/issues/8093)) ([b2e27cb](https://github.com/tari-project/tari/commit/b2e27cba0bb1518e50b8de1c7a7d52f1796ef432))
+* **wallet:** remove private-key UTXO export, which leaked the spend key ([#8102](https://github.com/tari-project/tari/issues/8102)) ([d74e2b4](https://github.com/tari-project/tari/commit/d74e2b42c787db46c9f313162e8b3390c6d04636)), closes [/github.com/tari-project/tari/pull/8102#discussion_r4229267983](https://github.com/tari-project//github.com/tari-project/tari/pull/8102/issues/discussion_r4229267983) [/github.com/tari-project/tari/pull/8102#discussion_r4229267993](https://github.com/tari-project//github.com/tari-project/tari/pull/8102/issues/discussion_r4229267993)
+
+
 [6.1.0](https://github.com/tari-project/tari/compare/v6.1.0...v6.1.0) (2026-10-07)
 
 

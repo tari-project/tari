@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.2.0-pre.2](https://github.com/tari-project/tari/compare/v6.2.0-pre.1...v6.2.0-pre.2) (2026-10-19)
+
+
+### Features
+
+* **mempool:** add bans for gossip transactions ([#8127](https://github.com/tari-project/tari/issues/8127)) ([71de518](https://github.com/tari-project/tari/commit/71de51850621f1d42871fe17e21305c2ea4ea45b))
+* **offline-signing:** render payload summaries before signing and show recipient output features ([#8130](https://github.com/tari-project/tari/issues/8130)) ([9e34e1a](https://github.com/tari-project/tari/commit/9e34e1a9232e27a724c0b0b7977d17fe9dd224ba))
+
+
+### Bug Fixes
+
+* **cli:** merge duplicate test modules in common_cli_args ([#8121](https://github.com/tari-project/tari/issues/8121)) ([ea909aa](https://github.com/tari-project/tari/commit/ea909aae0faf5897cf9319842584ba619fdef5aa))
+* **cli:** parse key-value overrides using split_once to preserve values with equals and whitespace ([#8114](https://github.com/tari-project/tari/issues/8114)) ([9d9c44d](https://github.com/tari-project/tari/commit/9d9c44d2087c47a1f350e9b90d36b337ea75d947)), closes [#8037](https://github.com/tari-project/tari/issues/8037)
+* **cli:** use resolved network when computing common.base_path ([#8113](https://github.com/tari-project/tari/issues/8113)) ([8206dc2](https://github.com/tari-project/tari/commit/8206dc2bc839deebbda1de38d1474a77e6f22288)), closes [#8038](https://github.com/tari-project/tari/issues/8038)
+* **common:** replace serde_yaml with serde-saphyr to drop unsafe-libyaml ([#8116](https://github.com/tari-project/tari/issues/8116)) ([5cc7a6e](https://github.com/tari-project/tari/commit/5cc7a6e6e8f12be1f5e5ea6900e6bd95c7cf6dca)), closes [/github.com/tari-project/tari/pull/8116#discussion_r4267570814](https://github.com/tari-project//github.com/tari-project/tari/pull/8116/issues/discussion_r4267570814)
+* **comms:** admit liveness by token, bound inbound handshakes and cap inbound connections ([#8119](https://github.com/tari-project/tari/issues/8119)) ([0e2c368](https://github.com/tari-project/tari/commit/0e2c36871e54d455f34f1a989d9ac86d7824dcdd)), closes [#8118](https://github.com/tari-project/tari/issues/8118)
+* **comms:** bound messaging queues, fair inbound delivery, yamux window cap ([#8125](https://github.com/tari-project/tari/issues/8125)) ([e61fdcc](https://github.com/tari-project/tari/commit/e61fdcc851f1fb5faca31ed5cd7428e0038755a6)), closes [#8124](https://github.com/tari-project/tari/issues/8124) [/github.com/tari-project/tari/pull/8125#discussion_r4286726269](https://github.com/tari-project//github.com/tari-project/tari/pull/8125/issues/discussion_r4286726269) [/github.com/tari-project/tari/pull/8125#discussion_r4286726280](https://github.com/tari-project//github.com/tari-project/tari/pull/8125/issues/discussion_r4286726280) [/github.com/tari-project/tari/pull/8125#discussion_r4286726294](https://github.com/tari-project//github.com/tari-project/tari/pull/8125/issues/discussion_r4286726294)
+* **comms:** lossless peer DB addresses, row cap and GC, direction-aware reaper, persisted bans ([#8124](https://github.com/tari-project/tari/issues/8124)) ([5c0b764](https://github.com/tari-project/tari/commit/5c0b764ef83b665be0a1149418c17d59ffb38b23)), closes [/github.com/tari-project/tari/pull/8124#discussion_r4280261505](https://github.com/tari-project//github.com/tari-project/tari/pull/8124/issues/discussion_r4280261505) [/github.com/tari-project/tari/pull/8124#discussion_r4280261508](https://github.com/tari-project//github.com/tari-project/tari/pull/8124/issues/discussion_r4280261508)
+* **comms:** stop culled and idle RPC sessions promptly and bound internal channel sends ([#8118](https://github.com/tari-project/tari/issues/8118)) ([30d1302](https://github.com/tari-project/tari/commit/30d1302c63c345178dd01903dd10ecf2e0bd0d47))
+* harden validation ([#8132](https://github.com/tari-project/tari/issues/8132)) ([9943038](https://github.com/tari-project/tari/commit/9943038f023621956ec4da584e1db3b7ea987f52))
+* **identity:** prevent secret key leakage from malformed identity errors ([#8115](https://github.com/tari-project/tari/issues/8115)) ([758a331](https://github.com/tari-project/tari/commit/758a33191cde57c4987976307cf0df137d23822a)), closes [#8032](https://github.com/tari-project/tari/issues/8032)
+* **sidechain:** weigh quorum certificates by signer voting power ([#8128](https://github.com/tari-project/tari/issues/8128)) ([0947574](https://github.com/tari-project/tari/commit/094757422bc3606786cd7f982efea9f1c0231b89))
+* **validation:** require the canonical script on side-chain claimable burns ([#8126](https://github.com/tari-project/tari/issues/8126)) ([53eb690](https://github.com/tari-project/tari/commit/53eb690eab46aed7df7dc374e8576315570f15b8))
+* **wallet:** derive imported transaction details from recovered output data ([#8133](https://github.com/tari-project/tari/issues/8133)) ([a243e1e](https://github.com/tari-project/tari/commit/a243e1e26387cbeab24522944777735f942646ac))
+* **wallet:** reject coin_split_even when fee exceeds total input value ([#8112](https://github.com/tari-project/tari/issues/8112)) ([6a8313b](https://github.com/tari-project/tari/commit/6a8313ba189593acb27301c0ed575e6e0c2d758a)), closes [#8073](https://github.com/tari-project/tari/issues/8073) [/github.com/tari-project/tari/pull/8112#discussion_r4266959504](https://github.com/tari-project//github.com/tari-project/tari/pull/8112/issues/discussion_r4266959504)
+
 ## [6.2.0-pre.1](https://github.com/tari-project/tari/compare/v6.2.0-pre.0...v6.2.0-pre.1) (2026-10-13)
 
 
