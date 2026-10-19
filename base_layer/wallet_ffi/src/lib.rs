@@ -8200,8 +8200,10 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
                     return Box::into_raw(Box::new(completed));
                 }
             },
+            Err(TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(_))) => {},
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                return ptr::null_mut();
             },
         }
         *error_out = 108;
@@ -11560,7 +11562,7 @@ mod test {
             );
             assert_eq!(error, 0);
 
-            // Good rows: 1 completed inbound, 2 completed outbound, 3 cancelled
+            // Good rows: 1 completed inbound, 2 completed outbound, 3 cancelled, 4 mined
             let good = [
                 by_id_test_tx(
                     1,
@@ -11579,6 +11581,12 @@ mod test {
                     LegacyTransactionStatus::Rejected,
                     TransactionDirection::Outbound,
                     Some(TxCancellationReason::UserCancelled),
+                ),
+                by_id_test_tx(
+                    4,
+                    LegacyTransactionStatus::MinedConfirmed,
+                    TransactionDirection::Inbound,
+                    None,
                 ),
             ];
             for tx in good {
@@ -11617,6 +11625,18 @@ mod test {
             assert!(wallet_get_pending_outbound_transaction_by_id(wallet, 99, 0, error_ptr).is_null());
             assert_eq!(error, 108);
             assert!(wallet_get_pending_outbound_transaction_by_id(wallet, 11, 0, error_ptr).is_null());
+            assert!(is_storage_error(error), "unexpected code {error}");
+
+            // Completed: only returned once past Completed/Broadcast
+            let tx = wallet_get_completed_transaction_by_id(wallet, 4, error_ptr);
+            assert!(!tx.is_null());
+            assert_eq!(error, 0);
+            completed_transaction_destroy(tx);
+            assert!(wallet_get_completed_transaction_by_id(wallet, 1, error_ptr).is_null());
+            assert_eq!(error, 108);
+            assert!(wallet_get_completed_transaction_by_id(wallet, 99, error_ptr).is_null());
+            assert_eq!(error, 108);
+            assert!(wallet_get_completed_transaction_by_id(wallet, 10, error_ptr).is_null());
             assert!(is_storage_error(error), "unexpected code {error}");
 
             // Cancelled
