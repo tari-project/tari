@@ -151,12 +151,6 @@ pub async fn check_detected_transactions<
             "TxId: {}, {:?} ",
             tx.tx_id, output_info_for_tx_id
         );
-        // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
-        // be different.
-        let Some(output_status) = output_info_for_tx_id.statuses.first() else {
-            error!(target: LOG_TARGET, "TxId {}: no output statuses", tx.tx_id);
-            continue;
-        };
         if output_info_for_tx_id.mined_height.is_none() || output_info_for_tx_id.block_hash.is_none() {
             // this means the transaction is not detected as mined
             if let Err(e) = db.set_transaction_as_unmined(tx.tx_id) {
@@ -167,6 +161,12 @@ pub async fn check_detected_transactions<
             }
             continue;
         }
+        // Its safe to assume that statuses should be the same as they are all in the same transaction and they cannot
+        // be different.
+        let Some(output_status) = output_info_for_tx_id.statuses.first() else {
+            error!(target: LOG_TARGET, "TxId {}: no output statuses", tx.tx_id);
+            continue;
+        };
         let mined_height = output_info_for_tx_id.mined_height.unwrap_or(0);
         let mined_in_block = output_info_for_tx_id.block_hash.unwrap_or(FixedHash::zero());
         let is_valid = tip_height >= mined_height;

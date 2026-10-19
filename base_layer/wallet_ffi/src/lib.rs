@@ -8246,10 +8246,6 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
             return ptr::null_mut();
         }
 
-        let pending_transactions = (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.get_pending_inbound_transactions());
-
         // The transaction is looked up directly, so the search limit no longer applies
         let _ = max_search_limit;
         // A direct lookup reports an undecodable row as an error rather than as not found
@@ -8274,12 +8270,14 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
             },
         }
 
-        match pending_transactions {
-            Ok(pending_transactions) => {
-                if let Some(tx) = pending_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                    let pending = tx.clone();
-                    return Box::into_raw(Box::new(pending));
-                }
+        match (*wallet)
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_any_transaction(transaction_id))
+        {
+            Ok(Some(WalletTransaction::PendingInbound(tx))) if !tx.cancelled => {
+                return Box::into_raw(Box::new(tx));
+            },
+            Ok(_) => {
                 *error_out = completed_error.unwrap_or(108);
             },
             Err(e) => {
@@ -8326,10 +8324,6 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
             return ptr::null_mut();
         }
 
-        let pending_transactions = (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.transaction_service.get_pending_outbound_transactions());
-
         // The transaction is looked up directly, so the search limit no longer applies
         let _ = max_search_limit;
         // A direct lookup reports an undecodable row as an error rather than as not found
@@ -8354,12 +8348,14 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
             },
         }
 
-        match pending_transactions {
-            Ok(pending_transactions) => {
-                if let Some(tx) = pending_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                    let pending = tx.clone();
-                    return Box::into_raw(Box::new(pending));
-                }
+        match (*wallet)
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.get_any_transaction(transaction_id))
+        {
+            Ok(Some(WalletTransaction::PendingOutbound(tx))) if !tx.cancelled => {
+                return Box::into_raw(Box::new(tx));
+            },
+            Ok(_) => {
                 *error_out = completed_error.unwrap_or(108);
             },
             Err(e) => {
@@ -8405,65 +8401,45 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
             return ptr::null_mut();
         }
 
-        let mut transaction = None;
-
         // A direct lookup reports an undecodable row as an error rather than as not found
-        match (*wallet)
+        let found = match (*wallet)
             .runtime
             .block_on((*wallet).wallet.transaction_service.get_any_transaction(transaction_id))
         {
-            Ok(Some(WalletTransaction::Completed(tx))) if tx.cancelled.is_some() => transaction = Some(tx),
-            Ok(_) => {},
+            Ok(found) => found,
             Err(e) => {
                 *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
                 return ptr::null_mut();
             },
-        }
-
-        if transaction.is_none() {
-            let outbound_transactions = match (*wallet).runtime.block_on(
-                (*wallet)
-                    .wallet
-                    .transaction_service
-                    .get_cancelled_pending_outbound_transactions(),
-            ) {
-                Ok(txs) => txs,
-                Err(e) => {
-                    *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                    return ptr::null_mut();
-                },
-            };
-            let address = match (*wallet).wallet.get_wallet_interactive_address() {
-                Ok(address) => address,
-                Err(e) => {
-                    *error_out = LibWalletError::from(e).code;
-                    return ptr::null_mut();
-                },
-            };
-            if let Some(tx) = outbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                let mut outbound_tx = CompletedTransaction::from_outbound(tx.clone(), Vec::new());
-                outbound_tx.source_address = address;
-                transaction = Some(outbound_tx);
-            } else {
-                let inbound_transactions = match (*wallet).runtime.block_on(
-                    (*wallet)
-                        .wallet
-                        .transaction_service
-                        .get_cancelled_pending_inbound_transactions(),
-                ) {
-                    Ok(txs) => txs,
+        };
+        let transaction = match found {
+            Some(WalletTransaction::Completed(tx)) if tx.cancelled.is_some() => Some(tx),
+            Some(WalletTransaction::PendingOutbound(tx)) if tx.cancelled => {
+                let address = match (*wallet).wallet.get_wallet_interactive_address() {
+                    Ok(address) => address,
                     Err(e) => {
-                        *error_out = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                        *error_out = LibWalletError::from(e).code;
                         return ptr::null_mut();
                     },
                 };
-                if let Some(tx) = inbound_transactions.iter().find(|tx| tx.tx_id == transaction_id) {
-                    let mut inbound_tx = CompletedTransaction::from(tx.clone());
-                    inbound_tx.destination_address = address;
-                    transaction = Some(inbound_tx);
-                }
-            }
-        }
+                let mut outbound_tx = CompletedTransaction::from_outbound(tx, Vec::new());
+                outbound_tx.source_address = address;
+                Some(outbound_tx)
+            },
+            Some(WalletTransaction::PendingInbound(tx)) if tx.cancelled => {
+                let address = match (*wallet).wallet.get_wallet_interactive_address() {
+                    Ok(address) => address,
+                    Err(e) => {
+                        *error_out = LibWalletError::from(e).code;
+                        return ptr::null_mut();
+                    },
+                };
+                let mut inbound_tx = CompletedTransaction::from(tx);
+                inbound_tx.destination_address = address;
+                Some(inbound_tx)
+            },
+            _ => None,
+        };
 
         match transaction {
             Some(tx) => {
@@ -9872,6 +9848,7 @@ mod test {
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
     use chrono::Utc;
     use minotari_wallet::{
+        legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         storage::{
             sqlite_db::wallet::WalletSqliteDatabase,
             sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -11473,6 +11450,41 @@ mod test {
         }
     }
 
+    fn by_id_test_inbound(tx_id: u64, cancelled: bool) -> InboundTransaction {
+        InboundTransaction {
+            tx_id: tx_id.into(),
+            source_address: TariAddress::default(),
+            amount: MicroMinotari::from(100),
+            receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
+            status: LegacyTransactionStatus::Pending,
+            payment_id: MemoField::new_empty(),
+            timestamp: Utc::now(),
+            cancelled,
+            direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
+            received_output_hashes: vec![],
+        }
+    }
+
+    fn by_id_test_outbound(tx_id: u64, cancelled: bool) -> OutboundTransaction {
+        OutboundTransaction {
+            tx_id: tx_id.into(),
+            destination_address: TariAddress::default(),
+            amount: MicroMinotari::from(100),
+            fee: MicroMinotari::from(10),
+            sender_protocol: SenderTransactionProtocol::new_placeholder(),
+            status: LegacyTransactionStatus::Pending,
+            payment_id: MemoField::new_empty(),
+            timestamp: Utc::now(),
+            cancelled,
+            direct_send_success: false,
+            send_count: 0,
+            last_send_timestamp: None,
+            sent_output_hashes: vec![],
+        }
+    }
+
     #[test]
     #[allow(clippy::too_many_lines)]
     fn test_get_transaction_by_id_reports_undecodable_rows() {
@@ -11521,6 +11533,17 @@ mod test {
             ];
             for tx in bad {
                 foreign_db.insert_completed_transaction(tx.tx_id, tx).unwrap();
+            }
+            // Undecodable pending rows: 20 inbound, 21 outbound, 22 cancelled inbound, 23 cancelled outbound
+            for (tx_id, cancelled) in [(20u64, false), (22, true)] {
+                foreign_db
+                    .insert_pending_inbound_transaction(tx_id.into(), by_id_test_inbound(tx_id, cancelled))
+                    .unwrap();
+            }
+            for (tx_id, cancelled) in [(21u64, false), (23, true)] {
+                foreign_db
+                    .insert_pending_outbound_transaction(tx_id.into(), by_id_test_outbound(tx_id, cancelled))
+                    .unwrap();
             }
             drop(foreign_db);
             let passphrase: *const c_char =
@@ -11589,15 +11612,17 @@ mod test {
                     None,
                 ),
             ];
+            // Good pending rows: 5 inbound, 6 outbound, 7 cancelled inbound, 8 cancelled outbound
+            let good = good.into_iter().map(WalletTransaction::Completed).chain([
+                WalletTransaction::PendingInbound(by_id_test_inbound(5, false)),
+                WalletTransaction::PendingOutbound(by_id_test_outbound(6, false)),
+                WalletTransaction::PendingInbound(by_id_test_inbound(7, true)),
+                WalletTransaction::PendingOutbound(by_id_test_outbound(8, true)),
+            ]);
             for tx in good {
                 (*wallet)
                     .runtime
-                    .block_on(
-                        (*wallet)
-                            .wallet
-                            .transaction_service
-                            .import_transaction(WalletTransaction::Completed(tx)),
-                    )
+                    .block_on((*wallet).wallet.transaction_service.import_transaction(tx))
                     .unwrap();
             }
 
@@ -11614,6 +11639,15 @@ mod test {
             assert_eq!(error, 108);
             assert!(wallet_get_pending_inbound_transaction_by_id(wallet, 10, 0, error_ptr).is_null());
             assert!(is_storage_error(error), "unexpected code {error}");
+            // Pending inbound: pending side
+            let tx = wallet_get_pending_inbound_transaction_by_id(wallet, 5, 0, error_ptr);
+            assert!(!tx.is_null());
+            assert_eq!(error, 0);
+            pending_inbound_transaction_destroy(tx);
+            assert!(wallet_get_pending_inbound_transaction_by_id(wallet, 7, 0, error_ptr).is_null());
+            assert_eq!(error, 108);
+            assert!(wallet_get_pending_inbound_transaction_by_id(wallet, 20, 0, error_ptr).is_null());
+            assert!(is_storage_error(error), "unexpected code {error}");
 
             // Pending outbound: completed fallback
             let tx = wallet_get_pending_outbound_transaction_by_id(wallet, 2, 0, error_ptr);
@@ -11625,6 +11659,15 @@ mod test {
             assert!(wallet_get_pending_outbound_transaction_by_id(wallet, 99, 0, error_ptr).is_null());
             assert_eq!(error, 108);
             assert!(wallet_get_pending_outbound_transaction_by_id(wallet, 11, 0, error_ptr).is_null());
+            assert!(is_storage_error(error), "unexpected code {error}");
+            // Pending outbound: pending side
+            let tx = wallet_get_pending_outbound_transaction_by_id(wallet, 6, 0, error_ptr);
+            assert!(!tx.is_null());
+            assert_eq!(error, 0);
+            pending_outbound_transaction_destroy(tx);
+            assert!(wallet_get_pending_outbound_transaction_by_id(wallet, 8, 0, error_ptr).is_null());
+            assert_eq!(error, 108);
+            assert!(wallet_get_pending_outbound_transaction_by_id(wallet, 21, 0, error_ptr).is_null());
             assert!(is_storage_error(error), "unexpected code {error}");
 
             // Completed: only returned once past Completed/Broadcast
@@ -11650,6 +11693,21 @@ mod test {
             assert_eq!(error, 204);
             assert!(wallet_get_cancelled_transaction_by_id(wallet, 12, error_ptr).is_null());
             assert!(is_storage_error(error), "unexpected code {error}");
+            // Cancelled: pending fallback
+            for tx_id in [7u64, 8] {
+                let tx = wallet_get_cancelled_transaction_by_id(wallet, tx_id, error_ptr);
+                assert!(!tx.is_null());
+                assert_eq!(error, 0);
+                completed_transaction_destroy(tx);
+            }
+            for tx_id in [5u64, 6] {
+                assert!(wallet_get_cancelled_transaction_by_id(wallet, tx_id, error_ptr).is_null());
+                assert_eq!(error, 204);
+            }
+            for tx_id in [22u64, 23] {
+                assert!(wallet_get_cancelled_transaction_by_id(wallet, tx_id, error_ptr).is_null());
+                assert!(is_storage_error(error), "unexpected code {error}");
+            }
 
             string_destroy(network_str as *mut c_char);
             string_destroy(db_name_str as *mut c_char);
