@@ -21,7 +21,8 @@ import sys
 
 GENERAL_CATEGORIES = {"Cf", "Co", "Cn", "Zs"}
 CORE_PROPERTIES = {"Default_Ignorable_Code_Point"}
-# Hangul fillers, the Braille blank and the Khitan filler render as blank space
+# Hangul fillers, the Braille blank, the Khitan filler and some font-dependent blank glyphs (null notehead, Tifinagh
+# consonant joiner, ideographic half fill space) render as blank space
 EXTRA = [
     (0x115F, 0x115F),
     (0x1160, 0x1160),
@@ -29,12 +30,16 @@ EXTRA = [
     (0xFFA0, 0xFFA0),
     (0x2800, 0x2800),
     (0x16FE4, 0x16FE4),
+    (0x1D159, 0x1D159),
+    (0x2D7F, 0x2D7F),
+    (0x303F, 0x303F),
 ]
 # Plain space (Zs) stays unescaped
 KEEP = 0x20
 # One code point from each class; generation fails if any is missing
 KNOWN_MEMBERS = [
     0x00AD, 0x061C, 0x200D, 0xFE0F, 0xE0001, 0xE000, 0x0378, 0xFFFE, 0x115F, 0x2800, 0x3000, 0x16FE4,
+    0x1D159, 0x2D7F, 0x303F,
 ]
 
 LINE = re.compile(r"^([0-9A-F]{4,6})(?:\.\.([0-9A-F]{4,6}))?\s*;\s*([A-Za-z_]+)\s*(?:;[^#]*)?(?:#|$)")
@@ -101,7 +106,7 @@ def main():
     out.write("// SPDX-License-Identifier: BSD-3-Clause\n\n")
     out.write(f"// Generated from UCD {gc_version} by scripts/gen_terminal_safe_table.py; do not edit by hand.\n")
     out.write("// Covers General_Category Cf, Co, Cn, Zs (except U+0020), Default_Ignorable_Code_Point,\n")
-    out.write("// Hangul fillers, U+2800 and U+16FE4.\n")
+    out.write("// Hangul fillers, U+2800, U+16FE4, U+1D159, U+2D7F and U+303F.\n")
     out.write("// Regenerate (see the script header for downloading the UCD files):\n")
     out.write("//   python3 -I scripts/gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt \\\n")
     out.write("//       > base_layer/transaction_components/src/helpers/terminal_safe_table.rs\n\n")

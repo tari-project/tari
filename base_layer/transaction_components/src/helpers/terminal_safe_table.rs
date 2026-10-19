@@ -3,7 +3,7 @@
 
 // Generated from UCD 18.0.0 by scripts/gen_terminal_safe_table.py; do not edit by hand.
 // Covers General_Category Cf, Co, Cn, Zs (except U+0020), Default_Ignorable_Code_Point,
-// Hangul fillers, U+2800 and U+16FE4.
+// Hangul fillers, U+2800, U+16FE4, U+1D159, U+2D7F and U+303F.
 // Regenerate (see the script header for downloading the UCD files):
 //   python3 -I scripts/gen_terminal_safe_table.py DerivedGeneralCategory.txt DerivedCoreProperties.txt \
 //       > base_layer/transaction_components/src/helpers/terminal_safe_table.rs
@@ -274,7 +274,7 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x2D28, 0x2D2C),
     (0x2D2E, 0x2D2F),
     (0x2D68, 0x2D6E),
-    (0x2D71, 0x2D7E),
+    (0x2D71, 0x2D7F),
     (0x2D97, 0x2D9F),
     (0x2DA7, 0x2DA7),
     (0x2DAF, 0x2DAF),
@@ -290,7 +290,7 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x2EF4, 0x2EFF),
     (0x2FD6, 0x2FEF),
     (0x3000, 0x3000),
-    (0x3040, 0x3040),
+    (0x303F, 0x3040),
     (0x3097, 0x3098),
     (0x3100, 0x3104),
     (0x3130, 0x3130),
@@ -619,6 +619,7 @@ pub const ESCAPE_RANGES: &[(u32, u32)] = &[
     (0x1CF47, 0x1CF4F),
     (0x1CFC4, 0x1CFFF),
     (0x1D0F6, 0x1D0FF),
+    (0x1D159, 0x1D159),
     (0x1D173, 0x1D17A),
     (0x1D246, 0x1D24F),
     (0x1D282, 0x1D2BF),

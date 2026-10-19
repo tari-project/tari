@@ -149,6 +149,8 @@ mod test {
         points.extend([0xe000, 0xf0000, 0xfffe, 0xffff, 0x0378]);
         // Space separators and the Khitan filler
         points.extend([0x00a0, 0x1680, 0x2000, 0x200a, 0x202f, 0x205f, 0x3000, 0x16fe4]);
+        // Font-dependent blank glyphs
+        points.extend([0x1d159, 0x2d7f, 0x303f]);
         for cp in points {
             let c = char::from_u32(cp).unwrap();
             assert!(needs_escape(c), "U+{cp:04X} not escaped");
