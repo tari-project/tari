@@ -435,7 +435,7 @@ mod test {
     use crate::{
         crypt,
         envelope::{DhtEnvelope, DhtMessageFlags, DhtMessageHeader, NodeDestination},
-        outbound::mock::create_outbound_service_mock,
+        outbound::mock::{OutboundServiceMockState, create_outbound_service_mock},
         proto::dht::{DiscoveryMessage, JoinMessage},
         test_utils::{
             build_peer_manager,
@@ -711,29 +711,30 @@ mod test {
             .collect()
     }
 
-    /// An attacker X sends relay H a Join whose signed body carries an unknown field. H verifies it, re-encodes the
-    /// body and propagates it to N, where the signature no longer verifies. N drops it and does not ban H, who could
-    /// not vouch for X's bytes.
+    /// Builds relay H, whose outbound requests go to a mock so propagated messages can be captured
+    async fn build_relay(
+        relay: Arc<NodeIdentity>,
+        peers: &[&NodeIdentity],
+        shutdown: &Shutdown,
+    ) -> (Dht, OutboundServiceMockState) {
+        let (connectivity, _) = create_connectivity_mock();
+        let (oms_requester, oms_mock) = create_outbound_service_mock();
+        let oms_mock_state = oms_mock.get_state();
+        task::spawn(oms_mock.run());
+        let dht = build_dht(relay, peers, connectivity, oms_requester.get_mpsc_sender(), shutdown).await;
+        (dht, oms_mock_state)
+    }
+
+    /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it
+    /// received, so N verifies the Join and accepts it. N bans no one.
     #[tokio::test]
-    async fn a_relayed_join_that_fails_verification_does_not_ban_the_relay() {
+    async fn a_relayed_join_with_a_non_canonical_body_verifies_at_the_next_hop() {
         let attacker = make_node_identity();
         let relay = make_node_identity();
         let node = make_node_identity();
         let shutdown = Shutdown::new();
 
-        // H: outbound requests go to a mock so the propagated message can be captured
-        let (connectivity, _) = create_connectivity_mock();
-        let (oms_requester, oms_mock) = create_outbound_service_mock();
-        let oms_mock_state = oms_mock.get_state();
-        task::spawn(oms_mock.run());
-        let dht_h = build_dht(
-            relay.clone(),
-            &[&attacker],
-            connectivity,
-            oms_requester.get_mpsc_sender(),
-            &shutdown,
-        )
-        .await;
+        let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
 
         let mut body = wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes();
@@ -741,7 +742,7 @@ mod test {
         let envelope = signed_envelope(
             &attacker,
             DhtMessageType::Join,
-            NodeDestination::Unknown,
+            attacker.public_key().clone().into(),
             None,
             body.clone(),
         );
@@ -758,8 +759,7 @@ mod test {
             .await
             .unwrap();
         let (params, propagated_body) = oms_mock_state.pop_call().await.unwrap();
-        // Until H propagates the bytes it received, the body is re-encoded without the unknown field
-        assert_ne!(propagated_body.to_vec(), body);
+        assert_eq!(propagated_body.to_vec(), body);
 
         // N receives H's propagation
         let (connectivity, mock) = create_connectivity_mock();
@@ -773,9 +773,97 @@ mod test {
             .await
             .unwrap();
 
-        // N did not accept the Join (verification failed) and did not ban H
+        // N verified and accepted the Join, and banned no one
         assert!(banned_peers(&mock_state).await.is_empty());
-        assert!(!dht_n.peer_manager.exists(attacker.public_key()).await.unwrap());
+        assert!(dht_n.peer_manager.exists(attacker.public_key()).await.unwrap());
+    }
+
+    /// An envelope that is not canonically encoded (here an appended unknown field) is dropped by H at deserialize:
+    /// it is neither accepted nor propagated, and no one is banned.
+    #[tokio::test]
+    async fn a_non_canonical_envelope_is_dropped_by_the_relay() {
+        let attacker = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (oms_requester, oms_mock) = create_outbound_service_mock();
+        let oms_mock_state = oms_mock.get_state();
+        task::spawn(oms_mock.run());
+        let dht_h = build_dht(
+            relay.clone(),
+            &[&attacker],
+            connectivity,
+            oms_requester.get_mpsc_sender(),
+            &shutdown,
+        )
+        .await;
+        let spy = service_spy();
+        let mut service_h = dht_h.inbound_middleware_layer().layer(spy.to_service());
+
+        let envelope = signed_envelope(
+            &attacker,
+            DhtMessageType::Join,
+            attacker.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes(),
+        );
+        let mut bytes = envelope.to_encoded_bytes();
+        bytes.extend_from_slice(&[0x78, 0x01]);
+        service_h
+            .call(make_comms_inbound_message(&attacker, bytes.into()))
+            .await
+            .unwrap();
+
+        assert!(banned_peers(&mock_state).await.is_empty());
+        assert_eq!(oms_mock_state.call_count().await, 0);
+        assert_eq!(spy.call_count(), 0);
+    }
+
+    /// The same signed Join delivered twice, the second time with a re-encoded (non-canonical) `message_signature`,
+    /// is only accepted and propagated once.
+    #[tokio::test]
+    async fn a_join_with_a_re_encoded_message_signature_is_rejected() {
+        let attacker = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+
+        let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
+        let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_envelope(
+            &attacker,
+            DhtMessageType::Join,
+            attacker.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes(),
+        );
+        service_h
+            .call(make_comms_inbound_message(
+                &attacker,
+                envelope.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+
+        // Unknown field 15 (varint) = 1: the signature decodes to the same value
+        let header = envelope.header.as_mut().unwrap();
+        header.message_signature.extend_from_slice(&[0x78, 0x01]);
+        service_h
+            .call(make_comms_inbound_message(
+                &attacker,
+                envelope.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+
+        time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
     }
 
     /// An attacker A asks target T for a DiscoveryResponse and replays T's signed response to victim V. V bans A, who
@@ -866,10 +954,13 @@ mod test {
             Some(not_a_point),
             vec![1u8; 64],
         );
-        service_v
-            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
-            .await
-            .unwrap();
+        // Rejected when the header is parsed, which fails the pipeline call without a ban
+        assert!(
+            service_v
+                .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+                .await
+                .is_err()
+        );
 
         assert!(banned_peers(&mock_state).await.is_empty());
         assert_eq!(spy.call_count(), 0);

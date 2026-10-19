@@ -194,10 +194,12 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         let ephemeral_public_key = if header.ephemeral_public_key.is_empty() {
             None
         } else {
-            Some(
-                CommsPublicKey::from_canonical_bytes(&header.ephemeral_public_key)
-                    .map_err(|_| DhtMessageError::InvalidEphemeralPublicKey)?,
-            )
+            let key = CommsPublicKey::from_canonical_bytes(&header.ephemeral_public_key)
+                .map_err(|_| DhtMessageError::InvalidEphemeralPublicKey)?;
+            // `from_canonical_bytes` only checks the length; reject bytes that are not a curve point on every hop
+            key.to_public_key()
+                .map_err(|_| DhtMessageError::InvalidEphemeralPublicKey)?;
+            Some(key)
         };
 
         let expires = match header.expires {
@@ -379,6 +381,43 @@ mod tests {
             assert!(NodeDestination::Unknown.to_inner_bytes().iter().all(|b| *b == 0));
             let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
             assert!(to_hex(&NodeDestination::PublicKey(Box::new(pk.clone())).to_inner_bytes()).contains(&pk.to_hex()));
+        }
+    }
+
+    mod dht_message_header {
+        use super::*;
+
+        fn header_with_ephemeral_key(ephemeral_public_key: Vec<u8>) -> DhtHeader {
+            DhtHeader {
+                major: DhtProtocolVersion::latest().as_major(),
+                ephemeral_public_key,
+                message_signature: Vec::new(),
+                destination: Some(Destination::Unknown(true)),
+                message_type: DhtMessageType::None as i32,
+                flags: DhtMessageFlags::ENCRYPTED.bits(),
+                message_tag: 0,
+                expires: 0,
+            }
+        }
+
+        #[test]
+        fn an_ephemeral_key_that_is_not_a_point_is_rejected() {
+            let not_a_point = vec![0xffu8; 32];
+            assert!(
+                CommsPublicKey::from_canonical_bytes(&not_a_point)
+                    .unwrap()
+                    .to_public_key()
+                    .is_err()
+            );
+            let err = DhtMessageHeader::try_from(header_with_ephemeral_key(not_a_point)).unwrap_err();
+            assert!(matches!(err, DhtMessageError::InvalidEphemeralPublicKey));
+        }
+
+        #[test]
+        fn a_real_ephemeral_key_is_accepted() {
+            let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
+            let header = DhtMessageHeader::try_from(header_with_ephemeral_key(pk.to_vec())).unwrap();
+            assert_eq!(header.ephemeral_public_key, Some(pk));
         }
     }
 }

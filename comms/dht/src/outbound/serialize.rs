@@ -135,11 +135,24 @@ impl<S> Layer<S> for SerializeLayer {
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use prost::Message;
-    use tari_comms::peer_manager::NodeId;
+    use tari_comms::{peer_manager::NodeId, wrap_in_envelope_body};
 
     use super::*;
-    use crate::test_utils::{assert_send_static_service, create_outbound_message, service_spy};
+    use crate::{
+        envelope::{DhtMessageFlags, DhtMessageType, NodeDestination},
+        proto::{dht::JoinMessage, is_canonical},
+        test_utils::{
+            assert_send_static_service,
+            create_outbound_message,
+            make_keypair,
+            make_node_identity,
+            make_valid_message_signature,
+            service_spy,
+        },
+    };
 
     #[tokio::test]
     async fn serialize() {
@@ -156,5 +169,48 @@ mod test {
         let dht_envelope = DhtEnvelope::decode(&mut msg.body).unwrap();
         assert_eq!(dht_envelope.body, b"A".to_vec());
         assert_eq!(msg.peer_node_id, NodeId::default());
+    }
+
+    /// Serializes `msg` and asserts the envelope it produces decodes and re-encodes to exactly the same bytes, so the
+    /// inbound canonical-encoding check accepts it
+    async fn assert_round_trips(msg: DhtOutboundMessage) {
+        let spy = service_spy();
+        let mut serialize = SerializeLayer.layer(spy.to_service::<PipelineError>());
+        serialize.ready().await.unwrap().call(msg).await.unwrap();
+        let sent = spy.pop_request().unwrap().body;
+        let envelope = DhtEnvelope::decode(sent.clone()).unwrap();
+        assert!(is_canonical(&sent, &envelope));
+    }
+
+    #[tokio::test]
+    async fn honest_envelopes_are_canonically_encoded() {
+        let node_identity = make_node_identity();
+        let signature = Bytes::from(make_valid_message_signature(
+            node_identity.secret_key(),
+            b"binding hash",
+        ));
+
+        // A clear text Join addressed to the sender's own key, with an expiry
+        let mut join =
+            create_outbound_message(&wrap_in_envelope_body!(JoinMessage::from(&node_identity)).to_encoded_bytes());
+        join.destination = node_identity.public_key().clone().into();
+        join.dht_message_type = DhtMessageType::Join;
+        join.message_signature = Some(signature.clone());
+        join.expires = Some(1_900_000_000);
+        assert_round_trips(join).await;
+
+        // An encrypted message for a public key
+        let (_, ephemeral_public_key) = make_keypair();
+        let mut encrypted = create_outbound_message(&[7u8; 120]);
+        encrypted.destination = make_node_identity().public_key().clone().into();
+        encrypted.dht_flags = DhtMessageFlags::ENCRYPTED;
+        encrypted.ephemeral_public_key = Some(Arc::new(ephemeral_public_key));
+        encrypted.message_signature = Some(signature);
+        assert_round_trips(encrypted).await;
+
+        // Unknown destination, no expiry and no signature
+        let mut unsigned = create_outbound_message(b"A");
+        unsigned.destination = NodeDestination::Unknown;
+        assert_round_trips(unsigned).await;
     }
 }

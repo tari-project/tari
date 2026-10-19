@@ -136,6 +136,9 @@ pub struct DecryptedDhtMessage {
     pub is_saf_message: bool,
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
+    /// The body exactly as received. A message re-sent under its original header must carry these bytes, because
+    /// the header's signature covers them.
+    pub raw_body: Vec<u8>,
     pub dedup_hit_count: u32,
     pub dedup_hash: Vec<u8>,
 }
@@ -166,6 +169,7 @@ impl DecryptedDhtMessage {
             is_saf_message: message.is_saf_message,
             is_already_forwarded: false,
             decryption_result: Ok(message_body),
+            raw_body: message.body,
             dedup_hit_count: message.dedup_hit_count,
         }
     }
@@ -179,7 +183,8 @@ impl DecryptedDhtMessage {
             dht_header: message.dht_header,
             is_saf_message: message.is_saf_message,
             is_already_forwarded: false,
-            decryption_result: Err(message.body),
+            decryption_result: Err(message.body.clone()),
+            raw_body: message.body,
             dedup_hit_count: message.dedup_hit_count,
         }
     }

@@ -24,8 +24,8 @@ use std::{convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
+    BytesMut,
     OrNotFound,
-    message::MessageExt,
     peer_manager::{NodeId, NodeIdentity, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
@@ -148,6 +148,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         let DecryptedDhtMessage {
             decryption_result,
+            raw_body,
             dht_header,
             source_peer,
             authenticated_origin,
@@ -171,6 +172,16 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .await;
             return Ok(());
         };
+
+        // Honest nodes address a Join to their own key. Holding every Join to that also fixes its fan-out.
+        if dht_header.destination != authenticated_pk {
+            debug!(
+                target: LOG_TARGET,
+                "Received JoinMessage from '{authenticated_pk}' addressed to {} instead of its signer. Discarding it.",
+                dht_header.destination
+            );
+            return Ok(());
+        }
 
         if authenticated_pk == *self.node_identity.public_key() {
             debug!(target: LOG_TARGET, "Received our own join message. Discarding it.");
@@ -281,7 +292,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
-                    body.encode_into_bytes_mut(),
+                    BytesMut::from(raw_body.as_slice()),
                 )
                 .await?;
         }
@@ -589,7 +600,7 @@ mod test {
     use std::time::Duration;
 
     use tari_comms::{
-        message::MessageTag,
+        message::{MessageExt, MessageTag},
         multiaddr::Multiaddr,
         peer_manager::{NodeIdentity, PeerFeatures},
         wrap_in_envelope_body,
@@ -601,6 +612,7 @@ mod test {
         actor::DhtRequest,
         envelope::{DhtMessageFlags, DhtMessageHeader},
         inbound::DhtInboundMessage,
+        outbound::DhtOutboundRequest,
         test_utils::{build_peer_manager, make_node_identity, service_spy},
         version::DhtProtocolVersion,
     };
@@ -609,7 +621,9 @@ mod test {
         result: Result<(), PipelineError>,
         bans: Vec<(CommsPublicKey, OffenceSeverity)>,
         outbound_sends: usize,
+        outbound_bodies: Vec<BytesMut>,
         discovery_notifications: usize,
+        peer_manager: Arc<PeerManager>,
     }
 
     /// Runs `message` through the DHT handler of a fresh node and returns the bans, sends and discovery notifications
@@ -619,9 +633,10 @@ mod test {
         let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel();
         let (discovery_tx, mut discovery_rx) = mpsc::channel(10);
         let spy = service_spy();
+        let peer_manager = build_peer_manager();
         let task = ProcessDhtMessage::new(
             spy.to_service::<PipelineError>(),
-            build_peer_manager(),
+            peer_manager.clone(),
             OutboundMessageRequester::new(outbound_tx),
             make_node_identity(),
             DhtRequester::new(dht_tx),
@@ -641,8 +656,10 @@ mod test {
             }
         }
         let mut outbound_sends = 0usize;
-        while outbound_rx.try_recv().is_ok() {
+        let mut outbound_bodies = Vec::new();
+        while let Ok(DhtOutboundRequest::SendMessage(_, body, _)) = outbound_rx.try_recv() {
             outbound_sends = outbound_sends.saturating_add(1);
+            outbound_bodies.push(body);
         }
         let mut discovery_notifications = 0usize;
         while discovery_rx.try_recv().is_ok() {
@@ -652,11 +669,13 @@ mod test {
             result,
             bans,
             outbound_sends,
+            outbound_bodies,
             discovery_notifications,
+            peer_manager,
         }
     }
 
-    /// A decrypted message of `message_type` signed by `signer` and delivered by `source`
+    /// A decrypted message of `message_type` signed by `signer`, addressed to the signer and delivered by `source`
     fn make_message<T: prost::Message>(
         source: &NodeIdentity,
         signer: &NodeIdentity,
@@ -665,7 +684,7 @@ mod test {
     ) -> DecryptedDhtMessage {
         let header = DhtMessageHeader {
             version: DhtProtocolVersion::latest(),
-            destination: NodeDestination::Unknown,
+            destination: signer.public_key().clone().into(),
             message_signature: Vec::new(),
             ephemeral_public_key: None,
             message_type,
@@ -673,8 +692,14 @@ mod test {
             message_tag: MessageTag::new(),
             expires: None,
         };
-        let inbound = DhtInboundMessage::new(MessageTag::new(), header, Arc::new(source.to_peer()), Vec::new());
-        DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(body), Some(signer.public_key().clone()), inbound)
+        let body = wrap_in_envelope_body!(body);
+        let inbound = DhtInboundMessage::new(
+            MessageTag::new(),
+            header,
+            Arc::new(source.to_peer()),
+            body.to_encoded_bytes(),
+        );
+        DecryptedDhtMessage::succeeded(body, Some(signer.public_key().clone()), inbound)
     }
 
     fn identity_with_addresses(addresses: &[&str]) -> Arc<NodeIdentity> {
@@ -864,5 +889,40 @@ mod test {
         assert_eq!(received.bans.len(), 1);
         assert_eq!(received.bans[0].0, *signer.public_key());
         assert!(matches!(received.bans[0].1, OffenceSeverity::Medium));
+    }
+
+    #[tokio::test]
+    async fn a_join_not_addressed_to_its_signer_is_dropped_without_a_ban() {
+        let relay = make_node_identity();
+        let signer = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        let other = make_node_identity();
+
+        for destination in [NodeDestination::Unknown, other.public_key().clone().into()] {
+            let mut message = make_message(&relay, &signer, DhtMessageType::Join, JoinMessage::from(&signer));
+            message.dht_header.destination = destination;
+
+            let received = process(DhtConfig::default_local_test(), message).await;
+            assert!(received.result.is_ok());
+            assert!(received.bans.is_empty());
+            assert_eq!(received.outbound_sends, 0);
+            assert!(!received.peer_manager.exists(signer.public_key()).await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn a_join_addressed_to_its_signer_is_stored_and_propagated_as_received() {
+        let relay = make_node_identity();
+        let signer = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        let mut message = make_message(&relay, &signer, DhtMessageType::Join, JoinMessage::from(&signer));
+        // Unknown field 2 (varint) = 1: the signature covers these bytes, so they must be relayed unchanged
+        message.raw_body.extend_from_slice(&[0x10, 0x01]);
+        let raw_body = message.raw_body.clone();
+
+        let received = process(DhtConfig::default_local_test(), message).await;
+        assert!(received.result.is_ok());
+        assert!(received.bans.is_empty());
+        assert!(received.peer_manager.exists(signer.public_key()).await.unwrap());
+        assert_eq!(received.outbound_bodies.len(), 1);
+        assert_eq!(received.outbound_bodies[0].to_vec(), raw_body);
     }
 }
