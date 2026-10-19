@@ -26,7 +26,6 @@ use std::time::Duration;
 use harness::*;
 use tari_comms::{
     RefKind,
-    connectivity::ConnectivityEvent,
     message::MessageExt,
     peer_manager::{NodeId, PeerFeatures},
     protocol::messaging::MessagingEvent,
@@ -36,7 +35,7 @@ use tari_comms_dht::{
     envelope::{DhtMessageType, NodeDestination},
     outbound::{OutboundEncryption, SendMessageParams},
 };
-use tari_test_utils::{async_assert_eventually, collect_try_recv, streams, unpack_enum};
+use tari_test_utils::{async_assert_eventually, collect_try_recv, unpack_enum};
 use tokio::{
     sync::{broadcast, mpsc},
     time::{self, Instant},
@@ -572,7 +571,8 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
     // Modify the header
     msg.dht_header.message_type = DhtMessageType::try_from(3i32).unwrap();
 
-    // Forward modified message to Node C - Should get us banned
+    // Forward modified message to Node C - it fails verification and is dropped, but node B is not banned: a relay
+    // cannot vouch for bytes it did not produce
     node_B
         .dht
         .outbound_requester()
@@ -586,20 +586,14 @@ async fn test_dht_do_not_store_invalid_message_in_dedup() {
         .await
         .unwrap();
 
-    async_assert_eventually!(
-        {
-            let n = node_C
-                .comms
-                .peer_manager()
-                .find_by_node_id(node_B.node_identity().node_id())
-                .await
-                .unwrap()
-                .unwrap();
-            n.is_banned()
-        },
-        expect = true,
-        max_attempts = 10,
-        interval = Duration::from_secs(3)
+    assert!(node_C.next_inbound_message(Duration::from_secs(5)).await.is_none());
+    assert!(
+        !node_C
+            .comms
+            .peer_manager()
+            .is_peer_banned(node_B.node_identity().node_id())
+            .await
+            .unwrap()
     );
 
     node_A
@@ -774,8 +768,8 @@ async fn test_dht_repropagate() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
-async fn test_dht_propagate_message_contents_not_malleable_ban() {
-    let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
+async fn test_dht_propagate_message_contents_not_malleable() {
+    let mut node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
     let mut node_B = make_node(
         "node_B",
@@ -846,8 +840,6 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
     // Change the message
     envelope.push_part([0x42].to_vec());
 
-    let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
-
     // Propagate the changed message (to node C)
     node_B
         .dht
@@ -863,19 +855,18 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
         )
         .await
         .unwrap();
-    let node_B_node_id = node_B.node_identity().node_id().clone();
 
-    // Node C should ban node B
-    let banned_node_id = streams::assert_in_broadcast(
-        &mut connectivity_events,
-        |r| match r {
-            ConnectivityEvent::PeerBanned(node_id) => Some(node_id),
-            _ => None,
-        },
-        Duration::from_secs(10),
-    )
-    .await;
-    assert_eq!(banned_node_id, node_B_node_id);
+    // Node C drops the message, which fails verification, but does not ban node B: a relay cannot vouch for bytes it
+    // did not produce
+    assert!(node_C.next_inbound_message(Duration::from_secs(5)).await.is_none());
+    assert!(
+        !node_C
+            .comms
+            .peer_manager()
+            .is_peer_banned(node_B.node_identity().node_id())
+            .await
+            .unwrap()
+    );
 
     node_A.shutdown().await;
     node_B.shutdown().await;
@@ -885,7 +876,7 @@ async fn test_dht_propagate_message_contents_not_malleable_ban() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 #[allow(non_snake_case)]
 async fn test_dht_header_not_malleable() {
-    let node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
+    let mut node_C = make_node("node_C", PeerFeatures::COMMUNICATION_NODE, dht_config(), None).await;
     // Node B knows about Node C
     let mut node_B = make_node(
         "node_B",
@@ -956,8 +947,6 @@ async fn test_dht_header_not_malleable() {
     msg.dht_header.message_type = DhtMessageType::try_from(21i32).unwrap();
 
     let envelope = msg.decryption_result.unwrap();
-    let mut connectivity_events = node_C.comms.connectivity().get_event_subscription();
-
     // Propagate the changed message (to node C)
     node_B
         .dht
@@ -973,19 +962,18 @@ async fn test_dht_header_not_malleable() {
         )
         .await
         .unwrap();
-    let node_B_node_id = node_B.node_identity().node_id().clone();
 
-    // Node C should ban node B
-    let banned_node_id = streams::assert_in_broadcast(
-        &mut connectivity_events,
-        |r| match r {
-            ConnectivityEvent::PeerBanned(node_id) => Some(node_id),
-            _ => None,
-        },
-        Duration::from_secs(10),
-    )
-    .await;
-    assert_eq!(banned_node_id, node_B_node_id);
+    // Node C drops the message, which fails verification, but does not ban node B: a relay cannot vouch for bytes it
+    // did not produce
+    assert!(node_C.next_inbound_message(Duration::from_secs(5)).await.is_none());
+    assert!(
+        !node_C
+            .comms
+            .peer_manager()
+            .is_peer_banned(node_B.node_identity().node_id())
+            .await
+            .unwrap()
+    );
 
     node_A.shutdown().await;
     node_B.shutdown().await;

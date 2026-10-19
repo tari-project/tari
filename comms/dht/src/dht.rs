@@ -287,11 +287,7 @@ impl Dht {
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
-            .layer(inbound::DecryptionLayer::new(
-                self.config.clone(),
-                self.node_identity.clone(),
-                self.connectivity.clone(),
-            ))
+            .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
             .layer(DedupLayer::new(
                 self.dht_requester(),
                 self.config.dedup_allowed_message_occurrences,
@@ -425,26 +421,31 @@ mod test {
 
     use tari_comms::{
         message::{MessageExt, MessageTag},
+        peer_manager::NodeId,
         pipeline::SinkService,
-        test_utils::mocks::create_connectivity_mock,
-        types::CommsDHKE,
+        test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock},
+        types::{CommsDHKE, CommsPublicKey},
         wrap_in_envelope_body,
     };
     use tari_shutdown::Shutdown;
+    use tari_utilities::ByteArray;
     use tokio::{task, time};
 
     use super::*;
     use crate::{
         crypt,
-        envelope::DhtMessageFlags,
+        envelope::{DhtEnvelope, DhtMessageFlags, DhtMessageHeader, NodeDestination},
         outbound::mock::create_outbound_service_mock,
+        proto::dht::{DiscoveryMessage, JoinMessage},
         test_utils::{
             build_peer_manager,
             make_comms_inbound_message,
             make_dht_envelope,
             make_node_identity,
+            make_valid_message_signature,
             service_spy,
         },
+        version::DhtProtocolVersion,
     };
 
     /// An in-memory database is private to one connection, so the default (`:memory:`) configuration must get a
@@ -648,6 +649,229 @@ mod test {
         assert_eq!(params.dht_header.unwrap().message_signature, message_signature);
 
         // Check the next service was not called
+        assert_eq!(spy.call_count(), 0);
+    }
+
+    /// Builds a DHT that knows `peers`, whose bans go to `connectivity` and whose outbound requests go to `out_tx`
+    async fn build_dht(
+        node_identity: Arc<NodeIdentity>,
+        peers: &[&NodeIdentity],
+        connectivity: ConnectivityRequester,
+        out_tx: mpsc::UnboundedSender<DhtOutboundRequest>,
+        shutdown: &Shutdown,
+    ) -> Dht {
+        let peer_manager = build_peer_manager();
+        for peer in peers {
+            peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+        }
+        Dht::builder()
+            .with_config(DhtConfig::default_local_test())
+            .with_outbound_sender(out_tx)
+            .build(node_identity, peer_manager, connectivity, shutdown.to_signal())
+            .await
+            .unwrap()
+    }
+
+    /// A clear text (unless `ephemeral_public_key` is given) envelope carrying `body` as is, validly signed by `signer`
+    fn signed_envelope(
+        signer: &NodeIdentity,
+        message_type: DhtMessageType,
+        destination: NodeDestination,
+        ephemeral_public_key: Option<CommsPublicKey>,
+        body: Vec<u8>,
+    ) -> DhtEnvelope {
+        let flags = if ephemeral_public_key.is_some() {
+            DhtMessageFlags::ENCRYPTED
+        } else {
+            DhtMessageFlags::NONE
+        };
+        let mut header = DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination,
+            message_signature: Vec::new(),
+            ephemeral_public_key,
+            message_type,
+            flags,
+            message_tag: MessageTag::new(),
+            expires: None,
+        };
+        let binding_hash = crypt::create_message_domain_separated_hash(&header, &body);
+        header.message_signature = make_valid_message_signature(signer.secret_key(), &binding_hash);
+        DhtEnvelope::new(header.into(), body)
+    }
+
+    /// Waits a little for bans to reach the connectivity mock, and returns the banned node ids
+    async fn banned_peers(mock_state: &ConnectivityManagerMockState) -> Vec<NodeId> {
+        time::sleep(Duration::from_millis(500)).await;
+        mock_state
+            .take_banned_peers()
+            .await
+            .into_iter()
+            .map(|(node_id, _, _)| node_id)
+            .collect()
+    }
+
+    /// An attacker X sends relay H a Join whose signed body carries an unknown field. H verifies it, re-encodes the
+    /// body and propagates it to N, where the signature no longer verifies. N drops it and does not ban H, who could
+    /// not vouch for X's bytes.
+    #[tokio::test]
+    async fn a_relayed_join_that_fails_verification_does_not_ban_the_relay() {
+        let attacker = make_node_identity();
+        let relay = make_node_identity();
+        let node = make_node_identity();
+        let shutdown = Shutdown::new();
+
+        // H: outbound requests go to a mock so the propagated message can be captured
+        let (connectivity, _) = create_connectivity_mock();
+        let (oms_requester, oms_mock) = create_outbound_service_mock();
+        let oms_mock_state = oms_mock.get_state();
+        task::spawn(oms_mock.run());
+        let dht_h = build_dht(
+            relay.clone(),
+            &[&attacker],
+            connectivity,
+            oms_requester.get_mpsc_sender(),
+            &shutdown,
+        )
+        .await;
+        let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut body = wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes();
+        body.extend_from_slice(&[0x10, 0x01]);
+        let envelope = signed_envelope(
+            &attacker,
+            DhtMessageType::Join,
+            NodeDestination::Unknown,
+            None,
+            body.clone(),
+        );
+        service_h
+            .call(make_comms_inbound_message(
+                &attacker,
+                envelope.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        let (params, propagated_body) = oms_mock_state.pop_call().await.unwrap();
+        // Until H propagates the bytes it received, the body is re-encoded without the unknown field
+        assert_ne!(propagated_body.to_vec(), body);
+
+        // N receives H's propagation
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let dht_n = build_dht(node.clone(), &[&relay], connectivity, out_tx, &shutdown).await;
+        let mut service_n = dht_n.inbound_middleware_layer().layer(service_spy().to_service());
+        let propagated = DhtEnvelope::new(params.dht_header.unwrap().into(), propagated_body.to_vec());
+        service_n
+            .call(make_comms_inbound_message(&relay, propagated.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+
+        // N did not accept the Join (verification failed) and did not ban H
+        assert!(banned_peers(&mock_state).await.is_empty());
+        assert!(!dht_n.peer_manager.exists(attacker.public_key()).await.unwrap());
+    }
+
+    /// An attacker A asks target T for a DiscoveryResponse and replays T's signed response to victim V. V bans A, who
+    /// delivered a response it did not sign, and does not ban T.
+    #[tokio::test]
+    async fn a_replayed_discovery_response_bans_the_replayer_not_the_signer() {
+        let attacker = make_node_identity();
+        let target = make_node_identity();
+        let victim = make_node_identity();
+        let shutdown = Shutdown::new();
+
+        // T, with its real outbound pipeline so that its response is signed as it would be on the wire
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
+        let dht_t = build_dht(target.clone(), &[&attacker], connectivity, out_tx, &shutdown).await;
+        let mut service_t = dht_t.inbound_middleware_layer().layer(service_spy().to_service());
+        let (wire_tx, mut wire_rx) = mpsc::channel(10);
+        let mut outbound_t = dht_t.outbound_middleware_layer().layer(SinkService::new(wire_tx));
+
+        let discovery = DiscoveryMessage {
+            public_key: attacker.public_key().to_vec(),
+            addresses: attacker.public_addresses().iter().map(|a| a.to_vec()).collect(),
+            peer_features: attacker.features().bits(),
+            nonce: 1,
+            identity_signature: attacker.identity_signature_read().as_ref().map(Into::into),
+        };
+        let envelope = signed_envelope(
+            &attacker,
+            DhtMessageType::Discovery,
+            NodeDestination::Unknown,
+            None,
+            wrap_in_envelope_body!(discovery).to_encoded_bytes(),
+        );
+        service_t
+            .call(make_comms_inbound_message(
+                &attacker,
+                envelope.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        let request = time::timeout(Duration::from_secs(10), out_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        outbound_t.call(request).await.unwrap();
+        let response: OutboundMessage = time::timeout(Duration::from_secs(10), wire_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(response.peer_node_id, *attacker.node_id());
+
+        // A replays it to V
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let dht_v = build_dht(victim.clone(), &[&attacker, &target], connectivity, out_tx, &shutdown).await;
+        let mut service_v = dht_v.inbound_middleware_layer().layer(service_spy().to_service());
+        service_v
+            .call(make_comms_inbound_message(&attacker, response.body))
+            .await
+            .unwrap();
+
+        assert_eq!(banned_peers(&mock_state).await, vec![attacker.node_id().clone()]);
+    }
+
+    /// A validly signed encrypted message for V whose ephemeral key is not a curve point, delivered by relay R, is
+    /// dropped by V without banning R.
+    #[tokio::test]
+    async fn an_ephemeral_key_that_is_not_a_point_does_not_ban_the_relay() {
+        let attacker = make_node_identity();
+        let relay = make_node_identity();
+        let victim = make_node_identity();
+        let shutdown = Shutdown::new();
+
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let dht_v = build_dht(victim.clone(), &[&relay], connectivity, out_tx, &shutdown).await;
+        let spy = service_spy();
+        let mut service_v = dht_v.inbound_middleware_layer().layer(spy.to_service());
+
+        let not_a_point = CommsPublicKey::from_canonical_bytes(&[0xffu8; 32]).unwrap();
+        assert!(not_a_point.to_public_key().is_err());
+        let envelope = signed_envelope(
+            &attacker,
+            DhtMessageType::None,
+            NodeDestination::PublicKey(Box::new(victim.public_key().clone())),
+            Some(not_a_point),
+            vec![1u8; 64],
+        );
+        service_v
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+
+        assert!(banned_peers(&mock_state).await.is_empty());
         assert_eq!(spy.call_count(), 0);
     }
 }

@@ -17,6 +17,7 @@ tari_comms_rpc_macros = { workspace = true }
 tari_crypto = { workspace = true }
 tari_utilities = { workspace = true }
 tari_shutdown = { workspace = true }
+tari_metrics = { workspace = true, optional = true }
 
 anyhow = { workspace = true }
 bitflags = { version = "2.4", features = ["serde"] }
@@ -70,3 +71,4 @@ tari_common = { workspace = true }
 
 [features]
 test-mocks = []
+metrics = ["tari_metrics", "tari_comms/metrics"]

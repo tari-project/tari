@@ -20,14 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, task::Poll, time::Duration};
+use std::{convert::TryInto, sync::Arc, task::Poll};
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
 use tari_comms::{
     BytesMut,
-    connectivity::ConnectivityRequester,
     decode_budget::decode_with_max_items,
     message::EnvelopeBody,
     peer_manager::NodeIdentity,
@@ -40,7 +39,6 @@ use thiserror::Error;
 use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
-    DhtConfig,
     crypt,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
     message_signature::{MessageSignature, ProtoMessageSignature},
@@ -67,20 +65,42 @@ enum DecryptionError {
     BadClearTextMessageSemantics,
 }
 
+impl DecryptionError {
+    /// The `reason` label of the rejected-message metric
+    #[cfg(feature = "metrics")]
+    fn metric_reason(&self) -> &'static str {
+        match self {
+            DecryptionError::InvalidSignature => "invalid_signature",
+            DecryptionError::BadEncryptedMessageSemantics => "bad_encrypted_semantics",
+            DecryptionError::MessageRejectDecryptionFailed => "decryption_failed",
+            DecryptionError::EnvelopeBodyDecodeFailed => "body_decode_failed",
+            DecryptionError::BadClearTextMessageSemantics => "bad_clear_text_semantics",
+        }
+    }
+}
+
+#[cfg(feature = "metrics")]
+fn inbound_messages_rejected() -> tari_metrics::IntCounterVec {
+    static METER: std::sync::LazyLock<tari_metrics::IntCounterVec> = std::sync::LazyLock::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "comms::dht::inbound_messages_rejected",
+            "Inbound messages dropped by the decryption layer, by reason",
+            &["reason"],
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
+
 /// This layer is responsible for attempting to decrypt inbound messages.
 pub struct DecryptionLayer {
     node_identity: Arc<NodeIdentity>,
-    connectivity: ConnectivityRequester,
-    config: Arc<DhtConfig>,
 }
 
 impl DecryptionLayer {
-    pub fn new(config: Arc<DhtConfig>, node_identity: Arc<NodeIdentity>, connectivity: ConnectivityRequester) -> Self {
-        Self {
-            node_identity,
-            connectivity,
-            config,
-        }
+    pub fn new(node_identity: Arc<NodeIdentity>) -> Self {
+        Self { node_identity }
     }
 }
 
@@ -88,35 +108,21 @@ impl<S> Layer<S> for DecryptionLayer {
     type Service = DecryptionService<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        DecryptionService::new(
-            self.config.clone(),
-            self.node_identity.clone(),
-            self.connectivity.clone(),
-            service,
-        )
+        DecryptionService::new(self.node_identity.clone(), service)
     }
 }
 
 /// Responsible for decrypting InboundMessages and passing a DecryptedInboundMessage to the given service
 #[derive(Clone)]
 pub struct DecryptionService<S> {
-    config: Arc<DhtConfig>,
     node_identity: Arc<NodeIdentity>,
-    connectivity: ConnectivityRequester,
     inner: S,
 }
 
 impl<S> DecryptionService<S> {
-    pub fn new(
-        config: Arc<DhtConfig>,
-        node_identity: Arc<NodeIdentity>,
-        connectivity: ConnectivityRequester,
-        service: S,
-    ) -> Self {
+    pub fn new(node_identity: Arc<NodeIdentity>, service: S) -> Self {
         Self {
             node_identity,
-            connectivity,
-            config,
             inner: service,
         }
     }
@@ -139,24 +145,27 @@ where
         Box::pin(Self::handle_message(
             self.inner.clone(),
             Arc::clone(&self.node_identity),
-            self.connectivity.clone(),
-            self.config.ban_duration,
             msg,
         ))
     }
 }
 
+/// **Attribution rule.** (1) Never ban the direct source for a validation failure on a message whose signer is not
+/// that source: a relay cannot vouch for bytes it did not produce. (2) Never ban a signer because of a message
+/// delivered by someone else. Ban only the party that is provably culpable from the message itself, and only when
+/// honest software could never have produced that message.
+///
+/// The decryption layer cannot tell whether the direct source produced a message or relayed it, so it never bans:
+/// every rejection here is a drop. Flood protection is the only rate control for invalid messages. The DHT handler
+/// (`dht_handler/task.rs`) and the discovery service apply the same rule to bans through `DhtRequester::ban_peer`.
 impl<S> DecryptionService<S>
 where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
     async fn handle_message(
         next_service: S,
         node_identity: Arc<NodeIdentity>,
-        mut connectivity: ConnectivityRequester,
-        ban_duration: Duration,
         message: DhtInboundMessage,
     ) -> Result<(), PipelineError> {
-        use DecryptionError::*;
         let source = message.source_peer.clone();
         let trace_id = message.dht_header.message_tag;
         let tag = message.tag;
@@ -165,30 +174,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 trace!(target: LOG_TARGET, "Passing onto next service (Trace: {})", msg.tag);
                 next_service.oneshot(msg).await
             },
-            // These are verifiable error cases that can be checked by every node
-            Err(err @ BadEncryptedMessageSemantics) | Err(err @ InvalidSignature) => {
-                warn!(
+            Err(err) => {
+                debug!(
                     target: LOG_TARGET,
                     "SECURITY: {} ({}, peer={}, trace={}). Message discarded", err, tag, source.node_id, trace_id
                 );
-                // This message should not have been propagated, or has been manipulated in some way. Ban the source of
-                // this message.
-                connectivity
-                    .ban_peer_until(source.node_id.clone(), ban_duration, err.to_string())
-                    .await?;
-                Err(err.into())
-            },
-            Err(EnvelopeBodyDecodeFailed) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Failed to decode message body ({}, peer={}, trace={}). Message discarded",
-                    tag,
-                    source.node_id,
-                    trace_id
-                );
+                #[cfg(feature = "metrics")]
+                inbound_messages_rejected()
+                    .with_label_values(&[err.metric_reason()])
+                    .inc();
                 Ok(())
             },
-            Err(err) => Err(err.into()),
         }
     }
 
@@ -241,7 +237,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .as_ref()
             .ok_or(DecryptionError::BadEncryptedMessageSemantics)?
             .to_public_key()
-            .map_err(|_| DecryptionError::InvalidSignature)?;
+            .map_err(|_| DecryptionError::BadEncryptedMessageSemantics)?;
         let shared_ephemeral_secret = CommsDHKE::new(node_identity.secret_key(), &ephemeral_public_key);
         let message = validated_msg.message();
 
@@ -310,7 +306,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// Performs message validation that should be performed by all nodes. If an error is encountered, the message is
     /// invalid and should never have been propagated.
     ///
-    /// These failure modes are detectable by any node, so it is generally safe to ban an offending peer.
+    /// These failure modes are detectable by any node, but not attributable to the direct source (see the attribution
+    /// rule above), so the message is only dropped.
     fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
         if !message.is_semantically_valid() {
             if message.dht_header.flags.is_encrypted() {
@@ -436,10 +433,9 @@ mod test {
     use std::sync::Mutex;
 
     use futures::{executor::block_on, future};
-    use tari_comms::{message::MessageExt, test_utils::mocks::create_connectivity_mock, wrap_in_envelope_body};
+    use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_test_utils::counter_context;
-    use tokio::time::sleep;
-    use tower::service_fn;
+    use tower::{service_fn, util::ServiceFn};
 
     use super::*;
     use crate::{
@@ -447,52 +443,24 @@ mod test {
         test_utils::{make_dht_inbound_message, make_dht_inbound_message_raw, make_node_identity},
     };
 
-    /// Receive a message, assert a specific error is raised, and test for peer ban status
-    async fn expect_error(
-        node_identity: Arc<NodeIdentity>,
-        message: DhtInboundMessage,
-        error: DecryptionError,
-        ban: bool,
-    ) {
-        // Set up messaging
-        let (connectivity, mock) = create_connectivity_mock();
-        let mock_state = mock.spawn();
-        let result = Arc::new(Mutex::new(None));
-        let service = service_fn({
-            let result = result.clone();
-            move |msg: DecryptedDhtMessage| {
-                *result.lock().unwrap() = Some(msg);
-                future::ready(Result::<(), PipelineError>::Ok(()))
-            }
-        });
-        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+    type SinkFn = ServiceFn<fn(DecryptedDhtMessage) -> future::Ready<Result<(), PipelineError>>>;
 
-        // Receive the message and check for the expected error
-        let err = service.call(message).await.unwrap_err();
-        let err = err.downcast::<DecryptionError>().unwrap();
+    /// Assert that validation rejects the message with `error`, and that the service drops it: it is not passed on,
+    /// and the pipeline sees no error. The service has no way to ban the source.
+    async fn expect_error(node_identity: Arc<NodeIdentity>, message: DhtInboundMessage, error: DecryptionError) {
+        let err = DecryptionService::<SinkFn>::validate_and_decrypt_message(node_identity.clone(), message.clone())
+            .await
+            .unwrap_err();
         assert_eq!(error, err);
-        assert!(result.lock().unwrap().is_none());
-
-        // Assert the expected ban status
-        if ban {
-            mock_state.await_call_count(1).await;
-            assert_eq!(mock_state.count_calls_containing("BanPeer").await, 1);
-        } else {
-            // Waiting like this isn't a guarantee that the peer won't be banned
-            sleep(Duration::from_secs(1)).await;
-            assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
-        }
+        assert!(!passed_on(node_identity, message).await);
     }
 
-    /// Receive a message successfully, decrypt if possible, check for peer banning, and return the message
+    /// Receive a message successfully, decrypt if possible, and return the message
     async fn expect_no_error(
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
         decryption_succeeded: bool,
     ) -> DecryptedDhtMessage {
-        // Set up messaging
-        let (connectivity, mock) = create_connectivity_mock();
-        let mock_state = mock.spawn();
         let result = Arc::new(Mutex::new(None));
         let service = service_fn({
             let result = result.clone();
@@ -501,7 +469,7 @@ mod test {
                 future::ready(Result::<(), PipelineError>::Ok(()))
             }
         });
-        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+        let mut service = DecryptionService::new(node_identity, service);
 
         // Receive the message and assert there were no errors
         block_on(service.call(message)).unwrap();
@@ -513,11 +481,6 @@ mod test {
         assert_eq!(decrypted.decryption_succeeded(), decryption_succeeded);
         assert_eq!(decrypted.decryption_failed(), !decryption_succeeded);
 
-        // Don't ban the peer
-        // Waiting like this isn't a guarantee that the peer won't be banned later
-        sleep(Duration::from_secs(1)).await;
-        assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
-
         // Return the decrypted message for further handling; decryption may have failed
         decrypted
     }
@@ -526,8 +489,7 @@ mod test {
     fn poll_ready() {
         let service = service_fn(|_: DecryptedDhtMessage| future::ready(Result::<(), PipelineError>::Ok(())));
         let node_identity = make_node_identity();
-        let (connectivity, _) = create_connectivity_mock();
-        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+        let mut service = DecryptionService::new(node_identity, service);
 
         counter_context!(cx, counter);
 
@@ -587,12 +549,10 @@ mod test {
                 make_dht_inbound_message(identity, &Vec::new(), DhtMessageFlags::ENCRYPTED, true, true).unwrap();
             message.body = Vec::new(); // due to padding, we need to manually reset this
 
-            // Ban the peer
             expect_error(
                 node_identity.clone(),
                 message,
                 DecryptionError::BadEncryptedMessageSemantics,
-                true,
             )
             .await;
         }
@@ -608,14 +568,7 @@ mod test {
         let message =
             make_dht_inbound_message_raw(&node_identity, nonsense, DhtMessageFlags::ENCRYPTED, true, true).unwrap();
 
-        // Don't ban the peer
-        expect_error(
-            node_identity,
-            message,
-            DecryptionError::MessageRejectDecryptionFailed,
-            false,
-        )
-        .await;
+        expect_error(node_identity, message, DecryptionError::MessageRejectDecryptionFailed).await;
     }
 
     #[tokio::test]
@@ -629,13 +582,7 @@ mod test {
             make_dht_inbound_message(&node_identity, &plain_text_msg, DhtMessageFlags::ENCRYPTED, true, false).unwrap();
 
         // Ban the peer
-        expect_error(
-            node_identity,
-            message,
-            DecryptionError::BadEncryptedMessageSemantics,
-            true,
-        )
-        .await;
+        expect_error(node_identity, message, DecryptionError::BadEncryptedMessageSemantics).await;
     }
 
     #[tokio::test]
@@ -656,8 +603,7 @@ mod test {
                 message.dht_header.message_signature[malleated_index] =
                     !message.dht_header.message_signature[malleated_index];
 
-                // Ban the peer
-                expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature, true).await;
+                expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature).await;
             }
         }
     }
@@ -677,12 +623,10 @@ mod test {
             // Remove the signature
             message.dht_header.message_signature = Vec::new();
 
-            // Ban the peer
             expect_error(
                 node_identity.clone(),
                 message,
                 DecryptionError::BadEncryptedMessageSemantics,
-                true,
             )
             .await;
         }
@@ -703,15 +647,38 @@ mod test {
             // Remove the ephemeral key
             message.dht_header.ephemeral_public_key = None;
 
-            // Ban the peer
             expect_error(
                 node_identity.clone(),
                 message,
                 DecryptionError::BadEncryptedMessageSemantics,
-                true,
             )
             .await;
         }
+    }
+
+    #[tokio::test]
+    /// An encrypted message for us, validly signed, whose ephemeral key is 32 bytes that are not a curve point, is
+    /// dropped. The relay that delivered it could not have checked the point, so it is not blamed.
+    async fn decrypt_inbound_fail_ephemeral_key_not_a_point() {
+        let node_identity = make_node_identity();
+        let signer = make_node_identity();
+        let mut message = make_dht_inbound_message(
+            &node_identity,
+            &b"a secret message".to_vec(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            true,
+        )
+        .unwrap();
+
+        let not_a_point = CompressedKey::from_canonical_bytes(&[0xffu8; 32]).unwrap();
+        assert!(not_a_point.to_public_key().is_err());
+        message.dht_header.ephemeral_public_key = Some(not_a_point);
+        let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
+        message.dht_header.message_signature =
+            crate::test_utils::make_valid_message_signature(signer.secret_key(), &binding_hash);
+
+        expect_error(node_identity, message, DecryptionError::BadEncryptedMessageSemantics).await;
     }
 
     #[tokio::test]
@@ -730,8 +697,7 @@ mod test {
                 // Render the signature not decodable
                 message.dht_header.message_signature = vec![1u8; 32];
 
-                // Ban the peer
-                expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature, true).await;
+                expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature).await;
             }
         }
     }
@@ -755,8 +721,7 @@ mod test {
                 signature.signer_public_key = vec![1u8; 8]; // invalid public key encoding
                 message.dht_header.message_signature = signature.to_encoded_bytes();
 
-                // Ban the peer
-                expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature, true).await;
+                expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature).await;
             }
         }
     }
@@ -778,21 +743,10 @@ mod test {
 
         // Clear text (the test maker only signs encrypted messages correctly; this one needs no signature)
         let message = make_dht_inbound_message(&node_identity, &flood, DhtMessageFlags::NONE, false, true).unwrap();
-        let (connectivity, mock) = create_connectivity_mock();
-        let mock_state = mock.spawn();
-        let result = Arc::new(Mutex::new(None));
-        let service = service_fn({
-            let result = result.clone();
-            move |msg: DecryptedDhtMessage| {
-                *result.lock().unwrap() = Some(msg);
-                future::ready(Result::<(), PipelineError>::Ok(()))
-            }
-        });
-        let mut service = DecryptionService::new(Default::default(), node_identity.clone(), connectivity, service);
-        service.call(message).await.unwrap();
-        assert!(result.lock().unwrap().is_none(), "an over-budget body was passed on");
-        sleep(Duration::from_secs(1)).await;
-        assert_eq!(mock_state.count_calls_containing("BanPeer").await, 0);
+        assert!(
+            !passed_on(node_identity.clone(), message).await,
+            "an over-budget body was passed on"
+        );
 
         // At the parts cap (which is below the decode budget), it decodes
         let at_cap = EnvelopeBody {
@@ -818,29 +772,19 @@ mod test {
             // The test maker only signs encrypted messages correctly; a clear text message needs no signature
             let is_encrypted = flags.is_encrypted();
             let message = make_dht_inbound_message(&node_identity, &too_many, flags, is_encrypted, true).unwrap();
-            assert_eq!(
-                passed_on_and_bans(node_identity.clone(), message).await,
-                (false, 0),
-                "{flags:?}"
-            );
+            assert_eq!(passed_on(node_identity.clone(), message).await, false, "{flags:?}");
 
             let at_cap = EnvelopeBody {
                 parts: vec![b"part".to_vec(); MAX_ENVELOPE_PARTS],
             };
             let message = make_dht_inbound_message(&node_identity, &at_cap, flags, is_encrypted, true).unwrap();
-            assert_eq!(
-                passed_on_and_bans(node_identity.clone(), message).await,
-                (true, 0),
-                "{flags:?}"
-            );
+            assert_eq!(passed_on(node_identity.clone(), message).await, true, "{flags:?}");
         }
     }
 
     /// Calls the decryption service with `message` and returns whether the message was passed on (to the forwarder
-    /// and the rest of the pipeline), and how many bans were requested
-    async fn passed_on_and_bans(node_identity: Arc<NodeIdentity>, message: DhtInboundMessage) -> (bool, usize) {
-        let (connectivity, mock) = create_connectivity_mock();
-        let mock_state = mock.spawn();
+    /// and the rest of the pipeline)
+    async fn passed_on(node_identity: Arc<NodeIdentity>, message: DhtInboundMessage) -> bool {
         let result = Arc::new(Mutex::new(None));
         let service = service_fn({
             let result = result.clone();
@@ -849,11 +793,9 @@ mod test {
                 future::ready(Result::<(), PipelineError>::Ok(()))
             }
         });
-        let mut service = DecryptionService::new(Default::default(), node_identity, connectivity, service);
+        let mut service = DecryptionService::new(node_identity, service);
         service.call(message).await.unwrap();
-        sleep(Duration::from_secs(1)).await;
-        let passed_on = result.lock().unwrap().is_some();
-        (passed_on, mock_state.count_calls_containing("BanPeer").await)
+        result.lock().unwrap().is_some()
     }
 
     #[tokio::test]
@@ -879,8 +821,8 @@ mod test {
             ),
         ] {
             assert_eq!(
-                passed_on_and_bans(node_identity.clone(), message.unwrap()).await,
-                (false, 0),
+                passed_on(node_identity.clone(), message.unwrap()).await,
+                false,
                 "{name}"
             );
         }

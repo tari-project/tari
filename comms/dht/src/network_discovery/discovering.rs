@@ -76,6 +76,12 @@ fn classify_relay_failure(err: &NetworkDiscoveryError) -> Option<bool> {
     }
 }
 
+/// Returns true if a relayed peer record failed to convert only because one of its addresses did not parse. A newer
+/// node may advertise an address protocol this node does not know, so this is skipped and not counted as hostile.
+pub(super) fn is_unparseable_address(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<tari_comms::multiaddr::Error>().is_some()
+}
+
 #[derive(Debug)]
 pub(super) struct Discovering {
     params: DiscoveryParams,
@@ -359,15 +365,24 @@ impl Discovering {
                         "Discovering: Sync peer `{sync_peer}` sent an empty peer message: {err:?}"
                     );
                 })?;
-            let new_peer: UnvalidatedPeerInfo = peer
-                .try_into()
-                .map_err(NetworkDiscoveryError::InvalidPeerDataReceived)
-                .inspect_err(|err| {
+            let new_peer: UnvalidatedPeerInfo = match peer.try_into() {
+                Ok(new_peer) => new_peer,
+                Err(err) if is_unparseable_address(&err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Discovering: Skipping peer relayed by sync peer `{sync_peer}` with an unparseable address: \
+                         {err:?}"
+                    );
+                    continue;
+                },
+                Err(err) => {
                     warn!(
                         target: LOG_TARGET,
                         "Discovering: Sync peer `{sync_peer}` sent invalid peer data: {err:?}"
                     );
-                })?;
+                    return Err(NetworkDiscoveryError::InvalidPeerDataReceived(err));
+                },
+            };
 
             if !peers_received.insert(new_peer.public_key.clone()) {
                 let err = NetworkDiscoveryError::DuplicatePeerReceived;
@@ -608,25 +623,64 @@ mod test {
             Some(false)
         );
 
-        // A forged signature or malformed address is skipped too, but counts against the sync peer.
+        // So is a claim over this node's limits, which a peer on another version may accept
+        assert_eq!(
+            classify_relay_failure(&validation_error(PeerValidatorError::InvalidMultiaddr(
+                "bad address".to_string()
+            ))),
+            Some(false)
+        );
+        assert_eq!(
+            classify_relay_failure(&NetworkDiscoveryError::PeerValidationError(
+                DhtPeerValidatorError::IdentityTooManyClaims { length: 2, max: 1 }
+            )),
+            Some(false)
+        );
+
+        // A forged signature is skipped too, but counts against the sync peer.
         assert_eq!(
             classify_relay_failure(&validation_error(PeerValidatorError::InvalidPeerSignature {
                 peer: NodeId::default()
             })),
             Some(true)
         );
-        assert_eq!(
-            classify_relay_failure(&validation_error(PeerValidatorError::InvalidMultiaddr(
-                "bad address".to_string()
-            ))),
-            Some(true)
+    }
+
+    /// A relayed record with an address this node cannot parse is skipped without counting against the sync peer; a
+    /// record that is malformed in another way still ends the round.
+    #[test]
+    fn a_relayed_claim_with_an_unparseable_address_is_not_hostile() {
+        use std::convert::TryFrom;
+
+        use tari_comms::peer_manager::{NodeIdentity, PeerFeatures};
+
+        use crate::{proto::rpc::PeerInfo, rpc::UnvalidatedPeerInfo};
+
+        let node_identity = NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/23.23.23.23/tcp/18189".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
         );
-        assert_eq!(
-            classify_relay_failure(&NetworkDiscoveryError::PeerValidationError(
-                DhtPeerValidatorError::IdentityTooManyClaims { length: 2, max: 1 }
-            )),
-            Some(true)
-        );
+        let mut peer_info = PeerInfo::from(UnvalidatedPeerInfo::from_peer_limited_claims(
+            node_identity.to_peer(),
+            5,
+            5,
+        ));
+        peer_info
+            .claims
+            .first_mut()
+            .unwrap()
+            .addresses
+            .push(vec![0xff, 0xff, 0xff]);
+        let err = UnvalidatedPeerInfo::try_from(peer_info).unwrap_err();
+        assert!(is_unparseable_address(&err));
+
+        let bad_key = PeerInfo {
+            public_key: vec![1u8; 3],
+            claims: vec![],
+        };
+        let err = UnvalidatedPeerInfo::try_from(bad_key).unwrap_err();
+        assert!(!is_unparseable_address(&err));
     }
 
     /// Older nodes accept and relay any DNS name. A sync peer relaying many claims with names we do not use

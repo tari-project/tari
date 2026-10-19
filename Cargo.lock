@@ -7923,6 +7923,7 @@ dependencies = [
  "tari_comms",
  "tari_comms_rpc_macros",
  "tari_crypto",
+ "tari_metrics",
  "tari_shutdown",
  "tari_test_utils",
  "tari_utilities",

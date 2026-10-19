@@ -254,7 +254,7 @@ mod rebootstrap {
             NetworkDiscoveryError,
             RebootstrapInfo,
             SeedPeerProvider,
-            discovering::Discovering,
+            discovering::{Discovering, MAX_HOSTILE_RELAYED_CLAIMS},
             on_connect::OnConnect,
             ready::DiscoveryReady,
             rebootstrap::{
@@ -686,6 +686,23 @@ mod rebootstrap {
         let stored = store_peers(&context, &source, peers).await.unwrap();
         assert_eq!(stored.len(), 50);
         assert_eq!(context.peer_manager.count().await, 50);
+    }
+
+    /// A source relaying records with an address this node cannot parse (say, a newer protocol) is not counted as
+    /// hostile: the records are skipped and the rest are stored.
+    #[tokio::test]
+    async fn records_with_unparseable_addresses_are_not_hostile() {
+        let (context, _mock, _events) = context(None);
+        let source = NodeId::from_public_key(make_node_identity().public_key());
+        let mut peers = build_many_node_identities(10, PeerFeatures::COMMUNICATION_NODE)
+            .into_iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect::<Vec<PeerInfo>>();
+        for peer in peers.iter_mut().take(MAX_HOSTILE_RELAYED_CLAIMS + 1) {
+            peer.claims[0].addresses.push(vec![0xff, 0xff, 0xff]);
+        }
+        let stored = store_peers(&context, &source, peers).await.unwrap();
+        assert_eq!(stored.len(), 10 - (MAX_HOSTILE_RELAYED_CLAIMS + 1));
     }
 
     /// Records after the first `MAX_STORED_PER_SOURCE` valid peers are still checked: hostile ones count towards a
