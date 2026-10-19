@@ -26,4 +26,4 @@ tari_test_utils = { workspace = true }
 
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 futures-test = { version = "0.3.3" }
-tower = "0.4"
+tower = "0.5"

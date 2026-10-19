@@ -481,4 +481,90 @@ mod test {
         stored.merge(&new_peer(vec![]));
         assert_eq!(stored.supported_protocols().len(), 2);
     }
+
+    #[test]
+    fn configured_address_becomes_config_when_merged_over_a_claim() {
+        use chrono::Utc;
+        use tari_crypto::keys::SecretKey;
+
+        use crate::{
+            net_address::DialAddressPolicy,
+            peer_manager::{IdentitySignature, PeerIdentityClaim},
+            types::CommsSecretKey,
+        };
+
+        let dns_address = "/dns4/basenode/tcp/18189".parse::<Multiaddr>().unwrap();
+        let ip_address = "/ip4/23.23.23.23/tcp/18189".parse::<Multiaddr>().unwrap();
+        let secret = CommsSecretKey::random(&mut rand::rng());
+        let pk = CommsPublicKey::from_secret_key(&secret);
+        let node_id = NodeId::from_key(&pk);
+        let claim_at = |updated_at| {
+            let addresses = vec![dns_address.clone(), ip_address.clone()];
+            PeerAddressSource::FromPeerConnection {
+                peer_identity_claim: PeerIdentityClaim {
+                    addresses: addresses.clone(),
+                    features: PeerFeatures::COMMUNICATION_NODE,
+                    signature: IdentitySignature::sign_new(
+                        &secret,
+                        PeerFeatures::COMMUNICATION_NODE,
+                        &addresses,
+                        updated_at,
+                    ),
+                },
+            }
+        };
+        let peer_with = |addresses| {
+            Peer::new(
+                pk.clone(),
+                node_id.clone(),
+                addresses,
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
+                vec![],
+                String::new(),
+            )
+        };
+        let dns_source = |peer: &Peer| {
+            peer.addresses
+                .iter()
+                .find(|a| a.address() == &dns_address)
+                .unwrap()
+                .source()
+                .clone()
+        };
+
+        // Stored by an older build: the configured address carries the peer's claim
+        let mut stored = peer_with(MultiaddressesWithStats::from_addresses_with_source(
+            vec![dns_address.clone(), ip_address.clone()],
+            &claim_at(Utc::now() - chrono::Duration::hours(1)),
+        ));
+        assert!(!dns_source(&stored).is_config());
+
+        // The seed / add-peer path merges the configured address into the stored peer
+        stored.merge(&peer_with(MultiaddressesWithStats::from_addresses_with_source(
+            vec![dns_address.clone()],
+            &PeerAddressSource::Config,
+        )));
+        assert!(dns_source(&stored).is_config());
+        let ip = stored.addresses.iter().find(|a| a.address() == &ip_address).unwrap();
+        assert!(!ip.source().is_config());
+
+        // A strictly newer claim that includes the configured address leaves it config
+        stored.merge(&peer_with(MultiaddressesWithStats::from_addresses_with_source(
+            vec![dns_address.clone(), ip_address.clone()],
+            &claim_at(Utc::now()),
+        )));
+        assert!(dns_source(&stored).is_config());
+        let ip = stored.addresses.iter().find(|a| a.address() == &ip_address).unwrap();
+        assert!(!ip.source().is_config());
+
+        // The dialer allows internal resolved addresses for config addresses
+        let policy = DialAddressPolicy {
+            allow_internal: dns_source(&stored).is_config(),
+            excluded: vec![],
+        };
+        policy
+            .check_resolved(&dns_address, &"172.17.0.2:18189".parse().unwrap())
+            .unwrap();
+    }
 }

@@ -380,6 +380,7 @@ mod test {
 
     use super::*;
     use crate::{
+        net_address::DialAddressPolicy,
         peer_manager::{IdentitySignature, PeerFeatures, PeerIdentityClaim},
         types::{CommsPublicKey, CommsSecretKey},
     };
@@ -695,10 +696,57 @@ mod test {
         );
 
         base.merge(&incoming);
+        // Config wins: the claimed address stays a config address
         let a1 = base.find_address_mut(&addr_1).unwrap();
-        assert!(!a1.source().is_config());
+        assert!(a1.source().is_config());
         let a2 = base.find_address_mut(&addr_2).unwrap();
         assert!(a2.source().is_config());
+    }
+
+    #[test]
+    fn config_dns_address_stays_config_after_newer_claim() {
+        let config_address = "/dns4/basenode/tcp/18189".parse::<Multiaddr>().unwrap();
+        let claimed_address = "/ip4/23.23.23.23/tcp/18189".parse::<Multiaddr>().unwrap();
+        let secret = CommsSecretKey::random(&mut rand::rng());
+        let claim_at = |addresses: Vec<Multiaddr>, updated_at| PeerAddressSource::FromPeerConnection {
+            peer_identity_claim: PeerIdentityClaim {
+                addresses: addresses.clone(),
+                features: PeerFeatures::COMMUNICATION_NODE,
+                signature: IdentitySignature::sign_new(
+                    &secret,
+                    PeerFeatures::COMMUNICATION_NODE,
+                    &addresses,
+                    updated_at,
+                ),
+            },
+        };
+
+        let mut addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![config_address.clone()],
+            &PeerAddressSource::Config,
+        );
+        let older = Utc::now() - chrono::Duration::hours(1);
+        addresses.add_or_update_addresses(
+            std::slice::from_ref(&claimed_address),
+            &claim_at(vec![claimed_address.clone()], older),
+        );
+        // A strictly newer claim that includes the configured address
+        let both = vec![config_address.clone(), claimed_address.clone()];
+        addresses.add_or_update_addresses(&both, &claim_at(both.clone(), Utc::now()));
+
+        let config = addresses.iter().find(|a| a.address() == &config_address).unwrap();
+        assert!(config.source().is_config());
+        let claimed = addresses.iter().find(|a| a.address() == &claimed_address).unwrap();
+        assert!(!claimed.source().is_config());
+
+        // The dialer allows internal resolved addresses for config addresses
+        let policy = DialAddressPolicy {
+            allow_internal: config.source().is_config(),
+            excluded: vec![],
+        };
+        policy
+            .check_resolved(&config_address, &"172.17.0.2:18189".parse().unwrap())
+            .unwrap();
     }
 
     #[test]

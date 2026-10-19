@@ -316,6 +316,8 @@ event_channel_size = 3500
 
 # Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
 # (use: type = "socks5")
+# The proxy resolves DNS names, so the checks on the address a name resolves to (internal ranges and
+# `excluded_dial_addresses`) rely on the proxy's own egress policy.
 # The address of the SOCKS5 proxy. Traffic will be forwarded to tcp.listener_address.
 # (Default = "/ip4/127.0.0.1/tcp/8080")
 #socks.proxy_address = "/ip4/127.0.0.1/tcp/9050"
@@ -472,7 +474,3 @@ ban_duration_short = 60 # 1 min
 excluded_dial_addresses = []
 # Enables the DHT to forward messages to other nodes in the network - communication nodes only (Default: false)
 #enable_forwarding = false
-
-# setting this to some version will reject peers that dont meet the min version or the agent string in the correct string.
-# peer string should match X/X/X/X/{VERSION} where the last segment is the version in semer versioning scheme
-#peer_validator_config.min_peer_version = ""

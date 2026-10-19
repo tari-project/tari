@@ -52,7 +52,7 @@ mod tcp_with_tor;
 pub use hidden_service_transport::HiddenServiceTransport;
 pub use tcp_with_tor::TcpWithTorTransport;
 
-use crate::types::TransportProtocol;
+use crate::{net_address::DialAddressPolicy, types::TransportProtocol};
 
 /// Defines an abstraction for implementations that can dial and listen for connections over a provided address.
 #[crate::async_trait]
@@ -69,6 +69,16 @@ pub trait Transport {
 
     /// Connect (dial) to the given multiaddr
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error>;
+
+    /// Connect (dial) to the given multiaddr, checking the address a DNS name resolves to against `policy`.
+    /// Transports that do not resolve DNS names locally dial as normal.
+    async fn dial_with_policy(
+        &self,
+        addr: &Multiaddr,
+        _policy: &DialAddressPolicy,
+    ) -> Result<Self::Output, Self::Error> {
+        self.dial(addr).await
+    }
 
     /// Returns the protocols that are supported by this transport
     fn supported_protocols(&self) -> Vec<TransportProtocol>;

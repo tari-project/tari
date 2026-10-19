@@ -39,7 +39,7 @@ prost = "0.13.3"
 rand = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tower = { version = "0.4", features = ["full"] }
+tower = { version = "0.5", features = ["full"] }
 zeroize = "1"
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)

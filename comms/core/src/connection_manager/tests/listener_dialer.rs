@@ -31,11 +31,13 @@ use tokio::{
     time,
     time::timeout,
 };
+use tokio_stream::StreamExt;
 
 use crate::{
     Minimized,
     backoff::ConstantBackoff,
     connection_manager::{
+        ConnectionDirection,
         ConnectionManagerConfig,
         ConnectionManagerError,
         dialer::{Dialer, DialerRequest},
@@ -46,9 +48,9 @@ use crate::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerManager},
-    protocol::ProtocolId,
+    protocol::{IdentityProtocolError, ProtocolId},
     test_utils::{build_peer_manager, node_identity::build_node_identity},
-    transports::MemoryTransport,
+    transports::{MemoryTransport, Transport},
     types::TransportProtocol,
 };
 
@@ -519,4 +521,185 @@ async fn dialer_does_not_wedge_when_connection_manager_stops_draining_events() {
 
     shutdown.trigger();
     timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn wrong_key_endpoint_does_not_block_second_address() {
+    let (event_tx, _event_rx) = mpsc::channel(10);
+    let shutdown = Shutdown::new();
+
+    // The first address is served by a different node, so Noise completes with an unexpected static key
+    let impostor_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let impostor = PeerListener::new(
+        Default::default(),
+        "/memory/0".parse().unwrap(),
+        MemoryTransport,
+        NoiseConfig::new(impostor_identity.clone()),
+        event_tx.clone(),
+        build_peer_manager(&impostor_identity.to_peer()).unwrap(),
+        impostor_identity,
+        shutdown.to_signal(),
+    );
+    let wrong_key_address = impostor.listen().await.unwrap();
+
+    let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let listener = PeerListener::new(
+        Default::default(),
+        "/memory/0".parse().unwrap(),
+        MemoryTransport,
+        NoiseConfig::new(node_identity1.clone()),
+        event_tx.clone(),
+        build_peer_manager(&node_identity1.to_peer()).unwrap(),
+        node_identity1.clone(),
+        shutdown.to_signal(),
+    );
+    let address = listener.listen().await.unwrap();
+
+    let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (request_tx, request_rx) = mpsc::channel(1);
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
+    let dialer = Dialer::new(
+        ConnectionManagerConfig::default(),
+        node_identity2.clone(),
+        peer_manager2.clone(),
+        MemoryTransport,
+        NoiseConfig::new(node_identity2.clone()),
+        ConstantBackoff::new(Duration::from_millis(100)),
+        request_rx,
+        event_tx,
+        shutdown.to_signal(),
+    );
+    let dialer_fut = tokio::spawn(dialer.run());
+
+    let mut peer = node_identity1.to_peer();
+    peer.addresses = MultiaddressesWithStats::from_addresses_with_source(
+        vec![wrong_key_address.clone(), address.clone()],
+        &PeerAddressSource::Config,
+    );
+    assert_eq!(peer.addresses.address_iter().next(), Some(&wrong_key_address));
+    peer.set_id_for_test(1);
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    request_tx
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
+        .await
+        .unwrap();
+    let conn = reply_rx.await.unwrap().unwrap();
+    assert_eq!(conn.peer_node_id(), node_identity1.node_id());
+
+    // The dialer writes the peer back after replying
+    let mut stored = None;
+    for _ in 0..100 {
+        let peer = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
+        if peer.as_ref().is_some_and(|p| p.addresses.last_seen().is_some()) {
+            stored = peer;
+            break;
+        }
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    let stored = stored.expect("the dialer did not store the peer");
+    let wrong_key = stored
+        .addresses
+        .iter()
+        .find(|a| a.address() == &wrong_key_address)
+        .unwrap();
+    assert!(wrong_key.last_seen().is_none());
+    assert!(wrong_key.connection_attempts() > 0);
+    assert!(wrong_key.last_failed_reason().unwrap().contains("public key"));
+    let good = stored.addresses.iter().find(|a| a.address() == &address).unwrap();
+    assert!(good.last_seen().is_some());
+
+    shutdown.trigger();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn outbound_identity_timeout_does_not_ban() {
+    let (event_tx, _event_rx) = mpsc::channel(10);
+    let shutdown = Shutdown::new();
+
+    // The peer completes Noise and then never sends its identity
+    let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let noise_config1 = NoiseConfig::new(node_identity1.clone());
+    let (mut listener, address) = MemoryTransport.listen(&"/memory/0".parse().unwrap()).await.unwrap();
+    let stalled_peer = tokio::spawn(async move {
+        let (mut socket, _) = listener.next().await.unwrap().unwrap();
+        let mut wire_byte = [0u8; 1];
+        socket.read_exact(&mut wire_byte).await.unwrap();
+        let mut socket = noise_config1
+            .upgrade_socket(socket, ConnectionDirection::Inbound)
+            .await
+            .unwrap();
+        // Hold the socket open without replying
+        let mut buf = [0u8; 1024];
+        while socket.read(&mut buf).await.unwrap_or(0) > 0 {}
+    });
+
+    let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (request_tx, request_rx) = mpsc::channel(1);
+    let peer_manager2 = build_peer_manager(&node_identity2.to_peer()).unwrap();
+    let dialer = Dialer::new(
+        ConnectionManagerConfig::default(),
+        node_identity2.clone(),
+        peer_manager2.clone(),
+        MemoryTransport,
+        NoiseConfig::new(node_identity2.clone()),
+        ConstantBackoff::new(Duration::from_millis(100)),
+        request_rx,
+        event_tx,
+        shutdown.to_signal(),
+    );
+    let dialer_fut = tokio::spawn(dialer.run());
+
+    let mut peer = node_identity1.to_peer();
+    peer.addresses =
+        MultiaddressesWithStats::from_addresses_with_source(vec![address.clone()], &PeerAddressSource::Config);
+    peer.set_id_for_test(1);
+
+    let (reply_tx, reply_rx) = oneshot::channel();
+    request_tx
+        .send(DialerRequest::Dial(Box::new(peer), Some(reply_tx)))
+        .await
+        .unwrap();
+    let err = timeout(Duration::from_secs(30), reply_rx)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    unpack_enum!(ConnectionManagerError::IdentityProtocolError(IdentityProtocolError::Timeout) = err);
+
+    // Wait for the dialer to write the peer back
+    let peer = find_peer_eventually(&peer_manager2, node_identity1.node_id(), "dialer").await;
+    assert!(!peer.is_banned());
+    let peer = peer_manager2
+        .find_by_public_key(node_identity1.public_key())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!peer.is_banned());
+
+    // Completing Noise alone does not mark the address seen: the failed identity exchange is recorded instead
+    let mut stored = None;
+    for _ in 0..100 {
+        let peer = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
+        if peer
+            .as_ref()
+            .and_then(|p| p.addresses.iter().find(|a| a.address() == &address))
+            .is_some_and(|a| a.last_failed_reason().is_some())
+        {
+            stored = peer;
+            break;
+        }
+        time::sleep(Duration::from_millis(100)).await;
+    }
+    let stored = stored.expect("the dialer did not record the failed attempt");
+    let stalled = stored.addresses.iter().find(|a| a.address() == &address).unwrap();
+    assert!(stalled.last_seen().is_none());
+    assert!(stalled.connection_attempts() > 0);
+    assert!(stalled.last_failed_reason().is_some());
+    assert!(stored.addresses.last_seen().is_none());
+
+    shutdown.trigger();
+    timeout(Duration::from_secs(5), dialer_fut).await.unwrap().unwrap();
+    stalled_peer.abort();
 }

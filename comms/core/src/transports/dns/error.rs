@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, io};
+use std::{borrow::Cow, io, time::Duration};
 
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -48,6 +48,8 @@ pub enum DnsResolverError {
     NameResolutionFailed { address_str: String, source: io::Error },
     #[error("DNS address not found")]
     DnsAddressNotFound,
+    #[error("DNS lookup timed out after {0:.0?}")]
+    Timeout(Duration),
     #[error("Failed to join on blocking task: {0}")]
     BlockingJoinError(#[from] JoinError),
 }

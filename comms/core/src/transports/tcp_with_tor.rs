@@ -27,6 +27,7 @@ use tokio::net::TcpStream;
 
 use super::Transport;
 use crate::{
+    net_address::DialAddressPolicy,
     transports::{SocksConfig, SocksTransport, TcpTransport, dns::TorDnsResolver, predicate::is_onion_address},
     types::TransportProtocol,
     utils::network::supports_ipv6,
@@ -113,6 +114,18 @@ impl Transport for TcpWithTorTransport {
             let socket = self.tcp_transport.dial(addr).await?;
             Ok(socket)
         }
+    }
+
+    async fn dial_with_policy(
+        &self,
+        addr: &Multiaddr,
+        policy: &DialAddressPolicy,
+    ) -> Result<Self::Output, Self::Error> {
+        if addr.is_empty() || is_onion_address(addr) {
+            return self.dial(addr).await;
+        }
+        // DNS names are resolved locally (through the Tor resolver if set) and connected to directly
+        self.tcp_transport.dial_with_policy(addr, policy).await
     }
 
     fn supported_protocols(&self) -> Vec<TransportProtocol> {

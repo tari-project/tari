@@ -120,7 +120,15 @@ impl Dh for CommsDiffieHellman {
         let pk =
             UncompressedCommsPublicKey::from_canonical_bytes(public_key.get(..self.pub_len()).ok_or(snow::Error::Dh)?)
                 .map_err(|_| snow::Error::Dh)?;
+        // Anyone can claim the identity point, and DH with it gives a known shared secret
+        if pk == UncompressedCommsPublicKey::default() {
+            return Err(snow::Error::Dh);
+        }
         let shared = CommsDHKE::new(&self.secret_key, &pk);
+        // OR every byte together so the check takes the same time for any secret
+        if shared.as_bytes().iter().fold(0u8, |acc, b| acc | b) == 0 {
+            return Err(snow::Error::Dh);
+        }
         let hash = noise_kdf(&shared);
         copy_slice!(hash.reveal(), out);
         Ok(())
@@ -166,5 +174,17 @@ mod test {
         dh.dh(public_key2.as_bytes(), &mut out).unwrap();
 
         assert_eq!(out, expected_shared.reveal().as_ref()[..NOISE_KEY_LEN]);
+    }
+
+    #[test]
+    fn identity_point_static_key_is_rejected_by_noise_resolver() {
+        let (secret_key, public_key) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let dh = CommsDiffieHellman { public_key, secret_key };
+
+        let identity = UncompressedCommsPublicKey::default();
+        assert_eq!(identity.as_bytes(), &[0u8; 32]);
+        let mut out = [0; 32];
+        assert!(matches!(dh.dh(identity.as_bytes(), &mut out), Err(snow::Error::Dh)));
+        assert_eq!(out, [0u8; 32]);
     }
 }
