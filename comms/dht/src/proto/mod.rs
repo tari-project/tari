@@ -46,6 +46,8 @@ pub const DHT_MESSAGE_MAX_DECODE_ITEMS: usize = 1_024;
 
 /// Returns true if `raw` is exactly the canonical (prost) encoding of `decoded`, the value it was decoded from. Bytes
 /// that carry unknown or duplicated fields, or overlong varints, decode to the same value but are not canonical.
+/// Checked messages are frozen: a field added to one is unknown to older nodes, which then drop it, so adding a field
+/// requires a DHT `major` version bump.
 pub(crate) fn is_canonical<M: prost::Message>(raw: &[u8], decoded: &M) -> bool {
     decoded.encoded_len() == raw.len() && decoded.encode_to_vec() == raw
 }

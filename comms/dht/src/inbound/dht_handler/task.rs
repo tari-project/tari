@@ -24,6 +24,7 @@ use std::{convert::TryInto, sync::Arc};
 
 use log::*;
 use tari_comms::{
+    Bytes,
     BytesMut,
     OrNotFound,
     peer_manager::{NodeId, NodeIdentity, PeerManager},
@@ -292,7 +293,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
                         .finish(),
-                    BytesMut::from(raw_body.as_slice()),
+                    BytesMut::from(Bytes::from(raw_body)),
                 )
                 .await?;
         }

@@ -24,7 +24,6 @@ use std::task::Poll;
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use prost::bytes::BufMut;
 use tari_comms::{BytesMut, peer_manager::Peer, pipeline::PipelineError};
 use tari_utilities::epoch_time::EpochTime;
 use tower::{Service, ServiceExt, layer::Layer};
@@ -182,7 +181,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn forward(&mut self, message: &DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         let DecryptedDhtMessage {
             source_peer,
-            decryption_result,
+            raw_body,
             dht_header,
             is_already_forwarded,
             ..
@@ -232,11 +231,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         }
 
-        let err_body = decryption_result
-            .as_ref()
-            .expect_err("previous check that decryption failed");
-        let mut body = BytesMut::with_capacity(err_body.len());
-        body.put(err_body.as_slice());
+        let body = BytesMut::from(raw_body.as_slice());
 
         let excluded_peers = vec![source_peer.node_id.clone()];
 

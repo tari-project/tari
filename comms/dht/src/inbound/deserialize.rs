@@ -101,8 +101,8 @@ where
             let raw = body.clone();
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    // The same envelope can be encoded in many ways. Only the canonical encoding is accepted, so
-                    // relays never carry bytes that differ from what the signer produced.
+                    // The same envelope can be encoded in many ways. Only the canonical encoding is accepted. Relays
+                    // rebuild the header, so what is preserved hop to hop is the signed bytes (body and signature).
                     if !is_canonical(&raw, &dht_envelope) {
                         debug!(
                             target: LOG_TARGET,

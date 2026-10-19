@@ -537,8 +537,8 @@ mod test {
         // Check that the message is received, but that decryption fails
         let decrypted = expect_no_error(node_identity, message.clone(), false).await;
 
-        // The error should contain the message body
-        assert_eq!(decrypted.decryption_result.unwrap_err(), message.body);
+        // The undecrypted body is kept as received
+        assert_eq!(decrypted.fail(), Some(&message.body));
     }
 
     #[tokio::test]

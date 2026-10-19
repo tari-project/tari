@@ -124,7 +124,8 @@ impl TryFrom<ProtoMessageSignature> for MessageSignature {
     }
 }
 
-/// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::message_signature` field
+/// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::message_signature` field.
+/// Received signatures must be canonically encoded, so adding a field requires a DHT `major` version bump.
 #[derive(Clone, prost::Message)]
 pub struct ProtoMessageSignature {
     #[prost(bytes, tag = "1")]
