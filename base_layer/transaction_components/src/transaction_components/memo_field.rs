@@ -554,6 +554,9 @@ impl MemoField {
         }
     }
 
+    /// Fields of a `TransactionInfo` memo describe the transaction only when the memo is self-authored
+    /// (`RecoveryProvenance::OwnViewKey`). On a Diffie-Hellman recovery they are claims by the sender and must not
+    /// drive history, amounts or payment references.
     pub fn get_fee(&self) -> Option<MicroMinotari> {
         match &self.inner {
             InnerMemoField::AddressAndData { fee, .. } | InnerMemoField::TransactionInfo { fee, .. } => Some(*fee),
@@ -561,6 +564,9 @@ impl MemoField {
         }
     }
 
+    /// Fields of a `TransactionInfo` memo describe the transaction only when the memo is self-authored
+    /// (`RecoveryProvenance::OwnViewKey`). On a Diffie-Hellman recovery they are claims by the sender and must not
+    /// drive history, amounts or payment references.
     pub fn get_sent_hashes(&self) -> Option<Vec<FixedHash>> {
         match &self.inner {
             InnerMemoField::TransactionInfo { sent_output_hashes, .. } => Some(sent_output_hashes.clone()),
@@ -1168,6 +1174,10 @@ impl MemoField {
     }
 
     /// Convenience method for pattern matching - checks if this is a TransactionInfo payment ID
+    ///
+    /// Fields of a `TransactionInfo` memo describe the transaction only when the memo is self-authored
+    /// (`RecoveryProvenance::OwnViewKey`). On a Diffie-Hellman recovery they are claims by the sender and must not
+    /// drive history, amounts or payment references.
     pub fn is_transaction_info(&self) -> bool {
         matches!(self.inner, InnerMemoField::TransactionInfo { .. })
     }
@@ -1199,13 +1209,21 @@ impl MemoField {
         }
     }
 
-    /// Get the sender address from AddressAndData variant
-    /// Returns None for other variants
-    pub fn get_sender_address(&self) -> Option<TariAddress> {
+    /// The sender address written into an `AddressAndData` memo by whoever built the output. It is not
+    /// authenticated: on an output recovered via Diffie-Hellman any party can put any address here. Display it as a
+    /// claim; never use it to attribute funds.
+    pub fn claimed_sender_address(&self) -> Option<TariAddress> {
         match &self.inner {
             InnerMemoField::AddressAndData { sender_address, .. } => Some(sender_address.to_owned()),
             _ => None,
         }
+    }
+
+    /// Get the sender address from AddressAndData variant
+    /// Returns None for other variants
+    #[deprecated(note = "unauthenticated; use claimed_sender_address")]
+    pub fn get_sender_address(&self) -> Option<TariAddress> {
+        self.claimed_sender_address()
     }
 
     /// Get the recipient address from TransactionInfo variant
@@ -1219,6 +1237,10 @@ impl MemoField {
 
     /// Get the amount from TransactionInfo variant
     /// Returns None for other variants
+    ///
+    /// Fields of a `TransactionInfo` memo describe the transaction only when the memo is self-authored
+    /// (`RecoveryProvenance::OwnViewKey`). On a Diffie-Hellman recovery they are claims by the sender and must not
+    /// drive history, amounts or payment references.
     pub fn get_amount(&self) -> Option<MicroMinotari> {
         match &self.inner {
             InnerMemoField::TransactionInfo { amount, .. } => Some(*amount),
@@ -1357,6 +1379,10 @@ impl MemoField {
 
     /// Extract transaction information for wallet transaction processing
     /// Returns (sender_address, recipient_address, amount, tx_type, sender_one_sided) if available
+    ///
+    /// Fields of a `TransactionInfo` memo describe the transaction only when the memo is self-authored
+    /// (`RecoveryProvenance::OwnViewKey`). On a Diffie-Hellman recovery they are claims by the sender and must not
+    /// drive history, amounts or payment references.
     pub fn get_transaction_info(&self) -> Option<(TariAddress, TariAddress, MicroMinotari, TxType, bool)> {
         match &self.inner {
             InnerMemoField::AddressAndData {
@@ -1388,6 +1414,10 @@ impl MemoField {
     }
 
     /// Get transaction info details from TransactionInfo payment ID
+    ///
+    /// Fields of a `TransactionInfo` memo describe the transaction only when the memo is self-authored
+    /// (`RecoveryProvenance::OwnViewKey`). On a Diffie-Hellman recovery they are claims by the sender and must not
+    /// drive history, amounts or payment references.
     pub fn get_transaction_info_details(&self) -> Option<(TariAddress, MicroMinotari, TxType, bool)> {
         match &self.inner {
             InnerMemoField::TransactionInfo {
@@ -2481,7 +2511,7 @@ mod test {
         let memo = result.unwrap();
         let payment_id_data = memo.payment_id_as_bytes();
         assert_eq!(payment_id_data, vec![1, 2, 3], "Payment ID data should match");
-        let sender_address = memo.get_sender_address().unwrap();
+        let sender_address = memo.claimed_sender_address().unwrap();
         assert_eq!(
             sender_address, dual_address_with_payment_id,
             "Recipient address should match"

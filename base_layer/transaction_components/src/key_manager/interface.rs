@@ -60,6 +60,26 @@ pub enum TxoStage {
     Output,
 }
 
+/// How an output's encrypted data was opened, and therefore who wrote its memo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecoveryProvenance {
+    /// Opened with this wallet's private view key directly. Only a holder of the private view key can produce
+    /// this (our own change and self-built outputs), so the memo was written by this wallet (or another holder of
+    /// its view key).
+    OwnViewKey,
+    /// Opened with the Diffie-Hellman key of our view key and the output's sender offset key (one-sided, stealth,
+    /// multisig deposits, coinbases paid to us). Anyone who knows our address can produce this, so everything in
+    /// the memo is a claim by the output's creator. Only the value (which was verified against the commitment)
+    /// and the mask are established.
+    DiffieHellman,
+}
+
+impl RecoveryProvenance {
+    pub fn memo_is_self_authored(self) -> bool {
+        matches!(self, Self::OwnViewKey)
+    }
+}
+
 pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
     /// Gets a randomly generated key, which the key manager will manage
     fn get_random_key(
@@ -183,13 +203,17 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
         payment_id: MemoField,
     ) -> Result<EncryptedData, KeyManagerError>;
 
+    /// Recover the commitment mask key, value and memo of an output. The returned [`RecoveryProvenance`] says which
+    /// key opened the encrypted data: only `OwnViewKey` data was written by this wallet; on a `DiffieHellman`
+    /// recovery the memo is a claim by the output's creator and only the value and mask are established.
     fn try_output_key_recovery(
         &self,
         commitment: &CompressedCommitment,
         encrypted_data: &EncryptedData,
         sender_offset_public_key: &CompressedPublicKey,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, KeyManagerError>;
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField, RecoveryProvenance)>, KeyManagerError>;
 
+    /// A memo read here is self-authored only when no custom key is passed.
     fn is_this_output_ours(
         &self,
         commitment: &CompressedCommitment,

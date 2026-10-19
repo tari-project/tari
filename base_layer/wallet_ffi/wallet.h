@@ -1997,6 +1997,8 @@ TariTransactionKernel *completed_transaction_get_transaction_kernel(TariComplete
 /**
  * Gets the source TariWalletAddress of a TariCompletedTransaction
  *
+ * For inbound transactions recovered from the chain, these are taken from the sender's memo and are not authenticated.
+ *
  * ## Arguments
  * `transaction` - The pointer to a TariCompletedTransaction
  * `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
@@ -2218,6 +2220,8 @@ struct ByteVector *completed_transaction_get_payment_id_as_bytes(TariCompletedTr
 
 /**
  * Extract the transaction type from a TariCompletedTransaction
+ *
+ * For inbound transactions recovered from the chain, these are taken from the sender's memo and are not authenticated.
  *
  * ## Arguments
  * `transaction` - The completed transaction

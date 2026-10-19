@@ -52,6 +52,7 @@ diesel::table! {
         user_payment_id -> Nullable<Binary>,
         lock_height -> Nullable<BigInt>,
         rejection_reason -> Nullable<Text>,
+        source_address_claimed -> Bool,
     }
 }
 

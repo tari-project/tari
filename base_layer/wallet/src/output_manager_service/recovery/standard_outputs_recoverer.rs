@@ -27,7 +27,7 @@ use tari_common_types::types::FixedHash;
 use tari_script::{ExecutionStack, Opcode, TariScript, inputs, script};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::TariKeyId,
+    key_manager::{RecoveryProvenance, TariKeyId},
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
@@ -73,7 +73,7 @@ where
             .db
             .get_all_known_one_sided_payment_scripts(&self.master_key_manager)?;
 
-        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash)> = Vec::new();
+        let mut rewound_outputs: Vec<(WalletOutput, bool, FixedHash, RecoveryProvenance)> = Vec::new();
         let push_pub_key_script = script!(PushPubKey(Box::default()))?;
         for output in outputs {
             let known_script_index = known_scripts.iter().position(|s| s.script == output.script);
@@ -84,10 +84,11 @@ where
                 continue;
             }
 
-            let (commitment_mask, committed_value, payment_id) = match self.attempt_output_recovery(&output)? {
-                Some(recovered) => recovered,
-                None => continue,
-            };
+            let (commitment_mask, committed_value, payment_id, provenance) =
+                match self.attempt_output_recovery(&output)? {
+                    Some(recovered) => recovered,
+                    None => continue,
+                };
             let (input_data, script_key) =
                 match self.find_script_key(&output.script, &commitment_mask, known_script_index, &known_scripts)? {
                     Some((input_data, script_key)) => (input_data, script_key),
@@ -104,7 +105,7 @@ where
                 script_key,
             );
 
-            rewound_outputs.push((uo, known_script_index.is_some(), hash));
+            rewound_outputs.push((uo, known_script_index.is_some(), hash, provenance));
         }
 
         let rewind_time = start.elapsed();
@@ -116,7 +117,7 @@ where
         );
 
         let mut recovered_outputs: Vec<RecoveredOutput> = Vec::new();
-        for (output, has_known_script, hash) in &mut rewound_outputs {
+        for (output, has_known_script, hash, provenance) in &mut rewound_outputs {
             let db_output = DbWalletOutput::from_wallet_output(
                 output.clone(),
                 None,
@@ -142,6 +143,7 @@ where
             recovered_outputs.push(RecoveredOutput {
                 output: output.clone(),
                 hash: *hash,
+                provenance: *provenance,
             });
             trace!(
                 target: LOG_TARGET,
@@ -223,7 +225,7 @@ where
     fn attempt_output_recovery(
         &self,
         output: &TransactionOutput,
-    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField)>, OutputManagerError> {
+    ) -> Result<Option<(TariKeyId, MicroMinotari, MemoField, RecoveryProvenance)>, OutputManagerError> {
         // lets first check if the output exists in the db, if it does we dont have to try recovery as we already know
         // about the output.
         match self
@@ -234,7 +236,7 @@ where
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value, payment_id) = match self.master_key_manager.try_output_key_recovery(
+        let (key, committed_value, payment_id, provenance) = match self.master_key_manager.try_output_key_recovery(
             output.commitment(),
             output.encrypted_data(),
             &output.sender_offset_public_key,
@@ -243,7 +245,7 @@ where
             _ => return Ok(None),
         };
 
-        Ok(Some((key, committed_value, payment_id)))
+        Ok(Some((key, committed_value, payment_id, provenance)))
     }
 }
 

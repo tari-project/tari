@@ -54,7 +54,7 @@ use tari_transaction_components::{
     MicroMinotari,
     consensus::{ConsensusManager, NetworkConsensus},
     crypto_factories::CryptoFactories,
-    key_manager::{SecretTransactionKeyManagerInterface, TariKeyId, wallet_types::KeyDigest},
+    key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, TariKeyId, wallet_types::KeyDigest},
     transaction_components::{
         EncryptedData,
         OutputFeatures,
@@ -446,6 +446,8 @@ where
                 payment_id,
                 None,
                 wallet_output.max_lock_height(),
+                // The memo and output come from outside this wallet, so they are treated like a received output.
+                RecoveryProvenance::DiffieHellman,
             )
             .await?;
         // As non-rewindable

@@ -37,6 +37,7 @@ use tari_common_types::{
 };
 use tari_transaction_components::{
     MicroMinotari,
+    key_manager::RecoveryProvenance,
     transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel, TransactionOutput},
 };
 
@@ -833,11 +834,20 @@ where T: TransactionBackend + 'static
         payment_id: MemoField,
         direction: TransactionDirection,
         lock_height: u64,
+        provenance: RecoveryProvenance,
+        source_address_claimed: bool,
     ) -> Result<(), TransactionStorageError> {
         let hash = scanned_output.hash();
-        let fee = payment_id.get_fee().unwrap_or_default();
-        let sent_hashes = payment_id.get_sent_hashes().unwrap_or_default();
-        let transaction = CompletedTransaction::new_with_output_hashes(
+        // The fee and sent hashes in a memo we did not write are not ours to record.
+        let (fee, sent_hashes) = if provenance.memo_is_self_authored() {
+            (
+                payment_id.get_fee().unwrap_or_default(),
+                payment_id.get_sent_hashes().unwrap_or_default(),
+            )
+        } else {
+            (MicroMinotari::zero(), vec![])
+        };
+        let mut transaction = CompletedTransaction::new_with_output_hashes(
             tx_id,
             source_address,
             destination_address,
@@ -861,6 +871,7 @@ where T: TransactionBackend + 'static
             vec![],
             lock_height,
         )?;
+        transaction.source_address_claimed = source_address_claimed;
 
         self.db
             .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(

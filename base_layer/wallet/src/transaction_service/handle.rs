@@ -42,6 +42,7 @@ use tari_script::CompressedCheckSigSchnorrSignature;
 use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
     MicroMinotari,
+    key_manager::RecoveryProvenance,
     multisig::types::{CreateMultisigUtxo, GetMultisigUtxoDataOutput, WithdrawMultisigUtxo},
     offline_signing::{
         ConfirmedPayload,
@@ -238,6 +239,7 @@ pub enum TransactionServiceRequest {
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
         lock_height: u64,
+        provenance: RecoveryProvenance,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroMinotari, MicroMinotari, MemoField),
     RestartBroadcastProtocols,
@@ -498,11 +500,13 @@ impl fmt::Display for TransactionServiceRequest {
                 current_height,
                 mined_timestamp,
                 payment_id,
+                provenance,
                 ..
             } => write!(
                 f,
                 "ImportUtxoWithStatus (amount: {amount}, from: {source_address}, payment_id: {payment_id}, import \
-                 status: {import_status:?}, height: {current_height:?}, mined at: {mined_timestamp:?}"
+                 status: {import_status:?}, height: {current_height:?}, mined at: {mined_timestamp:?}, provenance: \
+                 {provenance:?}"
             ),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => write!(f, "SubmitTransaction ({tx_id})"),
             Self::RestartBroadcastProtocols => write!(f, "RestartBroadcastProtocols"),
@@ -1527,6 +1531,7 @@ impl TransactionServiceHandle {
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
         lock_height: u64,
+        provenance: RecoveryProvenance,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
@@ -1540,6 +1545,7 @@ impl TransactionServiceHandle {
                 payment_id,
                 optional_tx_id,
                 lock_height,
+                provenance,
             })
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ImportUtxoWithStatus({e})"))??

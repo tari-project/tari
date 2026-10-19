@@ -817,6 +817,7 @@ pub struct CompletedTransactionInfo {
     pub burn: bool,
     pub payment_reference_hex: Option<String>,
     pub payment_reference_status: Option<String>, // "Available", "Pending 3/5", "Not Mined", etc.
+    pub source_address_claimed: bool,
 }
 
 impl CompletedTransactionInfo {
@@ -842,6 +843,9 @@ impl CompletedTransactionInfo {
         // Faux transactions for scanned change outputs must correspond to the original transaction
         let burn = if tx.transaction.body.contains_burn() {
             true
+        } else if tx.source_address_claimed || coinbase {
+            // The memo was written by the sender (a coinbase can be paid to us by anyone)
+            false
         } else if let Some(tx_type) = tx.payment_id.get_tx_type() {
             tx_type == TxType::Burn
         } else {
@@ -870,6 +874,7 @@ impl CompletedTransactionInfo {
             burn,
             payment_reference_hex: None,    // Will be populated when transactions are loaded
             payment_reference_status: None, // Will be populated when transactions are loaded
+            source_address_claimed: tx.source_address_claimed,
         })
     }
 }

@@ -77,7 +77,7 @@ use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     helpers::borsh::SerializedSize,
-    key_manager::{SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
+    key_manager::{RecoveryProvenance, SecretTransactionKeyManagerInterface, SerializedKeyString, TariKeyId},
     multisig::{script::get_multi_sig_script_components, session::MultisigSession, types::GetMultisigUtxoDataOutput},
     offline_signing::{
         models::{PaymentRecipient, SignedOneSidedTransactionResult},
@@ -1349,6 +1349,7 @@ where
                 payment_id,
                 optional_tx_id,
                 lock_height,
+                provenance,
             } => {
                 async {
                     let res = self
@@ -1362,6 +1363,7 @@ where
                             payment_id,
                             optional_tx_id,
                             lock_height,
+                            provenance,
                         )
                         .await?;
                     Ok(TransactionServiceResponse::UtxoImported(res))
@@ -4039,24 +4041,38 @@ where
         payment_id: MemoField,
         optional_tx_id: Option<TxId>,
         lock_height: u64,
+        provenance: RecoveryProvenance,
     ) -> Result<TxId, TransactionServiceError> {
-        // Faux transactions for scanned change outputs must correspond to the original transaction
+        // Faux transactions for scanned change outputs must correspond to the original transaction. Only a memo this
+        // wallet wrote may describe the transaction.
+        let self_authored_info = if provenance.memo_is_self_authored() {
+            payment_id.get_transaction_info_details()
+        } else {
+            None
+        };
         let (direction, amount, destination_address) =
-            if let Some((recipient_address, amount, tx_type, _)) = payment_id.get_transaction_info_details() {
+            if let Some((recipient_address, memo_amount, tx_type, _)) = self_authored_info {
+                let direction = match tx_type {
+                    TxType::PaymentToOther |
+                    TxType::Burn |
+                    TxType::CodeTemplateRegistration |
+                    TxType::ValidatorNodeRegistration |
+                    TxType::CoinSplit |
+                    TxType::PaymentToSelf => TransactionDirection::Outbound,
+                    TxType::CoinJoin |
+                    TxType::ClaimAtomicSwap |
+                    TxType::HtlcAtomicSwapRefund |
+                    TxType::ImportedUtxoNoneRewindable |
+                    TxType::Coinbase => TransactionDirection::Inbound,
+                };
+                // What we received is the verified output value; the memo amount describes outbound transactions only
+                let amount = if direction == TransactionDirection::Inbound {
+                    value
+                } else {
+                    memo_amount
+                };
                 (
-                    match tx_type {
-                        TxType::PaymentToOther |
-                        TxType::Burn |
-                        TxType::CodeTemplateRegistration |
-                        TxType::ValidatorNodeRegistration |
-                        TxType::CoinSplit |
-                        TxType::PaymentToSelf => TransactionDirection::Outbound,
-                        TxType::CoinJoin |
-                        TxType::ClaimAtomicSwap |
-                        TxType::HtlcAtomicSwapRefund |
-                        TxType::ImportedUtxoNoneRewindable |
-                        TxType::Coinbase => TransactionDirection::Inbound,
-                    },
+                    direction,
                     amount,
                     if tx_type == TxType::Burn {
                         TariAddress::default()
@@ -4083,6 +4099,10 @@ where
                 &scanned_output.hash(),
             ),
         };
+        // A coinbase is identified by the output itself, whichever scan found it
+        let source_address_claimed = !provenance.memo_is_self_authored() &&
+            source_address != TariAddress::default() &&
+            !scanned_output.features.is_coinbase();
         self.db.add_utxo_import_transaction_with_status(
             tx_id,
             amount,
@@ -4095,6 +4115,8 @@ where
             payment_id,
             direction,
             lock_height,
+            provenance,
+            source_address_claimed,
         )?;
         let transaction_event = match import_status {
             LegacyImportStatus::Broadcast => TransactionEvent::TransactionBroadcast(tx_id),

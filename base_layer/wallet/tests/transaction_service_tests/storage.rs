@@ -323,6 +323,7 @@ pub async fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             received_output_hashes: vec![],
             lock_height: 0,
             rejection_reason: None,
+            source_address_claimed: false,
         });
         db.complete_outbound_transaction(outbound_txs[i].tx_id, completed_txs[i].clone())
             .unwrap();

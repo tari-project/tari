@@ -156,6 +156,7 @@ use minotari_wallet::{
         handle::TransactionServiceHandle,
         storage::models::{self, CompletedTransaction, WalletTransaction},
     },
+    utxo_scanner_service::imported_output_source_address,
 };
 use tari_common_types::{
     payment_reference::generate_payment_reference,
@@ -1825,6 +1826,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .clone()
                             .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                         lock_height: txn.lock_height,
+                        source_address_claimed: txn.source_address_claimed,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1968,6 +1970,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         .clone()
                         .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                     lock_height: txn.lock_height,
+                    source_address_claimed: txn.source_address_claimed,
                 });
             }
 
@@ -2134,6 +2137,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .clone()
                             .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                         lock_height: txn.lock_height,
+                        source_address_claimed: txn.source_address_claimed,
                     };
 
                     let response = GetCompletedTransactionsResponse {
@@ -2281,6 +2285,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .clone()
                     .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: txn.lock_height,
+                source_address_claimed: txn.source_address_claimed,
             });
         }
 
@@ -3211,39 +3216,40 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 },
             };
             // we have the output, now lets try and recover this
-            let (commitment_mask, value, memo) = match self.wallet.key_manager_service.try_output_key_recovery(
-                &output.commitment,
-                &output.encrypted_data,
-                &output.sender_offset_public_key,
-            ) {
-                Ok(Some((commitment_mask, value, memo))) => {
-                    debug_info.push(format!("Successfully recovered keys for UTXO with hash {}", hex));
-                    (commitment_mask, value, memo)
-                },
-                Ok(None) => {
-                    debug_info.push(format!(
-                        "Failed to recover keys for UTXO with hash {}, UTXO does not belong to this wallet",
-                        hex
-                    ));
-                    results.push(ScanFeedback {
-                        output_hash: hex,
-                        is_found,
-                        tx_id: tx_id.unwrap_or_default(),
-                        debug_info,
-                    });
-                    continue;
-                },
-                Err(e) => {
-                    debug_info.push(format!("Error recovering keys for UTXO with hash {}: {}", hex, e));
-                    results.push(ScanFeedback {
-                        output_hash: hex,
-                        is_found,
-                        tx_id: tx_id.unwrap_or_default(),
-                        debug_info,
-                    });
-                    continue;
-                },
-            };
+            let (commitment_mask, value, memo, provenance) =
+                match self.wallet.key_manager_service.try_output_key_recovery(
+                    &output.commitment,
+                    &output.encrypted_data,
+                    &output.sender_offset_public_key,
+                ) {
+                    Ok(Some((commitment_mask, value, memo, provenance))) => {
+                        debug_info.push(format!("Successfully recovered keys for UTXO with hash {}", hex));
+                        (commitment_mask, value, memo, provenance)
+                    },
+                    Ok(None) => {
+                        debug_info.push(format!(
+                            "Failed to recover keys for UTXO with hash {}, UTXO does not belong to this wallet",
+                            hex
+                        ));
+                        results.push(ScanFeedback {
+                            output_hash: hex,
+                            is_found,
+                            tx_id: tx_id.unwrap_or_default(),
+                            debug_info,
+                        });
+                        continue;
+                    },
+                    Err(e) => {
+                        debug_info.push(format!("Error recovering keys for UTXO with hash {}: {}", hex, e));
+                        results.push(ScanFeedback {
+                            output_hash: hex,
+                            is_found,
+                            tx_id: tx_id.unwrap_or_default(),
+                            debug_info,
+                        });
+                        continue;
+                    },
+                };
             // this is our output, lets try and recover the final pieces
             let wallet_output = match WalletOutput::new_imported(
                 value,
@@ -3370,25 +3376,19 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         continue;
                     },
                 }
+            } else if wallet_output.is_coinbase() {
+                // Keeps our own coinbase from being recorded as a claimed source address
+                LegacyImportStatus::CoinbaseUnconfirmed
             } else {
                 LegacyImportStatus::OneSidedUnconfirmed
             };
 
             // output is imported, lets import tx
-            let source_address = if wallet_output.is_coinbase() {
-                // It's a coinbase, so we know we mined it (we do mining with cold wallets).
-                self.wallet
-                    .get_wallet_one_sided_address()
-                    .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
-            } else if let Some(address) = wallet_output.payment_id().get_sender_address() {
-                address
-            } else if wallet_output.payment_id().is_transaction_info() {
-                self.wallet
-                    .get_wallet_one_sided_address()
-                    .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?
-            } else {
-                TariAddress::default()
-            };
+            let own_one_sided_address = self
+                .wallet
+                .get_wallet_one_sided_address()
+                .map_err(|e| Status::internal(format!("Failed to get wallet address: {e}")))?;
+            let source_address = imported_output_source_address(&wallet_output, provenance, &own_one_sided_address);
             if add_to_tms {
                 match tms
                     .import_utxo_with_status(
@@ -3401,6 +3401,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         wallet_output.payment_id().clone(),
                         tx_id.map(TxId::from),
                         wallet_output.max_lock_height(),
+                        provenance,
                     )
                     .await
                 {
@@ -4205,6 +4206,7 @@ fn completed_tx_to_transaction_info(
             .clone()
             .unwrap_or_else(|| txn.cancelled.map(|r| r.to_string()).unwrap_or_default()),
         lock_height: txn.lock_height,
+        source_address_claimed: txn.source_address_claimed,
     }
 }
 
@@ -4241,6 +4243,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_change: vec![],
                 rejected_reason: String::new(),
                 lock_height: 0,
+                source_address_claimed: false,
             }
         },
         PendingOutbound(tx) => {
@@ -4279,6 +4282,7 @@ fn convert_wallet_transaction_into_transaction_info(
                 payment_references_change: vec![],
                 rejected_reason: String::new(),
                 lock_height: 0,
+                source_address_claimed: false,
             }
         },
         Completed(tx) => {
@@ -4342,6 +4346,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     .clone()
                     .unwrap_or_else(|| tx.cancelled.map(|r| r.to_string()).unwrap_or_default()),
                 lock_height: tx.lock_height,
+                source_address_claimed: tx.source_address_claimed,
             }
         },
     }

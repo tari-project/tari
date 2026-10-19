@@ -64,6 +64,7 @@ use minotari_wallet::{
     util::watch::Watch,
     utxo_scanner_service::{
         handle::UtxoScannerHandle,
+        imported_output_source_address,
         initializer::UtxoScannerServiceInitializer,
         service::ScannedBlock,
     },
@@ -76,7 +77,7 @@ use tari_common_sqlite::{
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     seeds::cipher_seed::CipherSeed,
-    tari_address::TariAddress,
+    tari_address::{TariAddress, TariAddressFeatures},
     transaction::{LegacyImportStatus, LegacyTransactionStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
@@ -102,7 +103,13 @@ use tari_transaction_components::{
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
-    key_manager::{ConfidentialOutputHasher, TariKeyId, TransactionKeyManagerInterface},
+    key_manager::{
+        ConfidentialOutputHasher,
+        RecoveryProvenance,
+        TariKeyAndId,
+        TariKeyId,
+        TransactionKeyManagerInterface,
+    },
     offline_signing::{
         ConfirmationMode,
         ConfirmedPayload,
@@ -122,10 +129,16 @@ use tari_transaction_components::{
         OutputFeatures,
         RangeProofType,
         Transaction,
+        TransactionOutput,
+        WalletOutput,
         WalletOutputBuilder,
         covenants::Covenant,
         memo_field::{MemoField, TxType},
-        one_sided::{diffie_hellman_stealth_domain_hasher, public_key_to_output_encryption_key},
+        one_sided::{
+            diffie_hellman_stealth_domain_hasher,
+            public_key_to_output_encryption_key,
+            public_key_to_output_spending_key,
+        },
     },
 };
 use tari_transaction_key_manager::{
@@ -957,6 +970,331 @@ async fn recover_one_sided_transaction() {
     // Should ignore already existing outputs
     let recovered_outputs_2 = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
     assert!(recovered_outputs_2.is_empty());
+}
+
+/// An output of `value` carrying `memo`, encrypted under `recovery_key` (the builder's own view key when `None`).
+fn output_with_memo<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    sender_offset: TariKeyAndId,
+    commitment_mask: TariKeyId,
+    recovery_key: Option<TariKeyId>,
+    script: TariScript,
+    value: MicroMinotari,
+    memo: MemoField,
+) -> WalletOutput {
+    let script_key = key_manager.get_random_key(None, None).unwrap();
+    WalletOutputBuilder::new(value, commitment_mask)
+        .with_script(script)
+        .with_features(OutputFeatures::default())
+        .with_input_data(ExecutionStack::default())
+        .with_script_key(script_key.key_id)
+        .encrypt_data_for_recovery(key_manager, recovery_key.as_ref(), memo)
+        .unwrap()
+        .with_sender_offset_public_key(sender_offset.pub_key)
+        .sign_metadata_signature(key_manager, &sender_offset.key_id)
+        .unwrap()
+        .try_build(key_manager)
+        .unwrap()
+}
+
+/// A stealth one-sided output from `sender` to the wallet with view key `view_key` and spend key `spend_key`.
+fn stealth_output_with_memo<KM: TransactionKeyManagerInterface>(
+    sender: &KM,
+    view_key: &CompressedPublicKey,
+    spend_key: &CompressedPublicKey,
+    value: MicroMinotari,
+    memo: MemoField,
+) -> TransactionOutput {
+    let sender_offset = sender.get_random_key(None, None).unwrap();
+    let shared_secret = sender
+        .get_diffie_hellman_shared_secret(&sender_offset.key_id, view_key)
+        .unwrap();
+    let commitment_mask = sender
+        .create_encrypted_key(public_key_to_output_spending_key(&shared_secret).unwrap(), None)
+        .unwrap();
+    let encryption_key = sender
+        .create_encrypted_key(public_key_to_output_encryption_key(&shared_secret).unwrap(), None)
+        .unwrap();
+    let script = push_pubkey_script(
+        &sender
+            .stealth_address_script_spending_key(&commitment_mask, spend_key)
+            .unwrap(),
+    );
+    output_with_memo(
+        sender,
+        sender_offset,
+        commitment_mask,
+        Some(encryption_key),
+        script,
+        value,
+        memo,
+    )
+    .to_transaction_output()
+    .unwrap()
+}
+
+#[tokio::test]
+async fn imported_one_sided_output_uses_recovered_value_and_direction() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut bob_ts, mut bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
+        bob_node_identity.clone(),
+        consensus_manager,
+        factories,
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+    let bob_view_key = bob_key_manager_handle.get_view_key().pub_key;
+    let bob_spend_key = bob_key_manager_handle.get_spend_key().pub_key;
+    let bob_one_sided_address = TariAddress::new_dual_address(
+        bob_view_key.clone(),
+        bob_spend_key.clone(),
+        network,
+        TariAddressFeatures::create_one_sided_only(),
+        None,
+    )
+    .unwrap();
+
+    let alice_key_manager = create_new_random_key_manager().await.unwrap();
+    let alice_address = TariAddress::new_dual_address_with_default_features(
+        alice_key_manager.get_view_key().pub_key,
+        alice_key_manager.get_spend_key().pub_key,
+        network,
+    )
+    .unwrap();
+    let third_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+
+    let transaction_info_memo = MemoField::new_transaction_info(
+        alice_address,
+        1_000_000_000_000.into(),
+        5_000.into(),
+        false,
+        TxType::PaymentToOther,
+        vec![FixedHash::from([7u8; 32])],
+        b"ref".to_vec(),
+    )
+    .unwrap();
+    let address_and_data_memo = MemoField::new_address_and_data(
+        third_address.clone(),
+        5_000.into(),
+        true,
+        TxType::PaymentToOther,
+        b"ref".to_vec(),
+    )
+    .unwrap();
+
+    let cases = [
+        (transaction_info_memo, TariAddress::default(), false),
+        (address_and_data_memo, third_address, true),
+    ];
+    for (memo, expected_source, expected_claimed) in cases {
+        let output = stealth_output_with_memo(
+            &alice_key_manager,
+            &bob_view_key,
+            &bob_spend_key,
+            MicroMinotari(10_000),
+            memo,
+        );
+        let recovered = bob_oms
+            .scan_outputs_for_one_sided_payments(vec![output.clone()])
+            .await
+            .unwrap();
+        assert_eq!(recovered.len(), 1);
+        let recovered = &recovered[0];
+        assert_eq!(recovered.provenance, RecoveryProvenance::DiffieHellman);
+
+        let source_address =
+            imported_output_source_address(&recovered.output, recovered.provenance, &bob_one_sided_address);
+        let tx_id = bob_ts
+            .import_utxo_with_status(
+                recovered.output.value(),
+                source_address,
+                LegacyImportStatus::OneSidedUnconfirmed,
+                None,
+                None,
+                output.clone(),
+                recovered.output.payment_id().clone(),
+                None,
+                0,
+                recovered.provenance,
+            )
+            .await
+            .unwrap();
+
+        let tx = bob_ts.get_completed_transaction(tx_id).await.unwrap();
+        assert_eq!(tx.direction, TransactionDirection::Inbound);
+        assert_eq!(tx.amount, MicroMinotari(10_000));
+        assert_eq!(tx.fee, MicroMinotari::zero());
+        assert!(tx.sent_output_hashes.is_empty());
+        assert_eq!(tx.received_output_hashes, vec![output.hash()]);
+        assert_eq!(tx.destination_address, bob_one_sided_address);
+        assert_eq!(tx.source_address, expected_source);
+        assert_eq!(tx.source_address_claimed, expected_claimed);
+        assert_eq!(tx.payment_id.payment_id_as_bytes(), b"ref".to_vec());
+    }
+}
+
+#[tokio::test]
+async fn imported_change_output_keeps_transaction_info_details() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let bob_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut bob_ts, _bob_oms, _bob_connectivity, bob_key_manager_handle, _bob_db) = setup_transaction_service(
+        bob_node_identity.clone(),
+        consensus_manager,
+        factories,
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+    let bob_one_sided_address = TariAddress::new_dual_address(
+        bob_key_manager_handle.get_view_key().pub_key,
+        bob_key_manager_handle.get_spend_key().pub_key,
+        network,
+        TariAddressFeatures::create_one_sided_only(),
+        None,
+    )
+    .unwrap();
+    let recipient_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let sent_hash = FixedHash::from([9u8; 32]);
+    let memo = MemoField::new_transaction_info(
+        recipient_address.clone(),
+        3_000.into(),
+        25.into(),
+        false,
+        TxType::PaymentToOther,
+        vec![sent_hash],
+        vec![],
+    )
+    .unwrap();
+
+    let (commitment_mask, script_key) = bob_key_manager_handle
+        .get_next_commitment_mask_and_script_key()
+        .unwrap();
+    let change = output_with_memo(
+        &bob_key_manager_handle,
+        bob_key_manager_handle.get_random_key(None, None).unwrap(),
+        commitment_mask.key_id,
+        None,
+        push_pubkey_script(&script_key.pub_key),
+        MicroMinotari(7_000),
+        memo,
+    );
+    let output = change.to_transaction_output().unwrap();
+    let (_, value, recovered_memo, provenance) = bob_key_manager_handle
+        .try_output_key_recovery(
+            &output.commitment,
+            &output.encrypted_data,
+            &output.sender_offset_public_key,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(provenance, RecoveryProvenance::OwnViewKey);
+
+    let source_address = imported_output_source_address(&change, provenance, &bob_one_sided_address);
+    let tx_id = bob_ts
+        .import_utxo_with_status(
+            value,
+            source_address,
+            LegacyImportStatus::Imported,
+            None,
+            None,
+            output,
+            recovered_memo,
+            None,
+            0,
+            provenance,
+        )
+        .await
+        .unwrap();
+
+    let tx = bob_ts.get_completed_transaction(tx_id).await.unwrap();
+    assert_eq!(tx.direction, TransactionDirection::Outbound);
+    assert_eq!(tx.amount, MicroMinotari(3_000));
+    assert_eq!(tx.destination_address, recipient_address);
+    assert_eq!(tx.fee, MicroMinotari(25));
+    assert_eq!(tx.sent_output_hashes, vec![sent_hash]);
+    assert_eq!(tx.source_address, bob_one_sided_address);
+    assert!(!tx.source_address_claimed);
+
+    // An inbound memo type records the recovered value, not the memo amount
+    let coin_join_memo = MemoField::new_transaction_info(
+        bob_one_sided_address.clone(),
+        4_000.into(),
+        10.into(),
+        false,
+        TxType::CoinJoin,
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    let (commitment_mask, script_key) = bob_key_manager_handle
+        .get_next_commitment_mask_and_script_key()
+        .unwrap();
+    let joined = output_with_memo(
+        &bob_key_manager_handle,
+        bob_key_manager_handle.get_random_key(None, None).unwrap(),
+        commitment_mask.key_id,
+        None,
+        push_pubkey_script(&script_key.pub_key),
+        MicroMinotari(6_000),
+        coin_join_memo,
+    );
+    let output = joined.to_transaction_output().unwrap();
+    let (_, value, recovered_memo, provenance) = bob_key_manager_handle
+        .try_output_key_recovery(
+            &output.commitment,
+            &output.encrypted_data,
+            &output.sender_offset_public_key,
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(provenance, RecoveryProvenance::OwnViewKey);
+    let source_address = imported_output_source_address(&joined, provenance, &bob_one_sided_address);
+    let tx_id = bob_ts
+        .import_utxo_with_status(
+            value,
+            source_address,
+            LegacyImportStatus::Imported,
+            None,
+            None,
+            output,
+            recovered_memo,
+            None,
+            0,
+            provenance,
+        )
+        .await
+        .unwrap();
+
+    let tx = bob_ts.get_completed_transaction(tx_id).await.unwrap();
+    assert_eq!(tx.direction, TransactionDirection::Inbound);
+    assert_eq!(tx.amount, MicroMinotari(6_000));
+    assert!(!tx.source_address_claimed);
 }
 
 #[tokio::test]
@@ -1821,6 +2159,7 @@ async fn broadcast_all_completed_transactions_on_startup() {
         sent_output_hashes: vec![],
         lock_height: 0,
         rejection_reason: None,
+        source_address_claimed: false,
     };
 
     let completed_tx2 = CompletedTransaction {
@@ -1958,6 +2297,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             MemoField::new_open_from_string("blah", TxType::PaymentToOther).unwrap(),
             None,
             0,
+            RecoveryProvenance::DiffieHellman,
         )
         .await
         .unwrap();
@@ -1973,6 +2313,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             MemoField::new_open_from_string("one-sided 1", TxType::PaymentToOther).unwrap(),
             None,
             0,
+            RecoveryProvenance::DiffieHellman,
         )
         .await
         .unwrap();
@@ -1988,6 +2329,7 @@ async fn test_update_faux_tx_on_oms_validation() {
             MemoField::new_open_from_string("one-sided 2", TxType::PaymentToOther).unwrap(),
             None,
             0,
+            RecoveryProvenance::DiffieHellman,
         )
         .await
         .unwrap();
@@ -2147,6 +2489,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             MemoField::new_open_from_string("coinbase_confirmed", TxType::PaymentToOther).unwrap(),
             None,
             0,
+            RecoveryProvenance::DiffieHellman,
         )
         .await
         .unwrap();
@@ -2162,6 +2505,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             MemoField::new_open_from_string("one-coinbase_unconfirmed 1", TxType::PaymentToOther).unwrap(),
             None,
             0,
+            RecoveryProvenance::DiffieHellman,
         )
         .await
         .unwrap();
@@ -2177,6 +2521,7 @@ async fn test_update_coinbase_tx_on_oms_validation() {
             MemoField::new_open_from_string("Coinbase_not_mined", TxType::PaymentToOther).unwrap(),
             None,
             0,
+            RecoveryProvenance::DiffieHellman,
         )
         .await
         .unwrap();
@@ -2339,6 +2684,7 @@ fn create_mock_completed_transaction(
         sent_output_hashes: vec![],
         lock_height: 0,
         rejection_reason: None,
+        source_address_claimed: false,
     }
 }
 

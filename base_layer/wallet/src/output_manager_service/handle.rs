@@ -32,6 +32,7 @@ use tari_service_framework::reply_channel::SenderService;
 use tari_transaction_components::{
     MicroMinotari,
     TransactionBuilder,
+    key_manager::RecoveryProvenance,
     transaction_builder::PendingOutput,
     transaction_components::{
         MemoField,
@@ -429,6 +430,7 @@ pub struct PublicRewindKeys {
 pub struct RecoveredOutput {
     pub output: WalletOutput,
     pub hash: FixedHash,
+    pub provenance: RecoveryProvenance,
 }
 
 #[derive(Clone)]
