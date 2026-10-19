@@ -63,7 +63,7 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing::{WriteStallSocket, Yamux},
-    net_address::{DialAddressPolicy, MultiaddrRange, PeerAddressSource},
+    net_address::{DialAddressPolicy, MultiaddrRange, MultiaddressesWithStats, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, Peer, PeerManager},
     protocol::{IdentityProtocolError, ProtocolId},
@@ -72,6 +72,33 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::connection_manager::dialer";
+
+/// Records the outcome of the socket upgrade procedure on the dialled address.
+///
+/// Only a fully established connection marks the address seen and records its timings. A cancelled dial (e.g. the
+/// peer's own inbound connection won the tie-break) says nothing about the address and records nothing, the same as a
+/// cancel during the dial itself. Any other failure records a failed connection attempt.
+fn record_upgrade_outcome<T>(
+    addresses: &mut MultiaddressesWithStats,
+    addr: &Multiaddr,
+    timings: DialTimings,
+    result: &Result<T, ConnectionManagerError>,
+) {
+    match result {
+        Ok(_) => {
+            addresses.mark_last_seen_now(addr);
+            addresses.update_address_stats(addr, |a| {
+                // Initial dial time can be much slower due to tor discovery.
+                a.update_initial_dial_time(timings.initial_dial_time);
+                a.update_latency(timings.noise_upgrade_time);
+            });
+        },
+        Err(ConnectionManagerError::DialCancelled) => {},
+        Err(err) => {
+            addresses.mark_failed_connection_attempt(addr, err.to_string());
+        },
+    }
+}
 
 /// Maximum time the dialer will wait for space on the ConnectionManager's event channel before it
 /// gives up and drops the event.
@@ -450,24 +477,7 @@ where
                     .await;
 
                     let mut dial_state = dial_state;
-                    match &result {
-                        // Only a fully established connection marks the address seen and records its timings
-                        Ok(_) => {
-                            let addresses = &mut dial_state.peer_mut().addresses;
-                            addresses.mark_last_seen_now(&addr);
-                            addresses.update_address_stats(&addr, |a| {
-                                // Initial dial time can be much slower due to tor discovery.
-                                a.update_initial_dial_time(timings.initial_dial_time);
-                                a.update_latency(timings.noise_upgrade_time);
-                            });
-                        },
-                        Err(err) => {
-                            dial_state
-                                .peer_mut()
-                                .addresses
-                                .mark_failed_connection_attempt(&addr, err.to_string());
-                        },
-                    }
+                    record_upgrade_outcome(&mut dial_state.peer_mut().addresses, &addr, timings, &result);
                     (dial_state, result)
                 },
                 Err(err) => (dial_state, Err(err)),
@@ -860,5 +870,80 @@ where
                 .position(|supported| supported == &protocol)
                 .unwrap_or(usize::MAX)
         });
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn timings() -> DialTimings {
+        DialTimings {
+            initial_dial_time: Duration::from_millis(10),
+            noise_upgrade_time: Duration::from_millis(5),
+        }
+    }
+
+    fn single_address() -> (Multiaddr, MultiaddressesWithStats) {
+        let addr = "/ip4/23.23.23.23/tcp/18189".parse::<Multiaddr>().unwrap();
+        let addresses =
+            MultiaddressesWithStats::from_addresses_with_source(vec![addr.clone()], &PeerAddressSource::Config);
+        (addr, addresses)
+    }
+
+    fn stats(addresses: &MultiaddressesWithStats, addr: &Multiaddr) -> (bool, u32, bool, u32, u32) {
+        let a = addresses.iter().find(|a| a.address() == addr).unwrap();
+        (
+            a.last_seen().is_some(),
+            a.connection_attempts(),
+            a.last_failed_reason().is_some(),
+            a.initial_dial_time_sample_count(),
+            a.latency_sample_count(),
+        )
+    }
+
+    #[test]
+    fn established_connection_marks_address_seen_with_timings() {
+        let (addr, mut addresses) = single_address();
+        record_upgrade_outcome(&mut addresses, &addr, timings(), &Ok::<_, ConnectionManagerError>(()));
+        let (seen, attempts, failed, dial_samples, latency_samples) = stats(&addresses, &addr);
+        assert!(seen);
+        assert_eq!(attempts, 0);
+        assert!(!failed);
+        assert_eq!(dial_samples, 1);
+        assert_eq!(latency_samples, 1);
+    }
+
+    #[test]
+    fn cancelled_upgrade_leaves_address_untouched() {
+        let (addr, mut addresses) = single_address();
+        let before = stats(&addresses, &addr);
+        record_upgrade_outcome(
+            &mut addresses,
+            &addr,
+            timings(),
+            &Err::<(), _>(ConnectionManagerError::DialCancelled),
+        );
+        assert_eq!(stats(&addresses, &addr), before);
+        assert_eq!(before, (false, 0, false, 0, 0));
+    }
+
+    #[test]
+    fn failed_upgrade_records_failed_attempt_only() {
+        let (addr, mut addresses) = single_address();
+        record_upgrade_outcome(
+            &mut addresses,
+            &addr,
+            timings(),
+            &Err::<(), _>(ConnectionManagerError::IdentityProtocolError(
+                IdentityProtocolError::Timeout,
+            )),
+        );
+        let (seen, attempts, failed, dial_samples, latency_samples) = stats(&addresses, &addr);
+        assert!(!seen);
+        assert_eq!(attempts, 1);
+        assert!(failed);
+        assert_eq!(dial_samples, 0);
+        assert_eq!(latency_samples, 0);
     }
 }
