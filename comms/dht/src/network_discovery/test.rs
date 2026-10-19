@@ -237,7 +237,7 @@ mod rebootstrap {
         peer_manager::{NodeId, PeerFlags},
         protocol::{
             ProtocolId,
-            rpc::{RpcError, mock::MockRpcServer},
+            rpc::{Request, RpcError, RpcStatus, Streaming, mock::MockRpcServer},
         },
         test_utils::{
             mocks::{ConnectivityManagerMockState, create_dummy_peer_connection_with_direction},
@@ -271,8 +271,8 @@ mod rebootstrap {
             seed_strap::SeedStrap,
             state_machine::{DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
         },
-        proto::rpc::PeerInfo,
-        rpc::{DhtRpcServiceImpl, DhtService, UnvalidatedPeerInfo},
+        proto::rpc::{GetPeersRequest, GetPeersResponse, PeerInfo},
+        rpc::{DhtRpcService, DhtRpcServiceImpl, DhtService, UnvalidatedPeerInfo},
         test_utils::create_good_standing_peer,
     };
 
@@ -716,6 +716,79 @@ mod rebootstrap {
         }));
         let stored = store_peers(&context, &source, peers).await.unwrap();
         assert_eq!(stored.len(), 10 - (MAX_HOSTILE_RELAYED_CLAIMS + 1));
+    }
+
+    /// Serves a fixed list of peer records over get_peers, whatever was asked for
+    struct FixedPeersService {
+        peers: Vec<PeerInfo>,
+    }
+
+    #[tari_comms::async_trait]
+    impl DhtRpcService for FixedPeersService {
+        async fn get_peers(&self, _: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
+            let (tx, rx) = tokio::sync::mpsc::channel(self.peers.len());
+            for peer in &self.peers {
+                tx.send(Ok(GetPeersResponse {
+                    peer: Some(peer.clone()),
+                }))
+                .await
+                .unwrap();
+            }
+            Ok(Streaming::new(rx))
+        }
+    }
+
+    /// A sync peer whose get_peers stream carries more than `MAX_HOSTILE_RELAYED_CLAIMS` records that do not convert
+    /// (an address protocol from a newer version) is not banned: Discovering skips those records and stores the rest.
+    #[tokio::test]
+    async fn discovering_skips_records_that_do_not_convert_without_a_ban() {
+        let (context, mock, _events) = context(None);
+        let valid = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let mut peers = valid
+            .iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect::<Vec<PeerInfo>>();
+        for identity in build_many_node_identities(MAX_HOSTILE_RELAYED_CLAIMS + 2, PeerFeatures::COMMUNICATION_NODE) {
+            let mut peer: PeerInfo = UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into();
+            peer.claims[0].addresses.push(vec![0xff, 0xff, 0xff]);
+            peers.push(peer);
+        }
+        let num_records = u32::try_from(peers.len()).unwrap();
+
+        let sync_identity = make_node_identity();
+        let sync_peer = sync_identity.to_peer();
+        let mut server = MockRpcServer::new(DhtService::new(FixedPeersService { peers }), sync_identity);
+        server.serve();
+        let conn = server
+            .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        mock.add_active_connection(conn).await;
+        context
+            .peer_manager
+            .add_or_update_peer(sync_peer.clone())
+            .await
+            .unwrap();
+
+        let mut discovering = Discovering::new(
+            DiscoveryParams {
+                peers: vec![sync_peer.node_id.clone()],
+                num_peers_to_request: num_records,
+            },
+            context.clone(),
+        );
+        let event = discovering.next_event().await;
+        let StateEvent::DiscoveryComplete(stats) = event else {
+            panic!("unexpected event {event}");
+        };
+
+        // The sync succeeded, so request_peers returned Ok
+        assert_eq!(stats.num_succeeded, 1);
+        for identity in &valid {
+            assert!(context.peer_manager.exists(identity.public_key()).await.unwrap());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+        assert!(!context.peer_manager.is_peer_banned(&sync_peer.node_id).await.unwrap());
     }
 
     /// Records after the first `MAX_STORED_PER_SOURCE` valid peers are still checked: hostile ones count towards a
