@@ -35,6 +35,7 @@ use tokio_stream::Stream;
 
 use super::{Transport, dns::DnsResolver};
 use crate::{
+    net_address::DialAddressPolicy,
     transports::dns::{DnsResolverRef, SystemDnsResolver},
     types::TransportProtocol,
     utils::{multiaddr::socketaddr_to_multiaddr, network::supports_ipv6},
@@ -94,6 +95,20 @@ impl TcpTransport {
         self
     }
 
+    async fn connect(&self, addr: &Multiaddr, policy: Option<&DialAddressPolicy>) -> io::Result<TcpStream> {
+        let socket_addr = self
+            .dns_resolver
+            .resolve(addr.clone())
+            .await
+            .map_err(|err| io::Error::other(format!("Address resolution failed: {err}")))?;
+        if let Some(policy) = policy {
+            policy.check_resolved(addr, &socket_addr)?;
+        }
+
+        let socket = TcpOutbound::new(TcpStream::connect(socket_addr).boxed(), self.clone()).await?;
+        Ok(socket)
+    }
+
     /// Apply socket options to `TcpStream`.
     fn configure(&self, socket: &TcpStream) -> io::Result<()> {
         // https://github.com/rust-lang/rust/issues/69774
@@ -137,14 +152,15 @@ impl Transport for TcpTransport {
     }
 
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error> {
-        let socket_addr = self
-            .dns_resolver
-            .resolve(addr.clone())
-            .await
-            .map_err(|err| io::Error::other(format!("Address resolution failed: {err}")))?;
+        self.connect(addr, None).await
+    }
 
-        let socket = TcpOutbound::new(TcpStream::connect(socket_addr).boxed(), self.clone()).await?;
-        Ok(socket)
+    async fn dial_with_policy(
+        &self,
+        addr: &Multiaddr,
+        policy: &DialAddressPolicy,
+    ) -> Result<Self::Output, Self::Error> {
+        self.connect(addr, Some(policy)).await
     }
 
     fn supported_protocols(&self) -> Vec<TransportProtocol> {
@@ -202,7 +218,13 @@ impl Stream for TcpInbound {
 
 #[cfg(test)]
 mod test {
+    use std::net::SocketAddr;
+
+    use futures::future::BoxFuture;
+    use multiaddr::Protocol;
+
     use super::*;
+    use crate::{net_address::IP4_TCP_TEST_ADDR_RANGE, transports::dns::DnsResolverError};
 
     #[test]
     fn nodelay_is_on_by_default() {
@@ -220,6 +242,49 @@ mod test {
         let (accepted, _) = futures::StreamExt::next(&mut listener).await.unwrap().unwrap();
         assert!(dialed.nodelay().unwrap());
         assert!(accepted.nodelay().unwrap());
+    }
+
+    struct StubResolver(SocketAddr);
+
+    impl DnsResolver for StubResolver {
+        fn resolve(&self, _addr: Multiaddr) -> BoxFuture<'static, Result<SocketAddr, DnsResolverError>> {
+            Box::pin(futures::future::ready(Ok(self.0)))
+        }
+    }
+
+    #[tokio::test]
+    async fn dns_name_resolving_to_loopback_is_not_dialled() {
+        let (mut listener, listen_addr) = TcpTransport::new()
+            .listen(&"/ip4/127.0.0.1/tcp/0".parse().unwrap())
+            .await
+            .unwrap();
+        let Some(Protocol::Tcp(port)) = listen_addr.iter().last() else {
+            panic!("listener address has no port");
+        };
+        let mut tcp = TcpTransport::new();
+        tcp.set_dns_resolver(StubResolver(([127, 0, 0, 1], port).into()));
+        let addr = format!("/dns4/rebind.example.com/tcp/{port}").parse().unwrap();
+
+        let deny_internal = DialAddressPolicy {
+            allow_internal: false,
+            excluded: vec![],
+        };
+        let err = tcp.dial_with_policy(&addr, &deny_internal).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+
+        let exclude_loopback = DialAddressPolicy {
+            allow_internal: true,
+            excluded: vec![IP4_TCP_TEST_ADDR_RANGE.parse().unwrap()],
+        };
+        let err = tcp.dial_with_policy(&addr, &exclude_loopback).await.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+
+        let allow_internal = DialAddressPolicy {
+            allow_internal: true,
+            excluded: vec![],
+        };
+        tcp.dial_with_policy(&addr, &allow_internal).await.unwrap();
+        futures::StreamExt::next(&mut listener).await.unwrap().unwrap();
     }
 
     #[test]

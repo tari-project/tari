@@ -28,5 +28,8 @@ pub use multiaddr_with_stats::{MultiaddrWithStats, PeerAddressSource, address_ne
 mod mutliaddresses_with_stats;
 pub use mutliaddresses_with_stats::MultiaddressesWithStats;
 
+mod dial_address_policy;
+pub use dial_address_policy::DialAddressPolicy;
+
 mod multiaddr_range;
 pub use multiaddr_range::{IP4_TCP_TEST_ADDR_RANGE, MultiaddrRange, MultiaddrRangeList};

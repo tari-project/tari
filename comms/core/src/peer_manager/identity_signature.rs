@@ -269,5 +269,22 @@ mod test {
                 "Tampered signature must not verify"
             );
         }
+
+        #[test]
+        fn identity_point_claim_fails_signature_verification() {
+            // The zero secret key gives the identity point, and a signature for it needs no secret.
+            // Schnorr verification in tari_crypto rejects the identity public key.
+            let secret = CommsSecretKey::default();
+            let public_key = CommsPublicKey::from_secret_key(&secret);
+            assert_eq!(public_key.as_bytes(), &[0u8; 32]);
+            let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
+            let identity =
+                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], Utc::now());
+
+            assert!(matches!(
+                identity.verify(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),
+                Err(PeerManagerError::InvalidIdentitySignature)
+            ));
+        }
     }
 }

@@ -23,6 +23,7 @@
 use std::{
     fmt::Display,
     net::{SocketAddr, ToSocketAddrs},
+    time::Duration,
 };
 
 use futures::{FutureExt, future, future::BoxFuture};
@@ -35,6 +36,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dns::system_resolver";
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Resolves DNS addresses using the system settings
 pub struct SystemDnsResolver;
@@ -57,10 +59,11 @@ impl DnsResolver for SystemDnsResolver {
     }
 }
 
-/// Performs an non-blocking DNS lookup of the given address
+/// Performs an non-blocking DNS lookup of the given address. The lookup gives up after [DNS_LOOKUP_TIMEOUT]; the
+/// blocking thread cannot be cancelled and finishes in the background.
 async fn dns_lookup<T>(addr: T) -> Result<SocketAddr, DnsResolverError>
 where T: ToSocketAddrs + Display + Send + Sync + 'static {
-    tokio::task::spawn_blocking(move || {
+    let lookup = tokio::task::spawn_blocking(move || {
         debug!(target: LOG_TARGET, "Resolving address `{addr}` using system resolver");
         addr.to_socket_addrs()
             .map_err(|err| DnsResolverError::NameResolutionFailed {
@@ -69,8 +72,10 @@ where T: ToSocketAddrs + Display + Send + Sync + 'static {
             })?
             .next()
             .ok_or(DnsResolverError::DnsAddressNotFound)
-    })
-    .await?
+    });
+    tokio::time::timeout(DNS_LOOKUP_TIMEOUT, lookup)
+        .await
+        .map_err(|_| DnsResolverError::Timeout(DNS_LOOKUP_TIMEOUT))??
 }
 
 #[inline]

@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde_derive::{Deserialize, Serialize};
+use log::warn;
+use serde::{Deserialize, Deserializer, Serialize};
+
+const LOG_TARGET: &str = "comms::peer_validator::config";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,9 +38,9 @@ pub struct PeerValidatorConfig {
     /// Set to true to allow peers to send loopback, local-link and other addresses normally not considered valid for
     /// peer-to-peer comms. Default: false
     pub allow_test_addresses: bool,
-    /// The minimum version of peers this node will accept, if the peer agent string does not match X/{version} it will
-    /// also be rejected if this is set
-    pub min_peer_version: String,
+    /// Removed setting. Accepted and ignored with a warning, so that config files that still set it load.
+    #[serde(default, skip_serializing, deserialize_with = "warn_min_peer_version_ignored")]
+    pub min_peer_version: (),
 }
 
 impl Default for PeerValidatorConfig {
@@ -52,7 +55,36 @@ impl Default for PeerValidatorConfig {
             // This must always be true for internal crate tests
             #[cfg(test)]
             allow_test_addresses: true,
-            min_peer_version: "".to_string(),
+            min_peer_version: (),
         }
+    }
+}
+
+fn warn_min_peer_version_ignored<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
+    String::deserialize(deserializer)?;
+    warn!(
+        target: LOG_TARGET,
+        "The `peer_validator_config.min_peer_version` setting is no longer used and is ignored. Remove it from the \
+         config file."
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn removed_min_peer_version_setting_still_parses() {
+        let mut value = toml::Value::try_from(PeerValidatorConfig::default()).unwrap();
+        let table = value.as_table_mut().unwrap();
+        assert!(!table.contains_key("min_peer_version"));
+        table.insert("min_peer_version".to_string(), "1.0.0".into());
+
+        let config = value.try_into::<PeerValidatorConfig>().unwrap();
+        assert_eq!(
+            config.max_user_agent_byte_length,
+            PeerValidatorConfig::default().max_user_agent_byte_length
+        );
     }
 }

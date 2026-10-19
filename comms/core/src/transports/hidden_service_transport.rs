@@ -27,6 +27,7 @@ use multiaddr::{Multiaddr, Protocol, multiaddr};
 use tokio::sync::RwLock;
 
 use crate::{
+    net_address::DialAddressPolicy,
     tor::{HiddenServiceController, TorIdentity},
     transports::{SocksTransport, Transport, tcp::TcpInbound},
     types::TransportProtocol,
@@ -135,6 +136,18 @@ impl<F: Fn(TorIdentity) + Send + Sync> Transport for HiddenServiceTransport<F> {
             io::Error::other("BUG: Hidden service transport not initialized before dialling".to_string())
         })?;
         transport.dial(addr).await
+    }
+
+    async fn dial_with_policy(
+        &self,
+        addr: &Multiaddr,
+        policy: &DialAddressPolicy,
+    ) -> Result<Self::Output, Self::Error> {
+        let inner = self.inner.read().await;
+        let transport = inner.socks_transport.as_ref().ok_or_else(|| {
+            io::Error::other("BUG: Hidden service transport not initialized before dialling".to_string())
+        })?;
+        transport.dial_with_policy(addr, policy).await
     }
 
     fn supported_protocols(&self) -> Vec<TransportProtocol> {

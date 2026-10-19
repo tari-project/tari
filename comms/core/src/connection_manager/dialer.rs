@@ -63,10 +63,10 @@ use crate::{
     },
     multiaddr::Multiaddr,
     multiplexing::{WriteStallSocket, Yamux},
-    net_address::{MultiaddrRange, PeerAddressSource},
+    net_address::{DialAddressPolicy, MultiaddrRange, PeerAddressSource},
     noise::{NoiseConfig, NoiseSocket},
     peer_manager::{NodeId, NodeIdentity, PEER_LOOKUP_TIMEOUT, Peer, PeerManager},
-    protocol::ProtocolId,
+    protocol::{IdentityProtocolError, ProtocolId},
     transports::Transport,
     types::{CommsPublicKey, TransportProtocol},
 };
@@ -426,19 +426,8 @@ where
 
             match dial_result {
                 Ok((socket, addr)) => {
-                    let authenticated_public_key =
-                        match Self::check_authenticated_public_key(&socket, &dial_state.peer().public_key) {
-                            Ok(pk) => pk,
-                            Err(err) => {
-                                let mut dial_state = dial_state;
-                                dial_state
-                                    .peer_mut()
-                                    .addresses
-                                    .mark_failed_connection_attempt(&addr, err.to_string());
-                                return (dial_state, Err(err));
-                            },
-                        };
-
+                    // dial_peer only returns a socket authenticated with the peer's public key
+                    let authenticated_public_key = dial_state.peer().public_key.clone();
                     let result = Self::perform_socket_upgrade_procedure(
                         &peer_manager,
                         &node_identity,
@@ -514,8 +503,13 @@ where
         )
         .await;
 
-        let peer_identity =
-            common::ban_on_offence(peer_manager, &authenticated_public_key, peer_identity_result).await?;
+        let peer_identity = match peer_identity_result {
+            // We gave up waiting on a peer we dialled, which may be our own slow link: not the peer's offence
+            Err(err @ ConnectionManagerError::IdentityProtocolError(IdentityProtocolError::Timeout)) => {
+                return Err(err);
+            },
+            result => common::ban_on_offence(peer_manager, &authenticated_public_key, result).await?,
+        };
 
         if cancel_signal.is_triggered() {
             return Err(ConnectionManagerError::DialCancelled);
@@ -606,6 +600,7 @@ where
                         &current_transport,
                         config.network_info.network_wire_byte,
                         config.excluded_dial_addresses.clone(),
+                        config.peer_validation_config.allow_test_addresses,
                     )
                     .await
                     {
@@ -616,10 +611,6 @@ where
                                 state.peer().node_id.short_str(), state.num_attempts()
                             );
                             break (state, Ok((socket, addr)));
-                        },
-                        // Connection went stale, propagate error to enable starting a fresh connection
-                        (state, Err(ConnectionManagerError::NoiseHandshakeError(e))) => {
-                            break (state, Err(ConnectionManagerError::NoiseHandshakeError(e)))
                         },
                         // Inflight dial was cancelled
                         (state, Err(ConnectionManagerError::DialCancelled)) => {
@@ -668,6 +659,7 @@ where
         transport: &TTransport,
         network_byte: u8,
         excluded_dial_addresses: Vec<MultiaddrRange>,
+        allow_test_addresses: bool,
     ) -> (
         DialState,
         Result<(NoiseSocket<WriteStallSocket<TTransport::Output>>, Multiaddr), ConnectionManagerError>,
@@ -719,11 +711,26 @@ where
 
             let moved_address = address.clone();
             let node_id = dial_state.peer().node_id.clone();
+            let expected_public_key = dial_state.peer().public_key.clone();
+            // Addresses from config may resolve to internal addresses (e.g. a node on the local network)
+            let is_config_address = dial_state
+                .peer()
+                .addresses
+                .addresses()
+                .iter()
+                .any(|a| a.address() == &address && a.source().is_config());
+            let policy = DialAddressPolicy {
+                allow_internal: allow_test_addresses || is_config_address,
+                excluded: excluded_dial_addresses.clone(),
+            };
             let dial_fut = async move {
                 let mut timer = Instant::now();
 
-                let socket_res =
-                    tokio::time::timeout(noise_config.dial_timeout(), transport.dial(&moved_address)).await;
+                let socket_res = tokio::time::timeout(
+                    noise_config.dial_timeout(),
+                    transport.dial_with_policy(&moved_address, &policy),
+                )
+                .await;
                 let mut socket = match socket_res {
                     Ok(Ok(value)) => value,
                     Ok(Err(err)) => {
@@ -770,6 +777,7 @@ where
                             "Dial - failed to upgrade noise: {node_id} on address: {moved_address} ({err})"
                         );
                     })?;
+                Self::check_authenticated_public_key(&noise_socket, &expected_public_key)?;
 
                 let noise_upgrade_time = timer.elapsed();
                 trace!(
@@ -809,10 +817,6 @@ where
                         .addresses
                         .mark_failed_connection_attempt(&address, err.to_string());
 
-                    // Handshake errors are not retryable
-                    if let ConnectionManagerError::NoiseHandshakeError(msg) = err {
-                        return (dial_state, Err(ConnectionManagerError::NoiseHandshakeError(msg)));
-                    }
                     // Try the next address
                     continue;
                 },

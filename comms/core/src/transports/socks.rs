@@ -31,6 +31,7 @@ use tokio::net::TcpStream;
 
 use crate::{
     multiaddr::Multiaddr,
+    net_address::DialAddressPolicy,
     socks::{self, Socks5Client},
     transports::{Transport, dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport},
     types::TransportProtocol,
@@ -123,6 +124,21 @@ impl Transport for SocksTransport {
             return self.tcp_transport.dial(addr).await;
         }
 
+        let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
+        Ok(socket)
+    }
+
+    async fn dial_with_policy(
+        &self,
+        addr: &Multiaddr,
+        policy: &DialAddressPolicy,
+    ) -> Result<Self::Output, Self::Error> {
+        if self.socks_config.proxy_bypass_predicate.check(addr) {
+            debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{addr}'. Using TCP.");
+            return self.tcp_transport.dial_with_policy(addr, policy).await;
+        }
+
+        // The proxy resolves DNS names, so the resolved address is not visible here
         let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
         Ok(socket)
     }
