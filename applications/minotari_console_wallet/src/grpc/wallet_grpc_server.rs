@@ -152,7 +152,7 @@ use minotari_wallet::{
         handle::OutputManagerHandle,
     },
     transaction_service::{
-        error::TransactionServiceError,
+        error::{TransactionServiceError, TransactionStorageError},
         handle::TransactionServiceHandle,
         storage::models::{self, CompletedTransaction, WalletTransaction},
     },
@@ -1753,7 +1753,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transaction_service
             .get_completed_transactions(payment_id, block_hash, block_height, 0)
             .await
-            .map_err(|err| Status::not_found(format!("No completed transactions found: {err:?}")))?;
+            .map_err(|err| lookup_error("GetCompletedTransactions", err))?;
         debug!(
             target: LOG_TARGET,
             "GetCompletedTransactions: Found {} completed transactions",
@@ -1895,11 +1895,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let chunk_transactions = transaction_service
                 .get_completed_transactions_paginated(current_offset, current_limit, status_filter)
                 .await
-                .map_err(|err| {
-                    Status::not_found(format!(
-                        "GetAllCompletedTransactions: Error found for get_completed_transactions_paginated: {err:?}"
-                    ))
-                })?;
+                .map_err(|err| lookup_error("GetAllCompletedTransactions", err))?;
 
             // Break if we get no more results
             if chunk_transactions.is_empty() {
@@ -2210,9 +2206,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_completed_transactions(None, None, Some(block_height), 0)
             .await
             .map_err(|err| {
-                Status::not_found(format!(
-                    "GetBlockHeightTransactions: Error found at block height {block_height}: {err:?}"
-                ))
+                lookup_error(
+                    &format!("GetBlockHeightTransactions at block height {block_height}"),
+                    err,
+                )
             })?;
         debug!(
             target: LOG_TARGET,
@@ -2705,19 +2702,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut tms = self.get_transaction_service();
 
         // Look up current payref
-        let current_tx = tms.get_transaction_by_payref(payment_ref).await.ok();
+        let current_tx = found_or_none(
+            "get_payment_by_reference: current PayRef",
+            tms.get_transaction_by_payref(payment_ref).await,
+        )?;
 
         // Look up historical payrefs (from reorgs)
         let historical_txs = tms
             .get_transaction_by_historical_payref(payment_ref)
             .await
-            .unwrap_or_else(|e| {
-                debug!(
-                    target: LOG_TARGET,
-                    "get_payment_by_reference: Error looking up historical PayRef: {e}"
-                );
-                vec![]
-            });
+            .map_err(|e| lookup_error("get_payment_by_reference: historical PayRef", e))?;
 
         if current_tx.is_none() && historical_txs.is_empty() {
             return Err(Status::not_found(format!("PayRef {} not found", payment_ref.to_hex())));
@@ -4446,6 +4440,22 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
 
 /// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
 /// once stored (see [`MemoField::from_bytes_checked`]).
+/// A failure behind a lookup is an internal error, never "not found", so that a client does not take it for an empty
+/// result
+fn lookup_error(context: &str, err: TransactionServiceError) -> Status {
+    warn!(target: LOG_TARGET, "{context}: {err:?}");
+    Status::internal(format!("{context}: {err:?}"))
+}
+
+/// A lookup that reports a missing value as `ValueNotFound` gives `None`; any other failure is a [`lookup_error`]
+fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -> Result<Option<T>, Status> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(_))) => Ok(None),
+        Err(err) => Err(lookup_error(context, err)),
+    }
+}
+
 fn memo_from_raw_bytes(bytes: &[u8]) -> Result<MemoField, Status> {
     MemoField::from_bytes_checked(bytes).map_err(|e| Status::invalid_argument(format!("Invalid payment id: {e}")))
 }
@@ -4484,7 +4494,30 @@ mod tests {
     use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
     use tari_utilities::ByteArray;
 
-    use super::{memo_from_raw_bytes, parse_excluded_commitments};
+    use super::{found_or_none, memo_from_raw_bytes, parse_excluded_commitments};
+
+    #[test]
+    fn lookup_failures_are_internal_errors_and_only_value_not_found_is_none() {
+        use minotari_wallet::transaction_service::{
+            error::{TransactionServiceError, TransactionStorageError},
+            storage::database::DbKey,
+        };
+
+        assert_eq!(found_or_none("lookup", Ok(5u8)).unwrap(), Some(5));
+        let not_found = TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
+            DbKey::CompletedTransactions(1),
+        ));
+        assert_eq!(found_or_none::<u8>("lookup", Err(not_found)).unwrap(), None);
+
+        for err in [
+            TransactionStorageError::UndecodableRows { skipped: 2 },
+            TransactionStorageError::AeadError("wrong key".to_string()),
+        ] {
+            let status =
+                found_or_none::<u8>("lookup", Err(TransactionServiceError::TransactionStorageError(err))).unwrap_err();
+            assert_eq!(status.code(), tonic::Code::Internal);
+        }
+    }
 
     #[test]
     fn memo_from_raw_bytes_rejects_oversized_payment_ids() {
