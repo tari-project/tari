@@ -452,10 +452,10 @@ mod test {
 
         // File with strict permissions (0600) succeeds to pass permission gate
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
-        // It will fail at JSON parsing because `{}` is not a valid TorIdentity, but NOT at permissions
-        assert!(!matches!(
+        // `{}` is not a valid TorIdentity, so loading must reach JSON parsing.
+        assert!(matches!(
             load_from_json::<_, TorIdentity>(&path),
-            Err(IdentityError::InvalidPermissions)
+            Err(IdentityError::Malformed { .. })
         ));
     }
 }
