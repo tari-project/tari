@@ -385,8 +385,8 @@ impl From<json5::Error> for IdentityError {
     fn from(err: json5::Error) -> Self {
         if let Some(pos) = err.position() {
             IdentityError::Malformed {
-                line: pos.line + 1,
-                column: pos.column + 1,
+                line: pos.line.saturating_add(1),
+                column: pos.column.saturating_add(1),
             }
         } else {
             IdentityError::Malformed { line: 0, column: 0 }
