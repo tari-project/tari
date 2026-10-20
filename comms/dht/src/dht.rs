@@ -527,13 +527,15 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
-    /// Re-encoding the signature of a signed message (here: an appended unknown field) keeps it valid but must not
-    /// give it a new dedup key, or the application would see the same message twice.
+    /// A re-encoded signature (here: an appended unknown field) still verifies. The decryption layer drops it as
+    /// non-canonical, and the dedup key is canonical in any case (see `dedup_layer_dedups_reencoded_signature` in
+    /// actor.rs for the layer below that check), so the application sees the message once and nobody is banned.
     #[tokio::test]
     async fn test_stack_dedups_reencoded_signature() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (connectivity, _) = create_connectivity_mock();
+        let (connectivity, mock) = create_connectivity_mock();
+        let connectivity_state = mock.spawn();
         peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
         let (out_tx, _) = mpsc::unbounded_channel();
         let shutdown = Shutdown::new();
@@ -586,7 +588,7 @@ mod test {
             .unwrap();
         assert_eq!(received.authenticated_origin(), Some(node_identity.public_key()));
 
-        // The re-encoded signature still verifies, so the message gets through decryption and is dropped by dedup
+        // The re-encoded copy does not reach the application
         service
             .call(make_comms_inbound_message(
                 &node_identity,
@@ -608,15 +610,19 @@ mod test {
             .unwrap();
         let received = out_rx.try_recv().unwrap();
         assert!(received.authenticated_origin().is_none());
+
+        time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(connectivity_state.count_calls_containing("BanPeer").await, 0);
     }
 
-    /// An unsigned body is not bound by a signature, so re-encoding it (here: an appended unknown field) must not give
-    /// the message a new dedup key either.
+    /// An unsigned body is not bound by a signature, and nothing checks that it is canonically encoded, so re-encoding
+    /// it (here: an appended unknown field) reaches dedup and must not give the message a new dedup key.
     #[tokio::test]
     async fn test_stack_dedups_reencoded_unsigned_body() {
         let node_identity = make_node_identity();
         let peer_manager = build_peer_manager();
-        let (connectivity, _) = create_connectivity_mock();
+        let (connectivity, mock) = create_connectivity_mock();
+        let connectivity_state = mock.spawn();
         peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
         let (out_tx, _) = mpsc::unbounded_channel();
         let shutdown = Shutdown::new();
@@ -666,6 +672,9 @@ mod test {
             .await
             .unwrap();
         assert!(out_rx.try_recv().is_err());
+
+        time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(connectivity_state.count_calls_containing("BanPeer").await, 0);
     }
 
     /// Forwarding a message this node cannot decrypt must not record a key for its ciphertext as if it were an

@@ -1017,6 +1017,61 @@ mod test {
         }
     }
 
+    /// Below the decryption layer's canonical-signature check, the dedup layer still keys a signed message on its
+    /// canonical signature, so a copy with a re-encoded signature is a duplicate.
+    #[tokio::test]
+    async fn dedup_layer_dedups_reencoded_signature() {
+        use tari_comms::{pipeline::PipelineError, wrap_in_envelope_body};
+        use tower::{Layer, Service};
+
+        use crate::{
+            dedup::DedupLayer,
+            envelope::DhtMessageFlags,
+            inbound::DecryptedDhtMessage,
+            test_utils::{make_dht_inbound_message, service_spy},
+        };
+
+        let node_identity = make_node_identity();
+        let (connectivity_manager, mock) = create_connectivity_mock();
+        mock.spawn();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
+        let requester = DhtRequester::new(actor_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
+        let shutdown = Shutdown::new();
+        DhtActor::new(
+            Arc::new(DhtConfig::default_local_test()),
+            db_connection(),
+            node_identity.clone(),
+            build_peer_manager(),
+            connectivity_manager,
+            OutboundMessageRequester::new(out_tx),
+            actor_rx,
+            discovery,
+            shutdown.to_signal(),
+        )
+        .spawn();
+
+        let spy = service_spy();
+        let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
+        let honest = make_dht_inbound_message(
+            &node_identity,
+            &b"signed".to_vec(),
+            DhtMessageFlags::empty(),
+            true,
+            false,
+        )
+        .unwrap();
+        let mut reencoded = honest.clone();
+        reencoded.dht_header.message_signature.extend_from_slice(&[0x78, 0x01]);
+
+        for msg in [honest, reencoded] {
+            let decrypted = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, msg);
+            dedup.call(decrypted).await.unwrap();
+        }
+        assert_eq!(spy.call_count(), 1);
+    }
+
     /// A dedup cache that cannot be written must not wave messages through: the actor replies with a hit count no
     /// `allowed_message_occurrences` can admit, and the dedup middleware discards the message.
     #[tokio::test]
