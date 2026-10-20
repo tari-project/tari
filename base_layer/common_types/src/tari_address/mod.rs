@@ -307,7 +307,7 @@ impl TariAddress {
     }
 
     /// Check that the address can receive a coinbase: a dual address with the one-sided feature, whose view and spend
-    /// keys are valid points other than the identity.
+    /// keys are valid points other than the identity, and whose payment id fits the coinbase memo.
     pub fn validate_coinbase_target(&self) -> Result<(), TariAddressError> {
         let TariAddress::Dual(address) = self else {
             return Err(TariAddressError::InvalidCoinbaseTarget(
@@ -333,6 +333,14 @@ impl TariAddress {
                     "the {name} key is not a valid point"
                 )));
             }
+        }
+        // The coinbase memo carries the payment id with a one byte tag and a one byte transaction type
+        let max_payment_id = MAX_PAYMENT_ID_SIZE.saturating_sub(2);
+        let payment_id_len = address.get_memo_field_payment_id_bytes().len();
+        if payment_id_len > max_payment_id {
+            return Err(TariAddressError::InvalidCoinbaseTarget(format!(
+                "the payment id is {payment_id_len} bytes, more than the {max_payment_id} bytes a coinbase can carry"
+            )));
         }
         Ok(())
     }
@@ -1602,5 +1610,17 @@ mod test {
             }
         }
         assert!(TariAddress::default().validate_coinbase_target().is_err());
+
+        // The payment id must fit the coinbase memo, with its tag and transaction type bytes
+        let with_payment_id = |len: usize| {
+            TariAddress::new_dual_address(valid(), valid(), Network::MainNet, one_sided, Some(vec![1; len])).unwrap()
+        };
+        with_payment_id(254).validate_coinbase_target().unwrap();
+        for len in [255, 256] {
+            match with_payment_id(len).validate_coinbase_target() {
+                Err(TariAddressError::InvalidCoinbaseTarget(reason)) => assert!(reason.contains("254"), "{reason}"),
+                other => panic!("expected a refused payment id of {len} bytes, got {other:?}"),
+            }
+        }
     }
 }

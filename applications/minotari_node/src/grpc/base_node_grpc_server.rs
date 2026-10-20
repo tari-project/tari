@@ -75,7 +75,7 @@ use tari_core::{
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_transaction_components::{
-    consensus::NetworkConsensus,
+    consensus::{ConsensusConstants, NetworkConsensus},
     generate_coinbase_with_wallet_output,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     rpc::MAX_ALLOWED_QUERY_SIZE,
@@ -89,6 +89,7 @@ use tari_transaction_components::{
         TransactionKernelVersion,
         memo_field::{MemoField, TxType},
     },
+    validate_coinbase_request,
 };
 use tari_utilities::{ByteArray, hex::Hex, message_format::MessageFormat};
 use tokio::{sync::Semaphore, task};
@@ -242,15 +243,19 @@ impl BaseNodeGrpcServer {
     }
 }
 
-/// Parse and check every coinbase address before anything is built, so one bad entry is reported by its index rather
-/// than failing deep inside the build.
-fn coinbase_target_addresses(coinbases: &[tari_rpc::NewBlockCoinbase]) -> Result<Vec<TariAddress>, Status> {
+/// Parse and check every coinbase entry before anything is built, with the same check the coinbase builder makes, so
+/// one bad entry is reported by its index rather than failing deep inside the build.
+fn coinbase_target_addresses(
+    coinbases: &[tari_rpc::NewBlockCoinbase],
+    consensus_constants: &ConsensusConstants,
+) -> Result<Vec<TariAddress>, Status> {
     let mut addresses = Vec::with_capacity(coinbases.len());
     for (index, coinbase) in coinbases.iter().enumerate() {
         let address = TariAddress::from_str(&coinbase.address)
             .map_err(|e| Status::invalid_argument(format!("Coinbase {index} has an invalid address: {e}")))?;
-        address
-            .validate_coinbase_target()
+        let extra = CoinBaseExtra::try_from(coinbase.coinbase_extra.clone())
+            .map_err(|e| Status::invalid_argument(format!("Coinbase {index} has an invalid coinbase extra: {e}")))?;
+        validate_coinbase_request(&address, &extra, consensus_constants)
             .map_err(|e| Status::invalid_argument(format!("Coinbase {index}: {e}")))?;
         addresses.push(address);
     }
@@ -1518,7 +1523,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
         // Not obscured: it only describes the caller's own input, and the pool needs the index to drop the share
-        let addresses = coinbase_target_addresses(&coinbases)?;
+        let addresses = coinbase_target_addresses(&coinbases, self.consensus_rules.consensus_constants(height))?;
         for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
@@ -1760,7 +1765,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
         // Not obscured: it only describes the caller's own input, and the pool needs the index to drop the share
-        let addresses = coinbase_target_addresses(&coinbases)?;
+        let addresses = coinbase_target_addresses(&coinbases, self.consensus_rules.consensus_constants(height))?;
         for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
@@ -3557,46 +3562,64 @@ mod test {
         }
     }
 
-    /// Every coinbase address is checked up front and a bad one is refused as an invalid argument naming its index.
+    /// Every coinbase entry is checked up front and a bad one is refused as an invalid argument naming its index.
     #[test]
     fn coinbase_target_addresses_refuses_a_bad_entry_by_index() {
         use tari_common_types::{tari_address::TariAddressFeatures, types::CompressedPublicKey};
 
+        let constants = ConsensusConstants::mainnet().pop().unwrap();
+        let refused_at = |coinbases: &[tari_rpc::NewBlockCoinbase], index: usize| {
+            let status = coinbase_target_addresses(coinbases, &constants).unwrap_err();
+            assert_eq!(status.code(), tonic::Code::InvalidArgument);
+            assert!(
+                status.message().contains(&format!("Coinbase {index}")),
+                "{}",
+                status.message()
+            );
+            status.message().to_string()
+        };
         let key = || CompressedPublicKey::from_secret_key(&PrivateKey::from(7u64));
-        let good = TariAddress::new_dual_address(
-            key(),
-            key(),
-            Network::LocalNet,
-            TariAddressFeatures::create_one_sided_only(),
-            None,
-        )
-        .unwrap();
-        let addresses = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&good)]).unwrap();
+        let one_sided = |view: CompressedPublicKey, payment_id: Option<Vec<u8>>| {
+            TariAddress::new_dual_address(
+                view,
+                key(),
+                Network::LocalNet,
+                TariAddressFeatures::create_one_sided_only(),
+                payment_id,
+            )
+            .unwrap()
+        };
+        let good = one_sided(key(), None);
+        let addresses = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&good)], &constants).unwrap();
         assert_eq!(addresses, vec![good.clone(), good.clone()]);
 
         let single = TariAddress::new_single_address_with_interactive_only(key(), Network::LocalNet).unwrap();
-        let status = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&single)]).unwrap_err();
-        assert_eq!(status.code(), tonic::Code::InvalidArgument);
-        assert!(status.message().contains("Coinbase 1"), "{}", status.message());
+        refused_at(&[coinbase_to(&good), coinbase_to(&single)], 1);
 
-        let identity_view = TariAddress::new_dual_address(
-            CompressedPublicKey::default(),
-            key(),
-            Network::LocalNet,
-            TariAddressFeatures::create_one_sided_only(),
-            None,
-        )
-        .unwrap();
-        let status = coinbase_target_addresses(&[coinbase_to(&identity_view)]).unwrap_err();
-        assert_eq!(status.code(), tonic::Code::InvalidArgument);
-        assert!(status.message().contains("Coinbase 0"), "{}", status.message());
-        assert!(status.message().contains("identity"), "{}", status.message());
+        let message = refused_at(&[coinbase_to(&one_sided(CompressedPublicKey::default(), None))], 0);
+        assert!(message.contains("identity"), "{message}");
 
         let mut garbage = coinbase_to(&good);
         garbage.address = "not an address".to_string();
-        let status = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&good), garbage]).unwrap_err();
-        assert_eq!(status.code(), tonic::Code::InvalidArgument);
-        assert!(status.message().contains("Coinbase 2"), "{}", status.message());
+        refused_at(&[coinbase_to(&good), coinbase_to(&good), garbage], 2);
+
+        // The payment id must fit the coinbase memo
+        coinbase_target_addresses(&[coinbase_to(&one_sided(key(), Some(vec![1; 254])))], &constants).unwrap();
+        for len in [255, 256] {
+            let long = coinbase_to(&one_sided(key(), Some(vec![1; len])));
+            let message = refused_at(&[coinbase_to(&good), long], 1);
+            assert!(message.contains("payment id"), "{message}");
+        }
+
+        // The coinbase extra must fit the consensus limit
+        assert_eq!(constants.coinbase_output_features_extra_max_length(), 256);
+        let with_extra = |len: usize| tari_rpc::NewBlockCoinbase {
+            coinbase_extra: vec![1; len],
+            ..coinbase_to(&good)
+        };
+        coinbase_target_addresses(&[with_extra(256)], &constants).unwrap();
+        let message = refused_at(&[coinbase_to(&good), with_extra(257)], 1);
+        assert!(message.contains("coinbase extra"), "{message}");
     }
 
     /// A signed side-chain validator node exit feature.

@@ -95,6 +95,8 @@ pub enum CoinbaseBuildError {
     KeyManagerServiceError(String),
     #[error("Conversion error: {0}")]
     ByteArrayError(String),
+    #[error("Invalid coinbase request: {0}")]
+    InvalidCoinbaseRequest(String),
 }
 
 impl From<ByteArrayError> for CoinbaseBuildError {
@@ -390,6 +392,26 @@ pub fn generate_coinbase<KM: TransactionKeyManagerInterface>(
 
 /// Clients that need to spend the wallet output must call this function to generate a coinbase transaction,
 /// so that the only way to get access to the funds will be via the Diffie-Hellman shared secret.
+/// Check what a coinbase request supplies, before anything is built: the target address (see
+/// [`TariAddress::validate_coinbase_target`]) and that the coinbase extra fits the consensus limit.
+pub fn validate_coinbase_request(
+    wallet_payment_address: &TariAddress,
+    extra: &CoinBaseExtra,
+    consensus_constants: &ConsensusConstants,
+) -> Result<(), CoinbaseBuildError> {
+    wallet_payment_address
+        .validate_coinbase_target()
+        .map_err(|e| CoinbaseBuildError::InvalidCoinbaseRequest(e.to_string()))?;
+    let max_extra = consensus_constants.coinbase_output_features_extra_max_length();
+    if extra.len() > max_extra as usize {
+        return Err(CoinbaseBuildError::InvalidCoinbaseRequest(format!(
+            "the coinbase extra is {} bytes, more than the {max_extra} bytes allowed",
+            extra.len()
+        )));
+    }
+    Ok(())
+}
+
 pub fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInterface>(
     fee: MicroMinotari,
     reward: MicroMinotari,
@@ -403,9 +425,7 @@ pub fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInterface>(
     range_proof_type: RangeProofType,
     payment_id: MemoField,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
-    wallet_payment_address
-        .validate_coinbase_target()
-        .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
+    validate_coinbase_request(wallet_payment_address, extra, consensus_constants)?;
     // Override payment id if the wallet address contains a payment id
     let payment_id = if wallet_payment_address.get_memo_field_payment_id_bytes().is_empty() {
         payment_id
