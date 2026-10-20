@@ -39,6 +39,14 @@ if [[ ! -d "${TARI_BASE}" ]]; then
   fi
 fi
 
+if [[ ! -w "${TARI_BASE}" ]]; then
+  owner=$(stat -c '%U:%G (%u:%g)' "${TARI_BASE}" 2>/dev/null || echo "unknown")
+  echo "ERROR: Base directory '${TARI_BASE}' is not writable." >&2
+  echo "Directory ownership is ${owner}, but the container runs as user 'tari' (uid 1000:gid 1000)." >&2
+  echo "Please ensure the host mount directory is writable by uid 1000 (e.g. 'sudo chown -R 1000:1000 <host_dir>')." >&2
+  exit 1
+fi
+
 cd "${TARI_BASE}" || {
   echo "ERROR: Failed to change working directory to '${TARI_BASE}'." >&2
   exit 1
