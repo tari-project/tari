@@ -82,7 +82,13 @@ use clap::Parser;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{ApplicationConfig, cli::Cli, run_base_node_with_cli};
-use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration, print_env_vars};
+use tari_common::{
+    dir_utils::absolute_path,
+    exit_codes::ExitError,
+    initialize_logging,
+    load_configuration,
+    print_env_vars,
+};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -197,7 +203,7 @@ fn main_inner() -> Result<(), ExitError> {
     );
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
+    let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
 
     if cli.profile_with_tokio_console {
         console_subscriber::init();
@@ -223,6 +229,32 @@ fn main_inner() -> Result<(), ExitError> {
         e
     })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
+
+    info!(
+        target: LOG_TARGET,
+        "Effective base path: {}",
+        absolute_path(config.common.base_path()).display()
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective config path: {}",
+        absolute_path(&config_path).display()
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective log config path: {}",
+        absolute_path(cli.common.log_config_path("base_node")).display()
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective identity file: {}",
+        absolute_path(&config.base_node.identity_file).display()
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective Tor identity file: {}",
+        absolute_path(&config.base_node.tor_identity_file).display()
+    );
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(

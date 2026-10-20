@@ -62,6 +62,11 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         };
         write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
+        info!(
+            target: LOG_TARGET,
+            "Created default configuration file at {}",
+            display_path(config_path.as_ref())
+        );
     } else {
         // Nothing here
     }
@@ -1945,5 +1950,30 @@ password = "scoped"
         write_config_to(&path, &["first"]).unwrap();
         write_config_to(&path, &["second"]).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "first\n");
+    }
+
+    #[test]
+    fn test_load_configuration_first_run_creates_config_and_logs_info() {
+        crate::test_logger::init();
+
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("sub").join("config.toml");
+        assert!(!config_path.exists());
+
+        let overrides = TestOverrides(Vec::new());
+        let result = load_configuration(&config_path, true, true, &overrides, Some(Network::LocalNet));
+        assert!(result.is_ok(), "load_configuration failed: {:?}", result.err());
+        assert!(config_path.exists());
+
+        let logs = crate::test_logger::get_logs();
+        let expected_msg = format!("Created default configuration file at {}", display_path(&config_path));
+        let found = logs
+            .iter()
+            .any(|(level, msg)| *level == log::Level::Info && msg.contains(&expected_msg));
+        assert!(
+            found,
+            "Expected info log containing '{}', found: {:?}",
+            expected_msg, &*logs
+        );
     }
 }
