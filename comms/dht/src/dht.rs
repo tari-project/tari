@@ -608,6 +608,64 @@ mod test {
         assert!(received.authenticated_origin().is_none());
     }
 
+    /// An unsigned body is not bound by a signature, so re-encoding it (here: an appended unknown field) must not give
+    /// the message a new dedup key either.
+    #[tokio::test]
+    async fn test_stack_dedups_reencoded_unsigned_body() {
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity, _) = create_connectivity_mock();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let dht = Dht::builder()
+            .local_test()
+            .with_outbound_sender(out_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
+        let (out_tx, mut out_rx) = mpsc::channel(10);
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
+
+        let honest = make_dht_envelope(
+            &node_identity,
+            &wrap_in_envelope_body!(b"unsigned".to_vec()),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+            false,
+        )
+        .unwrap();
+        let mut reencoded = honest.clone();
+        reencoded.body.extend_from_slice(&[0x78, 0x01]);
+
+        service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                honest.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        time::timeout(Duration::from_secs(10), out_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+
+        service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                reencoded.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        assert!(out_rx.try_recv().is_err());
+    }
+
     #[tokio::test]
     async fn test_stack_encrypted() {
         let node_identity = make_node_identity();

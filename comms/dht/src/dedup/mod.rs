@@ -34,7 +34,7 @@ use digest::{Digest, consts::U32};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::pipeline::PipelineError;
+use tari_comms::{message::EnvelopeBody, pipeline::PipelineError};
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
@@ -66,14 +66,26 @@ pub fn canonical_signature_bytes(signature: &MessageSignature) -> Vec<u8> {
 }
 
 /// Returns the dedup key of a message whose signature has not been decoded yet, or `None` if it has a signature that
-/// does not decode.
-pub fn hash_inbound_message(msg: &DhtInboundMessage) -> Option<[u8; 32]> {
+/// does not decode. `decoded_body` is the message's decoded cleartext body, if there is one.
+pub fn hash_inbound_message(msg: &DhtInboundMessage, decoded_body: Option<&EnvelopeBody>) -> Option<[u8; 32]> {
     let signature = &msg.dht_header.message_signature;
     if signature.is_empty() {
-        return Some(create_message_hash(&[], &msg.body));
+        return Some(message_key(&[], msg, decoded_body));
     }
     let signature = MessageSignature::try_from(ProtoMessageSignature::decode(signature.as_slice()).ok()?).ok()?;
-    Some(create_message_hash(&canonical_signature_bytes(&signature), &msg.body))
+    Some(message_key(&canonical_signature_bytes(&signature), msg, decoded_body))
+}
+
+/// The dedup key of a message with the given canonical signature bytes. A signed body is bound by the signature (and
+/// may be ciphertext), so its raw bytes are hashed. An unsigned body is not, so the canonical encoding of its decoded
+/// body is hashed instead, and re-encoding the body does not give the message a new key.
+pub fn message_key(sig_canonical: &[u8], msg: &DhtInboundMessage, decoded_body: Option<&EnvelopeBody>) -> [u8; 32] {
+    match decoded_body {
+        Some(body) if sig_canonical.is_empty() && !msg.dht_header.flags.is_encrypted() => {
+            create_message_hash(&[], &body.encode_to_vec())
+        },
+        _ => create_message_hash(sig_canonical, &msg.body),
+    }
 }
 
 /// Hashes the canonical signature bytes (empty for an unsigned message) and the body into a dedup key.
@@ -254,7 +266,10 @@ mod test {
             false,
         )
         .unwrap();
-        let decrypted1 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
+        let decrypted1 = {
+            let body = EnvelopeBody::decode(dht_message.body.as_slice()).unwrap();
+            DecryptedDhtMessage::succeeded(body, None, dht_message)
+        };
 
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(
@@ -265,11 +280,77 @@ mod test {
             false,
         )
         .unwrap();
-        let decrypted2 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
+        let decrypted2 = {
+            let body = EnvelopeBody::decode(dht_message.body.as_slice()).unwrap();
+            DecryptedDhtMessage::succeeded(body, None, dht_message)
+        };
 
         assert_eq!(decrypted1.dedup_hash, decrypted2.dedup_hash);
         let subjects = &[decrypted1.dedup_hash, decrypted2.dedup_hash];
         assert!(subjects.iter().all(|h| h.to_hex() == EXPECTED_HASH));
+    }
+
+    /// An unsigned cleartext message whose body is a two-part envelope.
+    fn unsigned_message(body: Vec<u8>) -> DhtInboundMessage {
+        let mut msg = make_dht_inbound_message(
+            &make_node_identity(),
+            &Vec::new(),
+            DhtMessageFlags::empty(),
+            false,
+            false,
+        )
+        .unwrap();
+        msg.body = body;
+        msg
+    }
+
+    fn unsigned_key(body: Vec<u8>) -> [u8; 32] {
+        let decoded = EnvelopeBody::decode(body.as_slice()).unwrap();
+        hash_inbound_message(&unsigned_message(body), Some(&decoded)).unwrap()
+    }
+
+    #[test]
+    fn unsigned_key_is_independent_of_body_encoding() {
+        let canonical = wrap_in_envelope_body!(b"one".to_vec(), b"two".to_vec()).encode_to_vec();
+        let [first, second] =
+            <[Vec<u8>; 2]>::try_from(EnvelopeBody::decode(canonical.as_slice()).unwrap().parts).unwrap();
+        let expected = unsigned_key(canonical.clone());
+
+        // An honest body is already canonical, so its key is the one an outbound broadcast of it records
+        assert_eq!(expected, create_message_hash(&[], &canonical));
+
+        // Unknown field appended
+        let mut appended = canonical.clone();
+        appended.extend_from_slice(&[0x78, 0x01]);
+        // Unknown field first, so the fields come in another order
+        let mut reordered = vec![0x78, 0x01];
+        reordered.extend_from_slice(&canonical);
+        // The first part's length as a two-byte varint, which decodes to the same value
+        let mut overlong = vec![0x0a, 0x80 | u8::try_from(first.len()).unwrap(), 0x00];
+        overlong.extend_from_slice(&first);
+        overlong.extend(encode_field(1, &second));
+
+        for variant in [appended, reordered, overlong] {
+            assert_ne!(variant, canonical);
+            assert_eq!(unsigned_key(variant), expected);
+        }
+
+        // Repeating a part adds a part, which is a different body
+        let mut duplicated = canonical.clone();
+        duplicated.extend(encode_field(1, &second));
+        assert_ne!(unsigned_key(duplicated), expected);
+    }
+
+    #[test]
+    fn signed_key_uses_the_raw_body() {
+        let msg = signed_message();
+        let decoded = EnvelopeBody::decode(msg.body.as_slice()).unwrap();
+        let mut reencoded = msg.clone();
+        reencoded.body.extend_from_slice(&[0x78, 0x01]);
+        assert_ne!(
+            hash_inbound_message(&reencoded, Some(&decoded)).unwrap(),
+            hash_inbound_message(&msg, Some(&decoded)).unwrap()
+        );
     }
 
     fn signed_message() -> DhtInboundMessage {
@@ -301,7 +382,7 @@ mod test {
         let msg = signed_message();
         let canonical = msg.dht_header.message_signature.clone();
         let proto = ProtoMessageSignature::decode(canonical.as_slice()).unwrap();
-        let expected = hash_inbound_message(&msg).unwrap();
+        let expected = hash_inbound_message(&msg, None).unwrap();
 
         // An honest node's signature bytes are already canonical, so its key is unchanged
         assert_eq!(expected, create_message_hash(&canonical, &msg.body));
@@ -319,7 +400,10 @@ mod test {
 
         for variant in [appended, duplicated, reordered] {
             assert_ne!(variant, canonical);
-            assert_eq!(hash_inbound_message(&with_signature(&msg, variant)).unwrap(), expected);
+            assert_eq!(
+                hash_inbound_message(&with_signature(&msg, variant), None).unwrap(),
+                expected
+            );
         }
     }
 
@@ -327,7 +411,7 @@ mod test {
     fn signed_key_depends_on_every_signature_field() {
         let msg = signed_message();
         let proto = ProtoMessageSignature::decode(msg.dht_header.message_signature.as_slice()).unwrap();
-        let expected = hash_inbound_message(&msg).unwrap();
+        let expected = hash_inbound_message(&msg, None).unwrap();
         let other = ProtoMessageSignature::decode(signed_message().dht_header.message_signature.as_slice()).unwrap();
 
         let mut different_signer = proto.clone();
@@ -338,12 +422,12 @@ mod test {
         different_scalar.signature = other.signature;
 
         for variant in [different_signer, different_nonce, different_scalar] {
-            let key = hash_inbound_message(&with_signature(&msg, variant.encode_to_vec())).unwrap();
+            let key = hash_inbound_message(&with_signature(&msg, variant.encode_to_vec()), None).unwrap();
             assert_ne!(key, expected);
         }
 
         // Stripping the signature gives an unsigned message, which has its own key
-        let unsigned = hash_inbound_message(&with_signature(&msg, Vec::new())).unwrap();
+        let unsigned = hash_inbound_message(&with_signature(&msg, Vec::new()), None).unwrap();
         assert_ne!(unsigned, expected);
     }
 
@@ -358,7 +442,7 @@ mod test {
         let mut dedup = DedupLayer::new(dht_requester, 3).layer(spy.to_service::<PipelineError>());
 
         let msg = with_signature(&signed_message(), vec![0xff]);
-        assert!(hash_inbound_message(&msg).is_none());
+        assert!(hash_inbound_message(&msg, None).is_none());
         let decrypted = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, msg);
         assert!(decrypted.dedup_hash.is_empty());
 

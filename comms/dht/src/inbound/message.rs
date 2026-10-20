@@ -43,7 +43,8 @@ use crate::{
 pub struct ValidatedDhtInboundMessage {
     message: DhtInboundMessage,
     authenticated_origin: Option<CommsPublicKey>,
-    dedup_hash: [u8; 32],
+    /// The canonical encoding of the verified signature, empty if unsigned
+    sig_canonical: Vec<u8>,
 }
 
 impl ValidatedDhtInboundMessage {
@@ -53,11 +54,10 @@ impl ValidatedDhtInboundMessage {
             .as_ref()
             .map(dedup::canonical_signature_bytes)
             .unwrap_or_default();
-        let dedup_hash = dedup::create_message_hash(&sig_canonical, &message.body);
         Self {
             message,
             authenticated_origin: signature.map(MessageSignature::into_signer_public_key),
-            dedup_hash,
+            sig_canonical,
         }
     }
 
@@ -66,16 +66,13 @@ impl ValidatedDhtInboundMessage {
         message_body: EnvelopeBody,
         authenticated_origin: Option<CommsPublicKey>,
     ) -> DecryptedDhtMessage {
-        DecryptedDhtMessage::succeeded_with_hash(
-            message_body,
-            authenticated_origin,
-            self.message,
-            self.dedup_hash.to_vec(),
-        )
+        let dedup_hash = dedup::message_key(&self.sig_canonical, &self.message, Some(&message_body));
+        DecryptedDhtMessage::succeeded_with_hash(message_body, authenticated_origin, self.message, dedup_hash.to_vec())
     }
 
     pub fn into_failed(self) -> DecryptedDhtMessage {
-        DecryptedDhtMessage::failed_with_hash(self.message, self.dedup_hash.to_vec())
+        let dedup_hash = dedup::message_key(&self.sig_canonical, &self.message, None);
+        DecryptedDhtMessage::failed_with_hash(self.message, dedup_hash.to_vec())
     }
 
     pub fn message(&self) -> &DhtInboundMessage {
@@ -184,12 +181,12 @@ impl DecryptedDhtMessage {
         authenticated_origin: Option<CommsPublicKey>,
         message: DhtInboundMessage,
     ) -> Self {
-        let dedup_hash = unvalidated_dedup_hash(&message);
+        let dedup_hash = unvalidated_dedup_hash(&message, Some(&message_body));
         Self::succeeded_with_hash(message_body, authenticated_origin, message, dedup_hash)
     }
 
     pub fn failed(message: DhtInboundMessage) -> Self {
-        let dedup_hash = unvalidated_dedup_hash(&message);
+        let dedup_hash = unvalidated_dedup_hash(&message, None);
         Self::failed_with_hash(message, dedup_hash)
     }
 
@@ -282,8 +279,8 @@ impl DecryptedDhtMessage {
     }
 }
 
-fn unvalidated_dedup_hash(message: &DhtInboundMessage) -> Vec<u8> {
-    dedup::hash_inbound_message(message)
+fn unvalidated_dedup_hash(message: &DhtInboundMessage, decoded_body: Option<&EnvelopeBody>) -> Vec<u8> {
+    dedup::hash_inbound_message(message, decoded_body)
         .map(|hash| hash.to_vec())
         .unwrap_or_default()
 }
