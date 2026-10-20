@@ -6285,7 +6285,19 @@ pub unsafe extern "C" fn wallet_create(
             match CipherSeed::from_mnemonic(&(*seed_words).0, seed_passphrase) {
                 Ok(seed) => Some(seed),
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Mnemonic Error for given seed words: {:?}", e);
+                    // Only the error kind: a mnemonic error can carry a seed word
+                    error!(
+                        target: LOG_TARGET,
+                        "Mnemonic Error for given seed words: {}",
+                        minotari_wallet::output_manager_service::commitment_mask::error_kind(&e)
+                    );
+                    // The conversion logs the error, so drop the word a `WordNotFound` carries first
+                    let e = match e {
+                        CipherError::MnemonicError(MnemonicError::WordNotFound(_)) => {
+                            CipherError::MnemonicError(MnemonicError::WordNotFound(String::new()))
+                        },
+                        other => other,
+                    };
                     *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return ptr::null_mut();
                 },
