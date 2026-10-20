@@ -286,6 +286,15 @@ pub fn verify_p2pool_block_coinbase(
         return Err(err_msg);
     }
 
+    if total_paid_value == 0 {
+        let err_msg = format!(
+            "P2Pool block coinbase output for wallet_payment_address '{}' has a zero verified payout value (reward must be positive)",
+            wallet_payment_address.to_base58()
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
     log::info!(
         target: log_target,
         "Coinbase payout verified for wallet_payment_address {}: {} MicroMinotari",
@@ -410,5 +419,27 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("no coinbase outputs"));
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_zero_payment_rejected() {
+        let configured_address = make_test_address();
+        let attacker_address = make_other_address();
+        let block = Block {
+            header: None,
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs: vec![
+                    make_coinbase_output(&configured_address, 0),
+                    make_coinbase_output(&attacker_address, 5_000_000),
+                ],
+                kernels: vec![],
+            }),
+        };
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("zero verified payout value"));
     }
 }
