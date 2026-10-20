@@ -1443,7 +1443,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
         let tx_id = (payref.expect("Already checked").tx_id as u64).into();
         let tx = match CompletedTransactionSql::find(tx_id, &mut conn) {
-            Ok(c) => Some(CompletedTransaction::try_from(c, &self.cipher, &mut conn)?),
+            // As a keyed lookup: an undecodable row is UndecodableRows, a decryption failure stays as such
+            Ok(c) => decode_completed_transactions_exact(vec![c], &self.cipher, &mut conn)?.pop(),
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => None,
             Err(e) => return Err(e),
         };
@@ -4402,6 +4403,52 @@ mod test {
         assert!(db.get_transactions_to_be_broadcast().is_err());
         corrupt_completed(&connection, 6, BAD_SOURCE_ADDRESS);
         assert!(db.fetch(&DbKey::CancelledCompletedTransactions(0)).is_err());
+    }
+
+    #[test]
+    fn a_payref_whose_transaction_does_not_decode_is_undecodable_rows() {
+        use super::CompletedTransactionConversionError;
+        use crate::transaction_service::error::TransactionStorageError;
+
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+        for tx_id in [1u8, 2, 3] {
+            commit_completed(
+                &connection,
+                &cipher,
+                completed_tx_with_hashes(u64::from(tx_id), vec![], vec![]),
+            );
+            let mut conn = connection.get_pooled_connection().unwrap();
+            PayrefSql {
+                output_hash: vec![tx_id; 32],
+                tx_id: i64::from(tx_id),
+                payref: vec![tx_id; 32],
+            }
+            .commit_or_update(&mut conn)
+            .unwrap();
+        }
+        corrupt_completed(&connection, 2, BAD_SOURCE_ADDRESS);
+        corrupt_completed(&connection, 3, TAMPERED_CIPHERTEXT);
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        let payref = |byte: u8| FixedHash::from([byte; 32]);
+
+        assert_eq!(
+            db.get_transaction_with_payref(&payref(1)).unwrap().unwrap().tx_id,
+            TxId::from(1u64)
+        );
+        match db.get_transaction_with_payref(&payref(2)) {
+            Err(TransactionStorageError::UndecodableRows { skipped: 1 }) => {},
+            other => panic!("Unexpected result: {other:?}"),
+        }
+        // A decryption failure is reported as such, not as an undecodable row
+        match db.get_transaction_with_payref(&payref(3)) {
+            Err(TransactionStorageError::CompletedConversionError(CompletedTransactionConversionError::AeadError(
+                _,
+            ))) => {},
+            other => panic!("Unexpected result: {other:?}"),
+        }
+        assert!(db.get_transaction_with_payref(&payref(4)).unwrap().is_none());
     }
 
     #[test]

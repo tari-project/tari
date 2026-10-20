@@ -1895,10 +1895,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .get_completed_transactions_paginated(current_offset, current_limit, status_filter)
                 .await
                 .map_err(|err| {
-                    lookup_error(
-                        "GetAllCompletedTransactions",
-                        err,
-                        Some((current_offset, current_limit)),
+                    with_request_offset(
+                        lookup_error(
+                            "GetAllCompletedTransactions",
+                            err,
+                            Some((current_offset, current_limit)),
+                        ),
+                        req.offset,
                     )
                 })?;
 
@@ -4474,6 +4477,15 @@ fn lookup_error(context: &str, err: TransactionServiceError, page: Option<(u64, 
     Status::internal(format!("{context}: {err:?}"))
 }
 
+/// For a unary paged call, which returns nothing when a chunk fails: a DATA_LOSS also names the request's own offset,
+/// so a client can re-request from there up to the failing chunk's offset
+fn with_request_offset(status: Status, request_offset: u64) -> Status {
+    if status.code() == tonic::Code::DataLoss {
+        return Status::data_loss(format!("{} request_offset={request_offset}", status.message()));
+    }
+    status
+}
+
 /// A lookup that reports a missing value as `ValueNotFound` gives `None`; any other failure is a [`lookup_error`]
 fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -> Result<Option<T>, Status> {
     match result {
@@ -4539,6 +4551,7 @@ mod tests {
         lookup_error,
         memo_from_raw_bytes,
         parse_excluded_commitments,
+        with_request_offset,
     };
 
     #[test]
@@ -4597,6 +4610,16 @@ mod tests {
         );
         assert_eq!(status.code(), tonic::Code::DataLoss);
         assert_eq!(status.message(), "undecodable rows: skipped=1 offset=200 limit=100");
+        let status = with_request_offset(status, 0);
+        assert_eq!(status.code(), tonic::Code::DataLoss);
+        assert_eq!(
+            status.message(),
+            "undecodable rows: skipped=1 offset=200 limit=100 request_offset=0"
+        );
+        assert_eq!(
+            with_request_offset(tonic::Status::internal("other"), 0).message(),
+            "other"
+        );
 
         let status = found_or_none::<u8>(
             "lookup",

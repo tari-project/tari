@@ -425,9 +425,16 @@ call.on('status', (status) => {
 
 > **Lookup errors:** a `NOT_FOUND` status means there genuinely is nothing to return. A `DATA_LOSS` status means stored
 > transaction rows could not be decoded; its message is `undecodable rows: skipped=N`, and paged calls add
-> `offset=O limit=L`. Do not retry it: check the wallet log for the affected tx ids. A paged call may resume at
-> `offset + limit`. The unfiltered `GetCompletedTransactions` stream leaves undecodable rows out and only logs them, so
-> reconcile it against the keyed lookups (by payment id, block height or PayRef), which report them as `DATA_LOSS`.
+> `offset=O limit=L`. Do not retry it: check the wallet log for the affected tx ids.
+>
+> - The streaming paged call has already delivered the chunks before the failing one, so resume at `offset + limit`.
+> - The unary `GetAllCompletedTransactions` returns nothing when a chunk fails, and its message also carries
+>   `request_offset=R`: re-request from `request_offset` up to `offset`, then continue at `offset + limit`.
+>
+> The unfiltered `GetCompletedTransactions` stream leaves undecodable rows out and only logs them. Paged calls also
+> leave out undecodable rows when other rows on the same page decode, so a short page is not the end of the data. Only
+> the keyed lookups (by payment id, block height or hash, or PayRef) report every undecodable match as `DATA_LOSS`, so
+> reconcile the other calls against them.
 
 Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
 
