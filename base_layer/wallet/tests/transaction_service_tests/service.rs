@@ -3852,3 +3852,132 @@ async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() 
     assert_eq!(balance.available_balance, input_value);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
 }
+
+/// A pending outbound transaction stored by an older version may no longer decode. It can still be cancelled, which
+/// releases its inputs.
+#[tokio::test]
+async fn an_undecodable_pending_outbound_transaction_can_be_cancelled() {
+    use diesel::{
+        RunQueryDsl,
+        sql_types::{BigInt, Binary},
+    };
+    use minotari_wallet::{
+        legacy_transaction_protocol::SenderTransactionProtocol,
+        transaction_service::storage::{database::TransactionDatabase, models::OutboundTransaction},
+    };
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use tari_common_types::encryption::encrypt_bytes_integral_nonce;
+    use tari_utilities::Hidden;
+
+    let factories = CryptoFactories::default();
+    let db_connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, db_connection.clone(), None).await;
+
+    // Encumber an input under the transaction
+    let value = MicroMinotari::from(25000);
+    let input = make_input(
+        &mut rand::rng(),
+        value,
+        &OutputFeatures::default(),
+        alice.key_manager_handle.key_manager(),
+    );
+    alice
+        .output_manager_service_handle
+        .add_output(input.clone(), None)
+        .await
+        .unwrap();
+    alice
+        .oms_db
+        .mark_outputs_as_unspent(vec![(input.output_hash(), true)])
+        .unwrap();
+    let tx_id = TxId::from(77u64);
+    alice
+        .output_manager_service_handle
+        .prepare_transaction_to_send(
+            tx_id,
+            MicroMinotari::from(10000),
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(5),
+            TariScript::default(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    alice
+        .output_manager_service_handle
+        .confirm_pending_transaction(tx_id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        alice
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .available_balance,
+        MicroMinotari::zero()
+    );
+
+    // Store the pending outbound transaction, then replace its sender protocol with bytes that do not decode
+    let destination = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        Network::LocalNet,
+    )
+    .unwrap();
+    let ts_db = TransactionDatabase::new(alice.ts_db.clone());
+    ts_db
+        .add_pending_outbound_transaction(
+            tx_id,
+            OutboundTransaction::new(
+                tx_id,
+                destination,
+                MicroMinotari::from(10000),
+                MicroMinotari::from(100),
+                SenderTransactionProtocol::new_placeholder(),
+                LegacyTransactionStatus::Pending,
+                MemoField::new_empty(),
+                Utc::now(),
+                false,
+            ),
+        )
+        .unwrap();
+    let cipher = WalletSqliteDatabase::new(db_connection.clone(), SafePassword::from("My lovely secret passphrase"))
+        .unwrap()
+        .cipher();
+    // The outbound transaction encryption domain
+    let domain = [
+        b"OUTBOUND_TRANSACTION".as_slice(),
+        tx_id.as_u64().to_le_bytes().as_slice(),
+        b"sender_protocol",
+    ]
+    .concat();
+    let garbage = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(vec![0xff; 16])).unwrap();
+    let mut conn = db_connection.get_pooled_connection().unwrap();
+    diesel::sql_query("UPDATE outbound_transactions SET sender_protocol = ? WHERE tx_id = ?")
+        .bind::<Binary, _>(garbage)
+        .bind::<BigInt, _>(tx_id.as_i64_wrapped())
+        .execute(&mut conn)
+        .unwrap();
+    drop(conn);
+    assert!(ts_db.get_any_transaction(tx_id).is_err());
+
+    // Cancelling it marks the row cancelled and releases the input
+    alice
+        .transaction_service_handle
+        .cancel_pending_transaction(tx_id)
+        .await
+        .unwrap();
+    assert!(!ts_db.pending_outbound_transaction_exists(tx_id).unwrap());
+    assert_eq!(
+        alice
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .available_balance,
+        value
+    );
+}

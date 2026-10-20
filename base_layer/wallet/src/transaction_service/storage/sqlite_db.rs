@@ -542,6 +542,11 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         result
     }
 
+    fn pending_outbound_transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        Ok(OutboundTransactionSql::find_by_cancelled(tx_id, false, &mut conn).is_ok())
+    }
+
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;

@@ -3613,7 +3613,21 @@ where
 
     /// Cancel a pending transaction
     async fn cancel_pending_transaction(&mut self, tx_id: TxId) -> Result<(), TransactionServiceError> {
-        let transaction = self.db.get_any_transaction(tx_id)?;
+        let transaction = match self.db.get_any_transaction(tx_id) {
+            Ok(transaction) => transaction,
+            // A pending outbound row stored by an older version may no longer decode; it is still cancelled so that
+            // its inputs are released
+            Err(
+                e @ (TransactionStorageError::BincodeDeserialize(_) | TransactionStorageError::TransactionKeyError(_)),
+            ) if self.db.pending_outbound_transaction_exists(tx_id)? => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Pending outbound transaction {tx_id} could not be decoded ({e}); cancelling it to release its inputs"
+                );
+                None
+            },
+            Err(e) => return Err(e.into()),
+        };
 
         if let Some(transaction) = transaction {
             if transaction.is_mined() {
