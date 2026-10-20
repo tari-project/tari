@@ -64,6 +64,9 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 
+/// How long a message this node sends stays valid (its `expires`).
+pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 * 60);
+
 pub struct BroadcastLayer {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
@@ -83,7 +86,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(Duration::from_secs(3 * 60 * 60))
+            message_validity_window: chrono::Duration::from_std(MESSAGE_VALIDITY_WINDOW)
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
         }

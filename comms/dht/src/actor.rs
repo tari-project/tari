@@ -290,7 +290,7 @@ pub struct DhtActor {
 }
 
 /// The minimum time between two error logs for a failing dedup cache.
-const DEDUP_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(10);
+pub(crate) const DEDUP_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
 impl DhtActor {
     /// Create a new DhtActor
@@ -1122,7 +1122,7 @@ mod test {
         let shutdown = Shutdown::new();
         // Note: This must be equal or larger than the minimum dedup cache capacity for DedupCacheDatabase
         let capacity = 10;
-        let actor = DhtActor::new(
+        let mut actor = DhtActor::new(
             Arc::new(DhtConfig {
                 dedup_cache_capacity: capacity,
                 excluded_dial_addresses: vec![].into(),
@@ -1137,6 +1137,9 @@ mod test {
             discovery,
             shutdown.to_signal(),
         );
+
+        // Every entry here is young, so let the trim remove young entries
+        actor.msg_hash_dedup_cache = actor.msg_hash_dedup_cache.clone().with_min_entry_age(Duration::ZERO);
 
         // Create signatures for double the dedup cache capacity
         let signatures = (0..(capacity * 2))

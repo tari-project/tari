@@ -20,9 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
+use std::{
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use chrono::{NaiveDateTime, Utc};
@@ -32,7 +36,7 @@ use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
 use tari_utilities::hex::{Hex, to_hex};
 
-use crate::schema::dedup_cache;
+use crate::{actor::DEDUP_ERROR_LOG_INTERVAL, outbound::MESSAGE_VALIDITY_WINDOW, schema::dedup_cache};
 
 const LOG_TARGET: &str = "comms::dht::dedup_cache";
 
@@ -48,6 +52,13 @@ struct DedupCacheEntry {
 
 /// The fewest new entries between two growth-triggered trims.
 const MIN_TRIM_EVERY_INSERTS: usize = 100;
+/// Allowance for clocks that disagree on a message's expiry.
+const CLOCK_SLACK: Duration = Duration::from_secs(10 * 60);
+/// Entries hit more recently than this are kept above capacity, so an unexpired message cannot be flushed out of the
+/// cache and replayed as new.
+const MIN_ENTRY_AGE: Duration = MESSAGE_VALIDITY_WINDOW.saturating_add(CLOCK_SLACK);
+/// The cache is trimmed regardless of entry age above this many times its capacity.
+const CEILING_CAPACITY_MULTIPLE: usize = 10;
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -57,6 +68,12 @@ pub struct DedupCacheDatabase {
     trim_every_inserts: usize,
     /// New entries inserted, shared by all clones.
     num_inserts: Arc<AtomicUsize>,
+    /// Entries younger than this are only trimmed above the ceiling.
+    min_entry_age: Duration,
+    /// Set while a trim runs, so overlapping trims do not each delete the same excess.
+    is_trimming: Arc<AtomicBool>,
+    /// When hitting the ceiling was last logged.
+    ceiling_logged_at: Arc<Mutex<Option<Instant>>>,
 }
 
 impl DedupCacheDatabase {
@@ -71,7 +88,16 @@ impl DedupCacheDatabase {
             capacity,
             trim_every_inserts,
             num_inserts: Arc::new(AtomicUsize::new(0)),
+            min_entry_age: MIN_ENTRY_AGE,
+            is_trimming: Arc::new(AtomicBool::new(false)),
+            ceiling_logged_at: Arc::new(Mutex::new(None)),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_min_entry_age(mut self, min_entry_age: Duration) -> Self {
+        self.min_entry_age = min_entry_age;
+        self
     }
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
@@ -108,29 +134,73 @@ impl DedupCacheDatabase {
         Ok(hit_count.unwrap_or(0) as u32)
     }
 
-    /// Trims the dedup cache to the configured limit by removing the oldest entries
+    /// Trims the dedup cache: entries older than the minimum entry age are removed, oldest first, down to capacity;
+    /// above the ceiling (10x capacity) the oldest entries are removed down to the ceiling whatever their age. A trim
+    /// requested while another is running is skipped.
     pub fn trim_entries(&self) -> Result<usize, StorageError> {
-        #[allow(clippy::cast_possible_wrap)]
-        let capacity = self.capacity as i64;
-        let mut num_removed = 0;
+        if self.is_trimming.swap(true, Ordering::AcqRel) {
+            debug!(target: LOG_TARGET, "Message dedup cache trim already running, skipping");
+            return Ok(0);
+        }
+        let result = self.trim_entries_inner();
+        self.is_trimming.store(false, Ordering::Release);
+        result
+    }
+
+    fn trim_entries_inner(&self) -> Result<usize, StorageError> {
+        let capacity = i64::try_from(self.capacity).unwrap_or(i64::MAX);
+        let ceiling = i64::try_from(self.capacity.saturating_mul(CEILING_CAPACITY_MULTIPLE)).unwrap_or(i64::MAX);
         let mut conn = self.connection.get_pooled_connection()?;
         let msg_count = dedup_cache::table
             .select(dsl::count(dedup_cache::id))
             .first::<i64>(&mut conn)?;
-        // Hysteresis added to minimize database impact
-        if msg_count > capacity {
-            let remove_count = msg_count.saturating_sub(capacity);
+
+        let mut num_removed = 0;
+        if msg_count > ceiling {
             num_removed = diesel::sql_query(
                 "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT $1)",
             )
-            .bind::<sql_types::BigInt, _>(remove_count)
+            .bind::<sql_types::BigInt, _>(msg_count.saturating_sub(ceiling))
             .execute(&mut conn)?;
+            self.log_ceiling_hit(msg_count, ceiling);
+        }
+
+        let remaining = msg_count.saturating_sub(i64::try_from(num_removed).unwrap_or(i64::MAX));
+        if remaining > capacity {
+            let cutoff = chrono::Duration::from_std(self.min_entry_age)
+                .ok()
+                .and_then(|age| Utc::now().naive_utc().checked_sub_signed(age))
+                .unwrap_or(NaiveDateTime::MIN);
+            let num_old_removed = diesel::sql_query(
+                "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache WHERE last_hit_at <= $1 ORDER BY \
+                 last_hit_at ASC LIMIT $2)",
+            )
+            .bind::<sql_types::Timestamp, _>(cutoff)
+            .bind::<sql_types::BigInt, _>(remaining.saturating_sub(capacity))
+            .execute(&mut conn)?;
+            num_removed = num_removed.saturating_add(num_old_removed);
         }
         debug!(
             target: LOG_TARGET,
-            "Message dedup cache: count {msg_count}, capacity {capacity}, removed {num_removed}"
+            "Message dedup cache: count {msg_count}, capacity {capacity}, ceiling {ceiling}, removed {num_removed}"
         );
         Ok(num_removed)
+    }
+
+    fn log_ceiling_hit(&self, msg_count: i64, ceiling: i64) {
+        let mut logged_at = self.ceiling_logged_at.lock().unwrap_or_else(|e| e.into_inner());
+        let should_log = match *logged_at {
+            Some(at) => at.elapsed() >= DEDUP_ERROR_LOG_INTERVAL,
+            None => true,
+        };
+        if should_log {
+            *logged_at = Some(Instant::now());
+            warn!(
+                target: LOG_TARGET,
+                "Message dedup cache held {msg_count} entries, above its ceiling of {ceiling}. Removed the oldest \
+                 entries, including unexpired ones."
+            );
+        }
     }
 
     /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
@@ -197,21 +267,108 @@ mod test {
             .unwrap()
     }
 
-    #[test]
-    fn it_trims_as_it_grows() {
-        let capacity = 1_000;
-        let cache = new_cache(capacity);
-        let n = cache.trim_every_inserts;
-        assert_eq!(n, 100);
-
-        for i in 0..(capacity + 2 * n) {
+    fn insert(cache: &DedupCacheDatabase, range: std::ops::Range<usize>) {
+        for i in range {
             let num_hits = cache
                 .add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default())
                 .unwrap();
             assert_eq!(num_hits, 1);
-            assert!(row_count(&cache) <= i64::try_from(capacity + n).unwrap());
         }
-        assert!(row_count(&cache) <= i64::try_from(capacity + n).unwrap());
+    }
+
+    /// Makes entry `i` look last hit `age + (num_entries - i)` seconds ago, so lower `i` is older.
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #[allow(clippy::arithmetic_side_effects)]
+    fn age_entries(cache: &DedupCacheDatabase, num_entries: usize, age: Duration) {
+        let mut conn = cache.connection.get_pooled_connection().unwrap();
+        let now = Utc::now().naive_utc();
+        for i in 0..num_entries {
+            let extra = Duration::from_secs(u64::try_from(num_entries - i).unwrap());
+            let last_hit_at = now - chrono::Duration::from_std(age + extra).unwrap();
+            diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(to_hex(&i.to_le_bytes()))))
+                .set(dedup_cache::last_hit_at.eq(last_hit_at))
+                .execute(&mut conn)
+                .unwrap();
+        }
+    }
+
+    fn contains(cache: &DedupCacheDatabase, i: usize) -> bool {
+        cache.get_hit_count(&i.to_le_bytes()).unwrap() > 0
+    }
+
+    #[test]
+    fn it_trims_as_it_grows() {
+        let capacity = 10;
+        let cache = new_cache(capacity);
+        let n = cache.trim_every_inserts;
+        assert_eq!(n, 100);
+        let ceiling = capacity * CEILING_CAPACITY_MULTIPLE;
+        let limit = i64::try_from(ceiling + n).unwrap();
+
+        for i in 0..(ceiling + 2 * n) {
+            insert(&cache, i..i + 1);
+            assert!(row_count(&cache) <= limit);
+        }
+        assert!(row_count(&cache) <= limit);
+    }
+
+    #[test]
+    fn it_keeps_young_entries_above_capacity() {
+        let cache = new_cache(10);
+        insert(&cache, 0..20);
+        assert_eq!(cache.trim_entries().unwrap(), 0);
+        assert_eq!(row_count(&cache), 20);
+    }
+
+    #[test]
+    fn it_trims_old_entries_to_capacity() {
+        let cache = new_cache(10);
+        insert(&cache, 0..20);
+        age_entries(&cache, 20, MIN_ENTRY_AGE + Duration::from_secs(60));
+        assert_eq!(cache.trim_entries().unwrap(), 10);
+        assert_eq!(row_count(&cache), 10);
+        assert!((0..10).all(|i| !contains(&cache, i)));
+        assert!((10..20).all(|i| contains(&cache, i)));
+    }
+
+    #[test]
+    fn it_only_trims_old_entries_below_the_ceiling() {
+        let cache = new_cache(10);
+        insert(&cache, 0..20);
+        // Entries 0..5 are old, the rest young
+        age_entries(&cache, 5, MIN_ENTRY_AGE + Duration::from_secs(60));
+        assert_eq!(cache.trim_entries().unwrap(), 5);
+        assert!((0..5).all(|i| !contains(&cache, i)));
+        assert_eq!(row_count(&cache), 15);
+    }
+
+    #[test]
+    fn it_trims_young_entries_to_the_ceiling() {
+        let capacity = 10;
+        let ceiling = capacity * CEILING_CAPACITY_MULTIPLE;
+        let cache = new_cache(capacity);
+        // Insert directly so that the growth trim does not run first
+        for i in 0..(ceiling + 20) {
+            cache
+                .insert_body_hash_or_update_stats(&to_hex(&i.to_le_bytes()), &CommsPublicKey::default().to_hex())
+                .unwrap();
+        }
+        age_entries(&cache, ceiling + 20, Duration::ZERO);
+        assert_eq!(cache.trim_entries().unwrap(), 20);
+        assert_eq!(row_count(&cache), i64::try_from(ceiling).unwrap());
+        assert!((0..20).all(|i| !contains(&cache, i)));
+    }
+
+    #[test]
+    fn a_trim_is_skipped_while_another_runs() {
+        let cache = new_cache(10).with_min_entry_age(Duration::ZERO);
+        insert(&cache, 0..20);
+        cache.is_trimming.store(true, Ordering::Release);
+        assert_eq!(cache.trim_entries().unwrap(), 0);
+        assert_eq!(row_count(&cache), 20);
+        cache.is_trimming.store(false, Ordering::Release);
+        assert_eq!(cache.trim_entries().unwrap(), 10);
+        assert_eq!(row_count(&cache), 10);
     }
 
     #[test]
@@ -224,14 +381,18 @@ mod test {
 
         let cache = new_cache(10);
         let mut conn = cache.connection.get_pooled_connection().unwrap();
-        let plan = diesel::sql_query("EXPLAIN QUERY PLAN SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT 1")
-            .load::<QueryPlanRow>(&mut conn)
-            .unwrap();
-        assert!(
-            plan.iter()
-                .any(|row| row.detail.contains("idx_dedup_cache_last_hit_at")),
-            "query plan does not use the index"
-        );
+        for query in [
+            "EXPLAIN QUERY PLAN SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT 1",
+            "EXPLAIN QUERY PLAN SELECT id FROM dedup_cache WHERE last_hit_at <= '2026-01-01 00:00:00' ORDER BY \
+             last_hit_at ASC LIMIT 1",
+        ] {
+            let plan = diesel::sql_query(query).load::<QueryPlanRow>(&mut conn).unwrap();
+            assert!(
+                plan.iter()
+                    .any(|row| row.detail.contains("idx_dedup_cache_last_hit_at")),
+                "query plan does not use the index: {query}"
+            );
+        }
     }
 
     /// The DHT pipeline runs up to 100 inbound tasks at once, each inserting on a blocking thread. None of them may

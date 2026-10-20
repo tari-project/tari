@@ -68,12 +68,15 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    /// The max capacity of the message hash cache. The cache is trimmed back to this size every
-    /// max(capacity / 10, 100) new entries, so it holds at most that many rows over capacity.
+    /// The target capacity of the message hash cache. The cache is trimmed every max(capacity / 10, 100) new entries.
+    /// A trim removes entries down to this size, oldest first, but only entries not hit for the message validity
+    /// window (3 h) plus 10 min of clock slack, so an unexpired message cannot be pushed out and replayed. Above a
+    /// ceiling of 10 x capacity the oldest entries are removed down to the ceiling whatever their age, so the cache
+    /// holds at most 10 x capacity + max(capacity / 10, 100) entries.
     /// Default: 50,000
     pub dedup_cache_capacity: usize,
     /// The periodic trim interval for items in the message hash cache. This is a fallback; the cache is also trimmed
-    /// as it grows (see `dedup_cache_capacity`).
+    /// as it grows, with the same rules (see `dedup_cache_capacity`).
     /// Default: 12 x 60 x 60s (12 hours)
     #[serde(with = "serializers::seconds_nonzero")]
     pub dedup_cache_trim_interval: Duration,

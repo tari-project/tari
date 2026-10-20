@@ -24,6 +24,7 @@
 
 mod broadcast;
 pub use broadcast::BroadcastLayer;
+pub(crate) use broadcast::MESSAGE_VALIDITY_WINDOW;
 
 mod error;
 pub use error::DhtOutboundError;
