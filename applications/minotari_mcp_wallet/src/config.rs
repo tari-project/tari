@@ -86,7 +86,17 @@ impl WalletMcpConfig {
                 username: username.clone(),
                 password: password.clone(),
             },
-            _ => GrpcAuthentication::None,
+            (None, None) => GrpcAuthentication::None,
+            (Some(_), None) => {
+                return Err(McpError::config_error(
+                    "Wallet gRPC username was provided without a password",
+                ));
+            },
+            (None, Some(_)) => {
+                return Err(McpError::config_error(
+                    "Wallet gRPC password was provided without a username",
+                ));
+            },
         };
 
         let wallet_grpc_config = WalletGrpcConfig {
@@ -97,9 +107,7 @@ impl WalletMcpConfig {
             authentication: grpc_authentication,
         };
 
-        let security_config = WalletSecurityConfig {
-            enable_preview: true,
-        };
+        let security_config = WalletSecurityConfig { enable_preview: true };
 
         let config = Self {
             mcp: mcp_config,
@@ -159,8 +167,6 @@ impl Default for WalletGrpcConfig {
 
 impl Default for WalletSecurityConfig {
     fn default() -> Self {
-        Self {
-            enable_preview: true,
-        }
+        Self { enable_preview: true }
     }
 }

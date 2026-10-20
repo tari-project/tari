@@ -76,12 +76,14 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_GRPC_USERNAME")]
     pub wallet_grpc_username: Option<String>,
 
-    /// Wallet gRPC authentication password
+    /// Wallet gRPC authentication password.
+    /// Recommended: supply via MINOTARI_WALLET_GRPC_PASSWORD environment variable to avoid argv leakage.
     #[clap(long, env = "MINOTARI_WALLET_GRPC_PASSWORD", hide_env_values = true)]
     pub wallet_grpc_password: Option<SafePassword>,
 
     // Wallet-specific flags for auto-launch (prefixed to avoid conflicts)
-    /// Wallet: Password for the console wallet
+    /// Wallet: Password for the console wallet.
+    /// Recommended: supply via MINOTARI_MCP_WALLET_PASSWORD environment variable to avoid argv leakage.
     #[clap(long, env = "MINOTARI_MCP_WALLET_PASSWORD", hide_env_values = true)]
     pub wallet_password: Option<SafePassword>,
 
@@ -284,27 +286,32 @@ impl CliConfigExtractor for Cli {
 
 #[cfg(test)]
 mod tests {
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+
     use super::*;
     use crate::config::WalletMcpConfig;
-    use tari_common_types::grpc_authentication::GrpcAuthentication;
 
     #[test]
     fn test_wallet_password_never_in_argv() {
-        let cli = Cli::try_parse_from([
-            "minotari_mcp_wallet",
-            "--wallet-password",
-            "super_secret_wallet_pass",
-        ])
-        .unwrap();
+        let cli =
+            Cli::try_parse_from(["minotari_mcp_wallet", "--wallet-password", "super_secret_wallet_pass"]).unwrap();
 
         assert!(cli.wallet_password.is_some());
 
         let generated_args = cli.generate_wallet_args();
-        assert!(!generated_args.iter().any(|arg| arg.contains("super_secret_wallet_pass")));
+        assert!(
+            !generated_args
+                .iter()
+                .any(|arg| arg.contains("super_secret_wallet_pass"))
+        );
         assert!(!generated_args.iter().any(|arg| arg == "-p" || arg == "--password"));
 
         let extracted_args = cli.extract_wallet_args();
-        assert!(!extracted_args.iter().any(|arg| arg.contains("super_secret_wallet_pass")));
+        assert!(
+            !extracted_args
+                .iter()
+                .any(|arg| arg.contains("super_secret_wallet_pass"))
+        );
         assert!(!extracted_args.iter().any(|arg| arg == "-p" || arg == "--password"));
     }
 
@@ -313,7 +320,10 @@ mod tests {
         // Without auth flags
         let cli_no_auth = Cli::try_parse_from(["minotari_mcp_wallet"]).unwrap();
         let config_no_auth = WalletMcpConfig::load(&cli_no_auth).unwrap();
-        assert!(matches!(config_no_auth.wallet_grpc.authentication, GrpcAuthentication::None));
+        assert!(matches!(
+            config_no_auth.wallet_grpc.authentication,
+            GrpcAuthentication::None
+        ));
 
         // With auth flags
         let cli_with_auth = Cli::try_parse_from([
@@ -321,16 +331,24 @@ mod tests {
             "--wallet-grpc-username",
             "mcp_user",
             "--wallet-grpc-password",
-            "mcp_pass123",
+            "test_auth_token",
         ])
         .unwrap();
         let config_with_auth = WalletMcpConfig::load(&cli_with_auth).unwrap();
         match config_with_auth.wallet_grpc.authentication {
             GrpcAuthentication::Basic { username, password } => {
                 assert_eq!(username, "mcp_user");
-                assert_eq!(password.reveal().as_slice(), b"mcp_pass123");
-            }
+                assert_eq!(password.reveal().as_slice(), b"test_auth_token");
+            },
             _ => panic!("Expected GrpcAuthentication::Basic"),
         }
+
+        // Asymmetric credentials must return config error
+        let cli_user_only = Cli::try_parse_from(["minotari_mcp_wallet", "--wallet-grpc-username", "mcp_user"]).unwrap();
+        assert!(WalletMcpConfig::load(&cli_user_only).is_err());
+
+        let cli_pass_only =
+            Cli::try_parse_from(["minotari_mcp_wallet", "--wallet-grpc-password", "test_auth_token"]).unwrap();
+        assert!(WalletMcpConfig::load(&cli_pass_only).is_err());
     }
 }

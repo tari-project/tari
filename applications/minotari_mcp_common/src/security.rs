@@ -143,14 +143,8 @@ impl SecurityContext {
         let session_id = self.create_or_update_session();
 
         // Log successful permission check
-        self.audit_logger.log_operation(
-            session_id,
-            operation,
-            permission_level,
-            true,
-            None,
-            request_data,
-        );
+        self.audit_logger
+            .log_operation(session_id, operation, permission_level, true, None, request_data);
 
         Ok(session_id)
     }
@@ -158,12 +152,7 @@ impl SecurityContext {
     fn create_or_update_session(&mut self) -> Uuid {
         let now = Utc::now();
 
-        let session_id = self
-            .sessions
-            .values()
-            .next()
-            .map(|s| s.id)
-            .unwrap_or_else(Uuid::new_v4);
+        let session_id = self.sessions.values().next().map(|s| s.id).unwrap_or_else(Uuid::new_v4);
 
         let session = Session {
             id: session_id,
