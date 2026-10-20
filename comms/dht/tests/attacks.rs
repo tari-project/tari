@@ -80,7 +80,8 @@ async fn large_join_messages_with_many_addresses() {
         .send_message_no_header(
             SendMessageParams::new()
                 .direct_node_id(node_b.node_identity().node_id().clone())
-                .with_destination(node_c.comms.node_identity().public_key().clone().into())
+                // A Join is only accepted when addressed to its signer
+                .with_destination(node_a.node_identity().public_key().clone().into())
                 .with_dht_message_type(DhtMessageType::Join)
                 .force_origin()
                 .finish(),

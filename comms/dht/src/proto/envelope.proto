@@ -22,6 +22,8 @@ enum DhtMessageType {
     DhtMessageTypeSafStoredMessages = 21;
 }
 
+// Received headers must be canonically encoded (see `is_canonical` in proto/mod.rs), so older nodes drop a header
+// with a field they do not know. Adding a field requires a DHT `major` version bump.
 message DhtHeader {
     uint32 major = 1;
 //    uint32 minor = 2;
@@ -48,6 +50,7 @@ message DhtHeader {
     uint64 expires = 12;
 }
 
+// Received envelopes must be canonically encoded, so adding a field requires a DHT `major` version bump.
 message DhtEnvelope {
     DhtHeader header = 1;
     bytes body = 2;

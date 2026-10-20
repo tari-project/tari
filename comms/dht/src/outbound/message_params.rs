@@ -188,7 +188,8 @@ impl SendMessageParams {
         self
     }
 
-    /// Override the DHtHeader of a message(s) with the given header
+    /// Override the DHtHeader of a message(s) with the given header.
+    /// The body passed with a custom header MUST be the exact bytes the header's signature was computed over.
     pub fn with_dht_header(&mut self, dht_header: DhtMessageHeader) -> &mut Self {
         self.params_mut().dht_header = Some(dht_header);
         self

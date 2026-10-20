@@ -28,9 +28,25 @@ use prost::Message;
 use tari_comms::{PeerManager, message::InboundMessage, pipeline::PipelineError};
 use tower::{Service, ServiceExt, layer::Layer};
 
-use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
+use crate::{
+    inbound::DhtInboundMessage,
+    proto::{envelope::DhtEnvelope, is_canonical},
+};
 
 const LOG_TARGET: &str = "comms::dht::deserialize";
+
+#[cfg(feature = "metrics")]
+fn inbound_non_canonical() -> tari_metrics::IntCounter {
+    static METER: std::sync::LazyLock<tari_metrics::IntCounter> = std::sync::LazyLock::new(|| {
+        tari_metrics::register_int_counter(
+            "comms::dht::inbound_non_canonical_total",
+            "Inbound DHT envelopes dropped because their bytes are not the canonical encoding",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
 
 /// # DHT Deserialization middleware
 ///
@@ -82,8 +98,20 @@ where
                 return Err(anyhow::anyhow!("Received empty message from peer '{source_peer}'"));
             }
 
+            let raw = body.clone();
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
+                    // The same envelope can be encoded in many ways. Only the canonical encoding is accepted. Relays
+                    // rebuild the header, so what is preserved hop to hop is the signed bytes (body and signature).
+                    if !is_canonical(&raw, &dht_envelope) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Dropping non-canonically encoded DHT envelope from peer '{source_peer}' ({tag})"
+                        );
+                        #[cfg(feature = "metrics")]
+                        inbound_non_canonical().inc();
+                        return Ok(());
+                    }
                     let res;
                     if let Some(source_peer) = peer_manager.find_by_node_id(&source_peer).await? {
                         // .or_not_found(&source_peer)
@@ -198,5 +226,43 @@ mod test {
         let msg = spy.pop_request().unwrap();
         assert_eq!(msg.body, b"A".to_vec().to_encoded_bytes());
         assert_eq!(msg.dht_header, dht_envelope.header.unwrap().try_into().unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_non_canonical_envelope_is_dropped_without_a_ban() {
+        let spy = service_spy();
+        let peer_manager = build_peer_manager();
+        let node_identity = make_node_identity();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
+        let mut deserialize = DeserializeLayer::new(peer_manager.clone()).layer(spy.to_service::<PipelineError>());
+
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            &b"A".to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+            false,
+        )
+        .unwrap();
+        let mut bytes = dht_envelope.to_encoded_bytes();
+        // Unknown field 15 (varint) = 1: decodes to the same envelope
+        bytes.extend_from_slice(&[0x78, 0x01]);
+        assert_eq!(DhtEnvelope::decode(bytes.as_slice()).unwrap(), dht_envelope);
+
+        #[cfg(feature = "metrics")]
+        let dropped_before = inbound_non_canonical().get();
+        deserialize
+            .ready()
+            .await
+            .unwrap()
+            .call(make_comms_inbound_message(&node_identity, bytes.into()))
+            .await
+            .unwrap();
+
+        assert_eq!(spy.call_count(), 0);
+        assert!(!peer_manager.is_peer_banned(node_identity.node_id()).await.unwrap());
+        #[cfg(feature = "metrics")]
+        assert!(inbound_non_canonical().get() > dropped_before);
     }
 }

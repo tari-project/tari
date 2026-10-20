@@ -42,7 +42,7 @@ use crate::{
     crypt,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage, ValidatedDhtInboundMessage},
     message_signature::{MessageSignature, ProtoMessageSignature},
-    proto::DHT_MESSAGE_MAX_DECODE_ITEMS,
+    proto::{DHT_MESSAGE_MAX_DECODE_ITEMS, is_canonical},
 };
 
 const LOG_TARGET: &str = "comms::middleware::decryption";
@@ -322,12 +322,16 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(ValidatedDhtInboundMessage::new(message, None));
         }
 
-        // If a signature is present, it must be valid
-        let message_signature: MessageSignature =
-            ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
-                .map_err(|_| DecryptionError::InvalidSignature)?
-                .try_into()
-                .map_err(|_| DecryptionError::InvalidSignature)?;
+        // If a signature is present, it must be valid and canonically encoded: other encodings of the same signature
+        // would let anyone change the bytes relays carry
+        let proto_signature = ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
+            .map_err(|_| DecryptionError::InvalidSignature)?;
+        if !is_canonical(&message.dht_header.message_signature, &proto_signature) {
+            return Err(DecryptionError::InvalidSignature);
+        }
+        let message_signature: MessageSignature = proto_signature
+            .try_into()
+            .map_err(|_| DecryptionError::InvalidSignature)?;
 
         let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
@@ -510,6 +514,8 @@ mod test {
 
         // Check that decryption succeeds and yields the original message
         let decrypted = expect_no_error(node_identity, message, true).await;
+        // Only a Join may be re-sent under its original header, so no other message keeps its received bytes
+        assert!(decrypted.raw_body.is_empty());
         assert_eq!(decrypted.decryption_result.unwrap(), plain_text);
     }
 
@@ -533,8 +539,8 @@ mod test {
         // Check that the message is received, but that decryption fails
         let decrypted = expect_no_error(node_identity, message.clone(), false).await;
 
-        // The error should contain the message body
-        assert_eq!(decrypted.decryption_result.unwrap_err(), message.body);
+        // The undecrypted body is kept as received
+        assert_eq!(decrypted.fail(), Some(&message.body));
     }
 
     #[tokio::test]
@@ -724,6 +730,39 @@ mod test {
                 expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature).await;
             }
         }
+    }
+
+    #[tokio::test]
+    /// A valid signature whose bytes are not its canonical encoding (an appended unknown field, or a duplicated field)
+    /// decodes to the same signature but is rejected; the canonical encoding is accepted
+    async fn a_non_canonical_message_signature_is_rejected() {
+        let node_identity = make_node_identity();
+        let message = make_dht_inbound_message(
+            &node_identity,
+            &b"a secret message".to_vec(),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            true,
+        )
+        .unwrap();
+        let canonical = message.dht_header.message_signature.clone();
+
+        let mut unknown_field = canonical.clone();
+        // Unknown field 15 (varint) = 1
+        unknown_field.extend_from_slice(&[0x78, 0x01]);
+        // A first `signer_public_key` that the real one, later in the bytes, overrides
+        let mut duplicated_field = vec![0x0a, 0x01, 0x00];
+        duplicated_field.extend_from_slice(&canonical);
+
+        for signature in [unknown_field, duplicated_field] {
+            let decoded = ProtoMessageSignature::decode(signature.as_slice()).unwrap();
+            assert_eq!(decoded.encode_to_vec(), canonical);
+            let mut message = message.clone();
+            message.dht_header.message_signature = signature;
+            expect_error(node_identity.clone(), message, DecryptionError::InvalidSignature).await;
+        }
+
+        expect_no_error(node_identity, message, true).await;
     }
 
     #[tokio::test]

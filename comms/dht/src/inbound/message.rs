@@ -35,7 +35,7 @@ use tari_utilities::ByteArray;
 
 use crate::{
     dedup,
-    envelope::{DhtMessageFlags, DhtMessageHeader},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType},
 };
 
 #[derive(Debug, Clone)]
@@ -135,7 +135,11 @@ pub struct DecryptedDhtMessage {
     pub dht_header: DhtMessageHeader,
     pub is_saf_message: bool,
     pub is_already_forwarded: bool,
-    pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
+    /// The decrypted body, or `Err` if this node could not decrypt it (the bytes are in `raw_body`)
+    pub decryption_result: Result<EnvelopeBody, ()>,
+    /// The body exactly as received, kept when it may be re-sent under its original header: on failure, or for a
+    /// Join. Empty otherwise. A re-sent message must carry these bytes, because the header's signature covers them.
+    pub raw_body: Vec<u8>,
     pub dedup_hit_count: u32,
     pub dedup_hash: Vec<u8>,
 }
@@ -157,8 +161,14 @@ impl DecryptedDhtMessage {
         authenticated_origin: Option<CommsPublicKey>,
         message: DhtInboundMessage,
     ) -> Self {
+        let dedup_hash = dedup::hash_inbound_message(&message).to_vec();
+        let raw_body = if message.dht_header.message_type == DhtMessageType::Join {
+            message.body
+        } else {
+            Vec::new()
+        };
         Self {
-            dedup_hash: dedup::hash_inbound_message(&message).to_vec(),
+            dedup_hash,
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin,
@@ -166,6 +176,7 @@ impl DecryptedDhtMessage {
             is_saf_message: message.is_saf_message,
             is_already_forwarded: false,
             decryption_result: Ok(message_body),
+            raw_body,
             dedup_hit_count: message.dedup_hit_count,
         }
     }
@@ -179,17 +190,18 @@ impl DecryptedDhtMessage {
             dht_header: message.dht_header,
             is_saf_message: message.is_saf_message,
             is_already_forwarded: false,
-            decryption_result: Err(message.body),
+            decryption_result: Err(()),
+            raw_body: message.body,
             dedup_hit_count: message.dedup_hit_count,
         }
     }
 
     pub fn fail(&self) -> Option<&Vec<u8>> {
-        self.decryption_result.as_ref().err()
+        self.decryption_result.is_err().then_some(&self.raw_body)
     }
 
     pub fn fail_mut(&mut self) -> Option<&mut Vec<u8>> {
-        self.decryption_result.as_mut().err()
+        self.decryption_result.is_err().then_some(&mut self.raw_body)
     }
 
     pub fn success(&self) -> Option<&EnvelopeBody> {
@@ -224,7 +236,7 @@ impl DecryptedDhtMessage {
     pub fn body_len(&self) -> usize {
         match self.decryption_result.as_ref() {
             Ok(b) => b.total_size(),
-            Err(b) => b.len(),
+            Err(()) => self.raw_body.len(),
         }
     }
 
