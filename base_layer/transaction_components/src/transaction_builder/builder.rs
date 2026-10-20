@@ -345,12 +345,18 @@ where KM: TransactionKeyManagerInterface
 
     /// Add a burn output that is already built. A burn has no recipient address, so nothing is derived from or signed
     /// for one; the same rules as [`Self::add_recipient`] apply to `sender_offset_key_id`.
+    ///
+    /// With no address the output is re-signed without the device's review, so on a ledger wallet a host held sender
+    /// offset key is refused here, as the addressed path refuses it.
     pub fn add_burn_recipient(
         &mut self,
         burn_output: WalletOutput,
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        if self.key_manager.is_ledger() && !matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+            return Err(KeyManagerError::LedgerHostHeldSenderOffset.into());
+        }
         self.push_recipient(None, burn_output, sender_offset_key_id, custom_recovery_key_id)
     }
 
@@ -2855,6 +2861,42 @@ mod test {
         .unwrap();
         let finalized = builder.build().unwrap();
         assert_validates(&finalized.transaction);
+    }
+
+    /// On a ledger wallet an address-less recipient with a host held sender offset key is refused.
+    #[cfg(feature = "ledger")]
+    #[test]
+    fn a_ledger_wallet_refuses_a_host_held_burn_recipient() {
+        use crate::key_manager::wallet_types::{LedgerWallet, WalletType};
+
+        let ledger = LedgerWallet::new(
+            1,
+            Network::LocalNet,
+            CompressedPublicKey::from_secret_key(&PrivateKey::from(5u64)),
+            PrivateKey::from(6u64),
+        );
+        let ledger_key_manager = KeyManager::new(WalletType::Ledger(ledger)).unwrap();
+        let software_key_manager = KeyManager::new_random().unwrap();
+        let output = create_test_input(MicroMinotari(1000), 0, &software_key_manager, vec![], None);
+        let host_key = software_key_manager.get_random_key(None, None).unwrap();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), ledger_key_manager, Network::LocalNet).unwrap();
+        let err = builder
+            .add_burn_recipient(output.clone(), host_key.key_id.clone(), None)
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains(&KeyManagerError::LedgerHostHeldSenderOffset.to_string()),
+            "{err}"
+        );
+
+        let mut software_builder =
+            TransactionBuilder::new(create_consensus_constants(0), software_key_manager, Network::LocalNet).unwrap();
+        software_builder
+            .add_burn_recipient(output, host_key.key_id, None)
+            .unwrap();
     }
 
     /// A plain burn is a spec built output added with no recipient address, so nothing is signed for the placeholder.

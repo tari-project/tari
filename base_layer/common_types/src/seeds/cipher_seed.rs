@@ -485,8 +485,40 @@ impl Serialize for CipherSeed {
 struct LegacyCipherSeed {
     version: u8,
     birthday: u16,
-    entropy: Box<[u8; CIPHER_SEED_ENTROPY_BYTES]>,
+    #[serde(deserialize_with = "deserialize_legacy_entropy")]
+    entropy: Zeroizing<Vec<u8>>,
     salt: [u8; CIPHER_SEED_MAIN_SALT_BYTES],
+}
+
+/// Read the legacy entropy array into a buffer sized up front, so it never reallocates and leaves a copy behind
+fn deserialize_legacy_entropy<'de, D>(deserializer: D) -> Result<Zeroizing<Vec<u8>>, D::Error>
+where D: Deserializer<'de> {
+    struct EntropyVisitor;
+
+    impl<'de> Visitor<'de> for EntropyVisitor {
+        type Value = Zeroizing<Vec<u8>>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "an array of {CIPHER_SEED_ENTROPY_BYTES} bytes")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Zeroizing<Vec<u8>>, A::Error>
+        where A: de::SeqAccess<'de> {
+            let mut entropy = Zeroizing::new(Vec::with_capacity(CIPHER_SEED_ENTROPY_BYTES));
+            while let Some(byte) = seq.next_element::<u8>()? {
+                if entropy.len() == CIPHER_SEED_ENTROPY_BYTES {
+                    return Err(de::Error::invalid_length(entropy.len().saturating_add(1), &self));
+                }
+                entropy.push(byte);
+            }
+            if entropy.len() != CIPHER_SEED_ENTROPY_BYTES {
+                return Err(de::Error::invalid_length(entropy.len(), &self));
+            }
+            Ok(entropy)
+        }
+    }
+
+    deserializer.deserialize_seq(EntropyVisitor)
 }
 
 struct CipherSeedVisitor;
@@ -521,7 +553,7 @@ impl<'de> Visitor<'de> for CipherSeedVisitor {
             entropy: Box::new([0u8; CIPHER_SEED_ENTROPY_BYTES]),
             salt: legacy.salt,
         };
-        seed.entropy.copy_from_slice(legacy.entropy.as_ref());
+        seed.entropy.copy_from_slice(legacy.entropy.as_slice());
         Ok(seed)
     }
 }
@@ -1005,6 +1037,13 @@ mod test {
         });
         assert_eq!(serde_json::from_value::<CipherSeed>(legacy.clone()).unwrap(), seed);
         assert_eq!(serde_json::from_str::<CipherSeed>(&legacy.to_string()).unwrap(), seed);
+
+        let mut short_entropy = legacy.clone();
+        short_entropy["entropy"] = serde_json::json!(&seed.entropy()[..15]);
+        assert!(serde_json::from_value::<CipherSeed>(short_entropy).is_err());
+        let mut long_entropy = legacy.clone();
+        long_entropy["entropy"] = serde_json::json!(vec![0u8; 17]);
+        assert!(serde_json::from_value::<CipherSeed>(long_entropy).is_err());
 
         let mut wrong_version = legacy;
         wrong_version["version"] = serde_json::json!(CIPHER_SEED_VERSION - 1);

@@ -41,7 +41,7 @@ use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::C
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::RecoveryProvenance,
+    key_manager::{RecoveryProvenance, error::not_ours_if_invalid_key},
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
         EncryptedData,
@@ -687,17 +687,20 @@ where
             // Received output use the DH of view key and sender offset.
             let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e))?;
-            let shared_secret = self
-                .key_manager
-                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)?;
-            let recovery_key = public_key_to_output_encryption_key(&shared_secret)
-                .map_err(|e| anyhow!("Could not hash key :{}", e))?;
-            if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
-                .ok()
-                .is_some()
-            {
-                found_outputs.push(output.clone());
-                continue;
+            // A sender offset key that is the identity or not a point cannot carry a payment to us
+            if let Some(shared_secret) = not_ours_if_invalid_key(
+                self.key_manager
+                    .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key),
+            )? {
+                let recovery_key = public_key_to_output_encryption_key(&shared_secret)
+                    .map_err(|e| anyhow!("Could not hash key :{}", e))?;
+                if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
+                    .ok()
+                    .is_some()
+                {
+                    found_outputs.push(output.clone());
+                    continue;
+                }
             }
 
             // Change outputs just use the view key.

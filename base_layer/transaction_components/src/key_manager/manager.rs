@@ -94,7 +94,7 @@ use crate::{
         RecoveryProvenance,
         SecretTransactionKeyManagerInterface,
         TxoStage,
-        error::KeyManagerError,
+        error::{KeyManagerError, not_ours_if_invalid_key},
         interface::TransactionKeyManagerInterface,
         key_id::{SerializedKeyString, TariKeyAndId, TariKeyId},
         wallet_types::WalletType,
@@ -1032,6 +1032,10 @@ impl TransactionKeyManagerInterface for KeyManager {
             .map_err(Into::into)
     }
 
+    fn is_ledger(&self) -> bool {
+        self.wallet_type.is_ledger()
+    }
+
     fn get_view_key(&self) -> TariKeyAndId {
         let key_id = TariKeyId::ViewKey;
         let key = self.wallet_type.get_public_view_key();
@@ -1355,13 +1359,15 @@ impl TransactionKeyManagerInterface for KeyManager {
                     (value, private_key, payment_id, key, RecoveryProvenance::OwnViewKey)
                 },
                 Err(_) => {
-                    // so this is not change, lets try with the offset key. An identity sender offset key cannot carry
-                    // a payment to us, and the DH below refuses it.
-                    if *sender_offset_public_key == CompressedPublicKey::default() {
-                        return Ok(None);
-                    }
+                    // so this is not change, lets try with the offset key. A sender offset key that is the identity or
+                    // not a point cannot carry a payment to us.
                     let view_key = self.get_view_key().key_id;
-                    let shared_secret = self.get_diffie_hellman_shared_secret(&view_key, sender_offset_public_key)?;
+                    let Some(shared_secret) = not_ours_if_invalid_key(
+                        self.get_diffie_hellman_shared_secret(&view_key, sender_offset_public_key),
+                    )?
+                    else {
+                        return Ok(None);
+                    };
 
                     let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     match EncryptedData::decrypt_data(&encryption_key, commitment, encrypted_data) {
@@ -3631,17 +3637,20 @@ mod tests {
             .unwrap();
     }
 
-    /// Scanning an output that is not ours, with an identity sender offset key, is not an error.
+    /// Scanning an output that is not ours, with a sender offset key that is the identity or not a point, is not an
+    /// error.
     #[test]
-    fn try_output_key_recovery_skips_an_identity_sender_offset_key() {
+    fn try_output_key_recovery_skips_an_invalid_sender_offset_key() {
         let key_manager = KeyManager::new_random().unwrap();
         let other = KeyManager::new_random().unwrap();
         let (commitment, not_ours, _) = output_with_matching_and_mismatched_encrypted_data(&other);
-        assert!(
-            key_manager
-                .try_output_key_recovery(&commitment, &not_ours, &CompressedPublicKey::default())
-                .unwrap()
-                .is_none()
-        );
+        for sender_offset in [CompressedPublicKey::default(), CompressedPublicKey::new(&[0xffu8; 32])] {
+            assert!(
+                key_manager
+                    .try_output_key_recovery(&commitment, &not_ours, &sender_offset)
+                    .unwrap()
+                    .is_none()
+            );
+        }
     }
 }

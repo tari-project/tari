@@ -242,6 +242,21 @@ impl BaseNodeGrpcServer {
     }
 }
 
+/// Parse and check every coinbase address before anything is built, so one bad entry is reported by its index rather
+/// than failing deep inside the build.
+fn coinbase_target_addresses(coinbases: &[tari_rpc::NewBlockCoinbase]) -> Result<Vec<TariAddress>, Status> {
+    let mut addresses = Vec::with_capacity(coinbases.len());
+    for (index, coinbase) in coinbases.iter().enumerate() {
+        let address = TariAddress::from_str(&coinbase.address)
+            .map_err(|e| Status::invalid_argument(format!("Coinbase {index} has an invalid address: {e}")))?;
+        address
+            .validate_coinbase_target()
+            .map_err(|e| Status::invalid_argument(format!("Coinbase {index}: {e}")))?;
+        addresses.push(address);
+    }
+    Ok(addresses)
+}
+
 pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
     if report {
         status
@@ -1502,9 +1517,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
-        for coinbase in coinbases {
-            let address = TariAddress::from_str(&coinbase.address)
-                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        let addresses =
+            coinbase_target_addresses(&coinbases).map_err(|status| obscure_error_if_true(report_error_flag, status))?;
+        for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
             } else {
@@ -1744,9 +1759,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
-        for coinbase in coinbases {
-            let address = TariAddress::from_str(&coinbase.address)
-                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        let addresses =
+            coinbase_target_addresses(&coinbases).map_err(|status| obscure_error_if_true(report_error_flag, status))?;
+        for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
             } else {
@@ -3531,6 +3546,58 @@ mod test {
     };
 
     use super::*;
+
+    fn coinbase_to(address: &TariAddress) -> tari_rpc::NewBlockCoinbase {
+        tari_rpc::NewBlockCoinbase {
+            address: address.to_base58(),
+            value: 1,
+            stealth_payment: true,
+            revealed_value_proof: false,
+            coinbase_extra: vec![],
+        }
+    }
+
+    /// Every coinbase address is checked up front and a bad one is refused as an invalid argument naming its index.
+    #[test]
+    fn coinbase_target_addresses_refuses_a_bad_entry_by_index() {
+        use tari_common_types::{tari_address::TariAddressFeatures, types::CompressedPublicKey};
+
+        let key = || CompressedPublicKey::from_secret_key(&PrivateKey::from(7u64));
+        let good = TariAddress::new_dual_address(
+            key(),
+            key(),
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let addresses = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&good)]).unwrap();
+        assert_eq!(addresses, vec![good.clone(), good.clone()]);
+
+        let single = TariAddress::new_single_address_with_interactive_only(key(), Network::LocalNet).unwrap();
+        let status = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&single)]).unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("Coinbase 1"), "{}", status.message());
+
+        let identity_view = TariAddress::new_dual_address(
+            CompressedPublicKey::default(),
+            key(),
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+        let status = coinbase_target_addresses(&[coinbase_to(&identity_view)]).unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("Coinbase 0"), "{}", status.message());
+        assert!(status.message().contains("identity"), "{}", status.message());
+
+        let mut garbage = coinbase_to(&good);
+        garbage.address = "not an address".to_string();
+        let status = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&good), garbage]).unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(status.message().contains("Coinbase 2"), "{}", status.message());
+    }
 
     /// A signed side-chain validator node exit feature.
     fn validator_node_exit_feature() -> SideChainFeature {

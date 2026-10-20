@@ -67,7 +67,13 @@ use tari_transaction_components::{
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
-    key_manager::{RecoveryProvenance, SerializedKeyString, TariKeyAndId, TariKeyId, error::KeyManagerError},
+    key_manager::{
+        RecoveryProvenance,
+        SerializedKeyString,
+        TariKeyAndId,
+        TariKeyId,
+        error::{KeyManagerError, not_ours_if_invalid_key},
+    },
     transaction_builder::{FinalizedTransaction, PendingOutput, RecipientKeys, RecipientSpec},
     transaction_components::{
         EncryptedData,
@@ -3363,10 +3369,14 @@ where
         for output in outputs {
             if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                 if let Some(matched_key) = known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
-                    let shared_secret = self
-                        .resources
-                        .key_manager
-                        .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)?;
+                    let Some(shared_secret) = not_ours_if_invalid_key(
+                        self.resources
+                            .key_manager
+                            .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key),
+                    )?
+                    else {
+                        continue;
+                    };
 
                     let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     let script_private_key = matched_key.clone().1;
@@ -3405,10 +3415,14 @@ where
                 }
                 // it is not some known key, so lets try and see if this is a stealth tx for us
                 else {
-                    let shared_secret = self
-                        .resources
-                        .key_manager
-                        .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)?;
+                    let Some(shared_secret) = not_ours_if_invalid_key(
+                        self.resources
+                            .key_manager
+                            .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key),
+                    )?
+                    else {
+                        continue;
+                    };
 
                     let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     if let Ok((committed_value, commitment_mask_private_key, payment_id)) =
@@ -3490,11 +3504,12 @@ where
                 );
 
                 if let Some((commitment_mask_key_id, committed_value, payment_id, provenance)) =
-                    self.resources.key_manager.try_output_key_recovery(
+                    not_ours_if_invalid_key(self.resources.key_manager.try_output_key_recovery(
                         output.commitment(),
                         output.encrypted_data(),
                         &output.sender_offset_public_key,
-                    )?
+                    ))?
+                    .flatten()
                 {
                     let script_spending_key = self.resources.key_manager.stealth_address_script_spending_key(
                         &commitment_mask_key_id,

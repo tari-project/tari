@@ -22,7 +22,7 @@
 //
 use log::*;
 use tari_common_types::{
-    tari_address::{TariAddress, TariAddressFeatures},
+    tari_address::TariAddress,
     types::{CompressedCommitment, PrivateKey},
 };
 use tari_script::{ExecutionStack, TariScript, push_pubkey_script};
@@ -403,14 +403,9 @@ pub fn generate_coinbase_with_wallet_output<KM: TransactionKeyManagerInterface>(
     range_proof_type: RangeProofType,
     payment_id: MemoField,
 ) -> Result<(Transaction, TransactionOutput, TransactionKernel, WalletOutput), CoinbaseBuildError> {
-    if !wallet_payment_address
-        .features()
-        .contains(TariAddressFeatures::create_one_sided_only())
-    {
-        return Err(CoinbaseBuildError::BuildError(
-            "Invalid address, address must be one-sided enabled".to_string(),
-        ));
-    }
+    wallet_payment_address
+        .validate_coinbase_target()
+        .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
     // Override payment id if the wallet address contains a payment id
     let payment_id = if wallet_payment_address.get_memo_field_payment_id_bytes().is_empty() {
         payment_id

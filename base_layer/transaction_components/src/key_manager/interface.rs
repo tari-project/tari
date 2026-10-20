@@ -127,6 +127,9 @@ pub trait TransactionKeyManagerInterface: Clone + Send + Sync + 'static {
 
     fn get_view_key(&self) -> TariKeyAndId;
 
+    /// Whether this is a ledger wallet, whose device holds the spend key
+    fn is_ledger(&self) -> bool;
+
     fn get_private_view_key(&self) -> PrivateKey;
 
     fn get_spend_key(&self) -> TariKeyAndId;

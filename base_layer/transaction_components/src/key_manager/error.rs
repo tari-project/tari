@@ -127,6 +127,16 @@ pub enum KeyManagerError {
     InvalidPublicKey(String),
 }
 
+/// Treat a counterparty public key that Diffie-Hellman or stealth derivation refuses (the identity, or not a point) as
+/// "not ours": `Ok(None)` rather than an error, so that scanning skips the output instead of stopping.
+pub fn not_ours_if_invalid_key<T>(result: Result<T, KeyManagerError>) -> Result<Option<T>, KeyManagerError> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(KeyManagerError::InvalidPublicKey(_)) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 impl From<RangeProofError> for KeyManagerError {
     fn from(e: RangeProofError) -> Self {
         match e {

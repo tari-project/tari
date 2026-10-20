@@ -115,7 +115,6 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     seeds::{
         cipher_seed::CipherSeed,
-        error::{CipherError, MnemonicError},
         mnemonic::{Mnemonic, MnemonicLanguage},
         mnemonic_wordlists,
         seed_words::SeedWords,
@@ -3958,13 +3957,6 @@ pub unsafe extern "C" fn seed_words_push_word(
                         "Problem building valid private seed from seed phrase: {}",
                         minotari_wallet::output_manager_service::commitment_mask::error_kind(&e)
                     );
-                    // The conversion logs the error, so drop the word a `WordNotFound` carries first
-                    let e = match e {
-                        CipherError::MnemonicError(MnemonicError::WordNotFound(_)) => {
-                            CipherError::MnemonicError(MnemonicError::WordNotFound(String::new()))
-                        },
-                        other => other,
-                    };
                     *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return SeedWordPushResult::InvalidSeedPhrase as u8;
                 }
@@ -6291,13 +6283,6 @@ pub unsafe extern "C" fn wallet_create(
                         "Mnemonic Error for given seed words: {}",
                         minotari_wallet::output_manager_service::commitment_mask::error_kind(&e)
                     );
-                    // The conversion logs the error, so drop the word a `WordNotFound` carries first
-                    let e = match e {
-                        CipherError::MnemonicError(MnemonicError::WordNotFound(_)) => {
-                            CipherError::MnemonicError(MnemonicError::WordNotFound(String::new()))
-                        },
-                        other => other,
-                    };
                     *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return ptr::null_mut();
                 },

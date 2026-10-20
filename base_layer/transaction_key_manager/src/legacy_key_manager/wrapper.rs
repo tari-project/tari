@@ -218,6 +218,10 @@ where TBackend: TransactionKeyManagerBackend + 'static
         self.transaction_key_manager_inner.get_view_key()
     }
 
+    fn is_ledger(&self) -> bool {
+        self.transaction_key_manager_inner.get_wallet_type().is_ledger()
+    }
+
     fn get_private_view_key(&self) -> PrivateKey {
         self.transaction_key_manager_inner.get_private_view_key()
     }

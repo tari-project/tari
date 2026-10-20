@@ -22,6 +22,7 @@
 use chacha20poly1305::XChaCha20Poly1305;
 use chrono::{NaiveDateTime, Utc};
 use diesel::prelude::*;
+use log::*;
 use tari_common_types::{
     encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::{CompressedPublicKey, PrivateKey},
@@ -33,7 +34,7 @@ use crate::{
     schema::imported_keys::{private_key, public_key, table, timestamp},
     storage::{
         database::ImportedKey,
-        sqlite_db::{Encryptable, imported_keys},
+        sqlite_db::{Encryptable, LOG_TARGET, imported_keys},
     },
 };
 
@@ -116,17 +117,26 @@ impl ImportedKeySql {
             ));
         }
 
+        // A failed rewrite does not stop the key from being used; the next load tries again
         if is_legacy {
-            let ciphertext = encrypt_bytes_integral_nonce(
+            let rewrite = encrypt_bytes_integral_nonce(
                 cipher,
                 private_key_domain(&self.public_key),
                 Hidden::hide(decrypted_key.to_vec()),
             )
-            .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
-            diesel::update(imported_keys::table.find(self.id))
-                .set(imported_keys::private_key.eq(ciphertext))
-                .execute(conn)
-                .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
+            .map_err(|e| e.to_string())
+            .and_then(|ciphertext| {
+                diesel::update(imported_keys::table.find(self.id))
+                    .set(imported_keys::private_key.eq(ciphertext))
+                    .execute(conn)
+                    .map_err(|e| e.to_string())
+            });
+            if let Err(e) = rewrite {
+                warn!(
+                    target: LOG_TARGET,
+                    "Could not re-encrypt imported key {} under the current domain: {e}", self.public_key
+                );
+            }
         }
 
         Ok(ImportedKey {
@@ -271,6 +281,29 @@ mod test {
         let row = ImportedKeySql::get_key(&legacy.public_key, &mut conn).unwrap();
         assert!(decrypt_bytes_integral_nonce(&cipher, private_key_domain(&row.public_key), &row.private_key).is_ok());
         assert!(decrypt_bytes_integral_nonce(&cipher, legacy_private_key_domain(), &row.private_key).is_err());
+
+        // A legacy row still reads when the rewrite fails
+        let unrewritable = new_key();
+        insert_raw_row(
+            &mut conn,
+            &cipher,
+            &unrewritable.public_key,
+            &unrewritable.private_key,
+            legacy_private_key_domain(),
+        );
+        diesel::sql_query(
+            "CREATE TRIGGER no_updates BEFORE UPDATE ON imported_keys BEGIN SELECT RAISE(ABORT, 'read only'); END;",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        let read = ImportedKeySql::get_key(&unrewritable.public_key, &mut conn)
+            .unwrap()
+            .to_imported_key(&cipher, &mut conn)
+            .unwrap();
+        assert_eq!(read.private_key, unrewritable.private_key);
+        let row = ImportedKeySql::get_key(&unrewritable.public_key, &mut conn).unwrap();
+        assert!(decrypt_bytes_integral_nonce(&cipher, legacy_private_key_domain(), &row.private_key).is_ok());
+        diesel::sql_query("DROP TRIGGER no_updates").execute(&mut conn).unwrap();
 
         // Another key's ciphertext in a row is refused, under either domain
         let victim = new_key();
