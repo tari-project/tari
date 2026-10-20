@@ -423,6 +423,12 @@ call.on('status', (status) => {
 });
 ```
 
+> **Lookup errors:** a `NOT_FOUND` status means there genuinely is nothing to return. A `DATA_LOSS` status means stored
+> transaction rows could not be decoded; its message is `undecodable rows: skipped=N`, and paged calls add
+> `offset=O limit=L`. Do not retry it: check the wallet log for the affected tx ids. A paged call may resume at
+> `offset + limit`. The unfiltered `GetCompletedTransactions` stream leaves undecodable rows out and only logs them, so
+> reconcile it against the keyed lookups (by payment id, block height or PayRef), which report them as `DATA_LOSS`.
+
 Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
 
 This is a basic implementation; some additional items you may want to consider for a production environment are: 
@@ -711,6 +717,10 @@ When a customer claims they sent a deposit but you don't see it in your systems:
 > or deposit address, never on who presents the PayRef. A PayRef is also bound to the block the output was mined in:
 > if a reorg mines the output in a different block its PayRef changes, so only treat it as final once the block is
 > past your confirmation depth.
+>
+> A PayRef lookup that returns `NOT_FOUND` found nothing. One that returns `DATA_LOSS` (`undecodable rows: skipped=N`)
+> found stored rows it could not decode: do not treat it as "not paid" and do not retry; check the wallet log (see
+> [Lookup errors](#section-6-listening-for-incoming-transactions)).
 
 ### Implementation Example
 
@@ -978,7 +988,8 @@ class CustomerSupportDashboard {
 
 For high-volume exchanges, implement automated PayRef processing. The same rules apply as in Section 9: credit the
 account that owns the output's payment id or deposit address, never whoever submitted the PayRef, and only once the
-output's block is past your confirmation depth (a reorg can change a PayRef before then).
+output's block is past your confirmation depth (a reorg can change a PayRef before then). Handle `DATA_LOSS` from a
+lookup as described in Section 9: it is not "not found", and retrying will not change it.
 
 ```javascript
 // Automated PayRef monitoring system

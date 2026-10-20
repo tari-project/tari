@@ -1753,7 +1753,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transaction_service
             .get_completed_transactions(payment_id, block_hash, block_height, 0)
             .await
-            .map_err(|err| lookup_error("GetCompletedTransactions", err))?;
+            .map_err(|err| lookup_error("GetCompletedTransactions", err, None))?;
         debug!(
             target: LOG_TARGET,
             "GetCompletedTransactions: Found {} completed transactions",
@@ -1883,8 +1883,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let total_requested = req.limit;
         let chunk_size = std::cmp::min(total_requested, 100); // Process in chunks of 100
-        let mut all_transactions: Vec<TransactionInfo> =
-            Vec::with_capacity(total_requested.try_into().unwrap_or(usize::MAX));
+        let mut all_transactions: Vec<TransactionInfo> = Vec::new();
         let mut current_offset = req.offset;
         let mut remaining = total_requested;
 
@@ -1895,7 +1894,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let chunk_transactions = transaction_service
                 .get_completed_transactions_paginated(current_offset, current_limit, status_filter)
                 .await
-                .map_err(|err| lookup_error("GetAllCompletedTransactions", err))?;
+                .map_err(|err| {
+                    lookup_error(
+                        "GetAllCompletedTransactions",
+                        err,
+                        Some((current_offset, current_limit)),
+                    )
+                })?;
 
             // Break if we get no more results
             if chunk_transactions.is_empty() {
@@ -2046,15 +2051,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 {
                     Ok(transactions) => transactions,
                     Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "GetAllCompletedTransactionsStreaming: Database error: {err:?}"
+                        let status = lookup_error(
+                            "GetAllCompletedTransactionsStreaming",
+                            err,
+                            Some((current_offset, current_limit)),
                         );
-                        let _ = sender
-                            .send(Err(Status::internal(format!(
-                                "Database error while fetching transactions: {err:?}"
-                            ))))
-                            .await;
+                        let _ = sender.send(Err(status)).await;
                         return;
                     },
                 };
@@ -2209,6 +2211,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 lookup_error(
                     &format!("GetBlockHeightTransactions at block height {block_height}"),
                     err,
+                    None,
                 )
             })?;
         debug!(
@@ -2727,7 +2730,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let historical_txs = tms
             .get_transaction_by_historical_payref(payment_ref)
             .await
-            .map_err(|e| lookup_error("get_payment_by_reference: historical PayRef", e))?;
+            .map_err(|e| lookup_error("get_payment_by_reference: historical PayRef", e, None))?;
 
         if current_tx.is_none() && historical_txs.is_empty() {
             return Err(Status::not_found(format!("PayRef {} not found", payment_ref.to_hex())));
@@ -4454,10 +4457,20 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
     }
 }
 
-/// A failure behind a lookup is an internal error, never "not found", so that a client does not take it for an empty
-/// result
-fn lookup_error(context: &str, err: TransactionServiceError) -> Status {
+/// A failure behind a lookup is never "not found", so that a client does not take it for an empty result. Stored rows
+/// that could not be decoded are DATA_LOSS with the stable message `undecodable rows: skipped=<n>`, followed by
+/// ` offset=<offset> limit=<limit>` for a paged lookup, so a client can resume at offset + limit; anything else is
+/// INTERNAL.
+fn lookup_error(context: &str, err: TransactionServiceError, page: Option<(u64, u64)>) -> Status {
     warn!(target: LOG_TARGET, "{context}: {err:?}");
+    if let TransactionServiceError::TransactionStorageError(TransactionStorageError::UndecodableRows { skipped }) = err
+    {
+        let mut message = format!("undecodable rows: skipped={skipped}");
+        if let Some((offset, limit)) = page {
+            message.push_str(&format!(" offset={offset} limit={limit}"));
+        }
+        return Status::data_loss(message);
+    }
     Status::internal(format!("{context}: {err:?}"))
 }
 
@@ -4466,7 +4479,7 @@ fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -
     match result {
         Ok(value) => Ok(Some(value)),
         Err(TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(_))) => Ok(None),
-        Err(err) => Err(lookup_error(context, err)),
+        Err(err) => Err(lookup_error(context, err, None)),
     }
 }
 
@@ -4520,7 +4533,13 @@ mod tests {
     use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
     use tari_utilities::ByteArray;
 
-    use super::{found_or_none, is_undecodable_transaction, memo_from_raw_bytes, parse_excluded_commitments};
+    use super::{
+        found_or_none,
+        is_undecodable_transaction,
+        lookup_error,
+        memo_from_raw_bytes,
+        parse_excluded_commitments,
+    };
 
     #[test]
     fn only_an_undecodable_row_goes_straight_to_cancel() {
@@ -4561,14 +4580,32 @@ mod tests {
         ));
         assert_eq!(found_or_none::<u8>("lookup", Err(not_found)).unwrap(), None);
 
-        for err in [
-            TransactionStorageError::UndecodableRows { skipped: 2 },
-            TransactionStorageError::AeadError("wrong key".to_string()),
-        ] {
-            let status =
-                found_or_none::<u8>("lookup", Err(TransactionServiceError::TransactionStorageError(err))).unwrap_err();
-            assert_eq!(status.code(), tonic::Code::Internal);
-        }
+        let status = found_or_none::<u8>(
+            "lookup",
+            Err(TransactionServiceError::TransactionStorageError(
+                TransactionStorageError::UndecodableRows { skipped: 2 },
+            )),
+        )
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::DataLoss);
+        assert_eq!(status.message(), "undecodable rows: skipped=2");
+
+        let status = lookup_error(
+            "paged",
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::UndecodableRows { skipped: 1 }),
+            Some((200, 100)),
+        );
+        assert_eq!(status.code(), tonic::Code::DataLoss);
+        assert_eq!(status.message(), "undecodable rows: skipped=1 offset=200 limit=100");
+
+        let status = found_or_none::<u8>(
+            "lookup",
+            Err(TransactionServiceError::TransactionStorageError(
+                TransactionStorageError::AeadError("wrong key".to_string()),
+            )),
+        )
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::Internal);
     }
 
     #[test]
