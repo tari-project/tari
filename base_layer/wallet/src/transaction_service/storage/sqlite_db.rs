@@ -133,6 +133,15 @@ fn decode_completed_transactions_strict(
     decode_completed_rows(rows, cipher, conn).strict()
 }
 
+/// Decodes the rows matching a key, where any match that did not decode must be reported. See [`DecodedRows::exact`].
+fn decode_completed_transactions_exact(
+    rows: Vec<CompletedTransactionSql>,
+    cipher: &XChaCha20Poly1305,
+    conn: &mut SqliteConnection,
+) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    decode_completed_rows(rows, cipher, conn).exact()
+}
+
 fn decode_completed_rows(
     rows: Vec<CompletedTransactionSql>,
     cipher: &XChaCha20Poly1305,
@@ -169,6 +178,15 @@ impl<T> DecodedRows<T> {
     /// take undecodable rows for "nothing found".
     fn strict(self) -> Result<Vec<T>, TransactionStorageError> {
         if self.items.is_empty() && self.skipped > 0 && self.decryption_error.is_none() {
+            return Err(TransactionStorageError::UndecodableRows { skipped: self.skipped });
+        }
+        self.lenient()
+    }
+
+    /// For keyed lookups, whose caller needs every match: any match that did not decode is an error, even when others
+    /// decoded. A decryption failure with nothing decoded is still reported as such.
+    fn exact(self) -> Result<Vec<T>, TransactionStorageError> {
+        if self.skipped > 0 && !(self.items.is_empty() && self.decryption_error.is_some()) {
             return Err(TransactionStorageError::UndecodableRows { skipped: self.skipped });
         }
         self.lenient()
@@ -1370,7 +1388,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         let rows = query.load::<CompletedTransactionSql>(&mut conn)?;
-        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_exact(rows, &self.cipher, &mut conn)
     }
 
     fn find_completed_transactions_filter_payment_id_block_hash(
@@ -1395,7 +1413,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         let rows = query.limit(limit).load::<CompletedTransactionSql>(&mut conn)?;
-        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_exact(rows, &self.cipher, &mut conn)
     }
 
     fn fetch_unmined_coinbase_transactions_from_height(
@@ -1453,7 +1471,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(e) => return Err(e),
             }
         }
-        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_exact(rows, &self.cipher, &mut conn)
     }
 
     fn get_payref_history_by_tx_id(
@@ -4331,13 +4349,11 @@ mod test {
                 .execute(&mut conn)
                 .unwrap();
         }
-        assert_eq!(
-            tx_ids(
-                &db.find_completed_transactions_filter_payment_id_block_hash(None, None, Some(999), 0)
-                    .unwrap()
-            ),
-            vec![3]
-        );
+        // A keyed lookup reports any match that did not decode, even when another did
+        match db.find_completed_transactions_filter_payment_id_block_hash(None, None, Some(999), 0) {
+            Err(crate::transaction_service::error::TransactionStorageError::UndecodableRows { skipped: 1 }) => {},
+            other => panic!("Unexpected result: {other:?}"),
+        }
 
         // The same rows, all undecodable without a decryption failure: a list is empty, a lookup is an error
         corrupt_completed(&connection, 3, BAD_SOURCE_ADDRESS);
