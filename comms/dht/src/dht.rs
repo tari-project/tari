@@ -525,6 +525,89 @@ mod test {
         assert_eq!(msg, b"secret");
     }
 
+    /// Re-encoding the signature of a signed message (here: an appended unknown field) keeps it valid but must not
+    /// give it a new dedup key, or the application would see the same message twice.
+    #[tokio::test]
+    async fn test_stack_dedups_reencoded_signature() {
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity, _) = create_connectivity_mock();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let dht = Dht::builder()
+            .local_test()
+            .with_outbound_sender(out_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
+        let (out_tx, mut out_rx) = mpsc::channel(10);
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
+
+        let body = wrap_in_envelope_body!(b"signed".to_vec()).to_encoded_bytes();
+        let mut header = DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination: NodeDestination::Unknown,
+            ephemeral_public_key: None,
+            message_signature: Vec::new(),
+            message_type: DhtMessageType::None,
+            flags: DhtMessageFlags::empty(),
+            message_tag: MessageTag::new(),
+            expires: None,
+        };
+        let binding_hash = crypt::create_message_domain_separated_hash(&header, &body);
+        header.message_signature = make_valid_message_signature(node_identity.secret_key(), &binding_hash);
+        let honest = DhtEnvelope::new(header.into(), body);
+        let mut reencoded = honest.clone();
+        reencoded
+            .header
+            .as_mut()
+            .unwrap()
+            .message_signature
+            .extend_from_slice(&[0x78, 0x01]);
+
+        service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                honest.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        let received = time::timeout(Duration::from_secs(10), out_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received.authenticated_origin(), Some(node_identity.public_key()));
+
+        // The re-encoded signature still verifies, so the message gets through decryption and is dropped by dedup
+        service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                reencoded.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        assert!(out_rx.try_recv().is_err());
+
+        // Accepted: with the signature stripped it is an unsigned message with its own key, and has no origin
+        let mut stripped = honest;
+        stripped.header.as_mut().unwrap().message_signature.clear();
+        service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                stripped.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        let received = out_rx.try_recv().unwrap();
+        assert!(received.authenticated_origin().is_none());
+    }
+
     #[tokio::test]
     async fn test_stack_encrypted() {
         let node_identity = make_node_identity();

@@ -335,11 +335,13 @@ impl DhtActor {
     }
 
     async fn run(mut self) -> Result<(), DhtActorError> {
-        let offline_ts = self
-            .database
-            .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
-            .ok()
-            .flatten();
+        let db = self.database.clone();
+        let offline_ts =
+            task::spawn_blocking(move || db.get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp))
+                .await
+                .ok()
+                .and_then(|result| result.ok())
+                .flatten();
         debug!(
             target: LOG_TARGET,
             "DhtActor started. {}",
@@ -348,7 +350,7 @@ impl DhtActor {
                 .unwrap_or_default()
         );
 
-        let mut pending_jobs = FuturesUnordered::new();
+        let mut pending_jobs: FuturesUnordered<BoxFuture<'static, Result<(), DhtActorError>>> = FuturesUnordered::new();
 
         let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval);
         dedup_cache_trim_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -367,25 +369,33 @@ impl DhtActor {
                 },
 
                 _ = dedup_cache_trim_ticker.tick() => {
-                    if let Err(err) = self.msg_hash_dedup_cache.trim_entries() {
-                        error!(target: LOG_TARGET, "Error when trimming message dedup cache: {err:?}");
-                    }
+                    let msg_hash_cache = self.msg_hash_dedup_cache.clone();
+                    pending_jobs.push(Box::pin(async move {
+                        let result = task::spawn_blocking(move || msg_hash_cache.trim_entries())
+                            .await
+                            .map_err(StorageError::from);
+                        if let Err(err) = result.and_then(|r| r) {
+                            error!(target: LOG_TARGET, "Error when trimming message dedup cache: {err:?}");
+                        }
+                        Ok(())
+                    }));
                 },
 
                 _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
-                    self.mark_shutdown_time();
+                    self.mark_shutdown_time().await;
                     break Ok(());
                 },
             }
         }
     }
 
-    fn mark_shutdown_time(&self) {
-        if let Err(err) = self
-            .database
-            .set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now())
-        {
+    async fn mark_shutdown_time(&self) {
+        let db = self.database.clone();
+        let result = task::spawn_blocking(move || db.set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now()))
+            .await
+            .map_err(StorageError::from);
+        if let Err(err) = result.and_then(|r| r) {
             warn!(target: LOG_TARGET, "Failed to mark offline time: {err:?}");
         }
     }
@@ -437,7 +447,11 @@ impl DhtActor {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 let dedup_error_logged_at = self.dedup_error_logged_at.clone();
                 Box::pin(async move {
-                    match msg_hash_cache.add_msg_hash(&message_hash, &received_from) {
+                    let result =
+                        task::spawn_blocking(move || msg_hash_cache.add_msg_hash(&message_hash, &received_from))
+                            .await
+                            .map_err(StorageError::from);
+                    match result.and_then(|r| r) {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
@@ -468,7 +482,9 @@ impl DhtActor {
             GetMsgHashHitCount(hash, reply_tx) => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    let hit_count = msg_hash_cache.get_hit_count(&hash)?;
+                    let hit_count = task::spawn_blocking(move || msg_hash_cache.get_hit_count(&hash))
+                        .await
+                        .map_err(StorageError::from)??;
                     let _ = reply_tx.send(hit_count);
                     Ok(())
                 })
@@ -493,14 +509,20 @@ impl DhtActor {
             GetMetadata(key, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    let _result = reply_tx.send(db.get_metadata_value_bytes(key).map_err(Into::into));
+                    let result = task::spawn_blocking(move || db.get_metadata_value_bytes(key))
+                        .await
+                        .map_err(StorageError::from);
+                    let _result = reply_tx.send(result.and_then(|r| r).map_err(Into::into));
                     Ok(())
                 })
             },
             SetMetadata(key, value, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    match db.set_metadata_value_bytes(key, value) {
+                    let result = task::spawn_blocking(move || db.set_metadata_value_bytes(key, value))
+                        .await
+                        .map_err(StorageError::from);
+                    match result.and_then(|r| r) {
                         Ok(_) => {
                             debug!(target: LOG_TARGET, "Dht metadata '{key}' set");
                             let _result = reply_tx.send(Ok(()));

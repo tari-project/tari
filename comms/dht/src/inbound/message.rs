@@ -36,24 +36,46 @@ use tari_utilities::ByteArray;
 use crate::{
     dedup,
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType},
+    message_signature::MessageSignature,
 };
 
 #[derive(Debug, Clone)]
 pub struct ValidatedDhtInboundMessage {
     message: DhtInboundMessage,
     authenticated_origin: Option<CommsPublicKey>,
+    dedup_hash: [u8; 32],
 }
 
 impl ValidatedDhtInboundMessage {
-    pub fn new(message: DhtInboundMessage, authenticated_origin: Option<CommsPublicKey>) -> Self {
+    /// `signature` is the verified, decoded message signature, or `None` for an unsigned message.
+    pub fn new(message: DhtInboundMessage, signature: Option<MessageSignature>) -> Self {
+        let sig_canonical = signature
+            .as_ref()
+            .map(dedup::canonical_signature_bytes)
+            .unwrap_or_default();
+        let dedup_hash = dedup::create_message_hash(&sig_canonical, &message.body);
         Self {
             message,
-            authenticated_origin,
+            authenticated_origin: signature.map(MessageSignature::into_signer_public_key),
+            dedup_hash,
         }
     }
 
-    pub fn into_message(self) -> DhtInboundMessage {
-        self.message
+    pub fn into_succeeded(
+        self,
+        message_body: EnvelopeBody,
+        authenticated_origin: Option<CommsPublicKey>,
+    ) -> DecryptedDhtMessage {
+        DecryptedDhtMessage::succeeded_with_hash(
+            message_body,
+            authenticated_origin,
+            self.message,
+            self.dedup_hash.to_vec(),
+        )
+    }
+
+    pub fn into_failed(self) -> DecryptedDhtMessage {
+        DecryptedDhtMessage::failed_with_hash(self.message, self.dedup_hash.to_vec())
     }
 
     pub fn message(&self) -> &DhtInboundMessage {
@@ -141,6 +163,7 @@ pub struct DecryptedDhtMessage {
     /// Join. Empty otherwise. A re-sent message must carry these bytes, because the header's signature covers them.
     pub raw_body: Vec<u8>,
     pub dedup_hit_count: u32,
+    /// The dedup key, or empty if the message has a signature that does not decode (such a message is discarded).
     pub dedup_hash: Vec<u8>,
 }
 
@@ -161,7 +184,21 @@ impl DecryptedDhtMessage {
         authenticated_origin: Option<CommsPublicKey>,
         message: DhtInboundMessage,
     ) -> Self {
-        let dedup_hash = dedup::hash_inbound_message(&message).to_vec();
+        let dedup_hash = unvalidated_dedup_hash(&message);
+        Self::succeeded_with_hash(message_body, authenticated_origin, message, dedup_hash)
+    }
+
+    pub fn failed(message: DhtInboundMessage) -> Self {
+        let dedup_hash = unvalidated_dedup_hash(&message);
+        Self::failed_with_hash(message, dedup_hash)
+    }
+
+    fn succeeded_with_hash(
+        message_body: EnvelopeBody,
+        authenticated_origin: Option<CommsPublicKey>,
+        message: DhtInboundMessage,
+        dedup_hash: Vec<u8>,
+    ) -> Self {
         let raw_body = if message.dht_header.message_type == DhtMessageType::Join {
             message.body
         } else {
@@ -181,9 +218,9 @@ impl DecryptedDhtMessage {
         }
     }
 
-    pub fn failed(message: DhtInboundMessage) -> Self {
+    fn failed_with_hash(message: DhtInboundMessage, dedup_hash: Vec<u8>) -> Self {
         Self {
-            dedup_hash: dedup::hash_inbound_message(&message).to_vec(),
+            dedup_hash,
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin: None,
@@ -243,6 +280,12 @@ impl DecryptedDhtMessage {
     pub fn set_already_forwarded(&mut self, is_already_forwarded: bool) {
         self.is_already_forwarded = is_already_forwarded;
     }
+}
+
+fn unvalidated_dedup_hash(message: &DhtInboundMessage) -> Vec<u8> {
+    dedup::hash_inbound_message(message)
+        .map(|hash| hash.to_vec())
+        .unwrap_or_default()
 }
 
 impl Display for DecryptedDhtMessage {

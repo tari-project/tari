@@ -68,10 +68,12 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    /// The max capacity of the message hash cache
+    /// The max capacity of the message hash cache. The cache is trimmed back to this size every
+    /// max(capacity / 10, 100) new entries, so it holds at most that many rows over capacity.
     /// Default: 50,000
     pub dedup_cache_capacity: usize,
-    /// The periodic trim interval for items in the message hash cache
+    /// The periodic trim interval for items in the message hash cache. This is a fallback; the cache is also trimmed
+    /// as it grows (see `dedup_cache_capacity`).
     /// Default: 12 x 60 x 60s (12 hours)
     #[serde(with = "serializers::seconds_nonzero")]
     pub dedup_cache_trim_interval: Duration,

@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
+
 use chrono::{NaiveDateTime, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, dsl, result::DatabaseErrorKind, sql_types};
 use log::*;
@@ -41,19 +46,32 @@ struct DedupCacheEntry {
     last_hit_at: NaiveDateTime,
 }
 
+/// The fewest new entries between two growth-triggered trims.
+const MIN_TRIM_EVERY_INSERTS: usize = 100;
+
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
     connection: DbConnection,
     capacity: usize,
+    /// Trim once every this many new entries, so the table stays below `capacity + trim_every_inserts` rows.
+    trim_every_inserts: usize,
+    /// New entries inserted, shared by all clones.
+    num_inserts: Arc<AtomicUsize>,
 }
 
 impl DedupCacheDatabase {
     pub fn new(connection: DbConnection, capacity: usize) -> Self {
+        let trim_every_inserts = (capacity / 10).max(MIN_TRIM_EVERY_INSERTS);
         debug!(
             target: LOG_TARGET,
-            "Message dedup cache capacity initialized at {capacity}",
+            "Message dedup cache capacity initialized at {capacity}, trimmed every {trim_every_inserts} new entries",
         );
-        Self { connection, capacity }
+        Self {
+            connection,
+            capacity,
+            trim_every_inserts,
+            num_inserts: Arc::new(AtomicUsize::new(0)),
+        }
     }
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
@@ -66,6 +84,14 @@ impl DedupCacheDatabase {
                 target: LOG_TARGET,
                 "Unable to insert new entry into message dedup cache"
             );
+        }
+        if hit_count == 1 {
+            let num_inserts = self.num_inserts.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+            if num_inserts.is_multiple_of(self.trim_every_inserts) &&
+                let Err(err) = self.trim_entries()
+            {
+                warn!(target: LOG_TARGET, "Unable to trim message dedup cache: {err:?}");
+            }
         }
         Ok(hit_count)
     }
@@ -147,5 +173,82 @@ impl DedupCacheDatabase {
             },
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use diesel::{QueryableByName, sql_types::Text};
+    use tokio::task;
+
+    use super::*;
+    use crate::storage::MIGRATIONS;
+
+    fn new_cache(capacity: usize) -> DedupCacheDatabase {
+        let conn = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        DedupCacheDatabase::new(conn, capacity)
+    }
+
+    fn row_count(cache: &DedupCacheDatabase) -> i64 {
+        let mut conn = cache.connection.get_pooled_connection().unwrap();
+        dedup_cache::table
+            .select(dsl::count(dedup_cache::id))
+            .first::<i64>(&mut conn)
+            .unwrap()
+    }
+
+    #[test]
+    fn it_trims_as_it_grows() {
+        let capacity = 1_000;
+        let cache = new_cache(capacity);
+        let n = cache.trim_every_inserts;
+        assert_eq!(n, 100);
+
+        for i in 0..(capacity + 2 * n) {
+            let num_hits = cache
+                .add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default())
+                .unwrap();
+            assert_eq!(num_hits, 1);
+            assert!(row_count(&cache) <= i64::try_from(capacity + n).unwrap());
+        }
+        assert!(row_count(&cache) <= i64::try_from(capacity + n).unwrap());
+    }
+
+    #[test]
+    fn trim_uses_last_hit_at_index() {
+        #[derive(QueryableByName)]
+        struct QueryPlanRow {
+            #[diesel(sql_type = Text)]
+            detail: String,
+        }
+
+        let cache = new_cache(10);
+        let mut conn = cache.connection.get_pooled_connection().unwrap();
+        let plan = diesel::sql_query("EXPLAIN QUERY PLAN SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT 1")
+            .load::<QueryPlanRow>(&mut conn)
+            .unwrap();
+        assert!(
+            plan.iter()
+                .any(|row| row.detail.contains("idx_dedup_cache_last_hit_at")),
+            "query plan does not use the index"
+        );
+    }
+
+    /// The DHT pipeline runs up to 100 inbound tasks at once, each inserting on a blocking thread. None of them may
+    /// time out waiting for a pooled connection, because a dedup error drops the message.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_inserts_do_not_exhaust_the_pool() {
+        let cache = new_cache(50_000);
+        let mut tasks = Vec::new();
+        for i in 0u32..100 {
+            let cache = cache.clone();
+            tasks.push(task::spawn_blocking(move || {
+                cache.add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default())
+            }));
+        }
+        for t in tasks {
+            assert_eq!(t.await.unwrap().unwrap(), 1);
+        }
+        assert_eq!(row_count(&cache), 100);
     }
 }

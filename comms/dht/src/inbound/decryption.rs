@@ -227,7 +227,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 validated_msg.message().dht_header.message_tag,
                 validated_msg.message().tag
             );
-            return Ok(DecryptedDhtMessage::failed(validated_msg.into_message()));
+            return Ok(validated_msg.into_failed());
         }
 
         // The message is encrypted and for us, so complete the ephemeral key exchange
@@ -271,11 +271,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     target: LOG_TARGET,
                     "Message successfully decrypted, {} (Trace: {})", message.tag, message.dht_header.message_tag
                 );
-                Ok(DecryptedDhtMessage::succeeded(
-                    message_body,
-                    Some(CompressedKey::new_from_pk(sender_public_key)),
-                    validated_msg.into_message(),
-                ))
+                Ok(validated_msg.into_succeeded(message_body, Some(CompressedKey::new_from_pk(sender_public_key))))
             },
             // The body passed the AEAD check, so the message is provably for us, but it did not decode (or was over
             // the decode budget). Drop it: treating it as "not for us" would forward it on.
@@ -298,7 +294,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     return Err(DecryptionError::MessageRejectDecryptionFailed);
                 }
 
-                Ok(DecryptedDhtMessage::failed(validated_msg.into_message()))
+                Ok(validated_msg.into_failed())
             },
         }
     }
@@ -340,10 +336,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .map_err(|_| DecryptionError::InvalidSignature)?;
 
         // The message is valid at this point
-        Ok(ValidatedDhtInboundMessage::new(
-            message,
-            Some(message_signature.into_signer_public_key()),
-        ))
+        Ok(ValidatedDhtInboundMessage::new(message, Some(message_signature)))
     }
 
     fn attempt_decrypt_message_body(
@@ -396,11 +389,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     msg.tag,
                     msg.dht_header.message_tag
                 );
-                Ok(DecryptedDhtMessage::succeeded(
-                    deserialized,
-                    authenticated_pk,
-                    validated.into_message(),
-                ))
+                Ok(validated.into_succeeded(deserialized, authenticated_pk))
             },
             Err(err) => {
                 // Message was not encrypted but failed to deserialize - immediately discard
