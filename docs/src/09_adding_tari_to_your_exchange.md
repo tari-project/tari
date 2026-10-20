@@ -337,6 +337,8 @@ grpc_address = "/ip4/127.0.0.1/tcp/18143"
 #grpc_authentication = { username = "admin", password = "xxxx" }
 ```
 
+> Note: Also set `num_confirmations_required` under both `[wallet.transactions]` and `[wallet.outputs]` to your `REQUIRED_CONFIRMATIONS` (see [Block Confirmations](#block-confirmations); recommended 10). The default is 3.
+
 4. Set the wallet's base node. By default the Tari provided public server will be used, but it can also be set to a private base node. Set this value to the `minotari_node` you created or chose at the beginning of this guide in **Section 1**.
 
 > Note: Below is a sample of what these configuration settings look like, using the example data from **Section 1**. You should not use the data below, but insert your own details.
@@ -440,12 +442,17 @@ call.on('status', (status) => {
 >
 > When you get `DATA_LOSS`:
 >
-> 1. Take the tx ids from the wallet log's "Skipping undecodable …" lines.
+> 1. Take the tx id from the `DATA_LOSS` message (`tx_id=`) or from the wallet log lines `Skipping undecodable …` /
+>    `… does not decode`.
 > 2. Stop the wallet and back up its database.
 > 3. A pending outbound transaction can be cancelled with `CancelTransaction`.
 > 4. A completed transaction has to be restored from a backup written by the version that wrote it, or removed so that
 >    recovery or the UTXO scan detects its inbound outputs again. Confirm this against the scanner's behaviour before
 >    relying on it.
+
+Never credit an unmatched output because someone presents its PayRef, amount or time: reconcile it against the sending
+wallet's records first, and return funds only to a sender address verified out of band. If a credited `tx_id` later
+shows a status that is not confirmed, or `is_cancelled`, alert: it was reorged past your confirmation depth.
 
 Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
 
@@ -455,6 +462,22 @@ processing in Section 10) should use one function, so that they share the same c
 ```javascript
 // Statuses that count as confirmed for a deposit (see Transaction Status)
 const CONFIRMED_STATUSES = ['TRANSACTION_STATUS_MINED_CONFIRMED', 'TRANSACTION_STATUS_ONE_SIDED_CONFIRMED'];
+// Coinbase outputs are never deposits (see Transaction Status)
+const COINBASE_STATUSES = [
+    'TRANSACTION_STATUS_COINBASE_UNCONFIRMED',
+    'TRANSACTION_STATUS_COINBASE_CONFIRMED',
+    'TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN',
+    'TRANSACTION_STATUS_COINBASE_CONFIRMED_LOCKED'
+];
+// Your confirmation depth (see Block Confirmations)
+const REQUIRED_CONFIRMATIONS = 10;
+
+// Whether a transaction is buried deep enough; `client` is the wallet gRPC client from the example above
+async function isDeepEnough(tx) {
+    const state = await new Promise((resolve, reject) =>
+        client.GetState({}, (error, response) => (error ? reject(error) : resolve(response))));
+    return BigInt(state.scanned_height) - BigInt(tx.mined_in_block_height) >= BigInt(REQUIRED_CONFIRMATIONS);
+}
 
 // Credit a deposit at most once. `tx` is a TransactionInfo from GetCompletedTransactions, GetTransactionInfo or
 // GetPaymentByReference. Returns the credited account, or null when the transaction must not be credited (yet).
@@ -462,14 +485,20 @@ async function creditCustomerAccount(tx) {
     if (tx.direction !== 'TRANSACTION_DIRECTION_INBOUND' || tx.is_cancelled) {
         return null; // withdrawals, change and cancelled transactions are never credited
     }
-    if (!CONFIRMED_STATUSES.includes(tx.status)) {
+    if (COINBASE_STATUSES.includes(tx.status)) {
+        await flagUnmatchedDeposit(tx); // manual review
+        return null;
+    }
+    if (!CONFIRMED_STATUSES.includes(tx.status) || !(await isDeepEnough(tx))) {
         return null; // not confirmed yet: try again later
     }
     // `dest_address` is this wallet's own address, so the account comes from the payment id the depositor included
-    // (unless you run one wallet per customer, in which case the wallet identifies the account)
+    // (unless you run one wallet per customer, in which case the wallet identifies the account; in that mode coin
+    // joins, swap claims and refunds from the wallet's own keys would be credited, so never run those from a deposit
+    // wallet's keys)
     const account = await findAccountByPaymentId(tx.user_payment_id);
     if (!account) {
-        await flagUnmatchedDeposit(tx); // manual review
+        await flagUnmatchedDeposit(tx); // manual review; must be idempotent per tx_id, as it is called on every pass
         return null;
     }
     // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef
@@ -628,11 +657,14 @@ Talking about this table:
 | 10 | `TRANSACTION_STATUS_QUEUED` | Still queued for sending | ❌ No |
 | 11 | `TRANSACTION_STATUS_NOT_FOUND` | Not found in wallet DB | ❌ No |
 | 12 | `TRANSACTION_STATUS_COINBASE_UNCONFIRMED` | Detected coinbase, not yet confirmed | ⚠️ Not Yet |
-| 13 | `TRANSACTION_STATUS_COINBASE_CONFIRMED` | Detected and confirmed coinbase transaction | ✅ Yes |
+| 13 | `TRANSACTION_STATUS_COINBASE_CONFIRMED` | Detected and confirmed coinbase transaction | ❌ No (coinbase: manual review after maturity) |
 | 14 | `TRANSACTION_STATUS_COINBASE_NOT_IN_BLOCK_CHAIN` | Coinbase not yet mined | ❌ No |
+| 15 | `TRANSACTION_STATUS_MINED_CONFIRMED_LOCKED` | Confirmed but time-locked | ⚠️ Not Yet (wait for unlock) |
+| 16 | `TRANSACTION_STATUS_ONE_SIDED_CONFIRMED_LOCKED` | One-sided, confirmed but time-locked | ⚠️ Not Yet (wait for unlock) |
+| 17 | `TRANSACTION_STATUS_COINBASE_CONFIRMED_LOCKED` | Coinbase, confirmed but locked | ❌ No (coinbase) |
 
 ## Block Confirmations
-Once you have confirmed that the transaction has been mined, it is recommended that you wait a certain number of block confirmations to ensure that the transaction is not lost as the result of a reorganisation. We recommend a minimum of 6 block confirmations.
+Once you have confirmed that the transaction has been mined, it is recommended that you wait a certain number of block confirmations to ensure that the transaction is not lost as the result of a reorganisation. The examples call this depth `REQUIRED_CONFIRMATIONS` (recommended 10) and check it with `isDeepEnough`; set the wallet's own `num_confirmations_required` to the same value (see Section 5).
 
 When retrieving the transaction info, you will be provided with a mined height. This can be combined with the base node gRPC method `GetTipInfo` to get the chain's most current height.
 
@@ -745,6 +777,10 @@ This ensures:
 
 When a customer claims they sent a deposit but you don't see it in your systems:
 
+> **Requirement:** rate limit PayRef inquiries per requester. A PayRef can be computed by anyone who can see the
+> chain, so the inquiry must not let a requester probe which outputs belong to your wallet.
+
+
 **Traditional workflow (problematic):**
 1. Customer: "I sent 100 XTR 2 hours ago but don't see it credited"
 2. Support: "Can you provide your transaction details?"
@@ -825,18 +861,22 @@ class PayRefVerificationService {
             }
         }
 
-        const tx = response.transaction;
+        let tx = response.transaction;
         if (!tx) {
-            // Only found under a superseded PayRef: the output was re-mined after a reorg. Wait; never credit on it.
-            return { status: 'REORGED', message: 'Payment was re-mined after a reorg; wait for its new PayRef' };
+            // Only found under a superseded PayRef (the output was re-mined after a reorg). These are live rows with
+            // their current status, so a single match is the transaction itself.
+            const live = response.historical_transactions.filter(t => !t.is_cancelled);
+            if (live.length !== 1) {
+                return { status: 'REVIEW', message: 'Ambiguous reorged PayRef' };
+            }
+            tx = live[0];
         }
         // The PayRef index also covers this wallet's own sent and change outputs, so a PayRef can resolve to a
         // withdrawal; only a confirmed, not cancelled, inbound transaction is a deposit
         if (tx.direction !== 'TRANSACTION_DIRECTION_INBOUND' || tx.is_cancelled) {
             return { status: 'NOT_A_DEPOSIT', message: 'PayRef does not belong to a deposit' };
         }
-        if (!CONFIRMED_STATUSES.includes(tx.status)) {
-            // For a confirmation depth of your own, compare GetState.scanned_height with tx.mined_in_block_height
+        if (!CONFIRMED_STATUSES.includes(tx.status) || !(await isDeepEnough(tx))) {
             return { status: 'INSUFFICIENT_CONFIRMATIONS', message: 'Payment found but not confirmed yet' };
         }
         return {
@@ -865,32 +905,27 @@ class PayRefVerificationService {
     }
 }
 
-// Usage example: the account credited is the one the transaction's payment id belongs to, whoever asked
-async function handleCustomerPayRefInquiry(payrefHex) {
+// Usage example: the account credited is the one the transaction's payment id belongs to, whoever asked. The requester
+// only learns whether a deposit was credited to their own account; everything else goes to the internal audit log.
+async function handleCustomerPayRefInquiry(payrefHex, requesterAccount) {
     const verifier = new PayRefVerificationService('localhost:18143');
     const result = await verifier.verifyPayRef(payrefHex);
 
-    switch (result.status) {
-        case 'VERIFIED': {
-            const account = await creditCustomerAccount(result.transaction);
-            return {
-                success: account !== null,
-                creditedAccount: account,
-                message: account
-                    ? `Deposit ${result.tx_id} credited to account ${account}`
-                    : 'Deposit already credited, or its payment id matches no account (flagged for review)',
-                details: result
-            };
-        }
-        case 'INSUFFICIENT_CONFIRMATIONS':
-        case 'REORGED':
-            return { success: false, message: result.message, details: result };
-        case 'DATA_LOSS':
-            await escalateToOperator(payrefHex, result.message); // see the DATA_LOSS procedure under "Lookup errors"
-            return { success: false, message: 'Escalated to the wallet operator', details: result };
-        default:
-            return { success: false, message: result.message, details: result };
+    let account = null;
+    if (result.status === 'VERIFIED') {
+        account = await creditCustomerAccount(result.transaction);
+    } else if (result.status === 'DATA_LOSS' || result.status === 'REVIEW') {
+        await escalateToOperator(payrefHex, result.message); // see the DATA_LOSS procedure under "Lookup errors"
     }
+    await auditLog({ payrefHex, requesterAccount, status: result.status, creditedAccount: account, details: result });
+
+    const success = account !== null && account === requesterAccount;
+    return {
+        success,
+        message: success
+            ? 'Your deposit has been credited.'
+            : 'Thank you, we are looking into your deposit and will update you.'
+    };
 }
 ```
 
@@ -902,23 +937,13 @@ Integrate PayRef verification into your customer support system:
 // Customer support dashboard integration
 class CustomerSupportDashboard {
 
-    async handlePaymentInquiry(ticketId, payrefHex) {
-        const outcome = await handleCustomerPayRefInquiry(payrefHex);
-
-        // Log the support inquiry, including which account (if any) was credited
-        await this.logSupportInquiry({
-            ticketId,
-            payrefHex,
-            timestamp: new Date(),
-            creditedAccount: outcome.creditedAccount,
-            outcome
-        });
+    async handlePaymentInquiry(ticketId, payrefHex, requesterAccount) {
+        // The outcome holds only what the requester may see; the details are in the internal audit log
+        const outcome = await handleCustomerPayRefInquiry(payrefHex, requesterAccount);
 
         await this.updateSupportTicket(ticketId, {
             status: outcome.success ? 'resolved' : 'pending',
-            response: outcome.success
-                ? `Deposit credited to account ${outcome.creditedAccount}.`
-                : outcome.message
+            response: outcome.message
         });
 
         return outcome;
@@ -930,12 +955,13 @@ class CustomerSupportDashboard {
 
 For high-volume exchanges, implement automated PayRef processing. The same rules apply as in Section 9: credit the
 account that owns the output's payment id or deposit address, never whoever submitted the PayRef, and only once the
-output's block is past your confirmation depth (a reorg can change a PayRef before then). Handle `DATA_LOSS` from a
+output's block is `REQUIRED_CONFIRMATIONS` deep (a reorg can change a PayRef before then). Handle `DATA_LOSS` from a
 lookup as described in Section 9: it is not "not found", and retrying will not change it.
 
 ```javascript
 // Automated PayRef monitoring system
 const MAX_ATTEMPTS = 10; // bounded retries for a wallet-side fault before alerting
+const MAX_PENDING_AGE_MS = 24 * 60 * 60 * 1000; // how long to wait for confirmations before a person looks
 
 class AutomatedPayRefProcessor {
     constructor(walletGrpcEndpoint, databaseConnection) {
@@ -990,8 +1016,18 @@ class AutomatedPayRefProcessor {
                     break;
 
                 case 'INSUFFICIENT_CONFIRMATIONS':
-                case 'REORGED':
-                    await this.updatePendingPayRef(pendingPayRef, verification);
+                    // Waiting is bounded too: a deposit that never confirms needs a person
+                    if (Date.now() - pendingPayRef.createdAt > MAX_PENDING_AGE_MS) {
+                        await escalateToOperator(pendingPayRef.payrefHex, 'Not confirmed within 24 hours');
+                        await this.db.removePendingPayRef(pendingPayRef.id);
+                    } else {
+                        await this.updatePendingPayRef(pendingPayRef, verification);
+                    }
+                    break;
+
+                case 'REVIEW':
+                    await escalateToOperator(pendingPayRef.payrefHex, verification.message);
+                    await this.db.removePendingPayRef(pendingPayRef.id);
                     break;
 
                 case 'NOT_FOUND':
@@ -1043,12 +1079,13 @@ class AutomatedPayRefProcessor {
 
 ### Security Considerations
 
-1. **Higher confirmation requirements**: Use 10+ confirmations for deposits vs. 5 for general use
-2. **Rate limiting**: Limit PayRef verification requests to prevent abuse
+1. **Confirmation depth**: Credit only at `REQUIRED_CONFIRMATIONS` (recommended 10), and set the wallet's
+   `num_confirmations_required` to the same value
+2. **Rate limiting**: Required for PayRef inquiries (see Section 9)
 3. **Audit logging**: Log all PayRef verifications with timestamps
-4. **Double-credit prevention**: Credit once per `tx_id`; a PayRef is a lookup handle, not a credit key. The PayRef
-   index also covers the wallet's own sent and change outputs, so a PayRef can resolve to a withdrawal: the inbound
-   direction check is what stops it being credited
+4. **Double-credit prevention**: Credit once per `tx_id`; a PayRef is a lookup handle, not a credit key. The direction
+   check excludes only the wallet's own sent and change outputs: coin joins, swap claims and refunds appear as
+   inbound, so keep them away from a deposit wallet's keys
 
 ### Customer Experience
 
@@ -1078,7 +1115,7 @@ Subject: Tari Deposit Verification Required
 
 Dear [Customer Name],
 
-We see you have contacted us about a Tari deposit. To quickly verify your payment, please provide:
+We see you have contacted us about a Tari deposit. To help us locate it, please provide:
 
 1. Your Payment Reference (PayRef) from your wallet's transaction history
 2. The approximate amount sent
@@ -1093,7 +1130,8 @@ To find your PayRef:
 3. Find your transaction to our exchange
 4. Copy the PayRef from the transaction details
 
-Once you provide this information, we can verify your deposit within minutes.
+These details help us find the transaction; they are not proof of payment, and we credit the account the deposit's
+payment id belongs to.
 
 Best regards,
 [Exchange Name] Support Team
