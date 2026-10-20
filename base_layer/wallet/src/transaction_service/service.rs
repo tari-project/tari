@@ -3216,7 +3216,7 @@ where
             // offset key comes from the builder's single reservation like any other output.
             None => {
                 tx_builder.with_recipient_spec(
-                    RecipientSpec::to_self(amount, output_features, payment_id.clone())
+                    RecipientSpec::burn(amount, output_features, payment_id.clone())
                         .with_script(script!(Nop)?)
                         .with_script_key(RecipientScriptKey::Zero),
                 )?;

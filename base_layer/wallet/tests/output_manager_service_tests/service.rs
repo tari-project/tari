@@ -533,6 +533,84 @@ async fn must_include_commitment_listed_twice_selects_it_once() {
     assert_eq!(matching_inputs, 1);
 }
 
+/// An output stored with a commitment mask derived from an identity sender offset key can never be spent. Selecting it
+/// marks it invalid and the send goes ahead with the other inputs. The bad output alone is the best selection, so it is
+/// picked first.
+#[tokio::test]
+async fn an_output_whose_keys_no_longer_resolve_is_marked_invalid_and_skipped() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let good_1 = spendable_test_input(&mut oms, &backend, MicroMinotari::from(6000)).await;
+    let good_2 = spendable_test_input(&mut oms, &backend, MicroMinotari::from(6000)).await;
+    let planted = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(10000),
+        &OutputFeatures::default(),
+        oms.key_manager_handle.key_manager(),
+    );
+    let identity_mask = TariKeyId::DHCommitmentMask {
+        public_key: CompressedPublicKey::default(),
+        private_key: TariKeyId::ViewKey.into(),
+    };
+    let bad = WalletOutput::new_from_transaction_output(
+        planted.value(),
+        identity_mask.clone(),
+        MemoField::new_empty(),
+        planted.to_transaction_output().unwrap(),
+        ExecutionStack::default(),
+        TariKeyId::Derived {
+            key: identity_mask.into(),
+        },
+    );
+    oms.output_manager_handle.add_output(bad.clone(), None).await.unwrap();
+    backend
+        .mark_outputs_as_unspent(vec![(bad.output_hash(), true)])
+        .unwrap();
+
+    let amount = MicroMinotari::from(9000);
+    let mut tx_builder = oms
+        .output_manager_handle
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(5),
+            script!(Nop).unwrap(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    let mut inputs = tx_builder
+        .inputs()
+        .iter()
+        .map(|input| input.output.commitment().clone())
+        .collect::<Vec<_>>();
+    inputs.sort();
+    let mut expected = vec![good_1.commitment().clone(), good_2.commitment().clone()];
+    expected.sort();
+    assert_eq!(inputs, expected);
+
+    tx_builder
+        .add_stealth_recipient(
+            random_dual_address(),
+            amount,
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        )
+        .unwrap();
+    tx_builder.reserve_sender_offset_keys(&[]).unwrap();
+    let finalized = tx_builder.build().unwrap();
+    assert_validates(&finalized.transaction);
+
+    let invalid = oms.output_manager_handle.get_invalid_outputs().await.unwrap();
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0].commitment(), bad.commitment());
+}
+
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 #[tokio::test]

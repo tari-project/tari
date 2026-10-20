@@ -67,7 +67,7 @@ use tari_transaction_components::{
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
-    key_manager::{RecoveryProvenance, SerializedKeyString, TariKeyAndId, TariKeyId},
+    key_manager::{RecoveryProvenance, SerializedKeyString, TariKeyAndId, TariKeyId, error::KeyManagerError},
     transaction_builder::{FinalizedTransaction, PendingOutput, RecipientKeys, RecipientSpec},
     transaction_components::{
         EncryptedData,
@@ -1937,8 +1937,56 @@ where
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
     /// selection strategy to choose the outputs. It also determines if a change output is required.
-    #[allow(clippy::too_many_lines)]
+    ///
+    /// A selected output whose commitment mask key no longer resolves because it is built on an invalid public key (for
+    /// example an identity sender offset key) can never be spent: it is marked Invalid and the selection is made again
+    /// without it.
     fn select_utxos(
+        &mut self,
+        amount: MicroMinotari,
+        mut selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        num_outputs: usize,
+        total_output_features_and_scripts_byte_size: usize,
+        recipient_payment_id: Vec<u8>,
+        offline_change_fee: Option<MicroMinotari>,
+    ) -> Result<UtxoSelection, OutputManagerError> {
+        loop {
+            let selection = self.select_utxos_once(
+                amount,
+                selection_criteria.clone(),
+                fee_per_gram,
+                num_outputs,
+                total_output_features_and_scripts_byte_size,
+                recipient_payment_id.clone(),
+                offline_change_fee,
+            )?;
+            let mut unusable = Vec::new();
+            for uo in selection.iter() {
+                let mask_public_key = self
+                    .resources
+                    .key_manager
+                    .get_public_key_at_key_id(uo.wallet_output.commitment_mask_key_id());
+                if let Err(KeyManagerError::InvalidPublicKey(reason)) = mask_public_key {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Output {} cannot be spent ({reason}); marking it invalid",
+                        uo.commitment.to_hex()
+                    );
+                    unusable.push(uo.hash);
+                    // Excluded as well, as a must-include selection does not filter on status
+                    selection_criteria.excluding.push(uo.commitment.clone());
+                }
+            }
+            if unusable.is_empty() {
+                return Ok(selection);
+            }
+            self.resources.db.set_outputs_to_unmined_and_invalid(unusable)?;
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn select_utxos_once(
         &mut self,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,

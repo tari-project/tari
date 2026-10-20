@@ -115,6 +115,7 @@ use tari_common_types::{
     payment_reference::generate_payment_reference,
     seeds::{
         cipher_seed::CipherSeed,
+        error::{CipherError, MnemonicError},
         mnemonic::{Mnemonic, MnemonicLanguage},
         mnemonic_wordlists,
         seed_words::SeedWords,
@@ -3951,10 +3952,19 @@ pub unsafe extern "C" fn seed_words_push_word(
                 if (*seed_words).0.len() >= 24 &&
                     let Err(e) = CipherSeed::from_mnemonic(&(*seed_words).0, passphrase)
                 {
+                    // Only the error kind: a mnemonic error can carry a seed word
                     log::error!(
                         target: LOG_TARGET,
-                        "Problem building valid private seed from seed phrase: {e:?}"
+                        "Problem building valid private seed from seed phrase: {}",
+                        minotari_wallet::output_manager_service::commitment_mask::error_kind(&e)
                     );
+                    // The conversion logs the error, so drop the word a `WordNotFound` carries first
+                    let e = match e {
+                        CipherError::MnemonicError(MnemonicError::WordNotFound(_)) => {
+                            CipherError::MnemonicError(MnemonicError::WordNotFound(String::new()))
+                        },
+                        other => other,
+                    };
                     *error_out = LibWalletError::from(WalletError::CipherError(e)).code;
                     return SeedWordPushResult::InvalidSeedPhrase as u8;
                 }

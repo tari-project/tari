@@ -1352,7 +1352,11 @@ where KM: TransactionKeyManagerInterface
                 .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
             let (output, recovery_key_id) = self.build_spec_output(spec, &sender_offset, total_fee)?;
             spec_outputs.push(output.clone());
-            self.add_recipient(spec.destination.clone(), output, sender_offset.key_id, recovery_key_id)?;
+            if spec.is_burn {
+                self.add_burn_recipient(output, sender_offset.key_id, recovery_key_id)?;
+            } else {
+                self.add_recipient(spec.destination.clone(), output, sender_offset.key_id, recovery_key_id)?;
+            }
         }
         let remaining = keys.count();
         if remaining > 0 {
@@ -2851,6 +2855,62 @@ mod test {
         .unwrap();
         let finalized = builder.build().unwrap();
         assert_validates(&finalized.transaction);
+    }
+
+    /// A plain burn is a spec built output added with no recipient address, so nothing is signed for the placeholder.
+    #[test]
+    fn plain_burn_has_no_recipient_address() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(2))
+            .with_input(input)
+            .unwrap();
+        builder.with_tx_type(TxType::Burn);
+        builder.with_kernel_features(KernelFeatures::create_burn());
+        builder
+            .with_recipient_spec(
+                RecipientSpec::burn(
+                    MicroMinotari(1000),
+                    OutputFeatures::create_burn_output(),
+                    MemoField::new_empty(),
+                )
+                .with_script(script!(Nop).unwrap())
+                .with_script_key(RecipientScriptKey::Zero),
+            )
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+
+        let mut probe = builder.clone();
+        probe.build_spec_outputs(MicroMinotari(0)).unwrap();
+        assert_eq!(probe.recipient_outputs.len(), 1);
+        assert!(probe.recipient_outputs.first().unwrap().recipient_address.is_none());
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
+        assert_eq!(
+            finalized
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .filter(|o| o.is_burned())
+                .count(),
+            1
+        );
+        assert!(
+            finalized
+                .transaction
+                .body
+                .kernels()
+                .first()
+                .unwrap()
+                .features
+                .is_burned()
+        );
     }
 
     #[test]
