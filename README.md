@@ -219,7 +219,7 @@ services:
     image: ghcr.io/tari-project/minotari_node:latest-nextnet
     restart: unless-stopped
     volumes:
-      - ./data:/var/tari
+      - ./data/node:/var/tari/node
     # Required for an interactive session
     stdin_open: true
     tty: true
@@ -229,8 +229,9 @@ services:
       - "18189:18189"
 ```
 
-The image runs with `/var/tari` as the Tari home directory. Mounting the host `./data` directory there persists the
-node base path (`/var/tari/node`) and config path (`/var/tari/config/config.toml`).
+The image runs with `/var/tari` as the Tari home directory. Mounting per application (`./data/node:/var/tari/node`)
+ensures application files and identity key stores remain isolated under the node base path. If custom configuration
+is needed, a config file can also be mounted at `/var/tari/config/config.toml`.
 
 Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default, so
 publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0`.
