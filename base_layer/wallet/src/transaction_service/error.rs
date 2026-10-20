@@ -308,6 +308,8 @@ pub enum TransactionStorageError {
     AlreadyEncrypted,
     #[error("Aead error: `{0}`")]
     AeadError(String),
+    #[error("{skipped} matching transaction rows could not be decoded")]
+    UndecodableRows { skipped: usize },
     #[error("Transaction (TxId: '{0}') is not mined")]
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]

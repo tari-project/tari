@@ -113,12 +113,31 @@ fn bytes_to_fixedhash_vec(bytes: &[u8]) -> Vec<FixedHash> {
         .collect()
 }
 
-/// Decodes a batch of completed transaction rows, skipping and logging rows that cannot be decoded.
+/// Decodes a batch of completed transaction rows for a list, skipping and logging rows that cannot be decoded. See
+/// [`DecodedRows::lenient`].
 fn decode_completed_transactions(
     rows: Vec<CompletedTransactionSql>,
     cipher: &XChaCha20Poly1305,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    decode_completed_rows(rows, cipher, conn).lenient()
+}
+
+/// Decodes a batch of completed transaction rows for a lookup, where finding nothing must not hide rows that did not
+/// decode. See [`DecodedRows::strict`].
+fn decode_completed_transactions_strict(
+    rows: Vec<CompletedTransactionSql>,
+    cipher: &XChaCha20Poly1305,
+    conn: &mut SqliteConnection,
+) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    decode_completed_rows(rows, cipher, conn).strict()
+}
+
+fn decode_completed_rows(
+    rows: Vec<CompletedTransactionSql>,
+    cipher: &XChaCha20Poly1305,
+    conn: &mut SqliteConnection,
+) -> DecodedRows<CompletedTransaction> {
     decode_rows(
         rows,
         "completed transaction",
@@ -127,23 +146,52 @@ fn decode_completed_transactions(
     )
 }
 
-/// Decodes a list of rows, skipping and logging the rows that cannot be decoded. A row that fails to decrypt points to
-/// a systemic fault, such as a wrong key, rather than one bad row, so the list is an error when that happens and
-/// nothing decoded.
+/// The rows of a list that decoded, how many were skipped, and the first decryption failure, if any.
+struct DecodedRows<T> {
+    items: Vec<T>,
+    skipped: usize,
+    decryption_error: Option<TransactionStorageError>,
+}
+
+impl<T> DecodedRows<T> {
+    /// For lists: rows that did not decode are left out. A row that fails to decrypt points to a systemic fault, such
+    /// as a wrong key, rather than one bad row, so the list is an error when that happens and nothing decoded.
+    fn lenient(self) -> Result<Vec<T>, TransactionStorageError> {
+        if let Some(e) = self.decryption_error &&
+            self.items.is_empty()
+        {
+            return Err(e);
+        }
+        Ok(self.items)
+    }
+
+    /// For lookups: as [`Self::lenient`], but rows read with none decoded is also an error, so that a caller does not
+    /// take undecodable rows for "nothing found".
+    fn strict(self) -> Result<Vec<T>, TransactionStorageError> {
+        if self.items.is_empty() && self.skipped > 0 && self.decryption_error.is_none() {
+            return Err(TransactionStorageError::UndecodableRows { skipped: self.skipped });
+        }
+        self.lenient()
+    }
+}
+
+/// Decodes a list of rows, skipping and logging the rows that cannot be decoded.
 fn decode_rows<R, T>(
     rows: Vec<R>,
     description: &str,
     tx_id_of: impl Fn(&R) -> i64,
     mut decode: impl FnMut(R) -> Result<T, TransactionStorageError>,
-) -> Result<Vec<T>, TransactionStorageError> {
-    let mut result = Vec::with_capacity(rows.len());
+) -> DecodedRows<T> {
+    let mut items = Vec::with_capacity(rows.len());
+    let mut skipped = 0usize;
     let mut decryption_error = None;
     for row in rows {
         let tx_id = tx_id_of(&row);
         match decode(row) {
-            Ok(tx) => result.push(tx),
+            Ok(tx) => items.push(tx),
             Err(e) => {
                 error!(target: LOG_TARGET, "Skipping undecodable {description} {tx_id}: {e}");
+                skipped = skipped.saturating_add(1);
                 let is_decryption_failure = matches!(
                     e,
                     TransactionStorageError::AeadError(_) |
@@ -157,12 +205,11 @@ fn decode_rows<R, T>(
             },
         }
     }
-    if let Some(e) = decryption_error &&
-        result.is_empty()
-    {
-        return Err(e);
+    DecodedRows {
+        items,
+        skipped,
+        decryption_error,
     }
-    Ok(result)
 }
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -366,7 +413,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     "pending outbound transaction",
                     |row| row.tx_id,
                     |row| OutboundTransaction::try_from(row, &self.cipher),
-                )?;
+                )
+                .lenient()?;
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
@@ -377,7 +425,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     "pending inbound transaction",
                     |row| row.tx_id,
                     |row| InboundTransaction::try_from(row, &self.cipher),
-                )?;
+                )
+                .lenient()?;
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
@@ -394,7 +443,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     "cancelled pending outbound transaction",
                     |row| row.tx_id,
                     |row| OutboundTransaction::try_from(row, &self.cipher),
-                )?;
+                )
+                .lenient()?;
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
@@ -405,7 +455,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     "cancelled pending inbound transaction",
                     |row| row.tx_id,
                     |row| InboundTransaction::try_from(row, &self.cipher),
-                )?;
+                )
+                .lenient()?;
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
@@ -1319,7 +1370,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         let rows = query.load::<CompletedTransactionSql>(&mut conn)?;
-        decode_completed_transactions(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
     }
 
     fn find_completed_transactions_filter_payment_id_block_hash(
@@ -1344,7 +1395,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         let rows = query.limit(limit).load::<CompletedTransactionSql>(&mut conn)?;
-        decode_completed_transactions(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
     }
 
     fn fetch_unmined_coinbase_transactions_from_height(
@@ -1402,7 +1453,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Err(e) => return Err(e),
             }
         }
-        decode_completed_transactions(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
     }
 
     fn get_payref_history_by_tx_id(
@@ -1462,7 +1513,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .offset(offset as i64)
             .limit(limit as i64)
             .load::<CompletedTransactionSql>(&mut conn)?;
-        decode_completed_transactions(rows, &self.cipher, &mut conn)
+        decode_completed_transactions_strict(rows, &self.cipher, &mut conn)
     }
 
     fn fetch_confirmed_detected_transactions_from_height(
@@ -4253,6 +4304,51 @@ mod test {
         assert!(db.fetch(&DbKey::AnyTransaction(5u64.into())).is_err());
         assert!(db.fetch_any_cancelled_transaction(7u64.into()).is_err());
         assert!(db.fetch(&DbKey::CompletedTransaction(3u64.into())).unwrap().is_some());
+
+        // A lookup whose only rows do not decode (and do not fail to decrypt) is an error, not "nothing found"
+        match db.find_completed_transactions_paginated(1, 1, completed_only) {
+            Err(crate::transaction_service::error::TransactionStorageError::UndecodableRows { skipped: 1 }) => {},
+            other => panic!("Unexpected result: {other:?}"),
+        }
+        {
+            let mut conn = connection.get_pooled_connection().unwrap();
+            sql_query("UPDATE completed_transactions SET mined_height = 999 WHERE tx_id = 4")
+                .execute(&mut conn)
+                .unwrap();
+        }
+        match db.find_completed_transactions_filter_payment_id_block_hash(None, None, Some(999), 0) {
+            Err(crate::transaction_service::error::TransactionStorageError::UndecodableRows { skipped: 1 }) => {},
+            other => panic!("Unexpected result: {other:?}"),
+        }
+        assert!(
+            db.find_completed_transactions_filter_payment_id_block_hash(None, None, Some(1000), 0)
+                .unwrap()
+                .is_empty()
+        );
+        {
+            let mut conn = connection.get_pooled_connection().unwrap();
+            sql_query("UPDATE completed_transactions SET mined_height = 999 WHERE tx_id = 3")
+                .execute(&mut conn)
+                .unwrap();
+        }
+        assert_eq!(
+            tx_ids(
+                &db.find_completed_transactions_filter_payment_id_block_hash(None, None, Some(999), 0)
+                    .unwrap()
+            ),
+            vec![3]
+        );
+
+        // The same rows, all undecodable without a decryption failure: a list is empty, a lookup is an error
+        corrupt_completed(&connection, 3, BAD_SOURCE_ADDRESS);
+        match db.fetch(&DbKey::CompletedTransactions(2)).unwrap() {
+            Some(DbValue::CompletedTransactions(txs)) => assert!(txs.is_empty()),
+            other => panic!("Unexpected value: {other:?}"),
+        }
+        match db.find_completed_transactions_paginated(0, 2, completed_only) {
+            Err(crate::transaction_service::error::TransactionStorageError::UndecodableRows { skipped: 2 }) => {},
+            other => panic!("Unexpected result: {other:?}"),
+        }
 
         // When every row is undecodable but none fails to decrypt, the list is empty
         {
