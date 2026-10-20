@@ -154,7 +154,10 @@ use minotari_wallet::{
     transaction_service::{
         error::{TransactionServiceError, TransactionStorageError},
         handle::TransactionServiceHandle,
-        storage::models::{self, CompletedTransaction, WalletTransaction},
+        storage::{
+            models::{self, CompletedTransaction, WalletTransaction},
+            sqlite_db::CompletedTransactionConversionError,
+        },
     },
     utxo_scanner_service::imported_output_source_address,
 };
@@ -1616,13 +1619,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .get_any_transaction(tx_id)
                     .await
                     .map(|tx| (tx_id, tx))
+                    .map_err(|err| (tx_id, err))
             }
         });
 
-        let all_transactions = future::try_join_all(queries)
-            .await
-            .map(|tx| tx.into_iter())
-            .map_err(|err| Status::unknown(err.to_string()))?;
+        let all_transactions =
+            future::try_join_all(queries)
+                .await
+                .map(|tx| tx.into_iter())
+                .map_err(|(tx_id, err)| {
+                    if is_undecodable_row(&err) {
+                        warn!(target: LOG_TARGET, "GetTransactionInfo: transaction {tx_id} does not decode: {err:?}");
+                        return Status::data_loss(format!("undecodable rows: skipped=1 tx_id={tx_id}"));
+                    }
+                    lookup_error("GetTransactionInfo", err, None)
+                })?;
         let wallet_address = self
             .wallet
             .get_wallet_interactive_address()
@@ -4466,24 +4477,26 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
 /// INTERNAL.
 fn lookup_error(context: &str, err: TransactionServiceError, page: Option<(u64, u64)>) -> Status {
     warn!(target: LOG_TARGET, "{context}: {err:?}");
-    if let TransactionServiceError::TransactionStorageError(TransactionStorageError::UndecodableRows { skipped }) = err
-    {
-        let mut message = format!("undecodable rows: skipped={skipped}");
-        if let Some((offset, limit)) = page {
-            message.push_str(&format!(" offset={offset} limit={limit}"));
-        }
-        return Status::data_loss(message);
+    let (code, mut message) = match err {
+        TransactionServiceError::TransactionStorageError(TransactionStorageError::UndecodableRows { skipped }) => {
+            (tonic::Code::DataLoss, format!("undecodable rows: skipped={skipped}"))
+        },
+        err => (tonic::Code::Internal, format!("{context}: {err:?}")),
+    };
+    // Every failure of a paged lookup names the page, so a client can resume past it
+    if let Some((offset, limit)) = page {
+        message.push_str(&format!(" offset={offset} limit={limit}"));
     }
-    Status::internal(format!("{context}: {err:?}"))
+    Status::new(code, message)
 }
 
-/// For a unary paged call, which returns nothing when a chunk fails: a DATA_LOSS also names the request's own offset,
-/// so a client can re-request from there up to the failing chunk's offset
+/// For a unary paged call, which returns nothing when a chunk fails: the error also names the request's own offset, so
+/// a client can re-request from there up to the failing chunk's offset
 fn with_request_offset(status: Status, request_offset: u64) -> Status {
-    if status.code() == tonic::Code::DataLoss {
-        return Status::data_loss(format!("{} request_offset={request_offset}", status.message()));
-    }
-    status
+    Status::new(
+        status.code(),
+        format!("{} request_offset={request_offset}", status.message()),
+    )
 }
 
 /// A lookup that reports a missing value as `ValueNotFound` gives `None`; any other failure is a [`lookup_error`]
@@ -4503,6 +4516,20 @@ fn is_undecodable_transaction(err: &TransactionServiceError) -> bool {
             TransactionStorageError::BincodeDeserialize(_) | TransactionStorageError::TransactionKeyError(_)
         )
     )
+}
+
+/// As [`is_undecodable_transaction`], for a row of any kind: a completed transaction row that does not decode counts
+/// too, except when it failed to decrypt
+fn is_undecodable_row(err: &TransactionServiceError) -> bool {
+    if is_undecodable_transaction(err) {
+        return true;
+    }
+    match err {
+        TransactionServiceError::TransactionStorageError(TransactionStorageError::CompletedConversionError(e)) => {
+            !matches!(e, CompletedTransactionConversionError::AeadError(_))
+        },
+        _ => false,
+    }
 }
 
 /// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
@@ -4547,6 +4574,7 @@ mod tests {
 
     use super::{
         found_or_none,
+        is_undecodable_row,
         is_undecodable_transaction,
         lookup_error,
         memo_from_raw_bytes,
@@ -4578,6 +4606,32 @@ mod tests {
         assert!(!is_undecodable_transaction(&storage(
             TransactionStorageError::UndecodableRows { skipped: 1 }
         )));
+    }
+
+    #[test]
+    fn an_undecodable_row_of_any_kind_is_not_a_decryption_failure() {
+        use minotari_wallet::transaction_service::{
+            error::{TransactionServiceError, TransactionStorageError},
+            storage::sqlite_db::CompletedTransactionConversionError,
+        };
+
+        let storage = TransactionServiceError::TransactionStorageError;
+        assert!(is_undecodable_row(&storage(
+            TransactionStorageError::BincodeDeserialize("bad".to_string())
+        )));
+        assert!(is_undecodable_row(&storage(
+            TransactionStorageError::CompletedConversionError(CompletedTransactionConversionError::BincodeDeserialize(
+                "bad".to_string()
+            ))
+        )));
+        assert!(!is_undecodable_row(&storage(
+            TransactionStorageError::CompletedConversionError(CompletedTransactionConversionError::AeadError(
+                "wrong key".to_string()
+            ))
+        )));
+        assert!(!is_undecodable_row(&storage(TransactionStorageError::AeadError(
+            "wrong key".to_string()
+        ))));
     }
 
     #[test]
@@ -4616,9 +4670,25 @@ mod tests {
             status.message(),
             "undecodable rows: skipped=1 offset=200 limit=100 request_offset=0"
         );
-        assert_eq!(
-            with_request_offset(tonic::Status::internal("other"), 0).message(),
-            "other"
+        let status = lookup_error(
+            "paged",
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::AeadError(
+                "wrong key".to_string(),
+            )),
+            Some((200, 100)),
+        );
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert!(
+            status.message().ends_with(" offset=200 limit=100"),
+            "{}",
+            status.message()
+        );
+        let status = with_request_offset(status, 0);
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert!(
+            status.message().ends_with(" offset=200 limit=100 request_offset=0"),
+            "{}",
+            status.message()
         );
 
         let status = found_or_none::<u8>(
