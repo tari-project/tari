@@ -774,6 +774,15 @@ fn encrypt_plaintext_wallet_type(
         return Ok(());
     };
     info!(target: LOG_TARGET, "Encrypting the plaintext wallet type");
+    // Provided-keys and ledger wallet types always carry a private view key, and may carry private spend/comms keys
+    if !wallet_type.is_derived_keys() {
+        warn!(
+            target: LOG_TARGET,
+            "The wallet type stored private keys in plaintext. Earlier copies or backups of this wallet database file \
+             contain them and should be treated as disclosed: if such a file may have been exposed, move the funds \
+             and rotate the keys."
+        );
+    }
     store_wallet_type(&wallet_type, cipher, conn)
 }
 
