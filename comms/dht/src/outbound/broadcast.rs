@@ -426,7 +426,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             body,
         )?;
 
-        if is_broadcast {
+        // A message sent with an existing header is being forwarded: the inbound path already recorded its key, and
+        // the signature that key needs is in that header, not in `message_signature`.
+        if is_broadcast && custom_header.is_none() {
             let hash = dedup::create_message_hash(message_signature.as_deref().unwrap_or(&[]), &body);
             let is_signed = message_signature.as_ref().is_some_and(|s| !s.is_empty());
             self.add_to_dedup_cache(hash, expires_epochtime, is_signed).await?;

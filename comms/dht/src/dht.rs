@@ -419,8 +419,9 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
 mod test {
     use std::time::Duration;
 
+    use futures::future;
     use tari_comms::{
-        message::{MessageExt, MessageTag},
+        message::{MessageExt, MessageTag, OutboundMessage},
         peer_manager::NodeId,
         pipeline::SinkService,
         test_utils::mocks::{ConnectivityManagerMockState, create_connectivity_mock},
@@ -430,6 +431,7 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_utilities::ByteArray;
     use tokio::{task, time};
+    use tower::service_fn;
 
     use super::*;
     use crate::{
@@ -664,6 +666,102 @@ mod test {
             .await
             .unwrap();
         assert!(out_rx.try_recv().is_err());
+    }
+
+    /// Forwarding a message this node cannot decrypt must not record a key for its ciphertext as if it were an
+    /// unsigned body: an attacker could make that ciphertext equal an unsigned message B and have B dropped.
+    #[tokio::test]
+    async fn test_stack_forward_does_not_shadow_unsigned_message() {
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity, _) = create_connectivity_mock();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
+        let (oms_tx, mut oms_rx) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let dht = Dht::builder()
+            .local_test()
+            .with_outbound_sender(oms_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
+        let (out_tx, mut out_rx) = mpsc::channel(10);
+        let mut inbound = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
+        let mut outbound = dht.outbound_middleware_layer().layer(service_fn(|_: OutboundMessage| {
+            future::ready(Ok::<_, PipelineError>(()))
+        }));
+
+        // B: an unsigned cleartext message
+        let b_body = wrap_in_envelope_body!(b"pending transaction".to_vec()).to_encoded_bytes();
+        let b = DhtEnvelope::new(
+            DhtMessageHeader {
+                version: DhtProtocolVersion::latest(),
+                destination: NodeDestination::Unknown,
+                ephemeral_public_key: None,
+                message_signature: Vec::new(),
+                message_type: DhtMessageType::None,
+                flags: DhtMessageFlags::empty(),
+                message_tag: MessageTag::new(),
+                expires: None,
+            }
+            .into(),
+            b_body.clone(),
+        );
+
+        // A throwaway-signed "encrypted" message for another node whose body is B's body
+        let (throwaway_key, ephemeral_public_key) = CommsPublicKey::random_keypair(&mut rand::rng());
+        let mut header = DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination: make_node_identity().public_key().clone().into(),
+            ephemeral_public_key: Some(ephemeral_public_key),
+            message_signature: Vec::new(),
+            message_type: DhtMessageType::None,
+            flags: DhtMessageFlags::ENCRYPTED,
+            message_tag: MessageTag::new(),
+            expires: None,
+        };
+        let binding_hash = crypt::create_message_domain_separated_hash(&header, &b_body);
+        header.message_signature = make_valid_message_signature(&throwaway_key, &binding_hash);
+        let decoy = DhtEnvelope::new(header.into(), b_body.clone());
+
+        // The node forwards the decoy through its real outbound pipeline
+        inbound
+            .call(make_comms_inbound_message(
+                &node_identity,
+                decoy.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        let forward = time::timeout(Duration::from_secs(10), oms_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        outbound.call(forward).await.unwrap();
+
+        // No key was recorded for the ciphertext as an unsigned body
+        let unsigned_key = crate::dedup::create_message_hash(&[], &b_body);
+        let hit_count = dht
+            .dht_requester()
+            .get_message_cache_hit_count(unsigned_key.to_vec())
+            .await
+            .unwrap();
+        assert_eq!(hit_count, 0);
+
+        // B still reaches the application
+        inbound
+            .call(make_comms_inbound_message(&node_identity, b.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        let received = time::timeout(Duration::from_secs(10), out_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(received.authenticated_origin().is_none());
+        assert!(received.decryption_succeeded());
     }
 
     #[tokio::test]
