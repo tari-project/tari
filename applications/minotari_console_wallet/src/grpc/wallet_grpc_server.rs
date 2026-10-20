@@ -2473,14 +2473,30 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Incoming gRPC request to Cancel Transaction (TxId: {})", message.tx_id,
         );
         let mut transaction_service = self.get_transaction_service();
-        let txn = transaction_service
-            .get_any_transaction(message.tx_id.into())
-            .await
-            .map_err(|e| Status::internal(format!("{}", e)))?
-            .ok_or(Status::not_found(format!(
+        let txn = match transaction_service.get_any_transaction(message.tx_id.into()).await {
+            Ok(txn) => txn.ok_or(Status::not_found(format!(
                 "Transaction TxId:{} is not found",
                 message.tx_id
-            )))?;
+            )))?,
+            // A pending outbound row stored by an older version may no longer decode; the service can still cancel it
+            Err(e) if is_undecodable_transaction(&e) => {
+                let response = match transaction_service
+                    .cancel_pending_transaction(message.tx_id.into())
+                    .await
+                {
+                    Ok(_) => tari_rpc::CancelTransactionResponse {
+                        is_success: true,
+                        failure_message: "".to_string(),
+                    },
+                    Err(e) => tari_rpc::CancelTransactionResponse {
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                };
+                return Ok(Response::new(response));
+            },
+            Err(e) => return Err(Status::internal(format!("{}", e))),
+        };
 
         if txn.status().is_pending() {
             match transaction_service
@@ -4438,8 +4454,6 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
     }
 }
 
-/// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
-/// once stored (see [`MemoField::from_bytes_checked`]).
 /// A failure behind a lookup is an internal error, never "not found", so that a client does not take it for an empty
 /// result
 fn lookup_error(context: &str, err: TransactionServiceError) -> Status {
@@ -4456,6 +4470,18 @@ fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -
     }
 }
 
+/// Whether a transaction lookup failed because the stored row no longer decodes, rather than for a systemic reason
+fn is_undecodable_transaction(err: &TransactionServiceError) -> bool {
+    matches!(
+        err,
+        TransactionServiceError::TransactionStorageError(
+            TransactionStorageError::BincodeDeserialize(_) | TransactionStorageError::TransactionKeyError(_)
+        )
+    )
+}
+
+/// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
+/// once stored (see [`MemoField::from_bytes_checked`]).
 fn memo_from_raw_bytes(bytes: &[u8]) -> Result<MemoField, Status> {
     MemoField::from_bytes_checked(bytes).map_err(|e| Status::invalid_argument(format!("Invalid payment id: {e}")))
 }
@@ -4494,7 +4520,33 @@ mod tests {
     use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
     use tari_utilities::ByteArray;
 
-    use super::{found_or_none, memo_from_raw_bytes, parse_excluded_commitments};
+    use super::{found_or_none, is_undecodable_transaction, memo_from_raw_bytes, parse_excluded_commitments};
+
+    #[test]
+    fn only_an_undecodable_row_goes_straight_to_cancel() {
+        use minotari_wallet::transaction_service::error::{
+            TransactionKeyError,
+            TransactionServiceError,
+            TransactionStorageError,
+        };
+        use tari_common_types::tari_address::TariAddressError;
+
+        let storage = TransactionServiceError::TransactionStorageError;
+        assert!(is_undecodable_transaction(&storage(
+            TransactionStorageError::BincodeDeserialize("bad".to_string())
+        )));
+        assert!(is_undecodable_transaction(&storage(
+            TransactionStorageError::TransactionKeyError(TransactionKeyError::Destination(
+                TariAddressError::InvalidSize
+            ))
+        )));
+        assert!(!is_undecodable_transaction(&storage(
+            TransactionStorageError::AeadError("wrong key".to_string())
+        )));
+        assert!(!is_undecodable_transaction(&storage(
+            TransactionStorageError::UndecodableRows { skipped: 1 }
+        )));
+    }
 
     #[test]
     fn lookup_failures_are_internal_errors_and_only_value_not_found_is_none() {
