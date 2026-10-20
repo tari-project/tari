@@ -1517,8 +1517,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
-        let addresses =
-            coinbase_target_addresses(&coinbases).map_err(|status| obscure_error_if_true(report_error_flag, status))?;
+        // Not obscured: it only describes the caller's own input, and the pool needs the index to drop the share
+        let addresses = coinbase_target_addresses(&coinbases)?;
         for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
@@ -1759,8 +1759,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
-        let addresses =
-            coinbase_target_addresses(&coinbases).map_err(|status| obscure_error_if_true(report_error_flag, status))?;
+        // Not obscured: it only describes the caller's own input, and the pool needs the index to drop the share
+        let addresses = coinbase_target_addresses(&coinbases)?;
         for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
