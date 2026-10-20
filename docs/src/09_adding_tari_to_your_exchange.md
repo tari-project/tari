@@ -399,28 +399,26 @@ const streamingProto = grpc.loadPackageDefinition(packageDefinition).tari.rpc;
 console.log(streamingProto);
 const client = new streamingProto.Wallet('localhost:18143', grpc.credentials.createInsecure());
 
-const request = {};
+// One pass over the wallet's transactions; run it on a schedule
+async function runListenerPass() {
+    const state = await getWalletState(client); // fetched once per pass
+    const call = client.GetCompletedTransactions({});
 
-// Call the gRPC method
-const call = client.GetCompletedTransactions(request);
+    call.on('data', async (response) => {
+        const tx = response.transaction;
+        try {
+            // The shared functions below ignore anything they must not act on
+            await creditCustomerAccount(client, tx, state);
+            await markSweptIfSpent(tx);
+        } catch (error) {
+            console.error(`Transaction ${tx.tx_id} not processed, retried on the next pass:`, error);
+        }
+    });
 
-// Handle the stream of responses
-call.on('data', async (response) => {
-    // Credit the deposit with the shared function below; it ignores anything that is not a confirmed inbound payment
-    await creditCustomerAccount(response.transaction);
-});
-
-call.on('end', () => {
-    console.log('Stream ended.');
-});
-
-call.on('error', (err) => {
-    console.error('Stream error:', err);
-});
-
-call.on('status', (status) => {
-    console.log('Stream status:', status);
-});
+    call.on('error', (err) => {
+        console.error('Stream error:', err);
+    });
+}
 ```
 
 > **Lookup errors:** a `NOT_FOUND` status means there genuinely is nothing to return. A `DATA_LOSS` status means stored
@@ -451,7 +449,8 @@ call.on('status', (status) => {
 >    relying on it.
 
 Never credit an unmatched output because someone presents its PayRef, amount or time: reconcile it against the sending
-wallet's records first, and return funds only to a sender address verified out of band. If a credited `tx_id` later
+wallet's records first, and return funds only to a sender address verified out of band. Record the outcome through
+`ledger.creditOnce` or `ledger.markResolved` on its `tx_id`, as above. If a credited `tx_id` later
 shows a status that is not confirmed, or `is_cancelled`, alert: it was reorged past your confirmation depth.
 
 Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
@@ -462,6 +461,8 @@ processing in Section 10) should use one function, so that they share the same c
 ```javascript
 // Statuses that count as confirmed for a deposit (see Transaction Status)
 const CONFIRMED_STATUSES = ['TRANSACTION_STATUS_MINED_CONFIRMED', 'TRANSACTION_STATUS_ONE_SIDED_CONFIRMED'];
+// Confirmed but time-locked: credited automatically once unlocked
+const LOCKED_STATUSES = ['TRANSACTION_STATUS_MINED_CONFIRMED_LOCKED', 'TRANSACTION_STATUS_ONE_SIDED_CONFIRMED_LOCKED'];
 // Coinbase outputs are never deposits (see Transaction Status)
 const COINBASE_STATUSES = [
     'TRANSACTION_STATUS_COINBASE_UNCONFIRMED',
@@ -472,25 +473,50 @@ const COINBASE_STATUSES = [
 // Your confirmation depth (see Block Confirmations)
 const REQUIRED_CONFIRMATIONS = 10;
 
-// Whether a transaction is buried deep enough; `client` is the wallet gRPC client from the example above
-async function isDeepEnough(tx) {
-    const state = await new Promise((resolve, reject) =>
+// The wallet's scanned height and balance
+function getWalletState(client) {
+    return new Promise((resolve, reject) =>
         client.GetState({}, (error, response) => (error ? reject(error) : resolve(response))));
-    return BigInt(state.scanned_height) - BigInt(tx.mined_in_block_height) >= BigInt(REQUIRED_CONFIRMATIONS);
+}
+
+// Whether a transaction is buried deep enough. Pass the state of the current pass, or it is fetched.
+async function isDeepEnough(client, tx, state = null) {
+    const current = state ?? (await getWalletState(client));
+    return BigInt(current.scanned_height) - BigInt(tx.mined_in_block_height) >= BigInt(REQUIRED_CONFIRMATIONS);
+}
+
+// Credited deposits that are not yet swept must be covered by what the wallet holds
+async function balanceCovers(state, extraAmount) {
+    const b = state.balance;
+    const held = BigInt(b.available_balance) + BigInt(b.timelocked_balance) + BigInt(b.pending_outgoing_balance);
+    const owed = (await ledger.unsweptCreditTotal()) + BigInt(extraAmount);
+    if (owed > held) {
+        await haltCreditingAndAlert({ owed, held });
+        return false;
+    }
+    return true;
 }
 
 // Credit a deposit at most once. `tx` is a TransactionInfo from GetCompletedTransactions, GetTransactionInfo or
 // GetPaymentByReference. Returns the credited account, or null when the transaction must not be credited (yet).
-async function creditCustomerAccount(tx) {
+// flagUnmatchedDeposit and escalateToOperator are idempotent per tx_id and reason, as they are called on every pass.
+async function creditCustomerAccount(client, tx, state = null) {
+    if (await ledger.isResolved(tx.tx_id)) {
+        return null; // already credited, refunded or written off, automatically or by hand
+    }
     if (tx.direction !== 'TRANSACTION_DIRECTION_INBOUND' || tx.is_cancelled) {
         return null; // withdrawals, change and cancelled transactions are never credited
     }
     if (COINBASE_STATUSES.includes(tx.status)) {
-        await flagUnmatchedDeposit(tx); // manual review
+        await flagUnmatchedDeposit(tx, `coinbase (${tx.status})`); // manual review, resolved through the ledger
         return null;
     }
-    if (!CONFIRMED_STATUSES.includes(tx.status) || !(await isDeepEnough(tx))) {
-        return null; // not confirmed yet: try again later
+    if (!CONFIRMED_STATUSES.includes(tx.status)) {
+        return null; // not confirmed yet, or time-locked: try again later
+    }
+    const current = state ?? (await getWalletState(client));
+    if (!(await isDeepEnough(client, tx, current))) {
+        return null;
     }
     // `dest_address` is this wallet's own address, so the account comes from the payment id the depositor included
     // (unless you run one wallet per customer, in which case the wallet identifies the account; in that mode coin
@@ -498,14 +524,55 @@ async function creditCustomerAccount(tx) {
     // wallet's keys)
     const account = await findAccountByPaymentId(tx.user_payment_id);
     if (!account) {
-        await flagUnmatchedDeposit(tx); // manual review; must be idempotent per tx_id, as it is called on every pass
+        await flagUnmatchedDeposit(tx, `no account for payment id (${tx.status})`); // manual review
         return null;
     }
-    // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef
-    const credited = await ledger.creditOnce({ txId: tx.tx_id, account, amount: tx.amount });
+    if (!(await balanceCovers(current, tx.amount))) {
+        return null;
+    }
+    // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef. The entry records the
+    // deposit's output commitments and starts with `withdrawable: false` (see the sweep gate below).
+    const credited = await ledger.creditOnce({
+        txId: tx.tx_id,
+        account,
+        amount: tx.amount,
+        outputCommitments: tx.output_commitments,
+        withdrawable: false
+    });
     return credited ? account : null;
 }
+
+// Outbound side of the listener: a credited deposit becomes withdrawable once every one of its output commitments
+// is an input of a confirmed transfer from this deposit wallet to your separate hot wallet
+async function markSweptIfSpent(tx) {
+    if (tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND' || tx.is_cancelled || !CONFIRMED_STATUSES.includes(tx.status)) {
+        return;
+    }
+    if (!(await isSweepToHotWallet(tx))) {
+        return; // only sweeps to the hot wallet count, never a coin join to self
+    }
+    await ledger.markWithdrawableIfAllSpent(tx.input_commitments);
+}
 ```
+
+**Why deposits are swept before they can be withdrawn:** the wallet reports some outputs it cannot spend on its own
+as confirmed inbound one-sided transactions: burn outputs, multisig outputs that need third-party keys, outputs with a
+`Nop` script whose sender still knows the commitment mask, and outputs of a non-standard type. `TransactionInfo` shows
+no output type, script or source, so crediting by status cannot tell them apart. The sweep gate closes that gap: a
+deposit is credited, but only becomes withdrawable once its outputs have been spent by a confirmed sweep to your hot
+wallet. Multisig, burn and non-standard outputs are never selected as inputs, so they never become withdrawable, and a
+`Nop` output that its sender spent first never appears among your inputs. The cost is that withdrawals of a deposit
+wait for the sweep. Sweep many inputs at once: the wallet selects the smallest outputs first, which can hold back large
+deposits.
+
+**Balance gate:** before crediting, and on a schedule, check that credited but unswept deposits are no more than
+`available_balance + timelocked_balance + pending_outgoing_balance` from `GetBalance` (or `GetState`), and halt crediting
+and alert on a gap (`balanceCovers` above). This catches a burn when it is credited, and a `Nop` output its sender
+spent after it was spent, but not multisig or non-standard outputs: `available_balance` includes those.
+
+**Manual resolution:** every manual credit, refund or write-off goes through `ledger.creditOnce` (or
+`ledger.markResolved`) keyed on the `tx_id`, in the same ledger, so the listener skips it from then on. A refund also
+retires the payment id for that `tx_id`.
 
 This is a basic implementation; some additional items you may want to consider for a production environment are: 
 
@@ -792,7 +859,7 @@ When a customer claims they sent a deposit but you don't see it in your systems:
 1. Customer: "I sent 100 XTR, PayRef: a1b2c3d4e5f6..."
 2. Support: Enters PayRef into verification system
 3. System: "Payment verified: 100 XTR received in block 150,000, payment id / deposit address: ..."
-4. Support: Credits the account that owns that payment id or deposit address
+4. System: Credits through `creditCustomerAccount`, so the account that owns the transaction's payment id, once per `tx_id`
 5. Result: Fast resolution, happy customer
 
 > **Important:** a PayRef finds an output; it does not show who paid. Anyone who can see the output on chain can
@@ -876,8 +943,21 @@ class PayRefVerificationService {
         if (tx.direction !== 'TRANSACTION_DIRECTION_INBOUND' || tx.is_cancelled) {
             return { status: 'NOT_A_DEPOSIT', message: 'PayRef does not belong to a deposit' };
         }
-        if (!CONFIRMED_STATUSES.includes(tx.status) || !(await isDeepEnough(tx))) {
-            return { status: 'INSUFFICIENT_CONFIRMATIONS', message: 'Payment found but not confirmed yet' };
+        if (LOCKED_STATUSES.includes(tx.status)) {
+            return { status: 'LOCKED', message: `Credits automatically at unlock (${tx.status})`, tx_id: tx.tx_id };
+        }
+        let deep;
+        try {
+            deep = CONFIRMED_STATUSES.includes(tx.status) && (await isDeepEnough(this.client, tx));
+        } catch (error) {
+            return { status: 'RETRY', message: error.message, tx_id: tx.tx_id };
+        }
+        if (!deep) {
+            return {
+                status: 'INSUFFICIENT_CONFIRMATIONS',
+                message: `Payment found but not confirmed yet (${tx.status})`,
+                tx_id: tx.tx_id
+            };
         }
         return {
             status: 'VERIFIED',
@@ -912,12 +992,19 @@ async function handleCustomerPayRefInquiry(payrefHex, requesterAccount) {
     const result = await verifier.verifyPayRef(payrefHex);
 
     let account = null;
-    if (result.status === 'VERIFIED') {
-        account = await creditCustomerAccount(result.transaction);
-    } else if (result.status === 'DATA_LOSS' || result.status === 'REVIEW') {
-        await escalateToOperator(payrefHex, result.message); // see the DATA_LOSS procedure under "Lookup errors"
+    try {
+        if (result.status === 'VERIFIED') {
+            account = await creditCustomerAccount(verifier.client, result.transaction);
+        } else if (result.status === 'DATA_LOSS' || result.status === 'REVIEW') {
+            // Idempotent per tx_id (or PayRef when there is none) and reason; see "Lookup errors" for DATA_LOSS
+            await escalateToOperator(result.tx_id ?? payrefHex, `${result.status}: ${result.message}`);
+        }
+    } catch (error) {
+        result.status = 'RETRY';
+        result.message = error.message;
+    } finally {
+        await auditLog({ payrefHex, requesterAccount, status: result.status, creditedAccount: account, details: result });
     }
-    await auditLog({ payrefHex, requesterAccount, status: result.status, creditedAccount: account, details: result });
 
     const success = account !== null && account === requesterAccount;
     return {
@@ -991,6 +1078,7 @@ class AutomatedPayRefProcessor {
         
         this.isProcessing = true;
         try {
+            // The pending table is unique on the PayRef, so a PayRef submitted twice is processed once
             const pendingPayRefs = await this.db.getPendingPayRefVerifications();
             
             for (const pending of pendingPayRefs) {
@@ -1015,37 +1103,32 @@ class AutomatedPayRefProcessor {
                     await this.handleVerifiedPayRef(pendingPayRef, verification);
                     break;
 
+                case 'LOCKED':
+                    // Credits automatically once unlocked; no age limit
+                    await this.updatePendingPayRef(pendingPayRef, verification);
+                    break;
+
                 case 'INSUFFICIENT_CONFIRMATIONS':
                     // Waiting is bounded too: a deposit that never confirms needs a person
                     if (Date.now() - pendingPayRef.createdAt > MAX_PENDING_AGE_MS) {
-                        await escalateToOperator(pendingPayRef.payrefHex, 'Not confirmed within 24 hours');
-                        await this.db.removePendingPayRef(pendingPayRef.id);
+                        await this.escalate(pendingPayRef, verification, 'not confirmed within 24 hours');
                     } else {
                         await this.updatePendingPayRef(pendingPayRef, verification);
                     }
                     break;
 
                 case 'REVIEW':
-                    await escalateToOperator(pendingPayRef.payrefHex, verification.message);
-                    await this.db.removePendingPayRef(pendingPayRef.id);
+                case 'DATA_LOSS':
+                    // Terminal: retrying every 30 seconds will not change it
+                    await this.escalate(pendingPayRef, verification, verification.message);
                     break;
 
                 case 'NOT_FOUND':
                     await this.handleNotFoundPayRef(pendingPayRef);
                     break;
 
-                case 'DATA_LOSS':
-                    // Terminal: retrying every 30 seconds will not change it
-                    await escalateToOperator(pendingPayRef.payrefHex, verification.message);
-                    await this.db.removePendingPayRef(pendingPayRef.id);
-                    break;
-
                 case 'RETRY':
-                    // A wallet-side fault: retry a bounded number of times, then alert
-                    if ((await this.db.incrementPayRefAttempts(pendingPayRef.id)) >= MAX_ATTEMPTS) {
-                        await escalateToOperator(pendingPayRef.payrefHex, verification.message);
-                        await this.db.removePendingPayRef(pendingPayRef.id);
-                    }
+                    await this.countFailedAttempt(pendingPayRef, verification);
                     break;
 
                 default:
@@ -1053,13 +1136,27 @@ class AutomatedPayRefProcessor {
                     await this.db.removePendingPayRef(pendingPayRef.id);
             }
         } catch (error) {
-            console.error(`Error processing PayRef ${pendingPayRef.payrefHex}:`, error);
+            // For example the credit call failed: counted like a RETRY
+            await this.countFailedAttempt(pendingPayRef, { status: 'RETRY', message: error.message });
         }
+    }
+
+    // A wallet-side fault: retry a bounded number of times, then escalate
+    async countFailedAttempt(pendingPayRef, verification) {
+        if ((await this.db.incrementPayRefAttempts(pendingPayRef.id)) >= MAX_ATTEMPTS) {
+            await this.escalate(pendingPayRef, verification, `failed ${MAX_ATTEMPTS} times`);
+        }
+    }
+
+    // Escalate once and leave the queue; escalateToOperator is idempotent per tx_id (or PayRef) and reason
+    async escalate(pendingPayRef, verification, reason) {
+        await escalateToOperator(verification.tx_id ?? pendingPayRef.payrefHex, `${verification.status}: ${reason}`);
+        await this.db.removePendingPayRef(pendingPayRef.id);
     }
     
     async handleVerifiedPayRef(pendingPayRef, verification) {
         // Credit the account the transaction's payment id belongs to, deduped on tx_id
-        const account = await creditCustomerAccount(verification.transaction);
+        const account = await creditCustomerAccount(this.verifier.client, verification.transaction);
 
         // Remove from pending queue
         await this.db.removePendingPayRef(pendingPayRef.id);
@@ -1085,14 +1182,19 @@ class AutomatedPayRefProcessor {
 3. **Audit logging**: Log all PayRef verifications with timestamps
 4. **Double-credit prevention**: Credit once per `tx_id`; a PayRef is a lookup handle, not a credit key. The direction
    check excludes only the wallet's own sent and change outputs: coin joins, swap claims and refunds appear as
-   inbound, so keep them away from a deposit wallet's keys
+   inbound, so keep them away from a deposit wallet's keys. The wallet also reports as confirmed inbound some outputs
+   you cannot spend alone (burns, multisig outputs with third-party keys, `Nop`-script outputs whose sender knows the
+   mask, and non-standard output types), and `TransactionInfo` cannot tell them apart: that is why deposits pass the
+   sweep gate (Section 6) before they can be withdrawn
 
 ### Customer Experience
 
 1. **Clear instructions**: Provide step-by-step guides for finding PayRefs
 2. **Support training**: Train support staff on PayRef verification process
 3. **Automated notifications**: Alert customers when deposits are confirmed
-4. **Self-service options**: Allow customers to check PayRef status themselves
+4. **Self-service options**: Show deposit status for the customer's own account by `tx_id`. Do not offer a PayRef lookup
+   without authentication, and give the same response whatever the outcome; that includes timing, so pad the response
+   time or run the check asynchronously
 
 ### Integration Checklist
 
