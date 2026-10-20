@@ -422,6 +422,10 @@ impl From<TariAddressError> for LibWalletError {
                 code: 710,
                 message: format!("{e:?}"),
             },
+            TariAddressError::InvalidCoinbaseTarget(_) => Self {
+                code: 711,
+                message: format!("{e:?}"),
+            },
         }
     }
 }
