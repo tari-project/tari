@@ -55,6 +55,7 @@ mod test {
     use tari_common_types::{
         tari_address::{TariAddress, TariAddressFeatures},
         transaction::TxId,
+        types::CompressedPublicKey,
     };
     use tari_script::{
         CompressedCheckSigSchnorrSignature,
@@ -86,7 +87,7 @@ mod test {
             OfflinePayload,
             PayloadSummary,
             PaymentRecipient,
-            models::SignedOneSidedTransactionResult,
+            models::{SignedOneSidedTransactionResult, SignedTransaction},
             offline_signer::sign_locked_transaction,
             one_sided_signer::{multisig_pending_output, withdraw_pending_output},
             prepare_deposit_multisig_transaction,
@@ -1321,6 +1322,262 @@ mod test {
         let factories = CryptoFactories::default();
         let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
         assert!(validator.validate(&tx, None, None, u64::MAX).is_ok());
+    }
+
+    fn one_sided_address(key_manager: &KeyManager) -> TariAddress {
+        TariAddress::new_dual_address(
+            key_manager.get_view_key().pub_key,
+            key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap()
+    }
+
+    /// The recipient must find the sent output the way its scanner does: recover it with its own keys, and derive the
+    /// script's final `PushPubKey` from the recovered mask. Returns the recovered memo.
+    fn assert_recipient_recovers(
+        recipient_key_manager: &KeyManager,
+        signed: &SignedTransaction,
+        amount: MicroMinotari,
+    ) -> MemoField {
+        let sent = signed
+            .transaction
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.hash() == signed.sent_hashes[0])
+            .unwrap();
+        let (mask_key_id, value, memo, _) = recipient_key_manager
+            .try_output_key_recovery(sent.commitment(), sent.encrypted_data(), &sent.sender_offset_public_key)
+            .unwrap()
+            .expect("the recipient must recover the sent output");
+        assert_eq!(value, amount);
+        let script_pubkey = recipient_key_manager
+            .stealth_address_script_spending_key(&mask_key_id, &recipient_key_manager.get_spend_key().pub_key)
+            .unwrap();
+        let Some(Opcode::PushPubKey(scanned_pk)) = sent.script.as_slice().last() else {
+            panic!("the sent output script must end with a PushPubKey");
+        };
+        assert_eq!(script_pubkey, **scanned_pk);
+        memo
+    }
+
+    /// Prepare and sign a multisig deposit of `amount` from a single 100 000 µT input to `recipient`.
+    fn sign_deposit(
+        alice_key_manager: &KeyManager,
+        recipient: &TariAddress,
+        amount: MicroMinotari,
+        payment_id: MemoField,
+        tx_builder: TransactionBuilder<KeyManager>,
+        participants: Vec<CompressedPublicKey>,
+    ) -> SignedTransaction {
+        let rules = create_consensus_manager();
+        let init = prepare_deposit_multisig_transaction(
+            alice_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            amount,
+            payment_id,
+            OutputFeatures::default(),
+            2,
+            participants,
+            one_sided_address(alice_key_manager),
+            recipient.clone(),
+        )
+        .unwrap();
+        sign_locked_deposit_multisig_transaction(
+            alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed(PayloadSummary::from_multisig(init)),
+        )
+        .unwrap()
+        .signed_transaction
+    }
+
+    fn funded_builder(key_manager: &KeyManager) -> TransactionBuilder<KeyManager> {
+        let rules = create_consensus_manager();
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(create_test_input(MicroMinotari(100_000), 0, key_manager, vec![], None))
+            .unwrap();
+        tx_builder
+    }
+
+    #[test]
+    fn offline_deposit_multisig_output_is_recovered_by_recipient() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = one_sided_address(&bob_key_manager);
+        let participants = vec![
+            alice_key_manager.get_spend_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+        ];
+        let amount = MicroMinotari(5000);
+
+        let signed = sign_deposit(
+            &alice_key_manager,
+            &bob_address,
+            amount,
+            MemoField::new_empty(),
+            funded_builder(&alice_key_manager),
+            participants,
+        );
+        assert!(signed.change_output.is_some());
+        assert_recipient_recovers(&bob_key_manager, &signed, amount);
+    }
+
+    /// The deposit memo carries the fee estimated before change is added, so the signer rewrites it with the final
+    /// fee; the rewritten encrypted data must still be readable by the recipient.
+    #[test]
+    fn offline_deposit_multisig_with_pre_change_fee_memo_is_recovered_by_recipient() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = one_sided_address(&bob_key_manager);
+        let participants = vec![
+            alice_key_manager.get_spend_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+        ];
+        let amount = MicroMinotari(5000);
+        let tx_builder = funded_builder(&alice_key_manager);
+
+        let memo_with_fee = |fee| {
+            MemoField::new_address_and_data(bob_address.clone(), fee, true, TxType::PaymentToOther, vec![1u8; 16])
+                .unwrap()
+        };
+        let mut probe = tx_builder.clone();
+        let temp_memo = memo_with_fee(MicroMinotari::zero());
+        probe.with_memo(temp_memo.clone());
+        let pending = multisig_pending_output(
+            rules.consensus_constants(0),
+            &bob_address,
+            amount,
+            &OutputFeatures::default(),
+            &temp_memo,
+            2,
+            participants.len(),
+        )
+        .unwrap();
+        let fee_without_change = probe.get_fee_estimate_with(&[pending]).unwrap();
+
+        let signed = sign_deposit(
+            &alice_key_manager,
+            &bob_address,
+            amount,
+            memo_with_fee(fee_without_change),
+            tx_builder,
+            participants,
+        );
+        assert!(signed.change_output.is_some());
+        let final_fee = signed.transaction.body.kernels()[0].fee;
+        assert_ne!(final_fee, fee_without_change);
+
+        let memo = assert_recipient_recovers(&bob_key_manager, &signed, amount);
+        assert_eq!(memo.get_fee(), Some(final_fee));
+    }
+
+    /// As above for a withdrawal: the memo's pre-change fee is rewritten and the recipient must still recover it.
+    #[test]
+    fn offline_withdraw_multisig_with_pre_change_fee_memo_is_recovered_by_recipient() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = one_sided_address(&bob_key_manager);
+        let amount = MicroMinotari(50_000);
+        let tx_builder = funded_builder(&alice_key_manager);
+
+        let memo_with_fee = |fee| {
+            addressed_output_memo(MemoField::default(), bob_address.clone(), fee, TxType::PaymentToOther).unwrap()
+        };
+        let mut probe = tx_builder.clone();
+        let temp_memo = memo_with_fee(MicroMinotari::zero());
+        probe.with_memo(temp_memo.clone());
+        let recipient = PaymentRecipient {
+            amount,
+            output_features: OutputFeatures::default(),
+            address: bob_address.clone(),
+            payment_id: temp_memo.clone(),
+        };
+        let pending = withdraw_pending_output(rules.consensus_constants(0), &recipient, &temp_memo).unwrap();
+        let fee_without_change = probe.get_fee_estimate_with(&[pending]).unwrap();
+
+        let init = prepare_withdraw_multisig_transaction(
+            &alice_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            amount,
+            memo_with_fee(fee_without_change),
+            OutputFeatures::default(),
+            one_sided_address(&alice_key_manager),
+            bob_address,
+        )
+        .unwrap();
+        let signed = sign_locked_withdraw_multisig_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed(PayloadSummary::from_withdraw_multisig(init)),
+        )
+        .unwrap()
+        .signed_transaction;
+        assert!(signed.change_output.is_some());
+        let final_fee = signed.transaction.body.kernels()[0].fee;
+        assert_ne!(final_fee, fee_without_change);
+
+        let memo = assert_recipient_recovers(&bob_key_manager, &signed, amount);
+        assert_eq!(memo.get_fee(), Some(final_fee));
+    }
+
+    #[test]
+    fn offline_multisig_prepare_refuses_a_recipient_without_a_view_key() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_single_address = TariAddress::new_single_address(
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+        )
+        .unwrap();
+
+        let err = prepare_deposit_multisig_transaction(
+            &alice_key_manager,
+            TxId::new_random(),
+            funded_builder(&alice_key_manager),
+            MicroMinotari(5000),
+            MemoField::new_empty(),
+            OutputFeatures::default(),
+            2,
+            vec![
+                alice_key_manager.get_spend_key().pub_key,
+                bob_key_manager.get_spend_key().pub_key,
+            ],
+            one_sided_address(&alice_key_manager),
+            bob_single_address.clone(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Missing public view key"), "got {err:?}");
+
+        let err = prepare_withdraw_multisig_transaction(
+            &alice_key_manager,
+            TxId::new_random(),
+            funded_builder(&alice_key_manager),
+            MicroMinotari(5000),
+            MemoField::new_empty(),
+            OutputFeatures::default(),
+            one_sided_address(&alice_key_manager),
+            bob_single_address,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Missing public view key"), "got {err:?}");
     }
 
     #[test]

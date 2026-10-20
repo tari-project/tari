@@ -54,7 +54,7 @@ use crate::{
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
         payload_summary::LOG_TARGET,
     },
-    transaction_components::{MemoField, OutputFeatures, WalletOutput},
+    transaction_components::{MemoField, OutputFeatures, TransactionError, WalletOutput},
 };
 
 // ---------------------------------------------------------------------------
@@ -201,6 +201,10 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
     sender: TariAddress,
     recipient: TariAddress,
 ) -> Result<PrepareDepositMultisigTransactionResult, TransactionBuilderError> {
+    // The offline signer derives the recipient output from the view key; refuse here, before the operator approves.
+    if recipient.public_view_key().is_none() {
+        return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
+    }
     let fee = tx_builder.fee();
     let fee_per_gram = tx_builder.fee_per_gram().unwrap_or_default();
     let outputs = tx_builder
@@ -257,6 +261,10 @@ pub fn prepare_withdraw_multisig_transaction<TKeyManagerInterface: TransactionKe
     sender: TariAddress,
     recipient: TariAddress,
 ) -> Result<PrepareWithdrawMultisigTransactionResult, TransactionBuilderError> {
+    // The offline signer derives the recipient output from the view key; refuse here, before the operator approves.
+    if recipient.public_view_key().is_none() {
+        return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
+    }
     let fee = tx_builder.fee();
     let fee_per_gram = tx_builder.fee_per_gram().unwrap_or_default();
     let outputs = tx_builder
