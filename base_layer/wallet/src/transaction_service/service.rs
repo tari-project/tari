@@ -517,6 +517,10 @@ where
             TransactionServiceRequest::PrepareDepositMultisigTransaction { request } => {
                 async {
                     self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
+                    // Checked before any input is locked; the offline signer needs the recipient's view key.
+                    if request.recipient_address.public_view_key().is_none() {
+                        return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
+                    }
 
                     let temp_tx_id = TxId::new_random();
                     let script = push_pubkey_script(&Default::default());

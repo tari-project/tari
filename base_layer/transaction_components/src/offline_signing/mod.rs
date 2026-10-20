@@ -1538,6 +1538,49 @@ mod test {
     }
 
     #[test]
+    fn offline_multisig_prepare_refuses_a_recipient_without_a_view_key() {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_single_address = TariAddress::new_single_address(
+            bob_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+        )
+        .unwrap();
+
+        let err = prepare_deposit_multisig_transaction(
+            &alice_key_manager,
+            TxId::new_random(),
+            funded_builder(&alice_key_manager),
+            MicroMinotari(5000),
+            MemoField::new_empty(),
+            OutputFeatures::default(),
+            2,
+            vec![
+                alice_key_manager.get_spend_key().pub_key,
+                bob_key_manager.get_spend_key().pub_key,
+            ],
+            one_sided_address(&alice_key_manager),
+            bob_single_address.clone(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Missing public view key"), "got {err:?}");
+
+        let err = prepare_withdraw_multisig_transaction(
+            &alice_key_manager,
+            TxId::new_random(),
+            funded_builder(&alice_key_manager),
+            MicroMinotari(5000),
+            MemoField::new_empty(),
+            OutputFeatures::default(),
+            one_sided_address(&alice_key_manager),
+            bob_single_address,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Missing public view key"), "got {err:?}");
+    }
+
+    #[test]
     fn offline_sign_can_be_claimed() {
         let rules = create_consensus_manager();
         let alice_key_manager = KeyManager::new_random().unwrap();
