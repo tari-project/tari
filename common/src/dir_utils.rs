@@ -22,13 +22,17 @@
 
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use path_clean::PathClean;
 
 /// Guard to ensure the unset home directory warning is logged at most once per process.
 static WARNED_NO_HOME_DIR: AtomicBool = AtomicBool::new(false);
+static PENDING_NO_HOME_WARNING: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
@@ -53,7 +57,14 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
 }
 
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
-    default_path_with_home_fn(filename, base_path, dirs_next::home_dir)
+    let home_fn = || {
+        if std::env::var_os("TARI_FORCE_NO_HOME").is_some() {
+            None
+        } else {
+            dirs_next::home_dir()
+        }
+    };
+    default_path_with_home_fn(filename, base_path, home_fn)
 }
 
 pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
@@ -64,11 +75,17 @@ pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
     let mut home = base_path.cloned().unwrap_or_else(|| {
         let home_dir = home_fn().unwrap_or_else(|| {
             let fallback = PathBuf::from(".");
+            let fallback_abs = absolute_path(&fallback);
             if !WARNED_NO_HOME_DIR.swap(true, Ordering::Relaxed) {
-                log::warn!(
+                let msg = format!(
                     "Could not determine user home directory; falling back to current working directory: {}",
-                    absolute_path(&fallback).display()
+                    fallback_abs.display()
                 );
+                eprintln!("{msg}");
+                log::warn!("{msg}");
+                if let Ok(mut pending) = PENDING_NO_HOME_WARNING.lock() {
+                    *pending = Some(fallback_abs);
+                }
             }
             fallback
         });
@@ -80,9 +97,22 @@ pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
     home
 }
 
+/// Flushes any pending unset home directory warning that occurred before the logger was installed.
+pub fn flush_pending_no_home_warning() {
+    if let Some(fallback_abs) = PENDING_NO_HOME_WARNING.lock().ok().and_then(|mut p| p.take()) {
+        log::warn!(
+            "Could not determine user home directory; falling back to current working directory: {}",
+            fallback_abs.display()
+        );
+    }
+}
+
 #[cfg(test)]
 pub(crate) fn reset_warned_no_home_dir() {
     WARNED_NO_HOME_DIR.store(false, Ordering::Relaxed);
+    if let Ok(mut pending) = PENDING_NO_HOME_WARNING.lock() {
+        *pending = None;
+    }
 }
 
 pub fn absolute_path<P>(path: P) -> PathBuf

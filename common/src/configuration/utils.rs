@@ -60,13 +60,15 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         } else {
             prompt_default_config()
         };
-        write_config_to(&config_path, &sources)
+        let created = write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
-        info!(
-            target: LOG_TARGET,
-            "Created default configuration file at {}",
-            display_path(config_path.as_ref())
-        );
+        if created {
+            info!(
+                target: LOG_TARGET,
+                "Created default configuration file at {}",
+                display_path(config_path.as_ref())
+            );
+        }
     } else {
         // Nothing here
     }
@@ -1170,8 +1172,8 @@ pub fn get_default_config(use_mining_config: bool) -> [&'static str; 12] {
 /// Writes a single file concatenating all the provided sources to the specified path. If the parent directory does not
 /// exist, it is created. The file is created with `create_new`, so an existing file (or symlink) is never followed or
 /// overwritten: if one is already there, it is left untouched and will be loaded (and trust-checked) as an existing
-/// config file.
-pub fn write_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<(), std::io::Error> {
+/// config file. Returns `Ok(true)` if a new file was created and written, or `Ok(false)` if the file already existed.
+pub fn write_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<bool, std::io::Error> {
     if let Some(d) = path.as_ref().parent() {
         fs::create_dir_all(d)?
     };
@@ -1183,7 +1185,7 @@ pub fn write_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<(), 
                 "Configuration file {} already exists, it was not overwritten",
                 path.as_ref().display()
             );
-            return Ok(());
+            return Ok(false);
         },
         Err(e) => return Err(e),
     };
@@ -1196,7 +1198,7 @@ pub fn write_config_to<P: AsRef<Path>>(path: P, sources: &[&str]) -> Result<(), 
         "Created new configuration file {}",
         path.as_ref().display()
     );
-    Ok(())
+    Ok(true)
 }
 
 pub fn serialize_string<S, T>(source: &T, ser: S) -> Result<S::Ok, S::Error>
@@ -1947,8 +1949,8 @@ password = "scoped"
     fn write_config_to_does_not_overwrite() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config").join("config.toml");
-        write_config_to(&path, &["first"]).unwrap();
-        write_config_to(&path, &["second"]).unwrap();
+        assert!(write_config_to(&path, &["first"]).unwrap());
+        assert!(!write_config_to(&path, &["second"]).unwrap());
         assert_eq!(fs::read_to_string(&path).unwrap(), "first\n");
     }
 

@@ -195,6 +195,7 @@ fn main_inner() -> Result<(), ExitError> {
         cli.common.log_path.as_ref().unwrap_or(&base_path),
         include_str!("../log4rs_sample.yml"),
     )?;
+    tari_common::dir_utils::flush_pending_no_home_warning();
 
     info!(
         target: LOG_TARGET,
