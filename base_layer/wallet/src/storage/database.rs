@@ -44,8 +44,7 @@ const LOG_TARGET: &str = "wallet::database";
 
 /// This trait defines the functionality that a database backend need
 pub trait WalletBackend: Send + Sync + Clone {
-    /// Whether a missing wallet type may be set now: the wallet was created, or migrated from a version that may not
-    /// have stored one, when this backend was opened
+    /// Whether a missing wallet type may be set now: the wallet was created when this backend was opened
     fn wallet_type_init_allowed(&self) -> bool;
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;

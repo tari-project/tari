@@ -779,16 +779,22 @@ fn store_wallet_type(
 }
 
 /// Wallets before secondary key version 3 stored the wallet type, which can hold private keys, as plaintext JSON.
-/// Re-store such a value encrypted. Only run while migrating to version 3; a missing value is left for init to set.
+/// Re-store such a value encrypted, or store derived keys if there is none. Only run while migrating to version 3.
 fn encrypt_plaintext_wallet_type(
     cipher: &XChaCha20Poly1305,
     conn: &mut SqliteConnection,
 ) -> Result<(), WalletStorageError> {
+    // A wallet with no wallet type predates ledger support, and every caller resolves it to derived keys
     let Some(value) = WalletSettingSql::get(&DbKey::WalletType, conn)? else {
-        return Ok(());
+        return store_wallet_type(&LegacyWalletType::DerivedKeys, cipher, conn);
     };
     let value = Zeroizing::new(value);
     let Ok(wallet_type) = serde_json::from_str::<LegacyWalletType>(&value) else {
+        warn!(
+            target: LOG_TARGET,
+            "The stored wallet type could not be parsed; the wallet will not open at secondary key version {}",
+            CURRENT_SECONDARY_KEY_VERSION
+        );
         return Ok(());
     };
     info!(target: LOG_TARGET, "Encrypting the plaintext wallet type");
@@ -833,8 +839,7 @@ fn rekey_main_key(
 
 /// Prepare the database encryption cipher
 ///
-/// Also returns whether the wallet type may be initialised by this open: the wallet is new, or it was migrated from a
-/// version that may not have stored one.
+/// Also returns whether the wallet type may be initialised by this open, which is only when the wallet is new.
 fn get_db_cipher(
     database_connection: &WalletDbConnection,
     passphrase: &SafePassword,
@@ -874,7 +879,7 @@ fn get_db_cipher(
             // re-encrypt the main key under a fresh salt at the current version, which also drops the leaked
             // commitment, in one transaction. The main key itself is unchanged, so everything already encrypted under
             // it stays readable. The freed pages are scrubbed after the commit.
-            wallet_type_init_allowed = data.secondary_key_version < CURRENT_SECONDARY_KEY_VERSION;
+            wallet_type_init_allowed = false;
             if data.secondary_key_version < CURRENT_SECONDARY_KEY_VERSION {
                 if data.secondary_key_version < 2 {
                     warn!(
@@ -1566,15 +1571,32 @@ mod test {
     }
 
     #[test]
-    fn a_version_2_wallet_without_a_wallet_type_may_set_one() {
+    fn a_version_2_wallet_without_a_wallet_type_is_migrated_to_derived_keys() {
         let (_tempdir, _db_path, connection) = database_at_version(2, "upgrade");
         let wallet =
             WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), "upgrade".to_string().into()).unwrap());
-        assert!(wallet.wallet_type_init_allowed());
+        // Stored by the migration itself, so nothing has to be remembered until init
+        assert!(!wallet.wallet_type_init_allowed());
+        assert_eq!(wallet.get_wallet_type().unwrap(), Some(LegacyWalletType::DerivedKeys));
+        let mut conn = connection.get_pooled_connection().unwrap();
+        let stored = WalletSettingSql::get(&DbKey::WalletType, &mut conn).unwrap().unwrap();
+        assert!(serde_json::from_str::<LegacyWalletType>(&stored).is_err());
         assert_eq!(
             read_or_create_wallet_type(None, &wallet).unwrap(),
             LegacyWalletType::DerivedKeys
         );
+    }
+
+    #[test]
+    fn a_version_2_wallet_type_that_does_not_parse_does_not_open() {
+        let (_tempdir, _db_path, connection) = database_at_version(2, "garbled");
+        let mut conn = connection.get_pooled_connection().unwrap();
+        WalletSettingSql::new(DbKey::WalletType, "not a wallet type".to_string())
+            .set(&mut conn)
+            .unwrap();
+        let wallet =
+            WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), "garbled".to_string().into()).unwrap());
+        assert!(wallet.get_wallet_type().is_err());
     }
 
     #[test]
