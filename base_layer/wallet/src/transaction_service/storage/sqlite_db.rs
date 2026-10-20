@@ -119,23 +119,48 @@ fn decode_completed_transactions(
     cipher: &XChaCha20Poly1305,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    decode_rows(
+        rows,
+        "completed transaction",
+        |row| row.tx_id,
+        |row| CompletedTransaction::try_from(row, cipher, conn).map_err(TransactionStorageError::from),
+    )
+}
+
+/// Decodes a list of rows, skipping and logging the rows that cannot be decoded. A row that fails to decrypt points to
+/// a systemic fault, such as a wrong key, rather than one bad row, so the list is an error when that happens and
+/// nothing decoded.
+fn decode_rows<R, T>(
+    rows: Vec<R>,
+    description: &str,
+    tx_id_of: impl Fn(&R) -> i64,
+    mut decode: impl FnMut(R) -> Result<T, TransactionStorageError>,
+) -> Result<Vec<T>, TransactionStorageError> {
     let mut result = Vec::with_capacity(rows.len());
-    let mut first_error = None;
+    let mut decryption_error = None;
     for row in rows {
-        let tx_id = row.tx_id;
-        match CompletedTransaction::try_from(row, cipher, conn) {
+        let tx_id = tx_id_of(&row);
+        match decode(row) {
             Ok(tx) => result.push(tx),
             Err(e) => {
-                error!(target: LOG_TARGET, "Skipping undecodable completed transaction {tx_id}: {e}");
-                first_error.get_or_insert(e);
+                error!(target: LOG_TARGET, "Skipping undecodable {description} {tx_id}: {e}");
+                let is_decryption_failure = matches!(
+                    e,
+                    TransactionStorageError::AeadError(_) |
+                        TransactionStorageError::CompletedConversionError(
+                            CompletedTransactionConversionError::AeadError(_)
+                        )
+                );
+                if is_decryption_failure {
+                    decryption_error.get_or_insert(e);
+                }
             },
         }
     }
-    // If every row fails the failure is systemic (for example a wrong key), so it is still an error
-    if let Some(e) = first_error &&
+    if let Some(e) = decryption_error &&
         result.is_empty()
     {
-        return Err(e.into());
+        return Err(e);
     }
     Ok(result)
 }
@@ -335,46 +360,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 None
             },
             DbKey::PendingOutboundTransactions => {
-                let mut result = Vec::new();
-                let mut first_error = None;
-                for o in OutboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    let tx_id = o.tx_id;
-                    match OutboundTransaction::try_from(o, &self.cipher) {
-                        Ok(tx) => result.push(tx),
-                        Err(e) => {
-                            error!(target: LOG_TARGET, "Skipping undecodable pending outbound transaction {tx_id}: {e}");
-                            first_error.get_or_insert(e);
-                        },
-                    }
-                }
-                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
-                if let Some(e) = first_error &&
-                    result.is_empty()
-                {
-                    return Err(e);
-                }
+                let rows = OutboundTransactionSql::index_by_cancelled(&mut conn, false)?;
+                let result = decode_rows(
+                    rows,
+                    "pending outbound transaction",
+                    |row| row.tx_id,
+                    |row| OutboundTransaction::try_from(row, &self.cipher),
+                )?;
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::PendingInboundTransactions => {
-                let mut result = Vec::new();
-                let mut first_error = None;
-                for i in InboundTransactionSql::index_by_cancelled(&mut conn, false)? {
-                    let tx_id = i.tx_id;
-                    match InboundTransaction::try_from(i, &self.cipher) {
-                        Ok(tx) => result.push(tx),
-                        Err(e) => {
-                            error!(target: LOG_TARGET, "Skipping undecodable pending inbound transaction {tx_id}: {e}");
-                            first_error.get_or_insert(e);
-                        },
-                    }
-                }
-                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
-                if let Some(e) = first_error &&
-                    result.is_empty()
-                {
-                    return Err(e);
-                }
+                let rows = InboundTransactionSql::index_by_cancelled(&mut conn, false)?;
+                let result = decode_rows(
+                    rows,
+                    "pending inbound transaction",
+                    |row| row.tx_id,
+                    |row| InboundTransaction::try_from(row, &self.cipher),
+                )?;
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
@@ -385,46 +388,24 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 Some(DbValue::CompletedTransactions(result))
             },
             DbKey::CancelledPendingOutboundTransactions => {
-                let mut result = Vec::new();
-                let mut first_error = None;
-                for o in OutboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    let tx_id = o.tx_id;
-                    match OutboundTransaction::try_from(o, &self.cipher) {
-                        Ok(tx) => result.push(tx),
-                        Err(e) => {
-                            error!(target: LOG_TARGET, "Skipping undecodable cancelled pending outbound transaction {tx_id}: {e}");
-                            first_error.get_or_insert(e);
-                        },
-                    }
-                }
-                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
-                if let Some(e) = first_error &&
-                    result.is_empty()
-                {
-                    return Err(e);
-                }
+                let rows = OutboundTransactionSql::index_by_cancelled(&mut conn, true)?;
+                let result = decode_rows(
+                    rows,
+                    "cancelled pending outbound transaction",
+                    |row| row.tx_id,
+                    |row| OutboundTransaction::try_from(row, &self.cipher),
+                )?;
 
                 Some(DbValue::PendingOutboundTransactions(result))
             },
             DbKey::CancelledPendingInboundTransactions => {
-                let mut result = Vec::new();
-                let mut first_error = None;
-                for i in InboundTransactionSql::index_by_cancelled(&mut conn, true)? {
-                    let tx_id = i.tx_id;
-                    match InboundTransaction::try_from(i, &self.cipher) {
-                        Ok(tx) => result.push(tx),
-                        Err(e) => {
-                            error!(target: LOG_TARGET, "Skipping undecodable cancelled pending inbound transaction {tx_id}: {e}");
-                            first_error.get_or_insert(e);
-                        },
-                    }
-                }
-                // If every row fails the failure is systemic (for example a wrong key), so it is still an error
-                if let Some(e) = first_error &&
-                    result.is_empty()
-                {
-                    return Err(e);
-                }
+                let rows = InboundTransactionSql::index_by_cancelled(&mut conn, true)?;
+                let result = decode_rows(
+                    rows,
+                    "cancelled pending inbound transaction",
+                    |row| row.tx_id,
+                    |row| InboundTransaction::try_from(row, &self.cipher),
+                )?;
 
                 Some(DbValue::PendingInboundTransactions(result))
             },
@@ -4273,14 +4254,37 @@ mod test {
         assert!(db.fetch_any_cancelled_transaction(7u64.into()).is_err());
         assert!(db.fetch(&DbKey::CompletedTransaction(3u64.into())).unwrap().is_some());
 
-        // When every row is undecodable the list is an error, not empty
+        // When every row is undecodable but none fails to decrypt, the list is empty
         {
             let mut conn = connection.get_pooled_connection().unwrap();
             sql_query("UPDATE outbound_transactions SET destination_address = x'0102' WHERE tx_id = 1")
                 .execute(&mut conn)
                 .unwrap();
         }
-        assert!(db.fetch(&DbKey::PendingOutboundTransactions).is_err());
+        match db.fetch(&DbKey::PendingOutboundTransactions).unwrap() {
+            Some(DbValue::PendingOutboundTransactions(txs)) => assert!(txs.is_empty()),
+            other => panic!("Unexpected value: {other:?}"),
+        }
+        // ...and the same for the cancelled list
+        {
+            let mut conn = connection.get_pooled_connection().unwrap();
+            sql_query("UPDATE outbound_transactions SET cancelled = 1")
+                .execute(&mut conn)
+                .unwrap();
+        }
+        match db.fetch(&DbKey::CancelledPendingOutboundTransactions).unwrap() {
+            Some(DbValue::PendingOutboundTransactions(txs)) => assert!(txs.is_empty()),
+            other => panic!("Unexpected value: {other:?}"),
+        }
+        // A row that fails to decrypt, with nothing decoded, points to a wrong key and is an error
+        {
+            let mut conn = connection.get_pooled_connection().unwrap();
+            sql_query("UPDATE outbound_transactions SET sender_protocol = x'00' WHERE tx_id = 1")
+                .execute(&mut conn)
+                .unwrap();
+        }
+        assert!(db.fetch(&DbKey::CancelledPendingOutboundTransactions).is_err());
+        // When every row is undecodable and one fails to decrypt, the list is an error, not empty
         corrupt_completed(&connection, 3, BAD_SOURCE_ADDRESS);
         assert!(db.fetch(&DbKey::CompletedTransactions(0)).is_err());
         assert!(db.get_transactions_to_be_broadcast().is_err());

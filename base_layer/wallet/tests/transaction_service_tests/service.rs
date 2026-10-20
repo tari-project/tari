@@ -3971,6 +3971,13 @@ async fn an_undecodable_pending_outbound_transaction_can_be_cancelled() {
         .await
         .unwrap();
     assert!(!ts_db.pending_outbound_transaction_exists(tx_id).unwrap());
+    // The row is kept, and the cancelled list still loads without it
+    let cancelled = alice
+        .transaction_service_handle
+        .get_cancelled_pending_outbound_transactions()
+        .await
+        .unwrap();
+    assert!(cancelled.iter().all(|tx| tx.tx_id != tx_id));
     assert_eq!(
         alice
             .output_manager_service_handle
