@@ -683,6 +683,12 @@ pub fn read_or_create_wallet_type<T: WalletBackend + 'static>(
     db: &WalletDatabase<T>,
 ) -> Result<LegacyWalletType, WalletError> {
     let db_wallet_type = db.get_wallet_type()?;
+    // An existing wallet always has its wallet type stored; a missing one means the row was removed
+    if db_wallet_type.is_none() && !db.wallet_type_init_allowed() {
+        return Err(WalletError::WalletStorageError(WalletStorageError::UnexpectedResult(
+            "The wallet type is missing from the wallet database".to_string(),
+        )));
+    }
 
     match (db_wallet_type, wallet_type) {
         (None, None) => {
