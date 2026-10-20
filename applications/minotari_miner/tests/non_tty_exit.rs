@@ -17,14 +17,34 @@ fn miner_exits_promptly_when_stdin_is_null_and_payment_address_is_default() {
     std::fs::create_dir_all(&temp_dir).expect("create temp base dir");
 
     let start = Instant::now();
-    let output = Command::new(env!("CARGO_BIN_EXE_minotari_miner"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_minotari_miner"))
         .arg("--base-path")
         .arg(&temp_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .spawn()
         .expect("spawn minotari_miner with /dev/null stdin");
+
+    let timeout = Duration::from_secs(5);
+    let poll_interval = Duration::from_millis(50);
+    let mut status = None;
+    while start.elapsed() < timeout {
+        if let Some(s) = child.try_wait().expect("try_wait on child") {
+            status = Some(s);
+            break;
+        }
+        std::thread::sleep(poll_interval);
+    }
+
+    if status.is_none() {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        panic!("miner hung without a TTY instead of exiting promptly within {timeout:?}");
+    }
+
+    let output = child.wait_with_output().expect("wait_with_output on child");
     let elapsed = start.elapsed();
 
     let _ = std::fs::remove_dir_all(&temp_dir);

@@ -69,13 +69,17 @@ pub enum ParseInputError {
 }
 
 pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> Result<String, ParseInputError> {
-    if non_interactive || !Term::stderr().is_term() {
-        return Err(ParseInputError::NonInteractive("base_node_grpc_address"));
-    }
     let default_address = format!(
         "http://127.0.0.1:{}",
         grpc_default_port(ApplicationType::BaseNode, network)
     );
+    if non_interactive || !Term::stderr().is_term() {
+        info!(
+            target: LOG_TARGET,
+            "Non-interactive mode or missing terminal: assuming default base node address '{default_address}'"
+        );
+        return Ok(default_address);
+    }
     loop {
         let mut address = InputPrompt::<String>::new()
             .with_prompt("Please enter 'base-node-grpc-address' ('quit' or 'exit' to quit) ")
@@ -96,10 +100,14 @@ pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> 
 }
 
 pub fn prompt_for_p2pool_address(non_interactive: bool) -> Result<String, ParseInputError> {
-    if non_interactive || !Term::stderr().is_term() {
-        return Err(ParseInputError::NonInteractive("p2pool_node_grpc_address"));
-    }
     let default_address = format!("http://127.0.0.1:{}", 18145);
+    if non_interactive || !Term::stderr().is_term() {
+        info!(
+            target: LOG_TARGET,
+            "Non-interactive mode or missing terminal: assuming default p2pool address '{default_address}'"
+        );
+        return Ok(default_address);
+    }
     loop {
         let mut address = InputPrompt::<String>::new()
             .with_prompt("Please enter 'p2pool-grpc-address' ('quit' or 'exit' to quit) ")
@@ -178,14 +186,6 @@ pub fn process_quit(command: &str) -> Result<(), UserQuit> {
     Ok(())
 }
 
-/// Wait for a keypress before continuing
-pub fn wait_for_keypress() {
-    use std::io::{Read, stdin};
-    let mut stdin = stdin();
-    let buf: &mut [u8] = &mut [0; 2];
-    let _ = stdin.read(buf);
-}
-
 /// Base node gRPC client
 pub type BaseNodeGrpcClient = BaseNodeClient<InterceptedService<Channel, ClientAuthenticationInterceptor>>;
 
@@ -253,21 +253,19 @@ mod test {
     }
 
     #[test]
-    fn test_prompt_for_base_node_address_non_interactive_error() {
-        let res = prompt_for_base_node_address(Network::Esmeralda, true);
-        match res {
-            Err(ParseInputError::NonInteractive(key)) => assert_eq!(key, "base_node_grpc_address"),
-            _ => panic!("Expected NonInteractive error, got {res:?}"),
-        }
+    fn test_prompt_for_base_node_address_non_interactive_fallback() {
+        let res = prompt_for_base_node_address(Network::Esmeralda, true).expect("should fall back to default");
+        let expected = format!(
+            "http://127.0.0.1:{}",
+            grpc_default_port(ApplicationType::BaseNode, Network::Esmeralda)
+        );
+        assert_eq!(res, expected);
     }
 
     #[test]
-    fn test_prompt_for_p2pool_address_non_interactive_error() {
-        let res = prompt_for_p2pool_address(true);
-        match res {
-            Err(ParseInputError::NonInteractive(key)) => assert_eq!(key, "p2pool_node_grpc_address"),
-            _ => panic!("Expected NonInteractive error, got {res:?}"),
-        }
+    fn test_prompt_for_p2pool_address_non_interactive_fallback() {
+        let res = prompt_for_p2pool_address(true).expect("should fall back to default");
+        assert_eq!(res, "http://127.0.0.1:18145");
     }
 
     #[test]
@@ -301,18 +299,17 @@ mod test {
             assert!(err.to_string().contains("wallet_payment_address"));
             assert!(err.to_string().contains("TTY"));
 
-            let base_err = prompt_for_base_node_address(Network::Esmeralda, false)
-                .expect_err("base node prompt without TTY must error");
-            assert!(matches!(
-                base_err,
-                ParseInputError::NonInteractive("base_node_grpc_address")
-            ));
+            let default_base = format!(
+                "http://127.0.0.1:{}",
+                grpc_default_port(ApplicationType::BaseNode, Network::Esmeralda)
+            );
+            let base_res = prompt_for_base_node_address(Network::Esmeralda, false)
+                .expect("base node prompt without TTY must fall back to default");
+            assert_eq!(base_res, default_base);
 
-            let p2pool_err = prompt_for_p2pool_address(false).expect_err("p2pool prompt without TTY must error");
-            assert!(matches!(
-                p2pool_err,
-                ParseInputError::NonInteractive("p2pool_node_grpc_address")
-            ));
+            let p2pool_res = prompt_for_p2pool_address(false)
+                .expect("p2pool prompt without TTY must fall back to default");
+            assert_eq!(p2pool_res, "http://127.0.0.1:18145");
             return;
         }
 
