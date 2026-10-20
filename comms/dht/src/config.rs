@@ -69,12 +69,12 @@ pub struct DhtConfig {
     /// Default: 4
     pub propagation_factor: usize,
     /// The target capacity of the message hash cache. The cache is trimmed every max(capacity / 10, 100) new entries.
-    /// Each entry is kept until its message expires plus 10 min of clock slack, but at least 3 h 10 min and at most
-    /// 24 h after its last hit. A trim removes entries past that point down to this size. If the cache is still above
-    /// a ceiling of 10 x capacity, the least recently hit entries are removed down to the ceiling, unsigned ones
-    /// first, even if unexpired; a message evicted that way can be accepted again. The cache holds at most about
-    /// 10 x capacity + max(capacity / 10, 100) entries.
-    /// Default: 50,000
+    /// Each signed entry is kept until its message expires plus 10 min of clock slack, but at least 3 h 10 min and at
+    /// most 24 h after its last hit; an unsigned entry is kept for 3 h 10 min after its last hit. A trim removes
+    /// entries past that point down to this size. If the cache is still above a ceiling of 10 x capacity, the
+    /// least recently hit entries are removed down to the ceiling, unsigned ones first, even if unexpired; a
+    /// message evicted that way can be accepted again. The cache holds at most about 10 x capacity + max(capacity
+    /// / 10, 100) entries. Default: 50,000
     pub dedup_cache_capacity: usize,
     /// The periodic trim interval for items in the message hash cache. This is a fallback; the cache is also trimmed
     /// as it grows, with the same rules (see `dedup_cache_capacity`).

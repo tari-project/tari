@@ -30,7 +30,16 @@ use std::{
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, dsl, result::DatabaseErrorKind, sql_types};
+use diesel::{
+    ExpressionMethods,
+    OptionalExtension,
+    QueryDsl,
+    RunQueryDsl,
+    SqliteConnection,
+    dsl,
+    result::DatabaseErrorKind,
+    sql_types,
+};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
@@ -121,7 +130,7 @@ impl DedupCacheDatabase {
         expires: Option<EpochTime>,
         is_signed: bool,
     ) -> Result<u32, StorageError> {
-        let keep_until = self.keep_until(Utc::now().naive_utc(), expires);
+        let keep_until = self.keep_until(Utc::now().naive_utc(), expires, is_signed);
         let hit_count =
             self.insert_body_hash_or_update_stats(&to_hex(msg_hash), &public_key.to_hex(), keep_until, is_signed)?;
 
@@ -143,11 +152,13 @@ impl DedupCacheDatabase {
     }
 
     /// How long to keep an entry hit at `now`: until the message expires plus clock slack, but no less than the
-    /// minimum and no more than the maximum entry age.
-    fn keep_until(&self, now: NaiveDateTime, expires: Option<EpochTime>) -> NaiveDateTime {
+    /// minimum and no more than the maximum entry age. An unsigned message's expiry is not authenticated, so it gets
+    /// the minimum.
+    fn keep_until(&self, now: NaiveDateTime, expires: Option<EpochTime>, is_signed: bool) -> NaiveDateTime {
         let earliest = add_duration(now, self.min_entry_age);
         let latest = add_duration(now, MAX_ENTRY_AGE);
         let expires = expires
+            .filter(|_| is_signed)
             .and_then(|e| i64::try_from(e.as_u64()).ok())
             .and_then(|secs| DateTime::from_timestamp(secs, 0));
         match expires {
@@ -184,32 +195,35 @@ impl DedupCacheDatabase {
     fn trim_entries_at(&self, now: NaiveDateTime) -> Result<usize, StorageError> {
         let capacity = i64::try_from(self.capacity).unwrap_or(i64::MAX);
         let ceiling = i64::try_from(self.capacity.saturating_mul(CEILING_CAPACITY_MULTIPLE)).unwrap_or(i64::MAX);
-        let mut conn = self.connection.get_pooled_connection()?;
-        let msg_count = dedup_cache::table
-            .select(dsl::count(dedup_cache::id))
-            .first::<i64>(&mut conn)?;
+        let msg_count = {
+            let mut conn = self.connection.get_pooled_connection()?;
+            dedup_cache::table
+                .select(dsl::count(dedup_cache::id))
+                .first::<i64>(&mut conn)?
+        };
 
         let mut num_removed = 0;
         if msg_count > capacity {
-            num_removed = diesel::sql_query(DELETE_EXPIRED_SQL)
-                .bind::<sql_types::Timestamp, _>(now)
-                .bind::<sql_types::BigInt, _>(msg_count.saturating_sub(capacity))
-                .execute(&mut conn)?;
+            num_removed = self.delete_in_batches(msg_count.saturating_sub(capacity), |conn, limit| {
+                diesel::sql_query(DELETE_EXPIRED_SQL)
+                    .bind::<sql_types::Timestamp, _>(now)
+                    .bind::<sql_types::BigInt, _>(limit)
+                    .execute(conn)
+            })?;
         }
 
-        let remaining = msg_count.saturating_sub(i64::try_from(num_removed).unwrap_or(i64::MAX));
+        let remaining = msg_count.saturating_sub(num_removed);
         if remaining > ceiling {
             let mut excess = remaining.saturating_sub(ceiling);
             for is_signed in [false, true] {
-                if excess == 0 {
-                    break;
-                }
-                let n = diesel::sql_query(DELETE_OLDEST_SQL)
-                    .bind::<sql_types::Bool, _>(is_signed)
-                    .bind::<sql_types::BigInt, _>(excess)
-                    .execute(&mut conn)?;
+                let n = self.delete_in_batches(excess, |conn, limit| {
+                    diesel::sql_query(DELETE_OLDEST_SQL)
+                        .bind::<sql_types::Bool, _>(is_signed)
+                        .bind::<sql_types::BigInt, _>(limit)
+                        .execute(conn)
+                })?;
                 num_removed = num_removed.saturating_add(n);
-                excess = excess.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+                excess = excess.saturating_sub(n);
             }
             self.log_ceiling_hit(remaining, ceiling);
         }
@@ -217,6 +231,23 @@ impl DedupCacheDatabase {
             target: LOG_TARGET,
             "Message dedup cache: count {msg_count}, capacity {capacity}, ceiling {ceiling}, removed {num_removed}"
         );
+        Ok(usize::try_from(num_removed).unwrap_or(usize::MAX))
+    }
+
+    /// Removes up to `target` rows with `delete_batch`, at most `trim_every_inserts` per statement, each on a freshly
+    /// pooled connection so other writers get the lock between batches. Returns the number removed.
+    fn delete_in_batches<F>(&self, target: i64, delete_batch: F) -> Result<i64, StorageError>
+    where F: Fn(&mut SqliteConnection, i64) -> diesel::QueryResult<usize> {
+        let batch_size = i64::try_from(self.trim_every_inserts).unwrap_or(i64::MAX);
+        let mut num_removed = 0i64;
+        while num_removed < target {
+            let mut conn = self.connection.get_pooled_connection()?;
+            let n = delete_batch(&mut conn, batch_size.min(target.saturating_sub(num_removed)))?;
+            if n == 0 {
+                break;
+            }
+            num_removed = num_removed.saturating_add(i64::try_from(n).unwrap_or(i64::MAX));
+        }
         Ok(num_removed)
     }
 
@@ -339,7 +370,7 @@ mod test {
 
     /// Inserts without the growth trim.
     fn insert_raw(cache: &DedupCacheDatabase, i: usize, is_signed: bool) {
-        let keep_until = cache.keep_until(Utc::now().naive_utc(), None);
+        let keep_until = cache.keep_until(Utc::now().naive_utc(), None, is_signed);
         cache
             .insert_body_hash_or_update_stats(
                 &to_hex(&i.to_le_bytes()),
@@ -441,6 +472,52 @@ mod test {
         let keep_until = keep_until_of(&cache, 0);
         assert!(keep_until >= before);
         assert!(keep_until <= after(MAX_ENTRY_AGE));
+    }
+
+    #[test]
+    fn an_unsigned_expiry_is_ignored() {
+        let cache = new_cache(10);
+        let far = expires_in(Duration::from_secs(20 * 60 * 60));
+        let before = after(MIN_ENTRY_AGE);
+        add(&cache, 0, far, false);
+        assert!(keep_until_of(&cache, 0) >= before);
+        assert!(keep_until_of(&cache, 0) <= after(MIN_ENTRY_AGE));
+        // A hit with a far-future expiry does not raise it either
+        let first = keep_until_of(&cache, 0);
+        assert_eq!(add(&cache, 0, far, false), 2);
+        assert!(keep_until_of(&cache, 0) <= after(MIN_ENTRY_AGE));
+        assert!(keep_until_of(&cache, 0) < add_duration(first, Duration::from_secs(60 * 60)));
+    }
+
+    #[test]
+    fn a_trim_removes_more_than_one_batch_in_order() {
+        let cache = new_cache(10);
+        let n = cache.trim_every_inserts;
+        // 2.5 batches of expired entries above capacity, then the same above the ceiling
+        let num_entries = 10 + 2 * n + n / 2;
+        for i in 0..num_entries {
+            insert_raw(&cache, i, true);
+        }
+        assert_eq!(cache.trim_entries_at(after(AFTER_MIN_AGE)).unwrap(), num_entries - 10);
+        assert!((0..num_entries - 10).all(|i| !contains(&cache, i)));
+        assert!((num_entries - 10..num_entries).all(|i| contains(&cache, i)));
+
+        let cache = new_cache(10);
+        let ceiling = 10 * CEILING_CAPACITY_MULTIPLE;
+        let num_entries = ceiling + 2 * n + n / 2;
+        // Three in four entries are unsigned, enough to cover the excess, which is more than one batch
+        for i in 0..num_entries {
+            insert_raw(&cache, i, i % 4 == 3);
+        }
+        order_entries(&cache, num_entries);
+        let excess = num_entries - ceiling;
+        assert_eq!(cache.trim_entries().unwrap(), excess);
+        assert_eq!(row_count(&cache), i64::try_from(ceiling).unwrap());
+        let unsigned = (0..num_entries).filter(|i| i % 4 != 3).collect::<Vec<_>>();
+        assert!(unsigned.len() > excess && excess > n);
+        assert!(unsigned.iter().take(excess).all(|i| !contains(&cache, *i)));
+        assert!(unsigned.iter().skip(excess).all(|i| contains(&cache, *i)));
+        assert!((0..num_entries).filter(|i| i % 4 == 3).all(|i| contains(&cache, i)));
     }
 
     #[test]
