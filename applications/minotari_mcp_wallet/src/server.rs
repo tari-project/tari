@@ -22,7 +22,7 @@
 // infrastructure for Tari applications
 //! Wallet MCP server implementation
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use minotari_mcp_common::{
     CliConfigExtractor,
@@ -38,7 +38,10 @@ use minotari_mcp_common::{
     TariProcessLauncher,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
+use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_utilities::SafePassword;
 use tonic::transport::Channel;
+use uuid::Uuid;
 
 use crate::{
     cli::Cli,
@@ -57,10 +60,10 @@ pub struct WalletMcpServer {
 
 impl WalletMcpServer {
     /// Create a new Wallet MCP server
-    pub async fn new(config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
+    pub async fn new(mut config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch wallet if configured and not running
         let launched_process = if config.should_auto_launch_wallet() {
-            Self::ensure_wallet_running(&config, cli).await?
+            Self::ensure_wallet_running(&mut config, cli).await?
         } else {
             None
         };
@@ -121,8 +124,8 @@ impl WalletMcpServer {
 
         log::info!("Connecting to wallet at: {wallet_grpc_url}");
 
-        // Use the wallet client's connect method
-        let client = WalletGrpcClient::connect(&wallet_grpc_url)
+        // Use the wallet client's connect_with_auth method
+        let client = WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.authentication)
             .await
             .map_err(|e| McpError::config_error(format!("Failed to connect to wallet: {e}")))?;
 
@@ -131,7 +134,7 @@ impl WalletMcpServer {
     }
 
     /// Ensure wallet is running, auto-launch if needed
-    async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
+    async fn ensure_wallet_running(config: &mut WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
         let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address).unwrap_or(18143);
 
@@ -152,10 +155,37 @@ impl WalletMcpServer {
 
         // Extract proper CLI configuration and arguments
         let launch_config = cli.extract_launch_config();
-        let wallet_args = cli.extract_wallet_args();
+        let mut wallet_args = cli.extract_wallet_args();
+
+        let mut env_vars = HashMap::new();
+
+        // Pass wallet password via MINOTARI_WALLET_PASSWORD environment variable
+        if let Some(ref password) = cli.wallet_password {
+            env_vars.insert(
+                "MINOTARI_WALLET_PASSWORD".to_string(),
+                String::from_utf8_lossy(password.reveal()).to_string(),
+            );
+        }
+
+        // Setup gRPC authentication for auto-launched wallet: if not configured by caller, generate random credentials
+        match &config.wallet_grpc.authentication {
+            GrpcAuthentication::Basic { username, password } => {
+                wallet_args.push("-p".to_string());
+                wallet_args.push(format!("wallet.grpc_authentication={{ username = \"{username}\", password = \"{}\" }}", String::from_utf8_lossy(password.reveal())));
+            },
+            GrpcAuthentication::None => {
+                let random_user = "mcp_wallet";
+                let random_password = Uuid::new_v4().to_string();
+                wallet_args.push("-p".to_string());
+                wallet_args.push(format!("wallet.grpc_authentication={{ username = \"{random_user}\", password = \"{random_password}\" }}"));
+                config.wallet_grpc.authentication = GrpcAuthentication::Basic {
+                    username: random_user.to_string(),
+                    password: SafePassword::from(random_password),
+                };
+            },
+        }
 
         log::debug!("Launching wallet with config: {launch_config:?}");
-        log::debug!("Wallet arguments: {wallet_args:?}");
 
         // Create process launcher using TariProcessLauncher
         let grpc_address = format!("127.0.0.1:{available_port}");
@@ -165,6 +195,7 @@ impl WalletMcpServer {
             launch_config.network,
             grpc_address,
             wallet_args,
+            env_vars,
         )
         .await?;
 

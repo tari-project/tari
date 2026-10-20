@@ -72,9 +72,13 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_GRPC_TIMEOUT", default_value = "10")]
     pub wallet_grpc_timeout: u64,
 
-    /// Require user confirmation for all value transfers
-    #[clap(long, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
-    pub require_confirmation: bool,
+    /// Wallet gRPC authentication username
+    #[clap(long, env = "MINOTARI_WALLET_GRPC_USERNAME")]
+    pub wallet_grpc_username: Option<String>,
+
+    /// Wallet gRPC authentication password
+    #[clap(long, env = "MINOTARI_WALLET_GRPC_PASSWORD", hide_env_values = true)]
+    pub wallet_grpc_password: Option<SafePassword>,
 
     // Wallet-specific flags for auto-launch (prefixed to avoid conflicts)
     /// Wallet: Password for the console wallet
@@ -116,9 +120,6 @@ impl ConfigOverrideProvider for Cli {
         }
         if let Some(ref path) = self.mcp_audit_log_path {
             overrides.push(("mcp.audit_log_path".to_string(), path.clone()));
-        }
-        if self.require_confirmation {
-            overrides.push(("mcp.require_confirmation".to_string(), "true".to_string()));
         }
         overrides.push(("mcp.request_timeout_secs".to_string(), self.mcp_timeout.to_string()));
         overrides.push(("mcp.rate_limit_per_minute".to_string(), self.mcp_rate_limit.to_string()));
@@ -170,11 +171,6 @@ impl Cli {
         if self.mcp_control_enabled {
             log::warn!("WALLET MCP control operations are ENABLED - this allows AI agents to spend funds");
             log::warn!("Only enable control operations in fully trusted environments");
-            log::warn!("Consider using --require-confirmation for additional safety");
-        }
-
-        if self.require_confirmation && self.mcp_control_enabled {
-            log::info!("User confirmation required for all value transfers");
         }
 
         Ok(())
@@ -201,11 +197,7 @@ impl Cli {
             args.push(log_config.to_string_lossy().to_string());
         }
 
-        // Add wallet-specific flags
-        if let Some(ref password) = self.wallet_password {
-            args.push("--password".to_string());
-            args.push(String::from_utf8_lossy(password.reveal()).to_string());
-        }
+        // Add wallet-specific flags (passwords must be passed via MINOTARI_WALLET_PASSWORD env, not argv)
         if self.wallet_recovery {
             args.push("--recovery".to_string());
         }
@@ -278,12 +270,6 @@ impl CliConfigExtractor for Cli {
             builder = builder.non_interactive();
         }
 
-        if let Some(ref password) = self.wallet_password {
-            // Convert SafePassword to String (be careful with this in production)
-            let password_str = String::from_utf8_lossy(password.reveal()).to_string();
-            builder = builder.with_password(password_str);
-        }
-
         if self.wallet_recovery {
             builder = builder.force_recovery();
         }
@@ -293,5 +279,58 @@ impl CliConfigExtractor for Cli {
         }
 
         builder.build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::WalletMcpConfig;
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+
+    #[test]
+    fn test_wallet_password_never_in_argv() {
+        let cli = Cli::try_parse_from([
+            "minotari_mcp_wallet",
+            "--wallet-password",
+            "super_secret_wallet_pass",
+        ])
+        .unwrap();
+
+        assert!(cli.wallet_password.is_some());
+
+        let generated_args = cli.generate_wallet_args();
+        assert!(!generated_args.iter().any(|arg| arg.contains("super_secret_wallet_pass")));
+        assert!(!generated_args.iter().any(|arg| arg == "-p" || arg == "--password"));
+
+        let extracted_args = cli.extract_wallet_args();
+        assert!(!extracted_args.iter().any(|arg| arg.contains("super_secret_wallet_pass")));
+        assert!(!extracted_args.iter().any(|arg| arg == "-p" || arg == "--password"));
+    }
+
+    #[test]
+    fn test_grpc_authentication_config() {
+        // Without auth flags
+        let cli_no_auth = Cli::try_parse_from(["minotari_mcp_wallet"]).unwrap();
+        let config_no_auth = WalletMcpConfig::load(&cli_no_auth).unwrap();
+        assert!(matches!(config_no_auth.wallet_grpc.authentication, GrpcAuthentication::None));
+
+        // With auth flags
+        let cli_with_auth = Cli::try_parse_from([
+            "minotari_mcp_wallet",
+            "--wallet-grpc-username",
+            "mcp_user",
+            "--wallet-grpc-password",
+            "mcp_pass123",
+        ])
+        .unwrap();
+        let config_with_auth = WalletMcpConfig::load(&cli_with_auth).unwrap();
+        match config_with_auth.wallet_grpc.authentication {
+            GrpcAuthentication::Basic { username, password } => {
+                assert_eq!(username, "mcp_user");
+                assert_eq!(password.reveal().as_slice(), b"mcp_pass123");
+            }
+            _ => panic!("Expected GrpcAuthentication::Basic"),
+        }
     }
 }

@@ -24,6 +24,7 @@
 
 use minotari_mcp_common::{McpConfig, McpError, McpResult};
 use serde::{Deserialize, Serialize};
+use tari_common_types::grpc_authentication::GrpcAuthentication;
 
 use crate::cli::Cli;
 
@@ -52,16 +53,13 @@ pub struct WalletGrpcConfig {
 
     /// Whether to auto-launch the wallet
     pub auto_launch: bool,
+
+    /// gRPC authentication configuration
+    pub authentication: GrpcAuthentication,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletSecurityConfig {
-    /// Require user confirmation for all value transfers
-    pub require_confirmation: bool,
-
-    /// Maximum transaction amount without additional confirmation (in µT)
-    pub max_auto_amount: u64,
-
     /// Enable transaction preview before execution
     pub enable_preview: bool,
 }
@@ -83,16 +81,23 @@ impl WalletMcpConfig {
             input_sanitization: minotari_mcp_common::config::InputSanitizationConfig::default(),
         };
 
+        let grpc_authentication = match (&cli.wallet_grpc_username, &cli.wallet_grpc_password) {
+            (Some(username), Some(password)) => GrpcAuthentication::Basic {
+                username: username.clone(),
+                password: password.clone(),
+            },
+            _ => GrpcAuthentication::None,
+        };
+
         let wallet_grpc_config = WalletGrpcConfig {
             address: cli.wallet_grpc_address.clone(),
             timeout_secs: cli.wallet_grpc_timeout,
             max_retries: 3,
             auto_launch: cli.auto_launch_wallet,
+            authentication: grpc_authentication,
         };
 
         let security_config = WalletSecurityConfig {
-            require_confirmation: cli.require_confirmation,
-            max_auto_amount: 1_000_000, // 1 Tari in µT
             enable_preview: true,
         };
 
@@ -122,11 +127,6 @@ impl WalletMcpConfig {
             return Err(McpError::config_error("Wallet gRPC timeout must be greater than 0"));
         }
 
-        // Validate security configuration
-        if self.mcp.control_enabled && !self.security.require_confirmation {
-            log::warn!("Control operations enabled without required confirmation - this is potentially dangerous");
-        }
-
         Ok(())
     }
 
@@ -152,6 +152,7 @@ impl Default for WalletGrpcConfig {
             timeout_secs: 30,
             max_retries: 3,
             auto_launch: true,
+            authentication: GrpcAuthentication::None,
         }
     }
 }
@@ -159,8 +160,6 @@ impl Default for WalletGrpcConfig {
 impl Default for WalletSecurityConfig {
     fn default() -> Self {
         Self {
-            require_confirmation: false,
-            max_auto_amount: 1_000_000, // 1 Tari
             enable_preview: true,
         }
     }

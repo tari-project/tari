@@ -4524,9 +4524,11 @@ dependencies = [
  "serde",
  "serde_json",
  "tari_common",
+ "tari_common_types",
  "tari_utilities",
  "tokio",
  "tonic 0.13.1",
+ "uuid",
 ]
 
 [[package]]
