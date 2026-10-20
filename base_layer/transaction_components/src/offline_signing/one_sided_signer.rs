@@ -388,7 +388,7 @@ pub(crate) fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     let sender_offset = sender_offset_keys
         .next()
         .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
-    let output = build_multisig_output(key_manager, &info, &sender_offset)?;
+    let (output, encryption_key) = build_multisig_output(key_manager, &info, &sender_offset)?;
 
     for mut uo in info.base.outputs {
         let sender_offset_key = sender_offset_keys
@@ -401,7 +401,12 @@ pub(crate) fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         uo.set_metadata_signature(Default::default());
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
-    tx_builder.add_recipient(recipient.address.clone(), output, sender_offset.key_id, None)?;
+    tx_builder.add_recipient(
+        recipient.address.clone(),
+        output,
+        sender_offset.key_id,
+        Some(encryption_key),
+    )?;
 
     let finalized_tx = tx_builder.build()?;
     let FinalizedTransaction {
@@ -425,12 +430,13 @@ pub(crate) fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
     })
 }
 
-/// Build the multisig recipient output around a sender offset key reserved from the transaction builder.
+/// Build the multisig recipient output around a sender offset key reserved from the transaction builder. Also returns
+/// the key its encrypted data is written under, so the builder can rewrite that data for the recipient.
 fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     info: &OneSidedMultisigTransactionInfo,
     sender_offset_key: &TariKeyAndId,
-) -> Result<WalletOutput, TransactionBuilderError> {
+) -> Result<(WalletOutput, TariKeyId), TransactionBuilderError> {
     if info.base.recipients.len() != 1 {
         return Err(TransactionBuilderError::Other(
             "Only one recipient is supported for multisig transactions".to_string(),
@@ -442,7 +448,10 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
 
     let sender_offset_public_key = key_manager.get_public_key_at_key_id(&sender_offset_key.key_id)?;
 
-    let recipient_view_key = recipient.address.public_spend_key();
+    let recipient_view_key = recipient
+        .address
+        .public_view_key()
+        .ok_or(TransactionError::BuilderError("Missing public view key".to_string()))?;
     let recipient_spend_key = recipient.address.public_spend_key();
     let commitment_mask_key_id = TariKeyId::DHCommitmentMask {
         private_key: sender_offset_key.key_id.clone().into(),
@@ -482,7 +491,7 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
         .with_sender_offset_public_key(sender_offset_public_key.clone())
         .sign_metadata_signature(key_manager, &sender_offset_key.key_id)?
         .try_build(key_manager)?;
-    Ok(output)
+    Ok((output, encryption_key))
 }
 
 /// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
@@ -531,7 +540,7 @@ pub(crate) fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterf
     let sender_offset = sender_offset_keys
         .next()
         .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
-    let output = build_multisig_withdraw_output(key_manager, &info, &sender_offset)?;
+    let (output, encryption_key) = build_multisig_withdraw_output(key_manager, &info, &sender_offset)?;
 
     for mut uo in info.outputs {
         let sender_offset_key = sender_offset_keys
@@ -544,7 +553,12 @@ pub(crate) fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterf
         uo.set_metadata_signature(Default::default());
         tx_builder.with_output(uo, sender_offset_key.key_id, None)?;
     }
-    tx_builder.add_recipient(recipient.address.clone(), output, sender_offset.key_id, None)?;
+    tx_builder.add_recipient(
+        recipient.address.clone(),
+        output,
+        sender_offset.key_id,
+        Some(encryption_key),
+    )?;
 
     let finalized_tx = tx_builder.build()?;
     let FinalizedTransaction {
@@ -569,11 +583,12 @@ pub(crate) fn sign_multisig_withdraw_transaction<KM: TransactionKeyManagerInterf
 }
 
 /// Build the multisig withdrawal recipient output around a sender offset key reserved from the transaction builder.
+/// Also returns the key its encrypted data is written under, as above.
 fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     info: &OneSidedTransactionInfo,
     sender_offset_key: &TariKeyAndId,
-) -> Result<WalletOutput, TransactionBuilderError> {
+) -> Result<(WalletOutput, TariKeyId), TransactionBuilderError> {
     if info.recipients.len() != 1 {
         return Err(TransactionBuilderError::Other(
             "Only one recipient is supported for multisig transactions".to_string(),
@@ -618,5 +633,5 @@ fn build_multisig_withdraw_output<KM: TransactionKeyManagerInterface>(
         .with_sender_offset_public_key(sender_offset_public_key.clone())
         .sign_metadata_signature(key_manager, &sender_offset_key.key_id)?
         .try_build(key_manager)?;
-    Ok(output)
+    Ok((output, encryption_key))
 }
