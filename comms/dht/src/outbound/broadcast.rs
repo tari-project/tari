@@ -428,7 +428,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
         if is_broadcast {
             let hash = dedup::create_message_hash(message_signature.as_deref().unwrap_or(&[]), &body);
-            self.add_to_dedup_cache(hash).await?;
+            let is_signed = message_signature.as_ref().is_some_and(|s| !s.is_empty());
+            self.add_to_dedup_cache(hash, expires_epochtime, is_signed).await?;
         }
 
         // Construct a DhtOutboundMessage for each recipient
@@ -459,7 +460,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(messages.unzip())
     }
 
-    async fn add_to_dedup_cache(&mut self, hash: [u8; 32]) -> Result<(), DhtOutboundError> {
+    async fn add_to_dedup_cache(
+        &mut self,
+        hash: [u8; 32],
+        expires: Option<EpochTime>,
+        is_signed: bool,
+    ) -> Result<(), DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
@@ -474,7 +480,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
         if hit_count == 0 {
             self.dht_requester
-                .add_message_to_dedup_cache(hash.to_vec(), self.node_identity.public_key().clone())
+                .add_message_to_dedup_cache(
+                    hash.to_vec(),
+                    self.node_identity.public_key().clone(),
+                    expires,
+                    is_signed,
+                )
                 .await
                 .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
         }

@@ -144,7 +144,12 @@ where
             );
 
             message.dedup_hit_count = dht_requester
-                .add_message_to_dedup_cache(message.dedup_hash.clone(), message.source_peer.public_key.clone())
+                .add_message_to_dedup_cache(
+                    message.dedup_hash.clone(),
+                    message.source_peer.public_key.clone(),
+                    message.dht_header.expires,
+                    message.has_message_signature(),
+                )
                 .await?;
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {

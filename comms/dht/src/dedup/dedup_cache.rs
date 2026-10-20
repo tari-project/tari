@@ -29,12 +29,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, dsl, result::DatabaseErrorKind, sql_types};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
-use tari_utilities::hex::{Hex, to_hex};
+use tari_utilities::{
+    epoch_time::EpochTime,
+    hex::{Hex, to_hex},
+};
 
 use crate::{actor::DEDUP_ERROR_LOG_INTERVAL, outbound::MESSAGE_VALIDITY_WINDOW, schema::dedup_cache};
 
@@ -54,21 +57,30 @@ struct DedupCacheEntry {
 const MIN_TRIM_EVERY_INSERTS: usize = 100;
 /// Allowance for clocks that disagree on a message's expiry.
 const CLOCK_SLACK: Duration = Duration::from_secs(10 * 60);
-/// Entries hit more recently than this are kept above capacity, so an unexpired message cannot be flushed out of the
-/// cache and replayed as new.
+/// An entry is kept at least this long after its last hit, so an unexpired message cannot be flushed out of the cache
+/// and replayed as new.
 const MIN_ENTRY_AGE: Duration = MESSAGE_VALIDITY_WINDOW.saturating_add(CLOCK_SLACK);
+/// An entry is kept at most this long after its last hit, however far in the future the message says it expires.
+const MAX_ENTRY_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 /// The cache is trimmed regardless of entry age above this many times its capacity.
 const CEILING_CAPACITY_MULTIPLE: usize = 10;
+
+/// Deletes up to `$2` entries whose `keep_until` has passed (`$1`), earliest first.
+const DELETE_EXPIRED_SQL: &str = "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache WHERE keep_until <= \
+                                  $1 ORDER BY keep_until ASC LIMIT $2)";
+/// Deletes up to `$2` of the least recently hit signed (`$1` true) or unsigned entries.
+const DELETE_OLDEST_SQL: &str = "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache WHERE is_signed = $1 \
+                                 ORDER BY last_hit_at ASC LIMIT $2)";
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
     connection: DbConnection,
     capacity: usize,
-    /// Trim once every this many new entries, so the table stays below `capacity + trim_every_inserts` rows.
+    /// Trim once every this many new entries, so the table stays below `ceiling + trim_every_inserts` rows.
     trim_every_inserts: usize,
     /// New entries inserted, shared by all clones.
     num_inserts: Arc<AtomicUsize>,
-    /// Entries younger than this are only trimmed above the ceiling.
+    /// The shortest time an entry is kept after a hit.
     min_entry_age: Duration,
     /// Set while a trim runs, so overlapping trims do not each delete the same excess.
     is_trimming: Arc<AtomicBool>,
@@ -101,9 +113,17 @@ impl DedupCacheDatabase {
     }
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
-    /// hash
-    pub fn add_msg_hash(&self, msg_hash: &[u8], public_key: &CommsPublicKey) -> Result<u32, StorageError> {
-        let hit_count = self.insert_body_hash_or_update_stats(&to_hex(msg_hash), &public_key.to_hex())?;
+    /// hash. `expires` is the message's expiry and `is_signed` whether it carries a signature.
+    pub fn add_msg_hash(
+        &self,
+        msg_hash: &[u8],
+        public_key: &CommsPublicKey,
+        expires: Option<EpochTime>,
+        is_signed: bool,
+    ) -> Result<u32, StorageError> {
+        let keep_until = self.keep_until(Utc::now().naive_utc(), expires);
+        let hit_count =
+            self.insert_body_hash_or_update_stats(&to_hex(msg_hash), &public_key.to_hex(), keep_until, is_signed)?;
 
         if hit_count == 0 {
             warn!(
@@ -122,6 +142,20 @@ impl DedupCacheDatabase {
         Ok(hit_count)
     }
 
+    /// How long to keep an entry hit at `now`: until the message expires plus clock slack, but no less than the
+    /// minimum and no more than the maximum entry age.
+    fn keep_until(&self, now: NaiveDateTime, expires: Option<EpochTime>) -> NaiveDateTime {
+        let earliest = add_duration(now, self.min_entry_age);
+        let latest = add_duration(now, MAX_ENTRY_AGE);
+        let expires = expires
+            .and_then(|e| i64::try_from(e.as_u64()).ok())
+            .and_then(|secs| DateTime::from_timestamp(secs, 0));
+        match expires {
+            Some(expires) => add_duration(expires.naive_utc(), CLOCK_SLACK).min(latest).max(earliest),
+            None => earliest,
+        }
+    }
+
     pub fn get_hit_count(&self, body_hash: &[u8]) -> Result<u32, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
         let hit_count = dedup_cache::table
@@ -134,20 +168,20 @@ impl DedupCacheDatabase {
         Ok(hit_count.unwrap_or(0) as u32)
     }
 
-    /// Trims the dedup cache: entries older than the minimum entry age are removed, oldest first, down to capacity;
-    /// above the ceiling (10x capacity) the oldest entries are removed down to the ceiling whatever their age. A trim
-    /// requested while another is running is skipped.
+    /// Trims the dedup cache. Entries whose `keep_until` has passed are removed, earliest first, down to capacity.
+    /// If the cache is still above the ceiling (10x capacity), the least recently hit unsigned entries are removed down
+    /// to the ceiling, then signed ones if that is not enough. A trim requested while another is running is skipped.
     pub fn trim_entries(&self) -> Result<usize, StorageError> {
         if self.is_trimming.swap(true, Ordering::AcqRel) {
             debug!(target: LOG_TARGET, "Message dedup cache trim already running, skipping");
             return Ok(0);
         }
-        let result = self.trim_entries_inner();
+        let result = self.trim_entries_at(Utc::now().naive_utc());
         self.is_trimming.store(false, Ordering::Release);
         result
     }
 
-    fn trim_entries_inner(&self) -> Result<usize, StorageError> {
+    fn trim_entries_at(&self, now: NaiveDateTime) -> Result<usize, StorageError> {
         let capacity = i64::try_from(self.capacity).unwrap_or(i64::MAX);
         let ceiling = i64::try_from(self.capacity.saturating_mul(CEILING_CAPACITY_MULTIPLE)).unwrap_or(i64::MAX);
         let mut conn = self.connection.get_pooled_connection()?;
@@ -156,29 +190,28 @@ impl DedupCacheDatabase {
             .first::<i64>(&mut conn)?;
 
         let mut num_removed = 0;
-        if msg_count > ceiling {
-            num_removed = diesel::sql_query(
-                "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT $1)",
-            )
-            .bind::<sql_types::BigInt, _>(msg_count.saturating_sub(ceiling))
-            .execute(&mut conn)?;
-            self.log_ceiling_hit(msg_count, ceiling);
+        if msg_count > capacity {
+            num_removed = diesel::sql_query(DELETE_EXPIRED_SQL)
+                .bind::<sql_types::Timestamp, _>(now)
+                .bind::<sql_types::BigInt, _>(msg_count.saturating_sub(capacity))
+                .execute(&mut conn)?;
         }
 
         let remaining = msg_count.saturating_sub(i64::try_from(num_removed).unwrap_or(i64::MAX));
-        if remaining > capacity {
-            let cutoff = chrono::Duration::from_std(self.min_entry_age)
-                .ok()
-                .and_then(|age| Utc::now().naive_utc().checked_sub_signed(age))
-                .unwrap_or(NaiveDateTime::MIN);
-            let num_old_removed = diesel::sql_query(
-                "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache WHERE last_hit_at <= $1 ORDER BY \
-                 last_hit_at ASC LIMIT $2)",
-            )
-            .bind::<sql_types::Timestamp, _>(cutoff)
-            .bind::<sql_types::BigInt, _>(remaining.saturating_sub(capacity))
-            .execute(&mut conn)?;
-            num_removed = num_removed.saturating_add(num_old_removed);
+        if remaining > ceiling {
+            let mut excess = remaining.saturating_sub(ceiling);
+            for is_signed in [false, true] {
+                if excess == 0 {
+                    break;
+                }
+                let n = diesel::sql_query(DELETE_OLDEST_SQL)
+                    .bind::<sql_types::Bool, _>(is_signed)
+                    .bind::<sql_types::BigInt, _>(excess)
+                    .execute(&mut conn)?;
+                num_removed = num_removed.saturating_add(n);
+                excess = excess.saturating_sub(i64::try_from(n).unwrap_or(i64::MAX));
+            }
+            self.log_ceiling_hit(remaining, ceiling);
         }
         debug!(
             target: LOG_TARGET,
@@ -197,14 +230,20 @@ impl DedupCacheDatabase {
             *logged_at = Some(Instant::now());
             warn!(
                 target: LOG_TARGET,
-                "Message dedup cache held {msg_count} entries, above its ceiling of {ceiling}. Removed the oldest \
-                 entries, including unexpired ones."
+                "Message dedup cache held {msg_count} unexpired entries, above its ceiling of {ceiling}. Removed the \
+                 least recently hit, unsigned first."
             );
         }
     }
 
     /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
-    fn insert_body_hash_or_update_stats(&self, body_hash: &str, public_key: &str) -> Result<u32, StorageError> {
+    fn insert_body_hash_or_update_stats(
+        &self,
+        body_hash: &str,
+        public_key: &str,
+        keep_until: NaiveDateTime,
+        is_signed: bool,
+    ) -> Result<u32, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
         let insert_result = diesel::insert_into(dedup_cache::table)
             .values((
@@ -212,6 +251,8 @@ impl DedupCacheDatabase {
                 dedup_cache::sender_public_key.eq(&public_key),
                 dedup_cache::number_of_hits.eq(1),
                 dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                dedup_cache::keep_until.eq(keep_until),
+                dedup_cache::is_signed.eq(is_signed),
             ))
             .execute(&mut conn);
         match insert_result {
@@ -231,6 +272,14 @@ impl DedupCacheDatabase {
                             dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
                         ))
                         .execute(&mut conn)?;
+                    // Keep the later of the stored and the new keep_until
+                    diesel::update(
+                        dedup_cache::table
+                            .filter(dedup_cache::body_hash.eq(&body_hash))
+                            .filter(dedup_cache::keep_until.lt(keep_until)),
+                    )
+                    .set(dedup_cache::keep_until.eq(keep_until))
+                    .execute(&mut conn)?;
 
                     let hits = dedup_cache::table
                         .select(dedup_cache::number_of_hits)
@@ -246,7 +295,16 @@ impl DedupCacheDatabase {
     }
 }
 
+fn add_duration(time: NaiveDateTime, duration: Duration) -> NaiveDateTime {
+    chrono::Duration::from_std(duration)
+        .ok()
+        .and_then(|d| time.checked_add_signed(d))
+        .unwrap_or(NaiveDateTime::MAX)
+}
+
 #[cfg(test)]
+// Overflow in test code panics, which is the desired failure mode for a test.
+#[allow(clippy::arithmetic_side_effects)]
 mod test {
     use diesel::{QueryableByName, sql_types::Text};
     use tokio::task;
@@ -267,26 +325,39 @@ mod test {
             .unwrap()
     }
 
+    fn add(cache: &DedupCacheDatabase, i: usize, expires: Option<EpochTime>, is_signed: bool) -> u32 {
+        cache
+            .add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default(), expires, is_signed)
+            .unwrap()
+    }
+
     fn insert(cache: &DedupCacheDatabase, range: std::ops::Range<usize>) {
         for i in range {
-            let num_hits = cache
-                .add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default())
-                .unwrap();
-            assert_eq!(num_hits, 1);
+            assert_eq!(add(cache, i, None, true), 1);
         }
     }
 
-    /// Makes entry `i` look last hit `age + (num_entries - i)` seconds ago, so lower `i` is older.
-    // Overflow in test code panics, which is the desired failure mode for a test.
-    #[allow(clippy::arithmetic_side_effects)]
-    fn age_entries(cache: &DedupCacheDatabase, num_entries: usize, age: Duration) {
+    /// Inserts without the growth trim.
+    fn insert_raw(cache: &DedupCacheDatabase, i: usize, is_signed: bool) {
+        let keep_until = cache.keep_until(Utc::now().naive_utc(), None);
+        cache
+            .insert_body_hash_or_update_stats(
+                &to_hex(&i.to_le_bytes()),
+                &CommsPublicKey::default().to_hex(),
+                keep_until,
+                is_signed,
+            )
+            .unwrap();
+    }
+
+    /// Makes entry `i` look last hit `num_entries - i` seconds ago, so lower `i` is less recently hit.
+    fn order_entries(cache: &DedupCacheDatabase, num_entries: usize) {
         let mut conn = cache.connection.get_pooled_connection().unwrap();
         let now = Utc::now().naive_utc();
         for i in 0..num_entries {
-            let extra = Duration::from_secs(u64::try_from(num_entries - i).unwrap());
-            let last_hit_at = now - chrono::Duration::from_std(age + extra).unwrap();
+            let ago = chrono::Duration::seconds(i64::try_from(num_entries - i).unwrap());
             diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(to_hex(&i.to_le_bytes()))))
-                .set(dedup_cache::last_hit_at.eq(last_hit_at))
+                .set(dedup_cache::last_hit_at.eq(now - ago))
                 .execute(&mut conn)
                 .unwrap();
         }
@@ -295,6 +366,27 @@ mod test {
     fn contains(cache: &DedupCacheDatabase, i: usize) -> bool {
         cache.get_hit_count(&i.to_le_bytes()).unwrap() > 0
     }
+
+    fn keep_until_of(cache: &DedupCacheDatabase, i: usize) -> NaiveDateTime {
+        let mut conn = cache.connection.get_pooled_connection().unwrap();
+        dedup_cache::table
+            .select(dedup_cache::keep_until)
+            .filter(dedup_cache::body_hash.eq(to_hex(&i.to_le_bytes())))
+            .first(&mut conn)
+            .unwrap()
+    }
+
+    fn after(duration: Duration) -> NaiveDateTime {
+        add_duration(Utc::now().naive_utc(), duration)
+    }
+
+    fn expires_in(duration: Duration) -> Option<EpochTime> {
+        Some(EpochTime::from_secs_since_epoch(
+            EpochTime::now().as_u64() + duration.as_secs(),
+        ))
+    }
+
+    const AFTER_MIN_AGE: Duration = MIN_ENTRY_AGE.saturating_add(Duration::from_secs(60));
 
     #[test]
     fn it_trims_as_it_grows() {
@@ -313,7 +405,7 @@ mod test {
     }
 
     #[test]
-    fn it_keeps_young_entries_above_capacity() {
+    fn it_keeps_unexpired_entries_above_capacity() {
         let cache = new_cache(10);
         insert(&cache, 0..20);
         assert_eq!(cache.trim_entries().unwrap(), 0);
@@ -321,42 +413,79 @@ mod test {
     }
 
     #[test]
-    fn it_trims_old_entries_to_capacity() {
+    fn it_trims_expired_entries_to_capacity() {
         let cache = new_cache(10);
         insert(&cache, 0..20);
-        age_entries(&cache, 20, MIN_ENTRY_AGE + Duration::from_secs(60));
-        assert_eq!(cache.trim_entries().unwrap(), 10);
+        assert_eq!(cache.trim_entries_at(after(AFTER_MIN_AGE)).unwrap(), 10);
         assert_eq!(row_count(&cache), 10);
         assert!((0..10).all(|i| !contains(&cache, i)));
         assert!((10..20).all(|i| contains(&cache, i)));
     }
 
     #[test]
-    fn it_only_trims_old_entries_below_the_ceiling() {
-        let cache = new_cache(10);
-        insert(&cache, 0..20);
-        // Entries 0..5 are old, the rest young
-        age_entries(&cache, 5, MIN_ENTRY_AGE + Duration::from_secs(60));
-        assert_eq!(cache.trim_entries().unwrap(), 5);
-        assert!((0..5).all(|i| !contains(&cache, i)));
-        assert_eq!(row_count(&cache), 15);
+    fn it_keeps_entries_until_the_message_expires() {
+        let cache = new_cache(1);
+        add(&cache, 0, None, true);
+        add(&cache, 1, expires_in(Duration::from_secs(10 * 60 * 60)), true);
+        add(&cache, 2, None, true);
+        assert_eq!(cache.trim_entries_at(after(AFTER_MIN_AGE)).unwrap(), 2);
+        assert!(contains(&cache, 1));
+        assert_eq!(row_count(&cache), 1);
     }
 
     #[test]
-    fn it_trims_young_entries_to_the_ceiling() {
-        let capacity = 10;
+    fn a_far_future_expiry_is_clamped() {
+        let cache = new_cache(1);
+        let before = after(MAX_ENTRY_AGE);
+        add(&cache, 0, expires_in(Duration::from_secs(100 * 60 * 60)), true);
+        let keep_until = keep_until_of(&cache, 0);
+        assert!(keep_until >= before);
+        assert!(keep_until <= after(MAX_ENTRY_AGE));
+    }
+
+    #[test]
+    fn a_hit_keeps_the_later_keep_until() {
+        let cache = new_cache(10);
+        add(&cache, 0, expires_in(Duration::from_secs(10 * 60 * 60)), true);
+        let first = keep_until_of(&cache, 0);
+        assert_eq!(add(&cache, 0, None, true), 2);
+        assert_eq!(keep_until_of(&cache, 0), first);
+        assert_eq!(add(&cache, 0, expires_in(Duration::from_secs(20 * 60 * 60)), true), 3);
+        assert!(keep_until_of(&cache, 0) > first);
+    }
+
+    #[test]
+    fn it_trims_unsigned_entries_first_above_the_ceiling() {
+        let capacity = 1;
         let ceiling = capacity * CEILING_CAPACITY_MULTIPLE;
         let cache = new_cache(capacity);
-        // Insert directly so that the growth trim does not run first
-        for i in 0..(ceiling + 20) {
-            cache
-                .insert_body_hash_or_update_stats(&to_hex(&i.to_le_bytes()), &CommsPublicKey::default().to_hex())
-                .unwrap();
+        // Even entries are unsigned (8 of them), odd ones signed (7)
+        for i in 0..15 {
+            insert_raw(&cache, i, i % 2 == 1);
         }
-        age_entries(&cache, ceiling + 20, Duration::ZERO);
-        assert_eq!(cache.trim_entries().unwrap(), 20);
+        order_entries(&cache, 15);
+        assert_eq!(cache.trim_entries().unwrap(), 5);
         assert_eq!(row_count(&cache), i64::try_from(ceiling).unwrap());
-        assert!((0..20).all(|i| !contains(&cache, i)));
+        assert!((0..15).filter(|i| i % 2 == 1).all(|i| contains(&cache, i)));
+        // The 5 least recently hit unsigned entries are gone
+        assert!([0, 2, 4, 6, 8].iter().all(|i| !contains(&cache, *i)));
+        assert!([10, 12, 14].iter().all(|i| contains(&cache, *i)));
+    }
+
+    #[test]
+    fn it_trims_signed_entries_when_unsigned_ones_are_not_enough() {
+        let capacity = 1;
+        let ceiling = capacity * CEILING_CAPACITY_MULTIPLE;
+        let cache = new_cache(capacity);
+        // Entries 0 and 1 are unsigned, the rest signed
+        for i in 0..15 {
+            insert_raw(&cache, i, i >= 2);
+        }
+        order_entries(&cache, 15);
+        assert_eq!(cache.trim_entries().unwrap(), 5);
+        assert_eq!(row_count(&cache), i64::try_from(ceiling).unwrap());
+        assert!((0..5).all(|i| !contains(&cache, i)));
+        assert!((5..15).all(|i| contains(&cache, i)));
     }
 
     #[test]
@@ -372,7 +501,7 @@ mod test {
     }
 
     #[test]
-    fn trim_uses_last_hit_at_index() {
+    fn trims_use_an_index() {
         #[derive(QueryableByName)]
         struct QueryPlanRow {
             #[diesel(sql_type = Text)]
@@ -381,16 +510,28 @@ mod test {
 
         let cache = new_cache(10);
         let mut conn = cache.connection.get_pooled_connection().unwrap();
-        for query in [
-            "EXPLAIN QUERY PLAN SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT 1",
-            "EXPLAIN QUERY PLAN SELECT id FROM dedup_cache WHERE last_hit_at <= '2026-01-01 00:00:00' ORDER BY \
-             last_hit_at ASC LIMIT 1",
+        let expired_plan = diesel::sql_query(format!("EXPLAIN QUERY PLAN {DELETE_EXPIRED_SQL}"))
+            .bind::<sql_types::Timestamp, _>(Utc::now().naive_utc())
+            .bind::<sql_types::BigInt, _>(1)
+            .load::<QueryPlanRow>(&mut conn)
+            .unwrap();
+        let oldest_plan = diesel::sql_query(format!("EXPLAIN QUERY PLAN {DELETE_OLDEST_SQL}"))
+            .bind::<sql_types::Bool, _>(false)
+            .bind::<sql_types::BigInt, _>(1)
+            .load::<QueryPlanRow>(&mut conn)
+            .unwrap();
+        for (plan, index) in [
+            (expired_plan, "idx_dedup_cache_keep_until"),
+            (oldest_plan, "idx_dedup_cache_is_signed_last_hit_at"),
         ] {
-            let plan = diesel::sql_query(query).load::<QueryPlanRow>(&mut conn).unwrap();
+            let details = plan.iter().map(|row| row.detail.as_str()).collect::<Vec<_>>();
             assert!(
-                plan.iter()
-                    .any(|row| row.detail.contains("idx_dedup_cache_last_hit_at")),
-                "query plan does not use the index: {query}"
+                details.iter().any(|d| d.contains(index)),
+                "query plan does not use {index}: {details:?}"
+            );
+            assert!(
+                !details.iter().any(|d| d.contains("TEMP B-TREE")),
+                "query plan sorts without an index: {details:?}"
             );
         }
     }
@@ -401,14 +542,12 @@ mod test {
     async fn concurrent_inserts_do_not_exhaust_the_pool() {
         let cache = new_cache(50_000);
         let mut tasks = Vec::new();
-        for i in 0u32..100 {
+        for i in 0usize..100 {
             let cache = cache.clone();
-            tasks.push(task::spawn_blocking(move || {
-                cache.add_msg_hash(&i.to_le_bytes(), &CommsPublicKey::default())
-            }));
+            tasks.push(task::spawn_blocking(move || add(&cache, i, None, true)));
         }
         for t in tasks {
-            assert_eq!(t.await.unwrap().unwrap(), 1);
+            assert_eq!(t.await.unwrap(), 1);
         }
         assert_eq!(row_count(&cache), 100);
     }
