@@ -830,6 +830,71 @@ async fn send_one_sided_transaction_to_other() {
 }
 
 #[tokio::test]
+async fn send_one_sided_transaction_refuses_identity_and_non_point_address_keys() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager,
+        factories,
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+    let uo1 = make_input(
+        &mut rand::rng(),
+        25000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let valid_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let identity = CompressedPublicKey::default();
+    let not_a_point = CompressedPublicKey::new(&[0xffu8; 32]);
+    let dual = |view: &CompressedPublicKey, spend: &CompressedPublicKey| {
+        TariAddress::new_dual_address_with_default_features(view.clone(), spend.clone(), network).unwrap()
+    };
+    let cases = [
+        (TariAddress::default(), "identity"),
+        (dual(&identity, &valid_key), "view key is the identity point"),
+        (dual(&valid_key, &identity), "spend key is the identity point"),
+        (dual(&not_a_point, &valid_key), "view key is not a valid point"),
+        (dual(&valid_key, &not_a_point), "spend key is not a valid point"),
+    ];
+    for (address, expected) in cases {
+        let result = alice_ts
+            .send_one_sided_transaction(
+                address,
+                1000.into(),
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                20.into(),
+                MemoField::new_empty(),
+            )
+            .await;
+        match result {
+            Err(TransactionServiceError::InvalidAddress(msg)) => assert!(msg.contains(expected), "{msg}"),
+            other => panic!("expected an invalid address for '{expected}', got {other:?}"),
+        }
+    }
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().pending_outgoing_balance,
+        0.into()
+    );
+}
+
+#[tokio::test]
 async fn recover_one_sided_transaction() {
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let network = Network::LocalNet;

@@ -920,13 +920,23 @@ where
             "Wallet birthday is {birthday} at epoch time {epoch_time_birthday}"
         );
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
-        let block_height_scanning_start = client
-            .get_height_at_time(epoch_time_scanning_start)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
-                0
-            });
+        let now = u64::try_from(Utc::now().timestamp()).unwrap_or(0);
+        let block_height_scanning_start = if is_birthday_in_the_future(birthday, now) {
+            warn!(
+                target: LOG_TARGET,
+                "{:?}: Wallet birthday {} (epoch time {}) is in the future, scanning from height 0",
+                self.mode, birthday, epoch_time_birthday
+            );
+            0
+        } else {
+            client
+                .get_height_at_time(epoch_time_scanning_start)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
+                    0
+                })
+        };
         let header = match client.get_header_by_height(block_height_scanning_start).await? {
             Some(header) => header,
             None => {
@@ -955,6 +965,11 @@ where
     }
 }
 
+/// Whether a wallet birthday lies after `now` (unix seconds), which no genuine seed can have
+fn is_birthday_in_the_future(birthday: u16, now: u64) -> bool {
+    get_birthday_from_unix_epoch_in_seconds(birthday, 0) > now
+}
+
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
@@ -978,5 +993,25 @@ where F: Future<Output = Result<T, anyhow::Error>> {
         biased;
         _ = shutdown.wait() => Err(shutdown_error()),
         res = fut => res,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::seeds::{
+        cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
+        seed_words::get_birthday_from_unix_epoch_in_seconds,
+    };
+
+    use super::is_birthday_in_the_future;
+
+    #[test]
+    fn a_birthday_after_now_is_in_the_future() {
+        let now = BIRTHDAY_GENESIS_FROM_UNIX_EPOCH + 100 * 24 * 60 * 60;
+        assert!(!is_birthday_in_the_future(0, now));
+        assert!(!is_birthday_in_the_future(100, now));
+        assert!(is_birthday_in_the_future(101, now));
+        assert!(is_birthday_in_the_future(u16::MAX, now));
+        assert_eq!(get_birthday_from_unix_epoch_in_seconds(100, 0), now);
     }
 }

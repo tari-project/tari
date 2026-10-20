@@ -3210,7 +3210,7 @@ where
                     amount,
                     burn_features_and_scripts_size,
                 )])?;
-                tx_builder.add_recipient(Default::default(), output, r.key_id.clone(), Some(recovery_key_id))?;
+                tx_builder.add_burn_recipient(output, r.key_id.clone(), Some(recovery_key_id))?;
             },
             // A plain burn has no L2 to decrypt the payload, so it falls back to the L1 view key and its sender
             // offset key comes from the builder's single reservation like any other output.
@@ -4429,6 +4429,22 @@ where
         address: &TariAddress,
         sending_method: TariAddressFeatures,
     ) -> Result<(), TransactionServiceError> {
+        let mut keys = vec![("spend", address.public_spend_key())];
+        if let Some(view_key) = address.public_view_key() {
+            keys.push(("view", view_key));
+        }
+        for (name, key) in keys {
+            if *key == CompressedPublicKey::default() {
+                return Err(TransactionServiceError::InvalidAddress(format!(
+                    "Address {name} key is the identity point"
+                )));
+            }
+            if key.to_public_key().is_err() {
+                return Err(TransactionServiceError::InvalidAddress(format!(
+                    "Address {name} key is not a valid point"
+                )));
+            }
+        }
         if address.network() != self.resources.one_sided_tari_address.network() {
             return Err(TransactionServiceError::InvalidNetwork);
         }

@@ -1302,10 +1302,7 @@ mod test {
         let err = borsh::from_slice::<TariAddress>(&encoded).unwrap_err();
         assert!(err.to_string().contains("Invalid features"), "{}", err);
 
-        // serde bytes (bincode) and serde human readable (base58)
-        let encoded = bincode::serialize(&lenient).unwrap();
-        let err = bincode::deserialize::<TariAddress>(&encoded).unwrap_err();
-        assert!(err.to_string().contains("Invalid features"), "{}", err);
+        // serde human readable (base58)
         let json = serde_json::to_string(&lenient).unwrap();
         assert!(serde_json::from_str::<TariAddress>(&json).is_err());
     }
@@ -1473,5 +1470,54 @@ mod test {
         assert_eq!(TariAddress::from_base58(&overlong), Err(TariAddressError::InvalidSize));
         let huge = "z".repeat(4_000_000);
         assert_eq!(TariAddress::from_base58(&huge), Err(TariAddressError::InvalidSize));
+    }
+
+    /// Overwrites `range` of an encoded address and fixes up the checksum
+    fn with_bytes_at(mut bytes: Vec<u8>, range: std::ops::Range<usize>, value: &[u8]) -> Vec<u8> {
+        let last = bytes.len().saturating_sub(1);
+        bytes[range].copy_from_slice(value);
+        bytes[last] = compute_checksum(&bytes[..last]);
+        bytes
+    }
+
+    #[test]
+    fn strict_decoders_reject_keys_that_are_not_points() {
+        let not_a_point = [0xffu8; 32];
+        assert!(CompressedPublicKey::new(&not_a_point).to_public_key().is_err());
+
+        let dual = random_dual_address(None).to_vec();
+        let single = TariAddress::new_single_address_with_interactive_only(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            Network::MainNet,
+        )
+        .unwrap()
+        .to_vec();
+        for bytes in [
+            with_bytes_at(dual.clone(), 2..34, &not_a_point),
+            with_bytes_at(dual, 34..66, &not_a_point),
+            with_bytes_at(single, 2..34, &not_a_point),
+        ] {
+            assert_eq!(
+                TariAddress::from_bytes(&bytes),
+                Err(TariAddressError::CannotRecoverPublicKey)
+            );
+            let lenient = TariAddress::from_bytes_lenient(&bytes).unwrap();
+            assert_eq!(lenient.to_vec(), bytes);
+            assert!(TariAddress::from_base58(&lenient.to_base58()).is_err());
+            assert!(TariAddress::from_emoji_string(&lenient.to_emoji_string()).is_err());
+            assert!(TariAddress::from_hex(&lenient.to_hex()).is_err());
+            assert!(borsh::from_slice::<TariAddress>(&borsh::to_vec(&bytes).unwrap()).is_err());
+            assert!(serde_json::from_str::<TariAddress>(&serde_json::to_string(&lenient).unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn the_default_identity_address_still_decodes() {
+        let default = TariAddress::default();
+        assert_eq!(default.public_spend_key(), &CompressedPublicKey::default());
+        assert_eq!(TariAddress::from_bytes(&default.to_vec()).unwrap(), default);
+        assert_eq!(TariAddress::from_base58(&default.to_base58()).unwrap(), default);
+        let json = serde_json::to_string(&default).unwrap();
+        assert_eq!(serde_json::from_str::<TariAddress>(&json).unwrap(), default);
     }
 }

@@ -702,9 +702,15 @@ When a customer claims they sent a deposit but you don't see it in your systems:
 **PayRef workflow (streamlined):**
 1. Customer: "I sent 100 XTR, PayRef: a1b2c3d4e5f6..."
 2. Support: Enters PayRef into verification system
-3. System: "Payment verified: 100 XTR received in block 150,000"
-4. Support: Credits customer account
+3. System: "Payment verified: 100 XTR received in block 150,000, payment id / deposit address: ..."
+4. Support: Credits the account that owns that payment id or deposit address
 5. Result: Fast resolution, happy customer
+
+> **Important:** a PayRef finds an output; it does not show who paid. Anyone who can see the output on chain can
+> compute its PayRef, so a customer presenting one proves nothing about them. Always credit on the output's payment id
+> or deposit address, never on who presents the PayRef. A PayRef is also bound to the block the output was mined in:
+> if a reorg mines the output in a different block its PayRef changes, so only treat it as final once the block is
+> past your confirmation depth.
 
 ### Implementation Example
 
@@ -970,7 +976,9 @@ class CustomerSupportDashboard {
 
 ### Section 10: Automated PayRef Processing
 
-For high-volume exchanges, implement automated PayRef processing:
+For high-volume exchanges, implement automated PayRef processing. The same rules apply as in Section 9: credit the
+account that owns the output's payment id or deposit address, never whoever submitted the PayRef, and only once the
+output's block is past your confirmation depth (a reorg can change a PayRef before then).
 
 ```javascript
 // Automated PayRef monitoring system

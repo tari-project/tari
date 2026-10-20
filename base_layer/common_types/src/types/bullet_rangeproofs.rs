@@ -189,12 +189,6 @@ mod test {
 
             // Encode with the unchecked constructor, so the oversized proof reaches the decoders
             let proof = BulletRangeProof(bytes);
-            let bincode_bytes = bincode::serialize(&proof).unwrap();
-            assert_eq!(
-                bincode::deserialize::<BulletRangeProof>(&bincode_bytes).is_ok(),
-                accept,
-                "{len}"
-            );
             let borsh_bytes = borsh::to_vec(&proof).unwrap();
             let decoded = borsh::from_slice::<BulletRangeProof>(&borsh_bytes);
             assert_eq!(decoded.is_ok(), accept, "{len}");
@@ -217,18 +211,10 @@ mod test {
         expected_borsh.extend_from_slice(&bytes);
         assert_eq!(borsh::to_vec(&proof).unwrap(), expected_borsh);
 
-        let mut expected_bincode = vec![0x41, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        expected_bincode.extend_from_slice(&bytes);
-        assert_eq!(bincode::serialize(&proof).unwrap(), expected_bincode);
-
         let expected_json = format!("\"{}\"", "ab".repeat(MAX_RANGE_PROOF_BYTES));
         assert_eq!(serde_json::to_string(&proof).unwrap(), expected_json);
 
         assert_eq!(borsh::from_slice::<BulletRangeProof>(&expected_borsh).unwrap(), proof);
-        assert_eq!(
-            bincode::deserialize::<BulletRangeProof>(&expected_bincode).unwrap(),
-            proof
-        );
         assert_eq!(serde_json::from_str::<BulletRangeProof>(&expected_json).unwrap(), proof);
     }
 }

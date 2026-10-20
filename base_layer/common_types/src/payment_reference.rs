@@ -38,6 +38,14 @@
 //! - Verifiability (any party can compute and verify PayRefs)
 //! - Privacy preservation (no additional information leakage)
 //! - Stability (becomes permanent after sufficient confirmations)
+//!
+//! ## What a PayRef does not tell you
+//!
+//! - A PayRef is bound to the block the output was mined in. If a reorg mines the output in a different block, its
+//!   PayRef changes, so a PayRef is only final once that block is past the confirmation depth.
+//! - Anyone who can see the output on chain can compute its PayRef. It is a public lookup handle, not evidence of who
+//!   paid: presenting a PayRef proves nothing about the person presenting it.
+//! - Credit a payment on the output's payment id or deposit address, never on who presents a PayRef.
 
 use blake2::Blake2b;
 use digest::consts::U32;
@@ -93,6 +101,10 @@ impl From<HexError> for PayRefError {
 ///
 /// # Returns
 /// A 32-byte Payment Reference that is globally unique and verifiable
+///
+/// The result depends on `block_hash`, so it changes if a reorg mines the output in another block; treat it as final
+/// only past the confirmation depth. Anyone can compute it from chain data, so it is a lookup handle, not proof of who
+/// paid.
 ///
 /// # Example
 /// ```rust

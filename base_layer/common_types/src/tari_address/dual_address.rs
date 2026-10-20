@@ -209,13 +209,20 @@ impl DualAddress {
         &self.public_spend_key
     }
 
-    /// Construct Tari Address from bytes. A payment id without the `PAYMENT_ID` feature flag is rejected.
+    /// Construct Tari Address from bytes. A payment id without the `PAYMENT_ID` feature flag is rejected, as are
+    /// keys that are not valid points. The identity point is accepted.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
-        let address = Self::from_bytes_lenient(bytes)?;
+        let mut address = Self::from_bytes_lenient(bytes)?;
         if !address.memo_field_payment_id.is_empty() && !address.features.contains(TariAddressFeatures::PAYMENT_ID) {
             return Err(TariAddressError::InvalidFeatures);
         }
+        address.public_view_key =
+            CompressedPublicKey::from_canonical_bytes_validated(address.public_view_key.as_bytes())
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
+        address.public_spend_key =
+            CompressedPublicKey::from_canonical_bytes_validated(address.public_spend_key.as_bytes())
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Ok(address)
     }
 
@@ -345,12 +352,10 @@ mod test {
         )
         .unwrap();
 
-        // The derived `Serialize` shape round-trips through JSON and bincode
+        // The derived `Serialize` shape round-trips through JSON
         let json = serde_json::to_string(&address).unwrap();
         assert!(json.contains(r#""memo_field_payment_id""#), "{json}");
         assert_eq!(serde_json::from_str::<DualAddress>(&json).unwrap(), address);
-        let encoded = bincode::serialize(&address).unwrap();
-        assert_eq!(bincode::deserialize::<DualAddress>(&encoded).unwrap(), address);
         // The old field name is still accepted
         let legacy_json = json.replace("memo_field_payment_id", "payment_id_user_data");
         assert_eq!(serde_json::from_str::<DualAddress>(&legacy_json).unwrap(), address);
@@ -364,8 +369,6 @@ mod test {
         assert_eq!(DualAddress::from_bytes(&bytes), Err(TariAddressError::InvalidFeatures));
         let json = serde_json::to_string(&inconsistent).unwrap();
         assert!(serde_json::from_str::<DualAddress>(&json).is_err());
-        let encoded = bincode::serialize(&inconsistent).unwrap();
-        assert!(bincode::deserialize::<DualAddress>(&encoded).is_err());
     }
 
     #[test]

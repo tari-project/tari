@@ -18,7 +18,8 @@ use crate::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecipientDetails {
     pub output: OutputPair,
-    pub recipient_address: TariAddress,
+    /// `None` for a burn, which has no recipient address.
+    pub recipient_address: Option<TariAddress>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

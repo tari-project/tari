@@ -3915,6 +3915,9 @@ pub unsafe extern "C" fn seed_words_push_word(
             }
         };
 
+        // The 1-based position the word would take; logged instead of the word itself
+        let word_position = (*seed_words).0.len().saturating_add(1);
+
         // Check word is from a word list
         match MnemonicLanguage::from(&word_string) {
             Ok(language) => {
@@ -3928,7 +3931,7 @@ pub unsafe extern "C" fn seed_words_push_word(
             Err(e) => {
                 log::error!(
                     target: LOG_TARGET,
-                    "{word_string} is not a valid mnemonic seed word ({e:?})",
+                    "Seed word {word_position} is not a valid mnemonic seed word ({e:?})",
                 );
                 return SeedWordPushResult::InvalidSeedWord as u8;
             },
@@ -3967,8 +3970,8 @@ pub unsafe extern "C" fn seed_words_push_word(
             } else {
                 log::error!(
                     target: LOG_TARGET,
-                    "Words in seed phrase do not match any language after trying to add word: `{word_string:?}`, previously words \
-                     were detected to be in: `{language:?}`"
+                    "Words in seed phrase do not match any language after trying to add seed word {word_position}, previously \
+                     words were detected to be in: `{language:?}`"
                 );
                 SeedWordPushResult::NoLanguageMatch as u8
             }
@@ -3976,7 +3979,7 @@ pub unsafe extern "C" fn seed_words_push_word(
             // Seed words are invalid, shouldn't normally be reachable
             log::error!(
                 target: LOG_TARGET,
-                "Words in seed phrase do not match any language prior to adding word: `{word_string:?}`"
+                "Words in seed phrase do not match any language prior to adding seed word {word_position}"
             );
             let error_msg = "Invalid seed words object, no language can be detected.";
             log::error!(target: LOG_TARGET, "{error_msg}");

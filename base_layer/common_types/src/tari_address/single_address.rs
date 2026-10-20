@@ -151,13 +151,16 @@ impl SingleAddress {
     }
 
     /// Construct Tari Address from bytes. The `PAYMENT_ID` feature flag is rejected, as a single address cannot carry
-    /// a payment id.
+    /// a payment id. A key that is not a valid point is rejected; the identity point is accepted.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, TariAddressError>
     where Self: Sized {
-        let address = Self::from_bytes_lenient(bytes)?;
+        let mut address = Self::from_bytes_lenient(bytes)?;
         if address.features.contains(TariAddressFeatures::PAYMENT_ID) {
             return Err(TariAddressError::InvalidFeatures);
         }
+        address.public_spend_key =
+            CompressedPublicKey::from_canonical_bytes_validated(address.public_spend_key.as_bytes())
+                .map_err(|_| TariAddressError::CannotRecoverPublicKey)?;
         Ok(address)
     }
 

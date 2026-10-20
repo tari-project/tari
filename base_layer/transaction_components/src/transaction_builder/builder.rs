@@ -335,6 +335,32 @@ where KM: TransactionKeyManagerInterface
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        self.push_recipient(
+            Some(recipient_address),
+            recipient_output,
+            sender_offset_key_id,
+            custom_recovery_key_id,
+        )
+    }
+
+    /// Add a burn output that is already built. A burn has no recipient address, so nothing is derived from or signed
+    /// for one; the same rules as [`Self::add_recipient`] apply to `sender_offset_key_id`.
+    pub fn add_burn_recipient(
+        &mut self,
+        burn_output: WalletOutput,
+        sender_offset_key_id: TariKeyId,
+        custom_recovery_key_id: Option<TariKeyId>,
+    ) -> Result<&mut Self, TransactionBuilderError> {
+        self.push_recipient(None, burn_output, sender_offset_key_id, custom_recovery_key_id)
+    }
+
+    fn push_recipient(
+        &mut self,
+        recipient_address: Option<TariAddress>,
+        recipient_output: WalletOutput,
+        sender_offset_key_id: TariKeyId,
+        custom_recovery_key_id: Option<TariKeyId>,
+    ) -> Result<&mut Self, TransactionBuilderError> {
         let kernel_nonce = self.key_manager.get_random_key(None, None)?;
         let recipient_output = OutputPair::new(
             recipient_output,
@@ -919,7 +945,7 @@ where KM: TransactionKeyManagerInterface
         let first_recipient = self
             .recipient_outputs
             .first()
-            .map(|r| (r.output.output.value(), r.recipient_address.clone()))
+            .map(|r| (r.output.output.value(), r.recipient_address.clone().unwrap_or_default()))
             .or_else(|| pending_recipients.first().cloned())
             .or_else(|| self.recipient_specs.first().map(|s| (s.amount, s.destination.clone())));
         if let Some((value, address)) = first_recipient {
@@ -1422,7 +1448,7 @@ where KM: TransactionKeyManagerInterface
                 &self.key_manager,
                 &mut recipient.output,
                 total_fee,
-                Some(&recipient.recipient_address),
+                recipient.recipient_address.as_ref(),
             )?;
 
             let output = recipient.output.output.to_transaction_output()?;
@@ -1570,7 +1596,7 @@ where KM: TransactionKeyManagerInterface
         let destination_addresses = self
             .recipient_outputs
             .iter()
-            .map(|r| r.recipient_address.clone())
+            .map(|r| r.recipient_address.clone().unwrap_or_default())
             .collect::<Vec<TariAddress>>();
 
         let mut amount = self

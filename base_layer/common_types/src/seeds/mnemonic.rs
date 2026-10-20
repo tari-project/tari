@@ -267,7 +267,8 @@ pub fn to_bytes_with_language(
     language: &MnemonicLanguage,
 ) -> Result<Hidden<Vec<u8>>, MnemonicError> {
     const MASK: u64 = (1u64 << 8) - 1;
-    let mut bytes = Hidden::hide(Vec::new());
+    // Sized up front so the buffer never reallocates and leaves an unzeroized copy behind
+    let mut bytes = Hidden::hide(Vec::with_capacity(mnemonic_seq.len().saturating_mul(11).div_ceil(8)));
     let mut rest = 0u64;
     let mut rest_bits: u8 = 0;
 

@@ -162,3 +162,5 @@ debug = false
 
 [patch.crates-io]
 liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }
+# Temporary: removed once tari_crypto with CompressedKey::from_canonical_bytes_validated is published
+tari_crypto = { path = "/Users/schalkvanheerden/Code/tari-crypto" }

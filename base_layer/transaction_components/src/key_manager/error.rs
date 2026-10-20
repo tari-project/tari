@@ -123,6 +123,8 @@ pub enum KeyManagerError {
          a public tweak of one), so using it would publish that key"
     )]
     KeyIdNotAMask { key_id: String },
+    #[error("Invalid public key: {0}")]
+    InvalidPublicKey(String),
 }
 
 impl From<RangeProofError> for KeyManagerError {

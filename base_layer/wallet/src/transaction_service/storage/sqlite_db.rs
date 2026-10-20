@@ -1950,7 +1950,9 @@ impl Encryptable<XChaCha20Poly1305> for InboundTransactionSql {
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.receiver_protocol =
-            decrypt_bytes_integral_nonce(cipher, self.domain("receiver_protocol"), &self.receiver_protocol)?;
+            decrypt_bytes_integral_nonce(cipher, self.domain("receiver_protocol"), &self.receiver_protocol)?
+                .reveal()
+                .clone();
 
         Ok(self)
     }
@@ -2212,7 +2214,9 @@ impl Encryptable<XChaCha20Poly1305> for OutboundTransactionSql {
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
         self.sender_protocol =
-            decrypt_bytes_integral_nonce(cipher, self.domain("sender_protocol"), &self.sender_protocol)?;
+            decrypt_bytes_integral_nonce(cipher, self.domain("sender_protocol"), &self.sender_protocol)?
+                .reveal()
+                .clone();
         Ok(self)
     }
 }
@@ -2764,11 +2768,12 @@ impl CompletedTransactionSql {
         tx_id: i64,
         transaction_protocol: &[u8],
     ) -> Result<Vec<u8>, String> {
-        decrypt_bytes_integral_nonce(
+        let plaintext = decrypt_bytes_integral_nonce(
             cipher,
             Self::encryption_domain(tx_id, "transaction_protocol"),
             transaction_protocol,
-        )
+        )?;
+        Ok(plaintext.reveal().clone())
     }
 
     fn encryption_domain(tx_id: i64, field_name: &'static str) -> Vec<u8> {

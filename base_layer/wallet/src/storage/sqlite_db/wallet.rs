@@ -46,6 +46,7 @@ use tari_comms::{
     peer_manager::{IdentitySignature, PeerFeatures},
 };
 use tari_crypto::{hash_domain, hashing::DomainSeparatedHasher};
+use tari_transaction_key_manager::legacy_key_manager::wallet_types::LegacyWalletType;
 use tari_utilities::{
     ByteArray,
     Hidden,
@@ -74,6 +75,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::storage::wallet";
+const WALLET_TYPE_DOMAIN: &[u8] = b"wallet_setting_wallet_type";
 
 // The main `XChaCha20-Poly1305` key used for database encryption
 // This isn't a `SafeArray` because of how we populate it from an authenticated decryption
@@ -228,10 +230,51 @@ impl WalletSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, passphrase: SafePassword) -> Result<Self, WalletStorageError> {
         let cipher = get_db_cipher(&database_connection, &passphrase)?;
 
-        Ok(Self {
+        let wallet_db = Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
-        })
+        };
+        wallet_db.encrypt_plaintext_wallet_type()?;
+        Ok(wallet_db)
+    }
+
+    /// Wallets used to store the wallet type, which can hold private keys, as plaintext JSON. Re-write such a value
+    /// encrypted, and scrub the freed pages that still hold the plaintext.
+    fn encrypt_plaintext_wallet_type(&self) -> Result<(), WalletStorageError> {
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let Some(value) = WalletSettingSql::get(&DbKey::WalletType, &mut conn)? else {
+            return Ok(());
+        };
+        let Ok(wallet_type) = serde_json::from_str::<LegacyWalletType>(&value) else {
+            return Ok(());
+        };
+        info!(target: LOG_TARGET, "Encrypting the plaintext wallet type");
+        let cipher = acquire_read_lock!(self.cipher);
+        self.set_wallet_type(&wallet_type, &cipher, &mut conn)?;
+        scrub_freed_pages(&mut conn)?;
+        Ok(())
+    }
+
+    fn set_wallet_type(
+        &self,
+        wallet_type: &LegacyWalletType,
+        cipher: &XChaCha20Poly1305,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), WalletStorageError> {
+        let json = Hidden::hide(serde_json::to_vec(wallet_type)?);
+        let ciphertext = encrypt_bytes_integral_nonce(cipher, WALLET_TYPE_DOMAIN.to_vec(), json)
+            .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))?;
+        WalletSettingSql::new(DbKey::WalletType, ciphertext.to_hex()).set(conn)
+    }
+
+    fn get_wallet_type(&self, conn: &mut SqliteConnection) -> Result<Option<LegacyWalletType>, WalletStorageError> {
+        let Some(value) = WalletSettingSql::get(&DbKey::WalletType, conn)? else {
+            return Ok(None);
+        };
+        let cipher = acquire_read_lock!(self.cipher);
+        let json = decrypt_bytes_integral_nonce(&cipher, WALLET_TYPE_DOMAIN.to_vec(), &from_hex(&value)?)
+            .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?;
+        Ok(Some(serde_json::from_slice(json.reveal())?))
     }
 
     fn set_master_seed(&self, seed: &CipherSeed, conn: &mut SqliteConnection) -> Result<(), WalletStorageError> {
@@ -241,7 +284,7 @@ impl WalletSqliteDatabase {
             WalletSettingSql::new(DbKey::WalletBirthday, birthday.to_string()).set(conn)?;
         }
 
-        let seed_bytes = Hidden::hide(seed.encipher(None)?);
+        let seed_bytes = Hidden::hide(seed.encipher(None)?.to_vec());
         let ciphertext_integral_nonce =
             encrypt_bytes_integral_nonce(&cipher, b"wallet_setting_master_seed".to_vec(), seed_bytes)
                 .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{e}")))?;
@@ -256,14 +299,12 @@ impl WalletSqliteDatabase {
             let seed = {
                 // Decrypted_key_bytes contains sensitive data regarding decrypted
                 // seed words. For this reason, we should zeroize the underlying data buffer
-                let decrypted_key_bytes = Hidden::hide(
-                    decrypt_bytes_integral_nonce(
-                        &cipher,
-                        b"wallet_setting_master_seed".to_vec(),
-                        &from_hex(seed_str.as_str())?,
-                    )
-                    .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?,
-                );
+                let decrypted_key_bytes = decrypt_bytes_integral_nonce(
+                    &cipher,
+                    b"wallet_setting_master_seed".to_vec(),
+                    &from_hex(seed_str.as_str())?,
+                )
+                .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{e}")))?;
                 CipherSeed::from_enciphered_bytes(decrypted_key_bytes.reveal(), None)?
             };
 
@@ -384,8 +425,7 @@ impl WalletSqliteDatabase {
             },
             DbKeyValuePair::WalletType(wallet_type) => {
                 kvp_text = "WalletType";
-                WalletSettingSql::new(DbKey::WalletType, serde_json::to_string(&wallet_type).unwrap())
-                    .set(&mut conn)?;
+                self.set_wallet_type(&wallet_type, &cipher, &mut conn)?;
             },
         }
 
@@ -472,9 +512,9 @@ impl WalletBackend for WalletSqliteDatabase {
             DbKey::SecondaryKeySalt => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeySalt),
             DbKey::SecondaryKeyHash => WalletSettingSql::get(key, &mut conn)?.map(DbValue::SecondaryKeyHash),
             DbKey::WalletBirthday => WalletSettingSql::get(key, &mut conn)?.map(DbValue::WalletBirthday),
-            DbKey::WalletType => {
-                WalletSettingSql::get(key, &mut conn)?.map(|d| DbValue::WalletType(serde_json::from_str(&d).unwrap()))
-            },
+            DbKey::WalletType => self
+                .get_wallet_type(&mut conn)?
+                .map(|wallet_type| DbValue::WalletType(Box::new(wallet_type))),
             DbKey::LastAccessedNetwork => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedNetwork),
             DbKey::LastAccessedVersion => WalletSettingSql::get(key, &mut conn)?.map(DbValue::LastAccessedVersion),
             DbKey::CommsIdentitySignature => WalletSettingSql::get(key, &mut conn)?
@@ -683,10 +723,9 @@ fn decrypt_main_key(
     // Authenticate and decrypt the main key
     let cipher = XChaCha20Poly1305::new(Key::from_slice(secondary_key.reveal()));
 
-    Ok(WalletMainEncryptionKey::from(
-        decrypt_bytes_integral_nonce(&cipher, aad, encrypted_main_key)
-            .map_err(|_| WalletStorageError::InvalidPassphrase)?,
-    ))
+    let main_key = decrypt_bytes_integral_nonce(&cipher, aad, encrypted_main_key)
+        .map_err(|_| WalletStorageError::InvalidPassphrase)?;
+    Ok(WalletMainEncryptionKey::from(main_key.reveal().clone()))
 }
 
 /// Rewrite the database file so that content freed by earlier writes is no longer legible in it
@@ -914,18 +953,15 @@ impl Encryptable<XChaCha20Poly1305> for ClientKeyValueSql {
 
     #[allow(unused_assignments)]
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        let mut decrypted_value = decrypt_bytes_integral_nonce(
+        let decrypted_value = decrypt_bytes_integral_nonce(
             cipher,
             self.domain("value"),
             &from_hex(self.value.as_str()).map_err(|e| e.to_string())?,
         )?;
 
-        self.value = from_utf8(decrypted_value.as_slice())
+        self.value = from_utf8(decrypted_value.reveal())
             .map_err(|e| e.to_string())?
             .to_string();
-
-        // we zeroize the decrypted value
-        decrypted_value.zeroize();
 
         Ok(self)
     }
@@ -1357,6 +1393,68 @@ mod test {
     }
 
     #[test]
+    fn test_plaintext_wallet_type_is_encrypted_on_open() {
+        use diesel::connection::SimpleConnection;
+        use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_key_manager::legacy_key_manager::wallet_types::ProvidedKeysWallet;
+
+        let db_name = format!("{}.sqlite3", string(8).as_str());
+        let db_tempdir = tempdir().unwrap();
+        let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+        let db_path = format!("{db_folder}/{db_name}");
+        let connection = run_migration_and_create_sqlite_connection(db_path.clone(), 16).unwrap();
+        let passphrase = || SafePassword::from("wallet type passphrase".to_string());
+        let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase()).unwrap();
+        let mut conn = connection.get_pooled_connection().unwrap();
+
+        // Emulate a wallet written by a version that stored the wallet type as plaintext JSON
+        conn.batch_execute("PRAGMA secure_delete = OFF;").unwrap();
+        let view_key = PrivateKey::random(&mut rand::rng());
+        let wallet_type = LegacyWalletType::ProvidedKeys(ProvidedKeysWallet {
+            public_spend_key: CompressedPublicKey::from_secret_key(&view_key),
+            private_spend_key: None,
+            private_comms_key: None,
+            view_key: view_key.clone(),
+            birthday: None,
+        });
+        let plaintext = serde_json::to_string(&wallet_type).unwrap();
+        assert!(plaintext.contains(&view_key.to_hex()));
+        WalletSettingSql::new(DbKey::WalletType, plaintext.clone())
+            .set(&mut conn)
+            .unwrap();
+        drop(wallet);
+        assert!(db_files_contain(&db_path, &view_key.to_hex()));
+
+        // Opening the wallet re-writes it encrypted and scrubs the plaintext from the file
+        let wallet = WalletSqliteDatabase::new(connection.clone(), passphrase()).unwrap();
+        let stored = WalletSettingSql::get(&DbKey::WalletType, &mut conn).unwrap().unwrap();
+        assert_ne!(stored, plaintext);
+        assert!(serde_json::from_str::<LegacyWalletType>(&stored).is_err());
+        assert!(
+            !db_files_contain(&db_path, &view_key.to_hex()),
+            "the plaintext wallet type is still legible in the database file"
+        );
+        match wallet.fetch(&DbKey::WalletType).unwrap().unwrap() {
+            DbValue::WalletType(read) => assert_eq!(*read, wallet_type),
+            other => panic!("unexpected value {other}"),
+        }
+
+        // Writing it again stores it encrypted, and it reads back
+        wallet
+            .write(WriteOperation::Insert(DbKeyValuePair::WalletType(Box::new(
+                LegacyWalletType::DerivedKeys,
+            ))))
+            .unwrap();
+        let stored = WalletSettingSql::get(&DbKey::WalletType, &mut conn).unwrap().unwrap();
+        assert!(serde_json::from_str::<LegacyWalletType>(&stored).is_err());
+        match wallet.fetch(&DbKey::WalletType).unwrap().unwrap() {
+            DbValue::WalletType(read) => assert_eq!(*read, LegacyWalletType::DerivedKeys),
+            other => panic!("unexpected value {other}"),
+        }
+    }
+
+    #[test]
     fn test_set_master_seed() {
         let db_name = format!("{}.sqlite3", string(8).as_str());
         let db_tempdir = tempdir().unwrap();
@@ -1384,7 +1482,7 @@ mod test {
         )
         .unwrap();
 
-        assert_eq!(decrypted_db_seed, seed_bytes);
+        assert_eq!(decrypted_db_seed.reveal(), &*seed_bytes);
     }
 
     #[test]
