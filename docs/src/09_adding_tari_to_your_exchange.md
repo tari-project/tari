@@ -403,11 +403,9 @@ const request = {};
 const call = client.GetCompletedTransactions(request);
 
 // Handle the stream of responses
-call.on('data', (response) => {
-    console.log('Received data:', response);
-    // ..... Do business logic with transaction. E.g. compare the reference in payment_id to a reference provided to the exchange client and allocate
-    // to their account
-    // ....
+call.on('data', async (response) => {
+    // Credit the deposit with the shared function below; it ignores anything that is not a confirmed inbound payment
+    await creditCustomerAccount(response.transaction);
 });
 
 call.on('end', () => {
@@ -424,8 +422,11 @@ call.on('status', (status) => {
 ```
 
 > **Lookup errors:** a `NOT_FOUND` status means there genuinely is nothing to return. A `DATA_LOSS` status means stored
-> transaction rows could not be decoded; its message is `undecodable rows: skipped=N`, and paged calls add
-> `offset=O limit=L`. Do not retry it: check the wallet log for the affected tx ids.
+> transaction rows could not be decoded; its message is `undecodable rows: skipped=N`, paged calls add
+> `offset=O limit=L`, and `GetTransactionInfo` adds the `tx_id=T` it could not decode. Do not retry it: check the
+> wallet log for the affected tx ids. An `INTERNAL` status is a wallet-side fault (for example a decryption failure,
+> usually a wrong key or a damaged database): retry a bounded number of times, then alert. It never means not found;
+> paged calls include `offset`/`limit` in it too, so after investigating you can resume past the page.
 >
 > - The streaming paged call has already delivered the chunks before the failing one, so resume at `offset + limit`.
 > - The unary `GetAllCompletedTransactions` returns nothing when a chunk fails, and its message also carries
@@ -434,9 +435,48 @@ call.on('status', (status) => {
 > The unfiltered `GetCompletedTransactions` stream leaves undecodable rows out and only logs them. Paged calls also
 > leave out undecodable rows when other rows on the same page decode, so a short page is not the end of the data. Only
 > the keyed lookups (by payment id, block height or hash, or PayRef) report every undecodable match as `DATA_LOSS`, so
-> reconcile the other calls against them.
+> reconcile the other calls against them. The keyed lookups also return cancelled transactions, so filter on
+> `is_cancelled`; an undecodable cancelled match still causes `DATA_LOSS`.
+>
+> When you get `DATA_LOSS`:
+>
+> 1. Take the tx ids from the wallet log's "Skipping undecodable …" lines.
+> 2. Stop the wallet and back up its database.
+> 3. A pending outbound transaction can be cancelled with `CancelTransaction`.
+> 4. A completed transaction has to be restored from a backup written by the version that wrote it, or removed so that
+>    recovery or the UTXO scan detects its inbound outputs again. Confirm this against the scanner's behaviour before
+>    relying on it.
 
 Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
+
+All three places that credit deposits (the listener above, PayRef verification in Section 9 and the automated
+processing in Section 10) should use one function, so that they share the same checks and the same ledger:
+
+```javascript
+// Statuses that count as confirmed for a deposit (see Transaction Status)
+const CONFIRMED_STATUSES = ['TRANSACTION_STATUS_MINED_CONFIRMED', 'TRANSACTION_STATUS_ONE_SIDED_CONFIRMED'];
+
+// Credit a deposit at most once. `tx` is a TransactionInfo from GetCompletedTransactions, GetTransactionInfo or
+// GetPaymentByReference. Returns the credited account, or null when the transaction must not be credited (yet).
+async function creditCustomerAccount(tx) {
+    if (tx.direction !== 'TRANSACTION_DIRECTION_INBOUND' || tx.is_cancelled) {
+        return null; // withdrawals, change and cancelled transactions are never credited
+    }
+    if (!CONFIRMED_STATUSES.includes(tx.status)) {
+        return null; // not confirmed yet: try again later
+    }
+    // `dest_address` is this wallet's own address, so the account comes from the payment id the depositor included
+    // (unless you run one wallet per customer, in which case the wallet identifies the account)
+    const account = await findAccountByPaymentId(tx.user_payment_id);
+    if (!account) {
+        await flagUnmatchedDeposit(tx); // manual review
+        return null;
+    }
+    // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef
+    const credited = await ledger.creditOnce({ txId: tx.tx_id, account, amount: tx.amount });
+    return credited ? account : null;
+}
+```
 
 This is a basic implementation; some additional items you may want to consider for a production environment are: 
 
@@ -731,7 +771,8 @@ When a customer claims they sent a deposit but you don't see it in your systems:
 
 ### Implementation Example
 
-Here's how to implement PayRef verification in your exchange backend:
+Here's how to implement PayRef verification in your exchange backend. The PayRef only finds the transaction; the
+account to credit still comes from the transaction itself, through the shared `creditCustomerAccount` from Section 6.
 
 ```javascript
 const grpc = require('@grpc/grpc-js');
@@ -750,78 +791,62 @@ class PayRefVerificationService {
             oneofs: true
         });
         const walletProto = grpc.loadPackageDefinition(packageDefinition).tari.rpc;
-        
+
         // Create secure gRPC client
         this.client = new walletProto.Wallet(walletGrpcEndpoint, grpc.credentials.createInsecure());
     }
 
     /**
-     * Verify a PayRef provided by a customer
+     * Look up a PayRef provided by a customer
      * @param {string} payrefHex - 64-character hex PayRef from customer
-     * @param {number} requiredConfirmations - Minimum confirmations needed (default: 10)
      * @returns {Promise<VerificationResult>}
      */
-    async verifyPayRef(payrefHex, requiredConfirmations = 10) {
-        // Validate PayRef format
-        if (!this.isValidPayRefFormat(payrefHex)) {
-            return {
-                status: 'INVALID_FORMAT',
-                message: 'PayRef must be 64-character hexadecimal string'
-            };
+    async verifyPayRef(payrefHex) {
+        if (!/^[0-9a-fA-F]{64}$/.test(payrefHex)) {
+            return { status: 'INVALID_FORMAT', message: 'PayRef must be a 64-character hexadecimal string' };
         }
 
+        let response;
         try {
-            // Call wallet gRPC to verify PayRef
-            const response = await this.callGrpcMethod('GetPaymentByReference', {
-                payment_reference_hex: payrefHex
+            response = await this.callGrpcMethod('GetPaymentByReference', {
+                payment_reference: Buffer.from(payrefHex, 'hex')
             });
-
-            if (!response.payment_details) {
-                return {
-                    status: 'NOT_FOUND',
-                    message: 'PayRef not found in received payments'
-                };
-            }
-
-            const payment = response.payment_details;
-            const confirmations = parseInt(payment.confirmations);
-            
-            if (confirmations >= requiredConfirmations) {
-                return {
-                    status: 'VERIFIED',
-                    paymentReference: payrefHex,
-                    amount: parseFloat(payment.amount),
-                    blockHeight: parseInt(payment.block_height),
-                    confirmations: confirmations,
-                    receivedTimestamp: new Date(parseInt(payment.mined_timestamp) * 1000),
-                    sufficientConfirmations: true
-                };
-            } else {
-                const blocksRemaining = requiredConfirmations - confirmations;
-                return {
-                    status: 'INSUFFICIENT_CONFIRMATIONS',
-                    paymentReference: payrefHex,
-                    amount: parseFloat(payment.amount),
-                    confirmations: confirmations,
-                    requiredConfirmations: requiredConfirmations,
-                    blocksRemaining: blocksRemaining,
-                    message: `Payment found but needs ${blocksRemaining} more confirmations`
-                };
-            }
         } catch (error) {
-            console.error('PayRef verification error:', error);
-            return {
-                status: 'ERROR',
-                message: 'Internal verification error'
-            };
+            switch (error.code) {
+                case grpc.status.NOT_FOUND:
+                    return { status: 'NOT_FOUND', message: 'PayRef not found in this wallet' };
+                case grpc.status.DATA_LOSS:
+                    // Stored rows could not be decoded: retrying will not help (see "Lookup errors")
+                    return { status: 'DATA_LOSS', message: error.details };
+                case grpc.status.INVALID_ARGUMENT:
+                    return { status: 'INVALID_FORMAT', message: error.details };
+                default:
+                    return { status: 'RETRY', message: error.details };
+            }
         }
-    }
 
-    /**
-     * Validate PayRef format
-     */
-    isValidPayRefFormat(payrefHex) {
-        return /^[0-9a-fA-F]{64}$/.test(payrefHex);
+        const tx = response.transaction;
+        if (!tx) {
+            // Only found under a superseded PayRef: the output was re-mined after a reorg. Wait; never credit on it.
+            return { status: 'REORGED', message: 'Payment was re-mined after a reorg; wait for its new PayRef' };
+        }
+        // The PayRef index also covers this wallet's own sent and change outputs, so a PayRef can resolve to a
+        // withdrawal; only a confirmed, not cancelled, inbound transaction is a deposit
+        if (tx.direction !== 'TRANSACTION_DIRECTION_INBOUND' || tx.is_cancelled) {
+            return { status: 'NOT_A_DEPOSIT', message: 'PayRef does not belong to a deposit' };
+        }
+        if (!CONFIRMED_STATUSES.includes(tx.status)) {
+            // For a confirmation depth of your own, compare GetState.scanned_height with tx.mined_in_block_height
+            return { status: 'INSUFFICIENT_CONFIRMATIONS', message: 'Payment found but not confirmed yet' };
+        }
+        return {
+            status: 'VERIFIED',
+            transaction: tx,
+            tx_id: tx.tx_id,
+            amount: tx.amount,
+            user_payment_id: tx.user_payment_id,
+            mined_in_block_height: tx.mined_in_block_height
+        };
     }
 
     /**
@@ -840,76 +865,32 @@ class PayRefVerificationService {
     }
 }
 
-// Usage example
-async function handleCustomerPayRefInquiry(customerId, payrefHex) {
+// Usage example: the account credited is the one the transaction's payment id belongs to, whoever asked
+async function handleCustomerPayRefInquiry(payrefHex) {
     const verifier = new PayRefVerificationService('localhost:18143');
-    
-    try {
-        const result = await verifier.verifyPayRef(payrefHex);
-        
-        switch (result.status) {
-            case 'VERIFIED':
-                // Credit customer account
-                await creditCustomerAccount(customerId, result.amount, payrefHex);
-                console.log(`Payment verified: ${result.amount} XTR credited to customer ${customerId}`);
-                return {
-                    success: true,
-                    message: 'Payment verified and account credited',
-                    details: result
-                };
-                
-            case 'INSUFFICIENT_CONFIRMATIONS':
-                console.log(`Payment found but needs ${result.blocksRemaining} more confirmations`);
-                return {
-                    success: false,
-                    message: `Payment found but needs ${result.blocksRemaining} more confirmations`,
-                    details: result
-                };
-                
-            case 'NOT_FOUND':
-                console.log(`PayRef not found: ${payrefHex}`);
-                return {
-                    success: false,
-                    message: 'Payment not found. Please verify PayRef is correct and transaction has sufficient confirmations.'
-                };
-                
-            default:
-                console.error(`PayRef verification failed: ${result.message}`);
-                return {
-                    success: false,
-                    message: result.message
-                };
-        }
-    } catch (error) {
-        console.error('PayRef verification error:', error);
-        return {
-            success: false,
-            message: 'Internal verification error'
-        };
-    }
-}
+    const result = await verifier.verifyPayRef(payrefHex);
 
-// Customer support integration
-async function creditCustomerAccount(customerId, amount, payrefHex) {
-    // Check if already credited to prevent double-spending
-    const existingCredit = await checkExistingPayRefCredit(payrefHex);
-    if (existingCredit) {
-        throw new Error(`PayRef ${payrefHex} already credited`);
+    switch (result.status) {
+        case 'VERIFIED': {
+            const account = await creditCustomerAccount(result.transaction);
+            return {
+                success: account !== null,
+                creditedAccount: account,
+                message: account
+                    ? `Deposit ${result.tx_id} credited to account ${account}`
+                    : 'Deposit already credited, or its payment id matches no account (flagged for review)',
+                details: result
+            };
+        }
+        case 'INSUFFICIENT_CONFIRMATIONS':
+        case 'REORGED':
+            return { success: false, message: result.message, details: result };
+        case 'DATA_LOSS':
+            await escalateToOperator(payrefHex, result.message); // see the DATA_LOSS procedure under "Lookup errors"
+            return { success: false, message: 'Escalated to the wallet operator', details: result };
+        default:
+            return { success: false, message: result.message, details: result };
     }
-    
-    // Credit the account
-    await updateCustomerBalance(customerId, amount);
-    
-    // Log the PayRef for audit trail
-    await logPayRefCredit({
-        customerId,
-        payrefHex,
-        amount,
-        timestamp: new Date(),
-        verifiedBy: 'automated-system'
-    });
-    
-    console.log(`Credited ${amount} XTR to customer ${customerId} using PayRef ${payrefHex}`);
 }
 ```
 
@@ -920,73 +901,27 @@ Integrate PayRef verification into your customer support system:
 ```javascript
 // Customer support dashboard integration
 class CustomerSupportDashboard {
-    
-    async handlePaymentInquiry(ticketId, customerId, payrefHex) {
-        const verifier = new PayRefVerificationService('localhost:18143');
-        const verification = await verifier.verifyPayRef(payrefHex);
-        
-        // Log the support inquiry
+
+    async handlePaymentInquiry(ticketId, payrefHex) {
+        const outcome = await handleCustomerPayRefInquiry(payrefHex);
+
+        // Log the support inquiry, including which account (if any) was credited
         await this.logSupportInquiry({
             ticketId,
-            customerId,
             payrefHex,
             timestamp: new Date(),
-            verificationResult: verification
+            creditedAccount: outcome.creditedAccount,
+            outcome
         });
-        
-        // Generate appropriate response
-        const response = this.generateSupportResponse(verification);
-        
-        // Update ticket with resolution
+
         await this.updateSupportTicket(ticketId, {
-            status: verification.status === 'VERIFIED' ? 'resolved' : 'pending',
-            response: response,
-            payrefVerification: verification
+            status: outcome.success ? 'resolved' : 'pending',
+            response: outcome.success
+                ? `Deposit credited to account ${outcome.creditedAccount}.`
+                : outcome.message
         });
-        
-        return response;
-    }
-    
-    generateSupportResponse(verification) {
-        switch (verification.status) {
-            case 'VERIFIED':
-                return {
-                    template: 'payment_confirmed',
-                    message: `Your payment has been verified and your account has been credited with ${verification.amount} XTR. 
-                             Transaction was confirmed in block ${verification.blockHeight} with ${verification.confirmations} confirmations.`,
-                    actionTaken: 'account_credited',
-                    nextSteps: 'Your balance should now reflect the deposit.'
-                };
-                
-            case 'INSUFFICIENT_CONFIRMATIONS':
-                return {
-                    template: 'waiting_confirmations',
-                    message: `Your payment has been found but is waiting for more confirmations. 
-                             Currently has ${verification.confirmations}/${verification.requiredConfirmations} confirmations. 
-                             Estimated time: ${verification.blocksRemaining * 2} minutes.`,
-                    actionTaken: 'monitoring',
-                    nextSteps: 'We will automatically credit your account once sufficient confirmations are reached.'
-                };
-                
-            case 'NOT_FOUND':
-                return {
-                    template: 'payment_not_found',
-                    message: `We could not find a payment matching your PayRef. Please check:
-                             1. PayRef was copied correctly from your wallet
-                             2. Payment has at least 5 confirmations  
-                             3. You sent to the correct exchange address`,
-                    actionTaken: 'investigation_needed',
-                    nextSteps: 'Please provide additional transaction details or contact advanced support.'
-                };
-                
-            default:
-                return {
-                    template: 'technical_error',
-                    message: 'There was a technical error verifying your payment. Our technical team has been notified.',
-                    actionTaken: 'escalated',
-                    nextSteps: 'A specialist will review your case within 24 hours.'
-                };
-        }
+
+        return outcome;
     }
 }
 ```
@@ -1000,6 +935,8 @@ lookup as described in Section 9: it is not "not found", and retrying will not c
 
 ```javascript
 // Automated PayRef monitoring system
+const MAX_ATTEMPTS = 10; // bounded retries for a wallet-side fault before alerting
+
 class AutomatedPayRefProcessor {
     constructor(walletGrpcEndpoint, databaseConnection) {
         this.verifier = new PayRefVerificationService(walletGrpcEndpoint);
@@ -1045,26 +982,39 @@ class AutomatedPayRefProcessor {
      */
     async processSinglePayRef(pendingPayRef) {
         try {
-            const verification = await this.verifier.verifyPayRef(
-                pendingPayRef.payrefHex, 
-                pendingPayRef.requiredConfirmations
-            );
+            const verification = await this.verifier.verifyPayRef(pendingPayRef.payrefHex);
             
             switch (verification.status) {
                 case 'VERIFIED':
                     await this.handleVerifiedPayRef(pendingPayRef, verification);
                     break;
-                    
+
                 case 'INSUFFICIENT_CONFIRMATIONS':
+                case 'REORGED':
                     await this.updatePendingPayRef(pendingPayRef, verification);
                     break;
-                    
+
                 case 'NOT_FOUND':
                     await this.handleNotFoundPayRef(pendingPayRef);
                     break;
-                    
+
+                case 'DATA_LOSS':
+                    // Terminal: retrying every 30 seconds will not change it
+                    await escalateToOperator(pendingPayRef.payrefHex, verification.message);
+                    await this.db.removePendingPayRef(pendingPayRef.id);
+                    break;
+
+                case 'RETRY':
+                    // A wallet-side fault: retry a bounded number of times, then alert
+                    if ((await this.db.incrementPayRefAttempts(pendingPayRef.id)) >= MAX_ATTEMPTS) {
+                        await escalateToOperator(pendingPayRef.payrefHex, verification.message);
+                        await this.db.removePendingPayRef(pendingPayRef.id);
+                    }
+                    break;
+
                 default:
-                    console.error(`Unexpected verification status: ${verification.status}`);
+                    // INVALID_FORMAT, NOT_A_DEPOSIT: nothing to wait for
+                    await this.db.removePendingPayRef(pendingPayRef.id);
             }
         } catch (error) {
             console.error(`Error processing PayRef ${pendingPayRef.payrefHex}:`, error);
@@ -1072,25 +1022,19 @@ class AutomatedPayRefProcessor {
     }
     
     async handleVerifiedPayRef(pendingPayRef, verification) {
-        // Credit customer account
-        await this.creditCustomerAccount(
-            pendingPayRef.customerId, 
-            verification.amount, 
-            pendingPayRef.payrefHex
-        );
-        
+        // Credit the account the transaction's payment id belongs to, deduped on tx_id
+        const account = await creditCustomerAccount(verification.transaction);
+
         // Remove from pending queue
         await this.db.removePendingPayRef(pendingPayRef.id);
-        
-        // Notify customer
-        await this.notifyCustomer(pendingPayRef.customerId, {
-            type: 'deposit_confirmed',
-            amount: verification.amount,
-            payref: pendingPayRef.payrefHex,
-            confirmations: verification.confirmations
-        });
-        
-        console.log(`Auto-processed PayRef: ${pendingPayRef.payrefHex} - ${verification.amount} XTR`);
+
+        if (account) {
+            await this.notifyCustomer(account, {
+                type: 'deposit_confirmed',
+                amount: verification.amount,
+                txId: verification.tx_id
+            });
+        }
     }
 }
 ```
@@ -1102,7 +1046,9 @@ class AutomatedPayRefProcessor {
 1. **Higher confirmation requirements**: Use 10+ confirmations for deposits vs. 5 for general use
 2. **Rate limiting**: Limit PayRef verification requests to prevent abuse
 3. **Audit logging**: Log all PayRef verifications with timestamps
-4. **Double-spend prevention**: Check for duplicate PayRef credits
+4. **Double-credit prevention**: Credit once per `tx_id`; a PayRef is a lookup handle, not a credit key. The PayRef
+   index also covers the wallet's own sent and change outputs, so a PayRef can resolve to a withdrawal: the inbound
+   direction check is what stops it being credited
 
 ### Customer Experience
 
