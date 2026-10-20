@@ -514,6 +514,8 @@ mod test {
 
         // Check that decryption succeeds and yields the original message
         let decrypted = expect_no_error(node_identity, message, true).await;
+        // Only a Join may be re-sent under its original header, so no other message keeps its received bytes
+        assert!(decrypted.raw_body.is_empty());
         assert_eq!(decrypted.decryption_result.unwrap(), plain_text);
     }
 

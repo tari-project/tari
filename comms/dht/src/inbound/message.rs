@@ -35,7 +35,7 @@ use tari_utilities::ByteArray;
 
 use crate::{
     dedup,
-    envelope::{DhtMessageFlags, DhtMessageHeader},
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType},
 };
 
 #[derive(Debug, Clone)]
@@ -137,8 +137,8 @@ pub struct DecryptedDhtMessage {
     pub is_already_forwarded: bool,
     /// The decrypted body, or `Err` if this node could not decrypt it (the bytes are in `raw_body`)
     pub decryption_result: Result<EnvelopeBody, ()>,
-    /// The body exactly as received. A message re-sent under its original header must carry these bytes, because
-    /// the header's signature covers them.
+    /// The body exactly as received, kept when it may be re-sent under its original header: on failure, or for a
+    /// Join. Empty otherwise. A re-sent message must carry these bytes, because the header's signature covers them.
     pub raw_body: Vec<u8>,
     pub dedup_hit_count: u32,
     pub dedup_hash: Vec<u8>,
@@ -161,8 +161,14 @@ impl DecryptedDhtMessage {
         authenticated_origin: Option<CommsPublicKey>,
         message: DhtInboundMessage,
     ) -> Self {
+        let dedup_hash = dedup::hash_inbound_message(&message).to_vec();
+        let raw_body = if message.dht_header.message_type == DhtMessageType::Join {
+            message.body
+        } else {
+            Vec::new()
+        };
         Self {
-            dedup_hash: dedup::hash_inbound_message(&message).to_vec(),
+            dedup_hash,
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin,
@@ -170,7 +176,7 @@ impl DecryptedDhtMessage {
             is_saf_message: message.is_saf_message,
             is_already_forwarded: false,
             decryption_result: Ok(message_body),
-            raw_body: message.body,
+            raw_body,
             dedup_hit_count: message.dedup_hit_count,
         }
     }
