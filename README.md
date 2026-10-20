@@ -231,10 +231,19 @@ services:
 
 The image runs with `/var/tari` as the Tari home directory. Mounting per application (`./data/node:/var/tari/node`)
 ensures application files and identity key stores remain isolated under the node base path. If custom configuration
-is needed, a config file can also be mounted at `/var/tari/config/config.toml`.
+is needed, a config file can also be mounted at `/var/tari/config/config.toml`, or configuration overrides can be passed
+directly via command arguments (for example, `-p base_node.grpc_address=0.0.0.0:18142`).
 
 Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default, so
 publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0`.
+
+On Linux, create the host directory before running `docker compose up` so Docker does not create it owned by `root`:
+
+```sh
+mkdir -p ./data/node  # creates directory as your user (UID 1000) so the container can write to it
+```
+
+If the directory was already created by Docker as root, adjust ownership with `sudo chown -R 1000:1000 ./data/node`. (On macOS and Windows with Docker Desktop, filesystem permissions are mapped automatically.)
 
 Start the service with `docker compose up -d` and check it with `docker compose ps`. To reach the console, find the
 container ID with `docker ps` and run `docker attach <container-id>`.

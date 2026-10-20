@@ -53,5 +53,5 @@ cd "${TARI_BASE}" || {
 }
 
 echo "Starting ${APP_NAME} ..."
-echo " > command: ${APP_EXEC} --config ${TARI_CONFIG} --base-path ${TARI_BASE} ${@} <"
-exec ${APP_EXEC} --config ${TARI_CONFIG} --base-path ${TARI_BASE} ${@} || exit 1
+echo " > command: ${APP_EXEC} --config ${TARI_CONFIG} --base-path ${TARI_BASE} \"$@\" <"
+exec "${APP_EXEC}" --config "${TARI_CONFIG}" --base-path "${TARI_BASE}" "$@" || exit 1
