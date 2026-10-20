@@ -729,9 +729,27 @@ fn scrub_freed_pages(conn: &mut SqliteConnection) -> Result<(), WalletStorageErr
 
     // Neither statement may run inside a transaction
     conn.batch_execute("VACUUM;")?;
-    conn.batch_execute("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    // A checkpoint blocked by a reader is not an error, it is reported in the result row
+    let checkpoint: WalCheckpoint = diesel::sql_query("PRAGMA wal_checkpoint(TRUNCATE);").get_result(conn)?;
+    if checkpoint.busy != 0 || checkpoint.log != checkpoint.checkpointed {
+        return Err(WalletStorageError::UnexpectedResult(format!(
+            "The write-ahead log was not fully checkpointed (busy {}, {} of {} frames)",
+            checkpoint.busy, checkpoint.checkpointed, checkpoint.log
+        )));
+    }
 
     Ok(())
+}
+
+/// The result row of `PRAGMA wal_checkpoint`
+#[derive(QueryableByName)]
+struct WalCheckpoint {
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    busy: i32,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    log: i32,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    checkpointed: i32,
 }
 
 /// Scrub the file if a migration left the scrub pending. A failed scrub does not fail the open: the marker stays set
@@ -1647,6 +1665,40 @@ mod test {
         WalletSettingSql::new(DbKey::ScrubPending, "1".to_string())
             .set(&mut conn)
             .unwrap();
+        WalletSqliteDatabase::new(connection, "scrub".to_string().into()).unwrap();
+        assert!(
+            WalletSettingSql::get(&DbKey::ScrubPending, &mut conn)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_scrub_blocked_by_a_reader_stays_pending() {
+        use diesel::connection::SimpleConnection;
+
+        let db_tempdir = tempdir().unwrap();
+        let db_path = format!("{}/{}.sqlite3", db_tempdir.path().to_str().unwrap(), string(8));
+        let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
+        WalletSqliteDatabase::new(connection.clone(), "scrub".to_string().into()).unwrap();
+        let mut conn = connection.get_pooled_connection().unwrap();
+        WalletSettingSql::new(DbKey::ScrubPending, "1".to_string())
+            .set(&mut conn)
+            .unwrap();
+
+        // A reader holding a read transaction stops the write-ahead log from being checkpointed
+        let mut reader = connection.get_pooled_connection().unwrap();
+        reader
+            .batch_execute("BEGIN; SELECT count(*) FROM wallet_settings;")
+            .unwrap();
+        WalletSqliteDatabase::new(connection.clone(), "scrub".to_string().into()).unwrap();
+        assert!(
+            WalletSettingSql::get(&DbKey::ScrubPending, &mut conn)
+                .unwrap()
+                .is_some()
+        );
+
+        reader.batch_execute("COMMIT;").unwrap();
         WalletSqliteDatabase::new(connection, "scrub".to_string().into()).unwrap();
         assert!(
             WalletSettingSql::get(&DbKey::ScrubPending, &mut conn)
