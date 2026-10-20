@@ -29,6 +29,7 @@ use minotari_app_grpc::{
         Block,
         NewBlockTemplate,
         NewBlockTemplateRequest,
+        OutputType,
         base_node_client::BaseNodeClient,
         sha_p2_pool_client::ShaP2PoolClient,
     },
@@ -37,7 +38,9 @@ use tari_common::configuration::{
     Network,
     bootstrap::{ApplicationType, grpc_default_port},
 };
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::tari_address::{TariAddress, TariAddressFeatures};
+use tari_script::{Opcode, TariScript, push_pubkey_script};
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tonic::{
     Code,
@@ -193,4 +196,219 @@ pub async fn verify_base_node_grpc_mining_responses(
         return Err("'submit_block'".to_string());
     }
     Ok(())
+}
+
+/// Validate that a p2pool block template contains at least one coinbase output paying the configured
+/// `wallet_payment_address`.
+///
+/// Refuses to mine and logs at `error` level with both the configured address and the found coinbase recipient
+/// addresses if no coinbase output pays `wallet_payment_address`.
+///
+/// When an output pays `wallet_payment_address`, logs the coinbase value paid at `info` level and returns the total
+/// value in MicroMinotari.
+pub fn verify_p2pool_block_coinbase(
+    block: &Block,
+    wallet_payment_address: &TariAddress,
+    log_target: &str,
+) -> Result<u64, String> {
+    let body = block
+        .body
+        .as_ref()
+        .ok_or_else(|| "P2Pool block is missing aggregate body".to_string())?;
+
+    let expected_script = push_pubkey_script(wallet_payment_address.public_spend_key());
+    let expected_script_bytes = expected_script.to_bytes();
+
+    let mut found_recipients = Vec::new();
+    let mut total_paid_value = 0u64;
+    let mut has_matching_coinbase = false;
+    let mut coinbase_count = 0usize;
+
+    for output in &body.outputs {
+        let is_coinbase = output
+            .features
+            .as_ref()
+            .map(|f| f.output_type == OutputType::Coinbase as u32)
+            .unwrap_or(false);
+
+        if !is_coinbase {
+            continue;
+        }
+
+        coinbase_count = coinbase_count.saturating_add(1);
+
+        let matches_address = if output.script == expected_script_bytes {
+            true
+        } else if let Ok(script) = TariScript::from_bytes(&output.script) {
+            matches!(script.as_slice(), [Opcode::PushPubKey(pk)] if **pk == *wallet_payment_address.public_spend_key())
+        } else {
+            false
+        };
+
+        if matches_address {
+            has_matching_coinbase = true;
+            total_paid_value = total_paid_value.saturating_add(output.minimum_value_promise);
+        } else if let Ok(script) = TariScript::from_bytes(&output.script) {
+            if let [Opcode::PushPubKey(pk)] = script.as_slice() {
+                let addr_str = match TariAddress::new_single_address(
+                    (**pk).clone(),
+                    wallet_payment_address.network(),
+                    TariAddressFeatures::create_one_sided_only(),
+                ) {
+                    Ok(addr) => addr.to_base58(),
+                    Err(_) => pk.to_hex(),
+                };
+                found_recipients.push(addr_str);
+            } else {
+                found_recipients.push(format!("script({script})"));
+            }
+        } else {
+            found_recipients.push("malformed_script".to_string());
+        }
+    }
+
+    if coinbase_count == 0 {
+        let err_msg = format!(
+            "P2Pool block has no coinbase outputs; expected payment to wallet_payment_address '{}'",
+            wallet_payment_address.to_base58()
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    if !has_matching_coinbase {
+        let err_msg = format!(
+            "P2Pool block coinbase outputs do not pay configured wallet_payment_address '{}'. Found coinbase recipients: [{}]",
+            wallet_payment_address.to_base58(),
+            found_recipients.join(", ")
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    log::info!(
+        target: log_target,
+        "Coinbase payout verified for wallet_payment_address {}: {} MicroMinotari",
+        wallet_payment_address.to_base58(),
+        total_paid_value
+    );
+
+    Ok(total_paid_value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use minotari_app_grpc::tari_rpc::{AggregateBody, OutputFeatures, TransactionOutput};
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+
+    fn make_test_address() -> TariAddress {
+        TariAddress::default()
+    }
+
+    fn make_other_address() -> TariAddress {
+        let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(42u64));
+        TariAddress::new_single_address(key, TariAddress::default().network(), TariAddressFeatures::create_one_sided_only()).unwrap()
+    }
+
+    fn make_coinbase_output(address: &TariAddress, value: u64) -> TransactionOutput {
+        let script = push_pubkey_script(address.public_spend_key());
+        TransactionOutput {
+            features: Some(OutputFeatures {
+                output_type: OutputType::Coinbase as u32,
+                maturity: 10,
+                coinbase_extra: vec![],
+                sidechain_feature: None,
+                range_proof_type: 1, // RevealedValue
+                version: 0,
+            }),
+            commitment: vec![0u8; 32],
+            range_proof: None,
+            hash: vec![],
+            script: script.to_bytes(),
+            sender_offset_public_key: vec![0u8; 32],
+            metadata_signature: None,
+            covenant: vec![],
+            version: 0,
+            encrypted_data: vec![],
+            minimum_value_promise: value,
+            payment_reference: vec![],
+        }
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_success() {
+        let address = make_test_address();
+        let coinbase = make_coinbase_output(&address, 1_500_000);
+        let block = Block {
+            header: None,
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs: vec![coinbase],
+                kernels: vec![],
+            }),
+        };
+
+        let result = verify_p2pool_block_coinbase(&block, &address, "test");
+        assert_eq!(result.unwrap(), 1_500_000);
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_wrong_address() {
+        let configured_address = make_test_address();
+        let attacker_address = make_other_address();
+        let coinbase = make_coinbase_output(&attacker_address, 1_500_000);
+        let block = Block {
+            header: None,
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs: vec![coinbase],
+                kernels: vec![],
+            }),
+        };
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(&configured_address.to_base58()));
+        assert!(err.contains(&attacker_address.to_base58()));
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_multiple_coinbases() {
+        let configured_address = make_test_address();
+        let other_address = make_other_address();
+        let block = Block {
+            header: None,
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs: vec![
+                    make_coinbase_output(&other_address, 500_000),
+                    make_coinbase_output(&configured_address, 2_000_000),
+                ],
+                kernels: vec![],
+            }),
+        };
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert_eq!(result.unwrap(), 2_000_000);
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_no_coinbase_outputs() {
+        let configured_address = make_test_address();
+        let block = Block {
+            header: None,
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs: vec![],
+                kernels: vec![],
+            }),
+        };
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("no coinbase outputs"));
+    }
 }
