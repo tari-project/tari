@@ -525,7 +525,8 @@ mod test {
         save_as_json(&path, &node_identity).unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
-        let tampered = content.replace("updated_at: \"2026", "updated_at: \"2025");
+        let tampered = content.replace("18141", "18142");
+        assert_ne!(content, tampered, "Tampered content should differ from original");
         fs::write(&path, tampered.as_bytes()).unwrap();
 
         let err = load_node_identity(&path, TransportType::Tcp).unwrap_err();
