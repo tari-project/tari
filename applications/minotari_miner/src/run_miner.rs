@@ -490,8 +490,7 @@ async fn get_new_block_p2pool_node(
         .into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;
     let block = new_block_result.block.ok_or_else(|| err_empty("block response"))?;
-    verify_p2pool_block_coinbase(&block, wallet_payment_address, LOG_TARGET)
-        .map_err(MinerError::CoinbaseError)?;
+    verify_p2pool_block_coinbase(&block, wallet_payment_address, LOG_TARGET).map_err(MinerError::CoinbaseError)?;
     Ok(GetNewBlockResponse {
         block,
         target_difficulty: block_result.target_difficulty,
@@ -680,20 +679,25 @@ async fn validate_tip(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use minotari_app_grpc::tari_rpc::{
+        AggregateBody,
+        GetNewBlockResponse as GrpcGetNewBlockResponse,
+        GetNewBlockResult,
+        GetTipInfoRequest,
+        GetTipInfoResponse,
+        SubmitBlockRequest,
+        SubmitBlockResponse,
         sha_p2_pool_server::{ShaP2Pool, ShaP2PoolServer},
-        AggregateBody, GetNewBlockResponse as GrpcGetNewBlockResponse, GetNewBlockResult, GetTipInfoRequest,
-        GetTipInfoResponse, OutputFeatures, OutputType, SubmitBlockRequest, SubmitBlockResponse, TransactionOutput,
     };
     use tari_common_types::{
         grpc_authentication::GrpcAuthentication,
         tari_address::TariAddressFeatures,
         types::{CompressedPublicKey, PrivateKey},
     };
-    use tari_script::push_pubkey_script;
     use tokio::sync::Mutex;
     use tonic::{Request, Response, Status};
+
+    use super::*;
 
     struct MockShaP2Pool {
         response: Arc<Mutex<Option<GrpcGetNewBlockResponse>>>,
@@ -735,34 +739,26 @@ mod tests {
 
     fn make_other_address() -> TariAddress {
         let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(42u64));
-        TariAddress::new_single_address(key, TariAddress::default().network(), TariAddressFeatures::create_one_sided_only()).unwrap()
+        TariAddress::new_single_address(
+            key,
+            TariAddress::default().network(),
+            TariAddressFeatures::create_one_sided_only(),
+        )
+        .unwrap()
     }
 
     fn make_p2pool_block(coinbase_address: &TariAddress, value: u64) -> GrpcGetNewBlockResponse {
-        let script = push_pubkey_script(coinbase_address.public_spend_key());
-        let output = TransactionOutput {
-            features: Some(OutputFeatures {
-                output_type: OutputType::Coinbase as u32,
-                maturity: 10,
-                coinbase_extra: vec![],
-                sidechain_feature: None,
-                range_proof_type: 1, // RevealedValue
-                version: 0,
-            }),
-            commitment: vec![0u8; 32],
-            range_proof: None,
-            hash: vec![],
-            script: script.to_bytes(),
-            sender_offset_public_key: vec![0u8; 32],
-            metadata_signature: None,
-            covenant: vec![],
-            version: 0,
-            encrypted_data: vec![],
-            minimum_value_promise: value,
-            payment_reference: vec![],
+        let output = minotari_app_utilities::parse_miner_input::make_test_coinbase_output(coinbase_address, value);
+        let block_output_mr =
+            minotari_app_utilities::parse_miner_input::calculate_block_output_mr_from_grpc_outputs(&[output.clone()])
+                .unwrap()
+                .to_vec();
+        let header = minotari_app_grpc::tari_rpc::BlockHeader {
+            block_output_mr,
+            ..Default::default()
         };
         let block = Block {
-            header: None,
+            header: Some(header),
             body: Some(AggregateBody {
                 inputs: vec![],
                 outputs: vec![output],
@@ -788,29 +784,31 @@ mod tests {
         let mock = MockShaP2Pool {
             response: Arc::new(Mutex::new(Some(response))),
         };
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        drop(listener);
 
         let server_handle = tokio::spawn(async move {
-            let _ = tonic::transport::Server::builder()
+            if let Err(e) = tonic::transport::Server::builder()
                 .add_service(ShaP2PoolServer::new(mock))
-                .serve(addr)
-                .await;
+                .serve_with_incoming(tonic::transport::server::TcpIncoming::from(listener))
+                .await
+            {
+                eprintln!("Mock p2pool server error: {e}");
+            }
         });
 
         let mut client = None;
         for _ in 0..50 {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            if let Ok(endpoint) = tonic::transport::Endpoint::from_shared(format!("http://{addr}")) {
-                if let Ok(channel) = endpoint.connect().await {
-                    let c = ShaP2PoolClient::with_interceptor(
-                        channel,
-                        ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
-                    );
-                    client = Some(c);
-                    break;
-                }
+            if let Ok(endpoint) = tonic::transport::Endpoint::from_shared(format!("http://{addr}")) &&
+                let Ok(channel) = endpoint.connect().await
+            {
+                let c = ShaP2PoolClient::with_interceptor(
+                    channel,
+                    ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
+                );
+                client = Some(c);
+                break;
             }
         }
         (client.expect("Failed to connect to mock p2pool server"), server_handle)
@@ -826,7 +824,10 @@ mod tests {
         let config = MinerConfig::default();
 
         let result = get_new_block_p2pool_node(&config, &mut client, &configured_address).await;
-        assert!(result.is_err(), "Expected miner to reject block with wrong coinbase address");
+        assert!(
+            result.is_err(),
+            "Expected miner to reject block with wrong coinbase address"
+        );
         match result.unwrap_err() {
             MinerError::CoinbaseError(err) => {
                 assert!(err.contains(&configured_address.to_base58()));
@@ -847,7 +848,10 @@ mod tests {
         let config = MinerConfig::default();
 
         let result = get_new_block_p2pool_node(&config, &mut client, &configured_address).await;
-        assert!(result.is_ok(), "Expected miner to accept block with matching coinbase address");
+        assert!(
+            result.is_ok(),
+            "Expected miner to accept block with matching coinbase address"
+        );
 
         server_handle.abort();
     }
