@@ -1063,7 +1063,7 @@ checksum = "68578f196d2a33ff61b27fae256c3164f65e36382648e30666dde05b8cc9dfdf"
 dependencies = [
  "async-trait",
  "convert_case 0.6.0",
- "json5",
+ "json5 0.4.1",
  "nom 7.1.3",
  "pathdiff",
  "ron",
@@ -3778,6 +3778,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "json5"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6efe947c4a8f66438994e559a1e1309ae2a315cabf67476f155e27281f11cbc1"
+dependencies = [
+ "serde",
+ "ucd-trie",
+]
+
+[[package]]
 name = "jsonrpc"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4319,9 +4329,9 @@ name = "minotari_app_utilities"
 version = "6.2.0-pre.2"
 dependencies = [
  "clap",
- "dialoguer 0.10.4",
+ "dialoguer 0.11.0",
  "futures 0.3.32",
- "json5",
+ "json5 1.3.3",
  "log",
  "minotari_app_grpc",
  "rand 0.10.1",
@@ -4329,12 +4339,14 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_comms",
+ "tari_crypto",
  "tari_features",
  "tari_p2p",
  "tari_utilities",
  "thiserror 2.0.21",
  "tokio",
  "tonic 0.13.1",
+ "zeroize",
 ]
 
 [[package]]
