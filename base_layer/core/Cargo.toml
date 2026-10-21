@@ -36,6 +36,7 @@ tari_p2p = { workspace = true }
 tari_script = { workspace = true }
 tari_service_framework = { workspace = true }
 tari_shutdown = { workspace = true }
+tari_sidechain = { workspace = true }
 tari_storage = { workspace = true }
 tari_transaction_components = { workspace = true }
 tari_test_utils = { workspace = true }

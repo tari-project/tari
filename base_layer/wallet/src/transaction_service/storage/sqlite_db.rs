@@ -34,7 +34,7 @@ use tari_common_sqlite::{
     util::{diesel_ext::ExpectedRowsExtension, retry::retry_db},
 };
 use tari_common_types::{
-    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
+    burn_proof::PartialBurnClaimProof,
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     payment_reference::{PaymentReference, generate_payment_reference},
     tari_address::TariAddress,
@@ -47,6 +47,7 @@ use tari_common_types::{
     },
     types::{BlockHash, CompressedPublicKey, CompressedSignature, FixedHash, PrivateKey},
 };
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     MicroMinotari,
     transaction_components::{EncryptedData, MemoField, Transaction, TransactionKernel},

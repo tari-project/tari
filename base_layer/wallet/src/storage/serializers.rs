@@ -70,10 +70,7 @@ mod tests {
 
     #[test]
     fn burn_output_proof_bincode_round_trips() {
-        use tari_common_types::{
-            burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
-            types::FixedHash,
-        };
+        use tari_sidechain::{BurnOutputProof, FixedHash, MmrInclusionProof, OutputHashPreimage};
 
         let mmr_proof = MmrInclusionProof {
             leaf_index: 1,

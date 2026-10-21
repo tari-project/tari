@@ -49,7 +49,6 @@ use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
@@ -75,6 +74,7 @@ use tari_node_components::blocks::{
     HistoricalBlock,
     NewBlockTemplate,
 };
+use tari_sidechain::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage};
 use tari_transaction_components::{
     BanPeriod,
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
@@ -2414,11 +2414,11 @@ where B: BlockchainBackend
         );
 
         Ok(BurnOutputProof {
-            block_hash,
+            block_hash: block_hash.into(),
             block_height: header.height,
             output: OutputHashPreimage::from(burn_output),
             normal_output_proof: mmr_inclusion_proof(&normal_output_mmr, burn_leaf_index)?,
-            normal_output_mr,
+            normal_output_mr: normal_output_mr.into(),
             block_output_proof: mmr_inclusion_proof(&block_output_mmr, normal_output_mr_leaf_index)?,
         })
     }
@@ -2428,8 +2428,12 @@ type OutputMmr = MerkleMountainRange<InputMmrHasherBlake256, Vec<Hash>>;
 
 fn mmr_inclusion_proof(mmr: &OutputMmr, leaf_index: usize) -> Result<MmrInclusionProof, ChainStorageError> {
     let proof = MerkleProof::for_leaf_node(mmr, LeafIndex(leaf_index))?;
-    let to_fixed_hashes =
-        |hashes: Vec<Hash>| -> Result<Vec<FixedHash>, _> { hashes.into_iter().map(FixedHash::try_from).collect() };
+    let to_fixed_hashes = |hashes: Vec<Hash>| -> Result<Vec<tari_sidechain::FixedHash>, _> {
+        hashes
+            .into_iter()
+            .map(|hash| FixedHash::try_from(hash).map(Into::into))
+            .collect()
+    };
     Ok(MmrInclusionProof {
         leaf_index: leaf_index as u64,
         mmr_size: proof.mmr_size as u64,

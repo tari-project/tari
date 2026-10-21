@@ -3,10 +3,11 @@
 
 use chacha20poly1305::XChaCha20Poly1305;
 use tari_common_types::{
-    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
+    burn_proof::PartialBurnClaimProof,
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},
     types::FixedHash,
 };
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     MicroMinotari,
     transaction_components::{EncryptedData, TransactionKernel},

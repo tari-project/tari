@@ -25,7 +25,6 @@
 use std::ops::Deref;
 
 use tari_common::configuration::Network;
-use tari_common_types::burn_proof::BurnOutputProof;
 use tari_core::{
     chain_storage::{
         BlockAddResult,
@@ -40,6 +39,7 @@ use tari_core::{
     validation::{DifficultyCalculator, mocks::MockValidator},
 };
 use tari_node_components::blocks::Block;
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     consensus::ConsensusConstantsBuilder,
     key_manager::KeyManager,
@@ -176,7 +176,7 @@ async fn generate_burn_output_proof() {
         for burn in block.block().body.outputs().iter().filter(|o| o.is_burned()) {
             num_burns += 1;
             let proof = db.generate_burn_output_proof(burn.commitment.clone()).await.unwrap();
-            assert_eq!(proof.block_hash, *block.hash());
+            assert_eq!(proof.block_hash.as_slice(), block.hash().as_slice());
             assert_eq!(proof.block_height, block.height());
             assert_eq!(proof.output.hash().unwrap(), burn.hash());
             proof.verify(&block.header().block_output_mr).unwrap();

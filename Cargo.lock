@@ -1754,7 +1754,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4274,12 +4274,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "minicbor"
-version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c12b4033ffaa92fbf9df03df38d19324f52bad130dd223f811734a8006dd2d69"
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4319,6 +4313,7 @@ dependencies = [
  "tari_max_size",
  "tari_node_components",
  "tari_script",
+ "tari_sidechain",
  "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
@@ -4390,7 +4385,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_features",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_p2p",
  "tari_script",
  "tari_shutdown",
@@ -4807,12 +4802,13 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_node_components",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
  "tari_shutdown",
+ "tari_sidechain",
  "tari_test_utils",
  "tari_transaction_components",
  "tari_transaction_key_manager",
@@ -4851,7 +4847,7 @@ dependencies = [
  "tari_comms",
  "tari_crypto",
  "tari_features",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_p2p",
  "tari_script",
  "tari_service_framework",
@@ -7831,8 +7827,9 @@ dependencies = [
  "subtle",
  "tari_common",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_max_size",
+ "tari_sidechain",
  "tari_utilities",
  "thiserror 2.0.21",
  "utoipa",
@@ -7998,7 +7995,7 @@ dependencies = [
  "tari_comms_rpc_macros",
  "tari_crypto",
  "tari_features",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_max_size",
  "tari_metrics",
  "tari_mmr",
@@ -8007,6 +8004,7 @@ dependencies = [
  "tari_script",
  "tari_service_framework",
  "tari_shutdown",
+ "tari_sidechain",
  "tari_storage",
  "tari_test_utils",
  "tari_transaction_components",
@@ -8059,6 +8057,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_hashing"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8c5dc9f7a9ae127a9b0df4da07a849ea165e9830cebccdfb618c72a611f40eb"
+dependencies = [
+ "blake2 0.10.6",
+ "borsh",
+ "digest 0.10.7",
+ "generic-array",
+ "tari_crypto",
+ "zeroize",
+]
+
+[[package]]
 name = "tari_integration_tests"
 version = "6.2.0-pre.2"
 dependencies = [
@@ -8106,15 +8118,15 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "6.2.0-pre.2"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a92810061b6e388e01e6402527ae7777bfd713ddf749fb992af625e552fbf3a4"
 dependencies = [
  "borsh",
  "digest 0.10.7",
- "minicbor",
  "serde",
- "serde_json",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0",
  "thiserror 2.0.21",
 ]
 
@@ -8202,7 +8214,7 @@ dependencies = [
  "primitive-types",
  "serde",
  "tari_common_types",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
@@ -8288,16 +8300,18 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "6.2.0-pre.2"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "516db82216d890a5b0bb0eb7c9a799dcf07a95f9eb9bd773ecc2781a1142de2d"
 dependencies = [
+ "base64 0.22.1",
  "borsh",
+ "digest 0.10.7",
  "hex",
  "log",
  "serde",
- "serde_json",
- "tari_common_types",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0",
  "tari_jellyfish",
  "tari_utilities",
  "thiserror 2.0.21",
@@ -8367,10 +8381,11 @@ dependencies = [
  "tari_common",
  "tari_common_types",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_max_size",
  "tari_mmr",
  "tari_script",
+ "tari_sidechain",
  "tari_test_utils",
  "tari_utilities",
  "thiserror 2.0.21",
@@ -8403,7 +8418,7 @@ dependencies = [
  "tari_common_sqlite",
  "tari_common_types",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_script",
  "tari_service_framework",
  "tari_transaction_components",
