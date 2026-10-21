@@ -23,3 +23,4 @@
 pub mod crossterm_events;
 pub mod db;
 pub mod events;
+pub mod signal_handler;

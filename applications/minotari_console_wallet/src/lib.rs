@@ -113,6 +113,7 @@ pub fn run_wallet(shutdown: &mut Shutdown, runtime: Runtime, config: &mut Applic
         libtor_data_dir: None,
         skip_recovery: false,
         print_env: false,
+        install_grpc_signal_handler: true,
     };
 
     run_wallet_with_cli(shutdown, runtime, config, cli)
@@ -246,13 +247,18 @@ pub fn run_wallet_with_cli(
 
     let result = match wallet_mode {
         WalletMode::Tui => tui_mode(handle, &config.wallet, wallet.clone()),
-        WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone()),
+        WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone(), cli.install_grpc_signal_handler),
         WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, wallet.clone(), path),
         WalletMode::Command(command) => command_mode(handle, &cli, &config.wallet, wallet.clone(), *command),
 
-        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
-            recovery_mode(handle, &config.wallet, wallet_mode, wallet.clone(), cli.skip_recovery)
-        },
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(
+            handle,
+            &config.wallet,
+            wallet_mode,
+            wallet.clone(),
+            cli.skip_recovery,
+            cli.install_grpc_signal_handler,
+        ),
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
             "Invalid wallet mode - are you trying too many command options at once?",
