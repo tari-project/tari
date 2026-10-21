@@ -12,7 +12,6 @@ wallet*_data
 *.iml
 .vs/
 *.userprefs
-.vscode/
 *.code-workspace
 .zed/
 tags
@@ -41,6 +40,7 @@ lcov.info
 *.sqlite3
 /base_layer/wallet_ffi/build.config
 /base_layer/wallet_ffi/logs/
+temp_auto_push.bat
 /base_layer/wallet_ffi/.cargo/config
 keys.json
 node_modules
@@ -83,3 +83,5 @@ docker-compose.yml
 entrypoint.sh
 
 .cocoindex_code/
+.gitignore
+branch_structure.json
