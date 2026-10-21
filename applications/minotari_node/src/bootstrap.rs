@@ -23,7 +23,7 @@
 use std::{cmp, str::FromStr, sync::Arc};
 
 use log::*;
-use minotari_app_utilities::{consts, identity_management, identity_management::load_from_json};
+use minotari_app_utilities::{consts, identity_management, identity_management::load_tor_identity};
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -139,8 +139,7 @@ where B: BlockchainBackend + 'static
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
-        let tor_identity = load_from_json(&base_node_config.tor_identity_file)
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        let tor_identity = load_tor_identity(&base_node_config.tor_identity_file)?;
         p2p_config.transport.tor.identity = tor_identity;
 
         let user_agent = format!("tari/basenode/{}", consts::APP_VERSION_NUMBER);

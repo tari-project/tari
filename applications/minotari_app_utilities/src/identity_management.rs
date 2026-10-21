@@ -74,13 +74,9 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             }
             Ok(Arc::new(id))
         },
-        Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
-            ExitCode::ConfigError,
-            format!(
-                "{path} has incorrect permissions. You can update the identity file with the correct permissions \
-                 using 'chmod 600 {path}', or delete the identity file and a new one will be created on next start",
-                path = identity_file.as_ref().to_string_lossy()
-            ),
+        Err(IdentityError::InvalidPermissions) => Err(invalid_permissions_error(
+            identity_file.as_ref(),
+            "a new one will be created on next start",
         )),
         Err(e) => {
             warn!(target: LOG_TARGET, "Failed to load node identity: {e}");
@@ -236,6 +232,8 @@ pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Op
         return Ok(None);
     }
 
+    check_identity_file(&path)?;
+
     let contents = fs::read_to_string(path)?;
     let object = json5::from_str(&contents)?;
     Ok(Some(object))
@@ -247,11 +245,36 @@ pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Op
 /// `path` - Path to the `TorIdentity` JSON file
 ///
 /// ## Returns
-/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist,
-pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>, IdentityError> {
-    check_identity_file(&path)?;
-    let identity = load_from_json(path)?;
-    Ok(identity)
+/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist, the exit code indicating the
+/// reason on failure.
+pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>, ExitError> {
+    match load_from_json(&path) {
+        Ok(identity) => Ok(identity),
+        Err(IdentityError::InvalidPermissions) => Err(invalid_permissions_error(
+            path.as_ref(),
+            "a new one, with a new onion address, will be created on next start",
+        )),
+        Err(e) => Err(ExitError::new(
+            ExitCode::ConfigError,
+            format!(
+                "Could not load Tor identity from {}: {e}",
+                path.as_ref().to_string_lossy()
+            ),
+        )),
+    }
+}
+
+/// The error returned when an identity file has permissions other than 0600, telling the user how to fix it.
+/// `recreated` describes what happens if the user deletes the file instead.
+fn invalid_permissions_error(path: &Path, recreated: &str) -> ExitError {
+    ExitError::new(
+        ExitCode::ConfigError,
+        format!(
+            "{path} has incorrect permissions. You can update the identity file with the correct permissions using \
+             'chmod 600 {path}', or delete the identity file and {recreated}",
+            path = path.to_string_lossy()
+        ),
+    )
 }
 
 /// Saves the identity as json at a given path with 0600 file permissions (UNIX-only), creating it if it does not
@@ -427,5 +450,39 @@ mod test {
             tor_err_display.contains("Malformed identity file at line"),
             "expected line/column in Tor error, got: {tor_err_display}"
         );
+    }
+
+    #[test]
+    fn load_from_json_checks_permissions_and_handles_missing_file() {
+        let path = temp_path("perm_check");
+
+        // Missing file returns Ok(None)
+        let _unused = fs::remove_file(&path);
+        assert!(load_from_json::<_, TorIdentity>(&path).unwrap().is_none());
+        assert!(load_tor_identity(&path).unwrap().is_none());
+
+        // File with loose permissions (0644) returns Err(IdentityError::InvalidPermissions)
+        fs::write(&path, b"{}").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(matches!(
+            load_from_json::<_, TorIdentity>(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+        // The Tor loader reports the same actionable error as the node identity
+        let err = load_tor_identity(&path).unwrap_err();
+        assert!(matches!(err.exit_code, ExitCode::ConfigError));
+        let details = err.details.unwrap();
+        assert!(
+            details.contains(&format!("chmod 600 {}", path.to_string_lossy())),
+            "expected path and chmod hint, got: {details}"
+        );
+
+        // File with strict permissions (0600) succeeds to pass permission gate
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        // `{}` is not a valid TorIdentity, so loading must reach JSON parsing.
+        assert!(matches!(
+            load_from_json::<_, TorIdentity>(&path),
+            Err(IdentityError::Malformed { .. })
+        ));
     }
 }
