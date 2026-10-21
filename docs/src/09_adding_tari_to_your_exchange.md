@@ -399,25 +399,33 @@ const streamingProto = grpc.loadPackageDefinition(packageDefinition).tari.rpc;
 console.log(streamingProto);
 const client = new streamingProto.Wallet('localhost:18143', grpc.credentials.createInsecure());
 
+// Read the whole stream first, so the pass can handle the records in a fixed order
+function collectCompletedTransactions(client) {
+    return new Promise((resolve, reject) => {
+        const txs = [];
+        const call = client.GetCompletedTransactions({});
+        call.on('data', (response) => txs.push(response.transaction));
+        call.on('end', () => resolve(txs));
+        call.on('error', reject);
+    });
+}
+
 // One pass over the wallet's transactions; run it on a schedule
 async function runListenerPass() {
+    const txs = await collectCompletedTransactions(client);
     const state = await getWalletState(client); // fetched once per pass
-    const call = client.GetCompletedTransactions({});
-
-    call.on('data', async (response) => {
-        const tx = response.transaction;
+    // Sweeps first, so the balance gate already counts this pass's sweeps when it checks the credits
+    const outbound = txs.filter(tx => tx.direction === 'TRANSACTION_DIRECTION_OUTBOUND');
+    const inbound = txs.filter(tx => tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND');
+    for (const tx of [...outbound, ...inbound]) {
         try {
             // The shared functions below ignore anything they must not act on
-            await creditCustomerAccount(client, tx, state);
             await markSweptIfSpent(tx);
+            await creditCustomerAccount(client, tx, state);
         } catch (error) {
             console.error(`Transaction ${tx.tx_id} not processed, retried on the next pass:`, error);
         }
-    });
-
-    call.on('error', (err) => {
-        console.error('Stream error:', err);
-    });
+    }
 }
 ```
 
@@ -485,16 +493,32 @@ async function isDeepEnough(client, tx, state = null) {
     return BigInt(current.scanned_height) - BigInt(tx.mined_in_block_height) >= BigInt(REQUIRED_CONFIRMATIONS);
 }
 
-// Credited deposits that are not yet swept must be covered by what the wallet holds
-async function balanceCovers(state, extraAmount) {
+// Credited deposits that are not yet swept must be covered by what the wallet holds. A credit counts as swept here
+// once its outputs are inputs of any sweep that is not cancelled, even before the sweep confirms, because the wallet
+// stops holding those outputs as soon as the sweep spends them.
+async function owedAndHeld(state, extraAmount) {
     const b = state.balance;
     const held = BigInt(b.available_balance) + BigInt(b.timelocked_balance) + BigInt(b.pending_outgoing_balance);
     const owed = (await ledger.unsweptCreditTotal()) + BigInt(extraAmount);
-    if (owed > held) {
-        await haltCreditingAndAlert({ owed, held });
-        return false;
+    return { owed, held };
+}
+
+async function balanceCovers(client, state, extraAmount) {
+    if (await owedAndHeldCover(state, extraAmount)) {
+        return true;
     }
-    return true;
+    // The balance can move during a pass, for example when a sweep's inputs are marked spent: check again first
+    const fresh = await getWalletState(client);
+    if (await owedAndHeldCover(fresh, extraAmount)) {
+        return true;
+    }
+    await haltCreditingAndAlert(await owedAndHeld(fresh, extraAmount));
+    return false;
+}
+
+async function owedAndHeldCover(state, extraAmount) {
+    const { owed, held } = await owedAndHeld(state, extraAmount);
+    return owed <= held;
 }
 
 // Credit a deposit at most once. `tx` is a TransactionInfo from GetCompletedTransactions, GetTransactionInfo or
@@ -527,7 +551,7 @@ async function creditCustomerAccount(client, tx, state = null) {
         await flagUnmatchedDeposit(tx, `no account for payment id (${tx.status})`); // manual review
         return null;
     }
-    if (!(await balanceCovers(current, tx.amount))) {
+    if (!(await balanceCovers(client, current, tx.amount))) {
         return null;
     }
     // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef. The entry records the
@@ -542,16 +566,20 @@ async function creditCustomerAccount(client, tx, state = null) {
     return credited ? account : null;
 }
 
-// Outbound side of the listener: a credited deposit becomes withdrawable once every one of its output commitments
-// is an input of a confirmed transfer from this deposit wallet to your separate hot wallet
+// Outbound side of the listener. Any sweep that is not cancelled takes its inputs out of the balance gate's `owed`; a
+// credited deposit becomes withdrawable only once every one of its output commitments is an input of a confirmed
+// sweep from this deposit wallet to your separate hot wallet.
 async function markSweptIfSpent(tx) {
-    if (tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND' || tx.is_cancelled || !CONFIRMED_STATUSES.includes(tx.status)) {
+    if (tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND' || tx.is_cancelled) {
         return;
     }
     if (!(await isSweepToHotWallet(tx))) {
         return; // only sweeps to the hot wallet count, never a coin join to self
     }
-    await ledger.markWithdrawableIfAllSpent(tx.input_commitments);
+    await ledger.markSweepInputs(tx.input_commitments); // broadcast or mined: no longer owed by this wallet
+    if (CONFIRMED_STATUSES.includes(tx.status)) {
+        await ledger.markWithdrawableIfAllSpent(tx.input_commitments);
+    }
 }
 ```
 
@@ -565,9 +593,20 @@ wallet. Multisig, burn and non-standard outputs are never selected as inputs, so
 wait for the sweep. Sweep many inputs at once: the wallet selects the smallest outputs first, which can hold back large
 deposits.
 
+A wallet only records an outbound transaction for transactions it built or broadcast itself; when another wallet spends
+its outputs it just marks them spent. So build every sweep on the Monitoring Wallet the listener reads and broadcast it
+through that wallet: `PrepareOneSidedTransactionForSigning` on the Monitoring Wallet, sign the payload offline on the
+Main Wallet (`sign-one-sided-transaction`), then `BroadcastSignedOneSidedTransaction` on the Monitoring Wallet. The
+outbound record, with its `input_commitments`, then lands in the wallet the listener reads. (Alternatively, run
+`markSweptIfSpent` over the signing wallet's own `GetCompletedTransactions`.) A sweep sent any other way is never seen,
+so no deposit becomes withdrawable and the balance gate halts crediting after the first sweep.
+
 **Balance gate:** before crediting, and on a schedule, check that credited but unswept deposits are no more than
 `available_balance + timelocked_balance + pending_outgoing_balance` from `GetBalance` (or `GetState`), and halt crediting
-and alert on a gap (`balanceCovers` above). This catches a burn when it is credited, and a `Nop` output its sender
+and alert on a gap (`balanceCovers` above). For this check a credit stops being owed as soon as its outputs are inputs
+of a sweep that is not cancelled (`ledger.markSweepInputs`), even before the sweep confirms; it only becomes
+withdrawable once the sweep confirms. Each pass handles the outbound records before the inbound credits, and the
+balance is fetched again before crediting is halted. This catches a burn when it is credited, and a `Nop` output its sender
 spent after it was spent, but not multisig or non-standard outputs: `available_balance` includes those.
 
 **Manual resolution:** every manual credit, refund or write-off goes through `ledger.creditOnce` (or
@@ -647,6 +686,8 @@ Each exchange will have their own processes, but here is an example of receiving
 
 ## Performing withdrawals
 In this section we'll perform a withdrawal from the same address we used in **Section 3**. It is also possible to have a number of different wallets and send funds between them. The process is mostly the same, but is out of scope for this document.
+
+> Note: Sweeps from the deposit wallet to your hot wallet must not be sent this way. Build them on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on this Main Wallet, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`, so the listener sees them (see the sweep gate in **Section 6**).
 
 > NOTE: The wallet used to spend funds should not be online for more time than is necessary. It is recommended that the machine running this wallet is secured.
 
