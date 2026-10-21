@@ -693,13 +693,13 @@ Each exchange will have their own processes, but here is an example of receiving
 6. For new transactions, compare against the list of expected references in their internal database and if there is a match, call the internal system to allocate funds to the client's account.
 
 ## Performing withdrawals
-In this section we'll perform a withdrawal from the same address we used in **Section 3**. It is also possible to have a number of different wallets and send funds between them. The process is mostly the same, but is out of scope for this document.
+In this section we'll perform a withdrawal. Customer withdrawals are sent from the separate hot wallet that the sweeps fund, so the `send-minotari` example below applies to the hot wallet; the deposit wallet pair (the Monitoring Wallet and the Main Wallet with the address from **Section 3**) only ever spends through the sweep flow in **Section 6**. Setting up the hot wallet works the same way as the Main Wallet in **Section 2**.
 
-> Note: Do not sweep the deposit wallet to your hot wallet with `send-minotari` as shown below, or from any wallet other than the Monitoring Wallet: such a sweep is invisible to the listener and makes the balance gate in **Section 6** halt crediting. Build sweeps on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on this Main Wallet with `sign-one-sided-transaction`, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`.
+> Note: Do not sweep the deposit wallet to your hot wallet with `send-minotari` as shown below, or from any wallet other than the Monitoring Wallet: such a sweep is invisible to the listener and makes the balance gate in **Section 6** halt crediting. Build sweeps on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on the Main Wallet with `sign-one-sided-transaction`, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`.
 
 > NOTE: The wallet used to spend funds should not be online for more time than is necessary. It is recommended that the machine running this wallet is secured.
 
-Before we spend funds, we must have a wallet set up with the seed words created in Step 7 of **Section 2**.
+Before we spend funds, we must have the hot wallet set up as in **Section 2**, with its own seed words.
 
 Once the wallet is set up, continue with the steps below.
 
