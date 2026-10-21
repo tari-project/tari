@@ -158,10 +158,7 @@ fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Opti
             MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(lowercase_word.reveal()).reveal().as_str())
         },
     };
-    match search_result {
-        Ok(v) => Some(v),
-        Err(_err) => None,
-    }
+    search_result.ok()
 }
 
 /// Finds and returns the word for a specific index in a mnemonic word list defined by the specified language
