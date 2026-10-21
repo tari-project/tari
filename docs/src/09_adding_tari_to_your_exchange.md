@@ -621,16 +621,20 @@ outbound sweep row.
 **Balance gate:** a coarse aggregate tripwire, not a per-deposit check. Before each credit, credited deposits not yet
 in a confirmed, deep sweep must be no more than `available_balance + pending_outgoing_balance`; a deposit in a sweep
 that is only broadcast stays owed while the wallet counts it in `pending_outgoing_balance`, so no output is counted on
-both sides. It has slack: sweep change, unmatched, flagged and locked deposits, and deposits not yet processed all sit
-in the held side, so a gap smaller than those goes unnoticed, and multisig and non-standard outputs are inside
+both sides. It has slack: sweep change, unmatched and flagged deposits, and deposits not yet processed all sit in the
+held side (time-locked outputs are excluded, as the wallet counts them in `timelocked_balance`), so a gap smaller than those goes unnoticed, and multisig and non-standard outputs are inside
 `available_balance` anyway. On a gap the credit is deferred; crediting halts, with the `tx_id` that hit the gap, only
 when the gap is seen on two consecutive passes and is larger than `pending_incoming_balance`. Check-then-credit runs
 under one ledger lock shared by the listener and the PayRef paths.
 
 **Recovering from an unbacked credit:** if crediting halts, list the output commitments of credited but unswept
-deposits and look each one up on your base node (`SearchUtxos` / `FetchMatchingUtxos`). One that is spent outside a
-recorded sweep is an unbacked credit: reverse it (debit the account, drop it from what is owed, freeze the account and
-record its `tx_id` as resolved). Without this the halt is permanent.
+deposits. Set aside every commitment that is an input of a sweep to the hot wallet that is not cancelled in the
+Monitoring Wallet's `GetCompletedTransactions` (broadcast, or mined but not yet deep); check those again once that sweep
+is confirmed and deep, or cancelled. Look each remaining commitment up on your base node with `SearchUtxos`, which
+takes commitments: it returns the block for an unspent output and nothing for an output that is spent, reorged out or
+never mined, so an empty result only means "not unspent" and needs confirming against the chain. A commitment that is
+spent and in no such sweep is an unbacked credit: reverse it (debit the account, drop it from what is owed, freeze the
+account and record its `tx_id` as resolved). Without this the halt is permanent.
 
 **Manual resolution:** every manual credit, refund or write-off goes through `ledger.creditOnce` (or
 `ledger.markResolved`) keyed on the `tx_id`, in the same ledger, so the listener skips it from then on. A manual credit
