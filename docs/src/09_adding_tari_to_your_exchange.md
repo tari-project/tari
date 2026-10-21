@@ -602,10 +602,9 @@ A wallet only records an outbound transaction for transactions it built or broad
 its outputs it just marks them spent. So build every sweep on the Monitoring Wallet the listener reads and broadcast it
 through that wallet: `PrepareOneSidedTransactionForSigning` on the Monitoring Wallet, sign the payload offline on the
 Main Wallet (`sign-one-sided-transaction`), then `BroadcastSignedOneSidedTransaction` on the Monitoring Wallet. The
-outbound record, with its `input_commitments`, then lands in the wallet the listener reads. (If the Main Wallet both
-builds and broadcasts a sweep itself, for example with `Transfer`, run `markSweptIfSpent` over its own
-`GetCompletedTransactions` instead; offline signing stores no transaction in the signing wallet.) A sweep the listener
-never sees leaves no deposit withdrawable, and the balance gate halts crediting after the first such sweep.
+outbound record, with its `input_commitments`, then lands in the wallet the listener reads. This is the only supported
+sweep flow: a sweep sent from any other wallet (for example with `Transfer` or `send-minotari` on the Main Wallet) is
+invisible to the listener, leaves no deposit withdrawable, and makes the balance gate halt crediting.
 
 **Balance gate:** before crediting, and on a schedule, check that credited but unswept deposits are no more than
 `available_balance + timelocked_balance + pending_outgoing_balance` from `GetBalance` (or `GetState`), and halt crediting
@@ -696,7 +695,7 @@ Each exchange will have their own processes, but here is an example of receiving
 ## Performing withdrawals
 In this section we'll perform a withdrawal from the same address we used in **Section 3**. It is also possible to have a number of different wallets and send funds between them. The process is mostly the same, but is out of scope for this document.
 
-> Note: Sweeps from the deposit wallet to your hot wallet must be visible to the sweep gate in **Section 6**, so do not send them with `send-minotari` as shown below. Build them on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on this Main Wallet, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`; or, if this wallet builds and broadcasts a sweep itself (for example with `Transfer`), run the sweep gate over this wallet's own `GetCompletedTransactions`.
+> Note: Do not sweep the deposit wallet to your hot wallet with `send-minotari` as shown below, or from any wallet other than the Monitoring Wallet: such a sweep is invisible to the listener and makes the balance gate in **Section 6** halt crediting. Build sweeps on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on this Main Wallet with `sign-one-sided-transaction`, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`.
 
 > NOTE: The wallet used to spend funds should not be online for more time than is necessary. It is recommended that the machine running this wallet is secured.
 
