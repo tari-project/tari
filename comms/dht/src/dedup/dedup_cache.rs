@@ -30,16 +30,7 @@ use std::{
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{
-    ExpressionMethods,
-    OptionalExtension,
-    QueryDsl,
-    RunQueryDsl,
-    SqliteConnection,
-    dsl,
-    result::DatabaseErrorKind,
-    sql_types,
-};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SqliteConnection, dsl, sql_types};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
@@ -80,6 +71,13 @@ const DELETE_EXPIRED_SQL: &str = "DELETE FROM dedup_cache WHERE id IN (SELECT id
 /// Deletes up to `$2` of the least recently hit signed (`$1` true) or unsigned entries.
 const DELETE_OLDEST_SQL: &str = "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache WHERE is_signed = $1 \
                                  ORDER BY last_hit_at ASC LIMIT $2)";
+/// Inserts a hit for body hash `$1` from `$2` at `$3`, or counts another hit on the existing entry, keeping the later
+/// `keep_until` (`$4`). `$5` is whether the message is signed. Returns the hit count.
+const UPSERT_HIT_SQL: &str = "INSERT INTO dedup_cache (body_hash, sender_public_key, number_of_hits, last_hit_at, \
+                              keep_until, is_signed) VALUES ($1, $2, 1, $3, $4, $5) ON CONFLICT(body_hash) DO UPDATE \
+                              SET sender_public_key = excluded.sender_public_key, number_of_hits = number_of_hits + \
+                              1, last_hit_at = excluded.last_hit_at, keep_until = MAX(keep_until, \
+                              excluded.keep_until) RETURNING number_of_hits";
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -299,55 +297,31 @@ impl DedupCacheDatabase {
         keep_until: NaiveDateTime,
         is_signed: bool,
     ) -> Result<u32, StorageError> {
+        #[derive(QueryableByName)]
+        struct Hits {
+            #[diesel(sql_type = sql_types::Integer)]
+            number_of_hits: i32,
+        }
+
         let mut conn = self.connection.get_pooled_connection()?;
-        // One write transaction, so concurrent hits on the same hash each get their own count
-        let hits = conn.immediate_transaction::<_, StorageError, _>(|conn| {
-            let insert_result = diesel::insert_into(dedup_cache::table)
-                .values((
-                    dedup_cache::body_hash.eq(&body_hash),
-                    dedup_cache::sender_public_key.eq(&public_key),
-                    dedup_cache::number_of_hits.eq(1),
-                    dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                    dedup_cache::keep_until.eq(keep_until),
-                    dedup_cache::is_signed.eq(is_signed),
-                ))
-                .execute(conn);
-            match insert_result {
-                Ok(1) => return Ok(1),
-                Ok(n) => {
-                    return Err(StorageError::UnexpectedResult(format!(
-                        "Expected exactly one row to be inserted. Got {n}"
-                    )));
-                },
-                Err(diesel::result::Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {},
-                Err(e) => return Err(e.into()),
-            }
-
-            // Update hit stats for the message
-            diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
-                .set((
-                    dedup_cache::sender_public_key.eq(&public_key),
-                    // Diesel column expression: builds SQL, not integer arithmetic
-                    #[allow(clippy::arithmetic_side_effects)]
-                    dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
-                    dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                ))
-                .execute(conn)?;
-            // Keep the later of the stored and the new keep_until
-            diesel::update(
-                dedup_cache::table
-                    .filter(dedup_cache::body_hash.eq(&body_hash))
-                    .filter(dedup_cache::keep_until.lt(keep_until)),
-            )
-            .set(dedup_cache::keep_until.eq(keep_until))
-            .execute(conn)?;
-
-            let hits = dedup_cache::table
-                .select(dedup_cache::number_of_hits)
-                .filter(dedup_cache::body_hash.eq(&body_hash))
-                .get_result::<i32>(conn)?;
-            Ok(hits)
-        })?;
+        // A single statement, so concurrent hits on the same hash each get their own count without holding a write
+        // lock across several statements
+        let rows = diesel::sql_query(UPSERT_HIT_SQL)
+            .bind::<sql_types::Text, _>(body_hash)
+            .bind::<sql_types::Text, _>(public_key)
+            .bind::<sql_types::Timestamp, _>(Utc::now().naive_utc())
+            .bind::<sql_types::Timestamp, _>(keep_until)
+            .bind::<sql_types::Bool, _>(is_signed)
+            .load::<Hits>(&mut conn)?;
+        let hits = match rows.as_slice() {
+            [row] => row.number_of_hits,
+            _ => {
+                return Err(StorageError::UnexpectedResult(format!(
+                    "Expected exactly one dedup row to be upserted. Got {}",
+                    rows.len()
+                )));
+            },
+        };
         #[allow(clippy::cast_sign_loss)]
         Ok(hits as u32)
     }

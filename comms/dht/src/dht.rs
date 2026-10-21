@@ -140,10 +140,12 @@ impl Dht {
             seed_peer_provider,
         };
 
-        // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one.
+        // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
+        // shared-cache in-memory database locks whole tables and fails a reader at once (SQLITE_LOCKED, no busy
+        // wait) while another connection writes, so it gets one too.
         let pool_size = match dht.config.database_url {
-            DbConnectionUrl::Memory => 1,
-            _ => 16,
+            DbConnectionUrl::Memory | DbConnectionUrl::MemoryShared(_) => 1,
+            DbConnectionUrl::File(_) => 16,
         };
         let conn = DbConnection::connect_and_migrate(
             &dht.config.database_url.clone(),
