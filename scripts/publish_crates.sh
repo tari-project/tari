@@ -37,19 +37,13 @@ PACKAGES=(
     "minotari_console_wallet"
 )
 
-# Print the local version of a package, e.g. "5.7.0-pre.1".
+# Print the local version of a package, e.g. "5.7.0-pre.1". Read from the workspace members only:
+# `cargo pkgid --package` is ambiguous when a registry copy of the same crate is also in the
+# dependency graph (e.g. `tari_hashing`, which `tari_sidechain` pulls from crates.io).
 package_version() {
     local package="$1"
-    # cargo pkgid prints either "path+file:///path/to/crate#name@1.2.3" or
-    # "file:///path/to/crate#name:1.2.3", depending on the cargo version.
-    local pkgid
-    pkgid=$(cargo pkgid --package "${package}")
-    pkgid="${pkgid##*#}"
-    case "${pkgid}" in
-        *@*) echo "${pkgid##*@}" ;;
-        *:*) echo "${pkgid##*:}" ;;
-        *) echo "${pkgid}" ;;
-    esac
+    cargo metadata --no-deps --format-version 1 |
+        jq --exit-status --raw-output --arg name "${package}" '.packages[] | select(.name == $name) | .version'
 }
 
 # Path of a crate in the sparse crates.io index, see
