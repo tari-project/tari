@@ -24,6 +24,7 @@
 
 mod decryption;
 pub use decryption::DecryptionLayer;
+pub(crate) use decryption::decode_envelope_body;
 
 mod deserialize;
 pub use deserialize::DeserializeLayer;

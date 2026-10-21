@@ -49,6 +49,7 @@ use tari_comms::{
 };
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::{
+    epoch_time::EpochTime,
     hex::Hex,
     message_format::{MessageFormat, MessageFormatError},
 };
@@ -117,6 +118,10 @@ pub enum DhtRequest {
     MsgHashCacheInsert {
         message_hash: Vec<u8>,
         received_from: CommsPublicKey,
+        /// The message's expiry, which decides how long the entry is kept
+        expires: Option<EpochTime>,
+        /// True if the message carries a signature
+        is_signed: bool,
         reply_tx: oneshot::Sender<u32>,
     },
     GetMsgHashHitCount(Vec<u8>, oneshot::Sender<u32>),
@@ -206,11 +211,15 @@ impl DhtRequester {
         &mut self,
         message_hash: Vec<u8>,
         received_from: CommsPublicKey,
+        expires: Option<EpochTime>,
+        is_signed: bool,
     ) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender.send(DhtRequest::MsgHashCacheInsert {
             message_hash,
             received_from,
+            expires,
+            is_signed,
             reply_tx,
         })?;
 
@@ -290,7 +299,7 @@ pub struct DhtActor {
 }
 
 /// The minimum time between two error logs for a failing dedup cache.
-const DEDUP_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(10);
+pub(crate) const DEDUP_ERROR_LOG_INTERVAL: Duration = Duration::from_secs(10);
 
 impl DhtActor {
     /// Create a new DhtActor
@@ -335,11 +344,13 @@ impl DhtActor {
     }
 
     async fn run(mut self) -> Result<(), DhtActorError> {
-        let offline_ts = self
-            .database
-            .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
-            .ok()
-            .flatten();
+        let db = self.database.clone();
+        let offline_ts =
+            task::spawn_blocking(move || db.get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp))
+                .await
+                .ok()
+                .and_then(|result| result.ok())
+                .flatten();
         debug!(
             target: LOG_TARGET,
             "DhtActor started. {}",
@@ -348,7 +359,7 @@ impl DhtActor {
                 .unwrap_or_default()
         );
 
-        let mut pending_jobs = FuturesUnordered::new();
+        let mut pending_jobs: FuturesUnordered<BoxFuture<'static, Result<(), DhtActorError>>> = FuturesUnordered::new();
 
         let mut dedup_cache_trim_ticker = time::interval(self.config.dedup_cache_trim_interval);
         dedup_cache_trim_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -367,25 +378,33 @@ impl DhtActor {
                 },
 
                 _ = dedup_cache_trim_ticker.tick() => {
-                    if let Err(err) = self.msg_hash_dedup_cache.trim_entries() {
-                        error!(target: LOG_TARGET, "Error when trimming message dedup cache: {err:?}");
-                    }
+                    let msg_hash_cache = self.msg_hash_dedup_cache.clone();
+                    pending_jobs.push(Box::pin(async move {
+                        let result = task::spawn_blocking(move || msg_hash_cache.trim_entries())
+                            .await
+                            .map_err(StorageError::from);
+                        if let Err(err) = result.and_then(|r| r) {
+                            error!(target: LOG_TARGET, "Error when trimming message dedup cache: {err:?}");
+                        }
+                        Ok(())
+                    }));
                 },
 
                 _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
-                    self.mark_shutdown_time();
+                    self.mark_shutdown_time().await;
                     break Ok(());
                 },
             }
         }
     }
 
-    fn mark_shutdown_time(&self) {
-        if let Err(err) = self
-            .database
-            .set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now())
-        {
+    async fn mark_shutdown_time(&self) {
+        let db = self.database.clone();
+        let result = task::spawn_blocking(move || db.set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now()))
+            .await
+            .map_err(StorageError::from);
+        if let Err(err) = result.and_then(|r| r) {
             warn!(target: LOG_TARGET, "Failed to mark offline time: {err:?}");
         }
     }
@@ -432,12 +451,19 @@ impl DhtActor {
             MsgHashCacheInsert {
                 message_hash,
                 received_from,
+                expires,
+                is_signed,
                 reply_tx,
             } => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 let dedup_error_logged_at = self.dedup_error_logged_at.clone();
                 Box::pin(async move {
-                    match msg_hash_cache.add_msg_hash(&message_hash, &received_from) {
+                    let result = task::spawn_blocking(move || {
+                        msg_hash_cache.add_msg_hash(&message_hash, &received_from, expires, is_signed)
+                    })
+                    .await
+                    .map_err(StorageError::from);
+                    match result.and_then(|r| r) {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
@@ -468,7 +494,9 @@ impl DhtActor {
             GetMsgHashHitCount(hash, reply_tx) => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    let hit_count = msg_hash_cache.get_hit_count(&hash)?;
+                    let hit_count = task::spawn_blocking(move || msg_hash_cache.get_hit_count(&hash))
+                        .await
+                        .map_err(StorageError::from)??;
                     let _ = reply_tx.send(hit_count);
                     Ok(())
                 })
@@ -493,14 +521,20 @@ impl DhtActor {
             GetMetadata(key, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    let _result = reply_tx.send(db.get_metadata_value_bytes(key).map_err(Into::into));
+                    let result = task::spawn_blocking(move || db.get_metadata_value_bytes(key))
+                        .await
+                        .map_err(StorageError::from);
+                    let _result = reply_tx.send(result.and_then(|r| r).map_err(Into::into));
                     Ok(())
                 })
             },
             SetMetadata(key, value, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    match db.set_metadata_value_bytes(key, value) {
+                    let result = task::spawn_blocking(move || db.set_metadata_value_bytes(key, value))
+                        .await
+                        .map_err(StorageError::from);
+                    match result.and_then(|r| r) {
                         Ok(_) => {
                             debug!(target: LOG_TARGET, "Dht metadata '{key}' set");
                             let _result = reply_tx.send(Ok(()));
@@ -983,6 +1017,61 @@ mod test {
         }
     }
 
+    /// Below the decryption layer's canonical-signature check, the dedup layer still keys a signed message on its
+    /// canonical signature, so a copy with a re-encoded signature is a duplicate.
+    #[tokio::test]
+    async fn dedup_layer_dedups_reencoded_signature() {
+        use tari_comms::{pipeline::PipelineError, wrap_in_envelope_body};
+        use tower::{Layer, Service};
+
+        use crate::{
+            dedup::DedupLayer,
+            envelope::DhtMessageFlags,
+            inbound::DecryptedDhtMessage,
+            test_utils::{make_dht_inbound_message, service_spy},
+        };
+
+        let node_identity = make_node_identity();
+        let (connectivity_manager, mock) = create_connectivity_mock();
+        mock.spawn();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let (actor_tx, actor_rx) = mpsc::unbounded_channel();
+        let requester = DhtRequester::new(actor_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
+        let shutdown = Shutdown::new();
+        DhtActor::new(
+            Arc::new(DhtConfig::default_local_test()),
+            db_connection(),
+            node_identity.clone(),
+            build_peer_manager(),
+            connectivity_manager,
+            OutboundMessageRequester::new(out_tx),
+            actor_rx,
+            discovery,
+            shutdown.to_signal(),
+        )
+        .spawn();
+
+        let spy = service_spy();
+        let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
+        let honest = make_dht_inbound_message(
+            &node_identity,
+            &b"signed".to_vec(),
+            DhtMessageFlags::empty(),
+            true,
+            false,
+        )
+        .unwrap();
+        let mut reencoded = honest.clone();
+        reencoded.dht_header.message_signature.extend_from_slice(&[0x78, 0x01]);
+
+        for msg in [honest, reencoded] {
+            let decrypted = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, msg);
+            dedup.call(decrypted).await.unwrap();
+        }
+        assert_eq!(spy.call_count(), 1);
+    }
+
     /// A dedup cache that cannot be written must not wave messages through: the actor replies with a hit count no
     /// `allowed_message_occurrences` can admit, and the dedup middleware discards the message.
     #[tokio::test]
@@ -1028,7 +1117,7 @@ mod test {
             .unwrap();
 
         let num_hits = requester
-            .add_message_to_dedup_cache(vec![1u8, 2, 3], CommsPublicKey::default())
+            .add_message_to_dedup_cache(vec![1u8, 2, 3], CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, u32::MAX);
@@ -1070,17 +1159,17 @@ mod test {
 
         let signature = vec![1u8, 2, 3];
         let num_hits = requester
-            .add_message_to_dedup_cache(signature.clone(), CommsPublicKey::default())
+            .add_message_to_dedup_cache(signature.clone(), CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 1);
         let num_hits = requester
-            .add_message_to_dedup_cache(signature, CommsPublicKey::default())
+            .add_message_to_dedup_cache(signature, CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 2);
         let num_hits = requester
-            .add_message_to_dedup_cache(Vec::new(), CommsPublicKey::default())
+            .add_message_to_dedup_cache(Vec::new(), CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 1);
@@ -1100,7 +1189,7 @@ mod test {
         let shutdown = Shutdown::new();
         // Note: This must be equal or larger than the minimum dedup cache capacity for DedupCacheDatabase
         let capacity = 10;
-        let actor = DhtActor::new(
+        let mut actor = DhtActor::new(
             Arc::new(DhtConfig {
                 dedup_cache_capacity: capacity,
                 excluded_dial_addresses: vec![].into(),
@@ -1116,6 +1205,9 @@ mod test {
             shutdown.to_signal(),
         );
 
+        // Every entry here is young, so let the trim remove young entries
+        actor.msg_hash_dedup_cache = actor.msg_hash_dedup_cache.clone().with_min_entry_age(Duration::ZERO);
+
         // Create signatures for double the dedup cache capacity
         let signatures = (0..(capacity * 2))
             .map(|i| vec![1u8, 2, u8::try_from(i).unwrap()])
@@ -1125,7 +1217,7 @@ mod test {
         for key in &signatures {
             let num_hits = actor
                 .msg_hash_dedup_cache
-                .add_msg_hash(key, &CommsPublicKey::default())
+                .add_msg_hash(key, &CommsPublicKey::default(), None, true)
                 .unwrap();
             assert_eq!(num_hits, 1);
         }
@@ -1133,7 +1225,7 @@ mod test {
         for key in &signatures {
             let num_hits = actor
                 .msg_hash_dedup_cache
-                .add_msg_hash(key, &CommsPublicKey::default())
+                .add_msg_hash(key, &CommsPublicKey::default(), None, true)
                 .unwrap();
             assert_eq!(num_hits, 2);
         }
@@ -1148,7 +1240,7 @@ mod test {
         // Verify that the last half of the signatures are still present in the cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {
             let num_hits = requester
-                .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default())
+                .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
             assert_eq!(num_hits, 3);
@@ -1156,7 +1248,7 @@ mod test {
         // Verify that the first half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity) {
             let num_hits = requester
-                .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default())
+                .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
             assert_eq!(num_hits, 1);
@@ -1168,7 +1260,7 @@ mod test {
         // Verify that the last half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {
             let num_hits = requester
-                .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default())
+                .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
             assert_eq!(num_hits, 1);
