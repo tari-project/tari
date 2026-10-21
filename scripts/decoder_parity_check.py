@@ -66,7 +66,6 @@ ALLOWED = {
     "decoders, which the serde form (the peer database) shares",
     # Conversions from another type or encoding, not a validating constructor of the serialized fields
     "base_layer/node_components:NewBlockTemplate@base_layer/node_components/src/blocks/new_block_template.rs": "`from_block` converts a block, it does not validate the fields",
-    "base_layer/common_types:CipherSeed@base_layer/common_types/src/seeds/cipher_seed.rs": "`from_enciphered_bytes` decrypts and authenticates the enciphered seed format "
     "(including its version byte); the plain serde form is a different encoding and is not decoded from untrusted input",
     # Text forms parsed by `FromStr` / `TryFrom<String>` (configuration, CLI arguments, user input); the serde form is
     # a different encoding whose fields are decoded by their own decoders
