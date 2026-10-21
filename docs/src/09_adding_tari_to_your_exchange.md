@@ -376,6 +376,10 @@ minotari_console_wallet
 You are now ready to receive deposits. In the next section we'll explain how to listen for incoming transactions.
 
 ## Section 6: Listening for incoming transactions
+
+> The sweep and balance gates below are stop-gaps until the wallet stops reporting outputs it cannot spend, or that
+> their sender can reclaim, as deposits (a separate wallet fix). After that they remain defence in depth.
+
 How you listen for incoming transactions (and what you do with them) will depend on your process. For our example, we'll use the gRPC server that is hosted in the read-only wallet we just created to listen for incoming deposits. 
 
 Reach out to us if you would like an example in your favourite language. You can find more information about the methods available in [wallet.proto here](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/wallet.proto).
@@ -412,15 +416,13 @@ function collectCompletedTransactions(client) {
 
 // One pass over the wallet's transactions; run it on a schedule
 async function runListenerPass() {
+    const state = await getWalletState(client); // once per pass, before the stream
     const txs = await collectCompletedTransactions(client);
-    // Sweeps first: the swept set is rebuilt from scratch on every pass, so a sweep that was cancelled makes its
-    // inputs owed again
-    const sweptInputs = [];
+    // Sweeps first (see the sweep gate below)
     for (const tx of txs) {
-        sweptInputs.push(...(await markSweptIfSpent(tx)));
+        await recordSweep(client, tx, state);
     }
-    await ledger.setSweptInputs(sweptInputs); // recorded whether or not those deposits are credited yet
-    const state = await getWalletState(client); // fetched once per pass
+    await ledger.rebuildWithdrawable(); // alerts when a withdrawable deposit lost its confirmed sweep
     for (const tx of txs) {
         try {
             // The shared function below ignores anything it must not act on
@@ -457,11 +459,12 @@ async function runListenerPass() {
 > 3. A pending outbound transaction can be cancelled with `CancelTransaction`.
 > 4. A completed transaction has to be restored from a backup written by the version that wrote it, or removed so that
 >    recovery or the UTXO scan detects its inbound outputs again. Confirm this against the scanner's behaviour before
->    relying on it.
+>    relying on it. Never apply this to an outbound sweep row (see the sweep gate below).
 
 Never credit an unmatched output because someone presents its PayRef, amount or time: reconcile it against the sending
-wallet's records first, and return funds only to a sender address verified out of band. Record the outcome through
-`ledger.creditOnce` or `ledger.markResolved` on its `tx_id`, as above. If a credited `tx_id` later
+wallet's records first, and return funds only to a sender address verified out of band, out of that output's own swept
+value (see Manual resolution below). Record the outcome through `ledger.creditOnce` or `ledger.markResolved` on its
+`tx_id`. If a credited `tx_id` later
 shows a status that is not confirmed, or `is_cancelled`, alert: it was reorged past your confirmation depth.
 
 Credit each inbound transaction once per `tx_id`, only when it is not cancelled and is in a confirmed status (see [Confirming Deposits and Withdrawals](#confirming-deposits-and-withdrawals)), using its `amount` and `user_payment_id`. For transactions recovered from the chain, the memo-derived fields (`user_payment_id`, `raw_payment_id` and `source_address`) are written by the sender. `source_address` is informational only, and `source_address_claimed` is set when it is a sender-written address; do not use it to decide which account to credit. A PayRef identifies a mined output, but it can be computed from public chain data, so it proves neither who sent the output nor which account to credit.
@@ -496,38 +499,31 @@ async function isDeepEnough(client, tx, state = null) {
     return BigInt(current.scanned_height) - BigInt(tx.mined_in_block_height) >= BigInt(REQUIRED_CONFIRMATIONS);
 }
 
-// Credited deposits that are not yet swept must be covered by what the wallet holds. A credit counts as swept here
-// once its outputs are inputs of any sweep that is not cancelled, even before the sweep confirms, because the wallet
-// stops holding those outputs as soon as the sweep spends them.
-async function owedAndHeld(state, extraAmount) {
+// Coarse tripwire: credits not yet swept by a confirmed, deep sweep must be covered by what the wallet holds. Deposits
+// in a sweep that is broadcast but not confirmed stay owed; the wallet still counts them in pending_outgoing_balance.
+async function balanceCovers(state, extraAmount, txId) {
     const b = state.balance;
-    const held = BigInt(b.available_balance) + BigInt(b.timelocked_balance) + BigInt(b.pending_outgoing_balance);
+    const held = BigInt(b.available_balance) + BigInt(b.pending_outgoing_balance);
     const owed = (await ledger.unsweptCreditTotal()) + BigInt(extraAmount);
-    return { owed, held };
-}
-
-async function balanceCovers(client, state, extraAmount) {
-    if (await owedAndHeldCover(state, extraAmount)) {
+    if (owed <= held) {
+        await ledger.clearGap();
         return true;
     }
-    // The balance can move during a pass, for example when a sweep's inputs are marked spent: check again first
-    const fresh = await getWalletState(client);
-    if (await owedAndHeldCover(fresh, extraAmount)) {
-        return true;
+    // Defer the credit. Halt only when a gap is seen on two consecutive passes and exceeds pending incoming funds.
+    const gap = owed - held;
+    if ((await ledger.noteGapForPass(gap)) >= 2 && gap > BigInt(b.pending_incoming_balance)) {
+        await haltCreditingAndAlert({ txId, owed, held });
     }
-    await haltCreditingAndAlert(await owedAndHeld(fresh, extraAmount));
     return false;
-}
-
-async function owedAndHeldCover(state, extraAmount) {
-    const { owed, held } = await owedAndHeld(state, extraAmount);
-    return owed <= held;
 }
 
 // Credit a deposit at most once. `tx` is a TransactionInfo from GetCompletedTransactions, GetTransactionInfo or
 // GetPaymentByReference. Returns the credited account, or null when the transaction must not be credited (yet).
 // flagUnmatchedDeposit and escalateToOperator are idempotent per tx_id and reason, as they are called on every pass.
 async function creditCustomerAccount(client, tx, state = null) {
+    if ((await ledger.isCredited(tx.tx_id)) && (tx.is_cancelled || !CONFIRMED_STATUSES.includes(tx.status))) {
+        await escalateToOperator(tx.tx_id, `credited deposit reorged past your depth (${tx.status})`);
+    }
     if (await ledger.isResolved(tx.tx_id)) {
         return null; // already credited, refunded or written off, automatically or by hand
     }
@@ -554,37 +550,37 @@ async function creditCustomerAccount(client, tx, state = null) {
         await flagUnmatchedDeposit(tx, `no account for payment id (${tx.status})`); // manual review
         return null;
     }
-    // A deposit a sweep already spent (coin selection has no depth filter) is no longer held, so it adds nothing owed
-    const owedAmount = (await ledger.allSweptInputs(tx.output_commitments)) ? 0 : tx.amount;
-    if (!(await balanceCovers(client, current, owedAmount))) {
-        return null;
-    }
-    // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef. The entry records the
-    // deposit's output commitments and starts with `withdrawable: false` (see the sweep gate below).
-    const credited = await ledger.creditOnce({
-        txId: tx.tx_id,
-        account,
-        amount: tx.amount,
-        outputCommitments: tx.output_commitments,
-        withdrawable: false
+    // One lock around check-then-credit, shared by the listener and the PayRef paths
+    return ledger.withLock(async () => {
+        // A deposit a confirmed sweep already spent (coin selection has no depth filter) adds nothing owed
+        const owedAmount = (await ledger.allInConfirmedSweeps(tx.output_commitments)) ? 0 : tx.amount;
+        if (!(await balanceCovers(current, owedAmount, tx.tx_id))) {
+            return null;
+        }
+        // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef. The credit sits in a
+        // pending balance with `withdrawable: false` (see the sweep gate below).
+        const credited = await ledger.creditOnce({
+            txId: tx.tx_id,
+            account,
+            amount: tx.amount,
+            outputCommitments: tx.output_commitments,
+            withdrawable: false
+        });
+        return credited ? account : null;
     });
-    return credited ? account : null;
 }
 
-// Outbound side of the listener. Returns the inputs of a sweep that is not cancelled (broadcast or mined), which the
-// balance gate no longer counts as owed; a credited deposit becomes withdrawable only once every one of its output
-// commitments is an input of a confirmed sweep from this deposit wallet to your separate hot wallet.
-async function markSweptIfSpent(tx) {
-    if (tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND' || tx.is_cancelled) {
-        return [];
+// Outbound side of the listener: keep each confirmed, deep sweep from this deposit wallet to your separate hot wallet
+// in the ledger (sweep tx_id -> input commitments), and drop it again if the wallet later reports it cancelled
+async function recordSweep(client, tx, state) {
+    if (tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND' || !(await isSweepToHotWallet(tx))) {
+        return; // only sweeps to the hot wallet count, never a coin join to self
     }
-    if (!(await isSweepToHotWallet(tx))) {
-        return []; // only sweeps to the hot wallet count, never a coin join to self
+    if (tx.is_cancelled) {
+        await ledger.removeConfirmedSweep(tx.tx_id);
+    } else if (CONFIRMED_STATUSES.includes(tx.status) && (await isDeepEnough(client, tx, state))) {
+        await ledger.addConfirmedSweep(tx.tx_id, tx.input_commitments);
     }
-    if (CONFIRMED_STATUSES.includes(tx.status)) {
-        await ledger.markWithdrawableIfAllSpent(tx.input_commitments);
-    }
-    return tx.input_commitments;
 }
 ```
 
@@ -592,11 +588,20 @@ async function markSweptIfSpent(tx) {
 as confirmed inbound one-sided transactions: burn outputs, multisig outputs that need third-party keys, outputs with a
 `Nop` script whose sender still knows the commitment mask, and outputs of a non-standard type. `TransactionInfo` shows
 no output type, script or source, so crediting by status cannot tell them apart. The sweep gate closes that gap: a
-deposit is credited, but only becomes withdrawable once its outputs have been spent by a confirmed sweep to your hot
-wallet. Multisig, burn and non-standard outputs are never selected as inputs, so they never become withdrawable, and a
-`Nop` output that its sender spent first never appears among your inputs. The cost is that withdrawals of a deposit
-wait for the sweep. Sweep many inputs at once: the wallet selects the smallest outputs first, which can hold back large
-deposits.
+deposit is credited into a pending balance, and only becomes withdrawable once every one of its outputs has been spent
+by a sweep to your hot wallet that is confirmed and `REQUIRED_CONFIRMATIONS` deep. Multisig, burn and non-standard
+outputs are never selected as inputs, so they never become withdrawable, and a `Nop` output that its sender spent
+first never appears among your inputs. A credit with no output commitments is never withdrawable.
+
+Until `withdrawable` is set, a credit is not usable for anything: no trading, internal transfer, collateral or
+withdrawal of any kind. Show it to the customer as a pending (held) balance. Because it cannot be traded or moved,
+nothing has to follow it through a trade.
+
+The cost is that a deposit waits for the sweep. The wallet selects inputs largest first, then by branch and bound,
+with a cap on inputs per transaction, so sweep often and with many inputs, and escalate a credit that is still unswept
+after several sweeps. `PrepareOneSidedTransactionForSigning` has no coin control yet (a wallet follow-up), and a
+depositor can spend a `Nop` output back between prepare and broadcast, which gets the sweep cancelled: broadcast
+promptly after signing, re-prepare when that happens, and prefer deposits that have been confirmed for a long time.
 
 A wallet only records an outbound transaction for transactions it built or broadcast itself; when another wallet spends
 its outputs it just marks them spent. So build every sweep on the Monitoring Wallet the listener reads and broadcast it
@@ -604,22 +609,35 @@ through that wallet: `PrepareOneSidedTransactionForSigning` on the Monitoring Wa
 Main Wallet (`sign-one-sided-transaction`), then `BroadcastSignedOneSidedTransaction` on the Monitoring Wallet. The
 outbound record, with its `input_commitments`, then lands in the wallet the listener reads. This is the only supported
 sweep flow: a sweep sent from any other wallet (for example with `Transfer` or `send-minotari` on the Main Wallet) is
-invisible to the listener, leaves no deposit withdrawable, and makes the balance gate halt crediting.
+invisible to the listener and never makes a deposit withdrawable.
 
-**Balance gate:** before crediting, and on a schedule, check that credited but unswept deposits are no more than
-`available_balance + timelocked_balance + pending_outgoing_balance` from `GetBalance` (or `GetState`), and halt crediting
-and alert on a gap (`balanceCovers` above). For this check a credit stops being owed as soon as its outputs are inputs
-of a sweep that is not cancelled, even before the sweep confirms; it only becomes withdrawable once the sweep
-confirms. The swept set is rebuilt from the outbound records on every pass (`ledger.setSweptInputs`), so a sweep
-that is cancelled (rejected as a double spend, for example, because a depositor spent a `Nop` output first, or
-cancelled by an operator) makes its inputs owed again. It also records inputs whose deposits are not credited yet, so a
-deposit swept before it reached your confirmation depth adds nothing owed when it is credited. Each pass handles the
-outbound records before the inbound credits, and the balance is fetched again before crediting is halted. This catches a burn when it is credited, and a `Nop` output its sender
-spent after it was spent, but not multisig or non-standard outputs: `available_balance` includes those.
+Keep the confirmed sweeps (`addConfirmedSweep`) in your ledger rather than rebuilding them from the wallet:
+recovering or rescanning the Monitoring Wallet loses its outbound sweep records. An entry is removed only when the
+wallet reports that sweep cancelled, and `withdrawable` is rebuilt from the kept sweeps on every pass. A sweep the
+wallet cancelled but that was mined anyway must be reconciled by hand (check its kernel on the chain, or the hot
+wallet's received record) and recorded as a confirmed sweep. Never apply step 4 of the `DATA_LOSS` procedure to an
+outbound sweep row.
+
+**Balance gate:** a coarse aggregate tripwire, not a per-deposit check. Before each credit, credited deposits not yet
+in a confirmed, deep sweep must be no more than `available_balance + pending_outgoing_balance`; a deposit in a sweep
+that is only broadcast stays owed while the wallet counts it in `pending_outgoing_balance`, so no output is counted on
+both sides. It has slack: sweep change, unmatched, flagged and locked deposits, and deposits not yet processed all sit
+in the held side, so a gap smaller than those goes unnoticed, and multisig and non-standard outputs are inside
+`available_balance` anyway. On a gap the credit is deferred; crediting halts, with the `tx_id` that hit the gap, only
+when the gap is seen on two consecutive passes and is larger than `pending_incoming_balance`. Check-then-credit runs
+under one ledger lock shared by the listener and the PayRef paths.
+
+**Recovering from an unbacked credit:** if crediting halts, list the output commitments of credited but unswept
+deposits and look each one up on your base node (`SearchUtxos` / `FetchMatchingUtxos`). One that is spent outside a
+recorded sweep is an unbacked credit: reverse it (debit the account, drop it from what is owed, freeze the account and
+record its `tx_id` as resolved). Without this the halt is permanent.
 
 **Manual resolution:** every manual credit, refund or write-off goes through `ledger.creditOnce` (or
-`ledger.markResolved`) keyed on the `tx_id`, in the same ledger, so the listener skips it from then on. A refund also
-retires the payment id for that `tx_id`.
+`ledger.markResolved`) keyed on the `tx_id`, in the same ledger, so the listener skips it from then on. A manual credit
+records the deposit's `output_commitments`, starts with `withdrawable: false` and must pass `balanceCovers`, like an
+automatic one. Refund an unmatched deposit only out of the swept value of that deposit's own output, that is after a
+confirmed sweep includes its commitment, never from the hot wallet before then. A refund also retires the payment id
+for that `tx_id`.
 
 This is a basic implementation; some additional items you may want to consider for a production environment are: 
 
@@ -908,7 +926,7 @@ When a customer claims they sent a deposit but you don't see it in your systems:
 1. Customer: "I sent 100 XTR, PayRef: a1b2c3d4e5f6..."
 2. Support: Enters PayRef into verification system
 3. System: "Payment verified: 100 XTR received in block 150,000, payment id / deposit address: ..."
-4. System: Credits through `creditCustomerAccount`, so the account that owns the transaction's payment id, once per `tx_id`
+4. System: Credits through `creditCustomerAccount`, so the account that owns the transaction's payment id, once per `tx_id`, into its pending balance until the deposit is swept (Section 6); a manual credit follows the same rules
 5. Result: Fast resolution, happy customer
 
 > **Important:** a PayRef finds an output; it does not show who paid. Anyone who can see the output on chain can
@@ -1036,6 +1054,7 @@ class PayRefVerificationService {
 
 // Usage example: the account credited is the one the transaction's payment id belongs to, whoever asked. The requester
 // only learns whether a deposit was credited to their own account; everything else goes to the internal audit log.
+// Answer asynchronously (or pad the response time) so the timing does not reveal the outcome either.
 async function handleCustomerPayRefInquiry(payrefHex, requesterAccount) {
     const verifier = new PayRefVerificationService('localhost:18143');
     const result = await verifier.verifyPayRef(payrefHex);
@@ -1059,7 +1078,7 @@ async function handleCustomerPayRefInquiry(payrefHex, requesterAccount) {
     return {
         success,
         message: success
-            ? 'Your deposit has been credited.'
+            ? 'Your deposit has been credited and is pending until it is swept.'
             : 'Thank you, we are looking into your deposit and will update you.'
     };
 }
@@ -1089,7 +1108,8 @@ class CustomerSupportDashboard {
 
 ### Section 10: Automated PayRef Processing
 
-For high-volume exchanges, implement automated PayRef processing. The same rules apply as in Section 9: credit the
+For high-volume exchanges, implement automated PayRef processing. A credit made here is pending, like any other,
+until its deposit is swept (Section 6). The same rules apply as in Section 9: credit the
 account that owns the output's payment id or deposit address, never whoever submitted the PayRef, and only once the
 output's block is `REQUIRED_CONFIRMATIONS` deep (a reorg can change a PayRef before then). Handle `DATA_LOSS` from a
 lookup as described in Section 9: it is not "not found", and retrying will not change it.
@@ -1127,7 +1147,8 @@ class AutomatedPayRefProcessor {
         
         this.isProcessing = true;
         try {
-            // The pending table is unique on the PayRef, so a PayRef submitted twice is processed once
+            // The pending table is unique on the PayRef, so a PayRef submitted twice is processed once, and it
+            // holds a capped number of entries per account
             const pendingPayRefs = await this.db.getPendingPayRefVerifications();
             
             for (const pending of pendingPayRefs) {
@@ -1153,8 +1174,8 @@ class AutomatedPayRefProcessor {
                     break;
 
                 case 'LOCKED':
-                    // Credits automatically once unlocked; no age limit
-                    await this.updatePendingPayRef(pendingPayRef, verification);
+                    // The listener credits it at unlock, so it leaves the queue
+                    await this.db.removePendingPayRef(pendingPayRef.id);
                     break;
 
                 case 'INSUFFICIENT_CONFIRMATIONS':
@@ -1212,7 +1233,7 @@ class AutomatedPayRefProcessor {
 
         if (account) {
             await this.notifyCustomer(account, {
-                type: 'deposit_confirmed',
+                type: 'deposit_pending_sweep',
                 amount: verification.amount,
                 txId: verification.tx_id
             });
@@ -1227,9 +1248,11 @@ class AutomatedPayRefProcessor {
 
 1. **Confirmation depth**: Credit only at `REQUIRED_CONFIRMATIONS` (recommended 10), and set the wallet's
    `num_confirmations_required` to the same value
-2. **Rate limiting**: Required for PayRef inquiries (see Section 9)
-3. **Audit logging**: Log all PayRef verifications with timestamps
-4. **Double-credit prevention**: Credit once per `tx_id`; a PayRef is a lookup handle, not a credit key. The direction
+2. **Pending balance**: A credit is not usable for anything (trading, internal transfer, collateral, any withdrawal)
+   until `withdrawable` is set by a confirmed, deep sweep; show it as a pending balance
+3. **Rate limiting**: Required for PayRef inquiries (see Section 9)
+4. **Audit logging**: Log all PayRef verifications with timestamps
+5. **Double-credit prevention**: Credit once per `tx_id`; a PayRef is a lookup handle, not a credit key. The direction
    check excludes only the wallet's own sent and change outputs: coin joins, swap claims and refunds appear as
    inbound, so keep them away from a deposit wallet's keys. The wallet also reports as confirmed inbound some outputs
    you cannot spend alone (burns, multisig outputs with third-party keys, `Nop`-script outputs whose sender knows the
