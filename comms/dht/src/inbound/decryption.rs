@@ -407,7 +407,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 }
 
 /// Decodes an envelope body, rejecting one with more than [MAX_ENVELOPE_PARTS] parts like any other undecodable body.
-fn decode_envelope_body(bytes: &[u8]) -> Result<EnvelopeBody, prost::DecodeError> {
+pub(crate) fn decode_envelope_body(bytes: &[u8]) -> Result<EnvelopeBody, prost::DecodeError> {
     let body = decode_with_max_items::<EnvelopeBody>(bytes, DHT_MESSAGE_MAX_DECODE_ITEMS)?;
     if body.parts.len() > MAX_ENVELOPE_PARTS {
         return Err(prost::DecodeError::new(format!(

@@ -66,12 +66,22 @@ impl ValidatedDhtInboundMessage {
         message_body: EnvelopeBody,
         authenticated_origin: Option<CommsPublicKey>,
     ) -> DecryptedDhtMessage {
-        let dedup_hash = dedup::message_key(&self.sig_canonical, &self.message, Some(&message_body));
+        let dedup_hash = dedup::message_key(
+            &self.sig_canonical,
+            self.message.dht_header.flags,
+            &self.message.body,
+            Some(&message_body),
+        );
         DecryptedDhtMessage::succeeded_with_hash(message_body, authenticated_origin, self.message, dedup_hash.to_vec())
     }
 
     pub fn into_failed(self) -> DecryptedDhtMessage {
-        let dedup_hash = dedup::message_key(&self.sig_canonical, &self.message, None);
+        let dedup_hash = dedup::message_key(
+            &self.sig_canonical,
+            self.message.dht_header.flags,
+            &self.message.body,
+            None,
+        );
         DecryptedDhtMessage::failed_with_hash(self.message, dedup_hash.to_vec())
     }
 

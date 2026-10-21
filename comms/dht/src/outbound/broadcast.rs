@@ -51,6 +51,7 @@ use crate::{
     dedup,
     discovery::DhtDiscoveryRequester,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination, datetime_to_epochtime},
+    inbound::decode_envelope_body,
     message_signature::MessageSignature,
     outbound::{
         SendMessageResponse,
@@ -429,8 +430,15 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // A message sent with an existing header is being forwarded: the inbound path already recorded its key, and
         // the signature that key needs is in that header, not in `message_signature`.
         if is_broadcast && custom_header.is_none() {
-            let hash = dedup::create_message_hash(message_signature.as_deref().unwrap_or(&[]), &body);
-            let is_signed = message_signature.as_ref().is_some_and(|s| !s.is_empty());
+            let sig_canonical = message_signature.as_deref().unwrap_or(&[]);
+            let is_signed = !sig_canonical.is_empty();
+            // Key an unsigned cleartext body the way the inbound path will key its echo
+            let decoded_body = if !is_signed && !dht_flags.is_encrypted() {
+                decode_envelope_body(&body).ok()
+            } else {
+                None
+            };
+            let hash = dedup::message_key(sig_canonical, dht_flags, &body, decoded_body.as_ref());
             self.add_to_dedup_cache(hash, expires_epochtime, is_signed).await?;
         }
 

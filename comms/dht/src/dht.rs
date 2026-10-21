@@ -421,6 +421,7 @@ mod test {
 
     use futures::future;
     use tari_comms::{
+        BytesMut,
         message::{MessageExt, MessageTag, OutboundMessage},
         peer_manager::NodeId,
         pipeline::SinkService,
@@ -437,7 +438,10 @@ mod test {
     use crate::{
         crypt,
         envelope::{DhtEnvelope, DhtMessageFlags, DhtMessageHeader, NodeDestination},
-        outbound::mock::{OutboundServiceMockState, create_outbound_service_mock},
+        outbound::{
+            SendMessageParams,
+            mock::{OutboundServiceMockState, create_outbound_service_mock},
+        },
         proto::dht::{DiscoveryMessage, JoinMessage},
         test_utils::{
             build_peer_manager,
@@ -675,6 +679,84 @@ mod test {
 
         time::sleep(Duration::from_millis(200)).await;
         assert_eq!(connectivity_state.count_calls_containing("BanPeer").await, 0);
+    }
+
+    /// A node that broadcasts an unsigned body that is not canonically encoded must record the key its echo will
+    /// have, or it would deliver and propagate its own message again.
+    #[tokio::test]
+    async fn test_stack_dedups_echo_of_non_canonical_unsigned_broadcast() {
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity, _) = create_connectivity_mock();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
+        let (oms_tx, mut oms_rx) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let dht = Dht::builder()
+            .local_test()
+            .with_outbound_sender(oms_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
+        let (out_tx, mut out_rx) = mpsc::channel(10);
+        let mut inbound = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
+        let mut outbound = dht.outbound_middleware_layer().layer(service_fn(|_: OutboundMessage| {
+            future::ready(Ok::<_, PipelineError>(()))
+        }));
+
+        let canonical = wrap_in_envelope_body!(b"own message".to_vec()).to_encoded_bytes();
+        let mut body = canonical.clone();
+        body.extend_from_slice(&[0x78, 0x01]);
+
+        dht.outbound_requester()
+            .send_raw_no_wait(
+                SendMessageParams::new().flood(vec![]).finish(),
+                BytesMut::from(body.as_slice()),
+            )
+            .await
+            .unwrap();
+        let request = time::timeout(Duration::from_secs(10), oms_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        outbound.call(request).await.unwrap();
+
+        // The key recorded is the one the inbound path computes from the decoded body
+        let inbound_key = crate::dedup::create_message_hash(&[], &canonical);
+        let hit_count = dht
+            .dht_requester()
+            .get_message_cache_hit_count(inbound_key.to_vec())
+            .await
+            .unwrap();
+        assert_eq!(hit_count, 1);
+
+        // The echo is a duplicate
+        let echo = DhtEnvelope::new(
+            DhtMessageHeader {
+                version: DhtProtocolVersion::latest(),
+                destination: NodeDestination::Unknown,
+                ephemeral_public_key: None,
+                message_signature: Vec::new(),
+                message_type: DhtMessageType::None,
+                flags: DhtMessageFlags::empty(),
+                message_tag: MessageTag::new(),
+                expires: None,
+            }
+            .into(),
+            body,
+        );
+        inbound
+            .call(make_comms_inbound_message(
+                &node_identity,
+                echo.to_encoded_bytes().into(),
+            ))
+            .await
+            .unwrap();
+        assert!(out_rx.try_recv().is_err());
     }
 
     /// Forwarding a message this node cannot decrypt must not record a key for its ciphertext as if it were an

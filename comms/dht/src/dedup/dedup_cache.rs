@@ -93,6 +93,8 @@ pub struct DedupCacheDatabase {
     min_entry_age: Duration,
     /// Set while a trim runs, so overlapping trims do not each delete the same excess.
     is_trimming: Arc<AtomicBool>,
+    /// Set by a trim request; the running trim makes another pass until none is pending.
+    trim_requested: Arc<AtomicBool>,
     /// When hitting the ceiling was last logged.
     ceiling_logged_at: Arc<Mutex<Option<Instant>>>,
 }
@@ -111,6 +113,7 @@ impl DedupCacheDatabase {
             num_inserts: Arc::new(AtomicUsize::new(0)),
             min_entry_age: MIN_ENTRY_AGE,
             is_trimming: Arc::new(AtomicBool::new(false)),
+            trim_requested: Arc::new(AtomicBool::new(false)),
             ceiling_logged_at: Arc::new(Mutex::new(None)),
         }
     }
@@ -181,15 +184,36 @@ impl DedupCacheDatabase {
 
     /// Trims the dedup cache. Entries whose `keep_until` has passed are removed, earliest first, down to capacity.
     /// If the cache is still above the ceiling (10x capacity), the least recently hit unsigned entries are removed down
-    /// to the ceiling, then signed ones if that is not enough. A trim requested while another is running is skipped.
+    /// to the ceiling, then signed ones if that is not enough. Only one trim runs at a time: a trim requested while
+    /// another runs returns at once, and the running one makes another pass.
     pub fn trim_entries(&self) -> Result<usize, StorageError> {
-        if self.is_trimming.swap(true, Ordering::AcqRel) {
-            debug!(target: LOG_TARGET, "Message dedup cache trim already running, skipping");
+        self.trim_requested.store(true, Ordering::SeqCst);
+        if self.is_trimming.swap(true, Ordering::SeqCst) {
+            debug!(target: LOG_TARGET, "Message dedup cache trim already running, it will run again");
             return Ok(0);
         }
-        let result = self.trim_entries_at(Utc::now().naive_utc());
-        self.is_trimming.store(false, Ordering::Release);
-        result
+        self.run_requested_trims()
+    }
+
+    /// Runs trim passes while one is requested. The caller holds `is_trimming`; this releases it.
+    fn run_requested_trims(&self) -> Result<usize, StorageError> {
+        let mut num_removed = 0usize;
+        loop {
+            while self.trim_requested.swap(false, Ordering::SeqCst) {
+                match self.trim_entries_at(Utc::now().naive_utc()) {
+                    Ok(n) => num_removed = num_removed.saturating_add(n),
+                    Err(err) => {
+                        self.is_trimming.store(false, Ordering::SeqCst);
+                        return Err(err);
+                    },
+                }
+            }
+            self.is_trimming.store(false, Ordering::SeqCst);
+            // A request made after the last check, while the flag was still held, must not be lost
+            if !self.trim_requested.load(Ordering::SeqCst) || self.is_trimming.swap(true, Ordering::SeqCst) {
+                return Ok(num_removed);
+            }
+        }
     }
 
     fn trim_entries_at(&self, now: NaiveDateTime) -> Result<usize, StorageError> {
@@ -276,53 +300,56 @@ impl DedupCacheDatabase {
         is_signed: bool,
     ) -> Result<u32, StorageError> {
         let mut conn = self.connection.get_pooled_connection()?;
-        let insert_result = diesel::insert_into(dedup_cache::table)
-            .values((
-                dedup_cache::body_hash.eq(&body_hash),
-                dedup_cache::sender_public_key.eq(&public_key),
-                dedup_cache::number_of_hits.eq(1),
-                dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                dedup_cache::keep_until.eq(keep_until),
-                dedup_cache::is_signed.eq(is_signed),
-            ))
-            .execute(&mut conn);
-        match insert_result {
-            Ok(1) => Ok(1),
-            Ok(n) => Err(StorageError::UnexpectedResult(format!(
-                "Expected exactly one row to be inserted. Got {n}"
-            ))),
-            Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
-                DatabaseErrorKind::UniqueViolation => {
-                    // Update hit stats for the message
-                    diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
-                        .set((
-                            dedup_cache::sender_public_key.eq(&public_key),
-                            // Diesel column expression: builds SQL, not integer arithmetic
-                            #[allow(clippy::arithmetic_side_effects)]
-                            dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
-                            dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                        ))
-                        .execute(&mut conn)?;
-                    // Keep the later of the stored and the new keep_until
-                    diesel::update(
-                        dedup_cache::table
-                            .filter(dedup_cache::body_hash.eq(&body_hash))
-                            .filter(dedup_cache::keep_until.lt(keep_until)),
-                    )
-                    .set(dedup_cache::keep_until.eq(keep_until))
-                    .execute(&mut conn)?;
-
-                    let hits = dedup_cache::table
-                        .select(dedup_cache::number_of_hits)
-                        .filter(dedup_cache::body_hash.eq(&body_hash))
-                        .get_result::<i32>(&mut conn)?;
-                    #[allow(clippy::cast_sign_loss)]
-                    Ok(hits as u32)
+        // One write transaction, so concurrent hits on the same hash each get their own count
+        let hits = conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            let insert_result = diesel::insert_into(dedup_cache::table)
+                .values((
+                    dedup_cache::body_hash.eq(&body_hash),
+                    dedup_cache::sender_public_key.eq(&public_key),
+                    dedup_cache::number_of_hits.eq(1),
+                    dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                    dedup_cache::keep_until.eq(keep_until),
+                    dedup_cache::is_signed.eq(is_signed),
+                ))
+                .execute(conn);
+            match insert_result {
+                Ok(1) => return Ok(1),
+                Ok(n) => {
+                    return Err(StorageError::UnexpectedResult(format!(
+                        "Expected exactly one row to be inserted. Got {n}"
+                    )));
                 },
-                _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
-            },
-            Err(e) => Err(e.into()),
-        }
+                Err(diesel::result::Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {},
+                Err(e) => return Err(e.into()),
+            }
+
+            // Update hit stats for the message
+            diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
+                .set((
+                    dedup_cache::sender_public_key.eq(&public_key),
+                    // Diesel column expression: builds SQL, not integer arithmetic
+                    #[allow(clippy::arithmetic_side_effects)]
+                    dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
+                    dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                ))
+                .execute(conn)?;
+            // Keep the later of the stored and the new keep_until
+            diesel::update(
+                dedup_cache::table
+                    .filter(dedup_cache::body_hash.eq(&body_hash))
+                    .filter(dedup_cache::keep_until.lt(keep_until)),
+            )
+            .set(dedup_cache::keep_until.eq(keep_until))
+            .execute(conn)?;
+
+            let hits = dedup_cache::table
+                .select(dedup_cache::number_of_hits)
+                .filter(dedup_cache::body_hash.eq(&body_hash))
+                .get_result::<i32>(conn)?;
+            Ok(hits)
+        })?;
+        #[allow(clippy::cast_sign_loss)]
+        Ok(hits as u32)
     }
 }
 
@@ -566,15 +593,36 @@ mod test {
     }
 
     #[test]
-    fn a_trim_is_skipped_while_another_runs() {
+    fn a_trim_requested_during_a_trim_runs_another_pass() {
         let cache = new_cache(10).with_min_entry_age(Duration::ZERO);
         insert(&cache, 0..20);
-        cache.is_trimming.store(true, Ordering::Release);
+        // Another trim is running: the request returns at once and leaves the rows to it
+        cache.is_trimming.store(true, Ordering::SeqCst);
         assert_eq!(cache.trim_entries().unwrap(), 0);
         assert_eq!(row_count(&cache), 20);
-        cache.is_trimming.store(false, Ordering::Release);
-        assert_eq!(cache.trim_entries().unwrap(), 10);
+        // The running trim, finishing its own pass, sees the request and runs another
+        assert_eq!(cache.run_requested_trims().unwrap(), 10);
         assert_eq!(row_count(&cache), 10);
+        assert!(!cache.is_trimming.load(Ordering::SeqCst));
+        assert!(!cache.trim_requested.load(Ordering::SeqCst));
+    }
+
+    /// Concurrent hits on one hash each get their own count, so `dedup_allowed_message_occurrences` copies get through
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_hits_get_distinct_counts() {
+        let cache = new_cache(50_000);
+        let num_copies = 20;
+        let mut tasks = Vec::new();
+        for _ in 0..num_copies {
+            let cache = cache.clone();
+            tasks.push(task::spawn_blocking(move || add(&cache, 0, None, true)));
+        }
+        let mut counts = Vec::new();
+        for t in tasks {
+            counts.push(t.await.unwrap());
+        }
+        counts.sort_unstable();
+        assert_eq!(counts, (1..=num_copies).collect::<Vec<u32>>());
     }
 
     #[test]

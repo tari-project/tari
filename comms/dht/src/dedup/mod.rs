@@ -44,6 +44,7 @@ use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
     actor::DhtRequester,
+    envelope::DhtMessageFlags,
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     message_signature::{MessageSignature, ProtoMessageSignature},
 };
@@ -70,21 +71,32 @@ pub fn canonical_signature_bytes(signature: &MessageSignature) -> Vec<u8> {
 pub fn hash_inbound_message(msg: &DhtInboundMessage, decoded_body: Option<&EnvelopeBody>) -> Option<[u8; 32]> {
     let signature = &msg.dht_header.message_signature;
     if signature.is_empty() {
-        return Some(message_key(&[], msg, decoded_body));
+        return Some(message_key(&[], msg.dht_header.flags, &msg.body, decoded_body));
     }
     let signature = MessageSignature::try_from(ProtoMessageSignature::decode(signature.as_slice()).ok()?).ok()?;
-    Some(message_key(&canonical_signature_bytes(&signature), msg, decoded_body))
+    Some(message_key(
+        &canonical_signature_bytes(&signature),
+        msg.dht_header.flags,
+        &msg.body,
+        decoded_body,
+    ))
 }
 
-/// The dedup key of a message with the given canonical signature bytes. A signed body is bound by the signature (and
-/// may be ciphertext), so its raw bytes are hashed. An unsigned body is not, so the canonical encoding of its decoded
-/// body is hashed instead, and re-encoding the body does not give the message a new key.
-pub fn message_key(sig_canonical: &[u8], msg: &DhtInboundMessage, decoded_body: Option<&EnvelopeBody>) -> [u8; 32] {
+/// The dedup key of a message, inbound or outbound, with the given canonical signature bytes, flags and raw body. A
+/// signed body is bound by the signature (and may be ciphertext), so its raw bytes are hashed. An unsigned body is
+/// not, so the canonical encoding of its decoded body is hashed instead, and re-encoding the body does not give the
+/// message a new key. Without a decoded body the raw bytes are hashed.
+pub fn message_key(
+    sig_canonical: &[u8],
+    flags: DhtMessageFlags,
+    body: &[u8],
+    decoded_body: Option<&EnvelopeBody>,
+) -> [u8; 32] {
     match decoded_body {
-        Some(body) if sig_canonical.is_empty() && !msg.dht_header.flags.is_encrypted() => {
-            create_message_hash(&[], &body.encode_to_vec())
+        Some(decoded) if sig_canonical.is_empty() && !flags.is_encrypted() => {
+            create_message_hash(&[], &decoded.encode_to_vec())
         },
-        _ => create_message_hash(sig_canonical, &msg.body),
+        _ => create_message_hash(sig_canonical, body),
     }
 }
 
