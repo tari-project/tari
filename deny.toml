@@ -35,15 +35,6 @@ ignore = [
     # Last reviewed 2026-09-29; re-review by 2027-03-29 or when an `rsa` fix is released. Kept in step with
     # .cargo/audit.toml.
     "RUSTSEC-2023-0071",
-    # RUSTSEC-2026-0367, RUSTSEC-2026-0368, RUSTSEC-2026-0369 (`zip` extraction: SUID/SGID bits kept, symlink targets
-    # and permissions applied outside the destination). `zip` 3.0.0 is only a build dependency of `utoipa-swagger-ui`,
-    # whose build script unpacks the pinned Swagger UI release archive entry by entry with `enclosed_name()` and
-    # `File::create`; it never calls the affected `extract()` APIs and never handles node input. The newest
-    # `utoipa-swagger-ui` (10.0.1) still uses `zip` < 9. Last reviewed 2026-10-19; remove when it moves to `zip` >= 9.
-    # Kept in step with .cargo/audit.toml.
-    "RUSTSEC-2026-0367",
-    "RUSTSEC-2026-0368",
-    "RUSTSEC-2026-0369",
 ]
 
 [licenses]

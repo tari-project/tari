@@ -38,7 +38,7 @@ strum = "0.22"
 strum_macros = "0.22"
 thiserror = { workspace = true }
 primitive-types = { version = "0.12", features = ["serde"] }
-utoipa = "5.3.1"
+utoipa = "6.0.0"
 wasm-bindgen = { version = "0.2.100", optional = true }
 zeroize = "1"
 
