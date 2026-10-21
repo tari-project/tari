@@ -85,6 +85,18 @@ impl From<[u8; FixedHash::byte_size()]> for FixedHash {
     }
 }
 
+impl From<tari_sidechain::FixedHash> for FixedHash {
+    fn from(hash: tari_sidechain::FixedHash) -> Self {
+        Self(hash.into_array())
+    }
+}
+
+impl From<FixedHash> for tari_sidechain::FixedHash {
+    fn from(hash: FixedHash) -> Self {
+        Self::new(hash.0)
+    }
+}
+
 impl TryFrom<Vec<u8>> for FixedHash {
     type Error = FixedHashSizeError;
 

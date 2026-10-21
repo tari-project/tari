@@ -25,7 +25,6 @@ use log::*;
 use primitive_types::U512;
 use rand::Rng;
 use tari_common_types::{
-    burn_proof::BurnOutputProof,
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
@@ -47,6 +46,7 @@ use tari_node_components::blocks::{
     HistoricalBlock,
     NewBlockTemplate,
 };
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},

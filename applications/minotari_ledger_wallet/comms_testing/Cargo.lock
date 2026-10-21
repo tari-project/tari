@@ -2176,8 +2176,9 @@ dependencies = [
  "subtle",
  "tari_common",
  "tari_crypto",
- "tari_hashing",
+ "tari_hashing 6.2.0-pre.2",
  "tari_max_size",
+ "tari_sidechain",
  "tari_utilities",
  "thiserror 2.0.20",
  "utoipa",
@@ -2223,6 +2224,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_hashing"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8c5dc9f7a9ae127a9b0df4da07a849ea165e9830cebccdfb618c72a611f40eb"
+dependencies = [
+ "blake2 0.10.6",
+ "borsh",
+ "digest 0.10.7",
+ "generic-array",
+ "tari_crypto",
+ "zeroize",
+]
+
+[[package]]
+name = "tari_jellyfish"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a92810061b6e388e01e6402527ae7777bfd713ddf749fb992af625e552fbf3a4"
+dependencies = [
+ "borsh",
+ "digest 0.10.7",
+ "serde",
+ "tari_crypto",
+ "tari_hashing 6.2.0",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "tari_max_size"
 version = "6.2.0-pre.2"
 dependencies = [
@@ -2258,6 +2287,25 @@ dependencies = [
  "sha3",
  "tari_crypto",
  "tari_max_size",
+ "tari_utilities",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "tari_sidechain"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "516db82216d890a5b0bb0eb7c9a799dcf07a95f9eb9bd773ecc2781a1142de2d"
+dependencies = [
+ "base64 0.22.1",
+ "borsh",
+ "digest 0.10.7",
+ "hex",
+ "log",
+ "serde",
+ "tari_crypto",
+ "tari_hashing 6.2.0",
+ "tari_jellyfish",
  "tari_utilities",
  "thiserror 2.0.20",
 ]

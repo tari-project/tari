@@ -4,10 +4,7 @@
 //! Hashing and verification of a [`BurnOutputProof`], the proof that a burn output was mined in a block.
 
 use borsh::BorshDeserialize;
-use tari_common_types::{
-    burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
-    types::FixedHash,
-};
+use tari_common_types::types::FixedHash;
 use tari_hashing::hashers::InputMmrHasherBlake256;
 use tari_mmr::{
     MerkleProof,
@@ -15,6 +12,7 @@ use tari_mmr::{
     common::{LeafIndex, checked_n_leaves},
 };
 use tari_script::TariScript;
+use tari_sidechain::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage};
 use thiserror::Error;
 
 use crate::{
@@ -57,7 +55,8 @@ impl From<&TransactionOutput> for OutputHashPreimage {
                 .proof
                 .as_ref()
                 .map(|rp| rp.hash())
-                .unwrap_or_else(FixedHash::zero),
+                .unwrap_or_else(FixedHash::zero)
+                .into(),
             script: consensus_encode(&output.script),
             sender_offset_public_key: output.sender_offset_public_key.clone(),
             metadata_signature: output.metadata_signature.clone(),
@@ -96,7 +95,7 @@ impl OutputHashPreimageExt for OutputHashPreimage {
             version,
             &self.decode_features()?,
             &self.commitment,
-            &self.rangeproof_hash,
+            &self.rangeproof_hash.into(),
             &script,
             &self.sender_offset_public_key,
             &self.metadata_signature,
@@ -127,8 +126,8 @@ impl BurnOutputProofExt for BurnOutputProof {
         verify_mmr_proof(
             NORMAL_OUTPUT_MMR,
             &self.normal_output_proof,
-            &self.normal_output_mr,
-            &output_hash,
+            self.normal_output_mr.as_slice(),
+            output_hash.as_slice(),
         )?;
 
         // Honest proofs have the normal output MMR root as the last leaf of the block output MMR, after the coinbase
@@ -147,8 +146,8 @@ impl BurnOutputProofExt for BurnOutputProof {
         verify_mmr_proof(
             BLOCK_OUTPUT_MMR,
             &self.block_output_proof,
-            trusted_block_output_mr,
-            &self.normal_output_mr,
+            trusted_block_output_mr.as_slice(),
+            self.normal_output_mr.as_slice(),
         )
     }
 }
@@ -156,8 +155,8 @@ impl BurnOutputProofExt for BurnOutputProof {
 fn verify_mmr_proof(
     mmr: &'static str,
     proof: &MmrInclusionProof,
-    root: &FixedHash,
-    leaf: &FixedHash,
+    root: &[u8],
+    leaf: &[u8],
 ) -> Result<(), BurnOutputProofError> {
     let to_usize = |value: u64, name: &str| {
         usize::try_from(value).map_err(|_| BurnOutputProofError::MalformedMmrProof {
@@ -171,11 +170,7 @@ fn verify_mmr_proof(
         peaks: proof.peaks.iter().map(|hash| hash.to_vec()).collect(),
     };
     merkle_proof
-        .verify_leaf::<InputMmrHasherBlake256>(
-            root.as_slice(),
-            leaf.as_slice(),
-            LeafIndex(to_usize(proof.leaf_index, "leaf index")?),
-        )
+        .verify_leaf::<InputMmrHasherBlake256>(root, leaf, LeafIndex(to_usize(proof.leaf_index, "leaf index")?))
         .map_err(|source| BurnOutputProofError::InvalidMmrProof { mmr, source })
 }
 
@@ -233,12 +228,12 @@ mod tests {
             path: proof
                 .path
                 .into_iter()
-                .map(|h| FixedHash::try_from(h).unwrap())
+                .map(|h| tari_sidechain::FixedHash::try_from(h).unwrap())
                 .collect(),
             peaks: proof
                 .peaks
                 .into_iter()
-                .map(|h| FixedHash::try_from(h).unwrap())
+                .map(|h| tari_sidechain::FixedHash::try_from(h).unwrap())
                 .collect(),
         }
     }
@@ -271,11 +266,11 @@ mod tests {
         let block_output_mr = FixedHash::try_from(block_output_mmr.get_merkle_root().unwrap()).unwrap();
 
         let proof = BurnOutputProof {
-            block_hash: FixedHash::zero(),
+            block_hash: FixedHash::zero().into(),
             block_height: 1,
             output: OutputHashPreimage::from(&burn),
             normal_output_proof: mmr_proof(&normal_output_mmr, burn_index),
-            normal_output_mr,
+            normal_output_mr: normal_output_mr.into(),
             block_output_proof: mmr_proof(&block_output_mmr, num_coinbases),
         };
         (proof, block_output_mr)

@@ -1,10 +1,8 @@
 // Copyright 2026 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use tari_common_types::{
-    burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
-    types::{CompressedCommitment, CompressedPublicKey, FixedHash},
-};
+use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
+use tari_sidechain::{BurnOutputProof, FixedHash, MmrInclusionProof, OutputHashPreimage};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

@@ -29,12 +29,13 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
-    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
+    burn_proof::PartialBurnClaimProof,
     payment_reference::PaymentReference,
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
 };
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     MicroMinotari,
     key_manager::RecoveryProvenance,

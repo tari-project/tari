@@ -10,7 +10,6 @@ PACKAGES=(
     "tari_max_size"
     "tari_script"
     "tari_hashing"
-    "tari_jellyfish"
     "tari_comms_rpc_macros"
     "tari_common_sqlite"
     "tari_features"
@@ -20,7 +19,6 @@ PACKAGES=(
     "tari_comms_dht"
     "minotari_ledger_wallet_common"
     "tari_common_types"
-    "tari_sidechain"
     "minotari_ledger_wallet_comms"
     "tari_service_framework"
     "tari_transaction_components"
@@ -39,19 +37,13 @@ PACKAGES=(
     "minotari_console_wallet"
 )
 
-# Print the local version of a package, e.g. "5.7.0-pre.1".
+# Print the local version of a package, e.g. "5.7.0-pre.1". Read from the workspace members only:
+# `cargo pkgid --package` is ambiguous when a registry copy of the same crate is also in the
+# dependency graph (e.g. `tari_hashing`, which `tari_sidechain` pulls from crates.io).
 package_version() {
     local package="$1"
-    # cargo pkgid prints either "path+file:///path/to/crate#name@1.2.3" or
-    # "file:///path/to/crate#name:1.2.3", depending on the cargo version.
-    local pkgid
-    pkgid=$(cargo pkgid --package "${package}")
-    pkgid="${pkgid##*#}"
-    case "${pkgid}" in
-        *@*) echo "${pkgid##*@}" ;;
-        *:*) echo "${pkgid##*:}" ;;
-        *) echo "${pkgid}" ;;
-    esac
+    cargo metadata --no-deps --format-version 1 |
+        jq --exit-status --raw-output --arg name "${package}" '.packages[] | select(.name == $name) | .version'
 }
 
 # Path of a crate in the sparse crates.io index, see
