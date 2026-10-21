@@ -413,14 +413,17 @@ function collectCompletedTransactions(client) {
 // One pass over the wallet's transactions; run it on a schedule
 async function runListenerPass() {
     const txs = await collectCompletedTransactions(client);
+    // Sweeps first: the swept set is rebuilt from scratch on every pass, so a sweep that was cancelled makes its
+    // inputs owed again
+    const sweptInputs = [];
+    for (const tx of txs) {
+        sweptInputs.push(...(await markSweptIfSpent(tx)));
+    }
+    await ledger.setSweptInputs(sweptInputs); // recorded whether or not those deposits are credited yet
     const state = await getWalletState(client); // fetched once per pass
-    // Sweeps first, so the balance gate already counts this pass's sweeps when it checks the credits
-    const outbound = txs.filter(tx => tx.direction === 'TRANSACTION_DIRECTION_OUTBOUND');
-    const inbound = txs.filter(tx => tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND');
-    for (const tx of [...outbound, ...inbound]) {
+    for (const tx of txs) {
         try {
-            // The shared functions below ignore anything they must not act on
-            await markSweptIfSpent(tx);
+            // The shared function below ignores anything it must not act on
             await creditCustomerAccount(client, tx, state);
         } catch (error) {
             console.error(`Transaction ${tx.tx_id} not processed, retried on the next pass:`, error);
@@ -551,7 +554,9 @@ async function creditCustomerAccount(client, tx, state = null) {
         await flagUnmatchedDeposit(tx, `no account for payment id (${tx.status})`); // manual review
         return null;
     }
-    if (!(await balanceCovers(client, current, tx.amount))) {
+    // A deposit a sweep already spent (coin selection has no depth filter) is no longer held, so it adds nothing owed
+    const owedAmount = (await ledger.allSweptInputs(tx.output_commitments)) ? 0 : tx.amount;
+    if (!(await balanceCovers(client, current, owedAmount))) {
         return null;
     }
     // Dedupe on tx_id, in the same ledger every caller writes to; never on a PayRef. The entry records the
@@ -566,20 +571,20 @@ async function creditCustomerAccount(client, tx, state = null) {
     return credited ? account : null;
 }
 
-// Outbound side of the listener. Any sweep that is not cancelled takes its inputs out of the balance gate's `owed`; a
-// credited deposit becomes withdrawable only once every one of its output commitments is an input of a confirmed
-// sweep from this deposit wallet to your separate hot wallet.
+// Outbound side of the listener. Returns the inputs of a sweep that is not cancelled (broadcast or mined), which the
+// balance gate no longer counts as owed; a credited deposit becomes withdrawable only once every one of its output
+// commitments is an input of a confirmed sweep from this deposit wallet to your separate hot wallet.
 async function markSweptIfSpent(tx) {
     if (tx.direction !== 'TRANSACTION_DIRECTION_OUTBOUND' || tx.is_cancelled) {
-        return;
+        return [];
     }
     if (!(await isSweepToHotWallet(tx))) {
-        return; // only sweeps to the hot wallet count, never a coin join to self
+        return []; // only sweeps to the hot wallet count, never a coin join to self
     }
-    await ledger.markSweepInputs(tx.input_commitments); // broadcast or mined: no longer owed by this wallet
     if (CONFIRMED_STATUSES.includes(tx.status)) {
         await ledger.markWithdrawableIfAllSpent(tx.input_commitments);
     }
+    return tx.input_commitments;
 }
 ```
 
@@ -597,16 +602,20 @@ A wallet only records an outbound transaction for transactions it built or broad
 its outputs it just marks them spent. So build every sweep on the Monitoring Wallet the listener reads and broadcast it
 through that wallet: `PrepareOneSidedTransactionForSigning` on the Monitoring Wallet, sign the payload offline on the
 Main Wallet (`sign-one-sided-transaction`), then `BroadcastSignedOneSidedTransaction` on the Monitoring Wallet. The
-outbound record, with its `input_commitments`, then lands in the wallet the listener reads. (Alternatively, run
-`markSweptIfSpent` over the signing wallet's own `GetCompletedTransactions`.) A sweep sent any other way is never seen,
-so no deposit becomes withdrawable and the balance gate halts crediting after the first sweep.
+outbound record, with its `input_commitments`, then lands in the wallet the listener reads. (If the Main Wallet both
+builds and broadcasts a sweep itself, for example with `Transfer`, run `markSweptIfSpent` over its own
+`GetCompletedTransactions` instead; offline signing stores no transaction in the signing wallet.) A sweep the listener
+never sees leaves no deposit withdrawable, and the balance gate halts crediting after the first such sweep.
 
 **Balance gate:** before crediting, and on a schedule, check that credited but unswept deposits are no more than
 `available_balance + timelocked_balance + pending_outgoing_balance` from `GetBalance` (or `GetState`), and halt crediting
 and alert on a gap (`balanceCovers` above). For this check a credit stops being owed as soon as its outputs are inputs
-of a sweep that is not cancelled (`ledger.markSweepInputs`), even before the sweep confirms; it only becomes
-withdrawable once the sweep confirms. Each pass handles the outbound records before the inbound credits, and the
-balance is fetched again before crediting is halted. This catches a burn when it is credited, and a `Nop` output its sender
+of a sweep that is not cancelled, even before the sweep confirms; it only becomes withdrawable once the sweep
+confirms. The swept set is rebuilt from the outbound records on every pass (`ledger.setSweptInputs`), so a sweep
+that is cancelled (rejected as a double spend, for example, because a depositor spent a `Nop` output first, or
+cancelled by an operator) makes its inputs owed again. It also records inputs whose deposits are not credited yet, so a
+deposit swept before it reached your confirmation depth adds nothing owed when it is credited. Each pass handles the
+outbound records before the inbound credits, and the balance is fetched again before crediting is halted. This catches a burn when it is credited, and a `Nop` output its sender
 spent after it was spent, but not multisig or non-standard outputs: `available_balance` includes those.
 
 **Manual resolution:** every manual credit, refund or write-off goes through `ledger.creditOnce` (or
@@ -687,7 +696,7 @@ Each exchange will have their own processes, but here is an example of receiving
 ## Performing withdrawals
 In this section we'll perform a withdrawal from the same address we used in **Section 3**. It is also possible to have a number of different wallets and send funds between them. The process is mostly the same, but is out of scope for this document.
 
-> Note: Sweeps from the deposit wallet to your hot wallet must not be sent this way. Build them on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on this Main Wallet, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`, so the listener sees them (see the sweep gate in **Section 6**).
+> Note: Sweeps from the deposit wallet to your hot wallet must be visible to the sweep gate in **Section 6**, so do not send them with `send-minotari` as shown below. Build them on the Monitoring Wallet with `PrepareOneSidedTransactionForSigning`, sign them offline on this Main Wallet, and broadcast them on the Monitoring Wallet with `BroadcastSignedOneSidedTransaction`; or, if this wallet builds and broadcasts a sweep itself (for example with `Transfer`), run the sweep gate over this wallet's own `GetCompletedTransactions`.
 
 > NOTE: The wallet used to spend funds should not be online for more time than is necessary. It is recommended that the machine running this wallet is secured.
 
