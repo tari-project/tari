@@ -506,7 +506,7 @@ mod test {
     fn encrypt_data_rejects_oversized_memos() {
         let mask = PrivateKey::random(&mut rand::rng());
         let commitment =
-            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1)));
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1u64)));
         // One byte over the limit, and far over it
         for len in [
             MAX_ENCRYPTED_DATA_SIZE - STATIC_ENCRYPTED_DATA_SIZE_TOTAL,

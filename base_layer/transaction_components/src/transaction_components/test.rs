@@ -370,7 +370,7 @@ fn check_timelocks() {
     );
 
     let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
-    let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
+    let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0u64.into(), 0u64.into());
 
     // lets add time locks
     input.set_maturity(5).unwrap();
