@@ -335,6 +335,38 @@ where KM: TransactionKeyManagerInterface
         sender_offset_key_id: TariKeyId,
         custom_recovery_key_id: Option<TariKeyId>,
     ) -> Result<&mut Self, TransactionBuilderError> {
+        self.push_recipient(
+            Some(recipient_address),
+            recipient_output,
+            sender_offset_key_id,
+            custom_recovery_key_id,
+        )
+    }
+
+    /// Add a burn output that is already built. A burn has no recipient address, so nothing is derived from or signed
+    /// for one; the same rules as [`Self::add_recipient`] apply to `sender_offset_key_id`.
+    ///
+    /// With no address the output is re-signed without the device's review, so on a ledger wallet a host held sender
+    /// offset key is refused here, as the addressed path refuses it.
+    pub fn add_burn_recipient(
+        &mut self,
+        burn_output: WalletOutput,
+        sender_offset_key_id: TariKeyId,
+        custom_recovery_key_id: Option<TariKeyId>,
+    ) -> Result<&mut Self, TransactionBuilderError> {
+        if self.key_manager.is_ledger() && !matches!(sender_offset_key_id, TariKeyId::LedgerKey { .. }) {
+            return Err(KeyManagerError::LedgerHostHeldSenderOffset.into());
+        }
+        self.push_recipient(None, burn_output, sender_offset_key_id, custom_recovery_key_id)
+    }
+
+    fn push_recipient(
+        &mut self,
+        recipient_address: Option<TariAddress>,
+        recipient_output: WalletOutput,
+        sender_offset_key_id: TariKeyId,
+        custom_recovery_key_id: Option<TariKeyId>,
+    ) -> Result<&mut Self, TransactionBuilderError> {
         let kernel_nonce = self.key_manager.get_random_key(None, None)?;
         let recipient_output = OutputPair::new(
             recipient_output,
@@ -919,7 +951,7 @@ where KM: TransactionKeyManagerInterface
         let first_recipient = self
             .recipient_outputs
             .first()
-            .map(|r| (r.output.output.value(), r.recipient_address.clone()))
+            .map(|r| (r.output.output.value(), r.recipient_address.clone().unwrap_or_default()))
             .or_else(|| pending_recipients.first().cloned())
             .or_else(|| self.recipient_specs.first().map(|s| (s.amount, s.destination.clone())));
         if let Some((value, address)) = first_recipient {
@@ -1326,7 +1358,11 @@ where KM: TransactionKeyManagerInterface
                 .ok_or(TransactionBuilderError::SenderOffsetKeyPoolExhausted)?;
             let (output, recovery_key_id) = self.build_spec_output(spec, &sender_offset, total_fee)?;
             spec_outputs.push(output.clone());
-            self.add_recipient(spec.destination.clone(), output, sender_offset.key_id, recovery_key_id)?;
+            if spec.is_burn {
+                self.add_burn_recipient(output, sender_offset.key_id, recovery_key_id)?;
+            } else {
+                self.add_recipient(spec.destination.clone(), output, sender_offset.key_id, recovery_key_id)?;
+            }
         }
         let remaining = keys.count();
         if remaining > 0 {
@@ -1422,7 +1458,7 @@ where KM: TransactionKeyManagerInterface
                 &self.key_manager,
                 &mut recipient.output,
                 total_fee,
-                Some(&recipient.recipient_address),
+                recipient.recipient_address.as_ref(),
             )?;
 
             let output = recipient.output.output.to_transaction_output()?;
@@ -1570,7 +1606,7 @@ where KM: TransactionKeyManagerInterface
         let destination_addresses = self
             .recipient_outputs
             .iter()
-            .map(|r| r.recipient_address.clone())
+            .map(|r| r.recipient_address.clone().unwrap_or_default())
             .collect::<Vec<TariAddress>>();
 
         let mut amount = self
@@ -2825,6 +2861,98 @@ mod test {
         .unwrap();
         let finalized = builder.build().unwrap();
         assert_validates(&finalized.transaction);
+    }
+
+    /// On a ledger wallet an address-less recipient with a host held sender offset key is refused.
+    #[cfg(feature = "ledger")]
+    #[test]
+    fn a_ledger_wallet_refuses_a_host_held_burn_recipient() {
+        use crate::key_manager::wallet_types::{LedgerWallet, WalletType};
+
+        let ledger = LedgerWallet::new(
+            1,
+            Network::LocalNet,
+            CompressedPublicKey::from_secret_key(&PrivateKey::from(5u64)),
+            PrivateKey::from(6u64),
+        );
+        let ledger_key_manager = KeyManager::new(WalletType::Ledger(ledger)).unwrap();
+        let software_key_manager = KeyManager::new_random().unwrap();
+        let output = create_test_input(MicroMinotari(1000), 0, &software_key_manager, vec![], None);
+        let host_key = software_key_manager.get_random_key(None, None).unwrap();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), ledger_key_manager, Network::LocalNet).unwrap();
+        let err = builder
+            .add_burn_recipient(output.clone(), host_key.key_id.clone(), None)
+            .map(|_| ())
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains(&KeyManagerError::LedgerHostHeldSenderOffset.to_string()),
+            "{err}"
+        );
+
+        let mut software_builder =
+            TransactionBuilder::new(create_consensus_constants(0), software_key_manager, Network::LocalNet).unwrap();
+        software_builder
+            .add_burn_recipient(output, host_key.key_id, None)
+            .unwrap();
+    }
+
+    /// A plain burn is a spec built output added with no recipient address, so nothing is signed for the placeholder.
+    #[test]
+    fn plain_burn_has_no_recipient_address() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(5000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(2))
+            .with_input(input)
+            .unwrap();
+        builder.with_tx_type(TxType::Burn);
+        builder.with_kernel_features(KernelFeatures::create_burn());
+        builder
+            .with_recipient_spec(
+                RecipientSpec::burn(
+                    MicroMinotari(1000),
+                    OutputFeatures::create_burn_output(),
+                    MemoField::new_empty(),
+                )
+                .with_script(script!(Nop).unwrap())
+                .with_script_key(RecipientScriptKey::Zero),
+            )
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+
+        let mut probe = builder.clone();
+        probe.build_spec_outputs(MicroMinotari(0)).unwrap();
+        assert_eq!(probe.recipient_outputs.len(), 1);
+        assert!(probe.recipient_outputs.first().unwrap().recipient_address.is_none());
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
+        assert_eq!(
+            finalized
+                .transaction
+                .body
+                .outputs()
+                .iter()
+                .filter(|o| o.is_burned())
+                .count(),
+            1
+        );
+        assert!(
+            finalized
+                .transaction
+                .body
+                .kernels()
+                .first()
+                .unwrap()
+                .features
+                .is_burned()
+        );
     }
 
     #[test]

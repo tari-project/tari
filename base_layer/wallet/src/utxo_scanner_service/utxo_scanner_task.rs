@@ -41,7 +41,7 @@ use tari_crypto::{compressed_commitment::CompressedCommitment, compressed_key::C
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::RecoveryProvenance,
+    key_manager::{RecoveryProvenance, error::not_ours_if_invalid_key},
     rpc::models::MinimalUtxoSyncInfo,
     transaction_components::{
         EncryptedData,
@@ -687,17 +687,20 @@ where
             // Received output use the DH of view key and sender offset.
             let offset_pub_key = CompressedKey::from_canonical_bytes(&output.sender_offset_public_key)
                 .map_err(|e| anyhow!("Sender offset is not a valid public key:{}", e))?;
-            let shared_secret = self
-                .key_manager
-                .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key)?;
-            let recovery_key = public_key_to_output_encryption_key(&shared_secret)
-                .map_err(|e| anyhow!("Could not hash key :{}", e))?;
-            if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
-                .ok()
-                .is_some()
-            {
-                found_outputs.push(output.clone());
-                continue;
+            // A sender offset key that is the identity or not a point cannot carry a payment to us
+            if let Some(shared_secret) = not_ours_if_invalid_key(
+                self.key_manager
+                    .get_diffie_hellman_shared_secret(&view_key.key_id, &offset_pub_key),
+            )? {
+                let recovery_key = public_key_to_output_encryption_key(&shared_secret)
+                    .map_err(|e| anyhow!("Could not hash key :{}", e))?;
+                if EncryptedData::decrypt_data(&recovery_key, &commitment, &encrypted)
+                    .ok()
+                    .is_some()
+                {
+                    found_outputs.push(output.clone());
+                    continue;
+                }
             }
 
             // Change outputs just use the view key.
@@ -920,13 +923,23 @@ where
             "Wallet birthday is {birthday} at epoch time {epoch_time_birthday}"
         );
         let epoch_time_scanning_start = get_birthday_from_unix_epoch_in_seconds(birthday, self.birthday_offset);
-        let block_height_scanning_start = client
-            .get_height_at_time(epoch_time_scanning_start)
-            .await
-            .unwrap_or_else(|e| {
-                warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
-                0
-            });
+        let now = u64::try_from(Utc::now().timestamp()).unwrap_or(0);
+        let block_height_scanning_start = if is_birthday_in_the_future(birthday, now) {
+            warn!(
+                target: LOG_TARGET,
+                "{:?}: Wallet birthday {} (epoch time {}) is in the future, scanning from height 0",
+                self.mode, birthday, epoch_time_birthday
+            );
+            0
+        } else {
+            client
+                .get_height_at_time(epoch_time_scanning_start)
+                .await
+                .unwrap_or_else(|e| {
+                    warn!(target: LOG_TARGET, "{:?}: Problem requesting `height_at_time` from Base Node: {}", self.mode, e);
+                    0
+                })
+        };
         let header = match client.get_header_by_height(block_height_scanning_start).await? {
             Some(header) => header,
             None => {
@@ -955,6 +968,11 @@ where
     }
 }
 
+/// Whether a wallet birthday lies after `now` (unix seconds), which no genuine seed can have
+fn is_birthday_in_the_future(birthday: u16, now: u64) -> bool {
+    get_birthday_from_unix_epoch_in_seconds(birthday, 0) > now
+}
+
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
@@ -978,5 +996,25 @@ where F: Future<Output = Result<T, anyhow::Error>> {
         biased;
         _ = shutdown.wait() => Err(shutdown_error()),
         res = fut => res,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::seeds::{
+        cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
+        seed_words::get_birthday_from_unix_epoch_in_seconds,
+    };
+
+    use super::is_birthday_in_the_future;
+
+    #[test]
+    fn a_birthday_after_now_is_in_the_future() {
+        let now = BIRTHDAY_GENESIS_FROM_UNIX_EPOCH + 100 * 24 * 60 * 60;
+        assert!(!is_birthday_in_the_future(0, now));
+        assert!(!is_birthday_in_the_future(100, now));
+        assert!(is_birthday_in_the_future(101, now));
+        assert!(is_birthday_in_the_future(u16::MAX, now));
+        assert_eq!(get_birthday_from_unix_epoch_in_seconds(100, 0), now);
     }
 }

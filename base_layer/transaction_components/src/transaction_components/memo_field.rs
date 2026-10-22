@@ -2905,7 +2905,7 @@ mod test {
         assert_eq!(memo.to_bytes().len(), memo.get_size());
         let mask = PrivateKey::random(&mut rand::rng());
         let commitment =
-            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1)));
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1u64)));
         let encryption_key = PrivateKey::random(&mut rand::rng());
         let encrypted =
             EncryptedData::encrypt_data(&encryption_key, &commitment, 1.into(), &mask, memo.clone()).unwrap();
@@ -3234,7 +3234,7 @@ mod test {
         ];
         let mask = PrivateKey::random(&mut rand::rng());
         let commitment =
-            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1)));
+            CompressedCommitment::from_commitment(CommitmentFactory::default().commit(&mask, &PrivateKey::from(1u64)));
         for bytes in inputs {
             let memo = MemoField::from_bytes(&bytes);
             assert!(memo.is_raw(), "{memo}");

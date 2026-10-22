@@ -18,7 +18,8 @@ use crate::{
 #[derive(Clone, Debug, PartialEq)]
 pub struct RecipientDetails {
     pub output: OutputPair,
-    pub recipient_address: TariAddress,
+    /// `None` for a burn, which has no recipient address.
+    pub recipient_address: Option<TariAddress>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -122,6 +123,8 @@ pub struct RecipientSpec {
     pub script: RecipientScript,
     pub script_key: RecipientScriptKey,
     pub metadata_signature: RecipientMetadataSignature,
+    /// A burn has no recipient: `destination` is unused and the output is added as a burn recipient.
+    pub is_burn: bool,
 }
 
 impl RecipientSpec {
@@ -139,6 +142,7 @@ impl RecipientSpec {
             script: RecipientScript::Default,
             script_key: RecipientScriptKey::Zero,
             metadata_signature: RecipientMetadataSignature::UserVerified,
+            is_burn: false,
         }
     }
 
@@ -157,6 +161,15 @@ impl RecipientSpec {
             script: RecipientScript::Default,
             script_key: RecipientScriptKey::Own,
             metadata_signature: RecipientMetadataSignature::Unverified,
+            is_burn: false,
+        }
+    }
+
+    /// A burn output: built like [`Self::to_self`], but added to the transaction with no recipient address.
+    pub fn burn(amount: MicroMinotari, features: OutputFeatures, memo: MemoField) -> Self {
+        Self {
+            is_burn: true,
+            ..Self::to_self(amount, features, memo)
         }
     }
 

@@ -120,7 +120,9 @@ impl Encryptable<XChaCha20Poly1305> for BurntProofSql {
     }
 
     fn decrypt(mut self, cipher: &XChaCha20Poly1305) -> Result<Self, String> {
-        self.burn_proof = decrypt_bytes_integral_nonce(cipher, self.domain("encoded_burn_proof"), &self.burn_proof)?;
+        self.burn_proof = decrypt_bytes_integral_nonce(cipher, self.domain("encoded_burn_proof"), &self.burn_proof)?
+            .reveal()
+            .clone();
         Ok(self)
     }
 }

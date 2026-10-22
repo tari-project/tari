@@ -18,6 +18,7 @@ pub use coinbase_builder::{
     CoinbaseBuilder,
     generate_coinbase,
     generate_coinbase_with_wallet_output,
+    validate_coinbase_request,
 };
 pub mod consensus;
 pub mod fee;

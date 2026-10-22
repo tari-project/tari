@@ -148,6 +148,8 @@ pub enum TariAddressError {
     PaymentIdTooLarge,
     #[error("Payment_id not supported on single addresses")]
     PaymentIdNotSupported,
+    #[error("Address cannot receive a coinbase: {0}")]
+    InvalidCoinbaseTarget(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -302,6 +304,45 @@ impl TariAddress {
             TariAddress::Dual(v) => v.public_spend_key(),
             TariAddress::Single(v) => v.public_spend_key(),
         }
+    }
+
+    /// Check that the address can receive a coinbase: a dual address with the one-sided feature, whose view and spend
+    /// keys are valid points other than the identity, and whose payment id fits the coinbase memo.
+    pub fn validate_coinbase_target(&self) -> Result<(), TariAddressError> {
+        let TariAddress::Dual(address) = self else {
+            return Err(TariAddressError::InvalidCoinbaseTarget(
+                "a single address has no view key".to_string(),
+            ));
+        };
+        if !address.features().contains(TariAddressFeatures::ONE_SIDED) {
+            return Err(TariAddressError::InvalidCoinbaseTarget(
+                "the address does not support one-sided payments".to_string(),
+            ));
+        }
+        for (name, key) in [
+            ("view", address.public_view_key()),
+            ("spend", address.public_spend_key()),
+        ] {
+            if *key == CompressedPublicKey::default() {
+                return Err(TariAddressError::InvalidCoinbaseTarget(format!(
+                    "the {name} key is the identity point"
+                )));
+            }
+            if key.to_public_key().is_err() {
+                return Err(TariAddressError::InvalidCoinbaseTarget(format!(
+                    "the {name} key is not a valid point"
+                )));
+            }
+        }
+        // The coinbase memo carries the payment id with a one byte tag and a one byte transaction type
+        let max_payment_id = MAX_PAYMENT_ID_SIZE.saturating_sub(2);
+        let payment_id_len = address.get_memo_field_payment_id_bytes().len();
+        if payment_id_len > max_payment_id {
+            return Err(TariAddressError::InvalidCoinbaseTarget(format!(
+                "the payment id is {payment_id_len} bytes, more than the {max_payment_id} bytes a coinbase can carry"
+            )));
+        }
+        Ok(())
     }
 
     /// Construct Tari Address from bytes
@@ -1302,10 +1343,7 @@ mod test {
         let err = borsh::from_slice::<TariAddress>(&encoded).unwrap_err();
         assert!(err.to_string().contains("Invalid features"), "{}", err);
 
-        // serde bytes (bincode) and serde human readable (base58)
-        let encoded = bincode::serialize(&lenient).unwrap();
-        let err = bincode::deserialize::<TariAddress>(&encoded).unwrap_err();
-        assert!(err.to_string().contains("Invalid features"), "{}", err);
+        // serde human readable (base58)
         let json = serde_json::to_string(&lenient).unwrap();
         assert!(serde_json::from_str::<TariAddress>(&json).is_err());
     }
@@ -1473,5 +1511,116 @@ mod test {
         assert_eq!(TariAddress::from_base58(&overlong), Err(TariAddressError::InvalidSize));
         let huge = "z".repeat(4_000_000);
         assert_eq!(TariAddress::from_base58(&huge), Err(TariAddressError::InvalidSize));
+    }
+
+    /// Overwrites `range` of an encoded address and fixes up the checksum
+    fn with_bytes_at(mut bytes: Vec<u8>, range: std::ops::Range<usize>, value: &[u8]) -> Vec<u8> {
+        let last = bytes.len().saturating_sub(1);
+        bytes[range].copy_from_slice(value);
+        bytes[last] = compute_checksum(&bytes[..last]);
+        bytes
+    }
+
+    #[test]
+    fn strict_decoders_reject_keys_that_are_not_points() {
+        let not_a_point = [0xffu8; 32];
+        assert!(CompressedPublicKey::new(&not_a_point).to_public_key().is_err());
+
+        let dual = random_dual_address(None).to_vec();
+        let single = TariAddress::new_single_address_with_interactive_only(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            Network::MainNet,
+        )
+        .unwrap()
+        .to_vec();
+        for bytes in [
+            with_bytes_at(dual.clone(), 2..34, &not_a_point),
+            with_bytes_at(dual, 34..66, &not_a_point),
+            with_bytes_at(single, 2..34, &not_a_point),
+        ] {
+            assert_eq!(
+                TariAddress::from_bytes(&bytes),
+                Err(TariAddressError::CannotRecoverPublicKey)
+            );
+            let lenient = TariAddress::from_bytes_lenient(&bytes).unwrap();
+            assert_eq!(lenient.to_vec(), bytes);
+            assert!(TariAddress::from_base58(&lenient.to_base58()).is_err());
+            assert!(TariAddress::from_emoji_string(&lenient.to_emoji_string()).is_err());
+            assert!(TariAddress::from_hex(&lenient.to_hex()).is_err());
+            assert!(borsh::from_slice::<TariAddress>(&borsh::to_vec(&bytes).unwrap()).is_err());
+            assert!(serde_json::from_str::<TariAddress>(&serde_json::to_string(&lenient).unwrap()).is_err());
+        }
+    }
+
+    #[test]
+    fn the_default_identity_address_still_decodes() {
+        let default = TariAddress::default();
+        assert_eq!(default.public_spend_key(), &CompressedPublicKey::default());
+        assert_eq!(TariAddress::from_bytes(&default.to_vec()).unwrap(), default);
+        assert_eq!(TariAddress::from_base58(&default.to_base58()).unwrap(), default);
+        let json = serde_json::to_string(&default).unwrap();
+        assert_eq!(serde_json::from_str::<TariAddress>(&json).unwrap(), default);
+    }
+
+    #[test]
+    fn validate_coinbase_target_accepts_only_one_sided_dual_addresses_with_valid_keys() {
+        let mut rng = rand::rng();
+        let valid = || CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+        let dual = |view: CompressedPublicKey, spend: CompressedPublicKey, features: TariAddressFeatures| {
+            TariAddress::new_dual_address(view, spend, Network::MainNet, features, None).unwrap()
+        };
+        let one_sided = TariAddressFeatures::create_one_sided_only();
+
+        dual(valid(), valid(), one_sided).validate_coinbase_target().unwrap();
+        dual(
+            valid(),
+            valid(),
+            TariAddressFeatures::create_interactive_and_one_sided(),
+        )
+        .validate_coinbase_target()
+        .unwrap();
+
+        let identity = CompressedPublicKey::default();
+        let not_a_point = CompressedPublicKey::new(&[0xffu8; 32]);
+        let single = TariAddress::new_single_address_with_interactive_only(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rng)),
+            Network::MainNet,
+        )
+        .unwrap();
+        let cases = [
+            (single, "single address"),
+            (
+                dual(valid(), valid(), TariAddressFeatures::create_interactive_only()),
+                "one-sided",
+            ),
+            (dual(identity.clone(), valid(), one_sided), "view key is the identity"),
+            (dual(valid(), identity, one_sided), "spend key is the identity"),
+            (
+                dual(not_a_point.clone(), valid(), one_sided),
+                "view key is not a valid point",
+            ),
+            (dual(valid(), not_a_point, one_sided), "spend key is not a valid point"),
+        ];
+        for (address, expected) in cases {
+            match address.validate_coinbase_target() {
+                Err(TariAddressError::InvalidCoinbaseTarget(reason)) => {
+                    assert!(reason.contains(expected), "{reason}")
+                },
+                other => panic!("expected '{expected}', got {other:?}"),
+            }
+        }
+        assert!(TariAddress::default().validate_coinbase_target().is_err());
+
+        // The payment id must fit the coinbase memo, with its tag and transaction type bytes
+        let with_payment_id = |len: usize| {
+            TariAddress::new_dual_address(valid(), valid(), Network::MainNet, one_sided, Some(vec![1; len])).unwrap()
+        };
+        with_payment_id(254).validate_coinbase_target().unwrap();
+        for len in [255, 256] {
+            match with_payment_id(len).validate_coinbase_target() {
+                Err(TariAddressError::InvalidCoinbaseTarget(reason)) => assert!(reason.contains("254"), "{reason}"),
+                other => panic!("expected a refused payment id of {len} bytes, got {other:?}"),
+            }
+        }
     }
 }

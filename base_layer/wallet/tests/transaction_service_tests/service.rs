@@ -830,6 +830,71 @@ async fn send_one_sided_transaction_to_other() {
 }
 
 #[tokio::test]
+async fn send_one_sided_transaction_refuses_identity_and_non_point_address_keys() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager,
+        factories,
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+    let uo1 = make_input(
+        &mut rand::rng(),
+        25000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let valid_key = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let identity = CompressedPublicKey::default();
+    let not_a_point = CompressedPublicKey::new(&[0xffu8; 32]);
+    let dual = |view: &CompressedPublicKey, spend: &CompressedPublicKey| {
+        TariAddress::new_dual_address_with_default_features(view.clone(), spend.clone(), network).unwrap()
+    };
+    let cases = [
+        (TariAddress::default(), "identity"),
+        (dual(&identity, &valid_key), "view key is the identity point"),
+        (dual(&valid_key, &identity), "spend key is the identity point"),
+        (dual(&not_a_point, &valid_key), "view key is not a valid point"),
+        (dual(&valid_key, &not_a_point), "spend key is not a valid point"),
+    ];
+    for (address, expected) in cases {
+        let result = alice_ts
+            .send_one_sided_transaction(
+                address,
+                1000.into(),
+                UtxoSelectionCriteria::default(),
+                OutputFeatures::default(),
+                20.into(),
+                MemoField::new_empty(),
+            )
+            .await;
+        match result {
+            Err(TransactionServiceError::InvalidAddress(msg)) => assert!(msg.contains(expected), "{msg}"),
+            other => panic!("expected an invalid address for '{expected}', got {other:?}"),
+        }
+    }
+    assert_eq!(
+        alice_oms.get_balance().await.unwrap().pending_outgoing_balance,
+        0.into()
+    );
+}
+
+#[tokio::test]
 async fn recover_one_sided_transaction() {
     // env_logger::builder().filter_level(log::LevelFilter::Trace).init(); //  > ./target/output.log 2>&1
     let network = Network::LocalNet;
@@ -3786,4 +3851,140 @@ async fn prepare_deposit_multisig_transaction_refuses_an_amount_below_the_fee() 
         .unwrap();
     assert_eq!(balance.available_balance, input_value);
     assert_eq!(balance.pending_outgoing_balance, MicroMinotari::zero());
+}
+
+/// A pending outbound transaction stored by an older version may no longer decode. It can still be cancelled, which
+/// releases its inputs.
+#[tokio::test]
+async fn an_undecodable_pending_outbound_transaction_can_be_cancelled() {
+    use diesel::{
+        RunQueryDsl,
+        sql_types::{BigInt, Binary},
+    };
+    use minotari_wallet::{
+        legacy_transaction_protocol::SenderTransactionProtocol,
+        transaction_service::storage::{database::TransactionDatabase, models::OutboundTransaction},
+    };
+    use tari_common_sqlite::sqlite_connection_pool::PooledDbConnection;
+    use tari_common_types::encryption::encrypt_bytes_integral_nonce;
+    use tari_utilities::Hidden;
+
+    let factories = CryptoFactories::default();
+    let db_connection = make_wallet_database_memory_connection();
+    let mut alice = setup_transaction_service_no_comms(factories, db_connection.clone(), None).await;
+
+    // Encumber an input under the transaction
+    let value = MicroMinotari::from(25000);
+    let input = make_input(
+        &mut rand::rng(),
+        value,
+        &OutputFeatures::default(),
+        alice.key_manager_handle.key_manager(),
+    );
+    alice
+        .output_manager_service_handle
+        .add_output(input.clone(), None)
+        .await
+        .unwrap();
+    alice
+        .oms_db
+        .mark_outputs_as_unspent(vec![(input.output_hash(), true)])
+        .unwrap();
+    let tx_id = TxId::from(77u64);
+    alice
+        .output_manager_service_handle
+        .prepare_transaction_to_send(
+            tx_id,
+            MicroMinotari::from(10000),
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(5),
+            TariScript::default(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    alice
+        .output_manager_service_handle
+        .confirm_pending_transaction(tx_id, None, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        alice
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .available_balance,
+        MicroMinotari::zero()
+    );
+
+    // Store the pending outbound transaction, then replace its sender protocol with bytes that do not decode
+    let destination = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        Network::LocalNet,
+    )
+    .unwrap();
+    let ts_db = TransactionDatabase::new(alice.ts_db.clone());
+    ts_db
+        .add_pending_outbound_transaction(
+            tx_id,
+            OutboundTransaction::new(
+                tx_id,
+                destination,
+                MicroMinotari::from(10000),
+                MicroMinotari::from(100),
+                SenderTransactionProtocol::new_placeholder(),
+                LegacyTransactionStatus::Pending,
+                MemoField::new_empty(),
+                Utc::now(),
+                false,
+            ),
+        )
+        .unwrap();
+    let cipher = WalletSqliteDatabase::new(db_connection.clone(), SafePassword::from("My lovely secret passphrase"))
+        .unwrap()
+        .cipher();
+    // The outbound transaction encryption domain
+    let domain = [
+        b"OUTBOUND_TRANSACTION".as_slice(),
+        tx_id.as_u64().to_le_bytes().as_slice(),
+        b"sender_protocol",
+    ]
+    .concat();
+    let garbage = encrypt_bytes_integral_nonce(&cipher, domain, Hidden::hide(vec![0xff; 16])).unwrap();
+    let mut conn = db_connection.get_pooled_connection().unwrap();
+    diesel::sql_query("UPDATE outbound_transactions SET sender_protocol = ? WHERE tx_id = ?")
+        .bind::<Binary, _>(garbage)
+        .bind::<BigInt, _>(tx_id.as_i64_wrapped())
+        .execute(&mut conn)
+        .unwrap();
+    drop(conn);
+    assert!(ts_db.get_any_transaction(tx_id).is_err());
+
+    // Cancelling it marks the row cancelled and releases the input
+    alice
+        .transaction_service_handle
+        .cancel_pending_transaction(tx_id)
+        .await
+        .unwrap();
+    assert!(!ts_db.pending_outbound_transaction_exists(tx_id).unwrap());
+    // The row is kept, and the cancelled list still loads without it
+    let cancelled = alice
+        .transaction_service_handle
+        .get_cancelled_pending_outbound_transactions()
+        .await
+        .unwrap();
+    assert!(cancelled.iter().all(|tx| tx.tx_id != tx_id));
+    assert_eq!(
+        alice
+            .output_manager_service_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .available_balance,
+        value
+    );
 }
