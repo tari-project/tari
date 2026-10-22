@@ -46,7 +46,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [build-dependencies]
-tari_features = { workspace = true }
 tonic-build = "0.13.1"
 
 [package.metadata.cargo-machete]
