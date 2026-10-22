@@ -39,6 +39,7 @@ use minotari_app_grpc::{
 };
 use minotari_app_utilities::parse_miner_input::{
     BaseNodeGrpcClient,
+    ParseInputError,
     ShaP2PoolGrpcClient,
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
@@ -102,13 +103,20 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             "'wallet_payment_address' ".to_owned() + &err.to_string(),
         )
     })?;
-    let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)
-        .map_err(|err| {
-            ExitError::new(
+    let wallet_payment_address = match wallet_payment_address(
+        config.wallet_payment_address.clone(),
+        config.network,
+        cli.non_interactive_mode,
+    ) {
+        Ok(addr) => addr,
+        Err(ParseInputError::UserQuit(_)) => return Ok(()),
+        Err(err) => {
+            return Err(ExitError::new(
                 ExitCode::WalletPaymentAddress,
                 "'wallet_payment_address' ".to_owned() + &err.to_string(),
-            )
-        })?;
+            ));
+        },
+    };
     debug!(target: LOG_TARGET_FILE, "wallet_payment_address: {wallet_payment_address}");
     let consensus_manager = BaseNodeConsensusManager::builder(config.network)
         .build()
@@ -152,9 +160,11 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 
         Ok(())
     } else {
-        let node_clients = connect(&config)
-            .await
-            .map_err(|e| ExitError::new(ExitCode::GrpcError, e.to_string()))?;
+        let node_clients = match connect(&config, cli.non_interactive_mode).await {
+            Ok(clients) => clients,
+            Err(MinerError::ParseInputError(ParseInputError::UserQuit(_))) => return Ok(()),
+            Err(e) => return Err(ExitError::new(ExitCode::GrpcError, e.to_string())),
+        };
         let mut base_node_client = node_clients.base_node_client;
         let mut p2pool_node_client = node_clients.p2pool_node_client;
 
@@ -191,12 +201,13 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
                     loop {
                         info!(target: LOG_TARGET, "Holding for {:?}", config.wait_timeout());
                         sleep(config.wait_timeout()).await;
-                        match connect(&config).await {
+                        match connect(&config, cli.non_interactive_mode).await {
                             Ok(nc) => {
                                 base_node_client = nc.base_node_client;
                                 p2pool_node_client = nc.p2pool_node_client;
                                 break;
                             },
+                            Err(MinerError::ParseInputError(ParseInputError::UserQuit(_))) => return Ok(()),
                             Err(err) => {
                                 error!(target: LOG_TARGET, "Connection error: {err:?}");
                                 continue;
@@ -242,10 +253,11 @@ pub struct NodeClientResult {
     p2pool_node_client: Option<ShaP2PoolGrpcClient>,
 }
 
-async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
+async fn connect(config: &MinerConfig, non_interactive: bool) -> Result<NodeClientResult, MinerError> {
     // always connect to base node first
-    let base_node_client = match connect_base_node(config).await {
+    let base_node_client = match connect_base_node(config, non_interactive).await {
         Ok(client) => client,
+        Err(e @ MinerError::ParseInputError(ParseInputError::UserQuit(_))) => return Err(e),
         Err(e) => {
             error!(target: LOG_TARGET, "Could not connect to base node: {e}");
             let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
@@ -258,8 +270,9 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
     // init client to sha p2pool grpc if enabled
     let mut p2pool_node_client = None;
     if config.sha_p2pool_enabled {
-        p2pool_node_client = match connect_sha_p2pool(config).await {
+        p2pool_node_client = match connect_sha_p2pool(config, non_interactive).await {
             Ok(client) => Some(client),
+            Err(e @ MinerError::ParseInputError(ParseInputError::UserQuit(_))) => return Err(e),
             Err(e) => {
                 error!(target: LOG_TARGET, "Could not connect to base node: {e}");
                 let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
@@ -276,12 +289,12 @@ async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
     })
 }
 
-async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient, MinerError> {
+async fn connect_sha_p2pool(config: &MinerConfig, non_interactive: bool) -> Result<ShaP2PoolGrpcClient, MinerError> {
     let p2pool_node_addr;
     if let Some(ref a) = config.base_node_grpc_address {
         p2pool_node_addr = a.clone();
     } else {
-        p2pool_node_addr = prompt_for_p2pool_address()?;
+        p2pool_node_addr = prompt_for_p2pool_address(non_interactive)?;
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
@@ -313,12 +326,12 @@ async fn connect_sha_p2pool(config: &MinerConfig) -> Result<ShaP2PoolGrpcClient,
     Ok(node_conn)
 }
 
-async fn connect_base_node(config: &MinerConfig) -> Result<BaseNodeGrpcClient, MinerError> {
+async fn connect_base_node(config: &MinerConfig, non_interactive: bool) -> Result<BaseNodeGrpcClient, MinerError> {
     let base_node_addr;
     if let Some(ref a) = config.base_node_grpc_address {
         base_node_addr = a.clone();
     } else {
-        base_node_addr = prompt_for_base_node_address(config.network)?;
+        base_node_addr = prompt_for_base_node_address(config.network, non_interactive)?;
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
