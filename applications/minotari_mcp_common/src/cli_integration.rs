@@ -265,12 +265,6 @@ impl WalletArgumentBuilder {
         self
     }
 
-    pub fn with_password(mut self, password: String) -> Self {
-        self.wallet_specific_args.push("--password".to_string());
-        self.wallet_specific_args.push(password);
-        self
-    }
-
     pub fn force_recovery(mut self) -> Self {
         self.wallet_specific_args.push("--recovery".to_string());
         self
