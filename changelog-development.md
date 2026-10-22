@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.3.0-pre.0](https://github.com/tari-project/tari/compare/v6.2.0-pre.2...v6.3.0-pre.0) (2026-10-22)
+
+
+### Bug Fixes
+
+* **common-types:** refuse identity and non-point address keys, harden seed and wallet storage ([#8154](https://github.com/tari-project/tari/issues/8154)) ([0736147](https://github.com/tari-project/tari/commit/073614732fc1fb9696df7969be6b69a1a650c7d5)), closes [tari-project/tari_utilities#78](https://github.com/tari-project/tari_utilities/issues/78) [/github.com/tari-project/tari/pull/8154#discussion_r4337247598](https://github.com/tari-project//github.com/tari-project/tari/pull/8154/issues/discussion_r4337247598)
+* **comms-dht:** ban only the provably culpable party for invalid DHT messages ([#8139](https://github.com/tari-project/tari/issues/8139)) ([04133e2](https://github.com/tari-project/tari/commit/04133e24df2091070ac5a8d64393ff9f26f207ad)), closes [/github.com/tari-project/tari/pull/8139#discussion_r4313448056](https://github.com/tari-project//github.com/tari-project/tari/pull/8139/issues/discussion_r4313448056)
+* **comms-dht:** canonical dedup key, non-blocking and flood-resistant dedup cache ([#8151](https://github.com/tari-project/tari/issues/8151)) ([87dd55a](https://github.com/tari-project/tari/commit/87dd55a8c29271ed914493f04211a4fecc0eb36e))
+* **comms-dht:** relay received bytes verbatim, require canonical encodin ([#8146](https://github.com/tari-project/tari/issues/8146)) ([8ed6688](https://github.com/tari-project/tari/commit/8ed668857f0d6f8b16e74979e0214b7cce9e3aec)), closes [#8139](https://github.com/tari-project/tari/issues/8139)
+* **comms:** check resolved dial addresses, per-address dialer failures, tokio-util 0.7 and tower 0.5 ([#8140](https://github.com/tari-project/tari/issues/8140)) ([bff7a15](https://github.com/tari-project/tari/commit/bff7a150f69382b8a7bac55e34324358792c2716)), closes [#8118](https://github.com/tari-project/tari/issues/8118) [#8119](https://github.com/tari-project/tari/issues/8119) [#8124](https://github.com/tari-project/tari/issues/8124) [#8125](https://github.com/tari-project/tari/issues/8125)
+* **identity:** check 0600 permissions in load_from_json ([#8034](https://github.com/tari-project/tari/issues/8034)) ([#8144](https://github.com/tari-project/tari/issues/8144)) ([136010f](https://github.com/tari-project/tari/commit/136010fe83767f7a854838352e6c502ddd0ff963)), closes [/github.com/tari-project/tari/pull/8144#discussion_r4321858187](https://github.com/tari-project//github.com/tari-project/tari/pull/8144/issues/discussion_r4321858187)
+* **offline-signing:** make multisig deposit and withdraw outputs recoverable by the recipient ([#8147](https://github.com/tari-project/tari/issues/8147)) ([2288684](https://github.com/tari-project/tari/commit/22886848eba3e67613e83e865b33103f1c8464fc))
+* **transaction-components:** strict amount grammar, wider terminal escaping, hasher network docs ([#8138](https://github.com/tari-project/tari/issues/8138)) ([b4e2514](https://github.com/tari-project/tari/commit/b4e2514e9224b59442ee6b5060e880c94f79e2ae)), closes [/github.com/tari-project/tari/pull/8138#discussion_r4313417912](https://github.com/tari-project//github.com/tari-project/tari/pull/8138/issues/discussion_r4313417912)
+* **wallet:** shut down non-interactive gRPC console wallet on SIGTERM or SIGINT ([#8122](https://github.com/tari-project/tari/issues/8122)) ([54b3a47](https://github.com/tari-project/tari/commit/54b3a475d93eeb38a6208410bb8411c651f9387d)), closes [#8063](https://github.com/tari-project/tari/issues/8063)
+* **wallet:** skip undecodable rows in completed transaction lists ([#8145](https://github.com/tari-project/tari/issues/8145)) ([d75153e](https://github.com/tari-project/tari/commit/d75153e67d361eb7d316270400950acb051230d2))
+
 ## [6.2.0-pre.2](https://github.com/tari-project/tari/compare/v6.2.0-pre.1...v6.2.0-pre.2) (2026-10-19)
 
 
