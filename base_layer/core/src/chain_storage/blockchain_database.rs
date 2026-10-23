@@ -4312,8 +4312,8 @@ fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
     let mut current_header = header.clone();
     while current_header.height != vm_height {
         let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
-        let chain_header = db.fetch_chain_header_by_height(h.height())?;
-        if *h.header() == *chain_header.header() {
+        let chain_header = db.fetch_chain_header_by_height(h.height()).optional()?;
+        if chain_header.is_some_and(|c| *h.header() == *c.header()) {
             // Now we now the orphan links back to the main chain here
             return Ok((*db.fetch_chain_header_by_height(vm_height)?.hash(), h.height()));
         }
