@@ -26,7 +26,6 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
-use primitive_types::U512;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::{
     PeerConnection,
@@ -744,10 +743,34 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .map(|h| (h.height(), *h.hash(), h.accumulated_data().total_accumulated_difficulty))
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
-        // If we already have a stronger chain at this point, switch over to it.
-        // just in case we happen to be exactly HEADER_SYNC_INITIAL_MAX_HEADERS headers behind.
+        let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
         let has_better_pow = self.pending_chain_has_higher_pow(&split_info.best_block_header);
 
+        if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
+            // Peer returned less than the max number of requested headers. This indicates that we have all the
+            // available headers from the peer, so they must cover what the peer claimed before we commit them.
+            if !has_better_pow || total_accumulated_difficulty < claimed_total_accumulated_diff {
+                debug!(target: LOG_TARGET, "No further headers to download");
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                    claimed: claimed_total_accumulated_diff,
+                    actual: Some(total_accumulated_difficulty),
+                    local: split_info
+                        .best_block_header
+                        .accumulated_data()
+                        .total_accumulated_difficulty,
+                });
+            }
+            debug!(
+                target: LOG_TARGET,
+                "Remote chain from peer {} has higher PoW. Switching",
+                sync_peer.node_id()
+            );
+            self.switch_to_pending_chain(&split_info).await?;
+            return Ok(());
+        }
+
+        // If we already have a stronger chain at this point, switch over to it.
+        // just in case we happen to be exactly HEADER_SYNC_INITIAL_MAX_HEADERS headers behind.
         if has_better_pow {
             debug!(
                 target: LOG_TARGET,
@@ -756,26 +779,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             self.switch_to_pending_chain(&split_info).await?;
             has_switched_to_new_chain = true;
-        }
-
-        if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
-            // Peer returned less than the max number of requested headers. This indicates that we have all the
-            // available headers from the peer.
-            if !has_better_pow {
-                // Because the pow is less or equal than the current chain the peer had to have lied about their pow
-                debug!(target: LOG_TARGET, "No further headers to download");
-                return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
-                    claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
-                    actual: Some(total_accumulated_difficulty),
-                    local: split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
-                });
-            }
-            // The pow is higher, we swapped to the higher chain, we have all the better chain headers, we can move on
-            // to block sync.
-            return Ok(());
         }
 
         debug!(
@@ -799,7 +802,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         let mut last_sync_timer = Instant::now();
 
-        let mut last_total_accumulated_difficulty = U512::zero();
+        let mut last_total_accumulated_difficulty = total_accumulated_difficulty;
         let mut avg_latency = RollingAverageTime::new(20);
         let mut prev_height: Option<u64> = None;
         while let Some(header) = header_stream.next().await {
@@ -884,7 +887,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             prev_height = Some(current_height);
         }
 
-        let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
         if !has_switched_to_new_chain {
             let best_local_before_sync = split_info
                 .best_block_header
