@@ -17,7 +17,7 @@ use crate::{
         rpc::{BaseNodeWalletService, MAX_ALLOWED_QUERY_SIZE, sync_utxos_by_block_task::SyncUtxosByBlockTask},
         state_machine_service::states::StateInfo,
     },
-    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, MinedInfo, async_db::AsyncBlockchainDb},
     mempool::{TxStorageResponse, service::MempoolHandle},
     proto,
     proto::{
@@ -492,21 +492,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .collect::<Result<_, _>>()
             .map_err(|_| RpcStatus::bad_request(&"Malformed utxo hash received".to_string()))?;
         let mut return_data = Vec::with_capacity(hashes.len());
-        let utxos = self
-            .db
-            .fetch_outputs_mined_info(hashes.clone())
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
-        let txos = self
-            .db
-            .fetch_inputs_mined_info(hashes)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
-        if utxos.len() != txos.len() {
-            return Err(RpcStatus::general("database returned different inputs vs outputs"));
-        }
-        for (utxo, txo) in utxos.iter().zip(txos.iter()) {
-            let mut data = match utxo {
+        for hash in hashes {
+            // Both halves come from one read, so they describe the same lifecycle.
+            let info = MinedInfo::latest(
+                self.db
+                    .fetch_mined_info_by_output_hash(hash)
+                    .await
+                    .rpc_status_internal_error(LOG_TARGET)?,
+            );
+            let mut data = match &info.output {
                 None => QueryDeletedData {
                     mined_at_height: 0,
                     block_mined_in: Vec::new(),
@@ -520,7 +514,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                     block_deleted_in: Vec::new(),
                 },
             };
-            if let Some(input) = txo {
+            if let Some(input) = &info.input {
                 data.height_deleted_at = input.spent_height;
                 data.block_deleted_in = input.header_hash.to_vec();
             };

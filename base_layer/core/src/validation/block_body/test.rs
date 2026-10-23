@@ -675,7 +675,6 @@ async fn duplicate_output_third_lifecycle() {
     let latest = MinedInfo::latest(chain.db().fetch_mined_info_by_output_hash(hash).unwrap());
     assert_eq!(latest.output.unwrap().mined_height, m3.height());
     assert!(latest.input.is_none());
-    assert!(chain.db().fetch_inputs_mined_info(vec![hash]).unwrap()[0].is_none());
     let validator = BlockBodyPartialValidator::new(chain.rules().clone());
     for block in [&s1, &s2] {
         validator

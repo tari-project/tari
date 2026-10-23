@@ -1419,20 +1419,6 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_inputs_mined_info(
-        &self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<InputMinedInfo>>, ChainStorageError> {
-        let db = self.db_read_access()?;
-
-        let mut result = Vec::with_capacity(hashes.len());
-        for hash in hashes {
-            // Only a spend of the latest mined instance counts.
-            result.push(MinedInfo::latest(db.fetch_mined_info_by_output_hash(&hash)?).input);
-        }
-        Ok(result)
-    }
-
     /// For each output hash, the stored instance that an input in block `header_hash` spent.
     pub fn fetch_outputs_spent_in_block(
         &self,
