@@ -93,7 +93,7 @@ use super::{
 };
 use crate::{
     block_spec,
-    chain_storage::{BlockchainDatabaseConfig, DbTransaction, MinedInfo, Validators},
+    chain_storage::{BlockchainDatabaseConfig, ChainStorageError, DbTransaction, MinedInfo, Validators},
     consensus::BaseNodeConsensusManager,
     test_helpers::{
         BlockSpec,
@@ -628,6 +628,24 @@ async fn duplicate_output_lifecycle_pruning() {
         .add_next_tip(block_spec!("5", transactions: vec![transaction]))
         .unwrap();
     assert!(is_spent_in_block(&chain, &remined, hash, &spent_again));
+}
+
+#[tokio::test]
+async fn duplicate_output_prune_reports_missing_row() {
+    let (chain, ..) = duplicate_output_chain();
+    let mined = chain.get_block_and_smt_by_name("2").unwrap();
+    let spent = chain.get_block_and_smt_by_name("3").unwrap();
+    let hash = spent.block().body.inputs()[0].output_hash();
+    chain
+        .db()
+        .db_read_access()
+        .unwrap()
+        .delete_output_row_for_test(mined.hash(), &hash);
+
+    let mut txn = DbTransaction::new();
+    txn.prune_outputs_spent_at_hash(*spent.hash());
+    let err = chain.db().write(txn).unwrap_err();
+    assert!(matches!(err, ChainStorageError::ValueNotFound { .. }), "{err:?}");
 }
 
 #[tokio::test]

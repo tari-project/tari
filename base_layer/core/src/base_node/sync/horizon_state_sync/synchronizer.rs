@@ -1613,6 +1613,16 @@ mod tests {
             Some(hash)
         );
         // The old input survives output-only pruning and must not pair with the re-mined instance.
+        assert!(
+            !chain
+                .db()
+                .fetch_outputs_in_block_with_spend_state(*remined.hash(), Some(*remined.hash()))
+                .unwrap()
+                .into_iter()
+                .find(|(o, _)| o.hash() == hash)
+                .unwrap()
+                .1
+        );
         let info = chain.db().fetch_mined_info_by_output_hash(hash).unwrap();
         assert_eq!(info.len(), 2);
         assert!(info.first().unwrap().output.is_none());

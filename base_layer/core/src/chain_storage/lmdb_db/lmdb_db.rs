@@ -2690,6 +2690,21 @@ impl LMDBDatabase {
                     &header_hash,
                     "txos_hash_to_index_db",
                 )?;
+            } else {
+                // An index entry at or before the spend without its row is a missing row, not a pruned instance.
+                for key_bytes in lmdb_get_single_or_vec::<_, Vec<u8>>(
+                    write_txn,
+                    &self.txos_hash_to_index_db,
+                    output_hash.as_slice(),
+                )? {
+                    let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
+                    let mined_height = self.fetch_height_from_hash(write_txn, &header_hash)?;
+                    if mined_height.is_some_and(|h| h <= input_data.spent_height) &&
+                        lmdb_get::<_, TransactionOutputRowData>(write_txn, &self.utxos_db, &key_bytes)?.is_none()
+                    {
+                        lmdb_delete(write_txn, &self.utxos_db, &key_bytes, LMDB_DB_UTXOS)?;
+                    }
+                }
             }
             self.remove_index_entry_for_header(
                 write_txn,
@@ -3109,6 +3124,15 @@ impl LMDBDatabase {
     #[cfg(test)]
     pub(crate) fn create_write_txn(&self) -> WriteTransaction<'_> {
         self.write_transaction().expect("Failed to create write transaction")
+    }
+
+    /// Deletes an output row but leaves its index entries, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn delete_output_row_for_test(&self, header_hash: &HashOutput, output_hash: &HashOutput) {
+        let txn = self.create_write_txn();
+        let key = OutputKey::new(header_hash, output_hash).unwrap();
+        lmdb_delete(&txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS).unwrap();
+        txn.commit().unwrap();
     }
 
     #[cfg(test)]
@@ -3555,11 +3579,8 @@ impl BlockchainBackend for LMDBDatabase {
     ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
         let txn = self.read_transaction()?;
 
-        let mut outputs: Vec<(TransactionOutput, bool)> =
-            lmdb_fetch_matching_after::<TransactionOutputRowData>(&txn, &self.utxos_db, header_hash.deref())?
-                .into_iter()
-                .map(|(_, row)| (row.output, false))
-                .collect();
+        let rows = lmdb_fetch_matching_after::<TransactionOutputRowData>(&txn, &self.utxos_db, header_hash.deref())?;
+        let mut outputs = Vec::with_capacity(rows.len());
         if let Some(status_header_hash) = spend_status_at_header {
             let header_height =
                 self.fetch_height_from_hash(&txn, status_header_hash)?
@@ -3568,16 +3589,32 @@ impl BlockchainBackend for LMDBDatabase {
                         field: "hash",
                         value: status_header_hash.to_hex(),
                     })?;
-            for output in &mut outputs {
+            for (_, row) in rows {
                 // Only the spend of the instance mined in this block counts, not that of an earlier or later one.
-                output.1 = self
-                    .fetch_mined_info_by_output_hash_in_txn(&txn, &output.0.hash())?
-                    .into_iter()
-                    .any(|info| {
-                        info.output.as_ref().is_some_and(|o| o.header_hash == *header_hash) &&
-                            info.input.as_ref().is_some_and(|i| i.spent_height <= header_height)
-                    });
+                let hash = row.output.hash();
+                let inputs = self.fetch_inputs_in_txn(&txn, hash.as_slice())?;
+                let spent = if inputs.is_empty() {
+                    false
+                } else if lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, &self.txos_hash_to_index_db, hash.as_slice())?
+                    .len() <=
+                    1
+                {
+                    // With a single instance, it is paired with the first spend at or after it was mined.
+                    inputs
+                        .iter()
+                        .any(|i| i.spent_height >= row.mined_height && i.spent_height <= header_height)
+                } else {
+                    self.fetch_mined_info_by_output_hash_in_txn(&txn, &hash)?
+                        .into_iter()
+                        .any(|info| {
+                            info.output.as_ref().is_some_and(|o| o.header_hash == *header_hash) &&
+                                info.input.as_ref().is_some_and(|i| i.spent_height <= header_height)
+                        })
+                };
+                outputs.push((row.output, spent));
             }
+        } else {
+            outputs.extend(rows.into_iter().map(|(_, row)| (row.output, false)));
         }
 
         Ok(outputs)
