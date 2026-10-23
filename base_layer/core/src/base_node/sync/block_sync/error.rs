@@ -72,6 +72,8 @@ pub enum BlockSyncError {
     PeerNotFound,
     #[error("Peer did not supply all the blocks they claimed they had: {0}")]
     PeerDidNotSupplyAllClaimedBlocks(String),
+    #[error("Peer does not have the blocks to our header tip, which it did not claim: {0}")]
+    PeerDoesNotHaveHeaderTipBlocks(RpcError),
 }
 
 impl BlockSyncError {
@@ -103,6 +105,7 @@ impl BlockSyncError {
             BlockSyncError::SyncRoundFailed => "SyncRoundFailed",
             BlockSyncError::PeerNotFound => "PeerNotFound",
             BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) => "PeerDidNotSupplyAllClaimedBlocks",
+            BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) => "PeerDoesNotHaveHeaderTipBlocks",
         }
     }
 }
@@ -117,6 +120,7 @@ impl BlockSyncError {
             BlockSyncError::AllSyncPeersExceedLatency |
             BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::PeerNotFound |
+            BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) |
             BlockSyncError::SyncRoundFailed => None,
             BlockSyncError::ChainStorageError(e) => e.get_ban_reason(),
             // short ban
