@@ -2663,12 +2663,14 @@ impl LMDBDatabase {
                 )?;
             }
             let output_hash = input.output_hash();
-            // A hash may map to multiple indexes (one per header). Prune the row for each, and remove
-            // only that header's index entry, deleting the index key once its last entry is gone.
-            for key_bytes in
-                lmdb_get_single_or_vec::<_, Vec<u8>>(write_txn, &self.txos_hash_to_index_db, output_hash.as_slice())?
-            {
-                let header_hash = Self::header_hash_from_output_index_key(&key_bytes)?;
+            // Prune only the instance this input spent; a later instance of the same output is still live.
+            let spent_instance = self
+                .fetch_mined_info_by_output_hash_in_txn(write_txn, &output_hash)?
+                .into_iter()
+                .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == *block_hash))
+                .and_then(|info| info.output);
+            if let Some(instance) = spent_instance {
+                let header_hash = instance.header_hash;
                 let key = OutputKey::new(&header_hash, &output_hash)?;
                 trace!(target: LOG_TARGET, "Pruning output from 'utxos_db': key '{}'", key.0);
                 lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
@@ -2788,6 +2790,10 @@ impl LMDBDatabase {
             .put_value_set(batch, val)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
+        // A tranche can spend a commitment and mine it again, which replaces the existing value for that key.
+        for update in updates.iter().filter(|update| update.value.is_some()) {
+            lmdb_delete_if_exists(write_txn, &self.jmt_value_data, update.key.as_slice())?;
+        }
         writer
             .write_node_batch(&ops.node_batch)
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
@@ -3026,32 +3032,45 @@ impl LMDBDatabase {
         })
     }
 
-    // Fetch mined info by output hash
+    /// Fetches every lifecycle of `output_hash`, ordered by height. An identical output can be mined again once it
+    /// has been spent, so each input is paired with the latest instance mined at or before it, and each instance with
+    /// at most one input. An input whose instance has been pruned is returned without an output.
     fn fetch_mined_info_by_output_hash_in_txn(
         &self,
         txn: &ConstTransaction<'_>,
         output_hash: &HashOutput,
     ) -> Result<Vec<MinedInfo>, ChainStorageError> {
-        let mut results = Vec::new();
-        let mut output_mined_info = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
-        output_mined_info.sort_by_key(|o| o.mined_height);
-        let mut inputs_mined_info = self.fetch_inputs_in_txn(txn, output_hash.as_slice())?;
-        // sort desc so that pop() yields the inputs in ascending spent_height order
-        inputs_mined_info.sort_by_key(|i| core::cmp::Reverse(i.spent_height));
-        for output in output_mined_info {
-            let input = inputs_mined_info.pop();
-            results.push(MinedInfo {
-                input,
+        let mut outputs = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
+        outputs.sort_by_key(|o| o.mined_height);
+        let mut inputs = self.fetch_inputs_in_txn(txn, output_hash.as_slice())?;
+        inputs.sort_by_key(|i| i.spent_height);
+
+        let mut results = outputs
+            .into_iter()
+            .map(|output| MinedInfo {
+                input: None,
                 output: Some(output),
+            })
+            .collect::<Vec<_>>();
+        for input in inputs {
+            let instance = results.iter_mut().rev().find(|info| {
+                info.output
+                    .as_ref()
+                    .is_some_and(|o| o.mined_height <= input.spent_height)
             });
+            match instance {
+                Some(info) if info.input.is_none() => info.input = Some(input),
+                _ => results.push(MinedInfo {
+                    input: Some(input),
+                    output: None,
+                }),
+            }
         }
-        // Any inputs without a matching output (e.g. the output has been pruned) are still reported.
-        for input in inputs_mined_info.into_iter().rev() {
-            results.push(MinedInfo {
-                input: Some(input),
-                output: None,
-            });
-        }
+        results.sort_by_key(|info| match (&info.output, &info.input) {
+            (Some(output), _) => output.mined_height,
+            (None, Some(input)) => input.spent_height,
+            (None, None) => 0,
+        });
 
         Ok(results)
     }
@@ -3541,29 +3560,23 @@ impl BlockchainBackend for LMDBDatabase {
                 .into_iter()
                 .map(|(_, row)| (row.output, false))
                 .collect();
-        if let Some(header_hash) = spend_status_at_header {
+        if let Some(status_header_hash) = spend_status_at_header {
             let header_height =
-                self.fetch_height_from_hash(&txn, header_hash)?
+                self.fetch_height_from_hash(&txn, status_header_hash)?
                     .ok_or(ChainStorageError::ValueNotFound {
                         entity: "Header",
                         field: "hash",
-                        value: header_hash.to_hex(),
+                        value: status_header_hash.to_hex(),
                     })?;
             for output in &mut outputs {
-                let hash = output.0.hash();
-                // A hash may map to multiple spend indexes; the output is spent-at-header if any of
-                // them was spent at or before the target header height.
-                for key in
-                    lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, &self.deleted_txo_hash_to_header_index, hash.as_slice())?
-                {
-                    if let Some(input) = lmdb_get::<_, TransactionInputRowData>(&txn, &self.inputs_db, &key)? &&
-                        input.spent_height <= header_height
-                    {
-                        // we know its spend at the header height specified as optional in the fn
-                        output.1 = true;
-                        break;
-                    }
-                }
+                // Only the spend of the instance mined in this block counts, not that of an earlier or later one.
+                output.1 = self
+                    .fetch_mined_info_by_output_hash_in_txn(&txn, &output.0.hash())?
+                    .into_iter()
+                    .any(|info| {
+                        info.output.as_ref().is_some_and(|o| o.header_hash == *header_hash) &&
+                            info.input.as_ref().is_some_and(|i| i.spent_height <= header_height)
+                    });
             }
         }
 

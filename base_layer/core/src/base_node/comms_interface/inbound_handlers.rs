@@ -673,28 +673,8 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::MinedInfo(output_info))
             },
             NodeCommsRequest::FetchMinedInfoByOutputHash(output_hash) => {
-                // A hash may be indexed under multiple headers; return the entry with the highest-mined output. Entries
-                // without an output (the output was pruned but the spend is still indexed) still carry spent status,
-                // so fall back to the highest-spent one of those rather than reporting nothing.
-                let (mined, spent_only): (Vec<_>, Vec<_>) = self
-                    .blockchain_db
-                    .fetch_mined_info_by_output_hash(output_hash)
-                    .await?
-                    .into_iter()
-                    .partition(|info| info.output.is_some());
-                let result = mined
-                    .into_iter()
-                    .max_by_key(|info| info.output.as_ref().map_or(0, |o| o.mined_height))
-                    .or_else(|| {
-                        spent_only
-                            .into_iter()
-                            .max_by_key(|info| info.input.as_ref().map_or(0, |i| i.spent_height))
-                    })
-                    .unwrap_or(MinedInfo {
-                        input: None,
-                        output: None,
-                    });
-                Ok(NodeCommsResponse::MinedInfo(result))
+                let infos = self.blockchain_db.fetch_mined_info_by_output_hash(output_hash).await?;
+                Ok(NodeCommsResponse::MinedInfo(MinedInfo::latest(infos)))
             },
             NodeCommsRequest::FetchOutputMinedInfo(output_hash) => {
                 // A hash may be indexed under multiple headers; return the last-mined output.
@@ -703,10 +683,9 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::OutputMinedInfo(outputs.into_iter().next_back()))
             },
             NodeCommsRequest::CheckOutputSpentStatus(output_hash) => {
-                // A hash may be indexed under multiple headers; return the last-spent input.
-                let mut inputs = self.blockchain_db.fetch_inputs(output_hash).await?;
-                inputs.sort_by_key(|i| i.spent_height);
-                Ok(NodeCommsResponse::InputMinedInfo(inputs.into_iter().next_back()))
+                // Only a spend of the latest mined instance marks the output as spent.
+                let infos = self.blockchain_db.fetch_mined_info_by_output_hash(output_hash).await?;
+                Ok(NodeCommsResponse::InputMinedInfo(MinedInfo::latest(infos).input))
             },
             NodeCommsRequest::FetchValidatorNodeChanges { epoch, sidechain_id } => {
                 let added_validators = self
@@ -1876,5 +1855,49 @@ mod test {
         ));
         // No event, so the mempool is left untouched (no eviction and re-validation)
         assert!(block_events.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn duplicate_output_spent_status_ignores_previous_lifecycle() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            validation::mocks::MockValidator,
+        };
+
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let spent = chain.get_block_and_smt_by_name("3").unwrap();
+        let hash = spent.block().body.inputs()[0].output_hash();
+        let rules = chain.rules().clone();
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (events, _) = broadcast::channel(50);
+        let (requests, _) = reply_channel::unbounded();
+        let (blocks, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let handlers = InboundNodeCommsHandlers::new(
+            events,
+            chain.db().clone().into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(requests, blocks),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        assert!(matches!(
+            handlers
+                .handle_request(NodeCommsRequest::CheckOutputSpentStatus(hash))
+                .await
+                .unwrap(),
+            NodeCommsResponse::InputMinedInfo(None)
+        ));
     }
 }

@@ -189,14 +189,13 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
                     header_height, spent_height
                 )));
             }
-            // The hash can be indexed under several headers (e.g. across reorg history). The input is valid as long
-            // as it was mined at or before it was spent, so compare against the latest mined height rather than an
-            // arbitrary entry.
+            // An identical output can be mined again after it is spent, so the hash can have several instances. The
+            // input is valid if some instance was mined at or before it was spent, i.e. the earliest one was.
             if let Some(mined_height) = db
                 .fetch_outputs(&input_output_hash)?
                 .into_iter()
                 .map(|OutputMinedInfo { mined_height, .. }| mined_height)
-                .max()
+                .min()
             {
                 if spent_height < mined_height {
                     return Err(ValidationError::InputSpentBeforeMined(format!(

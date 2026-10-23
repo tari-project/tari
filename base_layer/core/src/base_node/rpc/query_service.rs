@@ -33,7 +33,7 @@ use thiserror::Error;
 
 use crate::{
     base_node::{StateMachineHandle, rpc::BaseNodeWalletQueryService, state_machine_service::states::StateInfo},
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
     mempool::{MempoolServiceError, TxStorageResponse, service::MempoolHandle},
 };
 
@@ -585,16 +585,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
-            let mut output_entries = self.db().fetch_outputs(hash).await?;
-            output_entries.sort_by_key(|o| o.mined_height);
-            let output = output_entries.into_iter().next_back();
+            let info = MinedInfo::latest(self.db().fetch_mined_info_by_output_hash(hash).await?);
 
-            if let Some(output) = output {
+            if let Some(output) = info.output {
                 // is it still unspent?
-                let mut input_entries = self.db().fetch_inputs(hash).await?;
-                input_entries.sort_by_key(|i| i.spent_height);
-                let input = input_entries.into_iter().next_back();
-                if let Some(i) = input {
+                if let Some(i) = info.input {
                     utxos.push(models::DeletedUtxoInfo {
                         utxo_hash: hash.to_vec(),
                         found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
@@ -644,14 +639,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
         let tip_header = self.db().fetch_tip_header().await?;
         for hash in request.hashes {
             let hash = hash.try_into()?;
-            let mut output_entries = self.db().fetch_outputs(hash).await?;
-            output_entries.sort_by_key(|o| o.mined_height);
-            let output = output_entries.into_iter().next_back();
+            let info = MinedInfo::latest(self.db().fetch_mined_info_by_output_hash(hash).await?);
 
-            let utxo_info = if let Some(output) = output {
-                let mut input_entries = self.db().fetch_inputs(hash).await?;
-                input_entries.sort_by_key(|i| i.spent_height);
-                let input = input_entries.into_iter().next_back();
+            let utxo_info = if let Some(output) = info.output {
+                let input = info.input;
                 models::DeletedUtxoInfoV1 {
                     utxo_hash: hash.to_vec(),
                     found_in_header: Some((output.mined_height, output.header_hash.to_vec())),
@@ -1120,5 +1111,29 @@ mod tests {
             "next header should point to 4"
         );
         assert!(!resp.has_next_page, "Should have no more pages");
+    }
+
+    #[tokio::test]
+    async fn duplicate_output_deleted_queries_ignore_previous_lifecycle() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let spent = chain.get_block_and_smt_by_name("3").unwrap();
+        let remined = chain.get_block_and_smt_by_name("4").unwrap();
+        let hash = spent.block().body.inputs()[0].output_hash();
+        let service = Service::new(
+            chain.db().clone().into(),
+            make_state_machine_handle(),
+            make_mempool_handle(),
+        );
+        let request = || models::GetUtxosDeletedInfoRequest {
+            hashes: vec![hash.to_vec()],
+            must_include_header: remined.hash().to_vec(),
+        };
+        let response = service.get_utxos_deleted_info(request()).await.unwrap();
+        assert_eq!(response.utxos[0].found_in_header.as_ref().unwrap().0, remined.height());
+        assert_eq!(response.utxos[0].spent_in_header, None);
+        let response = service.get_utxos_deleted_info_v1(request()).await.unwrap();
+        assert_eq!(response.utxos[0].found_in_header.as_ref().unwrap().0, remined.height());
+        assert_eq!(response.utxos[0].spent_in_header, None);
+        assert_eq!(response.utxos[0].spent_timestamp, None);
     }
 }

@@ -781,4 +781,30 @@ mod test {
             .unwrap();
         assert_eq!(mempool_state.submitted_transactions().await.len(), 1);
     }
+
+    #[tokio::test]
+    async fn duplicate_output_query_deleted_ignores_previous_lifecycle() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let spent = chain.get_block_and_smt_by_name("3").unwrap();
+        let remined = chain.get_block_and_smt_by_name("4").unwrap();
+        let hash = spent.block().body.inputs().first().unwrap().output_hash();
+        let (mempool, _) = create_mempool_service_mock();
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let shutdown = Shutdown::new();
+        let state_machine = StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal());
+        let service = BaseNodeWalletRpcService::new(chain.db().clone().into(), mempool, state_machine, None);
+        let response = service
+            .query_deleted(Request::new(0.into(), QueryDeletedRequest {
+                hashes: vec![hash.to_vec()],
+                chain_must_include_header: remined.hash().to_vec(),
+            }))
+            .await
+            .unwrap()
+            .into_message();
+        let data = response.data.first().unwrap();
+        assert_eq!(data.mined_at_height, remined.height());
+        assert_eq!(data.height_deleted_at, 0);
+        assert!(data.block_deleted_in.is_empty());
+    }
 }

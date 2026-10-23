@@ -204,6 +204,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
+        fetch_outputs_spent_in_block(hashes: Vec<HashOutput>, header_hash: HashOutput) -> Vec<Option<OutputMinedInfo>>,
+        "fetch_outputs_spent_in_block"
+    );
+
+    make_async_fn!(
         fetch_outputs_in_block_with_spend_state(
             header_hash: HashOutput,
             spend_status_at_header: Option<HashOutput>,

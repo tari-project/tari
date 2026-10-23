@@ -25,10 +25,11 @@ use std::sync::Arc;
 
 use tari_common::configuration::Network;
 use tari_common_types::{
+    payment_reference::generate_payment_reference,
     tari_address::TariAddress,
-    types::{CompressedPublicKey, PrivateKey, RangeProof},
+    types::{CompressedPublicKey, FixedHash, PrivateKey, RangeProof},
 };
-use tari_node_components::blocks::{Block, BlockValidationError};
+use tari_node_components::blocks::{Block, BlockValidationError, ChainBlock};
 use tari_script::{
     ExecutionStack,
     MAX_SCRIPT_OPCODES,
@@ -85,12 +86,20 @@ use tari_transaction_components::{
 };
 use tokio::time::Instant;
 
-use super::{BlockBodyFullValidator, BlockBodyInternalConsistencyValidator};
+use super::{
+    BlockBodyFullValidator,
+    BlockBodyInternalConsistencyValidator,
+    block_body_partial_validator::BlockBodyPartialValidator,
+};
 use crate::{
     block_spec,
+    chain_storage::{BlockchainDatabaseConfig, DbTransaction, MinedInfo, Validators},
     consensus::BaseNodeConsensusManager,
-    test_helpers::{BlockSpec, blockchain::TestBlockchain},
-    validation::{BlockBodyValidator, ValidationError},
+    test_helpers::{
+        BlockSpec,
+        blockchain::{TestBlockchain, create_store_with_consensus_and_validators_and_config},
+    },
+    validation::{BlockBodyValidator, ValidationError, mocks::MockValidator},
 };
 fn setup_with_rules(
     rules: BaseNodeConsensusManager,
@@ -354,9 +363,10 @@ async fn it_checks_double_spends() {
     assert!(matches!(err, ValidationError::ContainsSTxO));
 }
 
-#[tokio::test]
-#[allow(clippy::too_many_lines)]
-async fn allow_duplicate_outputs() {
+// A consensus-valid chain with output O mined in "2", spent in "3" and mined again in "4". The first returned
+// transaction spends O a second time; the second one mines O a third time, once the first is in a block.
+#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
+pub(crate) fn duplicate_output_chain() -> (TestBlockchain, BlockBodyFullValidator, Transaction, Transaction) {
     let (mut blockchain, validator) = setup(true);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
@@ -508,7 +518,7 @@ async fn allow_duplicate_outputs() {
         validator.validate_body(&*txn, block.block().clone()).unwrap();
     }
     let finalized_tx2 = tx_builder.build().unwrap();
-    blockchain
+    let (_, coinbase_4) = blockchain
         .add_next_tip(
             block_spec!("4", transactions: vec![finalized_tx1.transaction.clone(), finalized_tx2.transaction]),
         )
@@ -521,18 +531,214 @@ async fn allow_duplicate_outputs() {
     tx_builder.with_fee(100.into());
     republish_output(&blockchain.km, &mut tx_builder, &output_2, &output_2_sender_offset);
     let finalized_tx = tx_builder.build().unwrap();
-    let (block, _) = blockchain.create_next_tip(
-        BlockSpec::new()
-            .with_transactions(vec![finalized_tx.transaction.clone()])
-            .finish(),
-    );
+
+    let mut tx_builder = TransactionBuilder::new(constants, blockchain.km.clone(), Network::LocalNet).unwrap();
+    tx_builder.with_input(coinbase_4).unwrap();
+    tx_builder.with_fee(100.into());
+    republish_output(&blockchain.km, &mut tx_builder, &output, &output_sender_offset);
+    let remine_tx = tx_builder.build().unwrap();
+
+    (blockchain, validator, finalized_tx.transaction, remine_tx.transaction)
+}
+
+#[tokio::test]
+async fn allow_duplicate_outputs() {
+    let (mut blockchain, validator, transaction, _) = duplicate_output_chain();
+    let (block, _) = blockchain.create_next_tip(block_spec!("5", transactions: vec![transaction.clone()]));
     {
         let txn = blockchain.db().db_read_access().unwrap();
         validator.validate_body(&*txn, block.block().clone()).unwrap();
     }
     blockchain
-        .add_next_tip(block_spec!("5", transactions: vec![finalized_tx.transaction]))
+        .add_next_tip(block_spec!("5", transactions: vec![transaction]))
         .unwrap();
+}
+
+fn summarize_lifecycles(infos: Vec<MinedInfo>) -> Vec<(Option<u64>, Option<u64>)> {
+    infos
+        .into_iter()
+        .map(|i| (i.output.map(|o| o.mined_height), i.input.map(|i| i.spent_height)))
+        .collect()
+}
+
+fn is_spent_in_block(chain: &TestBlockchain, block: &ChainBlock, hash: FixedHash, at: &ChainBlock) -> bool {
+    chain
+        .db()
+        .fetch_outputs_in_block_with_spend_state(*block.hash(), Some(*at.hash()))
+        .unwrap()
+        .into_iter()
+        .find(|(o, _)| o.hash() == hash)
+        .unwrap()
+        .1
+}
+
+#[tokio::test]
+async fn duplicate_output_lifecycle_pruning() {
+    let (mut chain, validator, transaction, _) = duplicate_output_chain();
+    let mined = chain.get_block_and_smt_by_name("2").unwrap();
+    let spent = chain.get_block_and_smt_by_name("3").unwrap();
+    let remined = chain.get_block_and_smt_by_name("4").unwrap();
+    let hash = spent.block().body.inputs()[0].output_hash();
+    let m1 = mined.height();
+    let s1 = spent.height();
+    let m2 = remined.height();
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![(Some(m1), Some(s1)), (Some(m2), None)]
+    );
+    assert!(!is_spent_in_block(&chain, &remined, hash, &remined));
+    BlockBodyPartialValidator::new(chain.rules().clone())
+        .validate(&*chain.db().db_read_access().unwrap(), spent.block())
+        .unwrap();
+    let output = chain.db().fetch_outputs(hash).unwrap().pop().unwrap().output;
+
+    let mut txn = DbTransaction::new();
+    txn.prune_outputs_spent_at_hash(*spent.hash());
+    chain.db().write(txn).unwrap();
+    let surviving = chain.db().fetch_outputs(hash).unwrap();
+    assert_eq!(surviving.len(), 1);
+    assert_eq!(surviving[0].mined_height, m2);
+    assert_eq!(
+        chain
+            .db()
+            .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+            .unwrap(),
+        Some(hash)
+    );
+    assert_eq!(
+        chain
+            .db()
+            .fetch_mined_info_by_payref(generate_payment_reference(remined.hash(), &hash))
+            .unwrap()
+            .output
+            .unwrap()
+            .mined_height,
+        m2
+    );
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![(Some(m2), None)]
+    );
+
+    let (block, _) = chain.create_next_tip(block_spec!("5", transactions: vec![transaction.clone()]));
+    validator
+        .validate_body(&*chain.db().db_read_access().unwrap(), block.block().to_compact())
+        .unwrap();
+    let (spent_again, _) = chain
+        .add_next_tip(block_spec!("5", transactions: vec![transaction]))
+        .unwrap();
+    assert!(is_spent_in_block(&chain, &remined, hash, &spent_again));
+}
+
+#[tokio::test]
+async fn duplicate_output_third_lifecycle() {
+    let (mut chain, _, spend_tx, remine_tx) = duplicate_output_chain();
+    chain
+        .add_next_tip(block_spec!("5", transactions: vec![spend_tx]))
+        .unwrap();
+    chain
+        .add_next_tip(block_spec!("6", transactions: vec![remine_tx]))
+        .unwrap();
+    let [m1, s1, m2, s2, m3] = ["2", "3", "4", "5", "6"].map(|name| chain.get_block_and_smt_by_name(name).unwrap());
+    let hash = s1.block().body.inputs()[0].output_hash();
+    let output = chain.db().fetch_outputs(hash).unwrap().pop().unwrap().output;
+
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![
+            (Some(m1.height()), Some(s1.height())),
+            (Some(m2.height()), Some(s2.height())),
+            (Some(m3.height()), None)
+        ]
+    );
+    assert!(!is_spent_in_block(&chain, &m2, hash, &s1));
+    assert!(is_spent_in_block(&chain, &m2, hash, &m3));
+    assert!(!is_spent_in_block(&chain, &m3, hash, &m3));
+    let latest = MinedInfo::latest(chain.db().fetch_mined_info_by_output_hash(hash).unwrap());
+    assert_eq!(latest.output.unwrap().mined_height, m3.height());
+    assert!(latest.input.is_none());
+    assert!(chain.db().fetch_inputs_mined_info(vec![hash]).unwrap()[0].is_none());
+    let validator = BlockBodyPartialValidator::new(chain.rules().clone());
+    for block in [&s1, &s2] {
+        validator
+            .validate(&*chain.db().db_read_access().unwrap(), block.block())
+            .unwrap();
+    }
+
+    for block in [&s1, &s2] {
+        let mut txn = DbTransaction::new();
+        txn.prune_outputs_spent_at_hash(*block.hash());
+        chain.db().write(txn).unwrap();
+    }
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![(Some(m3.height()), None)]
+    );
+    assert!(!is_spent_in_block(&chain, &m3, hash, &m3));
+    assert_eq!(
+        chain
+            .db()
+            .fetch_unspent_output_hash_by_commitment(output.commitment)
+            .unwrap(),
+        Some(hash)
+    );
+}
+
+#[tokio::test]
+async fn duplicate_output_rewind_restores_single_lifecycle() {
+    let (chain, _, _, _) = duplicate_output_chain();
+    let mined = chain.get_block_and_smt_by_name("2").unwrap();
+    let spent = chain.get_block_and_smt_by_name("3").unwrap();
+    let hash = spent.block().body.inputs()[0].output_hash();
+    let output = chain.db().fetch_outputs(hash).unwrap().pop().unwrap().output;
+
+    chain.db().rewind_to_height(spent.height()).unwrap();
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![(Some(mined.height()), Some(spent.height()))]
+    );
+    assert!(is_spent_in_block(&chain, &mined, hash, &spent));
+    BlockBodyPartialValidator::new(chain.rules().clone())
+        .validate(&*chain.db().db_read_access().unwrap(), spent.block())
+        .unwrap();
+    assert_eq!(
+        chain
+            .db()
+            .fetch_unspent_output_hash_by_commitment(output.commitment)
+            .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn duplicate_output_pruned_node_accepts_second_spend() {
+    let (mut chain, validator, transaction, _) = duplicate_output_chain();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let pruned = create_store_with_consensus_and_validators_and_config(
+        chain.rules().clone(),
+        validators,
+        BlockchainDatabaseConfig {
+            pruning_horizon: 1,
+            pruning_interval: 1,
+            ..Default::default()
+        },
+    );
+    for name in ["A", "1", "2", "3", "4"] {
+        let block = chain.get_block_and_smt_by_name(name).unwrap();
+        assert!(pruned.add_block(block.to_arc_block()).unwrap().result.is_added());
+    }
+    let spent = chain.get_block_and_smt_by_name("3").unwrap();
+    assert!(pruned.get_chain_metadata().unwrap().pruned_height() >= spent.height());
+
+    let (block, _) = chain.create_next_tip(block_spec!("5", transactions: vec![transaction]));
+    validator
+        .validate_body(&*pruned.db_read_access().unwrap(), block.block().to_compact())
+        .unwrap();
+    assert!(pruned.add_block(block.to_arc_block()).unwrap().result.is_added());
 }
 
 #[tokio::test]

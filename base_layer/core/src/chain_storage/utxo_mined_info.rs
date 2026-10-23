@@ -49,6 +49,26 @@ pub struct MinedInfo {
     pub output: Option<OutputMinedInfo>,
 }
 
+impl MinedInfo {
+    /// Picks the current lifecycle from the entries `fetch_mined_info_by_output_hash` returns: the latest mined
+    /// instance with its own spend, or the latest spend if every instance has been pruned.
+    pub fn latest(infos: Vec<MinedInfo>) -> MinedInfo {
+        let (mined, spent_only): (Vec<_>, Vec<_>) = infos.into_iter().partition(|info| info.output.is_some());
+        mined
+            .into_iter()
+            .max_by_key(|info| info.output.as_ref().map_or(0, |o| o.mined_height))
+            .or_else(|| {
+                spent_only
+                    .into_iter()
+                    .max_by_key(|info| info.input.as_ref().map_or(0, |i| i.spent_height))
+            })
+            .unwrap_or(MinedInfo {
+                input: None,
+                output: None,
+            })
+    }
+}
+
 impl Display for MinedInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(output) = &self.output {

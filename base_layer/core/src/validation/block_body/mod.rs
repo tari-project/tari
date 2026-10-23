@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #[cfg(test)]
-mod test;
+pub(crate) mod test;
 
 mod block_body_internal_validator;
 pub use block_body_internal_validator::BlockBodyInternalConsistencyValidator;
