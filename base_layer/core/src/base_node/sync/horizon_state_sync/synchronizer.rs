@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
@@ -563,6 +563,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // STXO commitment Bob streams for the genesis-spending block and bans the peer with
         // "Peer sent unknown commitment hash".
         let genesis_block = self.db.fetch_genesis_block();
+        let mut restored_keys = BTreeSet::new();
         let genesis_header_hash = *genesis_block.hash();
         let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
         for output in genesis_block.block().body.outputs() {
@@ -591,6 +592,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let smt_key = FixedHash::from(key_bytes);
             let smt_node = output.smt_hash(0);
             state_tree_updates.insert(smt_key, Some(smt_node));
+            // A rolled-back tranche may have left a value for this key, which the restore replaces.
+            restored_keys.insert(smt_key);
             // first make sure its deleted everywhere so we can cleanly reinsert it.
             debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
 
@@ -603,7 +606,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .map(|(key, value)| HorizonStateTreeUpdate {
                 key,
                 value,
-                replaces_value: false,
+                replaces_value: restored_keys.contains(&key),
             })
             .collect::<Vec<_>>();
 
@@ -1349,14 +1352,14 @@ fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
 ) {
     let recreated_keys = recreated_outputs
         .iter()
-        .map(|(output, ..)| output.commitment.as_bytes())
-        .collect::<Vec<_>>();
+        .filter_map(|(output, ..)| FixedHash::try_from(output.commitment.as_bytes()).ok())
+        .collect::<BTreeSet<_>>();
     let tranche_updates = state_tree_updates
         .iter()
         .map(|(key, value)| HorizonStateTreeUpdate {
             key: *key,
             value: *value,
-            replaces_value: recreated_keys.contains(&key.as_slice()),
+            replaces_value: recreated_keys.contains(key),
         })
         .collect::<Vec<_>>();
     txn.apply_horizon_state_tree_updates(tranche_updates);
