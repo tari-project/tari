@@ -23,12 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer},
-    types::CommsPublicKey,
-};
-use tari_comms_dht::envelope::DhtMessageHeader;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_p2p::{comms_connector::PeerMessage, domain_message::DomainMessage};
 use tari_transaction_components::{BanPeriod, BanReason, transaction_components::Transaction};
 use tari_utilities::hex::Hex;
@@ -154,20 +149,14 @@ impl MempoolInboundHandlers {
     /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and
     /// validating the transaction, so that the number of inbound transactions being decoded or validated at once is
     /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit. The peer is banned if the
-    /// transaction fails a final internal consistency check or has a covenant over the token limit, unless it relayed
-    /// the message on another's behalf.
+    /// transaction fails a final internal consistency check or has a covenant over the token limit.
     pub async fn handle_transaction_message(&mut self, msg: Arc<PeerMessage>) -> Result<(), MempoolServiceError> {
         let permit = self.mempool.acquire_validation_permit().await?;
         let raw = msg.clone();
         let decoded = task::spawn_blocking(move || extract_transaction(&raw))
             .await
             .map_err(MempoolError::from)?;
-        let DomainMessage::<_> {
-            source_peer,
-            dht_header,
-            authenticated_origin,
-            inner,
-        } = match decoded {
+        let DomainMessage::<_> { source_peer, inner, .. } = match decoded {
             Ok(decoded) => decoded,
             Err(ExtractTransactionError::CovenantTokenLimit) => {
                 drop(permit);
@@ -175,13 +164,7 @@ impl MempoolInboundHandlers {
                     reason: ExtractTransactionError::CovenantTokenLimit.to_string(),
                     ban_duration: BanPeriod::Long,
                 };
-                self.ban_source(
-                    &msg.dht_header,
-                    msg.authenticated_origin.as_ref(),
-                    &msg.source_peer,
-                    reason,
-                )
-                .await;
+                self.ban_peer(&msg.source_peer.node_id, reason).await;
                 return Ok(());
             },
             Err(_) => return Ok(()),
@@ -207,29 +190,8 @@ impl MempoolInboundHandlers {
         let Some(reason) = ban_reason else {
             return Ok(());
         };
-        self.ban_source(&dht_header, authenticated_origin.as_ref(), &source_peer, reason)
-            .await;
-        Ok(())
-    }
-
-    /// Bans the peer a gossiped transaction came from, unless it relayed the message on another's behalf
-    async fn ban_source(
-        &mut self,
-        dht_header: &DhtMessageHeader,
-        authenticated_origin: Option<&CommsPublicKey>,
-        source_peer: &Peer,
-        reason: BanReason,
-    ) {
-        if is_relayed_on_behalf_of_another(dht_header, authenticated_origin, source_peer) {
-            debug!(
-                target: LOG_TARGET,
-                "Not banning peer '{}' for a relayed transaction: {}",
-                source_peer.node_id.short_str(),
-                reason.reason
-            );
-            return;
-        }
         self.ban_peer(&source_peer.node_id, reason).await;
+        Ok(())
     }
 
     /// Handle inbound transactions from remote wallets and local services.
@@ -397,16 +359,6 @@ impl MempoolInboundHandlers {
 
         Ok(())
     }
-}
-
-/// Returns true if the peer forwarded an encrypted message signed by another identity, so the message is not
-/// necessarily the peer's fault. Only encrypted messages are forwarded on another's behalf.
-fn is_relayed_on_behalf_of_another(
-    dht_header: &DhtMessageHeader,
-    authenticated_origin: Option<&CommsPublicKey>,
-    source_peer: &Peer,
-) -> bool {
-    dht_header.flags.is_encrypted() && authenticated_origin.is_some_and(|origin| *origin != source_peer.public_key)
 }
 
 #[cfg(test)]
@@ -702,7 +654,7 @@ mod test {
         }
 
         #[tokio::test]
-        async fn relayed_transaction_failing_internal_validation_does_not_ban() {
+        async fn encrypted_transaction_with_foreign_origin_bans_source() {
             let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
             let permits = mempool.available_validation_permits();
             let mut msg = transaction_message(coinbase_kernel_tx());
@@ -710,10 +662,37 @@ mod test {
             assert_ne!(other_origin, msg.source_peer.public_key);
             msg.authenticated_origin = Some(other_origin);
             msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
+            let source = msg.source_peer.node_id.clone();
 
             handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
 
-            assert!(bans.take().await.is_empty());
+            let banned = bans.take().await;
+            assert_eq!(banned.len(), 1);
+            assert_eq!(banned.first().unwrap().0, source);
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
+            assert_eq!(mempool.available_validation_permits(), permits);
+        }
+
+        #[tokio::test]
+        async fn encrypted_covenant_over_token_limit_with_foreign_origin_bans_source() {
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let permits = mempool.available_validation_permits();
+            let mut msg = transaction_message_with_covenant(&covenant_over_token_limit());
+            let (_, other_origin) = CompressedPublicKey::random_keypair(&mut rand::rng());
+            assert_ne!(other_origin, msg.source_peer.public_key);
+            msg.authenticated_origin = Some(other_origin);
+            msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
+            let source = msg.source_peer.node_id.clone();
+
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+            let banned = bans.take().await;
+            assert_eq!(banned.len(), 1);
+            let (node_id, duration, reason) = banned.first().unwrap();
+            assert_eq!(*node_id, source);
+            assert_eq!(*duration, LONG_BAN);
+            assert_eq!(reason, "Transaction covenant exceeds token limit");
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
             assert!(propagated.try_recv().is_err());
             assert_eq!(mempool.available_validation_permits(), permits);
