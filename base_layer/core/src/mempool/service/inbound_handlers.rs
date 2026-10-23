@@ -146,11 +146,22 @@ impl MempoolInboundHandlers {
 
     /// Handle a raw inbound transaction message from a remote peer.
     ///
-    /// A mempool validation permit is acquired first, and covers both decoding the message (on a blocking thread) and
-    /// validating the transaction, so that the number of inbound transactions being decoded or validated at once is
-    /// bounded. A message that cannot be decoded is logged and dropped, releasing the permit. The peer is banned if the
-    /// transaction fails a final internal consistency check or has a covenant over the token limit.
+    /// Encrypted transaction messages are dropped without decoding, validation or a ban: no honest sender encrypts
+    /// mempool gossip.
+    ///
+    /// Otherwise a mempool validation permit is acquired first, and covers both decoding the message (on a blocking
+    /// thread) and validating the transaction, so that the number of inbound transactions being decoded or validated
+    /// at once is bounded. A message that cannot be decoded is logged and dropped, releasing the permit. The peer is
+    /// banned if the transaction fails a final internal consistency check or has a covenant over the token limit.
     pub async fn handle_transaction_message(&mut self, msg: Arc<PeerMessage>) -> Result<(), MempoolServiceError> {
+        if msg.dht_header.flags.is_encrypted() {
+            debug!(
+                target: LOG_TARGET,
+                "Dropping encrypted transaction message from peer {}",
+                msg.source_peer.node_id.short_str()
+            );
+            return Ok(());
+        }
         let permit = self.mempool.acquire_validation_permit().await?;
         let raw = msg.clone();
         let decoded = task::spawn_blocking(move || extract_transaction(&raw))
@@ -654,7 +665,7 @@ mod test {
         }
 
         #[tokio::test]
-        async fn encrypted_transaction_with_foreign_origin_bans_source() {
+        async fn encrypted_transaction_is_dropped_without_ban() {
             let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
             let permits = mempool.available_validation_permits();
             let mut msg = transaction_message(coinbase_kernel_tx());
@@ -662,20 +673,17 @@ mod test {
             assert_ne!(other_origin, msg.source_peer.public_key);
             msg.authenticated_origin = Some(other_origin);
             msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
-            let source = msg.source_peer.node_id.clone();
 
             handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
 
-            let banned = bans.take().await;
-            assert_eq!(banned.len(), 1);
-            assert_eq!(banned.first().unwrap().0, source);
+            assert!(bans.take().await.is_empty());
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
             assert!(propagated.try_recv().is_err());
             assert_eq!(mempool.available_validation_permits(), permits);
         }
 
         #[tokio::test]
-        async fn encrypted_covenant_over_token_limit_with_foreign_origin_bans_source() {
+        async fn encrypted_covenant_over_token_limit_is_dropped_without_ban() {
             let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
             let permits = mempool.available_validation_permits();
             let mut msg = transaction_message_with_covenant(&covenant_over_token_limit());
@@ -683,19 +691,31 @@ mod test {
             assert_ne!(other_origin, msg.source_peer.public_key);
             msg.authenticated_origin = Some(other_origin);
             msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
-            let source = msg.source_peer.node_id.clone();
 
             handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
 
-            let banned = bans.take().await;
-            assert_eq!(banned.len(), 1);
-            let (node_id, duration, reason) = banned.first().unwrap();
-            assert_eq!(*node_id, source);
-            assert_eq!(*duration, LONG_BAN);
-            assert_eq!(reason, "Transaction covenant exceeds token limit");
+            assert!(bans.take().await.is_empty());
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
             assert!(propagated.try_recv().is_err());
             assert_eq!(mempool.available_validation_permits(), permits);
+        }
+
+        #[tokio::test]
+        async fn encrypted_valid_transaction_is_dropped() {
+            let (mut handlers, mempool, mut propagated, mut bans) =
+                create_handlers_with_bans(Box::new(MockValidator::new(true)));
+            let key_manager = KeyManager::new_random().unwrap();
+            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0;
+            let mut msg = transaction_message(tx);
+            msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
+
+            handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
+
+            assert!(bans.take().await.is_empty());
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+            assert!(propagated.try_recv().is_err());
         }
 
         #[tokio::test]
