@@ -600,7 +600,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let tranche_updates = state_tree_updates
             .into_iter()
-            .map(|(key, value)| HorizonStateTreeUpdate { key, value })
+            .map(|(key, value)| HorizonStateTreeUpdate {
+                key,
+                value,
+                replaces_value: false,
+            })
             .collect::<Vec<_>>();
 
         txn.apply_horizon_state_tree_updates(tranche_updates);
@@ -802,7 +806,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         output: TransactionOutput,
         current_header: &BlockHeader,
         state_tree_updates: &mut BTreeMap<FixedHash, Option<FixedHash>>,
-        recreated_outputs: &mut Vec<(TransactionOutput, BlockHeader)>,
+        recreated_outputs: &mut Vec<(TransactionOutput, FixedHash, u64, u64)>,
         txn: &mut AsyncDbTransaction<'_, B>,
     ) -> Result<bool, HorizonSyncError> {
         let key_bytes: [u8; 32] = output
@@ -829,7 +833,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         state_tree_updates.insert(key, Some(output.smt_hash(current_header.height)));
         if spent_in_tranche {
-            recreated_outputs.push((output, current_header.clone()));
+            recreated_outputs.push((
+                output,
+                current_header.hash(),
+                current_header.height,
+                current_header.timestamp.as_u64(),
+            ));
             return Ok(false);
         }
         txn.insert_output_via_horizon_sync(
@@ -1335,12 +1344,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
     state_tree_updates: BTreeMap<FixedHash, Option<FixedHash>>,
     inputs_to_delete: Vec<TransactionOutput>,
-    recreated_outputs: Vec<(TransactionOutput, BlockHeader)>,
+    recreated_outputs: Vec<(TransactionOutput, FixedHash, u64, u64)>,
     txn: &mut AsyncDbTransaction<'_, B>,
 ) {
+    let recreated_keys = recreated_outputs
+        .iter()
+        .map(|(output, ..)| output.commitment.as_bytes())
+        .collect::<Vec<_>>();
     let tranche_updates = state_tree_updates
-        .into_iter()
-        .map(|(key, value)| HorizonStateTreeUpdate { key, value })
+        .iter()
+        .map(|(key, value)| HorizonStateTreeUpdate {
+            key: *key,
+            value: *value,
+            replaces_value: recreated_keys.contains(&key.as_slice()),
+        })
         .collect::<Vec<_>>();
     txn.apply_horizon_state_tree_updates(tranche_updates);
     // Spent validator node registrations need no validator node set update: a registration spend never changes
@@ -1350,8 +1367,8 @@ fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
     for output in inputs_to_delete {
         txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
     }
-    for (output, header) in recreated_outputs {
-        txn.insert_output_via_horizon_sync(output, header.hash(), header.height, header.timestamp.as_u64());
+    for (output, header_hash, height, timestamp) in recreated_outputs {
+        txn.insert_output_via_horizon_sync(output, header_hash, height, timestamp);
     }
 }
 
@@ -1512,6 +1529,7 @@ mod tests {
         reset.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
             key: FixedHash::try_from(output.commitment.as_bytes()).unwrap(),
             value: Some(output.smt_hash(first.height())),
+            replaces_value: true,
         }]);
         reset.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
             checkpoint_height: first.height(),
@@ -1726,5 +1744,14 @@ mod tests {
                 .unwrap(),
             Some(hash)
         );
+
+        // Only a key marked as re-created may replace an existing value.
+        let mut txn = DbTransaction::new();
+        txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::try_from(outputs[0].output.commitment.as_bytes()).unwrap(),
+            value: Some(FixedHash::default()),
+            replaces_value: false,
+        }]);
+        assert!(db.write(txn).is_err());
     }
 }

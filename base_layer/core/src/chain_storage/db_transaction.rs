@@ -62,6 +62,8 @@ pub struct DbTransaction {
 pub struct HorizonStateTreeUpdate {
     pub key: FixedHash,
     pub value: Option<FixedHash>,
+    /// The key was spent and mined again in the same tranche, so its existing value is replaced.
+    pub replaces_value: bool,
 }
 
 impl Display for DbTransaction {
@@ -475,10 +477,10 @@ impl WriteOperation {
             ApplyHorizonStateTreeUpdates { updates } => {
                 // `HorizonStateTreeUpdate` is not `Serialize`, so size it from its fields: a fixed-hash
                 // key plus an optional fixed-hash value (the `Option` discriminant adds a byte; assume
-                // present as an upper bound). Horizon sync can batch a very large number of these. The
+                // present as an upper bound) and a flag byte. Horizon sync can batch a very large number of these. The
                 // much larger derived JMT node churn produced when they are applied is, like a block's
                 // SMT replacement, covered by the caller's fixed safety margin.
-                const PER_UPDATE: usize = 2 * std::mem::size_of::<FixedHash>() + 1;
+                const PER_UPDATE: usize = 2 * std::mem::size_of::<FixedHash>() + 2;
                 updates.len().saturating_mul(PER_UPDATE)
             },
             // Headers and the remaining variants are small hashes/heights/flags/accumulated-data that

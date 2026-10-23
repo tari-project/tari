@@ -2806,7 +2806,7 @@ impl LMDBDatabase {
             .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
 
         // A tranche can spend a commitment and mine it again, which replaces the existing value for that key.
-        for update in updates.iter().filter(|update| update.value.is_some()) {
+        for update in updates.iter().filter(|update| update.replaces_value) {
             lmdb_delete_if_exists(write_txn, &self.jmt_value_data, update.key.as_slice())?;
         }
         writer
@@ -3067,20 +3067,26 @@ impl LMDBDatabase {
                 output: Some(output),
             })
             .collect::<Vec<_>>();
+        // Both lists are sorted, so `next` only moves forward: it is the first instance mined after the input.
+        let mut unpaired = Vec::new();
+        let mut next = 0usize;
         for input in inputs {
-            let instance = results.iter_mut().rev().find(|info| {
-                info.output
-                    .as_ref()
-                    .is_some_and(|o| o.mined_height <= input.spent_height)
-            });
-            match instance {
+            while results
+                .get(next)
+                .and_then(|info| info.output.as_ref())
+                .is_some_and(|o| o.mined_height <= input.spent_height)
+            {
+                next = next.saturating_add(1);
+            }
+            match next.checked_sub(1).and_then(|i| results.get_mut(i)) {
                 Some(info) if info.input.is_none() => info.input = Some(input),
-                _ => results.push(MinedInfo {
+                _ => unpaired.push(MinedInfo {
                     input: Some(input),
                     output: None,
                 }),
             }
         }
+        results.extend(unpaired);
         results.sort_by_key(|info| match (&info.output, &info.input) {
             (Some(output), _) => output.mined_height,
             (None, Some(input)) => input.spent_height,

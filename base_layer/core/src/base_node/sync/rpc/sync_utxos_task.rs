@@ -147,12 +147,14 @@ where B: BlockchainBackend + 'static
             let genesis_block = self.db.fetch_genesis_block();
             for output in genesis_block.block().body.outputs() {
                 let output_hash = output.hash();
-                if self
+                // Only the genesis instance counts; the same output may have been mined again later.
+                if !self
                     .db
                     .fetch_outputs(output_hash)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?
-                    .is_empty()
+                    .iter()
+                    .any(|o| o.header_hash == *genesis_block.hash())
                 {
                     trace!(
                         target: LOG_TARGET,
