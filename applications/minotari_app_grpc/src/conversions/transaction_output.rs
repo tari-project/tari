@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
     types::{BlockHash, BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof},
@@ -65,8 +65,7 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .ok_or_else(|| "Metadata signature not provided".to_string())?
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
-        let mut covenant = output.covenant.as_bytes();
-        let covenant = BorshDeserialize::deserialize(&mut covenant).map_err(|err| err.to_string())?;
+        let covenant = borsh::from_slice(&output.covenant).map_err(|err| err.to_string())?;
         let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
         let minimum_value_promise = MicroMinotari::from(output.minimum_value_promise);
         Ok(Self::new(
@@ -129,5 +128,40 @@ impl From<RangeProof> for GrpcRangeProof {
         Self {
             proof_bytes: proof.to_vec(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_transaction_components::transaction_components::covenants::Covenant;
+
+    use super::*;
+
+    #[test]
+    fn rejects_covenant_with_trailing_byte() {
+        let mut proto = grpc::TransactionOutput {
+            features: Some(grpc::OutputFeatures::default()),
+            commitment: vec![0u8; 32],
+            range_proof: None,
+            script: vec![],
+            sender_offset_public_key: vec![0u8; 32],
+            metadata_signature: Some(grpc::ComAndPubSignature {
+                ephemeral_commitment: vec![0u8; 32],
+                ephemeral_pubkey: vec![0u8; 32],
+                u_a: vec![0u8; 32],
+                u_x: vec![0u8; 32],
+                u_y: vec![0u8; 32],
+            }),
+            covenant: borsh::to_vec(&Covenant::default()).unwrap(),
+            version: 0,
+            encrypted_data: EncryptedData::default().to_byte_vec(),
+            minimum_value_promise: 0,
+            ..Default::default()
+        };
+
+        assert!(TransactionOutput::try_from(proto.clone()).is_ok());
+
+        proto.covenant.push(0);
+        assert!(TransactionOutput::try_from(proto).is_err());
     }
 }

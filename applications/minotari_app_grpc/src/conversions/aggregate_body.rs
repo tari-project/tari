@@ -32,7 +32,7 @@ pub fn grpc_aggregate_body_with_payrefs(
     block: AggregateBody,
     block_hash: Option<BlockHash>,
 ) -> Result<grpc::AggregateBody, String> {
-    let (inputs, outputs, kernels) = block.clone().dissolve();
+    let (inputs, outputs, kernels) = block.dissolve();
     Ok(grpc::AggregateBody {
         inputs: inputs
             .into_iter()
