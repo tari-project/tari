@@ -1629,11 +1629,12 @@ fn body_samples() -> Vec<Sample> {
         ));
     }
 
-    // Range proof bytes: only the length is checked when decoded
+    // Range proof bytes: only the exact expected length (MAX_RANGE_PROOF_BYTES = 577) is accepted when decoded
     for (name, bytes, accept) in [
-        ("empty", vec![], true),
-        ("1 byte", vec![1], true),
-        ("garbage", vec![0xff; 100], true),
+        ("empty", vec![], false),
+        ("1 byte", vec![1], false),
+        ("garbage", vec![0xff; 100], false),
+        ("one under the cap", vec![0xff; 576], false),
         ("at the cap", vec![0xff; 577], true),
         ("one over the cap", vec![0xff; 578], false),
     ] {
