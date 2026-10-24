@@ -141,6 +141,76 @@ const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
 
+const MINING_METHODS: &[GrpcMethod] = &[
+    GrpcMethod::GetVersion,
+    GrpcMethod::GetNewBlockTemplate,
+    GrpcMethod::GetNewBlockWithCoinbases,
+    GrpcMethod::GetNewBlockTemplateWithCoinbases,
+    GrpcMethod::GetNewBlock,
+    GrpcMethod::GetNewBlockBlob,
+    GrpcMethod::GetNetworkDifficulty,
+    GrpcMethod::GetNetworkState,
+    GrpcMethod::SubmitBlock,
+    GrpcMethod::SubmitBlockBlob,
+    GrpcMethod::GetTipInfo,
+    GrpcMethod::Identify,
+    GrpcMethod::GetSyncProgress,
+];
+
+const SECOND_LAYER_METHODS: &[GrpcMethod] = &[
+    GrpcMethod::GetVersion,
+    GrpcMethod::GetConstants,
+    GrpcMethod::GetMempoolTransactions,
+    GrpcMethod::GetMempoolStats,
+    GrpcMethod::ListHeaders,
+    GrpcMethod::GetTipInfo,
+    GrpcMethod::GetActiveValidatorNodes,
+    GrpcMethod::GetValidatorNodeChanges,
+    GrpcMethod::GetShardKey,
+    GrpcMethod::GetHeaderByHash,
+    GrpcMethod::GetSideChainUtxos,
+];
+
+fn enabled_grpc_methods_log_lines(config: &BaseNodeConfig) -> Vec<String> {
+    let mut enabled: Vec<GrpcMethod> = Vec::new();
+    for &method in config.grpc_server_allow_methods.as_slice() {
+        if method != GrpcMethod::GetTemplateRegistrations && !enabled.contains(&method) {
+            enabled.push(method);
+        }
+    }
+    if config.mining_enabled {
+        for &method in MINING_METHODS {
+            if !enabled.contains(&method) {
+                enabled.push(method);
+            }
+        }
+    }
+    if config.second_layer_grpc_enabled {
+        for &method in SECOND_LAYER_METHODS {
+            if !enabled.contains(&method) {
+                enabled.push(method);
+            }
+        }
+    }
+
+    let mut lines = vec![format!("Enabled gRPC methods: {enabled:?}")];
+    if config.mining_enabled {
+        lines.push(format!("gRPC methods enabled by `mining_enabled`: {MINING_METHODS:?}"));
+    }
+    if config.second_layer_grpc_enabled {
+        lines.push(format!(
+            "gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}"
+        ));
+    }
+    lines
+}
+
+fn log_enabled_grpc_methods(config: &BaseNodeConfig) {
+    for line in enabled_grpc_methods_log_lines(config) {
+        info!(target: LOG_TARGET, "{line}");
+    }
+}
+
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
@@ -165,6 +235,9 @@ pub struct BaseNodeGrpcServer {
 
 impl BaseNodeGrpcServer {
     pub fn from_base_node_context(ctx: &BaseNodeContext, config: BaseNodeConfig) -> Self {
+        if config.grpc_enabled {
+            log_enabled_grpc_methods(&config);
+        }
         Self {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
@@ -189,36 +262,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        const MINING_METHOD: &[GrpcMethod] = &[
-            GrpcMethod::GetVersion,
-            GrpcMethod::GetNewBlockTemplate,
-            GrpcMethod::GetNewBlockWithCoinbases,
-            GrpcMethod::GetNewBlockTemplateWithCoinbases,
-            GrpcMethod::GetNewBlock,
-            GrpcMethod::GetNewBlockBlob,
-            GrpcMethod::GetNetworkDifficulty,
-            GrpcMethod::GetNetworkState,
-            GrpcMethod::SubmitBlock,
-            GrpcMethod::SubmitBlockBlob,
-            GrpcMethod::GetTipInfo,
-            GrpcMethod::Identify,
-            GrpcMethod::GetSyncProgress,
-        ];
-
-        const SECOND_LAYER_METHODS: &[GrpcMethod] = &[
-            GrpcMethod::GetVersion,
-            GrpcMethod::GetConstants,
-            GrpcMethod::GetMempoolTransactions,
-            GrpcMethod::GetMempoolStats,
-            GrpcMethod::ListHeaders,
-            GrpcMethod::GetTipInfo,
-            GrpcMethod::GetActiveValidatorNodes,
-            GrpcMethod::GetValidatorNodeChanges,
-            GrpcMethod::GetShardKey,
-            GrpcMethod::GetHeaderByHash,
-            GrpcMethod::GetSideChainUtxos,
-        ];
-        if self.config.mining_enabled && MINING_METHOD.contains(&grpc_method) {
+        if self.config.mining_enabled && MINING_METHODS.contains(&grpc_method) {
             return true;
         }
         if self.config.second_layer_grpc_enabled && SECOND_LAYER_METHODS.contains(&grpc_method) {
@@ -3936,5 +3980,92 @@ mod test {
         }
 
         assert!(value_at_height_response(&values, 6).is_none());
+    }
+
+    #[test]
+    fn enabled_grpc_methods_logs_mining_methods_when_mining_enabled_with_default_allow_list() {
+        let config = BaseNodeConfig {
+            mining_enabled: true,
+            ..BaseNodeConfig::default()
+        };
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], format!("Enabled gRPC methods: {MINING_METHODS:?}"));
+        assert_eq!(
+            lines[1],
+            format!("gRPC methods enabled by `mining_enabled`: {MINING_METHODS:?}")
+        );
+        assert_eq!(MINING_METHODS.len(), 13);
+    }
+
+    #[test]
+    fn enabled_grpc_methods_logs_only_custom_allow_list_when_flags_are_off() {
+        let custom_list = vec![
+            GrpcMethod::GetVersion,
+            GrpcMethod::GetTipInfo,
+            GrpcMethod::ListHeaders,
+            GrpcMethod::GetTemplateRegistrations,
+        ];
+        let config = BaseNodeConfig {
+            mining_enabled: false,
+            second_layer_grpc_enabled: false,
+            grpc_server_allow_methods: custom_list.into(),
+            ..BaseNodeConfig::default()
+        };
+        let expected = vec![GrpcMethod::GetVersion, GrpcMethod::GetTipInfo, GrpcMethod::ListHeaders];
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines, vec![format!("Enabled gRPC methods: {expected:?}")]);
+    }
+
+    #[test]
+    fn enabled_grpc_methods_logs_second_layer_methods_when_second_layer_enabled_with_default_allow_list() {
+        let config = BaseNodeConfig {
+            second_layer_grpc_enabled: true,
+            ..BaseNodeConfig::default()
+        };
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], format!("Enabled gRPC methods: {SECOND_LAYER_METHODS:?}"));
+        assert_eq!(
+            lines[1],
+            format!("gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}")
+        );
+        assert_eq!(SECOND_LAYER_METHODS.len(), 11);
+    }
+
+    #[test]
+    fn enabled_grpc_methods_deduplicates_across_sources_and_logs_both_flag_lines() {
+        let custom_list = vec![
+            GrpcMethod::GetVersion,
+            GrpcMethod::GetTipInfo,
+            GrpcMethod::GetPeers,
+            GrpcMethod::GetTemplateRegistrations,
+        ];
+        let config = BaseNodeConfig {
+            mining_enabled: true,
+            second_layer_grpc_enabled: true,
+            grpc_server_allow_methods: custom_list.into(),
+            ..BaseNodeConfig::default()
+        };
+
+        let mut expected_enabled = vec![GrpcMethod::GetVersion, GrpcMethod::GetTipInfo, GrpcMethod::GetPeers];
+        for &m in MINING_METHODS.iter().chain(SECOND_LAYER_METHODS.iter()) {
+            if !expected_enabled.contains(&m) {
+                expected_enabled.push(m);
+            }
+        }
+        assert!(!expected_enabled.contains(&GrpcMethod::GetTemplateRegistrations));
+
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], format!("Enabled gRPC methods: {expected_enabled:?}"));
+        assert_eq!(
+            lines[1],
+            format!("gRPC methods enabled by `mining_enabled`: {MINING_METHODS:?}")
+        );
+        assert_eq!(
+            lines[2],
+            format!("gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}")
+        );
     }
 }
