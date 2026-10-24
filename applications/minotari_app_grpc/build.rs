@@ -11,6 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Required so that older `protoc` versions (e.g. the one shipped for riscv64 linux) accept the
         // proto3 `optional` keyword instead of failing the build.
         .protoc_arg("--experimental_allow_proto3_optional")
+        .skip_debug("tari.rpc.UnblindedOutput")
+        .skip_debug("tari.rpc.ImportUtxosRequest")
         .compile_protos(
             &["proto/base_node.proto", "proto/wallet.proto", "proto/p2pool.proto"],
             &["proto"],
