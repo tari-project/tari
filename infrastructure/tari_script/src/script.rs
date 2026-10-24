@@ -1610,6 +1610,27 @@ mod test {
 
     #[test]
     fn from_bytes_rejects_oversized_scripts() {
+        // Exactly MAX_SCRIPT_BYTES (4096) with <= MAX_SCRIPT_OPCODES (124 PushHash + 4 Nop = 128 opcodes) is accepted
+        let mut max_valid_bytes = Vec::with_capacity(MAX_SCRIPT_BYTES);
+        for _ in 0..124 {
+            max_valid_bytes.push(0x7a); // OP_PUSH_HASH
+            max_valid_bytes.extend_from_slice(&[0x11; 32]);
+        }
+        max_valid_bytes.extend_from_slice(&[0x73; 4]); // 4x OP_NOP
+        assert_eq!(max_valid_bytes.len(), MAX_SCRIPT_BYTES);
+        let parsed = TariScript::from_bytes(&max_valid_bytes).unwrap();
+        assert_eq!(parsed.size(), super::MAX_SCRIPT_OPCODES);
+
+        // Exactly MAX_SCRIPT_OPCODES (128) single-byte opcodes is accepted
+        let parsed_max_ops = TariScript::from_bytes(&[0x73; super::MAX_SCRIPT_OPCODES]).unwrap();
+        assert_eq!(parsed_max_ops.size(), super::MAX_SCRIPT_OPCODES);
+
+        // 129 single-byte opcodes is rejected on the 129th opcode before trailing invalid bytes are parsed
+        let mut over_max_ops = vec![0x73; super::MAX_SCRIPT_OPCODES + 1];
+        over_max_ops.push(0xFF);
+        let err = TariScript::from_bytes(&over_max_ops).unwrap_err();
+        assert!(matches!(err, ScriptError::MaxSizeVecError(_)));
+
         // A script of exactly MAX_SCRIPT_BYTES of Nop (0x73) is parsed, and then rejected for having too many opcodes
         let err = TariScript::from_bytes(&[0x73; MAX_SCRIPT_BYTES]).unwrap_err();
         assert!(matches!(err, ScriptError::MaxSizeVecError(_)));
