@@ -26,7 +26,5 @@ pub use client_interceptor::ClientAuthenticationInterceptor;
 mod basic_auth;
 pub use basic_auth::{BasicAuthCredentials, BasicAuthError};
 
-pub mod salted_password;
-
 mod server_interceptor;
 pub use server_interceptor::ServerAuthenticationInterceptor;
