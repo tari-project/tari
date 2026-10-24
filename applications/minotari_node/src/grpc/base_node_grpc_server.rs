@@ -33,7 +33,7 @@ use either::Either;
 use futures::{SinkExt, channel::mpsc};
 use log::*;
 use minotari_app_grpc::{
-    conversions::transaction_output::grpc_output_with_payref,
+    conversions::{check_body_element_counts, check_body_size, transaction_output::grpc_output_with_payref},
     tari_rpc::{
         self,
         CalcType,
@@ -329,8 +329,47 @@ fn normalise_transaction_via_p2p_proto(
     Transaction::try_from(proto).map_err(|e| malformed(e.to_string()))
 }
 
-/// Decodes the block of a gRPC `submit_block` request: the gRPC conversion, then [`normalise_block_via_p2p_proto`].
-fn decode_submit_block_request(request: tari_rpc::Block, report_error_flag: bool) -> Result<Block, Status> {
+/// Checks the template body's element counts against the consensus constants for the template header height, then
+/// converts the gRPC `NewBlockTemplate` into its domain representation.
+fn decode_new_block_template(
+    request: tari_rpc::NewBlockTemplate,
+    consensus_rules: &BaseNodeConsensusManager,
+    report_error_flag: bool,
+    error_prefix: &str,
+) -> Result<NewBlockTemplate, Status> {
+    if let Some(ref body) = request.body {
+        let height = request.header.as_ref().map(|h| h.height).unwrap_or(0);
+        check_body_size(body, consensus_rules.consensus_constants(height)).map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("{error_prefix}: {e}")),
+            )
+        })?;
+    }
+    request.try_into().map_err(|s| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("{error_prefix}: {s}")),
+        )
+    })
+}
+
+/// Decodes the block of a gRPC `submit_block` request: checks the body element counts against consensus constants,
+/// performs the gRPC conversion, then [`normalise_block_via_p2p_proto`].
+fn decode_submit_block_request(
+    request: tari_rpc::Block,
+    consensus_rules: &BaseNodeConsensusManager,
+    report_error_flag: bool,
+) -> Result<Block, Status> {
+    if let Some(ref body) = request.body {
+        let height = request.header.as_ref().map(|h| h.height).unwrap_or(0);
+        check_body_size(body, consensus_rules.consensus_constants(height)).map_err(|e| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Invalid block provided: {e}")),
+            )
+        })?;
+    }
     let block = Block::try_from(request).map_err(|e| {
         obscure_error_if_true(
             report_error_flag,
@@ -340,22 +379,30 @@ fn decode_submit_block_request(request: tari_rpc::Block, report_error_flag: bool
     normalise_block_via_p2p_proto(block, report_error_flag)
 }
 
-/// Decodes the transaction of a gRPC `submit_transaction` request: the gRPC conversion, then
-/// [`normalise_transaction_via_p2p_proto`].
+/// Decodes the transaction of a gRPC `submit_transaction` request: checks the body element counts against consensus
+/// constants, performs the gRPC conversion, then [`normalise_transaction_via_p2p_proto`].
 fn decode_submit_transaction_request(
     request: tari_rpc::SubmitTransactionRequest,
+    consensus_constants: &ConsensusConstants,
     report_error_flag: bool,
 ) -> Result<Transaction, Status> {
-    let txn: Transaction = request
+    let grpc_tx = request
         .transaction
-        .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?
-        .try_into()
-        .map_err(|e| {
+        .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?;
+    if let Some(ref body) = grpc_tx.body {
+        check_body_size(body, consensus_constants).map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("Invalid transaction provided: {e}")),
             )
         })?;
+    }
+    let txn: Transaction = grpc_tx.try_into().map_err(|e| {
+        obscure_error_if_true(
+            report_error_flag,
+            Status::invalid_argument(format!("Invalid transaction provided: {e}")),
+        )
+    })?;
     normalise_transaction_via_p2p_proto(txn, report_error_flag)
 }
 
@@ -363,7 +410,12 @@ fn decode_submit_transaction_request(
 ///
 /// The blobs are borsh-decoded and the resulting block is then normalised through the P2P protobuf conversion by
 /// [`normalise_block_via_p2p_proto`], so this entry point accepts exactly the blocks a peer could send.
-fn decode_block_blob(header_blob: &[u8], body_blob: &[u8], report_error_flag: bool) -> Result<Block, Status> {
+fn decode_block_blob(
+    header_blob: &[u8],
+    body_blob: &[u8],
+    consensus_rules: &BaseNodeConsensusManager,
+    report_error_flag: bool,
+) -> Result<Block, Status> {
     let malformed = |e: String| {
         obscure_error_if_true(
             report_error_flag,
@@ -373,9 +425,31 @@ fn decode_block_blob(header_blob: &[u8], body_blob: &[u8], report_error_flag: bo
     let mut header_bytes = header_blob;
     let mut body_bytes = body_blob;
     trace!(target: LOG_TARGET, "doing header");
-    let header = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
+    let header: BlockHeader = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
+    let constants = consensus_rules.consensus_constants(header.height);
     trace!(target: LOG_TARGET, "doing body");
-    let body = BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?;
+    let num_inputs = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
+    check_body_element_counts(num_inputs, 0, 0, constants).map_err(malformed)?;
+    let mut inputs = Vec::with_capacity(num_inputs);
+    for _ in 0..num_inputs {
+        inputs.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
+    }
+
+    let num_outputs = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
+    check_body_element_counts(num_inputs, num_outputs, 0, constants).map_err(malformed)?;
+    let mut outputs = Vec::with_capacity(num_outputs);
+    for _ in 0..num_outputs {
+        outputs.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
+    }
+
+    let num_kernels = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
+    check_body_element_counts(num_inputs, num_outputs, num_kernels, constants).map_err(malformed)?;
+    let mut kernels = Vec::with_capacity(num_kernels);
+    for _ in 0..num_kernels {
+        kernels.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
+    }
+
+    let body = AggregateBody::new_unsorted(inputs, outputs, kernels);
     normalise_block_via_p2p_proto(Block::new(header, body), report_error_flag)
 }
 
@@ -1270,12 +1344,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "Incoming GRPC request for get new block");
-        let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!("Malformed block template provided: {s}")),
-            )
-        })?;
+        let block_template: NewBlockTemplate = decode_new_block_template(
+            request,
+            &self.consensus_rules,
+            report_error_flag,
+            "Malformed block template provided",
+        )?;
         let algo = block_template.header.pow.pow_algo;
 
         let mut handler = self.node_service.clone();
@@ -1696,21 +1770,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "Incoming GRPC request for get new block with coinbases");
-        let mut block_template: NewBlockTemplate = request
-            .new_template
-            .ok_or_else(|| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument("Malformed block template provided".to_string()),
-                )
-            })?
-            .try_into()
-            .map_err(|s| {
-                obscure_error_if_true(
-                    report_error_flag,
-                    Status::invalid_argument(format!("Malformed block template provided: {s}")),
-                )
-            })?;
+        let new_template = request.new_template.ok_or_else(|| {
+            obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument("Malformed block template provided".to_string()),
+            )
+        })?;
+        let mut block_template: NewBlockTemplate = decode_new_block_template(
+            new_template,
+            &self.consensus_rules,
+            report_error_flag,
+            "Malformed block template provided",
+        )?;
         let mut coinbases: Vec<tari_rpc::NewBlockCoinbase> = request.coinbases;
         if coinbases.len() as u64 >
             self.consensus_rules
@@ -1954,12 +2025,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
-        let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!("Invalid block template: {s}")),
-            )
-        })?;
+        let block_template: NewBlockTemplate = decode_new_block_template(
+            request,
+            &self.consensus_rules,
+            report_error_flag,
+            "Invalid block template",
+        )?;
 
         let mut handler = self.node_service.clone();
 
@@ -2037,7 +2108,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitBlock)?;
         let report_error_flag = self.report_error_flag();
-        let block = decode_submit_block_request(request.into_inner(), report_error_flag)?;
+        let block = decode_submit_block_request(request.into_inner(), &self.consensus_rules, report_error_flag)?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -2068,7 +2139,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "Received block blob from miner: {request:?}");
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "request: {request:?}");
-        let block = decode_block_blob(&request.header_blob, &request.body_blob, report_error_flag)?;
+        let block = decode_block_blob(
+            &request.header_blob,
+            &request.body_blob,
+            &self.consensus_rules,
+            report_error_flag,
+        )?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -2096,7 +2172,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitTransaction)?;
         let report_error_flag = self.report_error_flag();
-        let txn = decode_submit_transaction_request(request.into_inner(), report_error_flag)?;
+        let txn = decode_submit_transaction_request(
+            request.into_inner(),
+            self.consensus_rules.consensus_constants(u64::MAX),
+            report_error_flag,
+        )?;
         trace!(
             target: LOG_TARGET,
             "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
@@ -3704,14 +3784,19 @@ mod test {
         get_genesis_block(Network::MainNet).block().clone()
     }
 
+    fn mainnet_consensus() -> BaseNodeConsensusManager {
+        BaseNodeConsensusManager::builder(Network::MainNet).build().unwrap()
+    }
+
     #[test]
     fn a_valid_block_blob_round_trips_unchanged() {
+        let consensus = mainnet_consensus();
         let block = mainnet_genesis();
         assert!(!block.body.outputs().is_empty());
         assert!(!block.body.kernels().is_empty());
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+        let decoded = decode_block_blob(&header_blob, &body_blob, &consensus, true).unwrap();
 
         assert_eq!(decoded, block);
         assert_eq!(decoded.hash(), block.hash());
@@ -3720,6 +3805,7 @@ mod test {
 
     #[test]
     fn the_input_data_of_a_compact_input_survives_the_round_trip() {
+        let consensus = mainnet_consensus();
         let block = mainnet_genesis();
         let input = TransactionInput::new_with_output_hash(
             FixedHash::zero(),
@@ -3730,7 +3816,7 @@ mod test {
         let block = Block::new(block.header, AggregateBody::new_unsorted(vec![input], outputs, kernels));
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+        let decoded = decode_block_blob(&header_blob, &body_blob, &consensus, true).unwrap();
 
         assert_eq!(decoded, block);
         assert_eq!(
@@ -3754,31 +3840,33 @@ mod test {
     // same accept or reject decision on a block or transaction. Fields and values it does not sample are not checked.
     #[test]
     fn a_kernel_with_an_unknown_feature_bit_is_rejected_as_invalid_argument() {
+        let consensus = mainnet_consensus();
         let block = mainnet_genesis();
         let (inputs, outputs, mut kernels) = block.body.dissolve();
         kernels.first_mut().unwrap().features = KernelFeatures::from_bits_retain(0x04);
         let block = Block::new(block.header, AggregateBody::new_unsorted(inputs, outputs, kernels));
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let err = decode_block_blob(&header_blob, &body_blob, true).unwrap_err();
+        let err = decode_block_blob(&header_blob, &body_blob, &consensus, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
         assert!(err.message().starts_with("Malformed block: "), "{}", err.message());
 
-        let err = decode_block_blob(&header_blob, &body_blob, false).unwrap_err();
+        let err = decode_block_blob(&header_blob, &body_blob, &consensus, false).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
         assert_eq!(err.message(), "Error has occurred. Details are obscured.");
     }
 
     #[test]
     fn a_truncated_blob_is_rejected_as_invalid_argument() {
+        let consensus = mainnet_consensus();
         let (header_blob, body_blob) = to_blobs(&mainnet_genesis());
 
         let (_, truncated_header) = header_blob.split_last().unwrap();
         let (_, truncated_body) = body_blob.split_last().unwrap();
 
-        let err = decode_block_blob(truncated_header, &body_blob, true).unwrap_err();
+        let err = decode_block_blob(truncated_header, &body_blob, &consensus, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
-        let err = decode_block_blob(&header_blob, truncated_body, true).unwrap_err();
+        let err = decode_block_blob(&header_blob, truncated_body, &consensus, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
@@ -3806,13 +3894,14 @@ mod test {
 
     #[test]
     fn submit_block_blob_normalises_a_v1_compact_input_to_v0() {
+        let consensus = mainnet_consensus();
         let block = mainnet_genesis();
         let tx = transaction_with_a_v1_compact_input();
         let block = Block::new(block.header, tx.body);
         assert_eq!(first_input_version(&block.body), TransactionInputVersion::V1);
         let (header_blob, body_blob) = to_blobs(&block);
 
-        let decoded = decode_block_blob(&header_blob, &body_blob, true).unwrap();
+        let decoded = decode_block_blob(&header_blob, &body_blob, &consensus, true).unwrap();
 
         // Fails if `decode_block_blob` stops round-tripping through the P2P proto
         assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
@@ -3824,32 +3913,37 @@ mod test {
     /// step as a whole; the round-trip is there for fields the parity tests do not sample.
     #[test]
     fn submit_block_decodes_through_the_p2p_proto() {
+        let consensus = mainnet_consensus();
         let block = mainnet_genesis();
-        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block.clone()).unwrap(), true).unwrap();
+        let decoded =
+            decode_submit_block_request(tari_rpc::Block::try_from(block.clone()).unwrap(), &consensus, true).unwrap();
         assert_eq!(decoded, block);
 
         let tx = transaction_with_a_v1_compact_input();
         let block = Block::new(mainnet_genesis().header, tx.body);
-        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block).unwrap(), true).unwrap();
+        let decoded = decode_submit_block_request(tari_rpc::Block::try_from(block).unwrap(), &consensus, true).unwrap();
         assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
 
         let request = tari_rpc::Block::try_from(block_with_an_unknown_kernel_feature_bit()).unwrap();
-        let err = decode_submit_block_request(request, true).unwrap_err();
+        let err = decode_submit_block_request(request, &consensus, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
     }
 
     #[test]
     fn submit_transaction_decodes_through_the_p2p_proto() {
+        let consensus = mainnet_consensus();
+        let constants = consensus.consensus_constants(u64::MAX);
         let request = |tx: Transaction| tari_rpc::SubmitTransactionRequest {
             transaction: Some(tari_rpc::Transaction::try_from(tx).unwrap()),
         };
         let tx = genesis_transaction();
         assert_eq!(
-            decode_submit_transaction_request(request(tx.clone()), true).unwrap(),
+            decode_submit_transaction_request(request(tx.clone()), constants, true).unwrap(),
             tx
         );
 
-        let decoded = decode_submit_transaction_request(request(transaction_with_a_v1_compact_input()), true).unwrap();
+        let decoded =
+            decode_submit_transaction_request(request(transaction_with_a_v1_compact_input()), constants, true).unwrap();
         assert_eq!(first_input_version(&decoded.body), TransactionInputVersion::V0);
 
         let block = block_with_an_unknown_kernel_feature_bit();
@@ -3860,12 +3954,125 @@ mod test {
             block.header.total_kernel_offset,
             block.header.total_script_offset,
         );
-        let err = decode_submit_transaction_request(request(tx), true).unwrap_err();
+        let err = decode_submit_transaction_request(request(tx), constants, true).unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
 
-        let err = decode_submit_transaction_request(tari_rpc::SubmitTransactionRequest { transaction: None }, true)
-            .unwrap_err();
+        let err = decode_submit_transaction_request(
+            tari_rpc::SubmitTransactionRequest { transaction: None },
+            constants,
+            true,
+        )
+        .unwrap_err();
         assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    }
+
+    #[test]
+    fn oversized_bodies_are_rejected_as_invalid_argument_before_conversion() {
+        let consensus = mainnet_consensus();
+        let constants = consensus.consensus_constants(1);
+        let max_weight = constants.max_block_transaction_weight();
+        let input_weight = constants.transaction_weight_params().params().input_weight;
+        let over_inputs = usize::try_from(max_weight / input_weight + 1).unwrap();
+
+        let oversized_body = tari_rpc::AggregateBody {
+            inputs: vec![tari_rpc::TransactionInput::default(); over_inputs],
+            outputs: vec![],
+            kernels: vec![],
+        };
+
+        // GetNewBlock / GetNewBlockBlob / GetNewBlockWithCoinbases decode path
+        let template = tari_rpc::NewBlockTemplate {
+            header: Some(tari_rpc::NewBlockHeaderTemplate {
+                height: 1,
+                ..Default::default()
+            }),
+            body: Some(oversized_body.clone()),
+        };
+        let err = decode_new_block_template(template, &consensus, true, "Malformed block template provided")
+            .expect_err("oversized NewBlockTemplate body must fail with INVALID_ARGUMENT");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceed maximum block transaction weight"),
+            "unexpected error: {}",
+            err.message()
+        );
+
+        // SubmitBlock decode path
+        let block_req = tari_rpc::Block {
+            header: Some(tari_rpc::BlockHeader {
+                height: 1,
+                ..Default::default()
+            }),
+            body: Some(oversized_body.clone()),
+        };
+        let err = decode_submit_block_request(block_req, &consensus, true)
+            .expect_err("oversized Block body must fail with INVALID_ARGUMENT");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceed maximum block transaction weight"),
+            "unexpected error: {}",
+            err.message()
+        );
+
+        // SubmitTransaction decode path
+        let tx_req = tari_rpc::SubmitTransactionRequest {
+            transaction: Some(tari_rpc::Transaction {
+                offset: vec![0u8; 32],
+                body: Some(oversized_body),
+                script_offset: vec![0u8; 32],
+            }),
+        };
+        let err = decode_submit_transaction_request(tx_req, constants, true)
+            .expect_err("oversized Transaction body must fail with INVALID_ARGUMENT");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceed maximum block transaction weight"),
+            "unexpected error: {}",
+            err.message()
+        );
+
+        // SubmitBlockBlob decode path (oversized inputs, outputs, and kernels rejected before element decoding)
+        let (header_blob, _) = to_blobs(&mainnet_genesis());
+        let max_coinbases = constants.max_block_coinbase_count();
+        let params = constants.transaction_weight_params().params();
+        let over_inputs_u32 = u32::try_from(over_inputs).unwrap();
+        let over_outputs_u32 = u32::try_from(max_weight / params.output_weight + max_coinbases + 1).unwrap();
+        let over_kernels_u32 = u32::try_from(max_weight / params.kernel_weight + max_coinbases + 1).unwrap();
+
+        let body_blob_inputs = over_inputs_u32.to_le_bytes();
+        let err = decode_block_blob(&header_blob, &body_blob_inputs, &consensus, true)
+            .expect_err("oversized BlockBlob input count must fail with INVALID_ARGUMENT");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceed maximum block transaction weight"),
+            "unexpected error: {}",
+            err.message()
+        );
+
+        let mut body_blob_outputs = Vec::with_capacity(8);
+        body_blob_outputs.extend_from_slice(&0u32.to_le_bytes());
+        body_blob_outputs.extend_from_slice(&over_outputs_u32.to_le_bytes());
+        let err = decode_block_blob(&header_blob, &body_blob_outputs, &consensus, true)
+            .expect_err("oversized BlockBlob output count must fail with INVALID_ARGUMENT before decoding outputs");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceed maximum block transaction weight"),
+            "unexpected error: {}",
+            err.message()
+        );
+
+        let mut body_blob_kernels = Vec::with_capacity(12);
+        body_blob_kernels.extend_from_slice(&0u32.to_le_bytes());
+        body_blob_kernels.extend_from_slice(&0u32.to_le_bytes());
+        body_blob_kernels.extend_from_slice(&over_kernels_u32.to_le_bytes());
+        let err = decode_block_blob(&header_blob, &body_blob_kernels, &consensus, true)
+            .expect_err("oversized BlockBlob kernel count must fail with INVALID_ARGUMENT before decoding kernels");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+        assert!(
+            err.message().contains("exceed maximum block transaction weight"),
+            "unexpected error: {}",
+            err.message()
+        );
     }
 
     #[test]

@@ -41,7 +41,7 @@ use tari_utilities::{ByteArray, ByteArrayError, hex::*};
 use super::BulletRangeProofHasherBlake256;
 use crate::types::{FixedHash, MAX_RANGE_PROOF_BYTES};
 
-/// Decoded through [`ValidatedDecode`], so every decoder rejects more than `MAX_RANGE_PROOF_BYTES` bytes.
+/// Decoded through [`ValidatedDecode`], so every decoder requires the exact `MAX_RANGE_PROOF_BYTES` byte length.
 #[derive(Debug, Default, Clone, PartialEq, Eq, PartialOrd, Ord, BorshSerialize)]
 pub struct BulletRangeProof(pub Vec<u8>);
 impl BulletRangeProof {
@@ -104,9 +104,9 @@ impl Serialize for BulletRangeProof {
 }
 
 fn check_range_proof_len(len: usize) -> Result<(), String> {
-    if len > MAX_RANGE_PROOF_BYTES {
+    if len != MAX_RANGE_PROOF_BYTES {
         return Err(format!(
-            "Range proof of {len} bytes exceeds the maximum of {MAX_RANGE_PROOF_BYTES} bytes"
+            "Range proof of {len} bytes does not match the expected size of {MAX_RANGE_PROOF_BYTES} bytes"
         ));
     }
     Ok(())
@@ -170,14 +170,25 @@ impl_validated_decode!(BulletRangeProof);
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::types::{RANGE_PROOF_AGGREGATION_FACTOR, RANGE_PROOF_BIT_LENGTH};
 
     fn proof_bytes(len: usize) -> Vec<u8> {
         vec![0xab; len]
     }
 
     #[test]
-    fn range_proof_decoders_reject_more_than_the_cap() {
-        for (len, accept) in [(MAX_RANGE_PROOF_BYTES, true), (MAX_RANGE_PROOF_BYTES + 1, false)] {
+    fn range_proof_decoders_require_exact_canonical_length() {
+        let expected_size =
+            1 + 32 * (1 + 5 + 2 * (RANGE_PROOF_BIT_LENGTH * RANGE_PROOF_AGGREGATION_FACTOR).ilog2() as usize);
+        assert_eq!(expected_size, 577);
+        assert_eq!(MAX_RANGE_PROOF_BYTES, expected_size);
+
+        for (len, accept) in [
+            (0, false),
+            (expected_size - 1, false),
+            (expected_size, true),
+            (expected_size + 1, false),
+        ] {
             let bytes = proof_bytes(len);
             let hex = to_hex(&bytes);
             assert_eq!(BulletRangeProof::from_canonical_bytes(&bytes).is_ok(), accept, "{len}");
@@ -187,7 +198,7 @@ mod test {
             let json = format!("\"{hex}\"");
             assert_eq!(serde_json::from_str::<BulletRangeProof>(&json).is_ok(), accept, "{len}");
 
-            // Encode with the unchecked constructor, so the oversized proof reaches the decoders
+            // Encode with the unchecked constructor, so the non-canonical proof reaches the decoders
             let proof = BulletRangeProof(bytes);
             let borsh_bytes = borsh::to_vec(&proof).unwrap();
             let decoded = borsh::from_slice::<BulletRangeProof>(&borsh_bytes);
