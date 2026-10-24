@@ -11,7 +11,9 @@
 #base_node_grpc_address = "http://127.0.0.1:18142"
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
-# GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
+# GRPC TLS communication is turned on by defining the domain name for the service (default = "none").
+# The domain name must match one of the Subject Alternative Names (SANs) the server certificate was generated with
+# (via `create-tls-certs --san <name-or-ip>`); do not use `localhost` when connecting to a remote host.
 #base_node_grpc_tls_domain_name = "localhost"
 
 # Number of mining threads (default: number of logical CPU cores)

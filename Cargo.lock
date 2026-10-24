@@ -4284,6 +4284,7 @@ dependencies = [
  "bincode",
  "borsh",
  "log",
+ "pem",
  "prost 0.13.5",
  "rand 0.10.1",
  "rcgen",
@@ -4302,10 +4303,13 @@ dependencies = [
  "tari_sidechain",
  "tari_transaction_components",
  "tari_utilities",
+ "tempfile",
  "thiserror 2.0.21",
+ "time",
  "tokio",
  "tonic 0.13.1",
  "tonic-build",
+ "yasna",
  "zeroize",
 ]
 

@@ -26,6 +26,8 @@ use std::io;
 pub enum GrpcTlsError {
     #[error("Couldn't read file: {0}")]
     FileReadError(String),
+    #[error("CA certificate public key does not match CA private key")]
+    CaKeyMismatch,
     #[error("Error generating the certificate: {0}")]
     CertGenerationError(#[from] rcgen::Error),
     #[error("Error opening or writing the file: {0}")]

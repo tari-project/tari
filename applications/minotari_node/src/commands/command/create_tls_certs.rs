@@ -23,41 +23,76 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
+use minotari_app_grpc::tls::certs::{
+    generate_self_signed_certs_with_sans,
+    print_warning,
+    renew_leaf_cert_from_ca_files,
+    write_ca_and_server_certs_to_disk,
+    write_cert_and_key_pair_to_disk,
+};
 
 use super::{CommandContext, HandleCommand};
 
 /// Create self signed TLS certificates for use with gRPC
-#[derive(Debug, Parser)]
-pub struct Args {}
+#[derive(Debug, Default, Clone, Parser)]
+pub struct Args {
+    /// Subject Alternative Names (DNS names or IP addresses) to include in the certificate.
+    /// Defaults to `localhost`, `127.0.0.1`, and `0.0.0.0` when omitted.
+    #[clap(long = "san")]
+    pub san: Vec<String>,
+    /// Regenerate and sign only `server.pem` and `server.key` using the existing `node_ca.pem` and `node_ca.key`
+    #[clap(long)]
+    pub renew_leaf: bool,
+    /// Overwrite existing private keys on disk
+    #[clap(long, short)]
+    pub force: bool,
+}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.create_tls_certs()
+    async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
+        self.create_tls_certs(args)
     }
 }
 
 impl CommandContext {
-    pub fn create_tls_certs(&self) -> Result<(), Error> {
-        match generate_self_signed_certs() {
-            Ok((cacert, cert, private_key)) => {
-                print_warning();
+    pub fn create_tls_certs(&self, args: Args) -> Result<(), Error> {
+        let config_dir = self.config.base_node.config_dir.clone();
+        if args.renew_leaf {
+            let (cert, private_key) =
+                renew_leaf_cert_from_ca_files(&config_dir, "node_ca.pem", "node_ca.key", &args.san)?;
+            print_warning();
+            write_cert_and_key_pair_to_disk(&config_dir, "server.pem", &cert, "server.key", &private_key, true)?;
 
-                write_cert_to_disk(self.config.base_node.config_dir.clone(), "node_ca.pem", &cacert)?;
-                write_cert_to_disk(self.config.base_node.config_dir.clone(), "server.pem", &cert)?;
-                write_cert_to_disk(self.config.base_node.config_dir.clone(), "server.key", &private_key)?;
-
-                println!();
-                println!("Certificates generated successfully.");
-                println!(
-                    "To continue configuration move the `node_ca.pem` to the client service's `application/config/` \
-                     directory. Restart the base node with the configuration grpc_tls_enabled=true"
-                );
-                println!();
-            },
-            Err(err) => eprintln!("Error generating certificates: {err}"),
+            println!();
+            println!("Leaf certificate renewed successfully.");
+            println!();
+            return Ok(());
         }
+
+        let (cacert, ca_key, cert, private_key) = generate_self_signed_certs_with_sans(&args.san)?;
+        print_warning();
+
+        write_ca_and_server_certs_to_disk(
+            &config_dir,
+            "node_ca.pem",
+            &cacert,
+            "node_ca.key",
+            &ca_key,
+            "server.pem",
+            &cert,
+            "server.key",
+            &private_key,
+            args.force,
+        )?;
+
+        println!();
+        println!("Certificates generated successfully.");
+        println!(
+            "To continue configuration copy the `node_ca.pem` to the client service's `application/config/` \
+             directory. Restart the base node with the configuration grpc_tls_enabled=true"
+        );
+        println!();
         Ok(())
     }
 }
