@@ -20,12 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, io, path::Path, sync::Arc};
+use std::{
+    fs,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use log::*;
 use serde::{Serialize, de::DeserializeOwned};
 use tari_common::{
-    configuration::bootstrap::prompt_default_yes_on_eof,
+    configuration::bootstrap::prompt,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{
@@ -78,12 +84,18 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             identity_file.as_ref(),
             "a new one will be created on next start",
         )),
-        Err(e) => {
-            warn!(target: LOG_TARGET, "Failed to load node identity: {e}");
+        Err(IdentityError::NotFile) => {
+            let msg = format!(
+                "Node identity path '{}' is not a regular file.",
+                identity_file.as_ref().display()
+            );
+            error!(target: LOG_TARGET, "{msg}");
+            Err(ExitError::new(ExitCode::ConfigError, msg))
+        },
+        Err(e @ (IdentityError::NotFound | IdentityError::Malformed { .. } | IdentityError::Io(_))) => {
             if !create_id {
-                let prompt =
-                    prompt_default_yes_on_eof("Node identity does not exist.\nWould you like to create one (Y/n)?");
-                if !prompt {
+                let response = prompt("Node identity does not exist.\nWould you like to create one (y/N)?");
+                if !response {
                     error!(
                         target: LOG_TARGET,
                         "Node identity not found. {e}. You can update the configuration file to point to a valid node \
@@ -98,18 +110,54 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                     ));
                 };
             }
-            debug!(target: LOG_TARGET, "Existing node id not found. {e}. Creating new ID");
+
+            let backup_path = match &e {
+                IdentityError::Malformed { .. } | IdentityError::Io(_) => {
+                    let backup = backup_identity_file(identity_file.as_ref()).map_err(|(backup, rename_err)| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Could not back up existing node identity file '{}' to '{}': {rename_err}",
+                            identity_file.as_ref().display(),
+                            backup.display(),
+                        );
+                        ExitError::new(
+                            ExitCode::ConfigError,
+                            format!(
+                                "Could not back up existing node identity file '{}' to '{}': {rename_err}",
+                                identity_file.as_ref().display(),
+                                backup.display(),
+                            ),
+                        )
+                    })?;
+                    Some(backup)
+                },
+                IdentityError::NotFound => None,
+                IdentityError::InvalidPermissions | IdentityError::NotFile => unreachable!(),
+            };
 
             let filtered_addresses = filter_addresses_for_transport(public_addresses, transport_type);
             match create_new_node_identity(&identity_file, filtered_addresses, peer_features) {
                 Ok(id) => {
-                    info!(
-                        target: LOG_TARGET,
-                        "New node identity [{}] with public key {} has been created at {}.",
-                        id.node_id(),
-                        id.public_key(),
-                        identity_file.as_ref().to_str().unwrap_or("?"),
-                    );
+                    if let Some(backup) = backup_path {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to load node identity ({e}); backed up existing file to {} and created new node \
+                             identity [{}] with public key {} at {}.",
+                            backup.display(),
+                            id.node_id(),
+                            id.public_key(),
+                            identity_file.as_ref().display(),
+                        );
+                    } else {
+                        debug!(target: LOG_TARGET, "Existing node id not found. {e}. Creating new ID");
+                        info!(
+                            target: LOG_TARGET,
+                            "New node identity [{}] with public key {} has been created at {}.",
+                            id.node_id(),
+                            id.public_key(),
+                            identity_file.as_ref().to_str().unwrap_or("?"),
+                        );
+                    }
                     Ok(Arc::new(id))
                 },
                 Err(e) => {
@@ -264,14 +312,72 @@ pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>,
     }
 }
 
+/// Builds a candidate backup path `<name>.<unix-timestamp>.bak` (or `<name>.<unix-timestamp>.<attempt>.bak` when an
+/// earlier backup from the same second already exists) in the same directory as `path`.
+fn backup_identity_path_candidate(path: &Path, timestamp: u64, attempt: u32) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| "identity.json".into());
+    if attempt == 0 {
+        path.with_file_name(format!("{file_name}.{timestamp}.bak"))
+    } else {
+        path.with_file_name(format!("{file_name}.{timestamp}.{attempt}.bak"))
+    }
+}
+
+/// Moves `path` to a new `<name>.<unix-timestamp>[.<attempt>].bak` file in the same directory without overwriting any
+/// existing backup file.
+fn backup_identity_file(path: &Path) -> Result<PathBuf, (PathBuf, io::Error)> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    for attempt in 0..=u32::MAX {
+        let candidate = backup_identity_path_candidate(path, timestamp, attempt);
+        match move_file_no_overwrite(path, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err((candidate, err)),
+        }
+    }
+    let fallback = backup_identity_path_candidate(path, timestamp, u32::MAX);
+    Err((
+        fallback,
+        io::Error::new(io::ErrorKind::AlreadyExists, "exhausted backup filename attempts"),
+    ))
+}
+
+#[cfg(target_family = "unix")]
+fn move_file_no_overwrite(src: &Path, dst: &Path) -> io::Result<()> {
+    // `hard_link` atomically fails with `AlreadyExists` if `dst` already exists, never overwriting an earlier backup.
+    fs::hard_link(src, dst)?;
+    if let Err(err) = fs::remove_file(src) {
+        let _unused = fs::remove_file(dst);
+        return Err(err);
+    }
+    Ok(())
+}
+
+#[cfg(target_family = "windows")]
+fn move_file_no_overwrite(src: &Path, dst: &Path) -> io::Result<()> {
+    if dst.exists() {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "backup file already exists",
+        ));
+    }
+    fs::rename(src, dst)
+}
+
 /// The error returned when an identity file has permissions other than 0600, telling the user how to fix it.
-/// `recreated` describes what happens if the user deletes the file instead.
+/// `recreated` describes what happens if the user moves the file aside instead.
 fn invalid_permissions_error(path: &Path, recreated: &str) -> ExitError {
     ExitError::new(
         ExitCode::ConfigError,
         format!(
             "{path} has incorrect permissions. You can update the identity file with the correct permissions using \
-             'chmod 600 {path}', or delete the identity file and {recreated}",
+             'chmod 600 {path}', or move the identity file aside and {recreated}",
             path = path.to_string_lossy()
         ),
     )
@@ -477,6 +583,15 @@ mod test {
             "expected path and chmod hint, got: {details}"
         );
 
+        assert!(
+            !details.to_lowercase().contains("delete"),
+            "permission error message must not advise deleting the identity file: {details}"
+        );
+        assert!(
+            details.contains("or move the identity file aside"),
+            "permission error message must advise moving the identity file aside: {details}"
+        );
+
         // File with strict permissions (0600) succeeds to pass permission gate
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         // `{}` is not a valid TorIdentity, so loading must reach JSON parsing.
@@ -484,5 +599,262 @@ mod test {
             load_from_json::<_, TorIdentity>(&path),
             Err(IdentityError::Malformed { .. })
         ));
+    }
+
+    struct ThreadLocalLogger;
+
+    thread_local! {
+        static CAPTURED_LOGS: std::cell::RefCell<Vec<(Level, String)>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    impl Log for ThreadLocalLogger {
+        fn enabled(&self, _metadata: &Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &Record) {
+            if record.target() == LOG_TARGET {
+                CAPTURED_LOGS.with(|logs| {
+                    logs.borrow_mut().push((record.level(), record.args().to_string()));
+                });
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
+    static LOGGER_INIT: std::sync::Once = std::sync::Once::new();
+    static LOGGER: ThreadLocalLogger = ThreadLocalLogger;
+
+    fn with_captured_logs<F, R>(f: F) -> (R, Vec<(Level, String)>)
+    where F: FnOnce() -> R {
+        LOGGER_INIT.call_once(|| {
+            let _unused = log::set_logger(&LOGGER);
+            log::set_max_level(LevelFilter::Debug);
+        });
+        CAPTURED_LOGS.with(|logs| logs.borrow_mut().clear());
+        let result = f();
+        let captured = CAPTURED_LOGS.with(|logs| logs.borrow().clone());
+        (result, captured)
+    }
+
+    #[test]
+    fn truncated_identity_file_is_backed_up_and_regenerated_with_error_log() {
+        let dir = std::env::temp_dir().join("identity_management_test_truncated_backup");
+        let _unused = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("identity.json");
+
+        let original_bytes = b"// truncated identity\n{\"node_id\":\"deadbeef\"";
+        fs::write(&path, original_bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let (res, logs) = with_captured_logs(|| {
+            setup_node_identity(
+                &path,
+                Vec::new(),
+                true,
+                PeerFeatures::COMMUNICATION_NODE,
+                TransportType::Tcp,
+            )
+        });
+        let new_id = res.expect("setup_node_identity should back up and create a new identity");
+
+        // Find the .bak file in `dir`
+        let bak_files: Vec<PathBuf> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
+            .collect();
+        assert_eq!(
+            bak_files.len(),
+            1,
+            "expected exactly one .bak file, found: {bak_files:?}"
+        );
+        let bak_path = &bak_files[0];
+        assert_eq!(fs::read(bak_path).unwrap(), original_bytes);
+
+        // New identity file exists and loads cleanly into the newly generated identity
+        let reloaded = load_node_identity(&path, TransportType::Tcp).unwrap();
+        assert_eq!(reloaded.node_id(), new_id.node_id());
+        assert_eq!(reloaded.public_key(), new_id.public_key());
+
+        // Exactly one error log line naming the backup path, new node_id, and new public_key, and no warn log line
+        let error_logs: Vec<&String> = logs
+            .iter()
+            .filter_map(|(lvl, msg)| (*lvl == Level::Error).then_some(msg))
+            .collect();
+        let warn_logs: Vec<&String> = logs
+            .iter()
+            .filter_map(|(lvl, msg)| (*lvl == Level::Warn).then_some(msg))
+            .collect();
+        assert!(warn_logs.is_empty(), "expected no warn logs, got: {warn_logs:?}");
+        assert_eq!(error_logs.len(), 1, "expected one error log line, got: {error_logs:?}");
+        assert!(
+            error_logs[0].contains(&bak_path.display().to_string()),
+            "error log must name backup path {}: {}",
+            bak_path.display(),
+            error_logs[0]
+        );
+        assert!(
+            error_logs[0].contains(&new_id.node_id().to_string()),
+            "error log must name new node id: {}",
+            error_logs[0]
+        );
+        assert!(
+            error_logs[0].contains(&new_id.public_key().to_string()),
+            "error log must name new public key: {}",
+            error_logs[0]
+        );
+    }
+
+    #[test]
+    fn directory_at_identity_path_returns_exit_error_and_creates_nothing() {
+        let dir = std::env::temp_dir().join("identity_management_test_dir_at_path");
+        let _unused = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let identity_dir = dir.join("identity.json");
+        fs::create_dir_all(&identity_dir).unwrap();
+
+        let err = setup_node_identity(
+            &identity_dir,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .unwrap_err();
+        assert_eq!(err.exit_code, ExitCode::ConfigError);
+        assert!(
+            identity_dir.is_dir(),
+            "directory at identity path must not be moved or replaced"
+        );
+
+        let entries: Vec<PathBuf> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .collect();
+        assert_eq!(entries, vec![identity_dir]);
+    }
+
+    #[test]
+    fn missing_identity_file_creates_new_without_backup() {
+        let dir = std::env::temp_dir().join("identity_management_test_missing_creates_new");
+        let _unused = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("identity.json");
+
+        let id = setup_node_identity(
+            &path,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .expect("missing identity file should create a new one");
+        assert!(path.is_file());
+        let loaded = load_node_identity(&path, TransportType::Tcp).unwrap();
+        assert_eq!(loaded.node_id(), id.node_id());
+
+        let bak_files: Vec<PathBuf> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
+            .collect();
+        assert!(
+            bak_files.is_empty(),
+            "no backup file should be created when original was missing"
+        );
+    }
+
+    #[test]
+    fn failed_backup_rename_in_unwritable_parent_dir_aborts_without_overwriting() {
+        let dir = std::env::temp_dir().join("identity_management_test_unwritable_parent");
+        let _unused = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
+        let _unused = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("identity.json");
+
+        let original_bytes = b"// corrupt identity\n{broken";
+        fs::write(&path, original_bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        // Make parent directory read+search only (0500) so renaming to .bak fails.
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o500)).unwrap();
+
+        // When running as root (e.g. in a container with CAP_DAC_OVERRIDE), 0500 directory permissions are bypassed by
+        // the kernel; detect that and skip this permission-based check.
+        let probe = dir.join(".write_probe");
+        if fs::OpenOptions::new().write(true).create_new(true).open(&probe).is_ok() {
+            let _unused = fs::remove_file(&probe);
+            fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+            return;
+        }
+
+        let res = setup_node_identity(
+            &path,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        );
+
+        // Restore parent directory permissions before asserting so cleanup always succeeds.
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let err = res.expect_err("must fail when renaming to .bak fails");
+        assert_eq!(err.exit_code, ExitCode::ConfigError);
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            original_bytes,
+            "original corrupt file must remain untouched when backup rename fails"
+        );
+    }
+
+    #[test]
+    fn multiple_backups_in_same_second_do_not_overwrite_each_other() {
+        let dir = std::env::temp_dir().join("identity_management_test_same_second_backups");
+        let _unused = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("identity.json");
+
+        let first_corrupt = b"// first corrupt identity\n{first";
+        fs::write(&path, first_corrupt).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        setup_node_identity(
+            &path,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .expect("first backup and recreate should succeed");
+
+        let second_corrupt = b"// second corrupt identity\n{second";
+        fs::write(&path, second_corrupt).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        setup_node_identity(
+            &path,
+            Vec::new(),
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .expect("second backup and recreate should succeed");
+
+        let mut bak_contents: Vec<Vec<u8>> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("bak"))
+            .map(|p| fs::read(p).unwrap())
+            .collect();
+        bak_contents.sort();
+
+        let mut expected = vec![first_corrupt.to_vec(), second_corrupt.to_vec()];
+        expected.sort();
+        assert_eq!(
+            bak_contents, expected,
+            "both corrupt identity files must be preserved in distinct .bak files"
+        );
     }
 }
