@@ -30,12 +30,15 @@ base64 = { workspace = true }
 borsh = { workspace = true }
 log = { workspace = true }
 prost = "0.13.3"
+pem = "3.0"
 rand = { workspace = true }
 rcgen = "0.12.1"
 subtle = "2.5.0"
 thiserror = { workspace = true }
+time = { version = "0.3", default-features = false }
 tokio = { workspace = true, features = ["fs"] }
 tonic = { version = "0.13.1", features = ["tls-ring"] }
+yasna = { version = "0.5", features = ["time", "std"] }
 zeroize = "1"
 
 [dev-dependencies]
@@ -44,6 +47,8 @@ tari_common = { workspace = true }
 bincode = "1.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
+tempfile = "3.3.0"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
 
 [build-dependencies]
 tari_features = { workspace = true }

@@ -192,7 +192,7 @@ pub enum CliCommands {
     FinaliseShaAtomicSwap(FinaliseShaAtomicSwapArgs),
     ClaimShaAtomicSwapRefund(ClaimShaAtomicSwapRefundArgs),
     RegisterValidatorNode(RegisterValidatorNodeArgs),
-    CreateTlsCerts,
+    CreateTlsCerts(CreateTlsCertsArgs),
     Sync(SyncArgs),
     ExportViewKeyAndSpendKey(ExportViewKeyAndSpendKeyArgs),
     ImportPaperWallet(ImportPaperWalletArgs),
@@ -225,6 +225,20 @@ pub enum CliCommands {
     ValidateOutputs(ValidateOutputsArgs),
     RevalidateAllTransactions,
     RevalidateAllOutputs,
+}
+
+#[derive(Debug, Args, Clone, Default)]
+pub struct CreateTlsCertsArgs {
+    /// Subject Alternative Names (DNS names or IP addresses) to include in the certificate.
+    /// Defaults to `localhost`, `127.0.0.1`, and `0.0.0.0` when omitted.
+    #[clap(long = "san")]
+    pub san: Vec<String>,
+    /// Regenerate and sign only `server.pem` and `server.key` using the existing `wallet_ca.pem` and `wallet_ca.key`
+    #[clap(long)]
+    pub renew_leaf: bool,
+    /// Overwrite existing private keys on disk
+    #[clap(long, short)]
+    pub force: bool,
 }
 
 #[derive(Debug, Args, Clone)]
