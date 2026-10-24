@@ -30,7 +30,10 @@ pub enum GrpcAuthentication {
     None,
     Basic {
         username: String,
-        #[serde(deserialize_with = "deserialize_safe_password")]
+        #[serde(
+            serialize_with = "serialize_redacted_password",
+            deserialize_with = "deserialize_safe_password"
+        )]
         password: SafePassword,
     },
 }
@@ -44,8 +47,35 @@ impl GrpcAuthentication {
     }
 }
 
+fn serialize_redacted_password<S>(_password: &SafePassword, serializer: S) -> Result<S::Ok, S::Error>
+where S: serde::Serializer {
+    serializer.serialize_str("<redacted>")
+}
+
 fn deserialize_safe_password<'de, D>(deserializer: D) -> Result<SafePassword, D::Error>
 where D: serde::Deserializer<'de> {
     let password: String = Deserialize::deserialize(deserializer)?;
     Ok(SafePassword::from(password))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serializing_grpc_authentication_redacts_password() {
+        let secret = "super_secret_grpc_password_123";
+        let auth = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from(secret),
+        };
+
+        let toml_out = toml::to_string(&auth).unwrap();
+        assert!(!toml_out.contains(secret));
+        assert!(toml_out.contains("<redacted>"));
+
+        let json_out = serde_json::to_string(&auth).unwrap();
+        assert!(!json_out.contains(secret));
+        assert!(json_out.contains("<redacted>"));
+    }
 }

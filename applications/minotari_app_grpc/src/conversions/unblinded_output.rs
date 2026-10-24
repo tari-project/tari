@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
@@ -101,8 +101,7 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let mut buffer = output.covenant.as_bytes();
-        let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|err| err.to_string())?;
+        let covenant = borsh::from_slice(&output.covenant).map_err(|err| err.to_string())?;
 
         let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
 
@@ -140,5 +139,42 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             minimum_value_promise,
             range_proof,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_transaction_components::transaction_components::covenants::Covenant;
+
+    use super::*;
+
+    #[test]
+    fn rejects_covenant_with_trailing_byte() {
+        let mut proto = grpc::UnblindedOutput {
+            value: 100,
+            spending_key: vec![0u8; 32],
+            features: Some(grpc::OutputFeatures::default()),
+            script: vec![],
+            input_data: vec![],
+            script_private_key: vec![0u8; 32],
+            sender_offset_public_key: vec![0u8; 32],
+            metadata_signature: Some(grpc::ComAndPubSignature {
+                ephemeral_commitment: vec![0u8; 32],
+                ephemeral_pubkey: vec![0u8; 32],
+                u_a: vec![0u8; 32],
+                u_x: vec![0u8; 32],
+                u_y: vec![0u8; 32],
+            }),
+            script_lock_height: 0,
+            covenant: borsh::to_vec(&Covenant::default()).unwrap(),
+            encrypted_data: EncryptedData::default().to_byte_vec(),
+            minimum_value_promise: 0,
+            range_proof: Some(grpc::RangeProof { proof_bytes: vec![] }),
+        };
+
+        assert!(UnblindedOutput::try_from(proto.clone()).is_ok());
+
+        proto.covenant.push(0);
+        assert!(UnblindedOutput::try_from(proto).is_err());
     }
 }

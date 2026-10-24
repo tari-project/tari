@@ -7795,6 +7795,7 @@ dependencies = [
  "tari_sidechain",
  "tari_utilities",
  "thiserror 2.0.21",
+ "toml 0.5.11",
  "utoipa",
  "wasm-bindgen",
  "zeroize",
