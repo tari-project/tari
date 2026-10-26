@@ -28,12 +28,13 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
+use tari_common_types::types::HashOutput;
 use tari_comms::{
     PeerConnection,
     RefKind,
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
-    protocol::rpc::RpcClient,
+    protocol::rpc::{RpcClient, RpcError},
 };
 use tari_node_components::blocks::{Block, BlockValidationError, ChainBlock};
 use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody};
@@ -360,15 +361,26 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             end_hash: tip_hash.to_vec(),
         };
 
-        let mut block_stream = client.sync_blocks(request).await?;
+        let mut block_stream = match client.sync_blocks(request).await {
+            Ok(stream) => stream,
+            Err(err) => return Err(self.not_found_before_first_block(err, &sync_peer, &tip_hash)),
+        };
         let mut prev_hash = best_full_block_hash;
         let mut current_block = None;
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
+        let mut received_block = false;
         while let Some(block_result) = block_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
-            let block_body_response = block_result?;
+            let block_body_response = match block_result {
+                Ok(response) => response,
+                Err(err) if !received_block => {
+                    return Err(self.not_found_before_first_block(err, &sync_peer, &tip_hash));
+                },
+                Err(err) => return Err(err.into()),
+            };
+            received_block = true;
 
             let header = self
                 .db
@@ -544,6 +556,24 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         debug!(target: LOG_TARGET, "Completed block sync with peer `{sync_peer}`");
 
         Ok(())
+    }
+
+    /// A peer that answers NotFound before sending any block is only to blame (and banned) if it claimed our header
+    /// tip as its best block; otherwise it may just not have that chain.
+    fn not_found_before_first_block(
+        &self,
+        err: RpcError,
+        sync_peer: &SyncPeer,
+        tip_hash: &HashOutput,
+    ) -> BlockSyncError {
+        let is_not_found = matches!(&err, RpcError::RequestFailed(status) if status.as_status_code().is_not_found());
+        if !is_not_found {
+            return err.into();
+        }
+        if sync_peer.claimed_chain_metadata().best_block_hash() == tip_hash {
+            return err.into();
+        }
+        BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(err)
     }
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
