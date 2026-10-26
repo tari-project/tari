@@ -1419,18 +1419,33 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_inputs_mined_info(
-        &self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<InputMinedInfo>>, ChainStorageError> {
+    /// For each output hash, the latest lifecycle (see [`MinedInfo::latest`]), all read under one lock.
+    pub fn fetch_latest_mined_infos(&self, hashes: Vec<HashOutput>) -> Result<Vec<MinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
-            // Take the last-spent entry if the hash is indexed under several headers.
-            let mut inputs = db.fetch_inputs(&hash)?;
-            inputs.sort_by_key(|i| i.spent_height);
-            result.push(inputs.into_iter().next_back());
+            result.push(MinedInfo::latest(db.fetch_mined_info_by_output_hash(&hash)?));
+        }
+        Ok(result)
+    }
+
+    /// For each output hash, the stored instance that an input in block `header_hash` spent.
+    pub fn fetch_outputs_spent_in_block(
+        &self,
+        hashes: Vec<HashOutput>,
+        header_hash: HashOutput,
+    ) -> Result<Vec<Option<OutputMinedInfo>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let instance = db
+                .fetch_mined_info_by_output_hash(&hash)?
+                .into_iter()
+                .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == header_hash))
+                .and_then(|info| info.output);
+            result.push(instance);
         }
         Ok(result)
     }

@@ -189,16 +189,21 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
                     header_height, spent_height
                 )));
             }
-            // The hash can be indexed under several headers (e.g. across reorg history). The input is valid as long
-            // as it was mined at or before it was spent, so compare against the latest mined height rather than an
-            // arbitrary entry.
-            if let Some(mined_height) = db
-                .fetch_outputs(&input_output_hash)?
-                .into_iter()
-                .map(|OutputMinedInfo { mined_height, .. }| mined_height)
-                .max()
-            {
-                if spent_height < mined_height {
+            // An identical output can be mined again after it is spent, so check the instance this input spent.
+            let infos = db.fetch_mined_info_by_output_hash(&input_output_hash)?;
+            let spent_instance = infos
+                .iter()
+                .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == header_hash))
+                .and_then(|info| info.output.as_ref());
+            if spent_instance.is_none() {
+                // Pairing only matches an instance mined at or before the spend, so report a later one if any.
+                if let Some(mined_height) = infos
+                    .iter()
+                    .filter_map(|info| info.output.as_ref())
+                    .map(|output| output.mined_height)
+                    .filter(|mined_height| *mined_height > spent_height)
+                    .min()
+                {
                     return Err(ValidationError::InputSpentBeforeMined(format!(
                         "Input output hash {} spent at height {} before it was mined at height {}",
                         input_output_hash.to_hex(),
@@ -206,7 +211,6 @@ fn validate_input_hashes_in_db<B: BlockchainBackend>(
                         mined_height
                     )));
                 }
-            } else {
                 return Err(ValidationError::MissingOutputError(format!(
                     "Input output hash {} not found as unspent output",
                     input_output_hash.to_hex()
