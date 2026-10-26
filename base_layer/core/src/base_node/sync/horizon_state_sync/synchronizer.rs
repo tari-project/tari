@@ -305,7 +305,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         self.hooks.call_on_starting_hook(sync_peer);
 
         // Prefer the connection that travelled with this SyncPeer from header_sync (Strong).
-        // We hand the attempt a Weak clone — the SyncPeer's Strong handle keeps the connection
+        // We hand the attempt a Weak clone ÔÇö the SyncPeer's Strong handle keeps the connection
         // pinned.
         let mut conn = match sync_peer.connection() {
             Some(stored) if stored.is_connected() => stored.clone_weak(),
@@ -1152,17 +1152,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             apply_tranche_output_updates(state_tree_updates, inputs_to_delete, recreated_outputs, &mut txn);
-            // Only checkpoint intermediate tranches for network recovery.
-            // We intentionally do not checkpoint the final tranche before verification.
-            // If the final root verification fails, the ENTIRE state is considered poisoned.
-            if tranche_end_height < to_header.height {
-                txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
-                    checkpoint_height: tranche_end_height,
-                    checkpoint_hash: tranche_end_header.hash(),
-                    sync_target_height: to_header.height,
-                    sync_target_hash: to_header.hash(),
-                });
-            }
+            // Persist the tranche checkpoint atomically with `apply_tranche_output_updates` for every
+            // tranche (including the final tranche) so an interrupted sync never leaves committed spend
+            // deletions or JMT updates ahead of the stored checkpoint. If `verify_horizon_sync_output_root`
+            // fails below (either immediately or upon resuming at `to_header.height + 1`), the checkpoint
+            // is cleared so the error handler cleans up from height 1 and restores genesis outputs.
+            txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+                checkpoint_height: tranche_end_height,
+                checkpoint_hash: tranche_end_header.hash(),
+                sync_target_height: to_header.height,
+                sync_target_hash: to_header.hash(),
+            });
             txn.commit().await?;
 
             debug!(
@@ -1191,17 +1191,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .await;
             return Err(HorizonSyncError::ChainStorageError(e));
         }
-
-        // Mark output sync as complete
-        db.write_transaction()
-            .set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
-                checkpoint_height: to_header.height,
-                checkpoint_hash: to_header.hash(),
-                sync_target_height: to_header.height,
-                sync_target_hash: to_header.hash(),
-            })
-            .commit()
-            .await?;
 
         debug!(
             target: LOG_TARGET,
