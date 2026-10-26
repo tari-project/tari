@@ -649,6 +649,31 @@ async fn duplicate_output_prune_reports_missing_row() {
 }
 
 #[tokio::test]
+async fn duplicate_output_partial_validation_checks_spent_instance() {
+    let (mut chain, _, spend_tx, _) = duplicate_output_chain();
+    chain
+        .add_next_tip(block_spec!("5", transactions: vec![spend_tx]))
+        .unwrap();
+    let [s1, m2, s2] = ["3", "4", "5"].map(|name| chain.get_block_and_smt_by_name(name).unwrap());
+    let hash = s1.block().body.inputs()[0].output_hash();
+    let validator = BlockBodyPartialValidator::new(chain.rules().clone());
+
+    // The earlier instance alone must not satisfy a spend of the later one.
+    chain
+        .db()
+        .db_read_access()
+        .unwrap()
+        .delete_output_row_for_test(m2.hash(), &hash);
+    validator
+        .validate(&*chain.db().db_read_access().unwrap(), s1.block())
+        .unwrap();
+    let err = validator
+        .validate(&*chain.db().db_read_access().unwrap(), s2.block())
+        .unwrap_err();
+    assert!(matches!(err, ValidationError::MissingOutputError(_)), "{err:?}");
+}
+
+#[tokio::test]
 async fn duplicate_output_third_lifecycle() {
     let (mut chain, _, spend_tx, remine_tx) = duplicate_output_chain();
     chain
