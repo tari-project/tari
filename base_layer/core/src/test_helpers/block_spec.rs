@@ -26,7 +26,7 @@ pub struct BlockSpecs {
     specs: Vec<BlockSpec>,
 }
 
-use tari_transaction_components::tari_proof_of_work::Difficulty;
+use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
 impl BlockSpecs {
     pub fn len(&self) -> usize {
         self.specs.len()
@@ -89,6 +89,10 @@ macro_rules! block_spec {
     };
     (@ { $spec: ident } difficulty: $difficulty:expr, $($tail:tt)*) => {
         $spec = $spec.with_difficulty($difficulty.into());
+        $crate::block_spec!(@ { $spec } $($tail)*)
+    };
+    (@ { $spec: ident } pow_algo: $pow_algo:expr, $($tail:tt)*) => {
+        $spec = $spec.with_pow_algo($pow_algo);
         $crate::block_spec!(@ { $spec } $($tail)*)
     };
     (@ { $spec: ident } reward: $reward:expr, $($tail:tt)*) => {
@@ -164,6 +168,7 @@ pub struct BlockSpec {
     pub name: &'static str,
     pub parent: &'static str,
     pub difficulty: Difficulty,
+    pub pow_algo: PowAlgorithm,
     pub block_time: u64,
     pub reward_override: Option<MicroMinotari>,
     pub height_override: Option<u64>,
@@ -205,6 +210,11 @@ impl BlockSpec {
         self
     }
 
+    pub fn with_pow_algo(mut self, pow_algo: PowAlgorithm) -> Self {
+        self.pow_algo = pow_algo;
+        self
+    }
+
     pub fn with_block_time(mut self, block_time: u64) -> Self {
         self.block_time = block_time;
         self
@@ -236,6 +246,7 @@ impl Default for BlockSpec {
             name: "<unnamed>",
             parent: "",
             difficulty: Difficulty::min(),
+            pow_algo: PowAlgorithm::Sha3x,
             block_time: 120,
             height_override: None,
             reward_override: None,
