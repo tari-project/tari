@@ -390,18 +390,25 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         let stored_checkpoint = stored_checkpoint.expect("Already checked");
         debug!(target: LOG_TARGET, "We have a stored checkpoint, with height {} and hash {}", stored_checkpoint.checkpoint_height, stored_checkpoint.checkpoint_hash.to_hex());
-        let checkpoint_sync_to_header = if let Some(header) =
-            self.db.fetch_header(stored_checkpoint.sync_target_height).await?
-        {
-            header
-        } else {
-            warn!(target: LOG_TARGET, "Horizon sync target at height {} is no longer on the canonical chain (reorg detected). Discarding checkpoint and restarting output sync from scratch.", stored_checkpoint.sync_target_height);
-            self.db
-                .write_transaction()
-                .clear_horizon_sync_output_checkpoint()
-                .commit()
-                .await?;
-            return Ok((1, sync_to_header.clone()));
+        let checkpoint_sync_to_header = match (
+            self.db.fetch_header(stored_checkpoint.sync_target_height).await?,
+            self.db.fetch_header(stored_checkpoint.checkpoint_height).await?,
+        ) {
+            (Some(target_header), Some(checkpoint_header))
+                if target_header.hash() == stored_checkpoint.sync_target_hash &&
+                    checkpoint_header.hash() == stored_checkpoint.checkpoint_hash =>
+            {
+                target_header
+            },
+            _ => {
+                warn!(target: LOG_TARGET, "Horizon sync target at height {} is no longer on the canonical chain (reorg detected). Discarding checkpoint and restarting output sync from scratch.", stored_checkpoint.sync_target_height);
+                self.db
+                    .write_transaction()
+                    .clear_horizon_sync_output_checkpoint()
+                    .commit()
+                    .await?;
+                return Ok((1, sync_to_header.clone()));
+            },
         };
         if stored_checkpoint.sync_target_hash == sync_to_header.hash() {
             info!(target: LOG_TARGET, "Resuming output sync from checkpoint at height {}, target unchanged", stored_checkpoint.checkpoint_height);
@@ -424,7 +431,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         if sync_to_header
             .height
-            .saturating_sub(stored_checkpoint.checkpoint_height) >
+            .saturating_sub(stored_checkpoint.checkpoint_height) <=
             50_000
         {
             // we can sync to the checkpoint height first, and then do block sync from there
@@ -476,6 +483,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         sync_to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
         let (start_height, to_header) = self.calculate_output_sync_start_stop(sync_to_header).await?;
+        self.horizon_sync_height = to_header.height;
         // Note: We do not need to rewind kernels if the sync fails due to it being validated when inserted into
         //       the database. Furthermore, these kernels will also be successfully removed when we need to rewind
         //       the blockchain for whatever reason.
@@ -556,61 +564,64 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
             current_height = current_height.saturating_add(1);
         }
-        debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}, proceeding to reinsert genesis outputs", stop_height);
-        // Restore genesis-block outputs that an earlier horizon sync spent: `prune_output_from_all_dbs`
-        // purged them from the UTXO LMDB tables when their STXO marker streamed in. If we don't
-        // restore them after rewinding past their spend height, the next sync can't resolve the
-        // STXO commitment Bob streams for the genesis-spending block and bans the peer with
-        // "Peer sent unknown commitment hash".
-        let genesis_block = self.db.fetch_genesis_block();
         let mut restored_keys = BTreeSet::new();
-        let genesis_header_hash = *genesis_block.hash();
-        let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
-        for output in genesis_block.block().body.outputs() {
-            if output.is_burned() {
-                continue;
-            }
-            let present = self
-                .db
-                .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
-                .await?
-                .is_some();
-            if present {
-                debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
-                continue;
-            }
-            let mined_infos = self.db.fetch_mined_info_by_output_hash(output.hash()).await?;
-            if let Some(spent_status) = mined_infos
-                .iter()
-                .filter_map(|info| info.input.as_ref())
-                .find(|input| input.spent_height == 0)
-            {
-                debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state, it was spent in block {}", output.hash(), output.commitment.to_hex(), spent_status.spent_height);
-                continue;
-            }
-            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
-            let smt_key = FixedHash::from(key_bytes);
-            let smt_node = output.smt_hash(0);
-            state_tree_updates.insert(smt_key, Some(smt_node));
-            // A rolled-back tranche may have left a value for this key, which the restore replaces.
-            restored_keys.insert(smt_key);
-            // first make sure its deleted everywhere so we can cleanly reinsert it.
-            debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
+        // Only restore genesis-block outputs when cleaning all the way back to height 1 (no prior
+        // committed tranche checkpoint). When resuming from a committed checkpoint (`start_height > 1`),
+        // any genesis output that is no longer unspent was legitimately spent in an already-committed
+        // tranche `1..start_height` and must not be resurrected into the UTXO set or state tree.
+        if start_height <= 1 {
+            debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}, proceeding to reinsert genesis outputs", stop_height);
+            let genesis_block = self.db.fetch_genesis_block();
+            let genesis_header_hash = *genesis_block.hash();
+            let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
+            for output in genesis_block.block().body.outputs() {
+                if output.is_burned() {
+                    continue;
+                }
+                let present = self
+                    .db
+                    .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                    .await?
+                    .is_some();
+                if present {
+                    debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
+                    continue;
+                }
+                let mined_infos = self.db.fetch_mined_info_by_output_hash(output.hash()).await?;
+                if let Some(spent_status) = mined_infos
+                    .iter()
+                    .filter_map(|info| info.input.as_ref())
+                    .find(|input| input.spent_height == 0)
+                {
+                    debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state, it was spent in block {}", output.hash(), output.commitment.to_hex(), spent_status.spent_height);
+                    continue;
+                }
+                let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+                let smt_key = FixedHash::from(key_bytes);
+                let smt_node = output.smt_hash(0);
+                state_tree_updates.insert(smt_key, Some(smt_node));
+                // A rolled-back tranche may have left a value for this key, which the restore replaces.
+                restored_keys.insert(smt_key);
+                // first make sure its deleted everywhere so we can cleanly reinsert it.
+                debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
 
-            txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
-            txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
+                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+                txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
+            }
         }
 
-        let tranche_updates = state_tree_updates
-            .into_iter()
-            .map(|(key, value)| HorizonStateTreeUpdate {
-                key,
-                value,
-                replaces_value: restored_keys.contains(&key),
-            })
-            .collect::<Vec<_>>();
+        if !state_tree_updates.is_empty() {
+            let tranche_updates = state_tree_updates
+                .into_iter()
+                .map(|(key, value)| HorizonStateTreeUpdate {
+                    key,
+                    value,
+                    replaces_value: restored_keys.contains(&key),
+                })
+                .collect::<Vec<_>>();
 
-        txn.apply_horizon_state_tree_updates(tranche_updates);
+            txn.apply_horizon_state_tree_updates(tranche_updates);
+        }
 
         txn.commit().await?;
         debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}, genesis outputs restored", stop_height);
@@ -1454,6 +1465,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn calculate_start_resumes_to_checkpoint_target_when_within_50000_blocks() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"], ["4->3"]));
+        let old_target = chain.get("3").unwrap().header().clone();
+        let new_target = chain.get("4").unwrap().header().clone();
+        let checkpoint_block = chain.get("2").unwrap();
+
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: 2,
+            checkpoint_hash: *checkpoint_block.hash(),
+            sync_target_height: old_target.height,
+            sync_target_hash: old_target.hash(),
+        });
+        db.write(txn).unwrap();
+
+        let mut peers: Vec<SyncPeer> = vec![];
+        let sync = build_synchronizer(db, &mut peers, new_target.height);
+
+        let (start, stop_header) = sync.calculate_output_sync_start_stop(&new_target).await.unwrap();
+        assert_eq!(start, 3);
+        assert_eq!(stop_header.hash(), old_target.hash());
+    }
+
+    #[tokio::test]
+    async fn calculate_start_restarts_when_new_target_exceeds_50000_blocks() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
+        let old_target = chain.get("3").unwrap().header().clone();
+        let checkpoint_block = chain.get("2").unwrap();
+
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: 2,
+            checkpoint_hash: *checkpoint_block.hash(),
+            sync_target_height: old_target.height,
+            sync_target_hash: old_target.hash(),
+        });
+        db.write(txn).unwrap();
+
+        let mut far_target = old_target.clone();
+        far_target.height = 50_003;
+        let far_target_hash = far_target.hash();
+
+        let db_clone = db.clone();
+        let mut peers: Vec<SyncPeer> = vec![];
+        let sync = build_synchronizer(db, &mut peers, far_target.height);
+
+        let (start, stop_header) = sync.calculate_output_sync_start_stop(&far_target).await.unwrap();
+        assert_eq!(start, 1);
+        assert_eq!(stop_header.hash(), far_target_hash);
+        assert!(
+            db_clone.fetch_horizon_sync_output_checkpoint().unwrap().is_none(),
+            "checkpoint more than 50,000 blocks behind new target must be cleared"
+        );
+    }
+
+    #[tokio::test]
     async fn calculate_start_discards_checkpoint_after_reorg() {
         let db = create_new_blockchain();
         let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
@@ -1732,9 +1801,15 @@ mod tests {
         let mut peers = Vec::new();
         let sync = build_synchronizer(db.clone(), &mut peers, remined.height());
 
-        // Tranche A ends with the first instance; tranche B spends it and mines it again.
+        let mut sync = sync;
+        // Tranche A ends with the first instance (and spends the genesis output at height 1);
+        // tranche B resumes from the checkpoint at `mined` and spends and re-mines the duplicate output.
         let tranche_a_start = chain.get_block_and_smt_by_name("A").unwrap();
         sync_tranche_from(&sync, chain.db(), tranche_a_start.header(), mined.header()).await;
+        db.verify_horizon_sync_output_root(mined.header().output_mr).unwrap();
+        // Resuming from the tranche A checkpoint calls `clean_up_stale_synced_outputs(spent.height())`;
+        // this must not resurrect the genesis output that was legitimately spent in tranche A.
+        sync.clean_up_stale_synced_outputs(spent.height()).await.unwrap();
         db.verify_horizon_sync_output_root(mined.header().output_mr).unwrap();
         sync_tranche_from(&sync, chain.db(), spent.header(), remined.header()).await;
         db.verify_horizon_sync_output_root(remined.header().output_mr).unwrap();
