@@ -17,7 +17,7 @@ use crate::{
         rpc::{BaseNodeWalletService, MAX_ALLOWED_QUERY_SIZE, sync_utxos_by_block_task::SyncUtxosByBlockTask},
         state_machine_service::states::StateInfo,
     },
-    chain_storage::{BlockchainBackend, MinedInfo, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     mempool::{TxStorageResponse, service::MempoolHandle},
     proto,
     proto::{
@@ -492,14 +492,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .collect::<Result<_, _>>()
             .map_err(|_| RpcStatus::bad_request(&"Malformed utxo hash received".to_string()))?;
         let mut return_data = Vec::with_capacity(hashes.len());
-        for hash in hashes {
-            // Both halves come from one read, so they describe the same lifecycle.
-            let info = MinedInfo::latest(
-                self.db
-                    .fetch_mined_info_by_output_hash(hash)
-                    .await
-                    .rpc_status_internal_error(LOG_TARGET)?,
-            );
+        // One read for all hashes; each entry's mined and spent halves describe the same lifecycle.
+        let infos = self
+            .db
+            .fetch_latest_mined_infos(hashes)
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+        for info in infos {
             let mut data = match &info.output {
                 None => QueryDeletedData {
                     mined_at_height: 0,
