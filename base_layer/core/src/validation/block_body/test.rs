@@ -367,6 +367,17 @@ async fn it_checks_double_spends() {
 // transaction spends O a second time; the second one mines O a third time, once the first is in a block.
 #[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
 pub(crate) fn duplicate_output_chain() -> (TestBlockchain, BlockBodyFullValidator, Transaction, Transaction) {
+    let (blockchain, validator, finalized_tx, remine_tx, _) = duplicate_output_chain_with_third_spend();
+    (blockchain, validator, finalized_tx, remine_tx)
+}
+
+fn duplicate_output_chain_with_third_spend() -> (
+    TestBlockchain,
+    BlockBodyFullValidator,
+    Transaction,
+    Transaction,
+    Transaction,
+) {
     let (mut blockchain, validator) = setup(true);
 
     let (_, coinbase_a) = blockchain.add_next_tip(block_spec!("A")).unwrap();
@@ -538,7 +549,17 @@ pub(crate) fn duplicate_output_chain() -> (TestBlockchain, BlockBodyFullValidato
     republish_output(&blockchain.km, &mut tx_builder, &output, &output_sender_offset);
     let remine_tx = tx_builder.build().unwrap();
 
-    (blockchain, validator, finalized_tx.transaction, remine_tx.transaction)
+    let (spend_remined_txs, _) =
+        schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![10 * T])], &blockchain.km);
+    let spend_remined_tx = (*spend_remined_txs[0]).clone();
+
+    (
+        blockchain,
+        validator,
+        finalized_tx.transaction,
+        remine_tx.transaction,
+        spend_remined_tx,
+    )
 }
 
 #[tokio::test]
@@ -781,6 +802,71 @@ async fn duplicate_output_pruned_node_accepts_second_spend() {
         .validate_body(&*pruned.db_read_access().unwrap(), block.block().to_compact())
         .unwrap();
     assert!(pruned.add_block(block.to_arc_block()).unwrap().result.is_added());
+}
+
+#[tokio::test]
+async fn duplicate_output_same_block_remine_and_spend() {
+    let (mut chain, validator, spend_tx, remine_tx, spend_remined_tx) = duplicate_output_chain_with_third_spend();
+    chain
+        .add_next_tip(block_spec!("5", transactions: vec![spend_tx]))
+        .unwrap();
+
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let pruned = create_store_with_consensus_and_validators_and_config(
+        chain.rules().clone(),
+        validators,
+        BlockchainDatabaseConfig {
+            pruning_horizon: 1,
+            pruning_interval: 1,
+            ..Default::default()
+        },
+    );
+    for name in ["A", "1", "2", "3", "4", "5"] {
+        let block = chain.get_block_and_smt_by_name(name).unwrap();
+        assert!(pruned.add_block(block.to_arc_block()).unwrap().result.is_added());
+    }
+
+    // Block 6 both re-creates output (remine_tx) and spends that re-created instance (spend_remined_tx).
+    // Both archival and pruned nodes must accept the block and record the same-block lifecycle.
+    let (block_6, _) =
+        chain.create_next_tip(block_spec!("6", transactions: vec![remine_tx.clone(), spend_remined_tx.clone()]));
+    validator
+        .validate_body(&*pruned.db_read_access().unwrap(), block_6.block().to_compact())
+        .unwrap();
+    validator
+        .validate_body(&*chain.db().db_read_access().unwrap(), block_6.block().to_compact())
+        .unwrap();
+    assert!(pruned.add_block(block_6.to_arc_block()).unwrap().result.is_added());
+    let (m3_s3, _) = chain
+        .add_next_tip(block_spec!("6", transactions: vec![remine_tx, spend_remined_tx]))
+        .unwrap();
+
+    let [m1, s1, m2, s2] = ["2", "3", "4", "5"].map(|name| chain.get_block_and_smt_by_name(name).unwrap());
+    let hash = s1.block().body.inputs()[0].output_hash();
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![
+            (Some(m1.height()), Some(s1.height())),
+            (Some(m2.height()), Some(s2.height())),
+            (Some(m3_s3.height()), Some(m3_s3.height())),
+        ]
+    );
+    BlockBodyPartialValidator::new(chain.rules().clone())
+        .validate(&*chain.db().db_read_access().unwrap(), m3_s3.block())
+        .unwrap();
+
+    chain.db().rewind_to_height(s2.height()).unwrap();
+    assert_eq!(
+        summarize_lifecycles(chain.db().fetch_mined_info_by_output_hash(hash).unwrap()),
+        vec![
+            (Some(m1.height()), Some(s1.height())),
+            (Some(m2.height()), Some(s2.height())),
+        ]
+    );
 }
 
 #[tokio::test]

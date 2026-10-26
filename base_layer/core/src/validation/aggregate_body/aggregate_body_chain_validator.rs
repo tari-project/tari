@@ -314,8 +314,11 @@ fn find_unknown_inputs<B: BlockchainBackend>(
         // If spending a unique_id, a new output must contain the unique id
         match check_input_is_utxo(db, input) {
             Ok(_) => continue,
-            Err(ValidationError::UnknownInput) => {
-                // Lazily allocate and hash outputs as needed
+            Err(err @ (ValidationError::UnknownInput | ValidationError::ContainsSTxO)) => {
+                // Lazily allocate and hash outputs as needed. An output that was mined and spent in an earlier
+                // lifecycle still exists in the output index on archival nodes (returning ContainsSTxO), whereas a
+                // pruned node that pruned the earlier spend returns UnknownInput. In both cases, if this body
+                // re-creates the output, the input is spending the new same-block instance.
                 if output_hashes.is_none() {
                     output_hashes = Some(body.outputs().iter().map(|output| output.hash()).collect::<Vec<_>>());
                 }
@@ -324,6 +327,9 @@ fn find_unknown_inputs<B: BlockchainBackend>(
                 let input_output_hash = input.output_hash();
                 if output_hashes.iter().any(|val| val == &input_output_hash) {
                     continue;
+                }
+                if matches!(err, ValidationError::ContainsSTxO) {
+                    return Err(err);
                 }
                 debug!(
                     target: LOG_TARGET,
