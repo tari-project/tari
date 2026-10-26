@@ -28,10 +28,10 @@
 
 #![allow(clippy::vec_init_then_push)]
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, fmt, path::PathBuf};
 
 /// Configuration extracted from CLI arguments for process launching
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LaunchCliConfig {
     /// Base path for Tari applications
     pub base_path: String,
@@ -45,6 +45,24 @@ pub struct LaunchCliConfig {
     pub property_overrides: Vec<(String, String)>,
     /// Environment variables to set
     pub environment_vars: HashMap<String, String>,
+}
+
+impl fmt::Debug for LaunchCliConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let redacted_env: HashMap<&str, &str> = self
+            .environment_vars
+            .keys()
+            .map(|k| (k.as_str(), "[REDACTED]"))
+            .collect();
+        f.debug_struct("LaunchCliConfig")
+            .field("base_path", &self.base_path)
+            .field("config_path", &self.config_path)
+            .field("network", &self.network)
+            .field("log_config", &self.log_config)
+            .field("property_overrides", &self.property_overrides)
+            .field("environment_vars", &redacted_env)
+            .finish()
+    }
 }
 
 /// Builder for creating CLI configurations from various sources
@@ -265,12 +283,6 @@ impl WalletArgumentBuilder {
         self
     }
 
-    pub fn with_password(mut self, password: String) -> Self {
-        self.wallet_specific_args.push("--password".to_string());
-        self.wallet_specific_args.push(password);
-        self
-    }
-
     pub fn force_recovery(mut self) -> Self {
         self.wallet_specific_args.push("--recovery".to_string());
         self
@@ -360,6 +372,11 @@ impl CliIntegrationUtils {
     /// Find available port starting from base
     pub fn find_available_port(base_port: u16) -> Option<u16> {
         (base_port..=u16::MAX).find(|&port| std::net::TcpListener::bind(("127.0.0.1", port)).is_ok())
+    }
+
+    /// Generate a random 128-bit hex token suitable for per-run credentials
+    pub fn generate_random_token() -> String {
+        uuid::Uuid::new_v4().simple().to_string()
     }
 
     /// Create environment variables map for launched processes
@@ -463,5 +480,18 @@ mod tests {
         assert!(CliIntegrationUtils::validate_grpc_address("http://127.0.0.1:18142"));
         assert!(!CliIntegrationUtils::validate_grpc_address("invalid"));
         assert!(!CliIntegrationUtils::validate_grpc_address("127.0.0.1"));
+    }
+
+    #[test]
+    fn test_launch_cli_config_debug_redacts_environment_vars() {
+        let config = CliConfigBuilder::new()
+            .with_base_path("/test".to_string())
+            .with_environment_var("MINOTARI_WALLET_PASSWORD".to_string(), "super-secret-pass".to_string())
+            .build();
+
+        let debug_output = format!("{config:?}");
+        assert!(debug_output.contains("MINOTARI_WALLET_PASSWORD"));
+        assert!(debug_output.contains("[REDACTED]"));
+        assert!(!debug_output.contains("super-secret-pass"));
     }
 }

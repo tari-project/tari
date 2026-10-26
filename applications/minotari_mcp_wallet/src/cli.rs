@@ -72,12 +72,8 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_GRPC_TIMEOUT", default_value = "10")]
     pub wallet_grpc_timeout: u64,
 
-    /// Require user confirmation for all value transfers
-    #[clap(long, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
-    pub require_confirmation: bool,
-
     // Wallet-specific flags for auto-launch (prefixed to avoid conflicts)
-    /// Wallet: Password for the console wallet
+    /// Wallet: Password for the console wallet (passed to child process via environment variable, never argv)
     #[clap(long, env = "MINOTARI_MCP_WALLET_PASSWORD", hide_env_values = true)]
     pub wallet_password: Option<SafePassword>,
 
@@ -117,13 +113,17 @@ impl ConfigOverrideProvider for Cli {
         if let Some(ref path) = self.mcp_audit_log_path {
             overrides.push(("mcp.audit_log_path".to_string(), path.clone()));
         }
-        if self.require_confirmation {
-            overrides.push(("mcp.require_confirmation".to_string(), "true".to_string()));
-        }
         overrides.push(("mcp.request_timeout_secs".to_string(), self.mcp_timeout.to_string()));
         overrides.push(("mcp.rate_limit_per_minute".to_string(), self.mcp_rate_limit.to_string()));
 
         // Wallet gRPC settings
+        if let Some(ref net) = self.common.network &&
+            !overrides
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("wallet.override_from"))
+        {
+            overrides.push(("wallet.override_from".to_string(), net.to_string()));
+        }
         overrides.push(("wallet.grpc_address".to_string(), self.wallet_grpc_address.clone()));
 
         // Wallet auto-launch settings (if enabled)
@@ -170,11 +170,6 @@ impl Cli {
         if self.mcp_control_enabled {
             log::warn!("WALLET MCP control operations are ENABLED - this allows AI agents to spend funds");
             log::warn!("Only enable control operations in fully trusted environments");
-            log::warn!("Consider using --require-confirmation for additional safety");
-        }
-
-        if self.require_confirmation && self.mcp_control_enabled {
-            log::info!("User confirmation required for all value transfers");
         }
 
         Ok(())
@@ -201,11 +196,7 @@ impl Cli {
             args.push(log_config.to_string_lossy().to_string());
         }
 
-        // Add wallet-specific flags
-        if let Some(ref password) = self.wallet_password {
-            args.push("--password".to_string());
-            args.push(String::from_utf8_lossy(password.reveal()).to_string());
-        }
+        // Add wallet-specific flags (password is passed via environment variable, never argv)
         if self.wallet_recovery {
             args.push("--recovery".to_string());
         }
@@ -253,6 +244,14 @@ impl CliConfigExtractor for Cli {
             builder = builder.with_property_override(key.clone(), value.clone());
         }
 
+        // Pass wallet password via child environment variable rather than command-line arguments
+        if let Some(ref password) = self.wallet_password {
+            builder = builder.with_environment_var(
+                "MINOTARI_WALLET_PASSWORD".to_string(),
+                String::from_utf8_lossy(password.reveal()).to_string(),
+            );
+        }
+
         builder.build()
     }
 
@@ -278,12 +277,6 @@ impl CliConfigExtractor for Cli {
             builder = builder.non_interactive();
         }
 
-        if let Some(ref password) = self.wallet_password {
-            // Convert SafePassword to String (be careful with this in production)
-            let password_str = String::from_utf8_lossy(password.reveal()).to_string();
-            builder = builder.with_password(password_str);
-        }
-
         if self.wallet_recovery {
             builder = builder.force_recovery();
         }
@@ -293,5 +286,38 @@ impl CliConfigExtractor for Cli {
         }
 
         builder.build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wallet_password_never_in_argv_or_debug_logs() {
+        let mut cli = Cli::try_parse_from(["minotari_mcp_wallet"]).unwrap();
+        cli.wallet_password = Some(SafePassword::from("top-secret-wallet-pass"));
+
+        let wallet_args = cli.extract_wallet_args();
+        let generated_args = cli.generate_wallet_args();
+        let launch_config = cli.extract_launch_config();
+
+        // Password must never appear in argv
+        assert!(!wallet_args.iter().any(|arg| arg == "--password"));
+        assert!(!wallet_args.iter().any(|arg| arg.contains("top-secret-wallet-pass")));
+        assert!(!generated_args.iter().any(|arg| arg == "--password"));
+        assert!(!generated_args.iter().any(|arg| arg.contains("top-secret-wallet-pass")));
+
+        // Password is provided via child environment variable
+        assert_eq!(
+            launch_config.environment_vars.get("MINOTARI_WALLET_PASSWORD").map(String::as_str),
+            Some("top-secret-wallet-pass")
+        );
+
+        // Debug output of Cli and LaunchCliConfig must never leak the password
+        let cli_debug = format!("{cli:?}");
+        let launch_debug = format!("{launch_config:?}");
+        assert!(!cli_debug.contains("top-secret-wallet-pass"));
+        assert!(!launch_debug.contains("top-secret-wallet-pass"));
     }
 }

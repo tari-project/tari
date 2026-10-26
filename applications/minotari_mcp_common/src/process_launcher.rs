@@ -27,7 +27,7 @@
 //! and comprehensive error handling. Supports both node and wallet launching with
 //! proper argument passthrough and startup coordination.
 
-use std::{collections::HashMap, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
@@ -43,7 +43,7 @@ use crate::{
 };
 
 /// Process launch configuration
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LaunchConfig {
     /// Executable path (will be auto-discovered if None)
     pub executable_path: Option<PathBuf>,
@@ -57,6 +57,24 @@ pub struct LaunchConfig {
     pub startup_timeout: Duration,
     /// Health check configuration
     pub health_check_config: HealthCheckConfig,
+}
+
+impl fmt::Debug for LaunchConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let redacted_env: HashMap<&str, &str> = self
+            .env_vars
+            .keys()
+            .map(|k| (k.as_str(), "[REDACTED]"))
+            .collect();
+        f.debug_struct("LaunchConfig")
+            .field("executable_path", &self.executable_path)
+            .field("args", &self.args)
+            .field("env_vars", &redacted_env)
+            .field("working_dir", &self.working_dir)
+            .field("startup_timeout", &self.startup_timeout)
+            .field("health_check_config", &self.health_check_config)
+            .finish()
+    }
 }
 
 /// Health check configuration for launched processes
@@ -171,7 +189,6 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        log::debug!("About to spawn process: {command:?}");
         let mut child = command.spawn().map_err(|e| {
             log::error!(
                 "Failed to spawn process: {} (executable: {})",
@@ -424,6 +441,11 @@ impl LaunchConfigBuilder {
         self
     }
 
+    pub fn with_env_vars(mut self, env_vars: HashMap<String, String>) -> Self {
+        self.env_vars.extend(env_vars);
+        self
+    }
+
     pub fn with_working_dir(mut self, dir: PathBuf) -> Self {
         self.working_dir = Some(dir);
         self
@@ -533,6 +555,7 @@ impl TariProcessLauncher {
         network: Option<String>,
         grpc_address: String,
         additional_args: Vec<String>,
+        env_vars: HashMap<String, String>,
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
         // Convert IP:PORT format to multiaddr format
         let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
@@ -565,6 +588,7 @@ impl TariProcessLauncher {
         let config = LaunchConfigBuilder::new()
             .with_executable(TariExecutables::find_wallet()?)
             .with_args(args)
+            .with_env_vars(env_vars)
             .with_startup_timeout(Duration::from_secs(200))
             .with_health_check(health_config)
             .build()?;
@@ -601,6 +625,11 @@ mod tests {
         assert_eq!(config.args, vec!["--test".to_string()]);
         assert_eq!(config.env_vars.get("TEST_VAR"), Some(&"test_value".to_string()));
         assert_eq!(config.startup_timeout, Duration::from_secs(30));
+
+        let debug_output = format!("{config:?}");
+        assert!(debug_output.contains("TEST_VAR"));
+        assert!(debug_output.contains("[REDACTED]"));
+        assert!(!debug_output.contains("test_value"));
     }
 
     #[test]

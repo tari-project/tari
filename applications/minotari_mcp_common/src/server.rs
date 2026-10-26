@@ -248,9 +248,6 @@ impl ServerMessageHandler {
     }
 
     async fn handle_call_tool(&self, id: Value, params: ToolCallParams) -> McpResult<McpResponse> {
-        // Get client IP - in a real implementation, this would come from the connection context
-        let client_ip = "127.0.0.1".parse().unwrap();
-
         // Sanitize tool arguments before processing
         let sanitized_arguments = if let Some(args) = params.arguments {
             Some(sanitize_tool_input(&args)?)
@@ -267,7 +264,6 @@ impl ServerMessageHandler {
 
         let mut security_context = self.security_context.write().await;
         let _session_id = security_context.check_permission(
-            client_ip,
             &format!("tool:{}", params.name),
             permission_level,
             request_data,

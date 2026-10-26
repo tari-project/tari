@@ -22,7 +22,7 @@
 // infrastructure for Tari applications
 //! Security and permission management for MCP operations
 
-use std::{collections::HashMap, net::IpAddr};
+use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -44,10 +44,12 @@ pub enum PermissionLevel {
 pub struct SecurityContext {
     /// Whether control operations are globally enabled
     control_enabled: bool,
-    /// Rate limiting tracking
+    /// Rate limiting tracking for the local stdio session
     rate_limiter: RateLimiter,
     /// Audit logger
     audit_logger: AuditLogger,
+    /// Local stdio session identifier
+    session_id: Uuid,
     /// Session tracking
     sessions: HashMap<String, Session>,
 }
@@ -55,18 +57,16 @@ pub struct SecurityContext {
 #[derive(Debug, Clone)]
 struct Session {
     id: Uuid,
-    client_ip: IpAddr,
     #[allow(dead_code)]
     created_at: DateTime<Utc>,
     last_activity: DateTime<Utc>,
-    #[allow(dead_code)]
     request_count: u32,
 }
 
 #[derive(Debug, Clone)]
 struct RateLimiter {
     requests_per_minute: u32,
-    client_requests: HashMap<IpAddr, Vec<DateTime<Utc>>>,
+    requests: Vec<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +79,6 @@ pub struct AuditLogger {
 pub struct AuditEntry {
     timestamp: DateTime<Utc>,
     session_id: Uuid,
-    client_ip: IpAddr,
     operation: String,
     permission_level: PermissionLevel,
     success: bool,
@@ -93,45 +92,30 @@ impl SecurityContext {
             control_enabled,
             rate_limiter: RateLimiter::new(rate_limit_per_minute),
             audit_logger: AuditLogger::new(audit_log_path),
+            session_id: Uuid::new_v4(),
             sessions: HashMap::new(),
         }
     }
 
-    /// Check if a client can perform an operation with the given permission level
+    /// Check if the active stdio session can perform an operation with the given permission level
     pub fn check_permission(
         &mut self,
-        client_ip: IpAddr,
         operation: &str,
         permission_level: PermissionLevel,
         request_data: serde_json::Value,
     ) -> McpResult<Uuid> {
-        // Enforce local-only access
-        if !client_ip.is_loopback() {
-            let error =
-                McpError::permission_denied("Remote access not allowed - MCP server only accepts local connections");
+        let session_id = self.session_id;
+
+        // Check rate limiting
+        if !self.rate_limiter.check_rate_limit() {
+            let error = McpError::RateLimitExceeded;
             self.audit_logger.log_operation(
-                Uuid::new_v4(),
-                client_ip,
+                session_id,
                 operation,
                 permission_level,
                 false,
                 Some(error.to_string()),
                 request_data,
-            );
-            return Err(error);
-        }
-
-        // Check rate limiting
-        if !self.rate_limiter.check_rate_limit(client_ip) {
-            let error = McpError::RateLimitExceeded;
-            self.audit_logger.log_operation(
-                Uuid::new_v4(),
-                client_ip,
-                operation,
-                permission_level,
-                false,
-                Some(error.to_string()),
-                request_data.clone(),
             );
             return Err(error);
         }
@@ -147,8 +131,7 @@ impl SecurityContext {
                         "Control operations disabled - use --mcp-control-enabled flag to enable",
                     );
                     self.audit_logger.log_operation(
-                        Uuid::new_v4(),
-                        client_ip,
+                        session_id,
                         operation,
                         permission_level,
                         false,
@@ -161,12 +144,11 @@ impl SecurityContext {
         }
 
         // Create or update session
-        let session_id = self.create_or_update_session(client_ip);
+        let session_id = self.create_or_update_session();
 
         // Log successful permission check
         self.audit_logger.log_operation(
             session_id,
-            client_ip,
             operation,
             permission_level,
             true,
@@ -177,26 +159,25 @@ impl SecurityContext {
         Ok(session_id)
     }
 
-    fn create_or_update_session(&mut self, client_ip: IpAddr) -> Uuid {
+    fn create_or_update_session(&mut self) -> Uuid {
         let now = Utc::now();
+        let session_id = self.session_id;
+        let key = session_id.to_string();
 
-        // Find existing session for this IP
-        let session_id = self
-            .sessions
-            .values()
-            .find(|s| s.client_ip == client_ip)
-            .map(|s| s.id)
-            .unwrap_or_else(Uuid::new_v4);
-
-        let session = Session {
-            id: session_id,
-            client_ip,
-            created_at: now,
-            last_activity: now,
-            request_count: 1,
-        };
-
-        self.sessions.insert(session_id.to_string(), session);
+        if let Some(session) = self.sessions.get_mut(&key) {
+            session.last_activity = now;
+            session.request_count = session.request_count.saturating_add(1);
+        } else {
+            self.sessions.insert(
+                key,
+                Session {
+                    id: session_id,
+                    created_at: now,
+                    last_activity: now,
+                    request_count: 1,
+                },
+            );
+        }
         session_id
     }
 
@@ -213,25 +194,23 @@ impl RateLimiter {
     fn new(requests_per_minute: u32) -> Self {
         Self {
             requests_per_minute,
-            client_requests: HashMap::new(),
+            requests: Vec::new(),
         }
     }
 
-    fn check_rate_limit(&mut self, client_ip: IpAddr) -> bool {
+    fn check_rate_limit(&mut self) -> bool {
         let now = Utc::now();
         // On the (impossible in practice) overflow, keep every request, i.e. rate limit more strictly
         let cutoff = now
             .checked_sub_signed(chrono::Duration::minutes(1))
             .unwrap_or(DateTime::<Utc>::MIN_UTC);
 
-        let requests = self.client_requests.entry(client_ip).or_default();
-
         // Remove old requests
-        requests.retain(|&timestamp| timestamp > cutoff);
+        self.requests.retain(|&timestamp| timestamp > cutoff);
 
         // Check if under limit
-        if requests.len() < self.requests_per_minute as usize {
-            requests.push(now);
+        if self.requests.len() < self.requests_per_minute as usize {
+            self.requests.push(now);
             true
         } else {
             false
@@ -250,7 +229,6 @@ impl AuditLogger {
     fn log_operation(
         &self,
         session_id: Uuid,
-        client_ip: IpAddr,
         operation: &str,
         permission_level: PermissionLevel,
         success: bool,
@@ -264,7 +242,6 @@ impl AuditLogger {
         let _entry = AuditEntry {
             timestamp: Utc::now(),
             session_id,
-            client_ip,
             operation: operation.to_string(),
             permission_level,
             success,
@@ -274,12 +251,11 @@ impl AuditLogger {
 
         // Log to structured logger
         if success {
-            log::info!("MCP Operation: {operation} by {client_ip} (session: {session_id})");
+            log::info!("MCP Operation: {operation} (session: {session_id})");
         } else {
             log::warn!(
-                "MCP Operation Failed: {} by {} (session: {}) - {}",
+                "MCP Operation Failed: {} (session: {}) - {}",
                 operation,
-                client_ip,
                 session_id,
                 error_message.unwrap_or_else(|| "Unknown error".to_string())
             );
@@ -290,5 +266,45 @@ impl AuditLogger {
             // Write JSON entry to audit log file
             // This would be implemented based on Tari's logging infrastructure
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn test_security_context_permissions_and_rate_limit() {
+        let mut ctx = SecurityContext::new(false, 2, None);
+
+        // ReadOnly succeeds and returns a consistent stdio session ID
+        let s1 = ctx
+            .check_permission("get_balance", PermissionLevel::ReadOnly, json!({}))
+            .unwrap();
+
+        // Control is rejected when control_enabled is false
+        let err = ctx
+            .check_permission("transfer", PermissionLevel::Control, json!({}))
+            .unwrap_err();
+        assert!(matches!(err, McpError::PermissionDenied(_)));
+
+        // Exceeding rate_limit_per_minute (2 requests/min) returns RateLimitExceeded
+        let err = ctx
+            .check_permission("get_balance", PermissionLevel::ReadOnly, json!({}))
+            .unwrap_err();
+        assert!(matches!(err, McpError::RateLimitExceeded));
+
+        // With control_enabled = true, Control operations succeed and share the session ID
+        let mut control_ctx = SecurityContext::new(true, 10, None);
+        let s2 = control_ctx
+            .check_permission("transfer", PermissionLevel::Control, json!({}))
+            .unwrap();
+        let s3 = control_ctx
+            .check_permission("get_balance", PermissionLevel::ReadOnly, json!({}))
+            .unwrap();
+        assert_eq!(s2, s3);
+        assert_ne!(s1, s2);
     }
 }
