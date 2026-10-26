@@ -365,12 +365,12 @@ async fn it_checks_double_spends() {
 
 // A consensus-valid chain with output O mined in "2", spent in "3" and mined again in "4". The first returned
 // transaction spends O a second time; the second one mines O a third time, once the first is in a block.
-#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
 pub(crate) fn duplicate_output_chain() -> (TestBlockchain, BlockBodyFullValidator, Transaction, Transaction) {
     let (blockchain, validator, finalized_tx, remine_tx, _) = duplicate_output_chain_with_third_spend();
     (blockchain, validator, finalized_tx, remine_tx)
 }
 
+#[allow(clippy::too_many_lines, clippy::arithmetic_side_effects)]
 fn duplicate_output_chain_with_third_spend() -> (
     TestBlockchain,
     BlockBodyFullValidator,
