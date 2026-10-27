@@ -218,8 +218,12 @@ impl Controller {
                     .ok_or(Error::ClientTxNotSet)?
                     .send(types::client_message::ClientMessage::KeepAlive)?;
             }
-            // Let other futures run, such as the client controller thread supervisor.
-            tokio::task::yield_now().await;
+            // Await on every pass so other futures, such as the client controller thread supervisor, get to run.
+            if miner.is_none() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            } else {
+                tokio::task::yield_now().await;
+            }
         }
     }
 
