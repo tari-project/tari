@@ -46,6 +46,8 @@ pub mod transaction_kernel;
 pub mod transaction_output;
 pub mod unblinded_output;
 
+pub use aggregate_body::{check_body_element_counts, check_body_size};
+
 use crate::{tari_rpc as grpc, tari_rpc::BlockGroupRequest};
 
 impl From<u64> for grpc::IntegerValue {
