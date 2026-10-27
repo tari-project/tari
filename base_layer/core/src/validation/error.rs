@@ -52,6 +52,13 @@ pub enum ValidationError {
     BlockBodyTooManyBytes { actual_bytes: usize, max_bytes: usize },
     #[error("Contains {} unknown inputs", .0.len())]
     UnknownInputs(Vec<HashOutput>),
+    /// Only returned for a transaction, in place of [`ValidationError::UnknownInputs`]: the `spent` inputs spend
+    /// outputs that were already mined and spent, and are only valid if the outputs are created again in the mempool.
+    #[error("Contains {} already spent inputs and {} unknown inputs", spent.len(), unknown.len())]
+    SpentInputs {
+        unknown: Vec<HashOutput>,
+        spent: Vec<HashOutput>,
+    },
     #[error("Contains an unknown input")]
     UnknownInput,
     #[error("The transaction is invalid: {0}")]
@@ -216,6 +223,8 @@ impl ValidationError {
                 ban_duration: BanPeriod::Long,
             }),
             ValidationError::MergeMineError(e) => e.get_ban_reason(),
+            // Only returned for a transaction, which may be valid once its parents are in the mempool
+            ValidationError::SpentInputs { .. } |
             ValidationError::FatalStorageError(_) |
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             ValidationError::MissingKernelError(_) |

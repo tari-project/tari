@@ -374,7 +374,7 @@ async fn it_checks_double_spends() {
 #[tokio::test]
 async fn it_checks_double_spends_next_to_a_recreated_output() {
     // A body that re-creates an output with history is still a double spend if it spends a different spent output
-    let (chain, ..) = duplicate_output_chain();
+    let (mut chain, ..) = duplicate_output_chain();
     let [mined, spent] = ["3", "4"].map(|name| chain.get_block_and_smt_by_name(name).unwrap());
     let spent_input = chain.get_block_and_smt_by_name("2").unwrap().block().body.inputs()[0].clone();
     let recreated_input = spent
@@ -400,15 +400,22 @@ async fn it_checks_double_spends_next_to_a_recreated_output() {
         .find(|o| o.hash() == recreated_input.output_hash())
         .unwrap()
         .clone();
+    let next_header = chain.create_next_tip(BlockSpec::new()).0.header().clone();
     let validator = AggregateBodyChainLinkedValidator::new(chain.rules().clone());
     let tip = chain.db().fetch_tip_header().unwrap();
     let db = chain.db().db_read_access().unwrap();
-    for inputs in [vec![spent_input.clone()], vec![recreated_input, spent_input]] {
+    for inputs in [vec![spent_input.clone()], vec![recreated_input, spent_input.clone()]] {
         let body = AggregateBody::new_unsorted(inputs, vec![recreated.clone()], vec![]);
+        let err = validator.validate(&body, &next_header, &*db).unwrap_err();
+        assert!(matches!(err, ValidationError::ContainsSTxO), "{err:?}");
+        // A transaction reports the input instead, since the mempool may create its output again
         let err = validator
             .validate_transaction_body(&body, tip.header(), &*db)
             .unwrap_err();
-        assert!(matches!(err, ValidationError::ContainsSTxO), "{err:?}");
+        assert!(
+            matches!(&err, ValidationError::SpentInputs { unknown, spent } if unknown.is_empty() && *spent == vec![spent_input.output_hash()]),
+            "{err:?}"
+        );
     }
 }
 
@@ -1024,6 +1031,66 @@ async fn the_mempool_accepts_a_recreated_output_spent_in_the_same_transaction() 
         mempool.insert(Arc::new(recreate_and_spend_tx)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
+}
+
+#[tokio::test]
+async fn the_mempool_accepts_a_spend_of_a_recreated_output_in_the_pool_on_archival_and_pruned_nodes() {
+    // T1 creates O2 again (it was mined in "3" and spent in "4") and T2 spends it
+    let (mut chain, validator, recreate_tx, _, (_, spend_tx)) = duplicate_output_chain_with_o2_spends();
+    chain.add_next_tip(block_spec!("5")).unwrap();
+    chain.add_next_tip(block_spec!("6")).unwrap();
+    let hash = spend_tx.body.inputs()[0].output_hash();
+    let validators = Validators::new(
+        MockValidator::new(true),
+        MockValidator::new(true),
+        MockValidator::new(true),
+    );
+    let pruned = create_store_with_consensus_and_validators_and_config(
+        chain.rules().clone(),
+        validators,
+        BlockchainDatabaseConfig {
+            pruning_horizon: 1,
+            pruning_interval: 1,
+            ..Default::default()
+        },
+    );
+    for name in ["A", "1", "2", "3", "4", "5", "6"] {
+        let block = chain.get_block_and_smt_by_name(name).unwrap();
+        assert!(pruned.add_block(block.to_arc_block()).unwrap().result.is_added());
+    }
+    assert!(!chain.db().fetch_outputs(hash).unwrap().is_empty());
+    assert!(pruned.fetch_outputs(hash).unwrap().is_empty());
+
+    let new_mempool = |db| {
+        let validator = TransactionFullValidator::new(CryptoFactories::default(), true, db, chain.rules().clone());
+        Mempool::new(MempoolConfig::default(), chain.rules().clone(), Box::new(validator))
+    };
+    // Without its parent in the pool, the spend is still a double spend on the archival node
+    assert_eq!(
+        new_mempool(chain.db().clone())
+            .insert(Arc::new(spend_tx.clone()))
+            .await
+            .unwrap(),
+        TxStorageResponse::NotStoredAlreadySpent
+    );
+    for db in [chain.db().clone(), pruned] {
+        let mempool = new_mempool(db);
+        assert_eq!(
+            mempool.insert(Arc::new(recreate_tx.clone())).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.insert(Arc::new(spend_tx.clone())).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    // A block with both is valid
+    let (block, _) = chain.create_next_tip(block_spec!("7", transactions: vec![recreate_tx, spend_tx]));
+    validator
+        .validate_body(&*chain.db().db_read_access().unwrap(), block.block().to_compact())
+        .unwrap();
+    assert!(chain.append_block("7", block).unwrap().is_added());
 }
 
 #[tokio::test]

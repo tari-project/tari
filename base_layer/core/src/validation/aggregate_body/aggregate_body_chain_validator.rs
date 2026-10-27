@@ -153,7 +153,7 @@ impl AggregateBodyChainLinkedValidator {
         defer_unknown_inputs: bool,
     ) -> Result<(), ValidationError> {
         validate_input_maturity(body, spend_height)?;
-        let unknown_inputs = find_unknown_inputs(db, vn_epoch, body)?;
+        let (unknown_inputs, spent_inputs) = find_unknown_inputs(db, vn_epoch, body, defer_unknown_inputs)?;
         if !defer_unknown_inputs && !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
         }
@@ -163,6 +163,12 @@ impl AggregateBodyChainLinkedValidator {
         check_total_burned(body)?;
         verify_timelocks(body, header.height)?;
 
+        if !spent_inputs.is_empty() {
+            return Err(ValidationError::SpentInputs {
+                unknown: unknown_inputs,
+                spent: spent_inputs,
+            });
+        }
         if !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
         }
@@ -301,12 +307,17 @@ fn validate_burn_commitment_not_in_db<B: BlockchainBackend>(
 /// Checks that every input is spendable, returning the output hashes of the inputs that spend outputs which are
 /// neither in the database nor created by this body. Any other failure is returned as an error. `vn_epoch` is the
 /// epoch the validator node registration spend lock is evaluated in.
+///
+/// If `defer_spent` is set, inputs that spend an already spent output not created by this body are also returned
+/// (second) instead of failing with [`ValidationError::ContainsSTxO`], since the mempool may create the output again.
 fn find_unknown_inputs<B: BlockchainBackend>(
     db: &B,
     vn_epoch: VnEpoch,
     body: &AggregateBody,
-) -> Result<Vec<HashOutput>, ValidationError> {
+    defer_spent: bool,
+) -> Result<(Vec<HashOutput>, Vec<HashOutput>), ValidationError> {
     let mut not_found_inputs = Vec::new();
+    let mut spent_inputs = Vec::new();
     let mut output_hashes = None;
 
     for input in body.inputs() {
@@ -329,7 +340,11 @@ fn find_unknown_inputs<B: BlockchainBackend>(
                     continue;
                 }
                 if matches!(result, Err(ValidationError::ContainsSTxO)) {
-                    return Err(ValidationError::ContainsSTxO);
+                    if !defer_spent {
+                        return Err(ValidationError::ContainsSTxO);
+                    }
+                    spent_inputs.push(input_output_hash);
+                    continue;
                 }
                 debug!(
                     target: LOG_TARGET,
@@ -344,7 +359,7 @@ fn find_unknown_inputs<B: BlockchainBackend>(
         }
     }
 
-    Ok(not_found_inputs)
+    Ok((not_found_inputs, spent_inputs))
 }
 
 /// This function checks:
