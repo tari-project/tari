@@ -312,9 +312,10 @@ fn find_unknown_inputs<B: BlockchainBackend>(
     for input in body.inputs() {
         check_output_feature_rules_for_input(db, vn_epoch, input)?;
         // If spending a unique_id, a new output must contain the unique id
-        match check_input_is_utxo(db, input) {
+        let result = check_input_is_utxo(db, input);
+        match result {
             Ok(_) => continue,
-            Err(ValidationError::UnknownInput) => {
+            Err(ValidationError::UnknownInput) | Err(ValidationError::ContainsSTxO) => {
                 // Lazily allocate and hash outputs as needed
                 if output_hashes.is_none() {
                     output_hashes = Some(body.outputs().iter().map(|output| output.hash()).collect::<Vec<_>>());
@@ -322,8 +323,13 @@ fn find_unknown_inputs<B: BlockchainBackend>(
 
                 let output_hashes = output_hashes.as_ref().unwrap();
                 let input_output_hash = input.output_hash();
+                // An input spending an output created in this body is valid even if an identical output was mined and
+                // spent before, so that the verdict does not depend on how much spent-output history a node keeps.
                 if output_hashes.iter().any(|val| val == &input_output_hash) {
                     continue;
+                }
+                if matches!(result, Err(ValidationError::ContainsSTxO)) {
+                    return Err(ValidationError::ContainsSTxO);
                 }
                 debug!(
                     target: LOG_TARGET,
