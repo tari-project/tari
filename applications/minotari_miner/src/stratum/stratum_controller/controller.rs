@@ -216,6 +216,7 @@ impl Controller {
                             block_header.nonce,
                         ))?;
                     self.keep_alive_time = SystemTime::now();
+                    tokio::task::yield_now().await;
                     continue;
                 } else {
                     display_report(&report, self.num_mining_threads).await;
