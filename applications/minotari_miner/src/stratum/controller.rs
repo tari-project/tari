@@ -45,6 +45,8 @@ pub struct Controller {
     server_tls_enabled: Option<bool>,
     stream: Option<Stream>,
     read_buf: Vec<u8>,
+    /// Bytes at the front of `read_buf` already searched for a newline.
+    read_scanned: usize,
     rx: mpsc::Receiver<types::client_message::ClientMessage>,
     pub tx: mpsc::Sender<types::client_message::ClientMessage>,
     miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
@@ -74,6 +76,7 @@ impl Controller {
             server_tls_enabled,
             stream: None,
             read_buf: Vec::new(),
+            read_scanned: 0,
             tx,
             rx,
             miner_tx,
@@ -84,6 +87,7 @@ impl Controller {
     pub fn try_connect(&mut self) -> Result<(), Error> {
         self.stream = None;
         self.read_buf.clear();
+        self.read_scanned = 0;
         let stream = Stream::try_connect(&self.server_url, self.server_tls_enabled)?;
         self.stream = Some(stream);
         Ok(())
@@ -98,7 +102,7 @@ impl Controller {
     fn read_message(&mut self) -> Result<Option<String>, Error> {
         let mut chunk = [0u8; 8192];
         loop {
-            if let Some(line) = take_line(&mut self.read_buf)? {
+            if let Some(line) = take_line(&mut self.read_buf, &mut self.read_scanned)? {
                 return match String::from_utf8(line) {
                     Ok(line) => Ok(Some(line)),
                     Err(e) => {
@@ -458,15 +462,26 @@ fn classify_message(v: &serde_json::Value) -> MessageKind {
 }
 
 /// Splits the first complete line (without its `\n`) off the front of `buf`. Errors once a line grows past
-/// `MAX_LINE_LEN`, whether or not its newline has arrived.
-fn take_line(buf: &mut Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
-    match buf.iter().position(|b| *b == b'\n') {
+/// `MAX_LINE_LEN`, whether or not its newline has arrived. `scanned` is how much of `buf` is already known to hold
+/// no newline, so each call only searches the newly appended bytes.
+fn take_line(buf: &mut Vec<u8>, scanned: &mut usize) -> Result<Option<Vec<u8>>, Error> {
+    let found = buf
+        .get(*scanned..)
+        .unwrap_or(&[])
+        .iter()
+        .position(|b| *b == b'\n')
+        .map(|p| scanned.saturating_add(p));
+    match found {
         Some(pos) if pos <= MAX_LINE_LEN => {
             let mut line: Vec<u8> = buf.drain(..=pos).collect();
             line.pop();
+            *scanned = 0;
             Ok(Some(line))
         },
-        None if buf.len() <= MAX_LINE_LEN => Ok(None),
+        None if buf.len() <= MAX_LINE_LEN => {
+            *scanned = buf.len();
+            Ok(None)
+        },
         _ => {
             error!(
                 target: LOG_TARGET,
@@ -527,36 +542,57 @@ mod tests {
     #[test]
     fn line_split_across_two_appends_is_joined() {
         let mut buf = b"{\"id\":".to_vec();
-        assert!(take_line(&mut buf).unwrap().is_none());
+        let mut scanned = 0;
+        assert!(take_line(&mut buf, &mut scanned).unwrap().is_none());
         buf.extend_from_slice(b"\"1\"}\n");
-        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"{\"id\":\"1\"}");
+        assert_eq!(take_line(&mut buf, &mut scanned).unwrap().unwrap(), b"{\"id\":\"1\"}");
         assert!(buf.is_empty());
     }
 
     #[test]
     fn two_lines_in_one_append_are_returned_in_order() {
         let mut buf = b"first\nsecond\n".to_vec();
-        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"first");
-        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"second");
-        assert!(take_line(&mut buf).unwrap().is_none());
+        let mut scanned = 0;
+        assert_eq!(take_line(&mut buf, &mut scanned).unwrap().unwrap(), b"first");
+        assert_eq!(take_line(&mut buf, &mut scanned).unwrap().unwrap(), b"second");
+        assert!(take_line(&mut buf, &mut scanned).unwrap().is_none());
     }
 
     #[test]
     fn trailing_partial_line_is_kept() {
         let mut buf = b"done\npart".to_vec();
-        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"done");
-        assert!(take_line(&mut buf).unwrap().is_none());
+        let mut scanned = 0;
+        assert_eq!(take_line(&mut buf, &mut scanned).unwrap().unwrap(), b"done");
+        assert!(take_line(&mut buf, &mut scanned).unwrap().is_none());
         assert_eq!(buf, b"part");
+    }
+
+    #[test]
+    fn line_over_many_appends_is_found_past_the_previous_scan() {
+        let mut buf = Vec::new();
+        let mut scanned = 0;
+        for i in 0..100 {
+            buf.extend_from_slice(b"0123456789");
+            assert!(take_line(&mut buf, &mut scanned).unwrap().is_none());
+            assert_eq!(scanned, (i + 1) * 10);
+        }
+        buf.extend_from_slice(b"end\nnext");
+        let line = take_line(&mut buf, &mut scanned).unwrap().unwrap();
+        assert_eq!(line.len(), 1003);
+        assert!(line.ends_with(b"9end"));
+        assert_eq!(buf, b"next");
+        assert_eq!(scanned, 0);
     }
 
     #[test]
     fn oversized_line_is_an_error() {
         let mut buf = vec![b'a'; MAX_LINE_LEN];
-        assert!(take_line(&mut buf).unwrap().is_none());
+        let mut scanned = 0;
+        assert!(take_line(&mut buf, &mut scanned).unwrap().is_none());
         buf.push(b'a');
-        assert!(matches!(take_line(&mut buf), Err(Error::Connection(_))));
+        assert!(matches!(take_line(&mut buf, &mut scanned), Err(Error::Connection(_))));
         buf.push(b'\n');
-        assert!(matches!(take_line(&mut buf), Err(Error::Connection(_))));
+        assert!(matches!(take_line(&mut buf, &mut scanned), Err(Error::Connection(_))));
     }
 
     #[test]
