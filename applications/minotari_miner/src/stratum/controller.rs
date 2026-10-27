@@ -41,6 +41,8 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller
 
 /// Longest line accepted from the pool. Real job blobs are a few KB of header, so this is generous.
 const MAX_LINE_LEN: usize = 1024 * 1024;
+/// Messages the mining controller can queue for the client thread; more are dropped.
+const CLIENT_CHANNEL_CAPACITY: usize = 16;
 /// Number of characters of pool-supplied text written to the log.
 const MAX_LOGGED_TEXT_LEN: usize = 256;
 
@@ -54,7 +56,7 @@ pub struct Controller {
     /// Bytes at the front of `read_buf` already searched for a newline.
     read_scanned: usize,
     rx: mpsc::Receiver<types::client_message::ClientMessage>,
-    pub tx: mpsc::Sender<types::client_message::ClientMessage>,
+    pub tx: mpsc::SyncSender<types::client_message::ClientMessage>,
     miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     last_request_id: String,
 }
@@ -74,7 +76,7 @@ impl Controller {
         server_tls_enabled: Option<bool>,
         miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     ) -> Result<Controller, Error> {
-        let (tx, rx) = mpsc::channel::<types::client_message::ClientMessage>();
+        let (tx, rx) = mpsc::sync_channel::<types::client_message::ClientMessage>(CLIENT_CHANNEL_CAPACITY);
         Ok(Controller {
             server_url: server_url.to_string(),
             server_login,

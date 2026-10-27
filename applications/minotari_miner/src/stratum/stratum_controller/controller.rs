@@ -68,10 +68,25 @@ fn decode_job_blob(height: u64, job_id: u64, blob: Vec<u8>) -> Option<CurrentBlo
     }
 }
 
+/// Sends to the client thread without blocking. A full queue drops the message; a closed one is an error.
+fn try_send_to_client(
+    client_tx: &mpsc::SyncSender<types::client_message::ClientMessage>,
+    message: types::client_message::ClientMessage,
+) -> Result<(), Error> {
+    match client_tx.try_send(message) {
+        Ok(()) => Ok(()),
+        Err(mpsc::TrySendError::Full(message)) => {
+            warn!(target: LOG_TARGET, "Stratum client busy, dropping {message:?}");
+            Ok(())
+        },
+        Err(mpsc::TrySendError::Disconnected(message)) => Err(mpsc::SendError(message).into()),
+    }
+}
+
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,
     pub tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
-    client_tx: Option<mpsc::Sender<types::client_message::ClientMessage>>,
+    client_tx: Option<mpsc::SyncSender<types::client_message::ClientMessage>>,
     current_height: u64,
     current_job_id: u64,
     current_difficulty_target: u64,
@@ -98,7 +113,7 @@ impl Controller {
         })
     }
 
-    pub fn set_client_tx(&mut self, client_tx: mpsc::Sender<types::client_message::ClientMessage>) {
+    pub fn set_client_tx(&mut self, client_tx: mpsc::SyncSender<types::client_message::ClientMessage>) {
         self.client_tx = Some(client_tx);
     }
 
@@ -210,14 +225,18 @@ impl Controller {
                         report.difficulty,
                         loggable(&format!("{block_header:?}"))
                     );
-                    self.client_tx
-                        .as_mut()
-                        .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?
-                        .send(types::client_message::ClientMessage::FoundSolution(
+                    let client_tx = self
+                        .client_tx
+                        .as_ref()
+                        .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?;
+                    try_send_to_client(
+                        client_tx,
+                        types::client_message::ClientMessage::FoundSolution(
                             self.current_job_id,
                             hash,
                             block_header.nonce,
-                        ))?;
+                        ),
+                    )?;
                     self.keep_alive_time = SystemTime::now();
                     tokio::task::yield_now().await;
                     continue;
@@ -227,10 +246,8 @@ impl Controller {
             }
             if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
-                self.client_tx
-                    .as_mut()
-                    .ok_or(Error::ClientTxNotSet)?
-                    .send(types::client_message::ClientMessage::KeepAlive)?;
+                let client_tx = self.client_tx.as_ref().ok_or(Error::ClientTxNotSet)?;
+                try_send_to_client(client_tx, types::client_message::ClientMessage::KeepAlive)?;
             }
             // Await on every pass so other futures, such as the client controller thread supervisor, get to run.
             if miner.is_none() {
@@ -280,6 +297,18 @@ impl Controller {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn a_full_client_queue_drops_the_message_but_a_closed_one_is_an_error() {
+        let (client_tx, client_rx) = mpsc::sync_channel(1);
+        try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap();
+        try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap();
+        assert!(client_rx.try_recv().is_ok());
+        assert!(client_rx.try_recv().is_err());
+
+        drop(client_rx);
+        assert!(try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).is_err());
+    }
 
     #[test]
     fn decode_job_blob_accepts_blobs_up_to_the_limit() {
