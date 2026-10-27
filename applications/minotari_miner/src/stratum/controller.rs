@@ -27,14 +27,15 @@ use std::{
 };
 
 use log::*;
+use serde::Deserialize;
 
 use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
 
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
 
-/// Longest line accepted from the pool; leaves room for a 4 MiB job blob after base64 and JSON overhead.
-const MAX_LINE_LEN: usize = 8 * 1024 * 1024;
+/// Longest line accepted from the pool. Real job blobs are a few KB of header, so this is generous.
+const MAX_LINE_LEN: usize = 1024 * 1024;
 /// Number of characters of pool-supplied text written to the log.
 const MAX_LOGGED_TEXT_LEN: usize = 256;
 
@@ -276,7 +277,7 @@ impl Controller {
         debug!(target: LOG_TARGET_FILE, "Received response with id: {}", loggable(&res.id));
         match res.result {
             Some(result) => {
-                let login_response = serde_json::from_value::<types::login_response::LoginResponse>(result.clone());
+                let login_response = types::login_response::LoginResponse::deserialize(&result);
                 if let Ok(st) = login_response {
                     info!(
                         target: LOG_TARGET,
@@ -290,7 +291,7 @@ impl Controller {
                     let _result = self.send_miner_job(st.job);
                     return Ok(());
                 };
-                let job_response = serde_json::from_value::<types::job_params::JobParams>(result.clone());
+                let job_response = types::job_params::JobParams::deserialize(&result);
                 if let Ok(st) = job_response {
                     info!(
                         target: LOG_TARGET,
@@ -299,7 +300,7 @@ impl Controller {
                     let _result = self.send_miner_job(st);
                     return Ok(());
                 };
-                let submit_response = serde_json::from_value::<types::submit_response::SubmitResponse>(result.clone());
+                let submit_response = types::submit_response::SubmitResponse::deserialize(&result);
                 if let Ok(st) = submit_response {
                     let error = st.error;
                     if let Some(error) = error {
@@ -312,7 +313,7 @@ impl Controller {
                     }
                     return Ok(());
                 }
-                let rpc_response = serde_json::from_value::<types::rpc_response::RpcResponse>(result);
+                let rpc_response = types::rpc_response::RpcResponse::deserialize(&result);
                 if let Ok(st) = rpc_response {
                     let error = st.error;
                     if let Some(error) = error {
@@ -382,7 +383,7 @@ impl Controller {
                             // Deserialize to see what type of object it is
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
                                 if classify_message(&v) == MessageKind::Request {
-                                    match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
+                                    match serde_json::from_value::<types::rpc_request::RpcRequest>(v) {
                                         Err(e) => {
                                             error!(target: LOG_TARGET, "Error parsing request {} : {}", loggable(&m), loggable(&format!("{e:?}")))
                                         },
@@ -394,7 +395,7 @@ impl Controller {
                                     }
                                 } else {
                                     // this is a response
-                                    match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
+                                    match serde_json::from_value::<types::rpc_response::RpcResponse>(v) {
                                         Err(e) => {
                                             error!(target: LOG_TARGET, "Error parsing response {} : {}", loggable(&m), loggable(&format!("{e:?}")))
                                         },
@@ -582,6 +583,14 @@ mod tests {
         assert!(line.ends_with(b"9end"));
         assert_eq!(buf, b"next");
         assert_eq!(scanned, 0);
+    }
+
+    #[test]
+    fn line_at_the_cap_is_accepted() {
+        let mut buf = vec![b'a'; MAX_LINE_LEN];
+        buf.push(b'\n');
+        let mut scanned = 0;
+        assert_eq!(take_line(&mut buf, &mut scanned).unwrap().unwrap().len(), MAX_LINE_LEN);
     }
 
     #[test]
