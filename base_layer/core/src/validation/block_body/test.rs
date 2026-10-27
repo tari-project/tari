@@ -93,7 +93,14 @@ use super::{
 };
 use crate::{
     block_spec,
-    chain_storage::{BlockchainDatabaseConfig, ChainStorageError, DbTransaction, MinedInfo, Validators},
+    chain_storage::{
+        BlockchainBackend,
+        BlockchainDatabaseConfig,
+        ChainStorageError,
+        DbTransaction,
+        MinedInfo,
+        Validators,
+    },
     consensus::BaseNodeConsensusManager,
     mempool::{Mempool, MempoolConfig, TxStorageResponse},
     test_helpers::{
@@ -1099,6 +1106,40 @@ async fn the_mempool_accepts_a_spend_of_a_recreated_output_in_the_pool_on_archiv
         .validate_body(&*chain.db().db_read_access().unwrap(), block.block().to_compact())
         .unwrap();
     assert!(chain.append_block("7", block).unwrap().is_added());
+}
+
+#[tokio::test]
+async fn contains_output_hash_agrees_with_fetch_outputs() {
+    let (mut chain, _, spend_tx, remine_tx) = duplicate_output_chain();
+    chain
+        .add_next_tip(block_spec!("5", transactions: vec![spend_tx]))
+        .unwrap();
+    chain
+        .add_next_tip(block_spec!("6", transactions: vec![remine_tx]))
+        .unwrap();
+    let [spent_once_in, s1] = ["2", "3"].map(|name| chain.get_block_and_smt_by_name(name).unwrap());
+    // Mined in "2", "4" and "6", the last one unspent
+    let re_mined = s1.block().body.inputs()[0].output_hash();
+    // Mined in "1" and spent in "2"
+    let spent = spent_once_in.block().body.inputs()[0].output_hash();
+    let never_seen = FixedHash::from([7u8; 32]);
+    let agrees = |hash: FixedHash, expected: bool| {
+        let db = chain.db().db_read_access().unwrap();
+        assert_eq!(db.contains_output_hash(&hash).unwrap(), expected);
+        assert_eq!(!db.fetch_outputs(&hash).unwrap().is_empty(), expected);
+    };
+    agrees(never_seen, false);
+    agrees(re_mined, true);
+    agrees(spent, true);
+
+    // Pruning the only spend of `spent` removes it; pruning one spend of `re_mined` leaves its later instances
+    for block in [&spent_once_in, &s1] {
+        let mut txn = DbTransaction::new();
+        txn.prune_outputs_spent_at_hash(*block.hash());
+        chain.db().write(txn).unwrap();
+    }
+    agrees(spent, false);
+    agrees(re_mined, true);
 }
 
 #[tokio::test]

@@ -3605,6 +3605,17 @@ impl BlockchainBackend for LMDBDatabase {
         self.fetch_outputs_in_txn(&txn, output_hash.as_slice())
     }
 
+    fn contains_output_hash(&self, output_hash: &HashOutput) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        // As `fetch_outputs_in_txn`: an index key counts only if its row still exists
+        for key in lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
+            if lmdb_exists(&txn, &self.utxos_db, &key)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         self.fetch_inputs_in_txn(&txn, output_hash.as_slice())

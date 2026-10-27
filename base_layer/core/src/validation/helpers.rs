@@ -249,7 +249,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
     }
 
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
-    if !db.fetch_outputs(&output_hash)?.is_empty() {
+    if db.contains_output_hash(&output_hash)? {
         debug!(
             target: LOG_TARGET,
             "Validation failed due to already spent input: {input}"
