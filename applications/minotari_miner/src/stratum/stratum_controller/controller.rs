@@ -36,7 +36,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 use crate::{
     miner::Miner,
     run_miner::display_report,
-    stratum::{controller::loggable, error::Error, stratum_types as types},
+    stratum::{controller::loggable_debug, error::Error, stratum_types as types},
 };
 
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
@@ -223,7 +223,7 @@ impl Controller {
                         "Miner found share with hash {}, difficulty {:?} and data {}",
                         hash,
                         report.difficulty,
-                        loggable(&format!("{block_header:?}"))
+                        loggable_debug(&block_header)
                     );
                     let client_tx = self
                         .client_tx

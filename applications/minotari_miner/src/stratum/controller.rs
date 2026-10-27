@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
+    fmt,
     io::{ErrorKind, Read, Write},
     sync::mpsc,
     thread,
@@ -324,7 +325,7 @@ impl Controller {
                         warn!(target: LOG_TARGET, "Rejected");
                     } else {
                         // accepted share
-                        debug!(target: LOG_TARGET, "Share accepted: {}", loggable(&format!("{:?}", st.status)));
+                        debug!(target: LOG_TARGET, "Share accepted: {}", loggable_debug(&st.status));
                     }
                     return Ok(());
                 }
@@ -336,11 +337,11 @@ impl Controller {
                     }
                     return Ok(());
                 } else {
-                    debug!(target: LOG_TARGET_FILE, "RPC Response: {}", loggable(&format!("{rpc_response:?}")));
+                    debug!(target: LOG_TARGET_FILE, "RPC Response: {}", loggable_debug(&rpc_response));
                 };
             },
             None => {
-                error!(target: LOG_TARGET, "RPC error: {}", loggable(&format!("{res:?}")));
+                error!(target: LOG_TARGET, "RPC error: {}", loggable_debug(&res));
             },
         }
         Ok(())
@@ -356,13 +357,13 @@ impl Controller {
             match serde_json::from_value::<types::rpc_request::RpcRequest>(v) {
                 Err(e) => error!(
                     target: LOG_TARGET,
-                    "Error parsing request {} : {}", loggable(m), loggable(&format!("{e:?}"))
+                    "Error parsing request {} : {}", loggable(m), loggable_debug(&e)
                 ),
                 Ok(request) => {
                     if let Err(err) = self.handle_request(request) {
                         error!(
                             target: LOG_TARGET,
-                            "Error handling request {} : :{}", loggable(m), loggable(&format!("{err:?}"))
+                            "Error handling request {} : :{}", loggable(m), loggable_debug(&err)
                         )
                     }
                 },
@@ -371,13 +372,13 @@ impl Controller {
             match serde_json::from_value::<types::rpc_response::RpcResponse>(v) {
                 Err(e) => error!(
                     target: LOG_TARGET,
-                    "Error parsing response {} : {}", loggable(m), loggable(&format!("{e:?}"))
+                    "Error parsing response {} : {}", loggable(m), loggable_debug(&e)
                 ),
                 Ok(response) => {
                     if let Err(err) = self.handle_response(response) {
                         error!(
                             target: LOG_TARGET,
-                            "Error handling response {} : :{}", loggable(m), loggable(&format!("{err:?}"))
+                            "Error handling response {} : :{}", loggable(m), loggable_debug(&err)
                         )
                     }
                 },
@@ -515,17 +516,56 @@ fn take_line(buf: &mut Vec<u8>, scanned: &mut usize) -> Result<Option<Vec<u8>>, 
     }
 }
 
-/// Escapes pool-supplied text for the log and cuts it to `MAX_LOGGED_TEXT_LEN` characters.
-pub(crate) fn loggable(text: &str) -> String {
-    let mut out: String = text
-        .chars()
-        .take(MAX_LOGGED_TEXT_LEN)
-        .flat_map(char::escape_debug)
-        .collect();
-    if text.chars().nth(MAX_LOGGED_TEXT_LEN).is_some() {
-        out.push_str("...");
+/// Pool-supplied text or value for the log: escaped, cut to `MAX_LOGGED_TEXT_LEN` characters, and only formatted
+/// when the log record is written.
+pub(crate) enum Loggable<'a> {
+    Text(&'a str),
+    Debug(&'a dyn fmt::Debug),
+}
+
+pub(crate) fn loggable(text: &str) -> Loggable<'_> {
+    Loggable::Text(text)
+}
+
+pub(crate) fn loggable_debug(value: &dyn fmt::Debug) -> Loggable<'_> {
+    Loggable::Debug(value)
+}
+
+impl fmt::Display for Loggable<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut writer = CappedWriter {
+            out: f,
+            remaining: MAX_LOGGED_TEXT_LEN,
+            truncated: false,
+        };
+        let result = match self {
+            Loggable::Text(text) => fmt::Write::write_str(&mut writer, text),
+            Loggable::Debug(value) => fmt::Write::write_fmt(&mut writer, format_args!("{value:?}")),
+        };
+        // The writer fails on purpose once it is full, which stops formatting the rest of the value.
+        if writer.truncated { f.write_str("...") } else { result }
     }
-    out
+}
+
+/// Escapes what is written to it and fails once `remaining` characters have been written.
+struct CappedWriter<'a, 'b> {
+    out: &'a mut fmt::Formatter<'b>,
+    remaining: usize,
+    truncated: bool,
+}
+
+impl fmt::Write for CappedWriter<'_, '_> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        for c in s.chars() {
+            if self.remaining == 0 {
+                self.truncated = true;
+                return Err(fmt::Error);
+            }
+            self.remaining = self.remaining.saturating_sub(1);
+            self.out.write_fmt(format_args!("{}", c.escape_debug()))?;
+        }
+        Ok(())
+    }
 }
 
 /// Returns the instant `interval` from now, clamped to now if the clock would overflow.
@@ -565,17 +605,17 @@ mod tests {
 
     #[test]
     fn loggable_escapes_control_characters() {
-        assert_eq!(loggable("a\nb\r\0"), "a\\nb\\r\\0");
-        assert_eq!(loggable("\u{1b}[31mred"), "\\u{1b}[31mred");
+        assert_eq!(loggable("a\nb\r\0").to_string(), "a\\nb\\r\\0");
+        assert_eq!(loggable("\u{1b}[31mred").to_string(), "\\u{1b}[31mred");
     }
 
     #[test]
     fn loggable_truncates_on_a_char_boundary() {
         let text = "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN + 1);
         let expected = format!("{}...", "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN));
-        assert_eq!(loggable(&text), expected);
+        assert_eq!(loggable(&text).to_string(), expected);
         assert_eq!(
-            loggable(&"\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)),
+            loggable(&"\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)).to_string(),
             "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)
         );
     }
@@ -583,7 +623,31 @@ mod tests {
     #[test]
     fn loggable_truncates_long_input() {
         let text = "x".repeat(10_000);
-        assert_eq!(loggable(&text), format!("{}...", "x".repeat(MAX_LOGGED_TEXT_LEN)));
+        assert_eq!(
+            loggable(&text).to_string(),
+            format!("{}...", "x".repeat(MAX_LOGGED_TEXT_LEN))
+        );
+    }
+
+    #[test]
+    fn loggable_debug_stops_formatting_a_large_value_at_the_cap() {
+        struct Big(std::cell::Cell<usize>);
+        impl fmt::Debug for Big {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                for _ in 0..100_000 {
+                    f.write_str("y")?;
+                    self.0.set(self.0.get().saturating_add(1));
+                }
+                Ok(())
+            }
+        }
+
+        let big = Big(std::cell::Cell::new(0));
+        assert_eq!(
+            loggable_debug(&big).to_string(),
+            format!("{}...", "y".repeat(MAX_LOGGED_TEXT_LEN))
+        );
+        assert_eq!(big.0.get(), MAX_LOGGED_TEXT_LEN);
     }
 
     #[test]
