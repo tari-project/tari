@@ -705,3 +705,24 @@ async fn validate_tip(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use std::any::Any;
+
+    use super::*;
+
+    #[test]
+    fn panic_message_reads_str_and_string_payloads() {
+        let payload: Box<dyn Any + Send> = Box::new("static message");
+        assert_eq!(panic_message(payload.as_ref()), "static message");
+        let payload: Box<dyn Any + Send> = Box::new("formatted message".to_string());
+        assert_eq!(panic_message(payload.as_ref()), "formatted message");
+    }
+
+    #[test]
+    fn panic_message_falls_back_for_other_payloads() {
+        let payload: Box<dyn Any + Send> = Box::new(42u32);
+        assert_eq!(panic_message(payload.as_ref()), "panicked");
+    }
+}
