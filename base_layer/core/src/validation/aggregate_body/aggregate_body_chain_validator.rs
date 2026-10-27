@@ -153,12 +153,13 @@ impl AggregateBodyChainLinkedValidator {
         defer_unknown_inputs: bool,
     ) -> Result<(), ValidationError> {
         validate_input_maturity(body, spend_height)?;
+        // Before the per-input database lookups, so that a repeated input costs one lookup
+        verify_no_duplicated_inputs_outputs(body)?;
         let (unknown_inputs, spent_inputs) = find_unknown_inputs(db, vn_epoch, body, defer_unknown_inputs)?;
         if !defer_unknown_inputs && !unknown_inputs.is_empty() {
             return Err(ValidationError::UnknownInputs(unknown_inputs));
         }
         check_outputs(db, constants, body, vn_epoch)?;
-        verify_no_duplicated_inputs_outputs(body)?;
         verify_no_duplicate_validator_node_registrations(body)?;
         check_total_burned(body)?;
         verify_timelocks(body, header.height)?;

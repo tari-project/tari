@@ -404,6 +404,14 @@ async fn it_checks_double_spends_next_to_a_recreated_output() {
     let validator = AggregateBodyChainLinkedValidator::new(chain.rules().clone());
     let tip = chain.db().fetch_tip_header().unwrap();
     let db = chain.db().db_read_access().unwrap();
+    // The same spent input repeated is rejected as a duplicate before any input is looked up
+    let body = AggregateBody::new_unsorted(vec![spent_input.clone(); 3], vec![], vec![]);
+    let err = validator.validate(&body, &next_header, &*db).unwrap_err();
+    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput), "{err:?}");
+    let err = validator
+        .validate_transaction_body(&body, tip.header(), &*db)
+        .unwrap_err();
+    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput), "{err:?}");
     for inputs in [vec![spent_input.clone()], vec![recreated_input, spent_input.clone()]] {
         let body = AggregateBody::new_unsorted(inputs, vec![recreated.clone()], vec![]);
         let err = validator.validate(&body, &next_header, &*db).unwrap_err();
