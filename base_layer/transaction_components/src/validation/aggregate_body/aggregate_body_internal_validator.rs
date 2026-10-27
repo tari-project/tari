@@ -376,8 +376,16 @@ fn validate_script_and_script_offset(
     let mut input_keys = UncompressedPublicKey::default();
     let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
     for input in body.inputs() {
+        let height_dependent = input.script().is_ok_and(|s| s.is_context_sensitive());
         let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
-        input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?.to_public_key()?;
+        let key = input
+            .run_and_verify_script(factory, Some(context))
+            .and_then(|key| Ok(key.to_public_key()?))
+            .map_err(|error| AggregatedBodyValidationError::InputScript {
+                error,
+                height_dependent,
+            })?;
+        input_keys = input_keys + key;
     }
 
     // Now lets gather the output public keys and hashes.
@@ -1242,6 +1250,161 @@ mod test {
                     proof_present: true
                 }
             ));
+        }
+    }
+
+    mod input_script {
+        use tari_script::{ExecutionStack, TariScript};
+
+        use super::*;
+        use crate::{
+            test_helpers::{TestParams, UtxoTestParams, spend_utxos},
+            transaction_components::WalletOutput,
+            txn_schema,
+        };
+
+        const HEIGHT: u64 = 50;
+
+        fn input(key_manager: &KeyManager, script: TariScript) -> TransactionInput {
+            TestParams::new(key_manager)
+                .create_input(
+                    UtxoTestParams {
+                        script,
+                        ..Default::default()
+                    },
+                    key_manager,
+                )
+                .to_transaction_input(key_manager)
+                .unwrap()
+        }
+
+        fn check(inputs: Vec<TransactionInput>, script_offset: CompressedPublicKey) -> AggregatedBodyValidationError {
+            let body = AggregateBody::new_unsorted(inputs, Vec::new(), Vec::new());
+            validate_script_and_script_offset(&body, script_offset, &CommitmentFactory::default(), None, HEIGHT)
+                .unwrap_err()
+        }
+
+        fn ordinary(key_manager: &KeyManager) -> TransactionInput {
+            input(key_manager, script!(Nop).unwrap())
+        }
+
+        fn height_reading(key_manager: &KeyManager) -> TransactionInput {
+            input(key_manager, script!(CheckHeightVerify(1)).unwrap())
+        }
+
+        #[test]
+        fn script_errors_are_input_script_failures() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let err = check(vec![input(&key_manager, script!(Return).unwrap())], Default::default());
+            assert!(matches!(err, AggregatedBodyValidationError::InputScript {
+                error: TransactionError::ScriptError(_),
+                height_dependent: false
+            }));
+
+            let not_yet = input(&key_manager, script!(CheckHeightVerify(HEIGHT + 1)).unwrap());
+            let err = check(vec![not_yet], Default::default());
+            assert!(matches!(err, AggregatedBodyValidationError::InputScript {
+                error: TransactionError::ScriptError(_),
+                height_dependent: true
+            }));
+        }
+
+        #[test]
+        fn only_the_failing_input_decides_the_flag() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let failing = input(&key_manager, script!(Return).unwrap());
+            let err = check(vec![height_reading(&key_manager), failing], Default::default());
+            assert!(matches!(err, AggregatedBodyValidationError::InputScript {
+                height_dependent: false,
+                ..
+            }));
+        }
+
+        #[test]
+        fn script_signature_failures_are_input_script_failures() {
+            let key_manager = KeyManager::new_random().unwrap();
+            for (mut input, expected) in [(ordinary(&key_manager), false), (height_reading(&key_manager), true)] {
+                input.script_signature = ordinary(&key_manager).script_signature;
+                let err = check(vec![input], Default::default());
+                assert!(
+                    matches!(
+                        err,
+                        AggregatedBodyValidationError::InputScript {
+                            error: TransactionError::InvalidSignatureError(_),
+                            height_dependent
+                        } if height_dependent == expected
+                    ),
+                    "{err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn script_offset_mismatch_is_not_an_input_script_failure() {
+            let key_manager = KeyManager::new_random().unwrap();
+            for inputs in [vec![ordinary(&key_manager)], vec![
+                ordinary(&key_manager),
+                height_reading(&key_manager),
+            ]] {
+                let err = check(inputs, test_helpers::new_public_key());
+                assert!(
+                    matches!(
+                        err,
+                        AggregatedBodyValidationError::TransactionError(TransactionError::ScriptOffset)
+                    ),
+                    "{err:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn kernel_signature_failure_is_not_an_input_script_failure() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
+            kernel.fee = 1.into();
+            let body = AggregateBody::new_unsorted(vec![height_reading(&key_manager)], Vec::new(), vec![kernel]);
+            let err = verify_kernel_signatures(&body).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::TransactionError(TransactionError::InvalidSignatureError(_))
+            ));
+        }
+
+        /// A script that returns a different key below height 100 is only valid at or above it
+        #[test]
+        fn height_branching_script_fails_only_below_its_height() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let params = TestParams::new(&key_manager);
+            let other = Box::new(test_helpers::new_public_key());
+            let signed = Box::new(params.script_key_pk.clone());
+            let script =
+                script!(CheckHeight(100) LtZero IfThen PushPubKey(other) Else PushPubKey(signed) EndIf).unwrap();
+            let utxo: WalletOutput = params.create_input(
+                UtxoTestParams {
+                    value: 100_000.into(),
+                    script,
+                    input_data: Some(ExecutionStack::default()),
+                    ..Default::default()
+                },
+                &key_manager,
+            );
+            let (tx, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![50_000.into()]), &key_manager);
+
+            let validator = AggregateBodyInternalConsistencyValidator::new(
+                true,
+                ConsensusManager::builder(Network::LocalNet).build(),
+                CryptoFactories::default(),
+            );
+            let validate = |height| validator.validate(&tx.body, &tx.offset, &tx.script_offset, None, None, height);
+            let err = validate(99).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::InputScript {
+                    error: TransactionError::InvalidSignatureError(_),
+                    height_dependent: true
+                }),
+                "{err:?}"
+            );
+            validate(100).unwrap();
         }
     }
 }
