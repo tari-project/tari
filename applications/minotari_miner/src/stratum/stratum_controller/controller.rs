@@ -22,7 +22,7 @@
 use std::{
     convert::TryFrom,
     sync::mpsc,
-    time::{Duration, Instant, SystemTime},
+    time::{Duration, Instant},
 };
 
 use borsh::BorshDeserialize;
@@ -92,7 +92,7 @@ pub struct Controller {
     current_difficulty_target: u64,
     current_blob: CurrentBlob,
     current_header: Option<BlockHeader>,
-    keep_alive_time: SystemTime,
+    keep_alive_time: Instant,
     num_mining_threads: usize,
     shares_found: u64,
     shares_dropped: u64,
@@ -111,7 +111,7 @@ impl Controller {
             current_difficulty_target: 0,
             current_blob: CurrentBlob::default(),
             current_header: None,
-            keep_alive_time: SystemTime::now(),
+            keep_alive_time: Instant::now(),
             num_mining_threads,
             shares_found: 0,
             shares_dropped: 0,
@@ -248,15 +248,15 @@ impl Controller {
                         self.shares_dropped = self.shares_dropped.saturating_add(1);
                     }
                     self.log_shares();
-                    self.keep_alive_time = SystemTime::now();
+                    self.keep_alive_time = Instant::now();
                     tokio::task::yield_now().await;
                     continue;
                 } else {
                     display_report(&report, self.num_mining_threads).await;
                 }
             }
-            if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
-                self.keep_alive_time = SystemTime::now();
+            if self.keep_alive_time.elapsed().as_secs() >= 30 {
+                self.keep_alive_time = Instant::now();
                 let client_tx = self.client_tx.as_ref().ok_or(Error::ClientTxNotSet)?;
                 if !try_send_to_client(client_tx, types::client_message::ClientMessage::KeepAlive)? {
                     warn!(target: LOG_TARGET, "Stratum client busy, dropping keepalive");
