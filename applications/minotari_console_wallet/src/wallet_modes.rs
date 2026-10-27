@@ -30,7 +30,7 @@ use log::*;
 use minotari_app_grpc::{
     authentication::ServerAuthenticationInterceptor,
     tari_rpc::{GetBalanceRequest, wallet_server::Wallet},
-    tls::identity::read_identity,
+    tls::{identity::read_identity, validate_server_grpc_tls_and_auth},
 };
 use minotari_wallet::{WalletConfig, WalletSqlite};
 use rand::seq::SliceRandom;
@@ -264,6 +264,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
+            validate_wallet_grpc_config(config, &address)?;
             let grpc = WalletGrpcServer::new(wallet.clone());
 
             let mut tls_identity = None;
@@ -398,6 +399,7 @@ pub fn grpc_mode(
     if let Some(address) = config.grpc_address.as_ref().filter(|_| config.grpc_enabled).cloned() {
         #[cfg(feature = "grpc")]
         {
+            validate_wallet_grpc_config(config, &address)?;
             let grpc_shutdown = tari_shutdown::Shutdown::new();
             let _signal_handler = if install_signal_handler {
                 Some(crate::utils::signal_handler::spawn_signal_handler(
@@ -442,6 +444,16 @@ pub fn grpc_mode(
     }
     info!(target: LOG_TARGET, "Shutting down");
     Ok(())
+}
+
+pub(crate) fn validate_wallet_grpc_config(config: &WalletConfig, address: &Multiaddr) -> Result<(), ExitError> {
+    validate_server_grpc_tls_and_auth(
+        &address.to_string(),
+        &config.grpc_authentication,
+        config.grpc_tls_enabled,
+        config.grpc_allow_insecure_auth,
+    )
+    .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))
 }
 
 /// How long in-flight gRPC requests and streams get to finish once the wallet shuts down. tonic's graceful shutdown
@@ -503,6 +515,7 @@ async fn run_grpc(
 mod test {
     use std::path::Path;
 
+    use super::{GrpcAuthentication, Multiaddr, WalletConfig, validate_wallet_grpc_config};
     use crate::{cli::CliCommands, wallet_modes::parse_command_file};
 
     /// Exporting the commitment mask and script private key of any wallet output gives away the wallet's spend key,
@@ -666,5 +679,73 @@ mod test {
                 export_tx &&
                 import_tx
         );
+    }
+
+    #[test]
+    fn existing_wallet_config_with_basic_auth_no_tls_and_unspecified_address_still_starts() {
+        use tari_common::DefaultConfigLoader;
+
+        const EXISTING_CONFIG: &str = r#"
+[wallet]
+grpc_enabled = true
+grpc_address = "/ip4/0.0.0.0/tcp/18143"
+grpc_authentication = { username = "admin", password = "secret_password" }
+grpc_tls_enabled = false
+"#;
+        let cfg = ::config::Config::builder()
+            .add_source(::config::File::from_str(EXISTING_CONFIG, ::config::FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config = WalletConfig::load_from(&cfg).expect("existing wallet config should load");
+        assert!(config.grpc_allow_insecure_auth);
+        let non_loopback: Multiaddr = "/ip4/0.0.0.0/tcp/18143".parse().unwrap();
+        validate_wallet_grpc_config(&config, &non_loopback)
+            .expect("existing wallet config with Basic auth, no TLS, and 0.0.0.0 must still start");
+    }
+
+    #[test]
+    fn wallet_grpc_config_refuses_basic_auth_without_tls_on_non_loopback_unless_overridden() {
+        use tari_utilities::SafePassword;
+
+        let mut config = WalletConfig::default();
+        let non_loopback: Multiaddr = "/ip4/0.0.0.0/tcp/18143".parse().unwrap();
+        config.grpc_authentication = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("secret_password"),
+        };
+        config.grpc_tls_enabled = false;
+        config.grpc_allow_insecure_auth = false;
+
+        let err = validate_wallet_grpc_config(&config, &non_loopback)
+            .expect_err("non-loopback Basic auth without TLS must be rejected");
+        assert!(
+            err.to_string().contains("grpc_allow_insecure_auth = true"),
+            "unexpected error: {err}"
+        );
+
+        config.grpc_allow_insecure_auth = true;
+        validate_wallet_grpc_config(&config, &non_loopback)
+            .expect("override should permit non-loopback Basic auth without TLS");
+    }
+
+    #[test]
+    fn wallet_grpc_config_allows_basic_auth_without_tls_on_loopback() {
+        use tari_utilities::SafePassword;
+
+        let mut config = WalletConfig::default();
+        config.grpc_authentication = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("secret_password"),
+        };
+        config.grpc_tls_enabled = false;
+        config.grpc_allow_insecure_auth = false;
+
+        let ipv4_loopback: Multiaddr = "/ip4/127.0.0.1/tcp/18143".parse().unwrap();
+        validate_wallet_grpc_config(&config, &ipv4_loopback)
+            .expect("IPv4 loopback should be allowed with Basic auth and no TLS");
+
+        let ipv6_loopback: Multiaddr = "/ip6/::1/tcp/18143".parse().unwrap();
+        validate_wallet_grpc_config(&config, &ipv6_loopback)
+            .expect("IPv6 loopback should be allowed with Basic auth and no TLS");
     }
 }

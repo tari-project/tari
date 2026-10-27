@@ -49,6 +49,10 @@ use crate::{
     transaction_service::config::TransactionServiceConfig,
 };
 
+const fn default_grpc_allow_insecure_auth() -> bool {
+    true
+}
+
 fn deserialize_safe_password_option<'de, D>(deserializer: D) -> Result<Option<SafePassword>, D::Error>
 where D: serde::Deserializer<'de> {
     let password: Option<String> = Deserialize::deserialize(deserializer)?;
@@ -57,6 +61,7 @@ where D: serde::Deserializer<'de> {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct WalletConfig {
     pub override_from: Option<String>,
     /// DEPRECATED: The p2p config settings
@@ -109,6 +114,10 @@ pub struct WalletConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Allow gRPC Basic authentication without TLS on a non-loopback bind address (logs a warning at startup; set to
+    /// `false` to refuse startup without TLS)
+    #[serde(default = "default_grpc_allow_insecure_auth")]
+    pub grpc_allow_insecure_auth: bool,
     /// A list of base node peers that the wallet should use for service requests and tracking chain state
     pub base_node_service_peers: StringList,
     /// The amount of times wallet recovery will be retried before being abandoned
@@ -176,6 +185,7 @@ impl Default for WalletConfig {
             grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_allow_insecure_auth: true,
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
             fee_per_gram: 5,

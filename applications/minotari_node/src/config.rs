@@ -87,6 +87,10 @@ impl ApplicationConfig {
     }
 }
 
+const fn default_grpc_allow_insecure_auth() -> bool {
+    true
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
@@ -111,6 +115,10 @@ pub struct BaseNodeConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Allow gRPC Basic authentication without TLS on a non-loopback bind address (logs a warning at startup; set to
+    /// `false` to refuse startup without TLS)
+    #[serde(default = "default_grpc_allow_insecure_auth")]
+    pub grpc_allow_insecure_auth: bool,
     /// Enable the readiness gRPC server
     pub grpc_readiness_enabled: bool,
     /// Enable mining on the base node, overriding other settings regarding mining
@@ -231,6 +239,7 @@ impl Default for BaseNodeConfig {
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_allow_insecure_auth: true,
             grpc_readiness_enabled: true,
             mining_enabled: false,
             second_layer_grpc_enabled: false,

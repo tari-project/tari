@@ -55,7 +55,7 @@ use minotari_app_grpc::{
         base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
         readiness_status::State as ReadinessState,
     },
-    tls::identity::read_identity,
+    tls::{identity::read_identity, validate_server_grpc_tls_and_auth},
 };
 use minotari_app_utilities::common_cli_args::CommonCliArgs;
 use tari_common::{
@@ -471,6 +471,16 @@ async fn prepare_grpc_params(
 
     let auth = config.base_node.grpc_authentication.clone();
 
+    if config.base_node.grpc_enabled {
+        validate_server_grpc_tls_and_auth(
+            &grpc_address.to_string(),
+            &auth,
+            config.base_node.grpc_tls_enabled,
+            config.base_node.grpc_allow_insecure_auth,
+        )
+        .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
+    }
+
     let mut tls_identity = None;
     if config.base_node.grpc_tls_enabled {
         tls_identity = read_identity(config.base_node.config_dir.clone())
@@ -506,7 +516,7 @@ mod tests {
         server::HealthService,
     };
 
-    use super::{grpc_serving_status, is_grpc_health_serving};
+    use super::{ApplicationConfig, grpc_serving_status, is_grpc_health_serving, prepare_grpc_params};
 
     fn status_info(bootstrapped: bool, state_info: StateInfo) -> StatusInfo {
         StatusInfo {
@@ -723,5 +733,77 @@ mod tests {
             !outcome.closed_by_server,
             "server closed a connection that acks keepalive PINGs"
         );
+    }
+
+    #[tokio::test]
+    async fn existing_config_with_basic_auth_no_tls_and_unspecified_address_still_starts() {
+        const EXISTING_CONFIG: &str = r#"
+[base_node]
+grpc_enabled = true
+grpc_address = "/ip4/0.0.0.0/tcp/18142"
+grpc_authentication = { username = "admin", password = "secret_password" }
+grpc_tls_enabled = false
+"#;
+        let cfg = ::config::Config::builder()
+            .add_source(::config::File::from_str(EXISTING_CONFIG, ::config::FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config = ApplicationConfig::load_from(&cfg).expect("existing config should load");
+        assert!(config.base_node.grpc_allow_insecure_auth);
+        prepare_grpc_params(&config)
+            .await
+            .expect("existing config with Basic auth, no TLS, and 0.0.0.0 must still start");
+    }
+
+    #[tokio::test]
+    async fn prepare_grpc_params_refuses_basic_auth_without_tls_on_non_loopback_when_disallowed() {
+        use tari_common_types::grpc_authentication::GrpcAuthentication;
+        use tari_utilities::SafePassword;
+
+        let mut config = ApplicationConfig::default();
+        config.base_node.grpc_address = Some("/ip4/0.0.0.0/tcp/18142".parse().unwrap());
+        config.base_node.grpc_authentication = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("secret_password"),
+        };
+        config.base_node.grpc_tls_enabled = false;
+        config.base_node.grpc_allow_insecure_auth = false;
+
+        let err = prepare_grpc_params(&config)
+            .await
+            .expect_err("non-loopback Basic auth without TLS must be rejected when grpc_allow_insecure_auth = false");
+        assert!(
+            err.to_string().contains("grpc_allow_insecure_auth = true"),
+            "unexpected error: {err}"
+        );
+
+        config.base_node.grpc_allow_insecure_auth = true;
+        prepare_grpc_params(&config)
+            .await
+            .expect("override should permit non-loopback Basic auth without TLS");
+    }
+
+    #[tokio::test]
+    async fn prepare_grpc_params_allows_basic_auth_without_tls_on_loopback() {
+        use tari_common_types::grpc_authentication::GrpcAuthentication;
+        use tari_utilities::SafePassword;
+
+        let mut config = ApplicationConfig::default();
+        config.base_node.grpc_authentication = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("secret_password"),
+        };
+        config.base_node.grpc_tls_enabled = false;
+        config.base_node.grpc_allow_insecure_auth = false;
+
+        config.base_node.grpc_address = Some("/ip4/127.0.0.1/tcp/18142".parse().unwrap());
+        prepare_grpc_params(&config)
+            .await
+            .expect("IPv4 loopback should be allowed with Basic auth and no TLS");
+
+        config.base_node.grpc_address = Some("/ip6/::1/tcp/18142".parse().unwrap());
+        prepare_grpc_params(&config)
+            .await
+            .expect("IPv6 loopback should be allowed with Basic auth and no TLS");
     }
 }

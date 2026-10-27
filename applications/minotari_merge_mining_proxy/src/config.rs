@@ -90,6 +90,9 @@ pub struct MergeMiningProxyConfig {
     pub base_node_grpc_tls_domain_name: Option<String>,
     /// GRPC ca cert name for TLS
     pub base_node_grpc_ca_cert_filename: String,
+    /// Allow sending gRPC Basic authentication credentials over a plaintext `http://` connection
+    #[serde(default)]
+    pub base_node_grpc_allow_insecure_auth: bool,
     /// Address of the minotari_merge_mining_proxy application
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
@@ -160,6 +163,10 @@ impl fmt::Debug for MergeMiningProxyConfig {
             .field("base_node_grpc_authentication", &self.base_node_grpc_authentication)
             .field("base_node_grpc_tls_domain_name", &self.base_node_grpc_tls_domain_name)
             .field("base_node_grpc_ca_cert_filename", &self.base_node_grpc_ca_cert_filename)
+            .field(
+                "base_node_grpc_allow_insecure_auth",
+                &self.base_node_grpc_allow_insecure_auth,
+            )
             .field("listener_address", &self.listener_address)
             .field("submit_to_origin", &self.submit_to_origin)
             .field(
@@ -231,6 +238,7 @@ impl Default for MergeMiningProxyConfig {
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
+            base_node_grpc_allow_insecure_auth: false,
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
@@ -337,5 +345,60 @@ mod test {
         assert_eq!(config.base_node_grpc_address, None);
         assert!(!config.monerod_use_auth);
         assert!(config.submit_to_origin);
+        assert!(!config.base_node_grpc_allow_insecure_auth);
+    }
+
+    #[test]
+    fn proxy_refuses_tls_domain_on_http_and_basic_auth_on_http_without_override() {
+        use minotari_app_grpc::tls::validate_client_grpc_tls_and_auth;
+        use minotari_wallet_grpc_client::GrpcAuthentication;
+        use tari_utilities::SafePassword;
+
+        let mut config = MergeMiningProxyConfig {
+            base_node_grpc_address: Some("http://127.0.0.1:18142".to_string()),
+            base_node_grpc_tls_domain_name: Some("localhost".to_string()),
+            ..Default::default()
+        };
+        let err = validate_client_grpc_tls_and_auth(
+            config.base_node_grpc_address.as_deref().unwrap(),
+            config.base_node_grpc_tls_domain_name.as_deref(),
+            &config.base_node_grpc_authentication,
+            config.base_node_grpc_allow_insecure_auth,
+        )
+        .expect_err("TLS domain with http:// must fail");
+        assert!(err.to_string().contains("http://"));
+        assert!(err.to_string().contains("https://"));
+
+        config.base_node_grpc_tls_domain_name = None;
+        config.base_node_grpc_authentication = GrpcAuthentication::Basic {
+            username: "miner".to_string(),
+            password: SafePassword::from("secret_password"),
+        };
+        validate_client_grpc_tls_and_auth(
+            config.base_node_grpc_address.as_deref().unwrap(),
+            config.base_node_grpc_tls_domain_name.as_deref(),
+            &config.base_node_grpc_authentication,
+            config.base_node_grpc_allow_insecure_auth,
+        )
+        .expect("Basic auth on loopback http://127.0.0.1:18142 must succeed without override");
+
+        config.base_node_grpc_address = Some("http://192.168.1.10:18142".to_string());
+        let err = validate_client_grpc_tls_and_auth(
+            config.base_node_grpc_address.as_deref().unwrap(),
+            config.base_node_grpc_tls_domain_name.as_deref(),
+            &config.base_node_grpc_authentication,
+            config.base_node_grpc_allow_insecure_auth,
+        )
+        .expect_err("Basic auth on non-loopback http:// without override must fail");
+        assert!(err.to_string().contains("base_node_grpc_allow_insecure_auth = true"));
+
+        config.base_node_grpc_allow_insecure_auth = true;
+        validate_client_grpc_tls_and_auth(
+            config.base_node_grpc_address.as_deref().unwrap(),
+            config.base_node_grpc_tls_domain_name.as_deref(),
+            &config.base_node_grpc_authentication,
+            config.base_node_grpc_allow_insecure_auth,
+        )
+        .expect("override should allow Basic auth over non-loopback http://");
     }
 }

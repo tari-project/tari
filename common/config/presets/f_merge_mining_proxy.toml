@@ -79,10 +79,24 @@
 #monerod_use_auth = false
 
 # The Minotari base node's GRPC address. (default = "http://127.0.0.1:18142")
+# When TLS is enabled (`base_node_grpc_tls_domain_name` is set), the URI scheme MUST be `https://` (e.g.
+# "https://127.0.0.1:18142").
 #base_node_grpc_address = "http://127.0.0.1:18142"
 
-# GRPC authentication for the base node (default = "none")
+# GRPC authentication for the base node (default = "none").
+# Sending Basic credentials to a non-loopback address requires an `https://` address with TLS configured unless
+# `base_node_grpc_allow_insecure_auth = true` is explicitly set (loopback hosts `127.0.0.1`, `::1`, and `localhost`
+# are exempt).
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+
+# GRPC TLS communication is turned on by defining the domain name for the service AND setting `base_node_grpc_address`
+# to an `https://` URL (the scheme must match) (default = "none")
+#base_node_grpc_address = "https://127.0.0.1:18142"
+#base_node_grpc_tls_domain_name = "localhost"
+#base_node_grpc_ca_cert_filename = "node_ca.pem"
+
+# Deliberate acceptance of sending gRPC Basic authentication credentials in cleartext over `http://` (default = false)
+#base_node_grpc_allow_insecure_auth = false
 
 # Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"
