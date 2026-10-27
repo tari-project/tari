@@ -271,6 +271,36 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
    - If you’re using SSL (`grpc.credentials.createSsl()`), combine it with the credentials for a secure connection.
    - If the gRPC server is running locally, you may use `grpc.credentials.createInsecure()` for testing purposes (not recommended for production).
 
+### Per-Method Access Control (`grpc_server_allow_methods`)
+In addition to `grpc_authentication`, the console wallet supports per-method access control via `grpc_server_allow_methods` under `[wallet]` in `config.toml` (mirroring the base node's `grpc_server_allow_methods`).
+
+By default (and when `grpc_server_allow_methods` is omitted from `config.toml`), all 50 wallet gRPC methods in [`wallet.proto`][wallet-proto] are enabled so existing deployments continue working unchanged. Any RPC absent from `grpc_server_allow_methods` is rejected before handler execution with `PERMISSION_DENIED` (`"<Method>" method not made available`) and logged as a warning.
+
+For a **read-only balance-monitoring integration**, restrict `grpc_server_allow_methods` to the minimal read-only set so a compromised monitoring client cannot invoke `transfer`, `coin_split`, `create_burn_transaction`, `import_utxos`, or `sign_message`:
+
+```toml
+[wallet]
+grpc_enabled = true
+grpc_server_allow_methods = [
+    "get_version",
+    "get_state",
+    "check_connectivity",
+    "get_balance",
+    "get_address",
+    "get_complete_address",
+    "get_payment_id_address",
+    "get_transaction_info",
+    "get_completed_transactions",
+    "get_all_completed_transactions",
+    "get_all_completed_transactions_stream",
+    "get_payment_by_reference",
+    "get_transaction_pay_refs",
+    "stream_transaction_events",
+]
+```
+
+See `common/config/presets/d_console_wallet.toml` for the full list of 50 `snake_case` method names.
+
 ##### Connecting with Authentication Examples
 **Rust:**
 ```rust
@@ -317,8 +347,6 @@ console.log('Client created:', client);
 
 ## gRPC Base Node Methods
 These methods are dependent on access to a base node and use of the [`base_node.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto) file.
-
-Exposed base node gRPC methods are controlled by `base_node.grpc_server_allow_methods` in `config.toml` (only `get_version` is enabled by default). Note that setting `mining_enabled = true` adds the mining method set (`get_version`, `get_new_block_template`, `get_new_block_with_coinbases`, `get_new_block_template_with_coinbases`, `get_new_block`, `get_new_block_blob`, `get_network_difficulty`, `get_network_state`, `submit_block`, `submit_block_blob`, `get_tip_info`, `identify`, `get_sync_progress`) and setting `second_layer_grpc_enabled = true` adds the second-layer method set (`get_version`, `get_constants`, `get_mempool_transactions`, `get_mempool_stats`, `list_headers`, `get_tip_info`, `get_active_validator_nodes`, `get_validator_node_changes`, `get_shard_key`, `get_header_by_hash`, `get_side_chain_utxos`) on top of `grpc_server_allow_methods`.
 
 ### Get Max Height
 You can call the base node's gRPC method to get the current blockchain height.

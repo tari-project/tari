@@ -31,6 +31,7 @@ use strum::EnumString;
 use tari_common::{
     SubConfigPath,
     configuration::{
+        ConfigList,
         Network,
         StringList,
         bootstrap::{wallet_get_default_seed_https_address, wallet_http_service_default_port},
@@ -45,9 +46,14 @@ use url::Url;
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
+    grpc_method::WalletGrpcMethod,
     output_manager_service::config::OutputManagerServiceConfig,
     transaction_service::config::TransactionServiceConfig,
 };
+
+fn default_grpc_server_allow_methods() -> ConfigList<WalletGrpcMethod> {
+    WalletGrpcMethod::ALL_VARIANTS.to_vec().into()
+}
 
 fn deserialize_safe_password_option<'de, D>(deserializer: D) -> Result<Option<SafePassword>, D::Error>
 where D: serde::Deserializer<'de> {
@@ -105,6 +111,9 @@ pub struct WalletConfig {
     pub grpc_enabled: bool,
     /// GRPC bind address of the wallet
     pub grpc_address: Option<Multiaddr>,
+    /// GRPC server config - which methods are active and which not, only active when `grpc_enabled = true`.
+    #[serde(default = "default_grpc_server_allow_methods")]
+    pub grpc_server_allow_methods: ConfigList<WalletGrpcMethod>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
@@ -174,6 +183,7 @@ impl Default for WalletConfig {
             notify_file: None,
             grpc_enabled: false,
             grpc_address: None,
+            grpc_server_allow_methods: default_grpc_server_allow_methods(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             base_node_service_peers: StringList::default(),

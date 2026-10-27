@@ -140,6 +140,7 @@ use minotari_app_grpc::tari_rpc::{
 };
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
+    WalletGrpcMethod,
     WalletKeyManager,
     WalletSqlite,
     connectivity_service::{OnlineStatus, UNKNOWN_LATENCY_MS, WalletConnectivityInterface},
@@ -171,6 +172,7 @@ use tari_common_types::{
         CompressedPublicKey,
         CompressedSignature,
         FixedHash,
+        PrivateKey,
         SignatureWithDomain,
     },
 };
@@ -257,6 +259,25 @@ impl WalletGrpcServer {
         }
     }
 
+    fn is_method_enabled(&self, grpc_method: WalletGrpcMethod) -> bool {
+        self.wallet.config.grpc_server_allow_methods.contains(&grpc_method)
+    }
+
+    #[allow(clippy::result_large_err)]
+    fn check_method_enabled(&self, method: WalletGrpcMethod) -> Result<(), Status> {
+        if !self.is_method_enabled(method) {
+            warn!(
+                target: LOG_TARGET,
+                "`{method}` method called but it is not allowed. Allow it in the config file or start the wallet with a \
+                different set of CLI options"
+            );
+            return Err(Status::permission_denied(format!(
+                "`{method}` method not made available"
+            )));
+        }
+        Ok(())
+    }
+
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
         let height = self.wallet.db.get_last_scanned_height()?.unwrap_or_default();
         Ok(self.rules.consensus_constants(height))
@@ -272,6 +293,31 @@ impl WalletGrpcServer {
 
     fn get_output_manager_service(&self) -> OutputManagerHandle<WalletKeyManager> {
         self.wallet.output_manager_service.clone()
+    }
+
+    async fn fetch_network_status(&self) -> tari_rpc::NetworkStatusResponse {
+        // This mapping is to comply to the legacy interface
+        let (status, avg_latency, num_node_connections) =
+            match self.wallet.wallet_connectivity.get_connectivity_status().await {
+                OnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
+                OnlineStatus::Online { latency_ms, .. } => {
+                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
+                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
+                    (ConnectivityStatus::Online(1), latency_ms, 1)
+                },
+                OnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
+                OnlineStatus::Degraded { latency_ms, .. } => {
+                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
+                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
+                    (ConnectivityStatus::Degraded(1), latency_ms, 1)
+                },
+            };
+
+        tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: u32::try_from(avg_latency).unwrap_or(u32::MAX),
+            num_node_connections,
+        }
     }
 
     /// Wait for a transaction to reach a terminal broadcast state (Broadcast, Rejected, Mined, etc.)
@@ -466,6 +512,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     type StreamTransactionEventsStream = mpsc::Receiver<Result<TransactionEventResponse, Status>>;
 
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetVersion)?;
         Ok(Response::new(GetVersionResponse {
             version: env!("CARGO_PKG_VERSION").to_string(),
         }))
@@ -475,6 +522,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<GetConnectivityRequest>,
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::CheckConnectivity)?;
         let debouncer = self.debouncer.lock().await;
         let connection_status = debouncer.get_connection_status().await;
         Ok(Response::new(CheckConnectivityResponse {
@@ -486,6 +534,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SoftwareUpdate>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::CheckForUpdates)?;
         let mut resp = tari_rpc::SoftwareUpdate::default();
 
         if let Some(ref updater) = self.wallet.get_software_updater() &&
@@ -501,6 +550,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn identify(&self, _: Request<GetIdentityRequest>) -> Result<Response<GetIdentityResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::Identify)?;
         let identity = self.wallet.node_identity.clone();
         Ok(Response::new(GetIdentityResponse {
             public_key: identity.public_key().to_vec(),
@@ -510,6 +560,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_address(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetAddressResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetAddress)?;
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
@@ -528,6 +579,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetPaymentIdAddressRequest>,
     ) -> Result<Response<GetCompleteAddressResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetPaymentIdAddress)?;
         let message = request.into_inner();
         trace!(
             target: LOG_TARGET,
@@ -567,6 +619,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<GetCompleteAddressResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetCompleteAddress)?;
         let interactive_address = self
             .wallet
             .get_wallet_interactive_address()
@@ -587,6 +640,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_balance(&self, request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetBalance)?;
         let message = request.into_inner();
         let start = std::time::Instant::now();
         if let Some(user_payment_id) = message.payment_id {
@@ -628,6 +682,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn get_state(&self, _request: Request<GetStateRequest>) -> Result<Response<GetStateResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetState)?;
         let start = std::time::Instant::now();
         let (balance, scanned_height, is_initial_validation_done) = {
             let mut debouncer = self.debouncer.lock().await;
@@ -640,8 +695,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             (Some(balance), scanned_height, is_initial_validation_done)
         };
 
-        let status = self.get_network_status(Request::new(tari_rpc::Empty {})).await?;
-        let network = Some(status.into_inner());
+        let network = Some(self.fetch_network_status().await);
 
         trace!(target: LOG_TARGET, "'get_state' completed in {:.2?}", start.elapsed());
         Ok(Response::new(GetStateResponse {
@@ -656,6 +710,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetUnspentAmounts)?;
         let start = std::time::Instant::now();
         let mut output_service = self.get_output_manager_service();
         let unspent_amounts = match output_service.get_unspent_outputs().await {
@@ -676,6 +731,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RevalidateRequest>,
     ) -> Result<Response<RevalidateResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::RevalidateAllTransactions)?;
         let mut tms = self.wallet.transaction_service.clone();
         let message = request.into_inner();
         if message.transaction_mode == TransactionValidationMode::RejectedOnly as i32 {
@@ -701,6 +757,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: Request<ValidateRequest>,
     ) -> Result<Response<ValidateResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ValidateAllTransactions)?;
         Ok(Response::new(ValidateResponse {}))
     }
 
@@ -708,6 +765,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<SendShaAtomicSwapRequest>,
     ) -> Result<Response<SendShaAtomicSwapResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::SendShaAtomicSwapTransaction)?;
         let message = request
             .into_inner()
             .recipient
@@ -784,6 +842,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ClaimShaAtomicSwapRequest>,
     ) -> Result<Response<ClaimShaAtomicSwapResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ClaimShaAtomicSwapTransaction)?;
         let message = request.into_inner();
         let pre_image = CommsPublicKey::from_hex(&message.pre_image)
             .map_err(|_| Status::internal("pre_image is malformed".to_string()))?;
@@ -860,6 +919,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ClaimHtlcRefundRequest>,
     ) -> Result<Response<ClaimHtlcRefundResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ClaimHtlcRefundTransaction)?;
         let message = request.into_inner();
         let output = BlockHash::from_hex(&message.output_hash)
             .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
@@ -935,6 +995,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<PrepareOneSidedTransactionForSigningRequest>,
     ) -> Result<Response<PrepareOneSidedTransactionForSigningResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::PrepareOneSidedTransactionForSigning)?;
         let message = request.into_inner();
 
         let recipient = message.recipient.ok_or(Status::invalid_argument("Missing recipient"))?;
@@ -1003,6 +1064,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<BroadcastSignedOneSidedTransactionRequest>,
     ) -> Result<Response<BroadcastSignedOneSidedTransactionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::BroadcastSignedOneSidedTransaction)?;
         let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
@@ -1037,6 +1099,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<PrepareDepositMultisigTransactionRequest>,
     ) -> Result<Response<PrepareDepositMultisigTransactionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::PrepareDepositMultisigTransaction)?;
         debug!(target: LOG_TARGET, "prepare_deposit_multisig_transaction called");
         let message = request.into_inner();
 
@@ -1118,6 +1181,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<PrepareWithdrawMultisigTransactionRequest>,
     ) -> Result<Response<PrepareWithdrawMultisigTransactionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::PrepareWithdrawMultisigTransaction)?;
         debug!(target: LOG_TARGET, "prepare_withdraw_multisig_transaction called");
         let message = request.into_inner();
 
@@ -1172,6 +1236,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
     #[allow(clippy::too_many_lines)]
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::Transfer)?;
         let message = request.into_inner();
 
         if message.recipients.is_empty() {
@@ -1349,6 +1414,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RangeLimitedCoinJoinRequest>,
     ) -> Result<Response<TransferResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::RangeLimitedCoinJoin)?;
         let message = request.into_inner();
         debug!(target: LOG_TARGET, "range_limit_coin_join: {:?}", message);
 
@@ -1543,8 +1609,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateBurnTransactionRequest>,
     ) -> Result<Response<CreateBurnTransactionResponse>, Status> {
-        let mut message = request.into_inner();
-        let sidechain_deployment_key = message.take_sidechain_deployment_key();
+        self.check_method_enabled(WalletGrpcMethod::CreateBurnTransaction)?;
+        let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
         debug!(target: LOG_TARGET, "Trying to burn {} Minotari", message.amount);
@@ -1559,7 +1625,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(CompressedPublicKey::from_canonical_bytes)
                     .transpose()
                     .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                sidechain_deployment_key.map_err(|e| Status::invalid_argument(e.to_string()))?,
+                Some(message.sidechain_deployment_key.as_slice())
+                    .filter(|v| !v.is_empty())
+                    .map(PrivateKey::from_canonical_bytes)
+                    .transpose()
+                    .map_err(|e| Status::invalid_argument(e.to_string()))?,
             )
             .await;
 
@@ -1605,6 +1675,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetTransactionInfoRequest>,
     ) -> Result<Response<GetTransactionInfoResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetTransactionInfo)?;
         let message = request.into_inner();
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
@@ -1649,6 +1720,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _request: tonic::Request<TransactionEventRequest>,
     ) -> Result<Response<Self::StreamTransactionEventsStream>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::StreamTransactionEvents)?;
         let (mut sender, receiver) = mpsc::channel(100);
 
         let mut shutdown_signal = self.wallet.shutdown_signal.clone();
@@ -1721,6 +1793,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetCompletedTransactionsRequest>,
     ) -> Result<Response<Self::GetCompletedTransactionsStream>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetCompletedTransactions)?;
         let start = std::time::Instant::now();
         trace!(
             target: LOG_TARGET,
@@ -1870,6 +1943,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
     ) -> Result<Response<GetAllCompletedTransactionsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetAllCompletedTransactions)?;
         let start = std::time::Instant::now();
         let req = request.into_inner();
         warn!(
@@ -2007,6 +2081,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetAllCompletedTransactionsRequest>,
     ) -> Result<Response<Self::GetAllCompletedTransactionsStreamStream>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetAllCompletedTransactionsStream)?;
         let start = std::time::Instant::now();
         let req = request.into_inner();
 
@@ -2205,6 +2280,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetBlockHeightTransactionsRequest>,
     ) -> Result<Response<GetBlockHeightTransactionsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetBlockHeightTransactions)?;
         let start = std::time::Instant::now();
         trace!(
             target: LOG_TARGET,
@@ -2307,6 +2383,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     }
 
     async fn coin_split(&self, request: Request<CoinSplitRequest>) -> Result<Response<CoinSplitResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::CoinSplit)?;
         let message = request.into_inner();
 
         let mut wallet = self.wallet.clone();
@@ -2331,6 +2408,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CoinHistogramRequest>,
     ) -> Result<Response<CoinHistogramResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::CoinHistogram)?;
         let message = request.into_inner();
         debug!(target: LOG_TARGET, "coin_histogram: {:?}", message);
 
@@ -2394,6 +2472,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ImportUtxosRequest>,
     ) -> Result<Response<ImportUtxosResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ImportUtxos)?;
         let message = request.into_inner();
 
         let mut wallet = self.wallet.clone();
@@ -2427,36 +2506,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::NetworkStatusResponse>, Status> {
-        // This mapping is to comply to the legacy interface
-        let (status, avg_latency, num_node_connections) =
-            match self.wallet.wallet_connectivity.get_connectivity_status().await {
-                OnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
-                OnlineStatus::Online { latency_ms, .. } => {
-                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
-                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
-                    (ConnectivityStatus::Online(1), latency_ms, 1)
-                },
-                OnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
-                OnlineStatus::Degraded { latency_ms, .. } => {
-                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
-                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
-                    (ConnectivityStatus::Degraded(1), latency_ms, 1)
-                },
-            };
-
-        let resp = tari_rpc::NetworkStatusResponse {
-            status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: u32::try_from(avg_latency).unwrap_or(u32::MAX),
-            num_node_connections,
-        };
-
-        Ok(Response::new(resp))
+        self.check_method_enabled(WalletGrpcMethod::GetNetworkStatus)?;
+        Ok(Response::new(self.fetch_network_status().await))
     }
 
     async fn get_connected_http_peer(
         &self,
         _: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::GetConnectedHttpPeerResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetConnectedHttpPeer)?;
         let url = self.wallet.wallet_connectivity.get_address().await;
         let (is_online, last_latency) = match self.wallet.wallet_connectivity.get_connectivity_status().await {
             OnlineStatus::Connecting => (false, UNKNOWN_LATENCY_MS),
@@ -2480,6 +2538,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<tari_rpc::CancelTransactionRequest>,
     ) -> Result<Response<tari_rpc::CancelTransactionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::CancelTransaction)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -2567,8 +2626,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RegisterValidatorNodeRequest>,
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
-        let mut request = request.into_inner();
-        let sidechain_deployment_key = request.take_sidechain_deployment_key();
+        self.check_method_enabled(WalletGrpcMethod::RegisterValidatorNode)?;
+        let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
@@ -2581,8 +2640,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
             CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
                 .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
-        let sidechain_key =
-            sidechain_deployment_key.map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?;
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
@@ -2624,8 +2689,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<SubmitValidatorNodeExitRequest>,
     ) -> Result<Response<SubmitValidatorNodeExitResponse>, Status> {
-        let mut request = request.into_inner();
-        let sidechain_deployment_key = request.take_sidechain_deployment_key();
+        self.check_method_enabled(WalletGrpcMethod::SubmitValidatorNodeExit)?;
+        let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
@@ -2635,8 +2700,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
 
-        let sidechain_key =
-            sidechain_deployment_key.map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?;
+        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
+            None
+        } else {
+            Some(
+                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
+                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
+            )
+        };
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
@@ -2679,6 +2750,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ImportTransactionsRequest>,
     ) -> Result<Response<ImportTransactionsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ImportTransactions)?;
         let request = request.into_inner();
         let txs: Vec<WalletTransaction> = serde_json::from_str(&request.txs)
             .map_err(|_| Status::invalid_argument("Could not parse transactions. Use valid JSON format."))?;
@@ -2701,6 +2773,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetPaymentByReferenceRequest>,
     ) -> Result<Response<GetPaymentByReferenceResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetPaymentByReference)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -2797,6 +2870,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetTransactionPayRefsRequest>,
     ) -> Result<Response<GetTransactionPayRefsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetTransactionPayRefs)?;
         let req = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -2899,6 +2973,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetFeeEstimateRequest>,
     ) -> Result<Response<GetFeeEstimateResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetFeeEstimate)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -2934,6 +3009,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetFeePerGramStatsRequest>,
     ) -> Result<Response<GetFeePerGramStatsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetFeePerGramStats)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -2961,6 +3037,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<UserPayForFeeRequest>,
     ) -> Result<Response<UserPayForFeeResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::UserPayForFee)?;
         let message = request.into_inner();
         let recipients = message
             .recipients
@@ -3048,6 +3125,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ReplaceByFeeRequest>,
     ) -> Result<Response<ReplaceByFeeResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ReplaceByFee)?;
         let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let tx_id = transaction_service
@@ -3063,6 +3141,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<SignMessageRequest>,
     ) -> Result<Response<SignMessageResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::SignMessage)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -3091,6 +3170,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<GetBurnClaimProofRequest>,
     ) -> Result<Response<GetBurnClaimProofResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::GetBurnClaimProof)?;
         let req = request.into_inner();
         let commitment = CompressedCommitment::from_canonical_bytes(&req.commitment)
             .map_err(|_| Status::invalid_argument("Commitment is malformed".to_string()))?;
@@ -3141,6 +3221,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RescanWalletRequest>,
     ) -> Result<Response<RescanWalletResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::RescanWallet)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -3168,6 +3249,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ScanAndImportUtxosRequest>,
     ) -> Result<Response<ScanAndImportUtxosResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ScanAndImportUtxos)?;
         let message = request.into_inner();
         debug!(
             target: LOG_TARGET,
@@ -3457,6 +3539,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<DebugTransactionRequest>,
     ) -> Result<Response<DebugTransactionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::DebugTransaction)?;
         let message = request.into_inner();
         let tx_id: TxId = message.tx_id.into();
         debug!(
@@ -3500,6 +3583,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ValidateTransactionRequest>,
     ) -> Result<Response<ValidateTransactionResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ValidateTransaction)?;
         let message = request.into_inner();
         let tx_id: TxId = message.tx_id.into();
         debug!(
@@ -3725,6 +3809,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<ValidateOutputsRequest>,
     ) -> Result<Response<ValidateOutputsResponse>, Status> {
+        self.check_method_enabled(WalletGrpcMethod::ValidateOutputs)?;
         use minotari_wallet::output_manager_service::storage::sqlite_db::{
             ReceivedOutputInfoForBatch,
             SpentOutputInfoForBatch,
@@ -4733,5 +4818,294 @@ mod tests {
         let parsed = parse_excluded_commitments(vec![bytes]).unwrap();
 
         assert_eq!(parsed, vec![commitment]);
+    }
+
+    async fn create_test_wallet_grpc_server(
+        allow_methods: Vec<super::WalletGrpcMethod>,
+    ) -> (super::WalletGrpcServer, tari_shutdown::Shutdown, tempfile::TempDir) {
+        use std::sync::Arc;
+
+        use minotari_wallet::{
+            Wallet,
+            WalletConfig,
+            output_manager_service::storage::database::OutputManagerDatabase,
+            storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
+            wallet::read_or_create_master_seed,
+        };
+        use tari_common::configuration::Network;
+        use tari_comms::{NodeIdentity, peer_manager::PeerFeatures};
+        use tari_p2p::auto_update::AutoUpdateConfig;
+        use tari_shutdown::Shutdown;
+        use tari_transaction_components::{consensus::ConsensusManager, crypto_factories::CryptoFactories};
+        use tari_utilities::SafePassword;
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_wallet.db");
+        let passphrase = SafePassword::from("test-wallet-passphrase");
+        let (wallet_backend, transaction_backend, output_manager_backend, key_manager_backend) =
+            initialize_sqlite_database_backends(db_path, passphrase, 4).unwrap();
+        let wallet_db = WalletDatabase::new(wallet_backend);
+        let output_db = OutputManagerDatabase::new(output_manager_backend.clone());
+        let master_seed = read_or_create_master_seed(None, &wallet_db).unwrap();
+        let node_identity = Arc::new(NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            vec![],
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let config = WalletConfig {
+            network: Network::LocalNet,
+            data_dir: temp_dir.path().to_path_buf(),
+            config_dir: temp_dir.path().to_path_buf(),
+            grpc_server_allow_methods: allow_methods.into(),
+            ..Default::default()
+        };
+        let shutdown = Shutdown::new();
+        let wallet = Wallet::start(
+            config,
+            AutoUpdateConfig::default(),
+            node_identity,
+            ConsensusManager::builder(Network::LocalNet).build(),
+            CryptoFactories::default(),
+            wallet_db,
+            output_db,
+            transaction_backend,
+            output_manager_backend,
+            key_manager_backend,
+            shutdown.to_signal(),
+            master_seed,
+            None,
+        )
+        .await
+        .unwrap();
+        (super::WalletGrpcServer::new(wallet), shutdown, temp_dir)
+    }
+
+    async fn invoke_disabled_wallet_rpc_part_1(
+        server: &super::WalletGrpcServer,
+        method: super::WalletGrpcMethod,
+    ) -> Option<tonic::Status> {
+        use minotari_app_grpc::tari_rpc::{self, wallet_server::Wallet as _};
+        use tonic::Request;
+
+        use super::WalletGrpcMethod;
+
+        macro_rules! call_err {
+            ($rpc:ident, $req:ident) => {
+                server
+                    .$rpc(Request::new(tari_rpc::$req::default()))
+                    .await
+                    .unwrap_err()
+            };
+        }
+
+        let status = match method {
+            WalletGrpcMethod::GetVersion => call_err!(get_version, GetVersionRequest),
+            WalletGrpcMethod::GetState => call_err!(get_state, GetStateRequest),
+            WalletGrpcMethod::CheckConnectivity => call_err!(check_connectivity, GetConnectivityRequest),
+            WalletGrpcMethod::CheckForUpdates => call_err!(check_for_updates, Empty),
+            WalletGrpcMethod::Identify => call_err!(identify, GetIdentityRequest),
+            WalletGrpcMethod::GetAddress => call_err!(get_address, Empty),
+            WalletGrpcMethod::GetPaymentIdAddress => call_err!(get_payment_id_address, GetPaymentIdAddressRequest),
+            WalletGrpcMethod::GetCompleteAddress => call_err!(get_complete_address, Empty),
+            WalletGrpcMethod::PrepareOneSidedTransactionForSigning => {
+                call_err!(
+                    prepare_one_sided_transaction_for_signing,
+                    PrepareOneSidedTransactionForSigningRequest
+                )
+            },
+            WalletGrpcMethod::PrepareDepositMultisigTransaction => {
+                call_err!(
+                    prepare_deposit_multisig_transaction,
+                    PrepareDepositMultisigTransactionRequest
+                )
+            },
+            WalletGrpcMethod::PrepareWithdrawMultisigTransaction => {
+                call_err!(
+                    prepare_withdraw_multisig_transaction,
+                    PrepareWithdrawMultisigTransactionRequest
+                )
+            },
+            WalletGrpcMethod::BroadcastSignedOneSidedTransaction => {
+                call_err!(
+                    broadcast_signed_one_sided_transaction,
+                    BroadcastSignedOneSidedTransactionRequest
+                )
+            },
+            WalletGrpcMethod::Transfer => call_err!(transfer, TransferRequest),
+            WalletGrpcMethod::RangeLimitedCoinJoin => call_err!(range_limited_coin_join, RangeLimitedCoinJoinRequest),
+            WalletGrpcMethod::GetTransactionInfo => call_err!(get_transaction_info, GetTransactionInfoRequest),
+            WalletGrpcMethod::GetCompletedTransactions => {
+                call_err!(get_completed_transactions, GetCompletedTransactionsRequest)
+            },
+            WalletGrpcMethod::GetBlockHeightTransactions => {
+                call_err!(get_block_height_transactions, GetBlockHeightTransactionsRequest)
+            },
+            WalletGrpcMethod::GetTransactionPayRefs => {
+                call_err!(get_transaction_pay_refs, GetTransactionPayRefsRequest)
+            },
+            WalletGrpcMethod::GetBalance => call_err!(get_balance, GetBalanceRequest),
+            WalletGrpcMethod::GetUnspentAmounts => call_err!(get_unspent_amounts, Empty),
+            WalletGrpcMethod::CoinSplit => call_err!(coin_split, CoinSplitRequest),
+            WalletGrpcMethod::CoinHistogram => call_err!(coin_histogram, CoinHistogramRequest),
+            WalletGrpcMethod::ImportUtxos => call_err!(import_utxos, ImportUtxosRequest),
+            WalletGrpcMethod::GetNetworkStatus => call_err!(get_network_status, Empty),
+            WalletGrpcMethod::GetConnectedHttpPeer => call_err!(get_connected_http_peer, Empty),
+            _ => return None,
+        };
+        Some(status)
+    }
+
+    async fn invoke_disabled_wallet_rpc_part_2(
+        server: &super::WalletGrpcServer,
+        method: super::WalletGrpcMethod,
+    ) -> Option<tonic::Status> {
+        use minotari_app_grpc::tari_rpc::{self, wallet_server::Wallet as _};
+        use tonic::Request;
+
+        use super::WalletGrpcMethod;
+
+        macro_rules! call_err {
+            ($rpc:ident, $req:ident) => {
+                server
+                    .$rpc(Request::new(tari_rpc::$req::default()))
+                    .await
+                    .unwrap_err()
+            };
+        }
+
+        let status = match method {
+            WalletGrpcMethod::CancelTransaction => call_err!(cancel_transaction, CancelTransactionRequest),
+            WalletGrpcMethod::RevalidateAllTransactions => call_err!(revalidate_all_transactions, RevalidateRequest),
+            WalletGrpcMethod::ValidateAllTransactions => call_err!(validate_all_transactions, ValidateRequest),
+            WalletGrpcMethod::SendShaAtomicSwapTransaction => {
+                call_err!(send_sha_atomic_swap_transaction, SendShaAtomicSwapRequest)
+            },
+            WalletGrpcMethod::CreateBurnTransaction => call_err!(create_burn_transaction, CreateBurnTransactionRequest),
+            WalletGrpcMethod::ClaimShaAtomicSwapTransaction => {
+                call_err!(claim_sha_atomic_swap_transaction, ClaimShaAtomicSwapRequest)
+            },
+            WalletGrpcMethod::ClaimHtlcRefundTransaction => {
+                call_err!(claim_htlc_refund_transaction, ClaimHtlcRefundRequest)
+            },
+            WalletGrpcMethod::SignMessage => call_err!(sign_message, SignMessageRequest),
+            WalletGrpcMethod::StreamTransactionEvents => {
+                call_err!(stream_transaction_events, TransactionEventRequest)
+            },
+            WalletGrpcMethod::ImportTransactions => call_err!(import_transactions, ImportTransactionsRequest),
+            WalletGrpcMethod::GetAllCompletedTransactions => {
+                call_err!(get_all_completed_transactions, GetAllCompletedTransactionsRequest)
+            },
+            WalletGrpcMethod::GetAllCompletedTransactionsStream => {
+                call_err!(
+                    get_all_completed_transactions_stream,
+                    GetAllCompletedTransactionsRequest
+                )
+            },
+            WalletGrpcMethod::GetPaymentByReference => {
+                call_err!(get_payment_by_reference, GetPaymentByReferenceRequest)
+            },
+            WalletGrpcMethod::GetFeeEstimate => call_err!(get_fee_estimate, GetFeeEstimateRequest),
+            WalletGrpcMethod::GetFeePerGramStats => call_err!(get_fee_per_gram_stats, GetFeePerGramStatsRequest),
+            WalletGrpcMethod::ReplaceByFee => call_err!(replace_by_fee, ReplaceByFeeRequest),
+            WalletGrpcMethod::UserPayForFee => call_err!(user_pay_for_fee, UserPayForFeeRequest),
+            WalletGrpcMethod::RegisterValidatorNode => {
+                call_err!(register_validator_node, RegisterValidatorNodeRequest)
+            },
+            WalletGrpcMethod::SubmitValidatorNodeExit => {
+                call_err!(submit_validator_node_exit, SubmitValidatorNodeExitRequest)
+            },
+            WalletGrpcMethod::GetBurnClaimProof => call_err!(get_burn_claim_proof, GetBurnClaimProofRequest),
+            WalletGrpcMethod::RescanWallet => call_err!(rescan_wallet, RescanWalletRequest),
+            WalletGrpcMethod::ScanAndImportUtxos => call_err!(scan_and_import_utxos, ScanAndImportUtxosRequest),
+            WalletGrpcMethod::DebugTransaction => call_err!(debug_transaction, DebugTransactionRequest),
+            WalletGrpcMethod::ValidateTransaction => call_err!(validate_transaction, ValidateTransactionRequest),
+            WalletGrpcMethod::ValidateOutputs => call_err!(validate_outputs, ValidateOutputsRequest),
+            _ => return None,
+        };
+        Some(status)
+    }
+
+    #[tokio::test]
+    async fn every_wallet_grpc_method_returns_permission_denied_when_absent_from_allow_list() {
+        use super::WalletGrpcMethod;
+
+        let (server, _shutdown, _temp_dir) = create_test_wallet_grpc_server(Vec::new()).await;
+
+        for method in &WalletGrpcMethod::ALL_VARIANTS {
+            let status = match invoke_disabled_wallet_rpc_part_1(&server, *method).await {
+                Some(status) => status,
+                None => invoke_disabled_wallet_rpc_part_2(&server, *method)
+                    .await
+                    .unwrap_or_else(|| panic!("unhandled WalletGrpcMethod::{method}")),
+            };
+            assert_eq!(status.code(), tonic::Code::PermissionDenied, "method {method}");
+            assert_eq!(
+                status.message(),
+                format!("`{method}` method not made available"),
+                "method {method}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn allowing_only_get_balance_denies_transfer() {
+        use minotari_app_grpc::tari_rpc::{self, wallet_server::Wallet as _};
+        use tonic::Request;
+
+        use super::WalletGrpcMethod;
+
+        let (server, _shutdown, _temp_dir) = create_test_wallet_grpc_server(vec![WalletGrpcMethod::GetBalance]).await;
+
+        assert!(server.check_method_enabled(WalletGrpcMethod::GetBalance).is_ok());
+
+        let status = server
+            .transfer(Request::new(tari_rpc::TransferRequest::default()))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::PermissionDenied);
+        assert_eq!(status.message(), "`Transfer` method not made available");
+    }
+
+    #[tokio::test]
+    async fn allowing_only_get_state_succeeds_while_denying_get_network_status() {
+        use minotari_app_grpc::tari_rpc::{self, wallet_server::Wallet as _};
+        use tonic::Request;
+
+        use super::WalletGrpcMethod;
+
+        let (server, _shutdown, _temp_dir) = create_test_wallet_grpc_server(vec![WalletGrpcMethod::GetState]).await;
+
+        let state_resp = server
+            .get_state(Request::new(tari_rpc::GetStateRequest::default()))
+            .await
+            .expect("GetState should succeed without requiring GetNetworkStatus in allow-list")
+            .into_inner();
+        assert!(state_resp.network.is_some());
+
+        let status = server
+            .get_network_status(Request::new(tari_rpc::Empty::default()))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::PermissionDenied);
+        assert_eq!(status.message(), "`GetNetworkStatus` method not made available");
+    }
+
+    #[test]
+    fn absent_grpc_server_allow_methods_defaults_to_all_methods_enabled() {
+        use minotari_wallet::{WalletConfig, WalletGrpcMethod};
+
+        let mut default_json = serde_json::to_value(WalletConfig::default()).unwrap();
+        default_json
+            .as_object_mut()
+            .unwrap()
+            .remove("grpc_server_allow_methods");
+        let parsed: WalletConfig = serde_json::from_value(default_json).unwrap();
+        assert_eq!(
+            parsed.grpc_server_allow_methods.len(),
+            WalletGrpcMethod::ALL_VARIANTS.len()
+        );
+        for method in &WalletGrpcMethod::ALL_VARIANTS {
+            assert!(parsed.grpc_server_allow_methods.contains(method));
+        }
     }
 }

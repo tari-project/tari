@@ -30,9 +30,11 @@ extern crate diesel;
 extern crate diesel_migrations;
 
 mod config;
+pub mod grpc_method;
 pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
+pub use grpc_method::WalletGrpcMethod;
 use tari_transaction_key_manager::{
     legacy_key_manager::LegacyTransactionKeyManagerWrapper,
     storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
