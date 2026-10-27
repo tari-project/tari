@@ -25,7 +25,7 @@
 
 use std::{collections::BTreeSet, ops::Deref};
 
-use lmdb_zero::{ConstTransaction, WriteTransaction};
+use lmdb_zero::{ConstTransaction, WriteTransaction, traits::LmdbResultExt};
 use log::*;
 use serde::de::DeserializeOwned;
 use tari_common_types::{
@@ -380,6 +380,75 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
 
     /// Checks if the given validator node (by its public key and side chain ID)
     /// exists until a given `end_epoch`.
+    /// Searches the exit queue for `sidechain_pk` and `public_key` for an entry that activated in
+    /// `activation_epoch`. If `min_exit_epoch` is `Some(end_epoch)`, only exits occurring strictly
+    /// after `end_epoch` (i.e. entries still active at `end_epoch`) are considered.
+    fn find_exited_entry_for_activation<B: ByteArray>(
+        &self,
+        sidechain_pk: Option<&B>,
+        public_key: &CompressedPublicKey,
+        activation_epoch: VnEpoch,
+        min_exit_epoch: Option<VnEpoch>,
+    ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
+        let mut cursor = self.exit_queue_read_cursor()?;
+        let start_exit_epoch = match min_exit_epoch {
+            Some(end_epoch) => end_epoch.saturating_add(VnEpoch(1)),
+            None => VnEpoch::zero(),
+        };
+        let prefix = create_exit_queue_prefix_key(sidechain_pk, start_exit_epoch);
+        if !cursor.seek_range(&prefix)? {
+            return Ok(None);
+        }
+
+        let sidechain_bytes = sidechain_pk.map(|s| s.as_bytes()).unwrap_or(&[0u8; PK_SIZE]);
+        while let Some(key) = cursor.next_key()? {
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let key_sid = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::find_exited_entry_for_activation",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+
+            if key_sid != sidechain_bytes {
+                break;
+            }
+
+            let key_epoch = sections
+                .next_be_u64()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::find_exited_entry_for_activation",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+
+            let key_pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::find_exited_entry_for_activation",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+
+            if public_key.as_bytes() != key_pk {
+                continue;
+            }
+
+            if let Some(end_epoch) = min_exit_epoch &&
+                key_epoch <= end_epoch.as_u64()
+            {
+                continue;
+            }
+
+            let (_, v) = cursor
+                .current()?
+                .expect("Cursor is not at a valid position in find_exited_entry_for_activation");
+            if v.activation_epoch == activation_epoch {
+                return Ok(Some(v));
+            }
+        }
+
+        Ok(None)
+    }
+
     pub fn is_vn_active(
         &self,
         sidechain_id: Option<&CompressedPublicKey>,
@@ -387,65 +456,66 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         end_epoch: VnEpoch,
     ) -> Result<bool, ChainStorageError> {
         let key = create_vn_key(sidechain_id, public_key);
-        match lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? {
-            Some(vn) => {
-                debug!(target: LOG_TARGET, "Found validator node in store: {} (activated: {}, end: {})", public_key, vn.activation_epoch, end_epoch);
-                Ok(vn.activation_epoch <= end_epoch)
-            },
-            None => {
-                debug!(target: LOG_TARGET, "Validator node not found in store: {public_key}, checking exit queue");
-                let key = create_exit_queue_prefix_key(sidechain_id, end_epoch);
-                let mut cursor = self.exit_queue_read_cursor()?;
-                cursor.seek_range(&key)?;
-                let sidechain_bytes = sid_as_slice(sidechain_id);
-                // TODO: This is O(n) where n is the number of validators in the exit queue for the sid at or after
-                // end_epoch.
-                while let Some(key) = cursor.next_key()? {
-                    let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
-                    let sidechain_pk = sections
-                        .next()
-                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                            function: "ValidatorNodeStore::is_vn_active",
-                            details: "Malformed exit queue key".to_string(),
-                        })?;
-                    if sidechain_pk != sidechain_bytes {
-                        break;
-                    }
-
-                    let key_epoch =
-                        sections
-                            .next_be_u64()
-                            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                                function: "ValidatorNodeStore::is_vn_active",
-                                details: "Malformed exit queue key".to_string(),
-                            })?;
-
-                    let pk = sections
-                        .next()
-                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                            function: "ValidatorNodeStore::is_vn_active",
-                            details: "Malformed exit queue key".to_string(),
-                        })?;
-                    if pk != public_key.as_bytes() {
-                        continue;
-                    }
-                    if key_epoch <= end_epoch.as_u64() {
-                        debug!(target: LOG_TARGET, "Found validator node in exit queue (exit applied): {public_key} (exit: {key_epoch}, end: {end_epoch})");
-                        return Ok(false);
-                    }
-
-                    let (_, v) = cursor
-                        .current()?
-                        .expect("Cursor is not at a valid position in is_vn_active");
-
-                    debug!(target: LOG_TARGET, "Found validator node in exit queue: {public_key} (exit: {key_epoch}, end: {end_epoch})");
-                    return Ok(v.activation_epoch <= end_epoch);
-                }
-
-                debug!(target: LOG_TARGET, "Validator node not found in exit queue: {public_key}");
-                Ok(false)
-            },
+        if let Some(vn) = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? {
+            debug!(target: LOG_TARGET, "Found validator node in store: {} (activated: {}, end: {})", public_key, vn.activation_epoch, end_epoch);
+            if vn.activation_epoch <= end_epoch {
+                return Ok(true);
+            }
         }
+
+        debug!(target: LOG_TARGET, "Checking exit queue for active validator node: {public_key} at epoch {end_epoch}");
+        let key = create_exit_queue_prefix_key(sidechain_id, end_epoch.saturating_add(VnEpoch(1)));
+        let mut cursor = self.exit_queue_read_cursor()?;
+        if !cursor.seek_range(&key)? {
+            return Ok(false);
+        }
+        let sidechain_bytes = sid_as_slice(sidechain_id);
+        // TODO: This is O(n) where n is the number of validators in the exit queue for the sid at or after
+        // end_epoch.
+        while let Some(key) = cursor.next_key()? {
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let sidechain_pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::is_vn_active",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if sidechain_pk != sidechain_bytes {
+                break;
+            }
+
+            let key_epoch = sections
+                .next_be_u64()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::is_vn_active",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+
+            let pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::is_vn_active",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if pk != public_key.as_bytes() {
+                continue;
+            }
+            if key_epoch <= end_epoch.as_u64() {
+                continue;
+            }
+
+            let (_, v) = cursor
+                .current()?
+                .expect("Cursor is not at a valid position in is_vn_active");
+
+            debug!(target: LOG_TARGET, "Found validator node in exit queue: {public_key} (exit: {key_epoch}, end: {end_epoch})");
+            if v.activation_epoch <= end_epoch {
+                return Ok(true);
+            }
+        }
+
+        debug!(target: LOG_TARGET, "Validator node not found in exit queue: {public_key}");
+        Ok(false)
     }
 
     /// Returns true if the exit queue holds an exit for validator node `public_key` (in `sidechain_id`), created by the
@@ -620,59 +690,12 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     continue;
                 }
                 // Not registered under this activation key (it exited, and possibly registered again since).
-                // Validator is queued for exit. Now we need to determine if the exit is before the end_epoch
-                // i.e an active validator at end_epoch
-                let mut cursor = self.exit_queue_read_cursor()?;
-                let prefix = create_exit_queue_prefix_key(Some(&sid), end_epoch);
-                if !cursor.seek_range(&prefix)? {
-                    continue;
-                }
-
-                while let Some(key) = cursor.next_key()? {
-                    let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
-                    let key_sid = sections
-                        .next()
-                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                            function: "ValidatorNodeStore::get_entire_vn_set",
-                            details: "Malformed exit queue key".to_string(),
-                        })?;
-
-                    if key_sid != sid {
-                        // No further entries for this sidechain
-                        break;
-                    }
-
-                    let key_epoch =
-                        sections
-                            .next_be_u64()
-                            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                                function: "ValidatorNodeStore::get_entire_vn_set",
-                                details: "Malformed exit queue key".to_string(),
-                            })?;
-
-                    let key_pk = sections
-                        .next()
-                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                            function: "ValidatorNodeStore::get_entire_vn_set",
-                            details: "Malformed exit queue key".to_string(),
-                        })?;
-
-                    if pk.as_bytes() != key_pk {
-                        continue;
-                    }
-
-                    if key_epoch > end_epoch.as_u64() {
-                        // We've found the exit record for the validator. It is active because the exit happens
-                        // after end_epoch PANIC: the current key exists because
-                        // we are iterating over the keys in the exit queue
-                        let (_, v) = cursor
-                            .current()?
-                            .expect("Cursor is not at a valid position in get_entire_vn_set");
-                        if v.activation_epoch == key_activation_epoch {
-                            nodes.insert(v);
-                        }
-                    }
-                    break;
+                // Validator is queued for exit. Now we need to determine if the exit is after the end_epoch
+                // i.e. an active validator at end_epoch.
+                if let Some(v) =
+                    self.find_exited_entry_for_activation(Some(&sid), &pk, key_activation_epoch, Some(end_epoch))?
+                {
+                    nodes.insert(v);
                 }
             }
         }
@@ -694,56 +717,78 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             )));
         }
 
-        let mut cursor = self.activation_queue_read_cursor()?;
+        let mut nodes = BTreeSet::new();
+        let mut exited_candidates = Vec::new();
+        {
+            let mut cursor = self.activation_queue_read_cursor()?;
+            let start_key = create_activation_key(sidechain_pk, start_epoch);
+            if !cursor.seek_range(&start_key)? {
+                return Ok(BTreeSet::new());
+            }
 
-        let start_key = create_activation_key(sidechain_pk, start_epoch);
-        if !cursor.seek_range(&start_key)? {
-            return Ok(BTreeSet::new());
+            let sidechain_bytes = sid_as_slice(sidechain_pk);
+            while let Some((key, pk)) = cursor.next()? {
+                if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
+                    "Key bytes for output hash are too short".to_string(),
+                ))? != sidechain_bytes
+                {
+                    // No further entries for this sidechain
+                    break;
+                }
+
+                let activation_epoch = VnEpoch(key.to_be_u64(PK_SIZE)?);
+                if activation_epoch < start_epoch {
+                    continue;
+                }
+                if activation_epoch > end_epoch {
+                    break;
+                }
+                let key = create_vn_key(sidechain_pk, &pk);
+                // Need to re-use the accessor from the cursor to avoid double access to the transaction
+                let maybe_bytes = cursor
+                    .access()
+                    .get::<_, [u8]>(&self.db_validator_nodes, &key)
+                    .to_opt()
+                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                if let Some(bytes) = maybe_bytes {
+                    let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
+                    // Only count an entry under its own activation epoch (see `get_entire_vn_set`)
+                    if vn.activation_epoch == activation_epoch {
+                        nodes.insert(vn);
+                    } else {
+                        exited_candidates.push((activation_epoch, pk));
+                    }
+                } else {
+                    exited_candidates.push((activation_epoch, pk));
+                }
+
+                // Get remaining nodes from DUPSORT db within the same activation epoch
+                while let Some((_, pk)) = cursor.next_dup()? {
+                    let key = create_vn_key(sidechain_pk, &pk);
+                    let maybe_bytes = cursor
+                        .access()
+                        .get::<_, [u8]>(&self.db_validator_nodes, &key)
+                        .to_opt()
+                        .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
+                    if let Some(bytes) = maybe_bytes {
+                        let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
+                        if vn.activation_epoch == activation_epoch {
+                            nodes.insert(vn);
+                        } else {
+                            exited_candidates.push((activation_epoch, pk));
+                        }
+                    } else {
+                        exited_candidates.push((activation_epoch, pk));
+                    }
+                }
+            }
         }
 
-        let mut nodes = BTreeSet::new();
-        let sidechain_bytes = sid_as_slice(sidechain_pk);
-        while let Some((key, pk)) = cursor.next()? {
-            if key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
-                "Key bytes for output hash are too short".to_string(),
-            ))? != sidechain_bytes
+        for (activation_epoch, pk) in exited_candidates {
+            if let Some(v) =
+                self.find_exited_entry_for_activation(sidechain_pk, &pk, activation_epoch, Some(end_epoch))?
             {
-                // No further entries for this sidechain
-                break;
-            }
-
-            let activation_epoch = key.to_be_u64(PK_SIZE)?;
-            let activation_epoch = VnEpoch(activation_epoch);
-            if activation_epoch < start_epoch {
-                continue;
-            }
-            if activation_epoch > end_epoch {
-                break;
-            }
-            let key = create_vn_key(sidechain_pk, &pk);
-            // Need to re-use the accessor from the cursor to double access to the transaction
-            let bytes = cursor
-                .access()
-                .get(&self.db_validator_nodes, &key)
-                .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-            let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
-
-            // Only count an entry under its own activation epoch (see `get_entire_vn_set`)
-            if vn.activation_epoch == activation_epoch {
-                nodes.insert(vn);
-            }
-
-            // Get remaining nodes from DUPSORT db within the same activation epoch
-            while let Some((_, pk)) = cursor.next_dup()? {
-                let key = create_vn_key(sidechain_pk, &pk);
-                let bytes = cursor
-                    .access()
-                    .get(&self.db_validator_nodes, &key)
-                    .map_err(|e| ChainStorageError::AccessError(e.to_string()))?;
-                let vn = helpers::deserialize::<ValidatorNodeEntry>(bytes)?;
-                if vn.activation_epoch == activation_epoch {
-                    nodes.insert(vn);
-                }
+                nodes.insert(v);
             }
         }
 
@@ -755,7 +800,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         sidechain_pk: Option<&CompressedPublicKey>,
         epoch: VnEpoch,
     ) -> Result<BTreeSet<ValidatorNodeEntry>, ChainStorageError> {
-        let keys = {
+        let pks = {
             let mut cursor = self.activation_queue_read_cursor()?;
             let key = create_activation_key(sidechain_pk, epoch);
             if !cursor.seek_range(&key)? {
@@ -763,7 +808,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             }
 
             let num_keys = cursor.count_dups()?;
-            let mut keys = Vec::with_capacity(num_keys);
+            let mut pks = Vec::with_capacity(num_keys);
             let sidechain_bytes = sid_as_slice(sidechain_pk);
             while let Some((key, pk)) = cursor.next_dup()? {
                 if *key.get(..PK_SIZE).ok_or(ChainStorageError::InvalidOperation(
@@ -777,28 +822,37 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                     break;
                 }
 
-                keys.push(create_vn_key(sidechain_pk, &pk));
+                pks.push(pk);
             }
-            keys
+            pks
         };
 
-        debug!(target: LOG_TARGET, "Found {} activating validators in epoch {}", keys.len(), epoch);
+        debug!(target: LOG_TARGET, "Found {} activating validators in epoch {}", pks.len(), epoch);
 
         let mut validators = BTreeSet::new();
-        for key in keys {
-            let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)?.ok_or_else(|| {
-                ChainStorageError::DataInconsistencyDetected {
-                    function: "ValidatorNodeStore::get_activating_in_epoch",
-                    details: format!(
-                        "Validator node in db_validator_activation_queue but not found in store for public key {key}"
-                    ),
-                }
-            })?;
-
+        for pk in pks {
+            let key = create_vn_key(sidechain_pk, &pk);
+            let maybe_vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)?;
             // Only count an entry under its own activation epoch (see `get_entire_vn_set`)
-            if vn.activation_epoch == epoch {
+            if let Some(vn) = maybe_vn &&
+                vn.activation_epoch == epoch
+            {
                 validators.insert(vn);
+                continue;
             }
+
+            if let Some(vn) = self.find_exited_entry_for_activation(sidechain_pk, &pk, epoch, None)? {
+                validators.insert(vn);
+                continue;
+            }
+
+            return Err(ChainStorageError::DataInconsistencyDetected {
+                function: "ValidatorNodeStore::get_activating_in_epoch",
+                details: format!(
+                    "Validator node in db_validator_activation_queue for epoch {epoch} but not found in store or exit \
+                     queue for public key {key}"
+                ),
+            });
         }
 
         Ok(validators)
@@ -1535,12 +1589,34 @@ mod tests {
                     minimum_value_promise: Default::default(),
                 })
                 .unwrap();
-            // TODO: re-register with the same public key is not supported properly
-            // let set = store.get_entire_vn_set(VnEpoch(110)).unwrap();
-            // assert_eq!(set.len(), 4);
+            let set = store.get_entire_vn_set(VnEpoch(110)).unwrap();
+            assert_eq!(set.len(), 4);
 
-            // let set = store.get_entire_vn_set(VnEpoch(210)).unwrap();
-            // assert_eq!(set.len(), 6);
+            let set = store.get_entire_vn_set(VnEpoch(210)).unwrap();
+            assert_eq!(set.len(), 6);
+
+            // Historical activating queries for epoch 10 still resolve the exited registrations without error
+            let activating_10 = store.get_activating_in_epoch(None, VnEpoch(10)).unwrap();
+            assert_eq!(activating_10.len(), 4);
+            let activating_210 = store.get_activating_in_epoch(None, VnEpoch(210)).unwrap();
+            assert_eq!(activating_210.len(), 2);
+
+            // Exit the re-registered nodes again (reg -> exit -> reg -> exit)
+            store.exit(None, &nodes2[0].public_key, VnEpoch(310)).unwrap();
+            store.exit(None, &nodes2[1].public_key, VnEpoch(310)).unwrap();
+
+            assert_eq!(store.get_entire_vn_set(VnEpoch(100)).unwrap().len(), 6);
+            assert_eq!(store.get_entire_vn_set(VnEpoch(110)).unwrap().len(), 4);
+            assert_eq!(store.get_entire_vn_set(VnEpoch(250)).unwrap().len(), 6);
+            assert_eq!(store.get_entire_vn_set(VnEpoch(310)).unwrap().len(), 4);
+
+            assert_eq!(store.get_vn_set(None, VnEpoch(0), VnEpoch(100)).unwrap().len(), 5);
+            assert_eq!(store.get_vn_set(None, VnEpoch(0), VnEpoch(110)).unwrap().len(), 3);
+            assert_eq!(store.get_vn_set(None, VnEpoch(0), VnEpoch(250)).unwrap().len(), 5);
+            assert_eq!(store.get_vn_set(None, VnEpoch(0), VnEpoch(310)).unwrap().len(), 3);
+
+            assert_eq!(store.get_activating_in_epoch(None, VnEpoch(10)).unwrap().len(), 4);
+            assert_eq!(store.get_activating_in_epoch(None, VnEpoch(210)).unwrap().len(), 2);
         }
     }
 }
