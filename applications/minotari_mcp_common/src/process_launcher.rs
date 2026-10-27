@@ -61,11 +61,7 @@ pub struct LaunchConfig {
 
 impl fmt::Debug for LaunchConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let redacted_env: HashMap<&str, &str> = self
-            .env_vars
-            .keys()
-            .map(|k| (k.as_str(), "[REDACTED]"))
-            .collect();
+        let redacted_env: HashMap<&str, &str> = self.env_vars.keys().map(|k| (k.as_str(), "[REDACTED]")).collect();
         f.debug_struct("LaunchConfig")
             .field("executable_path", &self.executable_path)
             .field("args", &self.args)

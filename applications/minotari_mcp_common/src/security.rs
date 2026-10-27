@@ -56,7 +56,6 @@ pub struct SecurityContext {
 
 #[derive(Debug, Clone)]
 struct Session {
-    id: Uuid,
     #[allow(dead_code)]
     created_at: DateTime<Utc>,
     last_activity: DateTime<Utc>,
@@ -147,14 +146,8 @@ impl SecurityContext {
         let session_id = self.create_or_update_session();
 
         // Log successful permission check
-        self.audit_logger.log_operation(
-            session_id,
-            operation,
-            permission_level,
-            true,
-            None,
-            request_data,
-        );
+        self.audit_logger
+            .log_operation(session_id, operation, permission_level, true, None, request_data);
 
         Ok(session_id)
     }
@@ -168,15 +161,11 @@ impl SecurityContext {
             session.last_activity = now;
             session.request_count = session.request_count.saturating_add(1);
         } else {
-            self.sessions.insert(
-                key,
-                Session {
-                    id: session_id,
-                    created_at: now,
-                    last_activity: now,
-                    request_count: 1,
-                },
-            );
+            self.sessions.insert(key, Session {
+                created_at: now,
+                last_activity: now,
+                request_count: 1,
+            });
         }
         session_id
     }

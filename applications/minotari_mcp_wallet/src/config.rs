@@ -132,12 +132,37 @@ fn resolve_grpc_authentication_from_file(config_path: &Path, cli: &Cli) -> McpRe
         return Ok(GrpcAuthentication::None);
     }
 
-    let cfg = tari_common::load_configuration(config_path, false, true, cli, cli.common.network).map_err(|e| {
+    let mut cfg = tari_common::load_configuration(config_path, false, true, cli, cli.common.network).map_err(|e| {
         McpError::config_error(format!(
             "Failed to load configuration from {}: {e}",
             config_path.display()
         ))
     })?;
+
+    if cfg.get_string("wallet.override_from").is_err() &&
+        let Some(network) = cli
+            .common
+            .network
+            .map(|n| n.to_string())
+            .or_else(|| cfg.get_string("network").ok())
+    {
+        cfg = config::Config::builder()
+            .add_source(cfg)
+            .set_override("wallet.override_from", network)
+            .map_err(|e| {
+                McpError::config_error(format!(
+                    "Failed to apply default wallet.override_from for {}: {e}",
+                    config_path.display()
+                ))
+            })?
+            .build()
+            .map_err(|e| {
+                McpError::config_error(format!(
+                    "Failed to build configuration from {}: {e}",
+                    config_path.display()
+                ))
+            })?;
+    }
 
     let wallet_section = WalletAuthSection::load_from(&cfg).map_err(|e| {
         McpError::config_error(format!(
@@ -321,6 +346,16 @@ password = "scoped_password"
         let (user, pass) = scoped_auth.username_password().expect("expected Basic auth");
         assert_eq!(user, "scoped_user");
         assert_eq!(pass.reveal(), b"scoped_password");
+
+        // Passing --network esmeralda does not clobber wallet.override_from = "mainnet" set in config.toml
+        let cli_with_network =
+            Cli::try_parse_from(["minotari_mcp_wallet", "--network", "esmeralda"]).expect("CLI with --network");
+        let scoped_auth_with_network = resolve_grpc_authentication_from_file(&scoped_path, &cli_with_network)
+            .expect("config.toml override_from should take precedence over default network fallback");
+        let (user_net, _) = scoped_auth_with_network
+            .username_password()
+            .expect("expected Basic auth");
+        assert_eq!(user_net, "scoped_user");
 
         // 2. Absent authentication setting falls back to GrpcAuthentication::None
         let absent_path = temp_dir.join("absent.toml");

@@ -48,6 +48,10 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_MCP_CONTROL_ENABLED")]
     pub mcp_control_enabled: bool,
 
+    /// Deprecated no-op kept for backwards compatibility with existing MCP client configurations.
+    #[clap(long, hide = true, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
+    pub require_confirmation: bool,
+
     /// Request timeout in seconds
     #[clap(long, env = "MINOTARI_WALLET_MCP_TIMEOUT", default_value = "60")]
     pub mcp_timeout: u64,
@@ -117,13 +121,6 @@ impl ConfigOverrideProvider for Cli {
         overrides.push(("mcp.rate_limit_per_minute".to_string(), self.mcp_rate_limit.to_string()));
 
         // Wallet gRPC settings
-        if let Some(ref net) = self.common.network &&
-            !overrides
-                .iter()
-                .any(|(k, _)| k.eq_ignore_ascii_case("wallet.override_from"))
-        {
-            overrides.push(("wallet.override_from".to_string(), net.to_string()));
-        }
         overrides.push(("wallet.grpc_address".to_string(), self.wallet_grpc_address.clone()));
 
         // Wallet auto-launch settings (if enabled)
@@ -165,6 +162,10 @@ impl Cli {
 
         if self.mcp_rate_limit == 0 {
             return Err("MCP rate limit must be greater than 0".into());
+        }
+
+        if self.require_confirmation {
+            log::warn!("--require-confirmation is deprecated, has no effect, and will be removed in a future release");
         }
 
         if self.mcp_control_enabled {
@@ -310,7 +311,10 @@ mod tests {
 
         // Password is provided via child environment variable
         assert_eq!(
-            launch_config.environment_vars.get("MINOTARI_WALLET_PASSWORD").map(String::as_str),
+            launch_config
+                .environment_vars
+                .get("MINOTARI_WALLET_PASSWORD")
+                .map(String::as_str),
             Some("top-secret-wallet-pass")
         );
 
@@ -319,5 +323,13 @@ mod tests {
         let launch_debug = format!("{launch_config:?}");
         assert!(!cli_debug.contains("top-secret-wallet-pass"));
         assert!(!launch_debug.contains("top-secret-wallet-pass"));
+    }
+
+    #[test]
+    fn test_deprecated_require_confirmation_flag_is_accepted_as_noop() {
+        let cli = Cli::try_parse_from(["minotari_mcp_wallet", "--require-confirmation"])
+            .expect("legacy --require-confirmation flag must still parse");
+        assert!(cli.require_confirmation);
+        assert!(cli.validate().is_ok());
     }
 }
