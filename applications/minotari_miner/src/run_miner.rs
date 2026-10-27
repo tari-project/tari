@@ -140,15 +140,35 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             })?;
         mc.set_client_tx(cc.tx.clone());
 
-        let _join_handle = thread::Builder::new()
+        let client_handle = thread::Builder::new()
             .name("client_controller".to_string())
             .spawn(move || {
                 cc.run();
-            });
+            })
+            .map_err(|e| {
+                ExitError::new(
+                    ExitCode::UnknownError,
+                    format!("Could not start stratum client controller: {e}"),
+                )
+            })?;
 
-        mc.run()
-            .await
-            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {err:?}")))?;
+        tokio::select! {
+            result = mc.run() => {
+                result.map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {err:?}")))?;
+            },
+            joined = tokio::task::spawn_blocking(move || client_handle.join()) => {
+                let reason = match joined {
+                    Ok(Ok(())) => "exited".to_string(),
+                    Ok(Err(payload)) => panic_message(payload.as_ref()),
+                    Err(e) => e.to_string(),
+                };
+                error!(target: LOG_TARGET, "Stratum client controller stopped unexpectedly: {reason}");
+                return Err(ExitError::new(
+                    ExitCode::UnknownError,
+                    format!("Stratum client controller stopped unexpectedly: {reason}"),
+                ));
+            },
+        }
 
         Ok(())
     } else {
@@ -240,6 +260,16 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 pub struct NodeClientResult {
     base_node_client: BaseNodeGrpcClient,
     p2pool_node_client: Option<ShaP2PoolGrpcClient>,
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panicked".to_string()
+    }
 }
 
 async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {

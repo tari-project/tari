@@ -357,9 +357,7 @@ impl Controller {
                             debug!(target: LOG_TARGET_FILE, "Received message: {m}");
                             // Deserialize to see what type of object it is
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
-                                // Is this a response or request?
-                                if v.get("method").expect("Already checked") == "job" {
-                                    // this is a request
+                                if classify_message(&v) == MessageKind::Request {
                                     match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
                                         Err(e) => error!(target: LOG_TARGET, "Error parsing request {m} : {e:?}"),
                                         Ok(request) => {
@@ -420,7 +418,55 @@ impl Controller {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum MessageKind {
+    Request,
+    Response,
+}
+
+/// A message with a string `method` is a request; anything else is a response to one of ours.
+fn classify_message(v: &serde_json::Value) -> MessageKind {
+    match v.get("method").and_then(serde_json::Value::as_str) {
+        Some(_) => MessageKind::Request,
+        None => MessageKind::Response,
+    }
+}
+
 /// Returns the instant `interval` from now, clamped to now if the clock would overflow.
 fn deadline_after(interval: Duration) -> Instant {
     Instant::now().checked_add(interval).unwrap_or_else(Instant::now)
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn login_response_is_a_response() {
+        let v = json!({"id": "1", "jsonrpc": "2.0", "result": {"id": "w", "job": null}, "error": null});
+        assert_eq!(classify_message(&v), MessageKind::Response);
+    }
+
+    #[test]
+    fn submit_response_is_a_response() {
+        let v = json!({"id": "2", "jsonrpc": "2.0", "result": {"status": "OK"}, "error": null});
+        assert_eq!(classify_message(&v), MessageKind::Response);
+    }
+
+    #[test]
+    fn missing_or_non_string_method_is_a_response() {
+        assert_eq!(classify_message(&json!({})), MessageKind::Response);
+        assert_eq!(classify_message(&json!({"method": null})), MessageKind::Response);
+        assert_eq!(classify_message(&json!({"method": 123})), MessageKind::Response);
+    }
+
+    #[test]
+    fn string_method_is_a_request() {
+        let job = json!({"id": "3", "jsonrpc": "2.0", "method": "job", "params": {}});
+        assert_eq!(classify_message(&job), MessageKind::Request);
+        let unknown = json!({"id": "4", "jsonrpc": "2.0", "method": "something_else", "params": {}});
+        assert_eq!(classify_message(&unknown), MessageKind::Request);
+    }
 }
