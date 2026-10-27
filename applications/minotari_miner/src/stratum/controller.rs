@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
-    io::{BufRead, ErrorKind, Write},
+    io::{ErrorKind, Read, Write},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -33,12 +33,16 @@ use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
 
+/// Longest line accepted from the pool; leaves room for a 4 MiB job blob after base64 and JSON overhead.
+const MAX_LINE_LEN: usize = 8 * 1024 * 1024;
+
 pub struct Controller {
     server_url: String,
     server_login: Option<String>,
     server_password: Option<String>,
     server_tls_enabled: Option<bool>,
     stream: Option<Stream>,
+    read_buf: Vec<u8>,
     rx: mpsc::Receiver<types::client_message::ClientMessage>,
     pub tx: mpsc::Sender<types::client_message::ClientMessage>,
     miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
@@ -67,6 +71,7 @@ impl Controller {
             server_password,
             server_tls_enabled,
             stream: None,
+            read_buf: Vec::new(),
             tx,
             rx,
             miner_tx,
@@ -76,6 +81,7 @@ impl Controller {
 
     pub fn try_connect(&mut self) -> Result<(), Error> {
         self.stream = None;
+        self.read_buf.clear();
         let stream = Stream::try_connect(&self.server_url, self.server_tls_enabled)?;
         self.stream = Some(stream);
         Ok(())
@@ -85,22 +91,34 @@ impl Controller {
         self.stream.as_mut().ok_or(Error::NotConnected)
     }
 
+    /// Returns the next complete line from the pool, or `None` if no full line has arrived yet. Partial lines are
+    /// kept in `read_buf` for the next call.
     fn read_message(&mut self) -> Result<Option<String>, Error> {
-        let mut line = String::new();
-        match self.stream()?.read_line(&mut line) {
-            Ok(_) => {
+        let mut chunk = [0u8; 8192];
+        loop {
+            if let Some(line) = take_line(&mut self.read_buf)? {
+                return match String::from_utf8(line) {
+                    Ok(line) => Ok(Some(line)),
+                    Err(e) => {
+                        error!(target: LOG_TARGET, "Communication error with stratum server: {e}");
+                        Err(Error::Connection("invalid UTF-8 from server".to_string()))
+                    },
+                };
+            }
+            match self.stream()?.read(&mut chunk) {
                 // stream is not returning a proper error on disconnect
-                if line.is_empty() {
+                Ok(0) => return Err(Error::Connection("broken pipe".to_string())),
+                Ok(n) => self.read_buf.extend_from_slice(&chunk[..n]),
+                Err(ref e) if e.kind() == ErrorKind::Interrupted => {},
+                Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
                     return Err(Error::Connection("broken pipe".to_string()));
-                }
-                Ok(Some(line))
-            },
-            Err(ref e) if e.kind() == ErrorKind::BrokenPipe => Err(Error::Connection("broken pipe".to_string())),
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => Ok(None),
-            Err(e) => {
-                error!(target: LOG_TARGET, "Communication error with stratum server: {e}");
-                Err(Error::Connection("broken pipe".to_string()))
-            },
+                },
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => return Ok(None),
+                Err(e) => {
+                    error!(target: LOG_TARGET, "Communication error with stratum server: {e}");
+                    return Err(Error::Connection("broken pipe".to_string()));
+                },
+            }
         }
     }
 
@@ -433,6 +451,26 @@ fn classify_message(v: &serde_json::Value) -> MessageKind {
     }
 }
 
+/// Splits the first complete line (without its `\n`) off the front of `buf`. Errors once a line grows past
+/// `MAX_LINE_LEN`, whether or not its newline has arrived.
+fn take_line(buf: &mut Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
+    match buf.iter().position(|b| *b == b'\n') {
+        Some(pos) if pos <= MAX_LINE_LEN => {
+            let mut line: Vec<u8> = buf.drain(..=pos).collect();
+            line.pop();
+            Ok(Some(line))
+        },
+        None if buf.len() <= MAX_LINE_LEN => Ok(None),
+        _ => {
+            error!(
+                target: LOG_TARGET,
+                "Stratum server sent a line longer than {MAX_LINE_LEN} bytes, reconnecting"
+            );
+            Err(Error::Connection("line too long".to_string()))
+        },
+    }
+}
+
 /// Returns the instant `interval` from now, clamped to now if the clock would overflow.
 fn deadline_after(interval: Duration) -> Instant {
     Instant::now().checked_add(interval).unwrap_or_else(Instant::now)
@@ -443,6 +481,41 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn line_split_across_two_appends_is_joined() {
+        let mut buf = b"{\"id\":".to_vec();
+        assert!(take_line(&mut buf).unwrap().is_none());
+        buf.extend_from_slice(b"\"1\"}\n");
+        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"{\"id\":\"1\"}");
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn two_lines_in_one_append_are_returned_in_order() {
+        let mut buf = b"first\nsecond\n".to_vec();
+        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"first");
+        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"second");
+        assert!(take_line(&mut buf).unwrap().is_none());
+    }
+
+    #[test]
+    fn trailing_partial_line_is_kept() {
+        let mut buf = b"done\npart".to_vec();
+        assert_eq!(take_line(&mut buf).unwrap().unwrap(), b"done");
+        assert!(take_line(&mut buf).unwrap().is_none());
+        assert_eq!(buf, b"part");
+    }
+
+    #[test]
+    fn oversized_line_is_an_error() {
+        let mut buf = vec![b'a'; MAX_LINE_LEN];
+        assert!(take_line(&mut buf).unwrap().is_none());
+        buf.push(b'a');
+        assert!(matches!(take_line(&mut buf), Err(Error::Connection(_))));
+        buf.push(b'\n');
+        assert!(matches!(take_line(&mut buf), Err(Error::Connection(_))));
+    }
 
     #[test]
     fn login_response_is_a_response() {
