@@ -252,8 +252,14 @@ pub fn mining_task(
                     info!(target: LOG_TARGET, "Mining thread {miner} on {mining_algorithm} disconnected");
                     return;
                 },
+                // In share mode a full channel only means the last share has not been collected yet; in solo mode it
+                // loses a found block.
                 Err(err) => {
-                    trace!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                    if share_mode {
+                        trace!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                    } else {
+                        error!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                    }
                 },
             }
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
