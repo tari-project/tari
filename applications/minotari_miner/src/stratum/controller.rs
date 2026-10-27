@@ -239,12 +239,12 @@ impl Controller {
                 blob_bytes.len()
             )));
         }
-        let miner_message = types::miner_message::MinerMessage::ReceivedJob(
-            job.height,
-            job.job_id.parse::<u64>()?,
-            job.target.parse::<u64>()?,
-            blob_bytes,
-        );
+        let target = job.target.parse::<u64>()?;
+        if target == 0 {
+            return Err(Error::General("Job target difficulty is 0".to_string()));
+        }
+        let miner_message =
+            types::miner_message::MinerMessage::ReceivedJob(job.height, job.job_id.parse::<u64>()?, target, blob_bytes);
         self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
@@ -304,8 +304,7 @@ impl Controller {
                         "Got a new job for height {} with target difficulty {}", st.job.height, loggable(&st.job.target)
                     );
                     self.last_request_id = st.id;
-                    let _result = self.send_miner_job(st.job);
-                    return Ok(());
+                    return self.send_miner_job(st.job);
                 };
                 let job_response = types::job_params::JobParams::deserialize(&result);
                 if let Ok(st) = job_response {
@@ -313,8 +312,7 @@ impl Controller {
                         target: LOG_TARGET,
                         "Got a new job for height {} with target difficulty {}", st.height, loggable(&st.target)
                     );
-                    let _result = self.send_miner_job(st);
-                    return Ok(());
+                    return self.send_miner_job(st);
                 };
                 let submit_response = types::submit_response::SubmitResponse::deserialize(&result);
                 if let Ok(st) = submit_response {
@@ -587,6 +585,16 @@ mod tests {
             target: "2".to_string(),
             height: 3,
         }
+    }
+
+    #[test]
+    fn send_miner_job_rejects_a_zero_target() {
+        let (miner_tx, miner_rx) = mpsc::sync_channel(1);
+        let mut controller = Controller::new("127.0.0.1:1", None, None, None, miner_tx).unwrap();
+        let mut job = job_with_blob(10);
+        job.target = "0".to_string();
+        assert!(controller.send_miner_job(job).is_err());
+        assert!(miner_rx.try_recv().is_err());
     }
 
     #[test]

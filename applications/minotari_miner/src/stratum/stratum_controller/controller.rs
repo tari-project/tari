@@ -22,7 +22,7 @@
 use std::{
     convert::TryFrom,
     sync::mpsc,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use borsh::BorshDeserialize;
@@ -44,6 +44,8 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller
 
 /// Largest job blob accepted from the pool.
 pub(crate) const MAX_JOB_BLOB_LEN: usize = 4 * 1024 * 1024;
+/// How often found and dropped shares are summarised in the log.
+const SHARE_LOG_INTERVAL: Duration = Duration::from_secs(10);
 /// Messages the client thread can queue for the mining controller before it blocks.
 const MINER_CHANNEL_CAPACITY: usize = 16;
 
@@ -68,17 +70,15 @@ fn decode_job_blob(height: u64, job_id: u64, blob: Vec<u8>) -> Option<CurrentBlo
     }
 }
 
-/// Sends to the client thread without blocking. A full queue drops the message; a closed one is an error.
+/// Sends to the client thread without blocking. Returns `false` if the queue was full and the message was dropped;
+/// a closed queue is an error.
 fn try_send_to_client(
     client_tx: &mpsc::SyncSender<types::client_message::ClientMessage>,
     message: types::client_message::ClientMessage,
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
     match client_tx.try_send(message) {
-        Ok(()) => Ok(()),
-        Err(mpsc::TrySendError::Full(message)) => {
-            warn!(target: LOG_TARGET, "Stratum client busy, dropping {message:?}");
-            Ok(())
-        },
+        Ok(()) => Ok(true),
+        Err(mpsc::TrySendError::Full(_)) => Ok(false),
         Err(mpsc::TrySendError::Disconnected(message)) => Err(mpsc::SendError(message).into()),
     }
 }
@@ -94,6 +94,9 @@ pub struct Controller {
     current_header: Option<BlockHeader>,
     keep_alive_time: SystemTime,
     num_mining_threads: usize,
+    shares_found: u64,
+    shares_dropped: u64,
+    share_log_time: Instant,
 }
 
 impl Controller {
@@ -110,6 +113,9 @@ impl Controller {
             current_header: None,
             keep_alive_time: SystemTime::now(),
             num_mining_threads,
+            shares_found: 0,
+            shares_dropped: 0,
+            share_log_time: Instant::now(),
         })
     }
 
@@ -211,7 +217,7 @@ impl Controller {
                     let block_header: tari_node_components::blocks::BlockHeader =
                         tari_node_components::blocks::BlockHeader::try_from(header).map_err(Error::MissingData)?;
                     let hash = block_header.hash().to_hex();
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Miner found share with hash {}, nonce {} and difficulty {:?}",
                         hash,
@@ -229,7 +235,7 @@ impl Controller {
                         .client_tx
                         .as_ref()
                         .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?;
-                    try_send_to_client(
+                    let sent = try_send_to_client(
                         client_tx,
                         types::client_message::ClientMessage::FoundSolution(
                             self.current_job_id,
@@ -237,6 +243,11 @@ impl Controller {
                             block_header.nonce,
                         ),
                     )?;
+                    self.shares_found = self.shares_found.saturating_add(1);
+                    if !sent {
+                        self.shares_dropped = self.shares_dropped.saturating_add(1);
+                    }
+                    self.log_shares();
                     self.keep_alive_time = SystemTime::now();
                     tokio::task::yield_now().await;
                     continue;
@@ -247,8 +258,11 @@ impl Controller {
             if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
                 let client_tx = self.client_tx.as_ref().ok_or(Error::ClientTxNotSet)?;
-                try_send_to_client(client_tx, types::client_message::ClientMessage::KeepAlive)?;
+                if !try_send_to_client(client_tx, types::client_message::ClientMessage::KeepAlive)? {
+                    warn!(target: LOG_TARGET, "Stratum client busy, dropping keepalive");
+                }
             }
+            self.log_shares();
             // Await on every pass so other futures, such as the client controller thread supervisor, get to run.
             if miner.is_none() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -256,6 +270,25 @@ impl Controller {
                 tokio::task::yield_now().await;
             }
         }
+    }
+
+    /// Logs how many shares were found and dropped, at most once per `SHARE_LOG_INTERVAL`.
+    fn log_shares(&mut self) {
+        if self.share_log_time.elapsed() < SHARE_LOG_INTERVAL {
+            return;
+        }
+        if self.shares_found > 0 {
+            info!(
+                target: LOG_TARGET,
+                "Miner found {} shares in the last {}s, {} dropped because the stratum client was busy",
+                self.shares_found,
+                self.share_log_time.elapsed().as_secs(),
+                self.shares_dropped
+            );
+        }
+        self.shares_found = 0;
+        self.shares_dropped = 0;
+        self.share_log_time = Instant::now();
     }
 
     /// Clears the stored job so that the next job received starts mining, even if the pool re-sends the same one.
@@ -301,8 +334,8 @@ mod test {
     #[test]
     fn a_full_client_queue_drops_the_message_but_a_closed_one_is_an_error() {
         let (client_tx, client_rx) = mpsc::sync_channel(1);
-        try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap();
-        try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap();
+        assert!(try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap());
+        assert!(!try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap());
         assert!(client_rx.try_recv().is_ok());
         assert!(client_rx.try_recv().is_err());
 

@@ -253,7 +253,7 @@ pub fn mining_task(
                     return;
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                    trace!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
                 },
             }
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
