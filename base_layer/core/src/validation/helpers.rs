@@ -237,17 +237,12 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             return Ok(());
         }
 
-        // Diagnostic logging only; any of the (content-identical) entries for this hash is fine.
-        let output = db.fetch_outputs(&utxo_hash)?.into_iter().next();
-        warn!(
+        debug!(
             target: LOG_TARGET,
-            "Input spends a UTXO but does not produce the same hash as the output it spends: Expected hash: {}, \
-             provided hash:{}
-            input: {:?}. output in db: {:?}",
+            "Input spends a UTXO but does not produce the same hash as the output it spends: expected hash: {}, \
+             provided hash: {}",
             utxo_hash.to_hex(),
             output_hash.to_hex(),
-            input,
-            output
         );
 
         return Err(ValidationError::UnknownInput);
