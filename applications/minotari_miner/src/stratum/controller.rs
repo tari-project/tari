@@ -63,8 +63,7 @@ pub struct Controller {
     pub tx: mpsc::SyncSender<types::client_message::ClientMessage>,
     miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     last_request_id: String,
-    shares_accepted: u64,
-    shares_rejected: u64,
+    submits: SubmitCounts,
     share_log_time: Instant,
 }
 
@@ -96,8 +95,7 @@ impl Controller {
             rx,
             miner_tx,
             last_request_id: "".to_string(),
-            shares_accepted: 0,
-            shares_rejected: 0,
+            submits: SubmitCounts::default(),
             share_log_time: Instant::now(),
         })
     }
@@ -106,6 +104,8 @@ impl Controller {
         self.stream = None;
         self.read_buf.clear();
         self.read_scanned = 0;
+        // Answers to submits sent on the old connection will not arrive
+        self.submits.pending = 0;
         let stream = Stream::try_connect(&self.server_url, self.server_tls_enabled)?;
         self.stream = Some(stream);
         Ok(())
@@ -232,7 +232,9 @@ impl Controller {
             params: Some(serde_json::from_str(&params)?),
         };
         let req_str = serde_json::to_string(&req)?;
-        self.send_message(&req_str)
+        self.send_message(&req_str)?;
+        self.submits.submitted();
+        Ok(())
     }
 
     fn send_miner_job(&mut self, job: types::job_params::JobParams) -> Result<(), Error> {
@@ -323,11 +325,9 @@ impl Controller {
                 };
                 let submit_response = types::submit_response::SubmitResponse::deserialize(&result);
                 if let Ok(st) = submit_response {
+                    self.submits.answered(st.error.is_some());
                     if let Some(error) = st.error {
-                        self.shares_rejected = self.shares_rejected.saturating_add(1);
                         self.handle_error(error);
-                    } else {
-                        self.shares_accepted = self.shares_accepted.saturating_add(1);
                     }
                     return Ok(());
                 }
@@ -478,22 +478,49 @@ impl Controller {
             return;
         }
         let secs = self.share_log_time.elapsed().as_secs();
-        if self.shares_rejected > 0 {
+        if self.submits.rejected > 0 {
             warn!(
                 target: LOG_TARGET,
-                "Pool rejected {} and accepted {} shares in the last {secs}s", self.shares_rejected, self.shares_accepted
+                "Pool rejected {} and accepted {} shares in the last {secs}s", self.submits.rejected, self.submits.accepted
             );
         } else {
-            if self.shares_accepted > 0 {
+            if self.submits.accepted > 0 {
                 info!(
                     target: LOG_TARGET,
-                    "Pool accepted {} shares in the last {secs}s", self.shares_accepted
+                    "Pool accepted {} shares in the last {secs}s", self.submits.accepted
                 );
             }
         }
-        self.shares_accepted = 0;
-        self.shares_rejected = 0;
+        self.submits.accepted = 0;
+        self.submits.rejected = 0;
         self.share_log_time = Instant::now();
+    }
+}
+
+/// Share submits waiting for an answer, and the answers received since the last log summary.
+#[derive(Default)]
+struct SubmitCounts {
+    pending: u64,
+    accepted: u64,
+    rejected: u64,
+}
+
+impl SubmitCounts {
+    fn submitted(&mut self) {
+        self.pending = self.pending.saturating_add(1);
+    }
+
+    /// Counts the answer to a submit. With no submit pending it answers something else, such as a keepalive.
+    fn answered(&mut self, rejected: bool) {
+        if self.pending == 0 {
+            return;
+        }
+        self.pending = self.pending.saturating_sub(1);
+        if rejected {
+            self.rejected = self.rejected.saturating_add(1);
+        } else {
+            self.accepted = self.accepted.saturating_add(1);
+        }
     }
 }
 
@@ -614,6 +641,21 @@ mod tests {
             target: "2".to_string(),
             height: 3,
         }
+    }
+
+    #[test]
+    fn only_answers_to_pending_submits_are_counted() {
+        let mut counts = SubmitCounts::default();
+        counts.answered(false);
+        counts.answered(true);
+        assert_eq!((counts.accepted, counts.rejected), (0, 0));
+
+        counts.submitted();
+        counts.submitted();
+        counts.answered(false);
+        counts.answered(true);
+        counts.answered(false);
+        assert_eq!((counts.pending, counts.accepted, counts.rejected), (0, 1, 1));
     }
 
     #[test]
