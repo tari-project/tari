@@ -110,7 +110,7 @@ impl Controller {
             match self.stream()?.read(&mut chunk) {
                 // stream is not returning a proper error on disconnect
                 Ok(0) => return Err(Error::Connection("broken pipe".to_string())),
-                Ok(n) => self.read_buf.extend_from_slice(&chunk[..n]),
+                Ok(n) => self.read_buf.extend_from_slice(chunk.get(..n).unwrap_or(&[])),
                 Err(ref e) if e.kind() == ErrorKind::Interrupted => {},
                 Err(ref e) if e.kind() == ErrorKind::BrokenPipe => {
                     return Err(Error::Connection("broken pipe".to_string()));
@@ -379,7 +379,9 @@ impl Controller {
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
                                 if classify_message(&v) == MessageKind::Request {
                                     match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
-                                        Err(e) => error!(target: LOG_TARGET, "Error parsing request {} : {e:?}", loggable(&m)),
+                                        Err(e) => {
+                                            error!(target: LOG_TARGET, "Error parsing request {} : {e:?}", loggable(&m))
+                                        },
                                         Ok(request) => {
                                             if let Err(err) = self.handle_request(request) {
                                                 error!(target: LOG_TARGET, "Error handling request {} : :{err:?}", loggable(&m))
@@ -389,7 +391,9 @@ impl Controller {
                                 } else {
                                     // this is a response
                                     match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
-                                        Err(e) => error!(target: LOG_TARGET, "Error parsing response {} : {e:?}", loggable(&m)),
+                                        Err(e) => {
+                                            error!(target: LOG_TARGET, "Error parsing response {} : {e:?}", loggable(&m))
+                                        },
                                         Ok(response) => {
                                             if let Err(err) = self.handle_response(response) {
                                                 error!(target: LOG_TARGET, "Error handling response {} : :{err:?}", loggable(&m))
@@ -508,7 +512,10 @@ mod tests {
         let text = "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN + 1);
         let expected = format!("{}...", "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN));
         assert_eq!(loggable(&text), expected);
-        assert_eq!(loggable(&"\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)), "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN));
+        assert_eq!(
+            loggable(&"\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)),
+            "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)
+        );
     }
 
     #[test]
