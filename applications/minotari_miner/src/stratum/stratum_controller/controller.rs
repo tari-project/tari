@@ -147,11 +147,13 @@ impl Controller {
                     types::miner_message::MinerMessage::StopJob => {
                         debug!(target: LOG_TARGET_FILE, "Stopping jobs");
                         miner = None;
+                        self.forget_current_job();
                         continue;
                     },
                     types::miner_message::MinerMessage::ResumeJob => {
                         debug!(target: LOG_TARGET_FILE, "Resuming jobs");
                         miner = None;
+                        self.forget_current_job();
                         continue;
                     },
                     types::miner_message::MinerMessage::Shutdown => {
@@ -227,6 +229,14 @@ impl Controller {
         }
     }
 
+    /// Clears the stored job so that the next job received starts mining, even if the pool re-sends the same one.
+    fn forget_current_job(&mut self) {
+        self.current_height = 0;
+        self.current_job_id = 0;
+        self.current_difficulty_target = 0;
+        self.current_blob = CurrentBlob::default();
+    }
+
     pub fn should_we_update_job(
         &mut self,
         height: u64,
@@ -295,5 +305,22 @@ mod test {
         assert_eq!(controller.current_difficulty_target, 11);
         assert_eq!(controller.current_blob, valid);
         assert_eq!(controller.current_header, header);
+    }
+
+    #[test]
+    fn the_same_job_is_mined_again_after_the_job_is_forgotten() {
+        use borsh::BorshSerialize;
+
+        let mut controller = Controller::new(1).unwrap();
+        let mut blob = Vec::new();
+        tari_node_components::blocks::BlockHeader::new(0)
+            .serialize(&mut blob)
+            .unwrap();
+        let blob = CurrentBlob::try_from(blob).unwrap();
+        assert!(controller.should_we_update_job(5, 7, 11, blob.clone()).unwrap());
+        assert!(!controller.should_we_update_job(5, 7, 11, blob.clone()).unwrap());
+
+        controller.forget_current_job();
+        assert!(controller.should_we_update_job(5, 7, 11, blob).unwrap());
     }
 }
