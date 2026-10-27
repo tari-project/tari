@@ -40,8 +40,9 @@ use crate::stratum::{
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
 
-/// Longest line accepted from the pool. Real job blobs are a few KB of header; `MAX_JOB_BLOB_LEN` is a second guard.
-const MAX_LINE_LEN: usize = 64 * 1024;
+/// Longest line accepted from the pool. Covers the base64 of a maximum-size header (`u16::MAX` bytes of pow_data)
+/// plus the JSON around it; `MAX_JOB_BLOB_LEN` is a second guard.
+const MAX_LINE_LEN: usize = 128 * 1024;
 /// Messages the mining controller can queue for the client thread; more are dropped.
 const CLIENT_CHANNEL_CAPACITY: usize = 16;
 /// Lines read from the pool per pass of the client loop before queued shares and keepalives are sent.
