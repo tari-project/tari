@@ -29,7 +29,12 @@ use std::{
 use log::*;
 use serde::Deserialize;
 
-use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
+use crate::stratum::{
+    error::Error,
+    stratum_controller::controller::MAX_JOB_BLOB_LEN,
+    stratum_types as types,
+    stream::Stream,
+};
 
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
@@ -50,7 +55,7 @@ pub struct Controller {
     read_scanned: usize,
     rx: mpsc::Receiver<types::client_message::ClientMessage>,
     pub tx: mpsc::Sender<types::client_message::ClientMessage>,
-    miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
+    miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     last_request_id: String,
 }
 
@@ -67,7 +72,7 @@ impl Controller {
         server_login: Option<String>,
         server_password: Option<String>,
         server_tls_enabled: Option<bool>,
-        miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
+        miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     ) -> Result<Controller, Error> {
         let (tx, rx) = mpsc::channel::<types::client_message::ClientMessage>();
         Ok(Controller {
@@ -223,6 +228,12 @@ impl Controller {
         let blob_bytes = BASE64_STANDARD
             .decode(&job.blob)
             .map_err(|_| Error::General("Invalid base64 byte string received".to_string()))?;
+        if blob_bytes.len() > MAX_JOB_BLOB_LEN {
+            return Err(Error::General(format!(
+                "Job blob of {} bytes is larger than {MAX_JOB_BLOB_LEN} bytes",
+                blob_bytes.len()
+            )));
+        }
         let miner_message = types::miner_message::MinerMessage::ReceivedJob(
             job.height,
             job.job_id.parse::<u64>()?,
@@ -516,6 +527,30 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    fn job_with_blob(blob_len: usize) -> types::job_params::JobParams {
+        use base64::{Engine, prelude::BASE64_STANDARD};
+        types::job_params::JobParams {
+            job_id: "1".to_string(),
+            blob: BASE64_STANDARD.encode(vec![0u8; blob_len]),
+            target: "2".to_string(),
+            height: 3,
+        }
+    }
+
+    #[test]
+    fn send_miner_job_rejects_an_oversized_blob() {
+        let (miner_tx, miner_rx) = mpsc::sync_channel(1);
+        let mut controller = Controller::new("127.0.0.1:1", None, None, None, miner_tx).unwrap();
+        assert!(controller.send_miner_job(job_with_blob(MAX_JOB_BLOB_LEN + 1)).is_err());
+        assert!(miner_rx.try_recv().is_err());
+
+        controller.send_miner_job(job_with_blob(MAX_JOB_BLOB_LEN)).unwrap();
+        assert!(matches!(
+            miner_rx.try_recv().unwrap(),
+            types::miner_message::MinerMessage::ReceivedJob(3, 1, 2, blob) if blob.len() == MAX_JOB_BLOB_LEN
+        ));
+    }
 
     #[test]
     fn loggable_escapes_control_characters() {

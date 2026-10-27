@@ -42,7 +42,12 @@ use crate::{
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
 
-type CurrentBlob = MaxSizeBytes<{ 4 * 1024 * 1024 }>; // 4 MiB
+/// Largest job blob accepted from the pool.
+pub(crate) const MAX_JOB_BLOB_LEN: usize = 4 * 1024 * 1024;
+/// Messages the client thread can queue for the mining controller before it blocks.
+const MINER_CHANNEL_CAPACITY: usize = 16;
+
+type CurrentBlob = MaxSizeBytes<MAX_JOB_BLOB_LEN>;
 
 /// Decodes the blob of a job received from the pool.
 ///
@@ -65,7 +70,7 @@ fn decode_job_blob(height: u64, job_id: u64, blob: Vec<u8>) -> Option<CurrentBlo
 
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,
-    pub tx: mpsc::Sender<types::miner_message::MinerMessage>,
+    pub tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     client_tx: Option<mpsc::Sender<types::client_message::ClientMessage>>,
     current_height: u64,
     current_job_id: u64,
@@ -78,7 +83,7 @@ pub struct Controller {
 
 impl Controller {
     pub fn new(num_mining_threads: usize) -> Result<Controller, String> {
-        let (tx, rx) = mpsc::channel::<types::miner_message::MinerMessage>();
+        let (tx, rx) = mpsc::sync_channel::<types::miner_message::MinerMessage>(MINER_CHANNEL_CAPACITY);
         Ok(Controller {
             rx,
             tx,
@@ -276,18 +281,19 @@ impl Controller {
 mod test {
     use super::*;
 
-    const MAX_BLOB: usize = 4 * 1024 * 1024;
-
     #[test]
     fn decode_job_blob_accepts_blobs_up_to_the_limit() {
         assert_eq!(decode_job_blob(1, 2, vec![]).unwrap().len(), 0);
         assert_eq!(decode_job_blob(1, 2, vec![7u8; 10]).unwrap().as_bytes(), &[7u8; 10]);
-        assert_eq!(decode_job_blob(1, 2, vec![0u8; MAX_BLOB]).unwrap().len(), MAX_BLOB);
+        assert_eq!(
+            decode_job_blob(1, 2, vec![0u8; MAX_JOB_BLOB_LEN]).unwrap().len(),
+            MAX_JOB_BLOB_LEN
+        );
     }
 
     #[test]
     fn decode_job_blob_skips_an_oversized_blob_instead_of_failing() {
-        assert!(decode_job_blob(1, 2, vec![0u8; MAX_BLOB + 1]).is_none());
+        assert!(decode_job_blob(1, 2, vec![0u8; MAX_JOB_BLOB_LEN + 1]).is_none());
     }
 
     #[test]
