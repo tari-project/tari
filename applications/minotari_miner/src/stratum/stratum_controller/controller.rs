@@ -36,7 +36,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 use crate::{
     miner::Miner,
     run_miner::display_report,
-    stratum::{error::Error, stratum_types as types},
+    stratum::{controller::loggable, error::Error, stratum_types as types},
 };
 
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
@@ -103,7 +103,15 @@ impl Controller {
         loop {
             // lets see if we need to change the state of the miner.
             while let Some(message) = self.rx.try_iter().next() {
-                debug!(target: LOG_TARGET_FILE, "Miner received message: {message:?}");
+                if let types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) = &message {
+                    debug!(
+                        target: LOG_TARGET_FILE,
+                        "Miner received job height {height} id {job_id} diff {diff} blob {} bytes",
+                        blob.len()
+                    );
+                } else {
+                    debug!(target: LOG_TARGET_FILE, "Miner received message: {message:?}");
+                }
                 match message {
                     types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) => {
                         // A job from the pool with an oversized blob is skipped; it must not stop the controller
@@ -194,10 +202,10 @@ impl Controller {
                     );
                     debug!(
                         target: LOG_TARGET_FILE,
-                        "Miner found share with hash {}, difficulty {:?} and data {:?}",
+                        "Miner found share with hash {}, difficulty {:?} and data {}",
                         hash,
                         report.difficulty,
-                        block_header
+                        loggable(&format!("{block_header:?}"))
                     );
                     self.client_tx
                         .as_mut()

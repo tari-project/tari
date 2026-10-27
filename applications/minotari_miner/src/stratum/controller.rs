@@ -493,7 +493,7 @@ fn take_line(buf: &mut Vec<u8>, scanned: &mut usize) -> Result<Option<Vec<u8>>, 
 }
 
 /// Escapes pool-supplied text for the log and cuts it to `MAX_LOGGED_TEXT_LEN` characters.
-fn loggable(text: &str) -> String {
+pub(crate) fn loggable(text: &str) -> String {
     let mut out: String = text
         .chars()
         .take(MAX_LOGGED_TEXT_LEN)
