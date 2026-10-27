@@ -43,6 +43,8 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller
 const MAX_LINE_LEN: usize = 1024 * 1024;
 /// Messages the mining controller can queue for the client thread; more are dropped.
 const CLIENT_CHANNEL_CAPACITY: usize = 16;
+/// Lines read from the pool per pass of the client loop before queued shares and keepalives are sent.
+const MAX_LINES_PER_PASS: usize = 16;
 /// Number of characters of pool-supplied text written to the log.
 const MAX_LOGGED_TEXT_LEN: usize = 256;
 
@@ -344,6 +346,45 @@ impl Controller {
         Ok(())
     }
 
+    fn handle_message(&mut self, m: &str) {
+        debug!(target: LOG_TARGET_FILE, "Received message: {}", loggable(m));
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(m) else {
+            error!(target: LOG_TARGET, "Error parsing message: {}", loggable(m));
+            return;
+        };
+        if classify_message(&v) == MessageKind::Request {
+            match serde_json::from_value::<types::rpc_request::RpcRequest>(v) {
+                Err(e) => error!(
+                    target: LOG_TARGET,
+                    "Error parsing request {} : {}", loggable(m), loggable(&format!("{e:?}"))
+                ),
+                Ok(request) => {
+                    if let Err(err) = self.handle_request(request) {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error handling request {} : :{}", loggable(m), loggable(&format!("{err:?}"))
+                        )
+                    }
+                },
+            }
+        } else {
+            match serde_json::from_value::<types::rpc_response::RpcResponse>(v) {
+                Err(e) => error!(
+                    target: LOG_TARGET,
+                    "Error parsing response {} : {}", loggable(m), loggable(&format!("{e:?}"))
+                ),
+                Ok(response) => {
+                    if let Err(err) = self.handle_response(response) {
+                        error!(
+                            target: LOG_TARGET,
+                            "Error handling response {} : :{}", loggable(m), loggable(&format!("{err:?}"))
+                        )
+                    }
+                },
+            }
+        }
+    }
+
     #[allow(clippy::cognitive_complexity)]
     pub fn run(mut self) {
         let server_read_interval = Duration::from_secs(1);
@@ -386,54 +427,22 @@ impl Controller {
                     let _result = self.send_login();
                     let _result = self.send_miner_resume();
                 }
-                // read messages from server
+                // read messages from server, a bounded number per pass so queued shares still get sent
                 if Instant::now() > next_server_read {
-                    match self.read_message() {
-                        Ok(Some(m)) => {
-                            // figure out what kind of message,
-                            // and dispatch appropriately
-                            debug!(target: LOG_TARGET_FILE, "Received message: {}", loggable(&m));
-                            // Deserialize to see what type of object it is
-                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
-                                if classify_message(&v) == MessageKind::Request {
-                                    match serde_json::from_value::<types::rpc_request::RpcRequest>(v) {
-                                        Err(e) => {
-                                            error!(target: LOG_TARGET, "Error parsing request {} : {}", loggable(&m), loggable(&format!("{e:?}")))
-                                        },
-                                        Ok(request) => {
-                                            if let Err(err) = self.handle_request(request) {
-                                                error!(target: LOG_TARGET, "Error handling request {} : :{}", loggable(&m), loggable(&format!("{err:?}")))
-                                            }
-                                        },
-                                    }
-                                } else {
-                                    // this is a response
-                                    match serde_json::from_value::<types::rpc_response::RpcResponse>(v) {
-                                        Err(e) => {
-                                            error!(target: LOG_TARGET, "Error parsing response {} : {}", loggable(&m), loggable(&format!("{e:?}")))
-                                        },
-                                        Ok(response) => {
-                                            if let Err(err) = self.handle_response(response) {
-                                                error!(target: LOG_TARGET, "Error handling response {} : :{}", loggable(&m), loggable(&format!("{err:?}")))
-                                            }
-                                        },
-                                    }
-                                }
-                                continue;
-                            } else {
-                                error!(target: LOG_TARGET, "Error parsing message: {}", loggable(&m))
-                            }
-                        },
-                        Ok(None) => {
-                            // noop, nothing to read for this interval
-                        },
-                        Err(e) => {
-                            error!(target: LOG_TARGET, "Error reading message: {e:?}");
-                            self.stream = None;
-                            continue;
-                        },
+                    for _ in 0..MAX_LINES_PER_PASS {
+                        match self.read_message() {
+                            Ok(Some(m)) => self.handle_message(&m),
+                            Ok(None) => {
+                                next_server_read = deadline_after(server_read_interval);
+                                break;
+                            },
+                            Err(e) => {
+                                error!(target: LOG_TARGET, "Error reading message: {e:?}");
+                                self.stream = None;
+                                break;
+                            },
+                        }
                     }
-                    next_server_read = deadline_after(server_read_interval);
                 }
             }
 
