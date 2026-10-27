@@ -499,9 +499,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.2"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d5515a3834141de9eafb9717ad39eea8247b5674e6066c404e8c4b365d2a29e"
+checksum = "fe3e9d21d39e6f39ff46e03d5b621424f88ee23d8a1672c6bfc9ccc7f2da4f6a"
 dependencies = [
  "cmov",
 ]
@@ -2176,7 +2176,7 @@ dependencies = [
  "subtle",
  "tari_common",
  "tari_crypto",
- "tari_hashing 6.2.0-pre.2",
+ "tari_hashing",
  "tari_max_size",
  "tari_sidechain",
  "tari_utilities",
@@ -2187,9 +2187,9 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.24.0"
+version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5de230997958642c770a71647b721fa6a6c13f13ec480338cc1022aeef42f04"
+checksum = "6bf61b07686b111eff5bf2e4509cc49dbbf9745c85697db864ae135970f3d09d"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -2224,30 +2224,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_hashing"
-version = "6.2.0"
+name = "tari_jellyfish"
+version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8c5dc9f7a9ae127a9b0df4da07a849ea165e9830cebccdfb618c72a611f40eb"
+checksum = "fe7acf105d2cc232162b381072cd17dbfe753705aac44d2b6a24da86fa6356cb"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
  "digest 0.10.7",
- "generic-array",
- "tari_crypto",
- "zeroize",
-]
-
-[[package]]
-name = "tari_jellyfish"
-version = "6.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a92810061b6e388e01e6402527ae7777bfd713ddf749fb992af625e552fbf3a4"
-dependencies = [
- "borsh",
- "digest 0.10.7",
  "serde",
  "tari_crypto",
- "tari_hashing 6.2.0",
  "thiserror 2.0.20",
 ]
 
@@ -2293,9 +2279,9 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "7.0.0"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "516db82216d890a5b0bb0eb7c9a799dcf07a95f9eb9bd773ecc2781a1142de2d"
+checksum = "27dd5fbbf0991e051a0016c773a907ec2e492487317108966a6049617d741deb"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -2304,7 +2290,6 @@ dependencies = [
  "log",
  "serde",
  "tari_crypto",
- "tari_hashing 6.2.0",
  "tari_jellyfish",
  "tari_utilities",
  "thiserror 2.0.20",
@@ -2614,9 +2599,9 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 
 [[package]]
 name = "utoipa"
-version = "5.5.0"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bde15df68e80b16c7d16b9616e80770ad158988daa56a27dccd1e55558b0160"
+checksum = "8765fe27aeff71012a3f90fa474cf1df863a7d0dd81ed25de4e63fff2544994f"
 dependencies = [
  "indexmap",
  "serde",
@@ -2626,13 +2611,13 @@ dependencies = [
 
 [[package]]
 name = "utoipa-gen"
-version = "5.5.0"
+version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba0b99ee52df3028635d93840c797102da61f8a7bb3cf751032455895b52ef8"
+checksum = "d935f1c83fdf8b88f09bbe050d0cea78ea4afee6d7b0317403228c1200b2c8ab"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.5",
 ]
 
 [[package]]
