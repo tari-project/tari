@@ -424,11 +424,12 @@ enum MessageKind {
     Response,
 }
 
-/// A message with a string `method` is a request; anything else is a response to one of ours.
+/// A `"job"` notification is the only request the pool sends us; anything else is a response to one of ours.
 fn classify_message(v: &serde_json::Value) -> MessageKind {
-    match v.get("method").and_then(serde_json::Value::as_str) {
-        Some(_) => MessageKind::Request,
-        None => MessageKind::Response,
+    if v.get("method").and_then(serde_json::Value::as_str) == Some("job") {
+        MessageKind::Request
+    } else {
+        MessageKind::Response
     }
 }
 
@@ -463,10 +464,20 @@ mod tests {
     }
 
     #[test]
-    fn string_method_is_a_request() {
-        let job = json!({"id": "3", "jsonrpc": "2.0", "method": "job", "params": {}});
-        assert_eq!(classify_message(&job), MessageKind::Request);
-        let unknown = json!({"id": "4", "jsonrpc": "2.0", "method": "something_else", "params": {}});
-        assert_eq!(classify_message(&unknown), MessageKind::Request);
+    fn response_echoing_a_method_is_a_response() {
+        let v = json!({"id": "1", "method": "login", "result": {"id": "w", "job": null}, "error": null});
+        assert_eq!(classify_message(&v), MessageKind::Response);
+    }
+
+    #[test]
+    fn unknown_method_is_a_response() {
+        let v = json!({"id": "4", "jsonrpc": "2.0", "method": "weird", "params": {}});
+        assert_eq!(classify_message(&v), MessageKind::Response);
+    }
+
+    #[test]
+    fn job_method_is_a_request() {
+        let v = json!({"id": "3", "jsonrpc": "2.0", "method": "job", "params": {}});
+        assert_eq!(classify_message(&v), MessageKind::Request);
     }
 }
