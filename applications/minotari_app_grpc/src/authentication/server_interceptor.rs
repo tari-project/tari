@@ -32,7 +32,7 @@ use log::*;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
-use crate::authentication::BasicAuthCredentials;
+use crate::authentication::{BasicAuthCredentials, BasicAuthError, basic_auth::MAX_USERNAME_LEN};
 
 const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
 
@@ -166,21 +166,37 @@ fn verify_request_header(req: &Request<()>, valid_credentials: &BasicAuthCredent
 #[derive(Debug)]
 pub struct ServerAuthenticationInterceptor {
     credentials: Option<Arc<BasicAuthCredentials>>,
+    reject_all: bool,
     backoff: Arc<Mutex<AuthBackoffTracker>>,
     warn_limiter: Arc<WarnLimiter>,
 }
 
 impl ServerAuthenticationInterceptor {
     pub fn new(auth: GrpcAuthentication) -> Option<Self> {
-        let credentials = match auth {
-            GrpcAuthentication::None => None,
+        let (credentials, reject_all) = match auth {
+            GrpcAuthentication::None => (None, false),
             GrpcAuthentication::Basic { username, password } => {
-                Some(Arc::new(BasicAuthCredentials::new(username, password).ok()?))
+                match BasicAuthCredentials::new(username.clone(), password.clone()) {
+                    Ok(creds) => (Some(Arc::new(creds)), false),
+                    Err(BasicAuthError::InvalidUsername)
+                        if username.contains(':') &&
+                            username.len() <= MAX_USERNAME_LEN &&
+                            std::str::from_utf8(password.reveal()).is_ok() =>
+                    {
+                        error!(
+                            target: LOG_TARGET,
+                            "gRPC username must not contain ':'; all gRPC requests will be rejected"
+                        );
+                        (None, true)
+                    },
+                    Err(_) => return None,
+                }
             },
         };
 
         Some(Self {
             credentials,
+            reject_all,
             backoff: Arc::default(),
             warn_limiter: Arc::default(),
         })
@@ -272,6 +288,22 @@ impl ServerAuthenticationInterceptor {
 
 impl Interceptor for ServerAuthenticationInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
+        if self.reject_all {
+            let now = Instant::now();
+            let peer_addr = request.remote_addr();
+            if let Some(ip) = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip)) {
+                let mut tracker = match self.backoff.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                tracker.record_failure(ip, now);
+            }
+            return Err(self.unauthenticated_at(
+                peer_addr,
+                "gRPC username must not contain ':'; all gRPC requests will be rejected",
+                now,
+            ));
+        }
         match &self.credentials {
             None => Ok(request),
             Some(credentials) => self.handle_basic_auth(request, credentials),
@@ -283,6 +315,7 @@ impl Clone for ServerAuthenticationInterceptor {
     fn clone(&self) -> Self {
         Self {
             credentials: self.credentials.clone(),
+            reject_all: self.reject_all,
             backoff: self.backoff.clone(),
             warn_limiter: self.warn_limiter.clone(),
         }
@@ -294,9 +327,10 @@ mod tests {
     use std::{cell::Cell, net::Ipv4Addr, sync::OnceLock};
 
     use tari_utilities::SafePassword;
-    use tonic::transport::server::TcpConnectInfo;
+    use tonic::{metadata::MetadataValue, transport::server::TcpConnectInfo};
 
     use super::*;
+    use crate::authentication::basic_auth::MAX_ECHOED_SCHEME_LEN;
 
     thread_local! {
         static CAPTURE_THREAD: Cell<bool> = const { Cell::new(false) };
@@ -324,6 +358,7 @@ mod tests {
     }
 
     static TEST_LOGGER: OnceLock<CapturedLogger> = OnceLock::new();
+    static LOGGER_LOCK: Mutex<()> = Mutex::new(());
 
     fn captured_logger() -> &'static CapturedLogger {
         let logger = TEST_LOGGER.get_or_init(|| CapturedLogger {
@@ -460,6 +495,7 @@ mod tests {
 
     #[test]
     fn failure_log_line_contains_peer_address_and_is_rate_limited() {
+        let _guard = LOGGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let logger = captured_logger();
         logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clear();
         CAPTURE_THREAD.with(|c| c.set(true));
@@ -485,5 +521,67 @@ mod tests {
             line.contains("203.0.113.42:55555"),
             "expected peer address in log line, got: {line}"
         );
+    }
+
+    #[test]
+    fn truncates_overlong_scheme_and_throttles_auth_failure_warnings() {
+        let _guard = LOGGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let logger = captured_logger();
+        logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        CAPTURE_THREAD.with(|c| c.set(true));
+
+        let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("secret"),
+        })
+        .unwrap();
+
+        let token = "A".repeat(8 * 1024);
+        let header_val = MetadataValue::try_from(format!("{token} x")).unwrap();
+
+        for _ in 0..1000 {
+            let mut req = Request::new(());
+            req.metadata_mut().insert(AUTHORIZATION.as_str(), header_val.clone());
+            let err = interceptor.call(req).unwrap_err();
+            assert_eq!(err.code(), tonic::Code::Unauthenticated);
+        }
+
+        CAPTURE_THREAD.with(|c| c.set(false));
+        let lines = logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let [line] = lines.as_slice() else {
+            panic!("expected 1 log line, got {}", lines.len());
+        };
+        let echoed_expected = "A".repeat(MAX_ECHOED_SCHEME_LEN);
+        let echoed_too_long = "A".repeat(MAX_ECHOED_SCHEME_LEN + 1);
+        assert!(line.contains(&echoed_expected));
+        assert!(!line.contains(&echoed_too_long));
+    }
+
+    #[test]
+    fn username_containing_colon_keeps_starting_logs_error_and_rejects_requests() {
+        let _guard = LOGGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let logger = captured_logger();
+        logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        CAPTURE_THREAD.with(|c| c.set(true));
+
+        let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::Basic {
+            username: "bad:user".to_string(),
+            password: SafePassword::from("secret"),
+        })
+        .expect("server interceptor should still construct when username contains ':'");
+
+        let startup_lines = logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        assert!(
+            startup_lines
+                .iter()
+                .any(|l| l.contains("gRPC username must not contain ':'; all gRPC requests will be rejected")),
+            "expected startup error log, got: {startup_lines:?}"
+        );
+
+        let req = request_with_auth_and_addr("bad:user", b"secret", "127.0.0.1:45000".parse().unwrap());
+        let err = interceptor.call(req).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
+
+        CAPTURE_THREAD.with(|c| c.set(false));
     }
 }

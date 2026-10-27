@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    borrow::Cow,
     cmp::min,
     fmt,
     ops::{BitAnd, BitOr, Deref, Not},
@@ -34,8 +33,17 @@ use tari_utilities::SafePassword;
 use tonic::metadata::{Ascii, MetadataValue, errors::InvalidMetadataValue};
 use zeroize::{Zeroize, Zeroizing};
 
-const MAX_USERNAME_LEN: usize = 256;
+pub(crate) const MAX_USERNAME_LEN: usize = 256;
 const MIN_PASSWORD_PAD_LEN: usize = 256;
+pub const MAX_ECHOED_SCHEME_LEN: usize = 16;
+
+fn truncate_scheme(scheme: &str) -> String {
+    let mut end = min(scheme.len(), MAX_ECHOED_SCHEME_LEN);
+    while end > 0 && !scheme.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    scheme.get(..end).unwrap_or_default().to_string()
+}
 
 fn prepare_padded_bytes<const N: usize>(input: &[u8]) -> ([u8; N], [u8; N]) {
     let mut random_bytes = [0u8; N];
@@ -145,8 +153,8 @@ impl fmt::Debug for BasicAuthCredentials {
 impl BasicAuthCredentials {
     /// Creates a new `BasicAuthCredentials` instance from a username and plaintext password.
     pub fn new(user_name: String, password: SafePassword) -> Result<Self, BasicAuthError> {
-        // Validate the username is well formed
-        if user_name.len() > MAX_USERNAME_LEN {
+        // Validate the username is well formed (RFC 7617 forbids ':' in user-id)
+        if user_name.len() > MAX_USERNAME_LEN || user_name.contains(':') {
             return Err(BasicAuthError::InvalidUsername);
         }
         // Validate the password is well formed UTF-8
@@ -180,8 +188,8 @@ impl BasicAuthCredentials {
             .split_once(' ')
             .ok_or(BasicAuthError::InvalidAuthorizationHeader)?;
 
-        if auth_type.to_lowercase() != "basic" {
-            return Err(BasicAuthError::InvalidScheme(auth_type.to_string()));
+        if !auth_type.eq_ignore_ascii_case("basic") {
+            return Err(BasicAuthError::InvalidScheme(truncate_scheme(auth_type)));
         }
 
         // Decode the credentials using base64
@@ -236,15 +244,11 @@ impl BasicAuthCredentials {
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
     pub fn generate_header(username: &str, password: &[u8]) -> Result<MetadataValue<Ascii>, BasicAuthError> {
         use base64::{Engine, prelude::BASE64_STANDARD};
-        let password_str = String::from_utf8_lossy(password);
-        let token_str = Zeroizing::new(format!("{username}:{password_str}"));
+        let password_str = Zeroizing::new(String::from_utf8(password.to_vec())?);
+        let token_str = Zeroizing::new(format!("{username}:{}", password_str.as_str()));
         let mut token = BASE64_STANDARD.encode(token_str.deref());
         let header = format!("Basic {token}");
         token.zeroize();
-        match password_str {
-            Cow::Borrowed(_) => {},
-            Cow::Owned(mut owned) => owned.zeroize(),
-        }
         let header = header.parse()?;
         Ok(header)
     }
@@ -609,6 +613,31 @@ mod tests {
             let (username, password) = BasicAuthCredentials::parse_header(header.to_str().unwrap()).unwrap();
             assert_eq!(username, "admin".to_string());
             assert_eq!(password.reveal(), b"secret");
+        }
+
+        #[test]
+        fn it_rejects_non_utf8_password_in_generate_header() {
+            let err = BasicAuthCredentials::generate_header("admin", &[0xff, 0xfe]).unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUtf8Value(_)));
+        }
+
+        #[test]
+        fn it_rejects_username_with_colon() {
+            let err = BasicAuthCredentials::new("admin:extra".to_string(), "secret".to_string().into()).unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsername));
+        }
+
+        #[test]
+        fn it_truncates_overlong_scheme_in_parse_header() {
+            let long_scheme = "a".repeat(8 * 1024);
+            let header = format!("{long_scheme} x");
+            let err = BasicAuthCredentials::parse_header(&header).unwrap_err();
+            match err {
+                BasicAuthError::InvalidScheme(scheme) => {
+                    assert_eq!(scheme.len(), MAX_ECHOED_SCHEME_LEN);
+                },
+                other => panic!("Unexpected error: {other:?}"),
+            }
         }
     }
 }

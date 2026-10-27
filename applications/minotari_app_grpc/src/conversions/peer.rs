@@ -25,8 +25,6 @@ use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-#[allow(clippy::cast_possible_truncation)]
-#[allow(clippy::cast_sign_loss)]
 impl From<Peer> for grpc::Peer {
     fn from(peer: Peer) -> Self {
         let public_key = peer.public_key.to_vec();
@@ -35,7 +33,7 @@ impl From<Peer> for grpc::Peer {
         let last_connection = peer
             .addresses
             .last_seen()
-            .map(|f| f.and_utc().timestamp() as u64)
+            .map(|f| u64::try_from(f.and_utc().timestamp()).unwrap_or(0))
             .unwrap_or_default();
         for address in peer.addresses.addresses() {
             addresses.push(address.clone().into())
@@ -43,12 +41,12 @@ impl From<Peer> for grpc::Peer {
         let flags = u32::from(peer.flags.bits());
         let banned_until = peer
             .banned_until
-            .map(|f| f.and_utc().timestamp() as u64)
+            .map(|f| u64::try_from(f.and_utc().timestamp()).unwrap_or(0))
             .unwrap_or_default();
         let banned_reason = peer.banned_reason.to_string();
         let offline_at = peer
             .offline_at()
-            .map(|f| f.and_utc().timestamp() as u64)
+            .map(|f| u64::try_from(f.and_utc().timestamp()).unwrap_or(0))
             .unwrap_or_default();
         let features = peer.features.bits();
 
@@ -100,5 +98,35 @@ impl From<ConnectivityStatus> for grpc::ConnectivityStatus {
             Degraded(_) => grpc::ConnectivityStatus::Degraded,
             Offline => grpc::ConnectivityStatus::Offline,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_comms::{
+        net_address::MultiaddressesWithStats,
+        peer_manager::{NodeId, PeerFeatures, PeerFlags},
+        types::CommsPublicKey,
+    };
+
+    use super::*;
+
+    #[test]
+    fn negative_peer_timestamp_converts_to_zero() {
+        let pk = CommsPublicKey::default();
+        let node_id = NodeId::from_key(&pk);
+        let mut peer = Peer::new(
+            pk,
+            node_id,
+            MultiaddressesWithStats::default(),
+            PeerFlags::empty(),
+            PeerFeatures::empty(),
+            Default::default(),
+            String::new(),
+        );
+        peer.banned_until = Some(serde_json::from_str("\"1969-12-31T23:59:59\"").unwrap());
+
+        let grpc_peer = grpc::Peer::from(peer);
+        assert_eq!(grpc_peer.banned_until, 0);
     }
 }
