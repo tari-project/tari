@@ -218,6 +218,8 @@ impl Controller {
                     .ok_or(Error::ClientTxNotSet)?
                     .send(types::client_message::ClientMessage::KeepAlive)?;
             }
+            // Let other futures run, such as the client controller thread supervisor.
+            tokio::task::yield_now().await;
         }
     }
 
