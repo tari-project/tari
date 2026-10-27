@@ -308,7 +308,7 @@ impl Controller {
                         warn!(target: LOG_TARGET, "Rejected");
                     } else {
                         // accepted share
-                        debug!(target: LOG_TARGET, "Share accepted: {:?}", st.status);
+                        debug!(target: LOG_TARGET, "Share accepted: {}", loggable(&format!("{:?}", st.status)));
                     }
                     return Ok(());
                 }
@@ -320,11 +320,11 @@ impl Controller {
                     }
                     return Ok(());
                 } else {
-                    debug!(target: LOG_TARGET_FILE, "RPC Response: {rpc_response:?}");
+                    debug!(target: LOG_TARGET_FILE, "RPC Response: {}", loggable(&format!("{rpc_response:?}")));
                 };
             },
             None => {
-                error!(target: LOG_TARGET, "RPC error: {res:?}");
+                error!(target: LOG_TARGET, "RPC error: {}", loggable(&format!("{res:?}")));
             },
         }
         Ok(())
@@ -384,11 +384,11 @@ impl Controller {
                                 if classify_message(&v) == MessageKind::Request {
                                     match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
                                         Err(e) => {
-                                            error!(target: LOG_TARGET, "Error parsing request {} : {e:?}", loggable(&m))
+                                            error!(target: LOG_TARGET, "Error parsing request {} : {}", loggable(&m), loggable(&format!("{e:?}")))
                                         },
                                         Ok(request) => {
                                             if let Err(err) = self.handle_request(request) {
-                                                error!(target: LOG_TARGET, "Error handling request {} : :{err:?}", loggable(&m))
+                                                error!(target: LOG_TARGET, "Error handling request {} : :{}", loggable(&m), loggable(&format!("{err:?}")))
                                             }
                                         },
                                     }
@@ -396,11 +396,11 @@ impl Controller {
                                     // this is a response
                                     match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
                                         Err(e) => {
-                                            error!(target: LOG_TARGET, "Error parsing response {} : {e:?}", loggable(&m))
+                                            error!(target: LOG_TARGET, "Error parsing response {} : {}", loggable(&m), loggable(&format!("{e:?}")))
                                         },
                                         Ok(response) => {
                                             if let Err(err) = self.handle_response(response) {
-                                                error!(target: LOG_TARGET, "Error handling response {} : :{err:?}", loggable(&m))
+                                                error!(target: LOG_TARGET, "Error handling response {} : :{}", loggable(&m), loggable(&format!("{err:?}")))
                                             }
                                         },
                                     }
