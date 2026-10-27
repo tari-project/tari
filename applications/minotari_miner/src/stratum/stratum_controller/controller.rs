@@ -146,8 +146,6 @@ impl Controller {
                                     target: LOG_TARGET_FILE,
                                     "Miner could not decipher miner message: {e:?}"
                                 );
-                                // lets wait a second before we try again
-                                tokio::time::sleep(Duration::from_secs(1)).await;
                                 continue;
                             },
                         }
