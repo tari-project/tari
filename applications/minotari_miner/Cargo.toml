@@ -51,6 +51,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = [
     "macros",
     "rt-multi-thread",
+    "sync",
     "time",
 ] }
 tonic = { version = "0.13.1", features = ["tls-ring", "tls-native-roots"] }

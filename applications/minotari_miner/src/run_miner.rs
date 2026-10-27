@@ -140,10 +140,13 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             })?;
         mc.set_client_tx(cc.tx.clone());
 
-        let client_handle = thread::Builder::new()
+        // Report how the client thread ended without a blocking join, which would keep the runtime alive on panic.
+        let (client_done_tx, client_done_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+        let _client_handle = thread::Builder::new()
             .name("client_controller".to_string())
             .spawn(move || {
-                cc.run();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cc.run()));
+                let _result = client_done_tx.send(result.map_err(|payload| panic_message(payload.as_ref())));
             })
             .map_err(|e| {
                 ExitError::new(
@@ -156,11 +159,10 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             result = mc.run() => {
                 result.map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {err:?}")))?;
             },
-            joined = tokio::task::spawn_blocking(move || client_handle.join()) => {
-                let reason = match joined {
-                    Ok(Ok(())) => "exited".to_string(),
-                    Ok(Err(payload)) => panic_message(payload.as_ref()),
-                    Err(e) => e.to_string(),
+            done = client_done_rx => {
+                let reason = match done {
+                    Ok(Err(panic)) => panic,
+                    Ok(Ok(())) | Err(_) => "exited".to_string(),
                 };
                 error!(target: LOG_TARGET, "Stratum client controller stopped unexpectedly: {reason}");
                 return Err(ExitError::new(
