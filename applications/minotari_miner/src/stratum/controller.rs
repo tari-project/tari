@@ -64,6 +64,8 @@ pub struct Controller {
     miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     last_request_id: String,
     submits: SubmitCounts,
+    /// Top-level RPC errors from the pool since the last log summary; only the first is logged in full.
+    pool_errors: u64,
     share_log_time: Instant,
 }
 
@@ -96,6 +98,7 @@ impl Controller {
             miner_tx,
             last_request_id: "".to_string(),
             submits: SubmitCounts::default(),
+            pool_errors: 0,
             share_log_time: Instant::now(),
         })
     }
@@ -343,7 +346,11 @@ impl Controller {
                 };
             },
             None => {
-                error!(target: LOG_TARGET, "RPC error: {}", loggable_debug(&res));
+                if self.pool_errors == 0 {
+                    error!(target: LOG_TARGET, "RPC error: {}", loggable_debug(&res));
+                }
+                self.pool_errors = self.pool_errors.saturating_add(1);
+                self.submits.answered(true);
             },
         }
         Ok(())
@@ -472,16 +479,20 @@ impl Controller {
         } // loop
     }
 
-    /// Logs how many shares the pool accepted and rejected, at most once per `SHARE_LOG_INTERVAL`.
+    /// Logs how many shares the pool accepted and rejected, and how many more RPC errors it sent, at most once per
+    /// `SHARE_LOG_INTERVAL`.
     fn log_submit_results(&mut self) {
         if self.share_log_time.elapsed() < SHARE_LOG_INTERVAL {
             return;
         }
         let secs = self.share_log_time.elapsed().as_secs();
-        if self.submits.rejected > 0 {
+        let more_errors = self.pool_errors.saturating_sub(1);
+        if self.submits.rejected > 0 || more_errors > 0 {
             warn!(
                 target: LOG_TARGET,
-                "Pool rejected {} and accepted {} shares in the last {secs}s", self.submits.rejected, self.submits.accepted
+                "Pool rejected {} and accepted {} shares, and sent {more_errors} more RPC errors, in the last {secs}s",
+                self.submits.rejected,
+                self.submits.accepted
             );
         } else {
             if self.submits.accepted > 0 {
@@ -493,6 +504,7 @@ impl Controller {
         }
         self.submits.accepted = 0;
         self.submits.rejected = 0;
+        self.pool_errors = 0;
         self.share_log_time = Instant::now();
     }
 }
