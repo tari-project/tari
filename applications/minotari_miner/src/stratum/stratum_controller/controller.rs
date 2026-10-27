@@ -45,7 +45,7 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller
 /// Largest job blob accepted from the pool.
 pub(crate) const MAX_JOB_BLOB_LEN: usize = 4 * 1024 * 1024;
 /// How often found and dropped shares are summarised in the log.
-const SHARE_LOG_INTERVAL: Duration = Duration::from_secs(10);
+pub(crate) const SHARE_LOG_INTERVAL: Duration = Duration::from_secs(10);
 /// Messages the client thread can queue for the mining controller before it blocks.
 const MINER_CHANNEL_CAPACITY: usize = 16;
 

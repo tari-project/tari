@@ -32,7 +32,7 @@ use serde::Deserialize;
 
 use crate::stratum::{
     error::Error,
-    stratum_controller::controller::MAX_JOB_BLOB_LEN,
+    stratum_controller::controller::{MAX_JOB_BLOB_LEN, SHARE_LOG_INTERVAL},
     stratum_types as types,
     stream::Stream,
 };
@@ -63,6 +63,9 @@ pub struct Controller {
     pub tx: mpsc::SyncSender<types::client_message::ClientMessage>,
     miner_tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
     last_request_id: String,
+    shares_accepted: u64,
+    shares_rejected: u64,
+    share_log_time: Instant,
 }
 
 // fn invalid_error_response() -> types::RpcError {
@@ -93,6 +96,9 @@ impl Controller {
             rx,
             miner_tx,
             last_request_id: "".to_string(),
+            shares_accepted: 0,
+            shares_rejected: 0,
+            share_log_time: Instant::now(),
         })
     }
 
@@ -317,14 +323,11 @@ impl Controller {
                 };
                 let submit_response = types::submit_response::SubmitResponse::deserialize(&result);
                 if let Ok(st) = submit_response {
-                    let error = st.error;
-                    if let Some(error) = error {
-                        // rejected share
+                    if let Some(error) = st.error {
+                        self.shares_rejected = self.shares_rejected.saturating_add(1);
                         self.handle_error(error);
-                        warn!(target: LOG_TARGET, "Rejected");
                     } else {
-                        // accepted share
-                        debug!(target: LOG_TARGET, "Share accepted: {}", loggable_debug(&st.status));
+                        self.shares_accepted = self.shares_accepted.saturating_add(1);
                     }
                     return Ok(());
                 }
@@ -464,8 +467,33 @@ impl Controller {
                     self.stream = None;
                 }
             }
+            self.log_submit_results();
             thread::sleep(Duration::from_millis(10));
         } // loop
+    }
+
+    /// Logs how many shares the pool accepted and rejected, at most once per `SHARE_LOG_INTERVAL`.
+    fn log_submit_results(&mut self) {
+        if self.share_log_time.elapsed() < SHARE_LOG_INTERVAL {
+            return;
+        }
+        let secs = self.share_log_time.elapsed().as_secs();
+        if self.shares_rejected > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "Pool rejected {} and accepted {} shares in the last {secs}s", self.shares_rejected, self.shares_accepted
+            );
+        } else {
+            if self.shares_accepted > 0 {
+                info!(
+                    target: LOG_TARGET,
+                    "Pool accepted {} shares in the last {secs}s", self.shares_accepted
+                );
+            }
+        }
+        self.shares_accepted = 0;
+        self.shares_rejected = 0;
+        self.share_log_time = Instant::now();
     }
 }
 
