@@ -35,6 +35,8 @@ pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller
 
 /// Longest line accepted from the pool; leaves room for a 4 MiB job blob after base64 and JSON overhead.
 const MAX_LINE_LEN: usize = 8 * 1024 * 1024;
+/// Number of characters of pool-supplied text written to the log.
+const MAX_LOGGED_TEXT_LEN: usize = 256;
 
 pub struct Controller {
     server_url: String,
@@ -124,7 +126,7 @@ impl Controller {
 
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
         let stream = self.stream()?;
-        debug!(target: LOG_TARGET_FILE, "sending request: {message}");
+        debug!(target: LOG_TARGET_FILE, "sending request: {}", loggable(message));
         stream.write_all(message.as_bytes())?;
         stream.write_all(b"\n")?;
         stream.flush()?;
@@ -236,7 +238,7 @@ impl Controller {
     }
 
     pub fn handle_request(&mut self, req: types::rpc_request::RpcRequest) -> Result<(), Error> {
-        debug!(target: LOG_TARGET_FILE, "Received request type: {}", req.method);
+        debug!(target: LOG_TARGET_FILE, "Received request type: {}", loggable(&req.method));
         match req.method.as_str() {
             "job" => match req.params {
                 None => Err(Error::Request("No params in job request".to_owned())),
@@ -244,7 +246,7 @@ impl Controller {
                     let job = serde_json::from_value::<types::job_params::JobParams>(params)?;
                     info!(
                         target: LOG_TARGET,
-                        "Got a new job for height {} with target difficulty {}", job.height, job.target
+                        "Got a new job for height {} with target difficulty {}", job.height, loggable(&job.target)
                     );
                     self.send_miner_job(job)
                 },
@@ -267,18 +269,18 @@ impl Controller {
 
     #[allow(clippy::cognitive_complexity)]
     pub fn handle_response(&mut self, res: types::rpc_response::RpcResponse) -> Result<(), Error> {
-        debug!(target: LOG_TARGET_FILE, "Received response with id: {}", res.id);
+        debug!(target: LOG_TARGET_FILE, "Received response with id: {}", loggable(&res.id));
         match res.result {
             Some(result) => {
                 let login_response = serde_json::from_value::<types::login_response::LoginResponse>(result.clone());
                 if let Ok(st) = login_response {
                     info!(
                         target: LOG_TARGET,
-                        "Successful login to server, worker identifier is {}", st.id
+                        "Successful login to server, worker identifier is {}", loggable(&st.id)
                     );
                     info!(
                         target: LOG_TARGET,
-                        "Got a new job for height {} with target difficulty {}", st.job.height, st.job.target
+                        "Got a new job for height {} with target difficulty {}", st.job.height, loggable(&st.job.target)
                     );
                     self.last_request_id = st.id;
                     let _result = self.send_miner_job(st.job);
@@ -288,7 +290,7 @@ impl Controller {
                 if let Ok(st) = job_response {
                     info!(
                         target: LOG_TARGET,
-                        "Got a new job for height {} with target difficulty {}", st.height, st.target
+                        "Got a new job for height {} with target difficulty {}", st.height, loggable(&st.target)
                     );
                     let _result = self.send_miner_job(st);
                     return Ok(());
@@ -372,32 +374,32 @@ impl Controller {
                         Ok(Some(m)) => {
                             // figure out what kind of message,
                             // and dispatch appropriately
-                            debug!(target: LOG_TARGET_FILE, "Received message: {m}");
+                            debug!(target: LOG_TARGET_FILE, "Received message: {}", loggable(&m));
                             // Deserialize to see what type of object it is
                             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) {
                                 if classify_message(&v) == MessageKind::Request {
                                     match serde_json::from_str::<types::rpc_request::RpcRequest>(&m) {
-                                        Err(e) => error!(target: LOG_TARGET, "Error parsing request {m} : {e:?}"),
+                                        Err(e) => error!(target: LOG_TARGET, "Error parsing request {} : {e:?}", loggable(&m)),
                                         Ok(request) => {
                                             if let Err(err) = self.handle_request(request) {
-                                                error!(target: LOG_TARGET, "Error handling request {m} : :{err:?}")
+                                                error!(target: LOG_TARGET, "Error handling request {} : :{err:?}", loggable(&m))
                                             }
                                         },
                                     }
                                 } else {
                                     // this is a response
                                     match serde_json::from_str::<types::rpc_response::RpcResponse>(&m) {
-                                        Err(e) => error!(target: LOG_TARGET, "Error parsing response {m} : {e:?}"),
+                                        Err(e) => error!(target: LOG_TARGET, "Error parsing response {} : {e:?}", loggable(&m)),
                                         Ok(response) => {
                                             if let Err(err) = self.handle_response(response) {
-                                                error!(target: LOG_TARGET, "Error handling response {m} : :{err:?}")
+                                                error!(target: LOG_TARGET, "Error handling response {} : :{err:?}", loggable(&m))
                                             }
                                         },
                                     }
                                 }
                                 continue;
                             } else {
-                                error!(target: LOG_TARGET, "Error parsing message: {m}")
+                                error!(target: LOG_TARGET, "Error parsing message: {}", loggable(&m))
                             }
                         },
                         Ok(None) => {
@@ -471,6 +473,19 @@ fn take_line(buf: &mut Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
     }
 }
 
+/// Escapes pool-supplied text for the log and cuts it to `MAX_LOGGED_TEXT_LEN` characters.
+fn loggable(text: &str) -> String {
+    let mut out: String = text
+        .chars()
+        .take(MAX_LOGGED_TEXT_LEN)
+        .flat_map(char::escape_debug)
+        .collect();
+    if text.chars().nth(MAX_LOGGED_TEXT_LEN).is_some() {
+        out.push_str("...");
+    }
+    out
+}
+
 /// Returns the instant `interval` from now, clamped to now if the clock would overflow.
 fn deadline_after(interval: Duration) -> Instant {
     Instant::now().checked_add(interval).unwrap_or_else(Instant::now)
@@ -481,6 +496,26 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn loggable_escapes_control_characters() {
+        assert_eq!(loggable("a\nb\r\0"), "a\\nb\\r\\0");
+        assert_eq!(loggable("\u{1b}[31mred"), "\\u{1b}[31mred");
+    }
+
+    #[test]
+    fn loggable_truncates_on_a_char_boundary() {
+        let text = "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN + 1);
+        let expected = format!("{}...", "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN));
+        assert_eq!(loggable(&text), expected);
+        assert_eq!(loggable(&"\u{e9}".repeat(MAX_LOGGED_TEXT_LEN)), "\u{e9}".repeat(MAX_LOGGED_TEXT_LEN));
+    }
+
+    #[test]
+    fn loggable_truncates_long_input() {
+        let text = "x".repeat(10_000);
+        assert_eq!(loggable(&text), format!("{}...", "x".repeat(MAX_LOGGED_TEXT_LEN)));
+    }
 
     #[test]
     fn line_split_across_two_appends_is_joined() {
