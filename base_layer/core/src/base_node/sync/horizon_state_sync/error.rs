@@ -191,15 +191,21 @@ impl HorizonSyncError {
     }
 
     /// Whether an honest peer can cause this error when output sync resumed from a checkpoint, because the outputs
-    /// an earlier attempt committed may not match the peer's view of the chain.
+    /// an earlier attempt committed may not match the peer's view of the chain. A duplicate key comes from an output
+    /// that state already holds, in the output tables or in the output tree.
     pub fn may_be_caused_by_resumed_state(&self) -> bool {
-        matches!(
-            self,
+        match self {
             HorizonSyncError::UnknownSpentOutput(_) |
-                HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
-                HorizonSyncError::FinalOutputRootMismatch(_) |
-                HorizonSyncError::FinalStateValidationFailed(_)
-        )
+            HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
+            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) |
+            HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalStateValidationFailed(_) => true,
+            HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
+                e.downcast_ref::<ChainStorageError>(),
+                Some(ChainStorageError::KeyExists { .. })
+            ),
+            _ => false,
+        }
     }
 }
 

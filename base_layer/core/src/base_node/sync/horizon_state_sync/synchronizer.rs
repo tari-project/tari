@@ -1839,7 +1839,9 @@ mod tests {
             value: Some(FixedHash::default()),
             replaces_value: false,
         }]);
-        assert!(db.write(txn).is_err());
+        // The output tree reports a duplicate key, which a resumed sync treats as left-over state
+        let err = HorizonSyncError::from(db.write(txn).unwrap_err());
+        assert!(err.may_be_caused_by_resumed_state(), "{err}");
     }
 
     type EditTranche = Box<dyn FnMut(usize, &mut Vec<SyncUtxosResponse>) -> Result<(), RpcError> + Send>;
@@ -1987,6 +1989,62 @@ mod tests {
         assert_eq!(honest.requests, 5, "output sync must start from height 1");
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), target.height);
+    }
+
+    /// A peer that plants a later block's output in an early tranche and then drops the connection leaves state
+    /// that an honest peer's copy of that output collides with. The honest peer is not banned and output sync
+    /// restarts from height 1.
+    #[tokio::test]
+    async fn planted_output_resume_restarts_without_ban() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let coinbase = chain
+            .get_block_and_smt_by_name("4")
+            .unwrap()
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .find(|output| output.is_coinbase())
+            .unwrap()
+            .clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut planting = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 2 {
+                    return Err(RpcError::ClientClosed);
+                }
+                let mined_header = items.last().unwrap().mined_header.clone();
+                items.insert(0, SyncUtxosResponse {
+                    txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
+                    mined_header,
+                });
+                Ok(())
+            }),
+        );
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut planting, &target)
+            .await
+            .unwrap_err();
+        assert_eq!(checkpoint_height(&db), Some(1));
+
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(checkpoint_height(&db), None);
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap();
+        assert_eq!(honest.requests, 5, "output sync must start from height 1");
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
 
     /// A malformed item from a peer is banned even when output sync resumed from a checkpoint

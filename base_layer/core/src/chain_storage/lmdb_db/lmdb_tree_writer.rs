@@ -28,6 +28,7 @@ use tari_utilities::hex::Hex;
 
 use super::lmdb::{lmdb_get, lmdb_insert, lmdb_replace};
 use crate::chain_storage::{
+    ChainStorageError,
     Optional,
     lmdb_db::{
         lmdb::lmdb_delete,
@@ -93,7 +94,11 @@ impl TreeWriter for LmdbTreeWriter<'_> {
                     let existing: Option<Vec<u8>> = lmdb_get(self.txn, &self.value_db, &lmdb_key)?;
                     if existing.is_some() {
                         warn!(target: LOG_TARGET, "Found existing unique key {} for version {}", value_key.1 .0.to_hex(), value_key.0);
-                        return Err(anyhow::anyhow!("Duplicate value key found in batch"));
+                        return Err(ChainStorageError::KeyExists {
+                            table_name: "jmt_value_table",
+                            key: value_key.1.0.to_hex(),
+                        }
+                        .into());
                     }
                     let val_bytes = bincode::serialize(value)?;
 
