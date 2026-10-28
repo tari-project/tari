@@ -22,7 +22,10 @@
 
 #![allow(clippy::indexing_slicing)]
 use tari_core::{
-    base_node::{state_machine_service::states::StateEvent, sync::HeaderSyncStatus},
+    base_node::{
+        state_machine_service::states::{BlockSync, HeaderSyncState, StateEvent},
+        sync::HeaderSyncStatus,
+    },
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
 };
 
@@ -532,4 +535,185 @@ async fn test_header_sync_peer_chain_contains_a_known_bad_block_with_ban() {
             .is_none()
     );
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_short_overclaimed_fork_is_rejected_and_falls_back() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let eve_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+    sync::add_some_existing_blocks(&blocks[1..=2], &eve_node);
+    let (eve_blocks, _) = sync::create_and_add_some_blocks(
+        &eve_node,
+        &blocks[2],
+        &coinbases[2],
+        6,
+        &consensus_manager,
+        &key_manager,
+        &[3; 6],
+        &None,
+    );
+    let eve_fork_block_3 = &eve_blocks[1];
+    assert_ne!(eve_fork_block_3.hash(), blocks[3].hash());
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
+    assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 5);
+    assert_eq!(eve_node.blockchain_db.get_height().unwrap(), 8);
+
+    // Capture ping-pong metadata before Eve loses the advertised tail. Supply Bob first to verify sorting.
+    let mut sync_peers = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node).into_sync_peers();
+    sync_peers.extend(sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &eve_node).into_sync_peers());
+    let alice_metadata = alice_node.blockchain_db.get_chain_metadata().unwrap();
+    let mut header_sync = HeaderSyncState::new(sync_peers, alice_metadata.clone());
+    let sorted_peers = header_sync.clone().into_sync_peers();
+    assert_eq!(sorted_peers[0].node_id(), eve_node.node_identity.node_id());
+    assert_eq!(sorted_peers[1].node_id(), bob_node.node_identity.node_id());
+    assert!(sorted_peers[0].claimed_difficulty() > sorted_peers[1].claimed_difficulty());
+    assert!(sorted_peers[1].claimed_difficulty() > alice_metadata.accumulated_difficulty());
+
+    // The helper retains its first block as an anchor: keep height 3 and delete heights 4 through 8.
+    sync::delete_some_blocks_and_headers(&eve_blocks[1..=6], WhatToDelete::BlocksAndHeaders, &eve_node);
+    sync::delete_some_blocks_and_headers(&eve_blocks[0..=1], WhatToDelete::Blocks, &eve_node);
+    assert_eq!(eve_node.blockchain_db.get_height().unwrap(), 2);
+    assert_eq!(eve_node.blockchain_db.fetch_last_header().unwrap().height, 3);
+    let eve_actual_difficulty = eve_node
+        .blockchain_db
+        .fetch_last_chain_header()
+        .unwrap()
+        .accumulated_data()
+        .total_accumulated_difficulty;
+    assert!(eve_actual_difficulty > alice_metadata.accumulated_difficulty());
+    assert!(eve_actual_difficulty < sorted_peers[0].claimed_difficulty());
+
+    // Execute header sync followed by block sync with the resulting sync peers.
+    let header_event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    let mut block_sync = BlockSync::from(header_sync.into_sync_peers());
+    let block_event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+
+    assert!(
+        !sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await,
+        "Honest peer Bob should not be banned after Eve's overclaimed short header batch"
+    );
+    assert!(matches!(block_event, StateEvent::BlocksSynchronized), "{block_event:?}");
+    assert!(sync::wait_for_is_peer_banned(&alice_node, eve_node.node_identity.node_id(), 1).await);
+    assert!(
+        alice_node
+            .blockchain_db
+            .fetch_header_by_block_hash(*eve_fork_block_3.hash())
+            .unwrap()
+            .is_none()
+    );
+    match header_event {
+        StateEvent::HeadersSynchronized(peer, _) => {
+            assert_eq!(peer.node_id(), bob_node.node_identity.node_id());
+        },
+        event => panic!("Expected HeadersSynchronized with Bob, got {event:?}"),
+    }
+    let alice_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
+    assert_eq!(alice_header_tip.height, 5);
+    assert_eq!(alice_header_tip.hash(), *blocks[5].hash());
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 5);
+}
+
+/// A peer exactly `HEADER_SYNC_INITIAL_MAX_HEADERS` headers ahead has nothing left to stream after the first batch;
+/// it must not be banned and its headers must be committed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_exactly_initial_max_headers_no_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        1000,
+        &consensus_manager,
+        &key_manager,
+        &[1; 1000],
+        &None,
+    );
+    assert_eq!(bob_node.blockchain_db.get_height().unwrap(), 1000);
+
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    match event {
+        StateEvent::HeadersSynchronized(_val, sync_result) => {
+            assert_eq!(sync_result.headers_returned, 1000);
+        },
+        event => panic!("Expected HeadersSynchronized event, got {event:?}"),
+    }
+    let alice_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
+    assert_eq!(alice_header_tip.height, 1000);
+    assert_eq!(alice_header_tip.hash(), *blocks[1000].hash());
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A short batch that delivers exactly the claimed difficulty is committed and the peer is not banned.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_short_honest_batch_no_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let claimed = header_sync.clone().into_sync_peers()[0]
+        .claimed_chain_metadata()
+        .accumulated_difficulty();
+    assert_eq!(claimed, blocks[5].accumulated_data().total_accumulated_difficulty);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    match event {
+        StateEvent::HeadersSynchronized(_val, sync_result) => {
+            assert_eq!(sync_result.headers_returned, 3);
+        },
+        event => panic!("Expected HeadersSynchronized event, got {event:?}"),
+    }
+    let alice_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
+    assert_eq!(alice_header_tip.height, 5);
+    assert_eq!(alice_header_tip.hash(), *blocks[5].hash());
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }

@@ -67,7 +67,13 @@ use tari_transaction_components::{
     consensus::ConsensusConstants,
     crypto_factories::CryptoFactories,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
-    key_manager::{RecoveryProvenance, SerializedKeyString, TariKeyAndId, TariKeyId},
+    key_manager::{
+        RecoveryProvenance,
+        SerializedKeyString,
+        TariKeyAndId,
+        TariKeyId,
+        error::{KeyManagerError, not_ours_if_invalid_key},
+    },
     transaction_builder::{FinalizedTransaction, PendingOutput, RecipientKeys, RecipientSpec},
     transaction_components::{
         EncryptedData,
@@ -1937,8 +1943,56 @@ where
 
     /// Select which unspent transaction outputs to use to send a transaction of the specified amount. Use the specified
     /// selection strategy to choose the outputs. It also determines if a change output is required.
-    #[allow(clippy::too_many_lines)]
+    ///
+    /// A selected output whose commitment mask key no longer resolves because it is built on an invalid public key (for
+    /// example an identity sender offset key) can never be spent: it is marked Invalid and the selection is made again
+    /// without it.
     fn select_utxos(
+        &mut self,
+        amount: MicroMinotari,
+        mut selection_criteria: UtxoSelectionCriteria,
+        fee_per_gram: MicroMinotari,
+        num_outputs: usize,
+        total_output_features_and_scripts_byte_size: usize,
+        recipient_payment_id: Vec<u8>,
+        offline_change_fee: Option<MicroMinotari>,
+    ) -> Result<UtxoSelection, OutputManagerError> {
+        loop {
+            let selection = self.select_utxos_once(
+                amount,
+                selection_criteria.clone(),
+                fee_per_gram,
+                num_outputs,
+                total_output_features_and_scripts_byte_size,
+                recipient_payment_id.clone(),
+                offline_change_fee,
+            )?;
+            let mut unusable = Vec::new();
+            for uo in selection.iter() {
+                let mask_public_key = self
+                    .resources
+                    .key_manager
+                    .get_public_key_at_key_id(uo.wallet_output.commitment_mask_key_id());
+                if let Err(KeyManagerError::InvalidPublicKey(reason)) = mask_public_key {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Output {} cannot be spent ({reason}); marking it invalid",
+                        uo.commitment.to_hex()
+                    );
+                    unusable.push(uo.hash);
+                    // Excluded as well, as a must-include selection does not filter on status
+                    selection_criteria.excluding.push(uo.commitment.clone());
+                }
+            }
+            if unusable.is_empty() {
+                return Ok(selection);
+            }
+            self.resources.db.set_outputs_to_unmined_and_invalid(unusable)?;
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn select_utxos_once(
         &mut self,
         amount: MicroMinotari,
         selection_criteria: UtxoSelectionCriteria,
@@ -3315,10 +3369,14 @@ where
         for output in outputs {
             if let [Opcode::PushPubKey(scanned_pk)] = output.script.as_slice() {
                 if let Some(matched_key) = known_keys.iter().find(|x| &x.0 == scanned_pk.as_ref()) {
-                    let shared_secret = self
-                        .resources
-                        .key_manager
-                        .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)?;
+                    let Some(shared_secret) = not_ours_if_invalid_key(
+                        self.resources
+                            .key_manager
+                            .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key),
+                    )?
+                    else {
+                        continue;
+                    };
 
                     let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     let script_private_key = matched_key.clone().1;
@@ -3357,10 +3415,14 @@ where
                 }
                 // it is not some known key, so lets try and see if this is a stealth tx for us
                 else {
-                    let shared_secret = self
-                        .resources
-                        .key_manager
-                        .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key)?;
+                    let Some(shared_secret) = not_ours_if_invalid_key(
+                        self.resources
+                            .key_manager
+                            .get_diffie_hellman_shared_secret(&view_key.key_id, &output.sender_offset_public_key),
+                    )?
+                    else {
+                        continue;
+                    };
 
                     let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     if let Ok((committed_value, commitment_mask_private_key, payment_id)) =
@@ -3442,11 +3504,12 @@ where
                 );
 
                 if let Some((commitment_mask_key_id, committed_value, payment_id, provenance)) =
-                    self.resources.key_manager.try_output_key_recovery(
+                    not_ours_if_invalid_key(self.resources.key_manager.try_output_key_recovery(
                         output.commitment(),
                         output.encrypted_data(),
                         &output.sender_offset_public_key,
-                    )?
+                    ))?
+                    .flatten()
                 {
                     let script_spending_key = self.resources.key_manager.stealth_address_script_spending_key(
                         &commitment_mask_key_id,

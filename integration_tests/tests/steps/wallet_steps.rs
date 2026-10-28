@@ -23,7 +23,7 @@
 #![allow(clippy::indexing_slicing)]
 // Overflow in test code panics, which is the desired failure mode for a test.
 #![allow(clippy::arithmetic_side_effects)]
-use std::{convert::TryFrom, panic, path::PathBuf, sync::Arc, time::Duration};
+use std::{convert::TryFrom, panic, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use cucumber::{given, then, when};
 use futures::StreamExt;
@@ -54,7 +54,7 @@ use minotari_wallet::{
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::config::TransactionRoutingMechanism,
 };
-use tari_common_types::transaction::LegacyTransactionStatus;
+use tari_common_types::{tari_address::TariAddress, transaction::LegacyTransactionStatus, types::CompressedPublicKey};
 use tari_integration_tests::{
     DEFAULT_TIMEOUT,
     SHORT_TIMEOUT,
@@ -758,6 +758,53 @@ async fn send_one_sided_transaction_from_source_wallet_to_dest_wallt(
     cucumber_steps_log(format!(
         "One sided transaction with amount {amount} from {sender} to {receiver} at fee {fee} succeeded"
     ));
+}
+
+#[then(expr = "wallet {word} is refused a one-sided send to the default address and to a non-point address")]
+async fn one_sided_send_to_unusable_addresses_is_refused(world: &mut TariWorld, sender: String) {
+    let mut sender_client = create_wallet_client(world, sender.clone()).await.unwrap();
+    let own_address = TariAddress::from_str(&world.get_wallet_address(&sender).await.unwrap()).unwrap();
+    let not_a_point = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::new(&[0xffu8; 32]),
+        own_address.public_spend_key().clone(),
+        own_address.network(),
+    )
+    .unwrap();
+    let transfer_req = |address: &TariAddress| TransferRequest {
+        recipients: vec![PaymentRecipient {
+            address: address.to_base58(),
+            amount: 1000,
+            fee_per_gram: 20,
+            payment_type: 1, // one sided transaction
+            raw_payment_id: vec![],
+            user_payment_id: None,
+        }],
+        single_tx: false,
+        excluded_commitments: vec![],
+    };
+
+    // The default address decodes, so the wallet refuses the send itself
+    let results = sender_client
+        .transfer(transfer_req(&TariAddress::default()))
+        .await
+        .unwrap()
+        .into_inner()
+        .results;
+    let result = results.first().expect("one transfer result");
+    assert!(!result.is_success, "Send to the default address was not refused");
+    assert!(
+        result.failure_message.contains("identity point"),
+        "Unexpected failure: {}",
+        result.failure_message
+    );
+
+    // A key that is not a point does not decode, so the request is refused
+    let status = sender_client
+        .transfer(transfer_req(&not_a_point))
+        .await
+        .expect_err("Send to a non-point address was not refused");
+    assert_eq!(status.code(), tonic::Code::InvalidArgument, "{status}");
+    cucumber_steps_log(format!("Wallet {sender} refused both sends"));
 }
 
 #[then(expr = "I send an interactive transaction of {int} uT from wallet {word} to wallet {word} at fee {int}")]

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::burn_proof::BurnOutputProof;
+use tari_sidechain::BurnOutputProof;
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

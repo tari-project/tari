@@ -9,6 +9,8 @@ table! {
         number_of_hits -> Integer,
         stored_at -> Timestamp,
         last_hit_at -> Timestamp,
+        keep_until -> Timestamp,
+        is_signed -> Bool,
     }
 }
 

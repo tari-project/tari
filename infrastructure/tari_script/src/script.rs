@@ -1610,8 +1610,31 @@ mod test {
 
     #[test]
     fn from_bytes_rejects_oversized_scripts() {
-        // A script of exactly MAX_SCRIPT_BYTES of Nop (0x73) is parsed, and then rejected for having too many opcodes
-        let err = TariScript::from_bytes(&[0x73; MAX_SCRIPT_BYTES]).unwrap_err();
+        let nop_bytes = TariScript::new(vec![crate::Opcode::Nop]).unwrap().to_bytes();
+
+        // Exactly MAX_SCRIPT_BYTES (4096) with <= MAX_SCRIPT_OPCODES (124 PushHash + 4 Nop = 128 opcodes) is accepted
+        let mut max_valid_ops = vec![crate::Opcode::PushHash(Box::new([0x11; 32])); 124];
+        max_valid_ops.extend(std::iter::repeat_n(crate::Opcode::Nop, 4));
+        let max_valid_bytes = TariScript::new(max_valid_ops).unwrap().to_bytes();
+        assert_eq!(max_valid_bytes.len(), MAX_SCRIPT_BYTES);
+        let parsed = TariScript::from_bytes(&max_valid_bytes).unwrap();
+        assert_eq!(parsed.size(), super::MAX_SCRIPT_OPCODES);
+
+        // Exactly MAX_SCRIPT_OPCODES (128) single-byte opcodes is accepted
+        let max_ops_bytes = TariScript::new(vec![crate::Opcode::Nop; super::MAX_SCRIPT_OPCODES])
+            .unwrap()
+            .to_bytes();
+        let parsed_max_ops = TariScript::from_bytes(&max_ops_bytes).unwrap();
+        assert_eq!(parsed_max_ops.size(), super::MAX_SCRIPT_OPCODES);
+
+        // 129 single-byte opcodes is rejected on the 129th opcode before trailing invalid bytes are parsed
+        let mut over_max_ops = nop_bytes.repeat(super::MAX_SCRIPT_OPCODES + 1);
+        over_max_ops.push(0xFF);
+        let err = TariScript::from_bytes(&over_max_ops).unwrap_err();
+        assert!(matches!(err, ScriptError::MaxSizeVecError(_)));
+
+        // A script of exactly MAX_SCRIPT_BYTES of Nop is parsed, and then rejected for having too many opcodes
+        let err = TariScript::from_bytes(&nop_bytes.repeat(MAX_SCRIPT_BYTES)).unwrap_err();
         assert!(matches!(err, ScriptError::MaxSizeVecError(_)));
         // One more byte is rejected before parsing, even though the bytes are not valid opcodes
         let err = TariScript::from_bytes(&[0xFF; MAX_SCRIPT_BYTES + 1]).unwrap_err();

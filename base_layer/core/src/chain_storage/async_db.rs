@@ -25,7 +25,6 @@ use log::*;
 use primitive_types::U512;
 use rand::Rng;
 use tari_common_types::{
-    burn_proof::BurnOutputProof,
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
@@ -47,6 +46,7 @@ use tari_node_components::blocks::{
     HistoricalBlock,
     NewBlockTemplate,
 };
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{OutputType, TransactionInput, TransactionKernel, TransactionOutput},
@@ -199,8 +199,13 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_inputs_mined_info(hashes: Vec<HashOutput>) -> Vec<Option<InputMinedInfo>>,
-        "fetch_inputs_mined_info"
+        fetch_latest_mined_infos(hashes: Vec<HashOutput>) -> Vec<MinedInfo>,
+        "fetch_latest_mined_infos"
+    );
+
+    make_async_fn!(
+        fetch_outputs_spent_in_block(hashes: Vec<HashOutput>, header_hash: HashOutput) -> Vec<Option<OutputMinedInfo>>,
+        "fetch_outputs_spent_in_block"
     );
 
     make_async_fn!(

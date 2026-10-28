@@ -54,6 +54,9 @@ pub fn decode_signature(data: &[u8]) -> Result<CompressedSignature, WalletStorag
 
 #[cfg(test)]
 mod tests {
+    use tari_sidechain::{BurnOutputProof, FixedHash, MmrInclusionProof, OutputHashPreimage};
+    use tari_utilities::hex::from_hex;
+
     use super::*;
 
     #[test]
@@ -68,20 +71,14 @@ mod tests {
         assert_eq!(signature, decoded);
     }
 
-    #[test]
-    fn burn_output_proof_bincode_round_trips() {
-        use tari_common_types::{
-            burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
-            types::FixedHash,
-        };
-
+    fn burn_output_proof() -> BurnOutputProof {
         let mmr_proof = MmrInclusionProof {
             leaf_index: 1,
             mmr_size: 3,
             path: vec![FixedHash::from([2u8; 32])],
             peaks: vec![],
         };
-        let proof = BurnOutputProof {
+        BurnOutputProof {
             block_hash: FixedHash::from([1u8; 32]),
             block_height: 10,
             output: OutputHashPreimage {
@@ -99,8 +96,25 @@ mod tests {
             normal_output_proof: mmr_proof.clone(),
             normal_output_mr: FixedHash::from([6u8; 32]),
             block_output_proof: mmr_proof,
-        };
+        }
+    }
+
+    #[test]
+    fn burn_output_proof_bincode_round_trips() {
+        let proof = burn_output_proof();
         let decoded: BurnOutputProof = bincode_decode(&bincode_encode(&proof).unwrap()).unwrap();
         assert_eq!(decoded, proof);
+    }
+
+    /// Wallets store burn output proofs as bincode. This is `burn_output_proof()` as encoded by the
+    /// `tari_common_types::burn_proof` types that the `tari_sidechain` ones replaced, so stored proofs must still
+    /// decode.
+    #[test]
+    fn burn_output_proof_decodes_bytes_stored_by_the_previous_types() {
+        const STORED: &str = "200000000000000001010101010101010101010101010101010101010101010101010101010101010a00000000000000010300000000000000010203200000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000030303030303030303030303030303030303030303030303030303030303030301000000000000000420000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000050000000000000000505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505070000000000000001000000000000000300000000000000010000000000000020000000000000000202020202020202020202020202020202020202020202020202020202020202000000000000000020000000000000000606060606060606060606060606060606060606060606060606060606060606010000000000000003000000000000000100000000000000200000000000000002020202020202020202020202020202020202020202020202020202020202020000000000000000";
+        let stored = from_hex(STORED).unwrap();
+        let decoded: BurnOutputProof = bincode_decode(&stored).unwrap();
+        assert_eq!(decoded, burn_output_proof());
+        assert_eq!(bincode_encode(&decoded).unwrap(), stored);
     }
 }

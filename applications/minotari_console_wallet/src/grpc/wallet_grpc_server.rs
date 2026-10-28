@@ -152,9 +152,12 @@ use minotari_wallet::{
         handle::OutputManagerHandle,
     },
     transaction_service::{
-        error::TransactionServiceError,
+        error::{TransactionServiceError, TransactionStorageError},
         handle::TransactionServiceHandle,
-        storage::models::{self, CompletedTransaction, WalletTransaction},
+        storage::{
+            models::{self, CompletedTransaction, WalletTransaction},
+            sqlite_db::CompletedTransactionConversionError,
+        },
     },
     utxo_scanner_service::imported_output_source_address,
 };
@@ -168,7 +171,6 @@ use tari_common_types::{
         CompressedPublicKey,
         CompressedSignature,
         FixedHash,
-        PrivateKey,
         SignatureWithDomain,
     },
 };
@@ -1541,7 +1543,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateBurnTransactionRequest>,
     ) -> Result<Response<CreateBurnTransactionResponse>, Status> {
-        let message = request.into_inner();
+        let mut message = request.into_inner();
+        let sidechain_deployment_key = message.take_sidechain_deployment_key();
 
         let mut transaction_service = self.get_transaction_service();
         debug!(target: LOG_TARGET, "Trying to burn {} Minotari", message.amount);
@@ -1556,11 +1559,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(CompressedPublicKey::from_canonical_bytes)
                     .transpose()
                     .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                Some(message.sidechain_deployment_key.as_slice())
-                    .filter(|v| !v.is_empty())
-                    .map(PrivateKey::from_canonical_bytes)
-                    .transpose()
-                    .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                sidechain_deployment_key.map_err(|e| Status::invalid_argument(e.to_string()))?,
             )
             .await;
 
@@ -1616,13 +1615,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .get_any_transaction(tx_id)
                     .await
                     .map(|tx| (tx_id, tx))
+                    .map_err(|err| (tx_id, err))
             }
         });
 
-        let all_transactions = future::try_join_all(queries)
-            .await
-            .map(|tx| tx.into_iter())
-            .map_err(|err| Status::unknown(err.to_string()))?;
+        let all_transactions =
+            future::try_join_all(queries)
+                .await
+                .map(|tx| tx.into_iter())
+                .map_err(|(tx_id, err)| {
+                    if is_undecodable_row(&err) {
+                        warn!(target: LOG_TARGET, "GetTransactionInfo: transaction {tx_id} does not decode: {err:?}");
+                        return Status::data_loss(format!("undecodable rows: skipped=1 tx_id={tx_id}"));
+                    }
+                    lookup_error("GetTransactionInfo", err, None)
+                })?;
         let wallet_address = self
             .wallet
             .get_wallet_interactive_address()
@@ -1753,7 +1760,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let transactions = transaction_service
             .get_completed_transactions(payment_id, block_hash, block_height, 0)
             .await
-            .map_err(|err| Status::not_found(format!("No completed transactions found: {err:?}")))?;
+            .map_err(|err| lookup_error("GetCompletedTransactions", err, None))?;
         debug!(
             target: LOG_TARGET,
             "GetCompletedTransactions: Found {} completed transactions",
@@ -1883,8 +1890,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let total_requested = req.limit;
         let chunk_size = std::cmp::min(total_requested, 100); // Process in chunks of 100
-        let mut all_transactions: Vec<TransactionInfo> =
-            Vec::with_capacity(total_requested.try_into().unwrap_or(usize::MAX));
+        let mut all_transactions: Vec<TransactionInfo> = Vec::new();
         let mut current_offset = req.offset;
         let mut remaining = total_requested;
 
@@ -1896,9 +1902,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 .get_completed_transactions_paginated(current_offset, current_limit, status_filter)
                 .await
                 .map_err(|err| {
-                    Status::not_found(format!(
-                        "GetAllCompletedTransactions: Error found for get_completed_transactions_paginated: {err:?}"
-                    ))
+                    with_request_offset(
+                        lookup_error(
+                            "GetAllCompletedTransactions",
+                            err,
+                            Some((current_offset, current_limit)),
+                        ),
+                        req.offset,
+                    )
                 })?;
 
             // Break if we get no more results
@@ -2050,15 +2061,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 {
                     Ok(transactions) => transactions,
                     Err(err) => {
-                        warn!(
-                            target: LOG_TARGET,
-                            "GetAllCompletedTransactionsStreaming: Database error: {err:?}"
+                        let status = lookup_error(
+                            "GetAllCompletedTransactionsStreaming",
+                            err,
+                            Some((current_offset, current_limit)),
                         );
-                        let _ = sender
-                            .send(Err(Status::internal(format!(
-                                "Database error while fetching transactions: {err:?}"
-                            ))))
-                            .await;
+                        let _ = sender.send(Err(status)).await;
                         return;
                     },
                 };
@@ -2210,9 +2218,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .get_completed_transactions(None, None, Some(block_height), 0)
             .await
             .map_err(|err| {
-                Status::not_found(format!(
-                    "GetBlockHeightTransactions: Error found at block height {block_height}: {err:?}"
-                ))
+                lookup_error(
+                    &format!("GetBlockHeightTransactions at block height {block_height}"),
+                    err,
+                    None,
+                )
             })?;
         debug!(
             target: LOG_TARGET,
@@ -2476,14 +2486,30 @@ impl wallet_server::Wallet for WalletGrpcServer {
             "Incoming gRPC request to Cancel Transaction (TxId: {})", message.tx_id,
         );
         let mut transaction_service = self.get_transaction_service();
-        let txn = transaction_service
-            .get_any_transaction(message.tx_id.into())
-            .await
-            .map_err(|e| Status::internal(format!("{}", e)))?
-            .ok_or(Status::not_found(format!(
+        let txn = match transaction_service.get_any_transaction(message.tx_id.into()).await {
+            Ok(txn) => txn.ok_or(Status::not_found(format!(
                 "Transaction TxId:{} is not found",
                 message.tx_id
-            )))?;
+            )))?,
+            // A pending outbound row stored by an older version may no longer decode; the service can still cancel it
+            Err(e) if is_undecodable_transaction(&e) => {
+                let response = match transaction_service
+                    .cancel_pending_transaction(message.tx_id.into())
+                    .await
+                {
+                    Ok(_) => tari_rpc::CancelTransactionResponse {
+                        is_success: true,
+                        failure_message: "".to_string(),
+                    },
+                    Err(e) => tari_rpc::CancelTransactionResponse {
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                };
+                return Ok(Response::new(response));
+            },
+            Err(e) => return Err(Status::internal(format!("{}", e))),
+        };
 
         if txn.status().is_pending() {
             match transaction_service
@@ -2541,7 +2567,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RegisterValidatorNodeRequest>,
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
-        let request = request.into_inner();
+        let mut request = request.into_inner();
+        let sidechain_deployment_key = request.take_sidechain_deployment_key();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
@@ -2554,14 +2581,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
                 .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
-        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
-            None
-        } else {
-            Some(
-                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
-                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
-            )
-        };
+        let sidechain_key =
+            sidechain_deployment_key.map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?;
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
@@ -2603,7 +2624,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<SubmitValidatorNodeExitRequest>,
     ) -> Result<Response<SubmitValidatorNodeExitResponse>, Status> {
-        let request = request.into_inner();
+        let mut request = request.into_inner();
+        let sidechain_deployment_key = request.take_sidechain_deployment_key();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
@@ -2613,14 +2635,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
 
-        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
-            None
-        } else {
-            Some(
-                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
-                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
-            )
-        };
+        let sidechain_key =
+            sidechain_deployment_key.map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?;
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
@@ -2705,19 +2721,16 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut tms = self.get_transaction_service();
 
         // Look up current payref
-        let current_tx = tms.get_transaction_by_payref(payment_ref).await.ok();
+        let current_tx = found_or_none(
+            "get_payment_by_reference: current PayRef",
+            tms.get_transaction_by_payref(payment_ref).await,
+        )?;
 
         // Look up historical payrefs (from reorgs)
         let historical_txs = tms
             .get_transaction_by_historical_payref(payment_ref)
             .await
-            .unwrap_or_else(|e| {
-                debug!(
-                    target: LOG_TARGET,
-                    "get_payment_by_reference: Error looking up historical PayRef: {e}"
-                );
-                vec![]
-            });
+            .map_err(|e| lookup_error("get_payment_by_reference: historical PayRef", e, None))?;
 
         if current_tx.is_none() && historical_txs.is_empty() {
             return Err(Status::not_found(format!("PayRef {} not found", payment_ref.to_hex())));
@@ -4444,6 +4457,67 @@ fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8
     }
 }
 
+/// A failure behind a lookup is never "not found", so that a client does not take it for an empty result. Stored rows
+/// that could not be decoded are DATA_LOSS with the stable message `undecodable rows: skipped=<n>`, followed by
+/// ` offset=<offset> limit=<limit>` for a paged lookup, so a client can resume at offset + limit; anything else is
+/// INTERNAL.
+fn lookup_error(context: &str, err: TransactionServiceError, page: Option<(u64, u64)>) -> Status {
+    warn!(target: LOG_TARGET, "{context}: {err:?}");
+    let (code, mut message) = match err {
+        TransactionServiceError::TransactionStorageError(TransactionStorageError::UndecodableRows { skipped }) => {
+            (tonic::Code::DataLoss, format!("undecodable rows: skipped={skipped}"))
+        },
+        err => (tonic::Code::Internal, format!("{context}: {err:?}")),
+    };
+    // Every failure of a paged lookup names the page, so a client can resume past it
+    if let Some((offset, limit)) = page {
+        message.push_str(&format!(" offset={offset} limit={limit}"));
+    }
+    Status::new(code, message)
+}
+
+/// For a unary paged call, which returns nothing when a chunk fails: the error also names the request's own offset, so
+/// a client can re-request from there up to the failing chunk's offset
+fn with_request_offset(status: Status, request_offset: u64) -> Status {
+    Status::new(
+        status.code(),
+        format!("{} request_offset={request_offset}", status.message()),
+    )
+}
+
+/// A lookup that reports a missing value as `ValueNotFound` gives `None`; any other failure is a [`lookup_error`]
+fn found_or_none<T>(context: &str, result: Result<T, TransactionServiceError>) -> Result<Option<T>, Status> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(_))) => Ok(None),
+        Err(err) => Err(lookup_error(context, err, None)),
+    }
+}
+
+/// Whether a transaction lookup failed because the stored row no longer decodes, rather than for a systemic reason
+fn is_undecodable_transaction(err: &TransactionServiceError) -> bool {
+    matches!(
+        err,
+        TransactionServiceError::TransactionStorageError(
+            TransactionStorageError::BincodeDeserialize(_) | TransactionStorageError::TransactionKeyError(_)
+        )
+    )
+}
+
+/// As [`is_undecodable_transaction`], for a row of any kind: a completed transaction row that does not decode counts
+/// too, except when it failed to decrypt
+fn is_undecodable_row(err: &TransactionServiceError) -> bool {
+    if is_undecodable_transaction(err) {
+        return true;
+    }
+    match err {
+        TransactionServiceError::TransactionStorageError(TransactionStorageError::CompletedConversionError(e)) => {
+            !matches!(e, CompletedTransactionConversionError::AeadError(_))
+        },
+        _ => false,
+    }
+}
+
 /// Builds a memo from raw payment id bytes sent by a client, rejecting a memo that the wallet could not decode again
 /// once stored (see [`MemoField::from_bytes_checked`]).
 fn memo_from_raw_bytes(bytes: &[u8]) -> Result<MemoField, Status> {
@@ -4484,7 +4558,134 @@ mod tests {
     use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
     use tari_utilities::ByteArray;
 
-    use super::{memo_from_raw_bytes, parse_excluded_commitments};
+    use super::{
+        found_or_none,
+        is_undecodable_row,
+        is_undecodable_transaction,
+        lookup_error,
+        memo_from_raw_bytes,
+        parse_excluded_commitments,
+        with_request_offset,
+    };
+
+    #[test]
+    fn only_an_undecodable_row_goes_straight_to_cancel() {
+        use minotari_wallet::transaction_service::error::{
+            TransactionKeyError,
+            TransactionServiceError,
+            TransactionStorageError,
+        };
+        use tari_common_types::tari_address::TariAddressError;
+
+        let storage = TransactionServiceError::TransactionStorageError;
+        assert!(is_undecodable_transaction(&storage(
+            TransactionStorageError::BincodeDeserialize("bad".to_string())
+        )));
+        assert!(is_undecodable_transaction(&storage(
+            TransactionStorageError::TransactionKeyError(TransactionKeyError::Destination(
+                TariAddressError::InvalidSize
+            ))
+        )));
+        assert!(!is_undecodable_transaction(&storage(
+            TransactionStorageError::AeadError("wrong key".to_string())
+        )));
+        assert!(!is_undecodable_transaction(&storage(
+            TransactionStorageError::UndecodableRows { skipped: 1 }
+        )));
+    }
+
+    #[test]
+    fn an_undecodable_row_of_any_kind_is_not_a_decryption_failure() {
+        use minotari_wallet::transaction_service::{
+            error::{TransactionServiceError, TransactionStorageError},
+            storage::sqlite_db::CompletedTransactionConversionError,
+        };
+
+        let storage = TransactionServiceError::TransactionStorageError;
+        assert!(is_undecodable_row(&storage(
+            TransactionStorageError::BincodeDeserialize("bad".to_string())
+        )));
+        assert!(is_undecodable_row(&storage(
+            TransactionStorageError::CompletedConversionError(CompletedTransactionConversionError::BincodeDeserialize(
+                "bad".to_string()
+            ))
+        )));
+        assert!(!is_undecodable_row(&storage(
+            TransactionStorageError::CompletedConversionError(CompletedTransactionConversionError::AeadError(
+                "wrong key".to_string()
+            ))
+        )));
+        assert!(!is_undecodable_row(&storage(TransactionStorageError::AeadError(
+            "wrong key".to_string()
+        ))));
+    }
+
+    #[test]
+    fn lookup_failures_are_internal_errors_and_only_value_not_found_is_none() {
+        use minotari_wallet::transaction_service::{
+            error::{TransactionServiceError, TransactionStorageError},
+            storage::database::DbKey,
+        };
+
+        assert_eq!(found_or_none("lookup", Ok(5u8)).unwrap(), Some(5));
+        let not_found = TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
+            DbKey::CompletedTransactions(1),
+        ));
+        assert_eq!(found_or_none::<u8>("lookup", Err(not_found)).unwrap(), None);
+
+        let status = found_or_none::<u8>(
+            "lookup",
+            Err(TransactionServiceError::TransactionStorageError(
+                TransactionStorageError::UndecodableRows { skipped: 2 },
+            )),
+        )
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::DataLoss);
+        assert_eq!(status.message(), "undecodable rows: skipped=2");
+
+        let status = lookup_error(
+            "paged",
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::UndecodableRows { skipped: 1 }),
+            Some((200, 100)),
+        );
+        assert_eq!(status.code(), tonic::Code::DataLoss);
+        assert_eq!(status.message(), "undecodable rows: skipped=1 offset=200 limit=100");
+        let status = with_request_offset(status, 0);
+        assert_eq!(status.code(), tonic::Code::DataLoss);
+        assert_eq!(
+            status.message(),
+            "undecodable rows: skipped=1 offset=200 limit=100 request_offset=0"
+        );
+        let status = lookup_error(
+            "paged",
+            TransactionServiceError::TransactionStorageError(TransactionStorageError::AeadError(
+                "wrong key".to_string(),
+            )),
+            Some((200, 100)),
+        );
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert!(
+            status.message().ends_with(" offset=200 limit=100"),
+            "{}",
+            status.message()
+        );
+        let status = with_request_offset(status, 0);
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert!(
+            status.message().ends_with(" offset=200 limit=100 request_offset=0"),
+            "{}",
+            status.message()
+        );
+
+        let status = found_or_none::<u8>(
+            "lookup",
+            Err(TransactionServiceError::TransactionStorageError(
+                TransactionStorageError::AeadError("wrong key".to_string()),
+            )),
+        )
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::Internal);
+    }
 
     #[test]
     fn memo_from_raw_bytes_rejects_oversized_payment_ids() {

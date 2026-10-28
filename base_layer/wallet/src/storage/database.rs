@@ -44,6 +44,8 @@ const LOG_TARGET: &str = "wallet::database";
 
 /// This trait defines the functionality that a database backend need
 pub trait WalletBackend: Send + Sync + Clone {
+    /// Whether a missing wallet type may be set now: the wallet was created when this backend was opened
+    fn wallet_type_init_allowed(&self) -> bool;
     /// Retrieve the record associated with the provided DbKey
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, WalletStorageError>;
     /// Modify the state the of the backend with a write operation
@@ -92,6 +94,8 @@ pub enum DbKey {
     LastAccessedNetwork,
     LastAccessedVersion,
     WalletType,
+    // Set while freed pages that may still hold plaintext have to be scrubbed from the file
+    ScrubPending,
 }
 
 impl DbKey {
@@ -111,6 +115,7 @@ impl DbKey {
             DbKey::LastAccessedNetwork => "LastAccessedNetwork".to_string(),
             DbKey::LastAccessedVersion => "LastAccessedVersion".to_string(),
             DbKey::WalletType => "WalletType".to_string(),
+            DbKey::ScrubPending => "ScrubPending".to_string(),
         }
     }
 }
@@ -353,6 +358,11 @@ where T: WalletBackend + 'static
 
     pub fn delete_burn_proof(&self, id: i32) -> Result<(), WalletStorageError> {
         self.db.delete_burn_proof(id)
+    }
+
+    /// See [`WalletBackend::wallet_type_init_allowed`]
+    pub fn wallet_type_init_allowed(&self) -> bool {
+        self.db.wallet_type_init_allowed()
     }
 
     pub fn get_wallet_type(&self) -> Result<Option<LegacyWalletType>, WalletStorageError> {

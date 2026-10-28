@@ -2,7 +2,7 @@
 
 ## What is a Payment Reference (PayRef)?
 
-A Payment Reference (PayRef) is a globally unique identifier for individual transaction outputs on the Tari blockchain. It serves as proof that a specific payment was made and received, similar to a transaction ID in traditional payment systems but with enhanced privacy features.
+A Payment Reference (PayRef) is a globally unique identifier for individual transaction outputs on the Tari blockchain. It is a lookup handle for a specific payment, similar to a transaction ID in traditional payment systems but with enhanced privacy features. Anyone who can see the output on chain can compute its PayRef, so it is not evidence of who paid.
 
 ## Key Features
 
@@ -82,7 +82,9 @@ When a customer claims they sent a payment:
 1. Ask the customer for their PayRef
 2. Use your wallet's gRPC API or search functionality to verify the PayRef
 3. If the PayRef is found in your received transactions, the payment is confirmed
-4. Credit the customer's account accordingly
+4. Credit the account that owns the output's payment id or deposit address, not whoever presented the PayRef
+
+A PayRef is bound to the block the output was mined in. If a reorg mines the output in a different block, its PayRef changes, so treat it as final only after the required confirmations.
 
 ## PayRef Configuration
 
@@ -203,7 +205,7 @@ PayRefs are designed to be privacy-preserving:
 ### What PayRefs Do NOT Reveal
 
 - ❌ Payment amounts
-- ❌ Sender or receiver identities
+- ❌ Sender or receiver identities (anyone can compute a PayRef, so presenting one does not show who paid)
 - ❌ Links to other transactions
 - ❌ Account balances
 

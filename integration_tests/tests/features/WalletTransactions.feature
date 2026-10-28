@@ -4,6 +4,12 @@
 Feature: Wallet Transactions
 
   @critical
+  Scenario: Wallet refuses to send to an address whose key is the identity or not a point
+    Given I have a seed node NODE
+    When I have wallet WALLET_A connected to all seed nodes
+    Then wallet WALLET_A is refused a one-sided send to the default address and to a non-point address
+
+  @critical
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
     When I have wallet WALLET_A connected to all seed nodes

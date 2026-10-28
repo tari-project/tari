@@ -29,12 +29,13 @@ use std::{
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_common_types::{
-    burn_proof::{BurnOutputProof, PartialBurnClaimProof},
+    burn_proof::PartialBurnClaimProof,
     payment_reference::PaymentReference,
     tari_address::TariAddress,
     transaction::{LegacyTransactionStatus, TransactionDirection, TxId},
     types::{BlockHash, FixedHash, PrivateKey},
 };
+use tari_sidechain::BurnOutputProof;
 use tari_transaction_components::{
     MicroMinotari,
     key_manager::RecoveryProvenance,
@@ -87,6 +88,8 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, TransactionStorageError>;
     /// Check if a transaction exists in any of the collections
     fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError>;
+    /// Check if a pending outbound transaction that is not cancelled exists, without decoding it
+    fn pending_outbound_transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError>;
     /// Update a previously completed transaction with new data
     fn update_completed_transaction(
         &self,
@@ -381,6 +384,11 @@ where T: TransactionBackend + 'static
     /// Check if a transaction with the specified TxId exists in any of the collections
     pub fn transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
         self.db.transaction_exists(tx_id)
+    }
+
+    /// See [`TransactionBackend::pending_outbound_transaction_exists`]
+    pub fn pending_outbound_transaction_exists(&self, tx_id: TxId) -> Result<bool, TransactionStorageError> {
+        self.db.pending_outbound_transaction_exists(tx_id)
     }
 
     pub fn insert_completed_transaction(

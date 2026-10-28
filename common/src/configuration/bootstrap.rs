@@ -13,47 +13,69 @@ use std::{
 use super::error::ConfigError;
 use crate::configuration::Network;
 
-/// Prints the question and reads a yes/no answer from stdin. End of input (closed stdin) or a read error means no,
-/// so a non-interactive start never opts into anything. See [`prompt_from`].
+/// Prints the question and reads a yes/no answer from stdin. An empty line, end of input (closed stdin), or a read
+/// error means no, so a non-interactive start or pressing Enter at a `(y/N)` prompt never opts into anything. See
+/// [`prompt_from`].
 pub fn prompt(question: &str) -> bool {
     println!("{question}");
-    prompt_from(io::stdin().lock(), false)
+    prompt_from(io::stdin().lock(), false, false)
 }
 
-/// Like [`prompt`], but end of input (closed stdin) or a read error means yes. Use this only where answering no
-/// would stop a start that has always worked without a terminal, e.g. creating a node identity on first start.
+/// Like [`prompt`], but an empty line (pressing Enter), end of input (closed stdin), or a read error means yes,
+/// matching a `(Y/n)` prompt. Use this only where answering no would stop a start that has always worked without a
+/// terminal, e.g. creating a node identity on first start.
 pub fn prompt_default_yes_on_eof(question: &str) -> bool {
     println!("{question}");
-    prompt_from(io::stdin().lock(), true)
+    prompt_from(io::stdin().lock(), true, true)
 }
 
-/// Like [`prompt`], but end of input (closed stdin) or a read error is an error instead of an answer. Use this where
-/// neither yes nor no is a safe default, e.g. choosing between a hardware and a software wallet.
+/// Like [`prompt`], but requires an explicit `y`/`yes` or `n`/`no` answer; end of input (closed stdin), a read error,
+/// or a blank/unrecognized answer is an error instead of a default choice. Use this where neither yes nor no is a safe
+/// default, e.g. choosing between a hardware and a software wallet.
 pub fn prompt_required(question: &str) -> Result<bool, ConfigError> {
     println!("{question}");
-    read_answer(io::stdin().lock()).ok_or_else(|| {
-        ConfigError::new(
+    prompt_required_from(io::stdin().lock())
+}
+
+fn prompt_required_from<R: BufRead>(mut reader: R) -> Result<bool, ConfigError> {
+    let mut input = String::new();
+    match reader.read_line(&mut input) {
+        Ok(0) | Err(_) => Err(ConfigError::new(
             "No answer to a required prompt",
             Some("stdin is closed or could not be read".to_string()),
-        )
-    })
+        )),
+        Ok(_) => match input.trim().to_lowercase().as_str() {
+            "y" | "yes" => Ok(true),
+            "n" | "no" => Ok(false),
+            _ => Err(ConfigError::new(
+                "No answer to a required prompt",
+                Some("expected an explicit 'y'/'yes' or 'n'/'no' answer".to_string()),
+            )),
+        },
+    }
 }
 
-/// Reads a single yes/no answer from `reader`. An empty line or `y` means yes. End of input (no line at all) or a
-/// read error returns `eof_answer`.
-fn prompt_from<R: BufRead>(reader: R, eof_answer: bool) -> bool {
-    read_answer(reader).unwrap_or(eof_answer)
+/// Reads a single yes/no answer from `reader`. An explicit `y` or `yes` (case-insensitive) means yes; an empty line
+/// returns `empty_answer`; any other non-empty line means no. End of input (no line at all) or a read error returns
+/// `eof_answer`.
+fn prompt_from<R: BufRead>(reader: R, eof_answer: bool, empty_answer: bool) -> bool {
+    read_answer(reader, empty_answer).unwrap_or(eof_answer)
 }
 
-/// Reads a single yes/no answer from `reader`: `Some(true)` for an empty line or `y`, `Some(false)` for anything
-/// else, and `None` at end of input (no line at all) or on a read error.
-fn read_answer<R: BufRead>(mut reader: R) -> Option<bool> {
+/// Reads a single yes/no answer from `reader`: `Some(empty_answer)` for an empty/whitespace-only line, `Some(true)`
+/// for an explicit `y` or `yes` (case-insensitive), `Some(false)` for anything else, and `None` at end of input (no
+/// line at all) or on a read error.
+fn read_answer<R: BufRead>(mut reader: R, empty_answer: bool) -> Option<bool> {
     let mut input = String::new();
     match reader.read_line(&mut input) {
         Ok(0) | Err(_) => None,
         Ok(_) => {
             let input = input.trim().to_lowercase();
-            Some(input == "y" || input.is_empty())
+            if input.is_empty() {
+                Some(empty_answer)
+            } else {
+                Some(matches!(input.as_str(), "y" | "yes"))
+            }
         },
     }
 }
@@ -187,27 +209,48 @@ mod test {
 
     #[test]
     fn prompt_from_eof_uses_eof_answer() {
-        assert!(!prompt_from(&b""[..], false));
-        assert!(prompt_from(&b""[..], true));
+        assert!(!prompt_from(&b""[..], false, false));
+        assert!(prompt_from(&b""[..], true, true));
     }
 
     #[test]
-    fn read_answer_eof_is_none() {
-        assert_eq!(read_answer(&b""[..]), None);
-        assert_eq!(read_answer(&b"\n"[..]), Some(true));
-        assert_eq!(read_answer(&b"y\n"[..]), Some(true));
-        assert_eq!(read_answer(&b"n\n"[..]), Some(false));
+    fn read_answer_eof_and_empty_line_defaults() {
+        assert_eq!(read_answer(&b""[..], false), None);
+        assert_eq!(read_answer(&b""[..], true), None);
+        assert_eq!(read_answer(&b"\n"[..], false), Some(false));
+        assert_eq!(read_answer(&b"\n"[..], true), Some(true));
+        assert_eq!(read_answer(&b"   \r\n"[..], false), Some(false));
+        assert_eq!(read_answer(&b"   \r\n"[..], true), Some(true));
+        assert_eq!(read_answer(&b"y\n"[..], false), Some(true));
+        assert_eq!(read_answer(&b"yes\n"[..], false), Some(true));
+        assert_eq!(read_answer(&b"YES\n"[..], false), Some(true));
+        assert_eq!(read_answer(&b"n\n"[..], true), Some(false));
     }
 
     #[test]
     fn prompt_from_answers() {
-        for eof_answer in [false, true] {
-            assert!(prompt_from(&b"\n"[..], eof_answer));
-            assert!(prompt_from(&b"y\n"[..], eof_answer));
-            assert!(prompt_from(&b"Y"[..], eof_answer));
-            assert!(!prompt_from(&b"n\n"[..], eof_answer));
-            assert!(!prompt_from(&b"no\n"[..], eof_answer));
+        for (eof_answer, empty_answer) in [(false, false), (true, true)] {
+            assert_eq!(prompt_from(&b"\n"[..], eof_answer, empty_answer), empty_answer);
+            assert_eq!(prompt_from(&b"   \n"[..], eof_answer, empty_answer), empty_answer);
+            assert!(prompt_from(&b"y\n"[..], eof_answer, empty_answer));
+            assert!(prompt_from(&b"Y"[..], eof_answer, empty_answer));
+            assert!(prompt_from(&b"yes\n"[..], eof_answer, empty_answer));
+            assert!(prompt_from(&b"YES"[..], eof_answer, empty_answer));
+            assert!(!prompt_from(&b"n\n"[..], eof_answer, empty_answer));
+            assert!(!prompt_from(&b"no\n"[..], eof_answer, empty_answer));
         }
+    }
+
+    #[test]
+    fn prompt_required_from_requires_explicit_yes_or_no() {
+        assert!(prompt_required_from(&b""[..]).is_err());
+        assert!(prompt_required_from(&b"\n"[..]).is_err());
+        assert!(prompt_required_from(&b"   \r\n"[..]).is_err());
+        assert!(prompt_required_from(&b"maybe\n"[..]).is_err());
+        assert!(prompt_required_from(&b"y\n"[..]).unwrap());
+        assert!(prompt_required_from(&b"YES\n"[..]).unwrap());
+        assert!(!prompt_required_from(&b"n\n"[..]).unwrap());
+        assert!(!prompt_required_from(&b"NO\n"[..]).unwrap());
     }
 
     #[test]

@@ -533,6 +533,84 @@ async fn must_include_commitment_listed_twice_selects_it_once() {
     assert_eq!(matching_inputs, 1);
 }
 
+/// An output stored with a commitment mask derived from an identity sender offset key can never be spent. Selecting it
+/// marks it invalid and the send goes ahead with the other inputs. The bad output alone is the best selection, so it is
+/// picked first.
+#[tokio::test]
+async fn an_output_whose_keys_no_longer_resolve_is_marked_invalid_and_skipped() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let good_1 = spendable_test_input(&mut oms, &backend, MicroMinotari::from(6000)).await;
+    let good_2 = spendable_test_input(&mut oms, &backend, MicroMinotari::from(6000)).await;
+    let planted = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(10000),
+        &OutputFeatures::default(),
+        oms.key_manager_handle.key_manager(),
+    );
+    let identity_mask = TariKeyId::DHCommitmentMask {
+        public_key: CompressedPublicKey::default(),
+        private_key: TariKeyId::ViewKey.into(),
+    };
+    let bad = WalletOutput::new_from_transaction_output(
+        planted.value(),
+        identity_mask.clone(),
+        MemoField::new_empty(),
+        planted.to_transaction_output().unwrap(),
+        ExecutionStack::default(),
+        TariKeyId::Derived {
+            key: identity_mask.into(),
+        },
+    );
+    oms.output_manager_handle.add_output(bad.clone(), None).await.unwrap();
+    backend
+        .mark_outputs_as_unspent(vec![(bad.output_hash(), true)])
+        .unwrap();
+
+    let amount = MicroMinotari::from(9000);
+    let mut tx_builder = oms
+        .output_manager_handle
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            amount,
+            UtxoSelectionCriteria::default(),
+            OutputFeatures::default(),
+            MicroMinotari::from(5),
+            script!(Nop).unwrap(),
+            Covenant::default(),
+            MemoField::new_empty(),
+        )
+        .await
+        .unwrap();
+    let mut inputs = tx_builder
+        .inputs()
+        .iter()
+        .map(|input| input.output.commitment().clone())
+        .collect::<Vec<_>>();
+    inputs.sort();
+    let mut expected = vec![good_1.commitment().clone(), good_2.commitment().clone()];
+    expected.sort();
+    assert_eq!(inputs, expected);
+
+    tx_builder
+        .add_stealth_recipient(
+            random_dual_address(),
+            amount,
+            OutputFeatures::default(),
+            MemoField::new_empty(),
+        )
+        .unwrap();
+    tx_builder.reserve_sender_offset_keys(&[]).unwrap();
+    let finalized = tx_builder.build().unwrap();
+    assert_validates(&finalized.transaction);
+
+    let invalid = oms.output_manager_handle.get_invalid_outputs().await.unwrap();
+    assert_eq!(invalid.len(), 1);
+    assert_eq!(invalid[0].commitment(), bad.commitment());
+}
+
 #[allow(clippy::identity_op)]
 #[allow(clippy::too_many_lines)]
 #[tokio::test]
@@ -2389,6 +2467,74 @@ async fn scan_for_recovery_test() {
             .unwrap();
         assert!(recovered_outputs_keys.contains(&commitment_branch_public_key));
     }
+}
+
+/// Outputs whose sender offset key is the identity or not a point are skipped by recovery and one-sided scanning;
+/// the rest of the batch is still found.
+#[tokio::test]
+async fn scanning_skips_outputs_with_an_invalid_sender_offset_key() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone());
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+
+    let commitment_mask_key = oms.key_manager_handle.get_random_key(None, None).unwrap();
+    let script_key_id = TariKeyId::Derived {
+        key: (&commitment_mask_key.key_id).into(),
+    };
+    let public_script_key = oms.key_manager_handle.get_public_key_at_key_id(&script_key_id).unwrap();
+    let encrypted_data = oms
+        .key_manager_handle
+        .encrypt_data_for_recovery(&commitment_mask_key.key_id, None, 1000, MemoField::new_empty())
+        .unwrap();
+    let ours = WalletOutput::new_current_version(
+        MicroMinotari::from(1000),
+        commitment_mask_key.key_id,
+        OutputFeatures::default(),
+        script!(Nop).unwrap(),
+        inputs!(public_script_key),
+        script_key_id,
+        CompressedPublicKey::default(),
+        ComAndPubSignature::default(),
+        0,
+        Covenant::new(),
+        encrypted_data,
+        MicroMinotari::zero(),
+        MemoField::new_empty(),
+        &oms.key_manager_handle,
+    )
+    .unwrap()
+    .to_transaction_output()
+    .unwrap();
+
+    let other_key_manager = create_new_random_key_manager().await.unwrap();
+    let mut bad_outputs = Vec::new();
+    for sender_offset in [CompressedPublicKey::default(), CompressedPublicKey::new(&[0xffu8; 32])] {
+        let mut output = make_input(
+            &mut rand::rng(),
+            MicroMinotari::from(2000),
+            &OutputFeatures::default(),
+            other_key_manager.key_manager(),
+        )
+        .to_transaction_output()
+        .unwrap();
+        output.sender_offset_public_key = sender_offset;
+        bad_outputs.push(output);
+    }
+
+    let recovered = oms
+        .output_manager_handle
+        .scan_for_recoverable_outputs(vec![bad_outputs[0].clone(), ours.clone(), bad_outputs[1].clone()])
+        .await
+        .unwrap();
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].output.commitment(), ours.commitment());
+
+    let one_sided = oms
+        .output_manager_handle
+        .scan_outputs_for_one_sided_payments(bad_outputs)
+        .await
+        .unwrap();
+    assert!(one_sided.is_empty());
 }
 
 #[tokio::test]

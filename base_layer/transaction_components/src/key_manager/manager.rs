@@ -67,6 +67,7 @@ use tari_common_types::{
         RangeProof,
         SignatureWithDomain,
         UncompressedComAndPubSignature,
+        UncompressedPublicKey,
         UncompressedSignature,
         WalletMessageSchnorrSignature,
     },
@@ -93,7 +94,7 @@ use crate::{
         RecoveryProvenance,
         SecretTransactionKeyManagerInterface,
         TxoStage,
-        error::KeyManagerError,
+        error::{KeyManagerError, not_ours_if_invalid_key},
         interface::TransactionKeyManagerInterface,
         key_id::{SerializedKeyString, TariKeyAndId, TariKeyId},
         wallet_types::WalletType,
@@ -192,6 +193,18 @@ pub fn require_mask_id(key_id: &TariKeyId) -> Result<(), KeyManagerError> {
             key_id: truncated_key_id(key_id),
         })
     }
+}
+
+/// Decompress a public key supplied by a counterparty, refusing the identity point and bytes that are not a point.
+fn require_counterparty_public_key(public_key: &CompressedPublicKey) -> Result<UncompressedPublicKey, KeyManagerError> {
+    if *public_key == CompressedPublicKey::default() {
+        return Err(KeyManagerError::InvalidPublicKey(
+            "the key is the identity point".to_string(),
+        ));
+    }
+    public_key
+        .to_public_key()
+        .map_err(|_| KeyManagerError::InvalidPublicKey("the key is not a valid point".to_string()))
 }
 
 /// The longest key id string an error message echoes in full.
@@ -804,11 +817,9 @@ impl KeyManager {
         let private_decryption_key = Zeroizing::new(self.get_private_key(&decryption_key)?.to_vec());
         let domain = "KEY_MANAGER_private_key".as_bytes().to_vec();
         let cipher = XChaCha20Poly1305::new(Key::from_slice(&private_decryption_key));
-        let decrypted_bytes = Zeroizing::new(
-            decrypt_bytes_integral_nonce(&cipher, domain, bytes)
-                .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?,
-        );
-        let pvt_key = PrivateKey::from_vec(&decrypted_bytes)?;
+        let decrypted_bytes = decrypt_bytes_integral_nonce(&cipher, domain, bytes)
+            .map_err(|e| KeyManagerError::EncryptionFailed(e.to_string()))?;
+        let pvt_key = PrivateKey::from_vec(decrypted_bytes.reveal())?;
         Ok(pvt_key)
     }
 
@@ -1021,6 +1032,10 @@ impl TransactionKeyManagerInterface for KeyManager {
             .map_err(Into::into)
     }
 
+    fn is_ledger(&self) -> bool {
+        self.wallet_type.is_ledger()
+    }
+
     fn get_view_key(&self) -> TariKeyAndId {
         let key_id = TariKeyId::ViewKey;
         let key = self.wallet_type.get_public_view_key();
@@ -1078,12 +1093,13 @@ impl TransactionKeyManagerInterface for KeyManager {
         secret_key_id: &TariKeyId,
         public_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
+        let public_key_point = require_counterparty_public_key(public_key)?;
         if let TariKeyId::LedgerKey { branch, index } = secret_key_id {
             return self.ledger_get_dh_shared_secret_wrapper(*branch, *index, public_key);
         }
 
         let secret_key = self.get_private_key(secret_key_id)?;
-        let pk = (&secret_key) * (&(public_key.to_public_key()?));
+        let pk = (&secret_key) * (&public_key_point);
         let shared_secret = CompressedPublicKey::new_from_pk(pk);
         Ok(shared_secret)
     }
@@ -1343,9 +1359,15 @@ impl TransactionKeyManagerInterface for KeyManager {
                     (value, private_key, payment_id, key, RecoveryProvenance::OwnViewKey)
                 },
                 Err(_) => {
-                    // so this is not change, lets try with the offset key
+                    // so this is not change, lets try with the offset key. A sender offset key that is the identity or
+                    // not a point cannot carry a payment to us.
                     let view_key = self.get_view_key().key_id;
-                    let shared_secret = self.get_diffie_hellman_shared_secret(&view_key, sender_offset_public_key)?;
+                    let Some(shared_secret) = not_ours_if_invalid_key(
+                        self.get_diffie_hellman_shared_secret(&view_key, sender_offset_public_key),
+                    )?
+                    else {
+                        return Ok(None);
+                    };
 
                     let encryption_key = public_key_to_output_encryption_key(&shared_secret)?;
                     match EncryptedData::decrypt_data(&encryption_key, commitment, encrypted_data) {
@@ -1922,13 +1944,14 @@ impl TransactionKeyManagerInterface for KeyManager {
         spend_key: &CompressedPublicKey,
     ) -> Result<CompressedPublicKey, KeyManagerError> {
         require_mask_id(commitment_mask_key_id)?;
+        let spend_key = require_counterparty_public_key(spend_key)?;
         let private_key = self.get_private_key(commitment_mask_key_id)?;
         let hasher =
             DomainSeparatedHasher::<Blake2b<U64>, KeyManagerTransactionsHashDomain>::new_with_label("script key");
         let hasher = hasher.chain(private_key.as_bytes()).finalize();
         let private_key = PrivateKey::from_uniform_bytes(hasher.as_ref())?;
         let public_key = CompressedPublicKey::from_secret_key(&private_key);
-        let public_key = spend_key.to_public_key()? + &public_key.to_public_key()?;
+        let public_key = spend_key + &public_key.to_public_key()?;
         Ok(CompressedPublicKey::new_from_pk(public_key))
     }
 }
@@ -3578,6 +3601,56 @@ mod tests {
         match super::require_mask_id(&long) {
             Err(KeyManagerError::KeyIdNotAMask { key_id }) => assert_eq!(key_id, truncated),
             other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+
+    /// A counterparty key that is the identity point, or not a point at all, is refused rather than used.
+    #[test]
+    fn dh_and_stealth_refuse_identity_and_non_point_keys() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let secret = key_manager.get_random_key(None, None).unwrap();
+        let mask = key_manager.get_next_commitment_mask_and_script_key().unwrap().0;
+        let identity = CompressedPublicKey::default();
+        let not_a_point = CompressedPublicKey::new(&[0xffu8; 32]);
+
+        for bad in [&identity, &not_a_point] {
+            assert!(matches!(
+                key_manager.get_diffie_hellman_shared_secret(&secret.key_id, bad),
+                Err(KeyManagerError::InvalidPublicKey(_))
+            ));
+            assert!(matches!(
+                key_manager.stealth_address_script_spending_key(&mask.key_id, bad),
+                Err(KeyManagerError::InvalidPublicKey(_))
+            ));
+            assert!(matches!(
+                key_manager.compute_stealth_claim_public_key(&secret.key_id, bad),
+                Err(KeyManagerError::InvalidPublicKey(_))
+            ));
+        }
+
+        let good = key_manager.get_view_key().pub_key;
+        key_manager
+            .get_diffie_hellman_shared_secret(&secret.key_id, &good)
+            .unwrap();
+        key_manager
+            .stealth_address_script_spending_key(&mask.key_id, &good)
+            .unwrap();
+    }
+
+    /// Scanning an output that is not ours, with a sender offset key that is the identity or not a point, is not an
+    /// error.
+    #[test]
+    fn try_output_key_recovery_skips_an_invalid_sender_offset_key() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let other = KeyManager::new_random().unwrap();
+        let (commitment, not_ours, _) = output_with_matching_and_mismatched_encrypted_data(&other);
+        for sender_offset in [CompressedPublicKey::default(), CompressedPublicKey::new(&[0xffu8; 32])] {
+            assert!(
+                key_manager
+                    .try_output_key_recovery(&commitment, &not_ours, &sender_offset)
+                    .unwrap()
+                    .is_none()
+            );
         }
     }
 }

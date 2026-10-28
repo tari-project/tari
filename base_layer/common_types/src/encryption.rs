@@ -54,7 +54,7 @@ pub fn decrypt_bytes_integral_nonce(
     cipher: &XChaCha20Poly1305,
     domain: Vec<u8>,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<Hidden<Vec<u8>>, String> {
     // Extract the nonce
     let (nonce, ciphertext) = ciphertext
         .split_at_checked(size_of::<XNonce>())
@@ -71,7 +71,7 @@ pub fn decrypt_bytes_integral_nonce(
         .decrypt(nonce_ga, payload)
         .map_err(|e| format!("Decryption failed: {e}"))?;
 
-    Ok(plaintext)
+    Ok(Hidden::hide(plaintext))
 }
 
 // Encrypt data (with domain binding and authentication) using XChaCha20-Poly1305
@@ -131,7 +131,7 @@ mod test {
 
         // Valid decryption must succeed and yield correct plaintext
         let decrypted_text = decrypt_bytes_integral_nonce(&cipher, b"correct_domain".to_vec(), &ciphertext).unwrap();
-        assert_eq!(decrypted_text, plaintext);
+        assert_eq!(decrypted_text.reveal(), &plaintext);
 
         // Must fail on an incorrect domain
         assert!(decrypt_bytes_integral_nonce(&cipher, b"wrong_domain".to_vec(), &ciphertext).is_err());

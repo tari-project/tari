@@ -724,9 +724,9 @@ pub fn prompt_wallet_type(
             {
                 let connected_hardware_msg = match boot_mode {
                     WalletBoot::Recovery => {
-                        "\r\nWas your wallet connected to a hardware device? (Supported types: Ledger) (Y/n)"
+                        "\r\nWas your wallet connected to a hardware device? (Supported types: Ledger) (y/n)"
                     },
-                    _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (Y/n)",
+                    _ => "\r\nWould you like to use a connected hardware wallet? (Supported types: Ledger) (y/n)",
                 };
                 // Closed stdin must not silently pick a software wallet for someone who meant to use a Ledger
                 let use_hardware = tari_common::configuration::bootstrap::prompt_required(connected_hardware_msg)
@@ -734,7 +734,7 @@ pub fn prompt_wallet_type(
                         ExitError::new(
                             ExitCode::IOError,
                             format!(
-                                "{e}; stdin closed: pass --non-interactive-mode or answer the hardware wallet prompt"
+                                "{e}; pass --non-interactive-mode or answer the hardware wallet prompt with 'y' or 'n'"
                             ),
                         )
                     })?;

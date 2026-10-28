@@ -23,70 +23,151 @@
 use std::{
     borrow::Cow,
     cmp::min,
+    fmt,
     ops::{BitAnd, BitOr, Deref, Not},
     string::FromUtf8Error,
 };
 
-use argon2::{
-    Argon2,
-    password_hash::{PasswordVerifier, phc::PasswordHash},
-};
 use rand::Rng;
 use subtle::{Choice, ConstantTimeEq};
-use tari_utilities::{ByteArray, SafePassword};
+use tari_utilities::SafePassword;
 use tonic::metadata::{Ascii, MetadataValue, errors::InvalidMetadataValue};
 use zeroize::{Zeroize, Zeroizing};
 
 const MAX_USERNAME_LEN: usize = 256;
+const MIN_PASSWORD_PAD_LEN: usize = 256;
+
+fn prepare_padded_bytes<const N: usize>(input: &[u8]) -> ([u8; N], [u8; N]) {
+    let mut random_bytes = [0u8; N];
+    let mut rng = rand::rng();
+    rng.fill_bytes(&mut random_bytes);
+    let mut padded_bytes = [0u8; N];
+
+    let (prefix, suffix) = padded_bytes.split_at_mut(input.len());
+    prefix.copy_from_slice(input);
+    suffix.copy_from_slice(random_bytes.get(input.len()..N).expect("Already checked"));
+
+    (padded_bytes, random_bytes)
+}
+
+fn prepare_padded_vec(input: &[u8], min_pad_len: usize) -> (Zeroizing<Vec<u8>>, Vec<u8>) {
+    let pad_len = input.len().max(min_pad_len);
+    let mut random_bytes = vec![0u8; pad_len];
+    let mut rng = rand::rng();
+    rng.fill_bytes(&mut random_bytes);
+
+    let mut padded_bytes = Zeroizing::new(vec![0u8; pad_len]);
+    let (prefix, suffix) = padded_bytes.split_at_mut(input.len());
+    prefix.copy_from_slice(input);
+    suffix.copy_from_slice(random_bytes.get(input.len()..pad_len).expect("pad_len >= input.len()"));
+
+    (padded_bytes, random_bytes)
+}
+
+fn constant_time_verify_slice<const N: usize>(
+    expected_len: usize,
+    expected_bytes: &[u8; N],
+    random_padding: &[u8; N],
+    candidate: &[u8],
+) -> Choice {
+    let valid_len = (Choice::from(u8::from(expected_len != candidate.len()))
+        .bitor(Choice::from(u8::from(candidate.len() > N))))
+    .not();
+
+    let mut compare_bytes = [0u8; N];
+    let bytes_len_clipped = min(candidate.len(), N);
+    let (prefix, suffix) = compare_bytes.split_at_mut(bytes_len_clipped);
+    prefix.copy_from_slice(
+        candidate
+            .get(..bytes_len_clipped)
+            .expect("bytes_len_clipped is at most candidate.len()"),
+    );
+    suffix.copy_from_slice(
+        random_padding
+            .get(bytes_len_clipped..N)
+            .expect("bytes_len_clipped is at most N"),
+    );
+
+    let eq = expected_bytes.ct_eq(&compare_bytes).bitand(valid_len);
+    compare_bytes.zeroize();
+    eq
+}
+
+fn constant_time_verify_padded(
+    expected_len: usize,
+    expected_bytes: &[u8],
+    random_padding: &[u8],
+    candidate: &[u8],
+) -> Choice {
+    let pad_len = expected_bytes.len();
+    let valid_len = (Choice::from(u8::from(expected_len != candidate.len()))
+        .bitor(Choice::from(u8::from(candidate.len() > pad_len))))
+    .not();
+
+    let mut eq = Choice::from(1u8);
+    for (i, (&expected_byte, &pad_byte)) in expected_bytes.iter().zip(random_padding.iter()).enumerate() {
+        let candidate_byte = candidate.get(i).copied().unwrap_or(pad_byte);
+        eq = eq.bitand(expected_byte.ct_eq(&candidate_byte));
+    }
+    eq.bitand(valid_len)
+}
 
 /// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt) by allowing authentication of provided credentials
-#[derive(Debug)]
+#[derive(Clone)]
 pub struct BasicAuthCredentials {
     /// The username bytes length
     pub user_name_bytes_length: usize,
     /// The username in bytes representation for constant time comparison
     pub user_name_bytes: [u8; MAX_USERNAME_LEN],
-    /// The hashed password
-    pub phc_password_hash: SafePassword,
     /// Random bytes to help with constant time username comparison
     pub random_bytes: [u8; MAX_USERNAME_LEN],
+    /// The password bytes length
+    password_bytes_length: usize,
+    /// The password in bytes representation for constant time comparison
+    password_bytes: Zeroizing<Vec<u8>>,
+    /// Random bytes to help with constant time password comparison
+    password_random_bytes: Vec<u8>,
+}
+
+impl fmt::Debug for BasicAuthCredentials {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BasicAuthCredentials")
+            .field("user_name_bytes_length", &self.user_name_bytes_length)
+            .field("user_name_bytes", &self.user_name_bytes)
+            .field("random_bytes", &self.random_bytes)
+            .field("password_bytes_length", &"<redacted>")
+            .field("password_bytes", &"<redacted>")
+            .field("password_random_bytes", &"<redacted>")
+            .finish()
+    }
 }
 
 impl BasicAuthCredentials {
-    /// Creates a new `Credentials` instance from a username and password (PHC string bytes).
-    pub fn new(user_name: String, phc_password_hash: SafePassword) -> Result<Self, BasicAuthError> {
+    /// Creates a new `BasicAuthCredentials` instance from a username and plaintext password.
+    pub fn new(user_name: String, password: SafePassword) -> Result<Self, BasicAuthError> {
         // Validate the username is well formed
         if user_name.len() > MAX_USERNAME_LEN {
             return Err(BasicAuthError::InvalidUsername);
         }
-        // Validate the password is a well formed byte representation of a PHC string
-        let bytes = phc_password_hash.reveal().to_vec();
-        let _parse_result =
-            PasswordHash::new(&String::from_utf8(bytes)?).map_err(argon2::password_hash::Error::from)?;
+        // Validate the password is well formed UTF-8
+        let password_slice = password.reveal();
+        if std::str::from_utf8(password_slice).is_err() {
+            return Err(BasicAuthError::InvalidPassword);
+        }
 
-        // Prepare the username bytes for constant time comparison ahead of time
-        let bytes = user_name.as_bytes();
-        // Random bytes are used for constant time username comparison to ensure that the compiler does not do any
-        // funny optimizations and to ensure that comparison for the same username for every new credentials instance
-        // forces a different bitwise comparison.
-        let mut random_bytes = [0u8; MAX_USERNAME_LEN];
-        let mut rng = rand::rng();
-        rng.fill_bytes(&mut random_bytes);
-        let mut user_name_bytes = [0u8; MAX_USERNAME_LEN];
-
-        let (prefix, suffix) = user_name_bytes.split_at_mut(bytes.len());
-        prefix.copy_from_slice(bytes);
-        suffix.copy_from_slice(
-            random_bytes
-                .get(bytes.len()..MAX_USERNAME_LEN)
-                .expect("Already checked"),
-        );
+        // Prepare the username and password bytes for constant time comparison ahead of time.
+        // Random bytes are used to ensure that the compiler does not do any funny optimizations and to ensure that
+        // comparison for the same credential across instances forces a different bitwise comparison.
+        let (user_name_bytes, random_bytes) = prepare_padded_bytes::<MAX_USERNAME_LEN>(user_name.as_bytes());
+        let (password_bytes, password_random_bytes) = prepare_padded_vec(password_slice, MIN_PASSWORD_PAD_LEN);
 
         Ok(Self {
             user_name_bytes_length: user_name.len(),
             user_name_bytes,
-            phc_password_hash,
             random_bytes,
+            password_bytes_length: password_slice.len(),
+            password_bytes,
+            password_random_bytes,
         })
     }
 
@@ -118,35 +199,22 @@ impl BasicAuthCredentials {
 
     // This function provides a constant time comparison of the given username with the registered username.
     fn constant_time_verify_username(&self, username: &str) -> Choice {
-        // The username is valid if the lengths are equal and the length is not greater than the maximum allowed length;
-        // any error here will only be factored in after the bitwise comparison has been done to force constant time.
-        let bytes = username.as_bytes();
-        let valid_username = (Choice::from(u8::from(self.user_name_bytes_length != bytes.len()))
-            .bitor(Choice::from(u8::from(bytes.len() > MAX_USERNAME_LEN))))
-        .not();
+        constant_time_verify_slice(
+            self.user_name_bytes_length,
+            &self.user_name_bytes,
+            &self.random_bytes,
+            username.as_bytes(),
+        )
+    }
 
-        // We start with an empty default buffer
-        let mut compare_bytes = [0u8; MAX_USERNAME_LEN];
-
-        // Add the username bytes to the buffer, clipping to the maximum length so that an over-length
-        // username (which is already flagged as invalid above) cannot cause a panic here. This keeps the
-        // work constant time for all inputs up to the buffer size.
-        let bytes_len_clipped = min(bytes.len(), MAX_USERNAME_LEN);
-        let (prefix, suffix) = compare_bytes.split_at_mut(bytes_len_clipped);
-        prefix.copy_from_slice(
-            bytes
-                .get(..bytes_len_clipped)
-                .expect("bytes_len_clipped is at most bytes.len()"),
-        );
-        suffix.copy_from_slice(
-            self.random_bytes
-                .get(bytes_len_clipped..MAX_USERNAME_LEN)
-                .expect("bytes_len_clipped is at most MAX_USERNAME_LEN"),
-        );
-
-        // Perform the bitwise comparison and combine the result with the valid username result.
-        // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
-        self.user_name_bytes.ct_eq(&compare_bytes).bitand(valid_username)
+    // This function provides a constant time comparison of the given password with the registered password.
+    fn constant_time_verify_password(&self, password: &SafePassword) -> Choice {
+        constant_time_verify_padded(
+            self.password_bytes_length,
+            &self.password_bytes,
+            &self.password_random_bytes,
+            password.reveal(),
+        )
     }
 
     /// Validates the given username and password against the registered username and password. The function will always
@@ -155,17 +223,7 @@ impl BasicAuthCredentials {
     /// that is returned.
     pub fn constant_time_validate(&self, username: &str, password: &SafePassword) -> Result<(), BasicAuthError> {
         let valid_username = self.constant_time_verify_username(username);
-
-        // These bytes can leak if the password is not utf-8, but since argon encoding is utf-8 the given
-        // password must be incorrect if conversion to utf-8 fails.
-        let bytes = self.phc_password_hash.reveal().to_vec();
-        let str_password = Zeroizing::new(String::from_utf8(bytes)?);
-        let header_password = PasswordHash::new(&str_password).map_err(argon2::password_hash::Error::from)?;
-        let valid_password = Choice::from(u8::from(
-            Argon2::default()
-                .verify_password(password.reveal(), &header_password)
-                .is_ok(),
-        ));
+        let valid_password = self.constant_time_verify_password(password);
 
         // The use of `Choice` logic here is by design to hide the boolean logic from compiler optimizations.
         if valid_username.bitand(valid_password).into() {
@@ -197,6 +255,8 @@ impl BasicAuthCredentials {
 pub enum BasicAuthError {
     #[error("Invalid username")]
     InvalidUsername,
+    #[error("Invalid password")]
+    InvalidPassword,
     #[error("Invalid username or password")]
     InvalidUsernameOrPassword,
     #[error("The HTTP Authorization header value is invalid")]
@@ -207,8 +267,6 @@ pub enum BasicAuthError {
     InvalidBase64Value(#[from] base64::DecodeError),
     #[error("The provided binary is not a valid UTF-8 character: {0}")]
     InvalidUtf8Value(#[from] FromUtf8Error),
-    #[error("Invalid password: {0}")]
-    InvalidPassword(#[from] argon2::password_hash::Error),
     #[error("Invalid header value: {0}")]
     InvalidMetadataValue(#[from] InvalidMetadataValue),
 }
@@ -254,38 +312,24 @@ mod tests {
         use tari_utilities::hex::Hex;
 
         use super::*;
-        use crate::authentication::salted_password::create_salted_hashed_password;
 
         #[test]
-        fn it_validates_for_matching_salted_credentials() {
-            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
+        fn it_validates_for_matching_credentials() {
             // Typical username
-            let credentials =
-                BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
+            let credentials = BasicAuthCredentials::new("admin".to_string(), "secret".to_string().into()).unwrap();
             credentials
                 .constant_time_validate("admin", &SafePassword::from("secret".to_string()))
                 .unwrap();
             // Empty username is also fine
-            let credentials = BasicAuthCredentials::new("".to_string(), hashed_password.to_string().into()).unwrap();
+            let credentials = BasicAuthCredentials::new("".to_string(), "secret".to_string().into()).unwrap();
             credentials
                 .constant_time_validate("", &SafePassword::from("secret".to_string()))
                 .unwrap();
         }
 
         #[test]
-        fn it_rejects_registering_unsalted_password_credentials() {
-            let err = BasicAuthCredentials::new("admin".to_string(), "secret".to_string().into()).unwrap_err();
-            assert!(matches!(
-                err,
-                BasicAuthError::InvalidPassword(argon2::password_hash::Error::EncodingInvalid)
-            ));
-        }
-
-        #[test]
         fn it_rejects_validating_mismatching_credentials() {
-            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
-            let credentials =
-                BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
+            let credentials = BasicAuthCredentials::new("admin".to_string(), "secret".to_string().into()).unwrap();
 
             // Wrong password
             let err = credentials
@@ -308,94 +352,72 @@ mod tests {
 
         #[test]
         fn it_rejects_registering_over_sized_username_credentials() {
-            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
-
             // Maximum length username is ok
             let username = [0u8; MAX_USERNAME_LEN / 2].to_hex();
-            assert!(BasicAuthCredentials::new(username, hashed_password.to_string().into()).is_ok());
+            assert!(BasicAuthCredentials::new(username, "secret".to_string().into()).is_ok());
 
             // Empty length username is ok
             let username = [].to_hex();
-            assert!(BasicAuthCredentials::new(username, hashed_password.to_string().into()).is_ok());
+            assert!(BasicAuthCredentials::new(username, "secret".to_string().into()).is_ok());
 
             // Do not accept username that is too long
             let username = [0u8; MAX_USERNAME_LEN / 2 + 1].to_hex();
-            let err = BasicAuthCredentials::new(username, hashed_password.to_string().into()).unwrap_err();
+            let err = BasicAuthCredentials::new(username, "secret".to_string().into()).unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsername));
         }
 
         #[test]
-        fn it_rejects_oversized_username_without_panicking() {
-            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
-            let credentials =
-                BasicAuthCredentials::new("admin".to_string(), hashed_password.to_string().into()).unwrap();
+        fn it_rejects_oversized_username_and_password_without_panicking() {
+            let credentials = BasicAuthCredentials::new("admin".to_string(), "secret".to_string().into()).unwrap();
 
-            // A username longer than `MAX_USERNAME_LEN` comes straight from an attacker-controlled
-            // Authorization header; it must be rejected rather than panic in the constant time comparison.
-            let oversized = "a".repeat(MAX_USERNAME_LEN + 1);
-            assert!(!bool::from(credentials.constant_time_verify_username(&oversized)));
+            let oversized_user = "a".repeat(MAX_USERNAME_LEN + 1);
+            assert!(!bool::from(credentials.constant_time_verify_username(&oversized_user)));
             let err = credentials
-                .constant_time_validate(&oversized, &SafePassword::from("secret".to_string()))
+                .constant_time_validate(&oversized_user, &SafePassword::from("secret".to_string()))
                 .unwrap_err();
             assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
 
-            // A much longer username exercises the same path with a wider gap over the buffer size.
-            let very_oversized = "b".repeat(MAX_USERNAME_LEN * 4);
-            assert!(!bool::from(credentials.constant_time_verify_username(&very_oversized)));
+            let oversized_pass = SafePassword::from("p".repeat(MIN_PASSWORD_PAD_LEN + 1));
+            assert!(!bool::from(credentials.constant_time_verify_password(&oversized_pass)));
+            let err = credentials
+                .constant_time_validate("admin", &oversized_pass)
+                .unwrap_err();
+            assert!(matches!(err, BasicAuthError::InvalidUsernameOrPassword));
         }
 
-        // This unit test asserts that the minimum variance is less than 10% (chosen to be robust for running the unit
-        // test with CI), indicating that the function behaves within acceptable constant-time constraints.
-        //
-        // Some consecutive results running in release mode on a Core i7-12700H (with no other processes running):
-        //
-        // Minimum variance:                          0.12574 %
-        // Average variance:                          5.51684 %
-        // Average short username time:               1.2922 microseconds
-        // Average long username time:                1.27837 microseconds
-        // Average actual username time:              1.28199 microseconds
-        //
-        // Minimum variance:                          0.06754 %
-        // Average variance:                          3.64757 %
-        // Average short username time:               1.27054 microseconds
-        // Average long username time:                1.26604 microseconds
-        // Average actual username time:              1.2615 microseconds
-        //
-        // Minimum variance:                          0.13508 %
-        // Average variance:                          5.97782 %
-        // Average short username time:               1.26488 microseconds
-        // Average long username time:                1.27111 microseconds
-        // Average actual username time:              1.26225 microseconds
-        //
-        // Some consecutive results running in release mode on a Core i7-12700H (while entire CPU fully stressed):
-        //
-        // Minimum variance:                          0.7276 %
-        // Average variance:                          7.50704 %
-        // Average short username time:               1.7147 microseconds
-        // Average long username time:                1.6953 microseconds
-        // Average actual username time:              1.6494 microseconds
-        //
-        // Minimum variance:                          0.41439 %
-        // Average variance:                          7.17822 %
-        // Average short username time:               1.80315 microseconds
-        // Average long username time:                1.75904 microseconds
-        // Average actual username time:              1.71591 microseconds
-        //
-        // Minimum variance:                          0.44736 %
-        // Average variance:                          5.48951 %
-        // Average short username time:               1.81177 microseconds
-        // Average long username time:                1.78756 microseconds
-        // Average actual username time:              1.73798 microseconds
-        //
+        #[test]
+        fn it_supports_passwords_longer_than_256_bytes_and_redacts_debug_output() {
+            let long_pass = "correct-horse-battery-staple-".repeat(12);
+            assert!(long_pass.len() > MIN_PASSWORD_PAD_LEN);
+            let credentials = BasicAuthCredentials::new("admin".to_string(), long_pass.clone().into()).unwrap();
+
+            credentials
+                .constant_time_validate("admin", &SafePassword::from(long_pass.clone()))
+                .unwrap();
+
+            let wrong_long_pass = format!("{long_pass}x");
+            assert!(matches!(
+                credentials.constant_time_validate("admin", &SafePassword::from(wrong_long_pass)),
+                Err(BasicAuthError::InvalidUsernameOrPassword)
+            ));
+
+            let debug_repr = format!("{credentials:?}");
+            assert!(
+                !debug_repr.contains("correct-horse-battery-staple"),
+                "Debug output must not leak password: {debug_repr}"
+            );
+            assert!(
+                !debug_repr.contains(&format!("{:?}", long_pass.as_bytes())),
+                "Debug output must not leak password bytes: {debug_repr}"
+            );
+            assert!(
+                debug_repr.contains("<redacted>"),
+                "Debug output must redact password fields: {debug_repr}"
+            );
+        }
+
         #[test]
         fn it_compares_user_names_in_constant_time() {
-            // Enable flag `do_performance_testing` to run performance tests; for regular CI runs, this flag should be
-            // `false` otherwise the test will fail.
-            // Notes:
-            // - The `assert!(!do_performance_testing);` at the end of the test will cause a panic on CI if the flag is
-            //   enabled, if it is enabled it will allow results to be printed when running in release mode.
-            // - For CI (flag disabled), we are only interested if the functional test pass, thus 1 iteration completed
-            //   successfully.
             let do_performance_testing = false;
 
             #[allow(clippy::cast_possible_truncation)]
@@ -408,17 +430,12 @@ mod tests {
             let mut short = Vec::with_capacity(ITERATIONS);
             let mut long = Vec::with_capacity(ITERATIONS);
             let mut actual = Vec::with_capacity(ITERATIONS);
-            // This value should be chosen to comply with:
-            // - Small enough to ensure a single iteration does not take too long.
-            // - Large enough to enable proper time measurement; executing the function that many times should be
-            //   measurable, thus > micro seconds in this case.
             const COUNTS: usize = 2500;
             let username_actual = "admin";
-            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
             let mut test_runs = 0;
             for i in 1..=ITERATIONS {
                 let credentials =
-                    BasicAuthCredentials::new(username_actual.to_string(), hashed_password.to_string().into()).unwrap();
+                    BasicAuthCredentials::new(username_actual.to_string(), "secret".to_string().into()).unwrap();
                 assert!(bool::from(credentials.constant_time_verify_username(username_actual)));
                 assert!(!bool::from(credentials.constant_time_verify_username("")));
 
@@ -458,7 +475,7 @@ mod tests {
                 let time_taken_3 = start.elapsed().as_micros();
 
                 let max_time = max(time_taken_1, max(time_taken_2, time_taken_3));
-                let min_time = min(time_taken_1, min(time_taken_2, time_taken_3));
+                let min_time = min(max(time_taken_1, 1), min(max(time_taken_2, 1), max(time_taken_3, 1)));
                 let variance = round_to_6_decimals((max_time - min_time) as f64 / min_time as f64 * 100.0);
                 variances.push(variance);
                 short.push(time_taken_1);
@@ -470,8 +487,6 @@ mod tests {
                     break;
                 }
 
-                // The use of sleep between iterations helps ensure that the tests are run under different conditions,
-                // simulating real-world scenarios.
                 if i < ITERATIONS {
                     sleep(std::time::Duration::from_millis(100));
                 }
@@ -490,63 +505,11 @@ mod tests {
             println!("Average long username time:                {avg_long} microseconds");
             println!("Average actual username time:              {avg_actual} microseconds");
 
-            // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
         }
 
-        // This unit test asserts that the minimum variance is less than 10% (chosen to be robust for running the unit
-        // test with CI), indicating that the function behaves within acceptable constant-time constraints.
-        //
-        // Some consecutive results running in release mode on a Core i7-12700H (with no other processes running):
-        //
-        // Minimum variance:                          0.43731 %
-        // Average variance:                          2.66751 %
-        // Average short username time:               35.04999 microseconds
-        // Average long username time:                34.95 microseconds
-        // Average actual username time:              34.9 microseconds
-        //
-        // Minimum variance:                          1.1713 %
-        // Average variance:                          2.82044 %
-        // Average short username time:               34.605 microseconds
-        // Average long username time:                34.69 microseconds
-        // Average actual username time:              34.67499 microseconds
-        //
-        // Minimum variance:                          0.9929 %
-        // Average variance:                          2.35816 %
-        // Average short username time:               35.285 microseconds
-        // Average long username time:                35.285 microseconds
-        // Average actual username time:              34.94 microseconds
-        //
-        // Some consecutive results running in release mode on a Core i7-12700H (while entire CPU fully stressed):
-        //
-        // Minimum variance:                          0.43668 %
-        // Average variance:                          1.61542 %
-        // Average short username time:               68.45 microseconds
-        // Average long username time:                68.245 microseconds
-        // Average actual username time:              68.81 microseconds
-        //
-        // Minimum variance:                          0.86268 %
-        // Average variance:                          1.58273 %
-        // Average short username time:               69.925 microseconds
-        // Average long username time:                70.34999 microseconds
-        // Average actual username time:              69.965 microseconds
-        //
-        // Minimum variance:                          0.4961 %
-        // Average variance:                          1.61912 %
-        // Average short username time:               69.85499 microseconds
-        // Average long username time:                70.08 microseconds
-        // Average actual username time:              70.645 microseconds
-        //
         #[test]
         fn it_compares_credentials_in_constant_time() {
-            // Enable flag `do_performance_testing` to run performance tests; for regular CI runs, this flag should be
-            // `false` otherwise the test will fail.
-            // Notes:
-            // - The `assert!(!do_performance_testing);` at the end of the test will cause a panic on CI if the flag is
-            //   enabled, if it is enabled it will allow results to be printed when running in release mode.
-            // - For CI (flag disabled), we are only interested if the functional test pass, thus 1 iteration completed
-            //   successfully.
-            // - Running this specific test in debug mode is ~100x slower when compared to release mode.
             let do_performance_testing = false;
 
             #[allow(clippy::cast_possible_truncation)]
@@ -559,17 +522,12 @@ mod tests {
             let mut short = Vec::with_capacity(ITERATIONS);
             let mut long = Vec::with_capacity(ITERATIONS);
             let mut actual = Vec::with_capacity(ITERATIONS);
-            // This value should be chosen to comply with:
-            // - Small enough to ensure a single iteration does not take too long.
-            // - Large enough to enable proper time measurement; executing the function that many times should be
-            //   measurable, thus > milli seconds in this case.
-            const COUNTS: usize = 10;
+            const COUNTS: usize = 2500;
             let username_actual = "admin";
-            let hashed_password = create_salted_hashed_password(b"secret").unwrap();
             let mut test_runs = 0;
             for i in 1..=ITERATIONS {
                 let credentials =
-                    BasicAuthCredentials::new(username_actual.to_string(), hashed_password.to_string().into()).unwrap();
+                    BasicAuthCredentials::new(username_actual.to_string(), "secret".to_string().into()).unwrap();
 
                 let mut short_usernames = Vec::with_capacity(COUNTS);
                 let mut long_usernames = Vec::with_capacity(COUNTS);
@@ -590,14 +548,14 @@ mod tests {
                     let res = credentials.constant_time_validate(short, &SafePassword::from("bruteforce".to_string()));
                     assert!(res.is_err());
                 }
-                let time_taken_1 = start.elapsed().as_millis();
+                let time_taken_1 = start.elapsed().as_micros();
 
                 let start = Instant::now();
                 for long in &long_usernames {
                     let res = credentials.constant_time_validate(long, &SafePassword::from("bruteforce".to_string()));
                     assert!(res.is_err());
                 }
-                let time_taken_2 = start.elapsed().as_millis();
+                let time_taken_2 = start.elapsed().as_micros();
 
                 let start = Instant::now();
                 for _ in 0..COUNTS {
@@ -605,10 +563,10 @@ mod tests {
                         credentials.constant_time_validate(username_actual, &SafePassword::from("secret".to_string()));
                     assert!(res.is_ok());
                 }
-                let time_taken_3 = start.elapsed().as_millis();
+                let time_taken_3 = start.elapsed().as_micros();
 
                 let max_time = max(time_taken_1, max(time_taken_2, time_taken_3));
-                let min_time = min(time_taken_1, min(time_taken_2, time_taken_3));
+                let min_time = min(max(time_taken_1, 1), min(max(time_taken_2, 1), max(time_taken_3, 1)));
                 let variance = round_to_6_decimals((max_time - min_time) as f64 / min_time as f64 * 100.0);
                 variances.push(variance);
                 short.push(time_taken_1);
@@ -620,8 +578,6 @@ mod tests {
                     break;
                 }
 
-                // The use of sleep between iterations helps ensure that the tests are run under different conditions,
-                // simulating real-world scenarios.
                 if i < ITERATIONS {
                     sleep(std::time::Duration::from_millis(100));
                 }
@@ -640,7 +596,6 @@ mod tests {
             println!("Average long username time:                {avg_long} microseconds");
             println!("Average actual username time:              {avg_actual} microseconds");
 
-            // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
         }
     }

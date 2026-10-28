@@ -130,6 +130,7 @@ pub fn create_block<TDB: BlockchainBackend>(
     header.version = rules.consensus_constants(header.height).blockchain_version().into();
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
+    header.pow.pow_algo = spec.pow_algo;
     let reward = spec.reward_override.unwrap_or_else(|| {
         rules
             .calculate_coinbase_and_fees(

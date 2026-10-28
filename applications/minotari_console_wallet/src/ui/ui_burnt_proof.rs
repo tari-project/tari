@@ -22,7 +22,8 @@
 
 use chrono::NaiveDateTime;
 use serde::Serialize;
-use tari_common_types::burn_proof::{BurnOutputProof, PartialBurnClaimProof};
+use tari_common_types::burn_proof::PartialBurnClaimProof;
+use tari_sidechain::BurnOutputProof;
 
 #[derive(Debug, Clone)]
 pub struct UiBurnProof {

@@ -119,6 +119,11 @@ pub struct Cli {
     /// Useful for verifying which environment variables are set before starting the wallet.
     #[clap(long)]
     pub print_env: bool,
+    /// Install SIGINT/SIGTERM termination signal handlers in gRPC mode.
+    /// Set to true by the binary entrypoints (main.rs and run_wallet); skipped by clap and left
+    /// false when executed in-process (e.g. cucumber integration tests).
+    #[clap(skip)]
+    pub install_grpc_signal_handler: bool,
 }
 
 impl ConfigOverrideProvider for Cli {

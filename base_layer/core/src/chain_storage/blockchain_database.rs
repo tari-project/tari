@@ -49,7 +49,6 @@ use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    burn_proof::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage},
     chain_metadata::ChainMetadata,
     epoch::VnEpoch,
     types::{
@@ -75,6 +74,7 @@ use tari_node_components::blocks::{
     HistoricalBlock,
     NewBlockTemplate,
 };
+use tari_sidechain::{BurnOutputProof, MmrInclusionProof, OutputHashPreimage};
 use tari_transaction_components::{
     BanPeriod,
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
@@ -1419,18 +1419,33 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    pub fn fetch_inputs_mined_info(
-        &self,
-        hashes: Vec<HashOutput>,
-    ) -> Result<Vec<Option<InputMinedInfo>>, ChainStorageError> {
+    /// For each output hash, the latest lifecycle (see [`MinedInfo::latest`]), all read under one lock.
+    pub fn fetch_latest_mined_infos(&self, hashes: Vec<HashOutput>) -> Result<Vec<MinedInfo>, ChainStorageError> {
         let db = self.db_read_access()?;
 
         let mut result = Vec::with_capacity(hashes.len());
         for hash in hashes {
-            // Take the last-spent entry if the hash is indexed under several headers.
-            let mut inputs = db.fetch_inputs(&hash)?;
-            inputs.sort_by_key(|i| i.spent_height);
-            result.push(inputs.into_iter().next_back());
+            result.push(MinedInfo::latest(db.fetch_mined_info_by_output_hash(&hash)?));
+        }
+        Ok(result)
+    }
+
+    /// For each output hash, the stored instance that an input in block `header_hash` spent.
+    pub fn fetch_outputs_spent_in_block(
+        &self,
+        hashes: Vec<HashOutput>,
+        header_hash: HashOutput,
+    ) -> Result<Vec<Option<OutputMinedInfo>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+
+        let mut result = Vec::with_capacity(hashes.len());
+        for hash in hashes {
+            let instance = db
+                .fetch_mined_info_by_output_hash(&hash)?
+                .into_iter()
+                .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == header_hash))
+                .and_then(|info| info.output);
+            result.push(instance);
         }
         Ok(result)
     }
@@ -2414,11 +2429,11 @@ where B: BlockchainBackend
         );
 
         Ok(BurnOutputProof {
-            block_hash,
+            block_hash: block_hash.into(),
             block_height: header.height,
             output: OutputHashPreimage::from(burn_output),
             normal_output_proof: mmr_inclusion_proof(&normal_output_mmr, burn_leaf_index)?,
-            normal_output_mr,
+            normal_output_mr: normal_output_mr.into(),
             block_output_proof: mmr_inclusion_proof(&block_output_mmr, normal_output_mr_leaf_index)?,
         })
     }
@@ -2428,8 +2443,12 @@ type OutputMmr = MerkleMountainRange<InputMmrHasherBlake256, Vec<Hash>>;
 
 fn mmr_inclusion_proof(mmr: &OutputMmr, leaf_index: usize) -> Result<MmrInclusionProof, ChainStorageError> {
     let proof = MerkleProof::for_leaf_node(mmr, LeafIndex(leaf_index))?;
-    let to_fixed_hashes =
-        |hashes: Vec<Hash>| -> Result<Vec<FixedHash>, _> { hashes.into_iter().map(FixedHash::try_from).collect() };
+    let to_fixed_hashes = |hashes: Vec<Hash>| -> Result<Vec<tari_sidechain::FixedHash>, _> {
+        hashes
+            .into_iter()
+            .map(|hash| FixedHash::try_from(hash).map(Into::into))
+            .collect()
+    };
     Ok(MmrInclusionProof {
         leaf_index: leaf_index as u64,
         mmr_size: proof.mmr_size as u64,
@@ -4308,8 +4327,8 @@ fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
     let mut current_header = header.clone();
     while current_header.height != vm_height {
         let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
-        let chain_header = db.fetch_chain_header_by_height(h.height())?;
-        if *h.header() == *chain_header.header() {
+        let chain_header = db.fetch_chain_header_by_height(h.height()).optional()?;
+        if chain_header.is_some_and(|c| *h.header() == *c.header()) {
             // Now we now the orphan links back to the main chain here
             return Ok((*db.fetch_chain_header_by_height(vm_height)?.hash(), h.height()));
         }
@@ -6123,6 +6142,7 @@ mod test {
         use super::*;
         use crate::{
             proof_of_work::AdjustedTarget,
+            test_helpers::create_chain_header,
             validation::{HeaderChainContext, ValidatedHeader},
         };
 
@@ -6411,10 +6431,139 @@ mod test {
             let strongest_tips = access.fetch_strongest_orphan_chain_tips().unwrap();
             assert_eq!(strongest_tips.len(), 2);
         }
+
+        /// A fork delivered one block at a time grows past the local tip, so the ancestry walk of its newest block
+        /// passes heights the main chain does not have yet.
+        #[tokio::test]
+        async fn it_accepts_a_fork_that_grows_past_the_tip_one_block_at_a_time() {
+            let db = create_new_blockchain();
+            let validator = MockValidator::new(true);
+            let (_, main_chain) = create_main_chain(&db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"]));
+            let fork_root = main_chain.get("1a").unwrap().clone();
+            let (names, fork) = create_chained_blocks(
+                &db,
+                block_specs!(["2b->GB"], ["3b->2b"], ["4b->3b"], ["5b->4b"], ["6b->5b"]),
+                fork_root,
+            );
+
+            let mut access = db.db_write_access().unwrap();
+            for name in &names {
+                let block = fork.get(name).unwrap().clone();
+                let stored = insert_orphan_and_find_new_tips(
+                    &mut *access,
+                    block.to_arc_block(),
+                    &validator,
+                    &db.consensus_manager,
+                )
+                .unwrap();
+                assert!(stored, "{name} must be stored");
+                assert!(access.contains(&DbKey::OrphanBlock(*block.hash())).unwrap());
+            }
+
+            let fork_tip = fork.get("6b").unwrap().clone();
+            assert_eq!(fork_tip.height(), 6);
+            let tip = access.fetch_orphan_chain_tip_by_hash(fork_tip.hash()).unwrap();
+            assert_eq!(tip.unwrap().header(), fork_tip.header());
+        }
+
+        /// Builds a main chain of `len` headers on top of genesis, with no block bodies.
+        fn add_main_chain_headers(db: &BlockchainDatabase<TempDatabase>, len: u64) -> Vec<ChainHeader> {
+            let mut headers = vec![db.fetch_chain_header(0).unwrap()];
+            for _ in 0..len {
+                let prev = headers.last().unwrap();
+                let mut header = BlockHeader::from_previous(prev.header());
+                header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+                // The MMR size indexes need a unique key per header
+                header.kernel_mmr_size += 1;
+                header.output_smt_size += 1;
+                headers.push(create_chain_header(header, prev.accumulated_data()));
+            }
+            db.insert_valid_headers(headers[1..].to_vec()).unwrap();
+            headers
+        }
+
+        /// The same, on a chain long enough that the fork crosses a RandomX VM key band boundary (2112) above the
+        /// tip, so later blocks take their VM key from height 2048 while the walk still passes heights above the tip.
+        #[tokio::test]
+        async fn it_accepts_a_fork_that_grows_past_the_tip_across_a_vm_key_band_boundary() {
+            let db = create_new_blockchain();
+            let validator = MockValidator::new(true);
+            let tip_height = 2105;
+            let main_chain = add_main_chain_headers(&db, tip_height);
+            assert_eq!(tari_rx_vm_key_height(tip_height + 10), 2048);
+
+            let mut access = db.db_write_access().unwrap();
+            let mut parent = main_chain[2100].header().clone();
+            while parent.height < tip_height + 10 {
+                let mut header = BlockHeader::from_previous(&parent);
+                header.timestamp = parent.timestamp.checked_add(EpochTime::from(120)).unwrap();
+                // Keeps the fork's hashes apart from the main chain's at the same heights
+                header.nonce = 1;
+                let block = Arc::new(header.clone().into_builder().build());
+                let stored =
+                    insert_orphan_and_find_new_tips(&mut *access, block, &validator, &db.consensus_manager).unwrap();
+                assert!(stored, "block at height {} must be stored", header.height);
+                assert!(access.contains(&DbKey::OrphanBlock(header.hash())).unwrap());
+                parent = header;
+            }
+
+            let tip = access.fetch_orphan_chain_tip_by_hash(&parent.hash()).unwrap();
+            assert_eq!(tip.unwrap().header(), &parent);
+        }
     }
 
     mod handle_possible_reorg {
         use super::*;
+
+        /// A fork that is longer than the main chain but weaker is held as an orphan past the tip, then reorged to
+        /// once it overtakes. Mixing Sha3x and RandomXT is what makes length and strength differ: the total
+        /// accumulated difficulty is the product of the per-algorithm sums.
+        #[tokio::test]
+        async fn it_reorgs_to_a_fork_that_overtakes_only_after_growing_past_the_tip() {
+            let mut test = TestHarness::setup();
+            // The harness's own rules only permit Sha3x; the stock LocalNet rules permit every algorithm and carry
+            // the production chain strength comparer (accumulated difficulty, then height, then per algorithm)
+            test.consensus = crate::test_helpers::create_consensus_rules();
+            let difficulty_calculator = DifficultyCalculator::new(test.consensus.clone(), Default::default());
+            test.header_validator = Box::new(HeaderFullValidator::new(test.consensus.clone(), difficulty_calculator));
+            let add_block = |block: Arc<Block>| {
+                let mut access = test.db_write_access();
+                handle_possible_reorg(
+                    &mut *access,
+                    &test.config,
+                    &test.consensus,
+                    &*test.post_orphan_body_validator,
+                    &*test.header_validator,
+                    test.consensus.chain_strength_comparer(),
+                    block,
+                )
+                .map(|outcome| outcome.result)
+            };
+
+            // Sha3x 3 x RandomXT 2 = 6 at the tip (height 3)
+            let (_, main_chain) = create_main_chain(
+                &test.db,
+                block_specs!(["1a->GB"], ["2a->1a", pow_algo: PowAlgorithm::RandomXT], ["3a->2a"]),
+            );
+            let fork_root = main_chain.get("1a").unwrap().clone();
+            let (_, fork) = create_chained_blocks(
+                &test.db,
+                block_specs!(["2b->GB"], ["3b->2b"], ["4b->3b"], ["5b->4b"]),
+                fork_root,
+            );
+
+            // 4b (one past the tip) is longer but weaker at 5 x 1
+            for name in ["2b", "3b", "4b"] {
+                let block = fork.get(name).unwrap().clone();
+                add_block(block.to_arc_block()).unwrap().assert_orphaned();
+            }
+            // 5b (two past it) draws level at 6 x 1 and wins on height
+            let block = fork.get("5b").unwrap().clone();
+            add_block(block.to_arc_block()).unwrap().assert_reorg(4, 2);
+
+            let tip = test.db.fetch_tip_header().unwrap();
+            assert_eq!(tip.hash(), fork.get("5b").unwrap().hash());
+        }
 
         #[ignore]
         #[tokio::test]

@@ -27,7 +27,7 @@ use tari_common_types::types::FixedHash;
 use tari_script::{ExecutionStack, Opcode, TariScript, inputs, script};
 use tari_transaction_components::{
     MicroMinotari,
-    key_manager::{RecoveryProvenance, TariKeyId},
+    key_manager::{RecoveryProvenance, TariKeyId, error::not_ours_if_invalid_key},
     transaction_components::{MemoField, OutputType, TransactionOutput, WalletOutput},
 };
 use tari_transaction_key_manager::legacy_key_manager::LegacyTransactionKeyManagerInterface;
@@ -236,14 +236,17 @@ where
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
         };
-        let (key, committed_value, payment_id, provenance) = match self.master_key_manager.try_output_key_recovery(
-            output.commitment(),
-            output.encrypted_data(),
-            &output.sender_offset_public_key,
-        )? {
-            Some(value) => value,
-            _ => return Ok(None),
-        };
+        let (key, committed_value, payment_id, provenance) =
+            match not_ours_if_invalid_key(self.master_key_manager.try_output_key_recovery(
+                output.commitment(),
+                output.encrypted_data(),
+                &output.sender_offset_public_key,
+            ))?
+            .flatten()
+            {
+                Some(value) => value,
+                _ => return Ok(None),
+            };
 
         Ok(Some((key, committed_value, payment_id, provenance)))
     }

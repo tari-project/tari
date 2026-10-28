@@ -96,7 +96,7 @@ impl MnemonicLanguage {
             Ordering::Equal => {
                 let word = words.get_word(0)?;
                 for language in MnemonicLanguage::iterator() {
-                    if find_mnemonic_index_from_word(word, *language).is_ok() {
+                    if find_mnemonic_index_from_word(word, *language).is_some() {
                         return Ok(*language);
                     }
                 }
@@ -108,7 +108,7 @@ impl MnemonicLanguage {
                     let mut languages = Vec::with_capacity(MnemonicLanguage::iterator().len());
                     // detect all languages in which a word falls into
                     for language in MnemonicLanguage::iterator() {
-                        if find_mnemonic_index_from_word(word, *language).is_ok() {
+                        if find_mnemonic_index_from_word(word, *language).is_some() {
                             languages.push(*language);
                         }
                     }
@@ -118,7 +118,7 @@ impl MnemonicLanguage {
                         let mut consistent = true;
                         for compare_ind in 0..words.len() {
                             let compare = words.get_word(compare_ind)?;
-                            if compare != word && find_mnemonic_index_from_word(compare, language).is_err() {
+                            if compare != word && find_mnemonic_index_from_word(compare, language).is_none() {
                                 consistent = false;
                             }
                         }
@@ -135,7 +135,7 @@ impl MnemonicLanguage {
 }
 
 /// Finds and returns the index of a specific word in a mnemonic word list defined by the specified language
-fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Result<usize, MnemonicError> {
+fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Option<usize> {
     let lowercase_word = Hidden::hide(word.to_lowercase());
     let search_result = match language {
         // Search through languages are ordered according to the predominance (number of speakers in the world) of that
@@ -158,10 +158,7 @@ fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Resu
             MNEMONIC_SPANISH_WORDS.binary_search(&remove_diacritics(lowercase_word.reveal()).reveal().as_str())
         },
     };
-    match search_result {
-        Ok(v) => Ok(v),
-        Err(_err) => Err(MnemonicError::WordNotFound(word.to_string())),
-    }
+    search_result.ok()
 }
 
 /// Finds and returns the word for a specific index in a mnemonic word list defined by the specified language
@@ -267,7 +264,8 @@ pub fn to_bytes_with_language(
     language: &MnemonicLanguage,
 ) -> Result<Hidden<Vec<u8>>, MnemonicError> {
     const MASK: u64 = (1u64 << 8) - 1;
-    let mut bytes = Hidden::hide(Vec::new());
+    // Sized up front so the buffer never reallocates and leaves an unzeroized copy behind
+    let mut bytes = Hidden::hide(Vec::with_capacity(mnemonic_seq.len().saturating_mul(11).div_ceil(8)));
     let mut rest = 0u64;
     let mut rest_bits: u8 = 0;
 
@@ -277,7 +275,10 @@ pub fn to_bytes_with_language(
                 .get_word(curr_ind)
                 .map_err(|_| MnemonicError::IndexOutOfBounds)?,
             *language,
-        )? as u64;
+        )
+        .ok_or(MnemonicError::WordNotFound {
+            position: curr_ind.saturating_add(1),
+        })? as u64;
         // Add 11 bits to the front
         rest = rest.saturating_add(index << rest_bits);
         rest_bits = rest_bits.saturating_add(11);
@@ -520,5 +521,16 @@ mod test {
             let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
             assert_eq!(&secretkey_bytes, mnemonic_bytes.reveal(), "failed len = {len}");
         }
+    }
+
+    #[test]
+    fn an_unknown_word_is_reported_by_position_not_by_value() {
+        let mut words = vec!["abandon"; 24];
+        words[6] = "notaseedword";
+        let seq = SeedWords::new(words.iter().map(|w| Hidden::hide((*w).to_string())).collect());
+        let err = to_bytes_with_language(&seq, &MnemonicLanguage::English).unwrap_err();
+        assert_eq!(err, MnemonicError::WordNotFound { position: 7 });
+        assert!(!err.to_string().contains("notaseedword"));
+        assert!(err.to_string().contains('7'));
     }
 }

@@ -75,7 +75,7 @@ use tari_core::{
 use tari_node_components::blocks::{Block, BlockHeader, NewBlockTemplate};
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_transaction_components::{
-    consensus::NetworkConsensus,
+    consensus::{ConsensusConstants, NetworkConsensus},
     generate_coinbase_with_wallet_output,
     key_manager::{KeyManager, TariKeyId, TransactionKeyManagerInterface, TxoStage},
     rpc::MAX_ALLOWED_QUERY_SIZE,
@@ -89,6 +89,7 @@ use tari_transaction_components::{
         TransactionKernelVersion,
         memo_field::{MemoField, TxType},
     },
+    validate_coinbase_request,
 };
 use tari_utilities::{ByteArray, hex::Hex, message_format::MessageFormat};
 use tokio::{sync::Semaphore, task};
@@ -140,6 +141,76 @@ const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
 
+const MINING_METHODS: &[GrpcMethod] = &[
+    GrpcMethod::GetVersion,
+    GrpcMethod::GetNewBlockTemplate,
+    GrpcMethod::GetNewBlockWithCoinbases,
+    GrpcMethod::GetNewBlockTemplateWithCoinbases,
+    GrpcMethod::GetNewBlock,
+    GrpcMethod::GetNewBlockBlob,
+    GrpcMethod::GetNetworkDifficulty,
+    GrpcMethod::GetNetworkState,
+    GrpcMethod::SubmitBlock,
+    GrpcMethod::SubmitBlockBlob,
+    GrpcMethod::GetTipInfo,
+    GrpcMethod::Identify,
+    GrpcMethod::GetSyncProgress,
+];
+
+const SECOND_LAYER_METHODS: &[GrpcMethod] = &[
+    GrpcMethod::GetVersion,
+    GrpcMethod::GetConstants,
+    GrpcMethod::GetMempoolTransactions,
+    GrpcMethod::GetMempoolStats,
+    GrpcMethod::ListHeaders,
+    GrpcMethod::GetTipInfo,
+    GrpcMethod::GetActiveValidatorNodes,
+    GrpcMethod::GetValidatorNodeChanges,
+    GrpcMethod::GetShardKey,
+    GrpcMethod::GetHeaderByHash,
+    GrpcMethod::GetSideChainUtxos,
+];
+
+fn enabled_grpc_methods_log_lines(config: &BaseNodeConfig) -> Vec<String> {
+    let mut enabled: Vec<GrpcMethod> = Vec::new();
+    for &method in config.grpc_server_allow_methods.as_slice() {
+        if method != GrpcMethod::GetTemplateRegistrations && !enabled.contains(&method) {
+            enabled.push(method);
+        }
+    }
+    if config.mining_enabled {
+        for &method in MINING_METHODS {
+            if !enabled.contains(&method) {
+                enabled.push(method);
+            }
+        }
+    }
+    if config.second_layer_grpc_enabled {
+        for &method in SECOND_LAYER_METHODS {
+            if !enabled.contains(&method) {
+                enabled.push(method);
+            }
+        }
+    }
+
+    let mut lines = vec![format!("Enabled gRPC methods: {enabled:?}")];
+    if config.mining_enabled {
+        lines.push(format!("gRPC methods enabled by `mining_enabled`: {MINING_METHODS:?}"));
+    }
+    if config.second_layer_grpc_enabled {
+        lines.push(format!(
+            "gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}"
+        ));
+    }
+    lines
+}
+
+fn log_enabled_grpc_methods(config: &BaseNodeConfig) {
+    for line in enabled_grpc_methods_log_lines(config) {
+        info!(target: LOG_TARGET, "{line}");
+    }
+}
+
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
@@ -164,6 +235,9 @@ pub struct BaseNodeGrpcServer {
 
 impl BaseNodeGrpcServer {
     pub fn from_base_node_context(ctx: &BaseNodeContext, config: BaseNodeConfig) -> Self {
+        if config.grpc_enabled {
+            log_enabled_grpc_methods(&config);
+        }
         Self {
             node_service: ctx.local_node(),
             mempool_service: ctx.local_mempool(),
@@ -188,36 +262,7 @@ impl BaseNodeGrpcServer {
     }
 
     fn is_method_enabled(&self, grpc_method: GrpcMethod) -> bool {
-        const MINING_METHOD: &[GrpcMethod] = &[
-            GrpcMethod::GetVersion,
-            GrpcMethod::GetNewBlockTemplate,
-            GrpcMethod::GetNewBlockWithCoinbases,
-            GrpcMethod::GetNewBlockTemplateWithCoinbases,
-            GrpcMethod::GetNewBlock,
-            GrpcMethod::GetNewBlockBlob,
-            GrpcMethod::GetNetworkDifficulty,
-            GrpcMethod::GetNetworkState,
-            GrpcMethod::SubmitBlock,
-            GrpcMethod::SubmitBlockBlob,
-            GrpcMethod::GetTipInfo,
-            GrpcMethod::Identify,
-            GrpcMethod::GetSyncProgress,
-        ];
-
-        const SECOND_LAYER_METHODS: &[GrpcMethod] = &[
-            GrpcMethod::GetVersion,
-            GrpcMethod::GetConstants,
-            GrpcMethod::GetMempoolTransactions,
-            GrpcMethod::GetMempoolStats,
-            GrpcMethod::ListHeaders,
-            GrpcMethod::GetTipInfo,
-            GrpcMethod::GetActiveValidatorNodes,
-            GrpcMethod::GetValidatorNodeChanges,
-            GrpcMethod::GetShardKey,
-            GrpcMethod::GetHeaderByHash,
-            GrpcMethod::GetSideChainUtxos,
-        ];
-        if self.config.mining_enabled && MINING_METHOD.contains(&grpc_method) {
+        if self.config.mining_enabled && MINING_METHODS.contains(&grpc_method) {
             return true;
         }
         if self.config.second_layer_grpc_enabled && SECOND_LAYER_METHODS.contains(&grpc_method) {
@@ -240,6 +285,25 @@ impl BaseNodeGrpcServer {
         }
         Ok(())
     }
+}
+
+/// Parse and check every coinbase entry before anything is built, with the same check the coinbase builder makes, so
+/// one bad entry is reported by its index rather than failing deep inside the build.
+fn coinbase_target_addresses(
+    coinbases: &[tari_rpc::NewBlockCoinbase],
+    consensus_constants: &ConsensusConstants,
+) -> Result<Vec<TariAddress>, Status> {
+    let mut addresses = Vec::with_capacity(coinbases.len());
+    for (index, coinbase) in coinbases.iter().enumerate() {
+        let address = TariAddress::from_str(&coinbase.address)
+            .map_err(|e| Status::invalid_argument(format!("Coinbase {index} has an invalid address: {e}")))?;
+        let extra = CoinBaseExtra::try_from(coinbase.coinbase_extra.clone())
+            .map_err(|e| Status::invalid_argument(format!("Coinbase {index} has an invalid coinbase extra: {e}")))?;
+        validate_coinbase_request(&address, &extra, consensus_constants)
+            .map_err(|e| Status::invalid_argument(format!("Coinbase {index}: {e}")))?;
+        addresses.push(address);
+    }
+    Ok(addresses)
 }
 
 pub fn obscure_error_if_true(report: bool, status: Status) -> Status {
@@ -1502,9 +1566,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
-        for coinbase in coinbases {
-            let address = TariAddress::from_str(&coinbase.address)
-                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        // Not obscured: it only describes the caller's own input, and the pool needs the index to drop the share
+        let addresses = coinbase_target_addresses(&coinbases, self.consensus_rules.consensus_constants(height))?;
+        for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
             } else {
@@ -1744,9 +1808,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut private_keys = Vec::new();
         let mut kernel_message = [0; 32];
         let mut last_kernel = Default::default();
-        for coinbase in coinbases {
-            let address = TariAddress::from_str(&coinbase.address)
-                .map_err(|e| obscure_error_if_true(report_error_flag, Status::internal(e.to_string())))?;
+        // Not obscured: it only describes the caller's own input, and the pool needs the index to drop the share
+        let addresses = coinbase_target_addresses(&coinbases, self.consensus_rules.consensus_constants(height))?;
+        for (coinbase, address) in coinbases.into_iter().zip(addresses) {
             let range_proof_type = if coinbase.revealed_value_proof {
                 RangeProofType::RevealedValue
             } else {
@@ -3532,6 +3596,76 @@ mod test {
 
     use super::*;
 
+    fn coinbase_to(address: &TariAddress) -> tari_rpc::NewBlockCoinbase {
+        tari_rpc::NewBlockCoinbase {
+            address: address.to_base58(),
+            value: 1,
+            stealth_payment: true,
+            revealed_value_proof: false,
+            coinbase_extra: vec![],
+        }
+    }
+
+    /// Every coinbase entry is checked up front and a bad one is refused as an invalid argument naming its index.
+    #[test]
+    fn coinbase_target_addresses_refuses_a_bad_entry_by_index() {
+        use tari_common_types::{tari_address::TariAddressFeatures, types::CompressedPublicKey};
+
+        let constants = ConsensusConstants::mainnet().pop().unwrap();
+        let refused_at = |coinbases: &[tari_rpc::NewBlockCoinbase], index: usize| {
+            let status = coinbase_target_addresses(coinbases, &constants).unwrap_err();
+            assert_eq!(status.code(), tonic::Code::InvalidArgument);
+            assert!(
+                status.message().contains(&format!("Coinbase {index}")),
+                "{}",
+                status.message()
+            );
+            status.message().to_string()
+        };
+        let key = || CompressedPublicKey::from_secret_key(&PrivateKey::from(7u64));
+        let one_sided = |view: CompressedPublicKey, payment_id: Option<Vec<u8>>| {
+            TariAddress::new_dual_address(
+                view,
+                key(),
+                Network::LocalNet,
+                TariAddressFeatures::create_one_sided_only(),
+                payment_id,
+            )
+            .unwrap()
+        };
+        let good = one_sided(key(), None);
+        let addresses = coinbase_target_addresses(&[coinbase_to(&good), coinbase_to(&good)], &constants).unwrap();
+        assert_eq!(addresses, vec![good.clone(), good.clone()]);
+
+        let single = TariAddress::new_single_address_with_interactive_only(key(), Network::LocalNet).unwrap();
+        refused_at(&[coinbase_to(&good), coinbase_to(&single)], 1);
+
+        let message = refused_at(&[coinbase_to(&one_sided(CompressedPublicKey::default(), None))], 0);
+        assert!(message.contains("identity"), "{message}");
+
+        let mut garbage = coinbase_to(&good);
+        garbage.address = "not an address".to_string();
+        refused_at(&[coinbase_to(&good), coinbase_to(&good), garbage], 2);
+
+        // The payment id must fit the coinbase memo
+        coinbase_target_addresses(&[coinbase_to(&one_sided(key(), Some(vec![1; 254])))], &constants).unwrap();
+        for len in [255, 256] {
+            let long = coinbase_to(&one_sided(key(), Some(vec![1; len])));
+            let message = refused_at(&[coinbase_to(&good), long], 1);
+            assert!(message.contains("payment id"), "{message}");
+        }
+
+        // The coinbase extra must fit the consensus limit
+        assert_eq!(constants.coinbase_output_features_extra_max_length(), 256);
+        let with_extra = |len: usize| tari_rpc::NewBlockCoinbase {
+            coinbase_extra: vec![1; len],
+            ..coinbase_to(&good)
+        };
+        coinbase_target_addresses(&[with_extra(256)], &constants).unwrap();
+        let message = refused_at(&[coinbase_to(&good), with_extra(257)], 1);
+        assert!(message.contains("coinbase extra"), "{message}");
+    }
+
     /// A signed side-chain validator node exit feature.
     fn validator_node_exit_feature() -> SideChainFeature {
         SideChainFeature {
@@ -3846,5 +3980,93 @@ mod test {
         }
 
         assert!(value_at_height_response(&values, 6).is_none());
+    }
+
+    #[test]
+    fn enabled_grpc_methods_logs_mining_methods_when_mining_enabled_with_default_allow_list() {
+        let mut config = BaseNodeConfig::default();
+        config.mining_enabled = true;
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines.first().unwrap(),
+            &format!("Enabled gRPC methods: {MINING_METHODS:?}")
+        );
+        assert_eq!(
+            lines.get(1).unwrap(),
+            &format!("gRPC methods enabled by `mining_enabled`: {MINING_METHODS:?}")
+        );
+        assert_eq!(MINING_METHODS.len(), 13);
+    }
+
+    #[test]
+    fn enabled_grpc_methods_logs_only_custom_allow_list_when_flags_are_off() {
+        let custom_list = vec![
+            GrpcMethod::GetVersion,
+            GrpcMethod::GetTipInfo,
+            GrpcMethod::ListHeaders,
+            GrpcMethod::GetTemplateRegistrations,
+        ];
+        let mut config = BaseNodeConfig::default();
+        config.mining_enabled = false;
+        config.second_layer_grpc_enabled = false;
+        config.grpc_server_allow_methods = custom_list.into();
+        let expected = vec![GrpcMethod::GetVersion, GrpcMethod::GetTipInfo, GrpcMethod::ListHeaders];
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines, vec![format!("Enabled gRPC methods: {expected:?}")]);
+    }
+
+    #[test]
+    fn enabled_grpc_methods_logs_second_layer_methods_when_second_layer_enabled_with_default_allow_list() {
+        let mut config = BaseNodeConfig::default();
+        config.second_layer_grpc_enabled = true;
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines.first().unwrap(),
+            &format!("Enabled gRPC methods: {SECOND_LAYER_METHODS:?}")
+        );
+        assert_eq!(
+            lines.get(1).unwrap(),
+            &format!("gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}")
+        );
+        assert_eq!(SECOND_LAYER_METHODS.len(), 11);
+    }
+
+    #[test]
+    fn enabled_grpc_methods_deduplicates_across_sources_and_logs_both_flag_lines() {
+        let custom_list = vec![
+            GrpcMethod::GetVersion,
+            GrpcMethod::GetTipInfo,
+            GrpcMethod::GetPeers,
+            GrpcMethod::GetTemplateRegistrations,
+        ];
+        let mut config = BaseNodeConfig::default();
+        config.mining_enabled = true;
+        config.second_layer_grpc_enabled = true;
+        config.grpc_server_allow_methods = custom_list.into();
+
+        let mut expected_enabled = vec![GrpcMethod::GetVersion, GrpcMethod::GetTipInfo, GrpcMethod::GetPeers];
+        for &m in MINING_METHODS.iter().chain(SECOND_LAYER_METHODS.iter()) {
+            if !expected_enabled.contains(&m) {
+                expected_enabled.push(m);
+            }
+        }
+        assert!(!expected_enabled.contains(&GrpcMethod::GetTemplateRegistrations));
+
+        let lines = enabled_grpc_methods_log_lines(&config);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(
+            lines.first().unwrap(),
+            &format!("Enabled gRPC methods: {expected_enabled:?}")
+        );
+        assert_eq!(
+            lines.get(1).unwrap(),
+            &format!("gRPC methods enabled by `mining_enabled`: {MINING_METHODS:?}")
+        );
+        assert_eq!(
+            lines.get(2).unwrap(),
+            &format!("gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}")
+        );
     }
 }

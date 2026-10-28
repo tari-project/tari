@@ -20,6 +20,7 @@ tari_hashing = { workspace = true }
 tari_max_size = { workspace = true }
 tari_mmr = { workspace = true }
 tari_script = { workspace = true }
+tari_sidechain = { workspace = true }
 tari_utilities = { workspace = true }
 minotari_ledger_wallet_common = { workspace = true, features = ["borsh"] }
 
@@ -57,7 +58,7 @@ semver = { version = "1.0", features = ["serde"] }
 uuid = "1.17.0"
 zeroize = "1"
 
-utoipa = "5.3.1"
+utoipa = "6.0.0"
 wasm-bindgen = { version = "0.2.100", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

@@ -298,7 +298,7 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
         let acquire_lock = start.elapsed();
         let cipher = acquire_read_lock!(self.cipher);
         let key = ImportedKeySql::get_key(public_key, &mut conn)?;
-        let unencrypted_key = key.to_imported_key(&cipher)?;
+        let unencrypted_key = key.to_imported_key(&cipher, &mut conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,

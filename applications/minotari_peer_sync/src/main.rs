@@ -48,7 +48,7 @@ use futures::{StreamExt, future, stream};
 use log::*;
 use minotari_app_utilities::{
     consts,
-    identity_management::{load_from_json, setup_node_identity},
+    identity_management::{load_tor_identity, setup_node_identity},
     utilities::setup_runtime,
 };
 use tari_common::{
@@ -650,8 +650,7 @@ async fn start_comms(
 ) -> Result<(CommsNode, BootstrapWaiter), ExitError> {
     let mut p2p_config = config.base_node.p2p.clone();
     if cli.use_node_identity {
-        p2p_config.transport.tor.identity = load_from_json(&config.base_node.tor_identity_file)
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        p2p_config.transport.tor.identity = load_tor_identity(&config.base_node.tor_identity_file)?;
     }
 
     let user_agent = cli

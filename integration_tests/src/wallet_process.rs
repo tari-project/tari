@@ -181,7 +181,7 @@ pub async fn spawn_wallet(
         // concurrently, so 4 (not 2) is the floor that keeps it from starving under that load.
         let rt = runtime::Builder::new_multi_thread()
             .worker_threads(4)
-            .thread_stack_size(4 * 1024 * 1024)// 4 MB stack size per thread (4 * 1024 * 1024 = 4,194,304 bytes)
+            .thread_stack_size(4 * 1024 * 1024) // 4 MB stack size per thread (4 * 1024 * 1024 = 4,194,304 bytes)
             .enable_all()
             .build()
             .unwrap();
@@ -266,6 +266,7 @@ pub fn get_default_cli() -> Cli {
         libtor_data_dir: None,
         skip_recovery: false,
         print_env: false,
+        install_grpc_signal_handler: false,
     }
 }
 

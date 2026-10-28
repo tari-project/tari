@@ -51,6 +51,7 @@ use crate::{
     dedup,
     discovery::DhtDiscoveryRequester,
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination, datetime_to_epochtime},
+    inbound::decode_envelope_body,
     message_signature::MessageSignature,
     outbound::{
         SendMessageResponse,
@@ -63,6 +64,9 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
+
+/// How long a message this node sends stays valid (its `expires`).
+pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 * 60);
 
 pub struct BroadcastLayer {
     dht_requester: DhtRequester,
@@ -83,7 +87,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(Duration::from_secs(3 * 60 * 60))
+            message_validity_window: chrono::Duration::from_std(MESSAGE_VALIDITY_WINDOW)
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
         }
@@ -423,9 +427,19 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             body,
         )?;
 
-        if is_broadcast {
-            let hash = dedup::create_message_hash(message_signature.as_deref().unwrap_or(&[]), &body);
-            self.add_to_dedup_cache(hash).await?;
+        // A message sent with an existing header is being forwarded: the inbound path already recorded its key, and
+        // the signature that key needs is in that header, not in `message_signature`.
+        if is_broadcast && custom_header.is_none() {
+            let sig_canonical = message_signature.as_deref().unwrap_or(&[]);
+            let is_signed = !sig_canonical.is_empty();
+            // Key an unsigned cleartext body the way the inbound path will key its echo
+            let decoded_body = if !is_signed && !dht_flags.is_encrypted() {
+                decode_envelope_body(&body).ok()
+            } else {
+                None
+            };
+            let hash = dedup::message_key(sig_canonical, dht_flags, &body, decoded_body.as_ref());
+            self.add_to_dedup_cache(hash, expires_epochtime, is_signed).await?;
         }
 
         // Construct a DhtOutboundMessage for each recipient
@@ -456,7 +470,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(messages.unzip())
     }
 
-    async fn add_to_dedup_cache(&mut self, hash: [u8; 32]) -> Result<(), DhtOutboundError> {
+    async fn add_to_dedup_cache(
+        &mut self,
+        hash: [u8; 32],
+        expires: Option<EpochTime>,
+        is_signed: bool,
+    ) -> Result<(), DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
@@ -471,7 +490,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
         if hit_count == 0 {
             self.dht_requester
-                .add_message_to_dedup_cache(hash.to_vec(), self.node_identity.public_key().clone())
+                .add_message_to_dedup_cache(
+                    hash.to_vec(),
+                    self.node_identity.public_key().clone(),
+                    expires,
+                    is_signed,
+                )
                 .await
                 .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
         }
