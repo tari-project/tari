@@ -233,12 +233,12 @@ pub fn mining_task(
             },
         };
         if difficulty >= target_difficulty {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Miner {} found nonce {} with matching difficulty {} on {}",
                 miner, hasher.header.nonce, difficulty, mining_algorithm
             );
-            if let Err(err) = sender.try_send(MiningReport {
+            match sender.try_send(MiningReport {
                 miner,
                 difficulty,
                 hashes: hasher.hashes,
@@ -247,7 +247,20 @@ pub fn mining_task(
                 header: Some(hasher.create_header()),
                 target_difficulty,
             }) {
-                error!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                Ok(()) => {},
+                Err(TrySendError::Disconnected(_)) => {
+                    info!(target: LOG_TARGET, "Mining thread {miner} on {mining_algorithm} disconnected");
+                    return;
+                },
+                // In share mode a full channel only means the last share has not been collected yet; in solo mode it
+                // loses a found block.
+                Err(err) => {
+                    if share_mode {
+                        trace!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                    } else {
+                        error!(target: LOG_TARGET, "Miner {miner} on {mining_algorithm} failed to send report: {err}");
+                    }
+                },
             }
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
             // new job

@@ -140,15 +140,37 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
             })?;
         mc.set_client_tx(cc.tx.clone());
 
-        let _join_handle = thread::Builder::new()
+        // Report how the client thread ended without a blocking join, which would keep the runtime alive on panic.
+        let (client_done_tx, client_done_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+        let _client_handle = thread::Builder::new()
             .name("client_controller".to_string())
             .spawn(move || {
-                cc.run();
-            });
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cc.run()));
+                let _result = client_done_tx.send(result.map_err(|payload| panic_message(payload.as_ref())));
+            })
+            .map_err(|e| {
+                ExitError::new(
+                    ExitCode::UnknownError,
+                    format!("Could not start stratum client controller: {e}"),
+                )
+            })?;
 
-        mc.run()
-            .await
-            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {err:?}")))?;
+        tokio::select! {
+            result = mc.run() => {
+                result.map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {err:?}")))?;
+            },
+            done = client_done_rx => {
+                let reason = match done {
+                    Ok(Err(panic)) => panic,
+                    Ok(Ok(())) | Err(_) => "exited".to_string(),
+                };
+                error!(target: LOG_TARGET, "Stratum client controller stopped unexpectedly: {reason}");
+                return Err(ExitError::new(
+                    ExitCode::UnknownError,
+                    format!("Stratum client controller stopped unexpectedly: {reason}"),
+                ));
+            },
+        }
 
         Ok(())
     } else {
@@ -240,6 +262,16 @@ pub async fn start_miner(cli: Cli) -> Result<(), ExitError> {
 pub struct NodeClientResult {
     base_node_client: BaseNodeGrpcClient,
     p2pool_node_client: Option<ShaP2PoolGrpcClient>,
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panicked".to_string()
+    }
 }
 
 async fn connect(config: &MinerConfig) -> Result<NodeClientResult, MinerError> {
@@ -672,4 +704,25 @@ async fn validate_tip(
         return Err(MinerError::MinerLostBlock(height));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::any::Any;
+
+    use super::*;
+
+    #[test]
+    fn panic_message_reads_str_and_string_payloads() {
+        let payload: Box<dyn Any + Send> = Box::new("static message");
+        assert_eq!(panic_message(payload.as_ref()), "static message");
+        let payload: Box<dyn Any + Send> = Box::new("formatted message".to_string());
+        assert_eq!(panic_message(payload.as_ref()), "formatted message");
+    }
+
+    #[test]
+    fn panic_message_falls_back_for_other_payloads() {
+        let payload: Box<dyn Any + Send> = Box::new(42u32);
+        assert_eq!(panic_message(payload.as_ref()), "panicked");
+    }
 }
