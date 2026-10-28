@@ -3906,3 +3906,87 @@ async fn test_reinstate_cancelled_inbound_refuses_bad_mask_outputs() {
     );
     assert_eq!(stored_status(&connection, &tampered), OutputStatus::CancelledInbound);
 }
+
+#[tokio::test]
+async fn test_scrape_wallet_batches_and_empty_wallet() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+    let fee_per_gram = MicroMinotari::from(1);
+
+    // Scraping an empty wallet returns no batches
+    let empty_batches = oms.output_manager_handle.scrape_wallet(fee_per_gram).await.unwrap();
+    assert!(empty_batches.is_empty());
+
+    // Add 5 spendable outputs
+    let values = [1_000u64, 2_000, 3_000, 4_000, 5_000];
+    for val in values {
+        let _uo = spendable_test_input(&mut oms, &backend, MicroMinotari::from(val)).await;
+    }
+
+    // Standard scrape_wallet puts all 5 outputs into 1 batch
+    let batches = oms.output_manager_handle.scrape_wallet(fee_per_gram).await.unwrap();
+    assert_eq!(batches.len(), 1);
+    let (tx_id, builder) = &batches[0];
+    assert_eq!(
+        builder.get_total_input_value().unwrap(),
+        MicroMinotari::from(values.iter().sum::<u64>())
+    );
+    assert!(
+        oms.output_manager_handle
+            .get_unspent_outputs()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Cancel pending transaction so outputs become unspent again
+    oms.output_manager_handle
+        .cancel_pending_transaction(*tx_id)
+        .await
+        .unwrap();
+    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 5);
+
+    // Verify batching when input limit is 2: 5 outputs -> 3 batches of (2, 2, 1) inputs
+    let shutdown = Shutdown::new();
+    let (_oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_event_publisher, _) = broadcast::channel(200);
+    let (bns_sender, _bns_receiver) = reply_channel::unbounded();
+    let (bns_event_publisher, _) = broadcast::channel(100);
+    let basenode_service_handle = BaseNodeServiceHandle::new(bns_sender, bns_event_publisher);
+    let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
+    let (scanner_event_sender, _) = broadcast::channel(200);
+    let scanner_handle = UtxoScannerHandle::new(
+        scanner_event_sender,
+        Watch::new("unset".to_string()),
+        Watch::new("unset".to_string()),
+    );
+
+    let mut direct_service = OutputManagerService::new(
+        OutputManagerServiceConfig::default(),
+        oms_request_receiver,
+        OutputManagerDatabase::new(backend),
+        oms_event_publisher,
+        CryptoFactories::default(),
+        create_consensus_constants(0),
+        shutdown.to_signal(),
+        basenode_service_handle,
+        Network::LocalNet,
+        wallet_connectivity_mock,
+        oms.key_manager_handle.clone(),
+        scanner_handle,
+    )
+    .await
+    .unwrap();
+
+    let chunked_batches = direct_service.scrape_wallet_with_limit(fee_per_gram, 2).unwrap();
+    assert_eq!(chunked_batches.len(), 3);
+    let total_scraped: MicroMinotari = chunked_batches
+        .iter()
+        .map(|(_, b)| b.get_total_input_value().unwrap())
+        .sum();
+    assert_eq!(total_scraped, MicroMinotari::from(values.iter().sum::<u64>()));
+    assert_ne!(chunked_batches[0].0, chunked_batches[1].0);
+    assert_ne!(chunked_batches[1].0, chunked_batches[2].0);
+    assert_ne!(chunked_batches[0].0, chunked_batches[2].0);
+}

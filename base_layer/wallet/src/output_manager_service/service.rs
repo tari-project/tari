@@ -600,9 +600,14 @@ where
                         .await?,
                 ))
             },
-            OutputManagerRequest::ScrapeWallet { tx_id, fee_per_gram } => self
-                .scrape_wallet(tx_id, fee_per_gram)
-                .map(|tx_builder| OutputManagerResponse::TransactionBuilderToSend(Box::new(tx_builder))),
+            OutputManagerRequest::ScrapeWallet { fee_per_gram } => self.scrape_wallet(fee_per_gram).map(|batches| {
+                OutputManagerResponse::TransactionBuildersToSend(
+                    batches
+                        .into_iter()
+                        .map(|(tx_id, builder)| (tx_id, Box::new(builder)))
+                        .collect(),
+                )
+            }),
 
             OutputManagerRequest::PreviewCoinSplitEven((commitments, number_of_splits, fee_per_gram)) => {
                 Ok(OutputManagerResponse::CoinPreview(
@@ -3127,34 +3132,71 @@ where
 
     pub fn scrape_wallet(
         &mut self,
-        tx_id: TxId,
         fee_per_gram: MicroMinotari,
-    ) -> Result<TransactionBuilder<TKeyManagerInterface>, OutputManagerError> {
+    ) -> Result<Vec<(TxId, TransactionBuilder<TKeyManagerInterface>)>, OutputManagerError> {
+        self.scrape_wallet_with_limit(fee_per_gram, TRANSACTION_INPUTS_LIMIT as usize)
+    }
+
+    pub fn scrape_wallet_with_limit(
+        &mut self,
+        fee_per_gram: MicroMinotari,
+        max_inputs_per_tx: usize,
+    ) -> Result<Vec<(TxId, TransactionBuilder<TKeyManagerInterface>)>, OutputManagerError> {
         let src_outputs = self
             .resources
             .db
             .fetch_all_unspent_outputs(&self.resources.key_manager)?;
 
-        let mut builder = TransactionBuilder::new(
-            self.resources.consensus_constants.clone(),
-            self.resources.key_manager.clone(),
-            self.resources.network,
-        )?;
-        builder
-            .with_fee_per_gram(fee_per_gram)
-            .with_memo(
-                MemoField::new_open_from_string("scraping wallet", TxType::PaymentToOther)
-                    .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
-            )
-            .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
-
-        for uo in &src_outputs {
-            builder.with_input(uo.wallet_output.clone())?;
+        if src_outputs.is_empty() || max_inputs_per_tx == 0 {
+            debug!(target: LOG_TARGET, "scrape_wallet called but wallet has no unspent outputs");
+            return Ok(vec![]);
         }
 
-        // encumbering transaction
-        self.resources.db.encumber_outputs(tx_id, src_outputs.clone(), vec![])?;
-        Ok(builder)
+        let mut prepared_batches = Vec::new();
+        for batch in src_outputs.chunks(max_inputs_per_tx) {
+            let tx_id = TxId::new_random();
+            let mut builder = TransactionBuilder::new(
+                self.resources.consensus_constants.clone(),
+                self.resources.key_manager.clone(),
+                self.resources.network,
+            )?;
+            builder
+                .with_fee_per_gram(fee_per_gram)
+                .with_memo(
+                    MemoField::new_open_from_string("scraping wallet", TxType::PaymentToOther)
+                        .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
+                )
+                .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount);
+
+            for uo in batch {
+                builder.with_input(uo.wallet_output.clone())?;
+            }
+
+            prepared_batches.push((tx_id, builder, batch));
+        }
+
+        let mut batches = Vec::with_capacity(prepared_batches.len());
+        for (tx_id, builder, batch) in prepared_batches {
+            if let Err(e) = self.resources.db.encumber_outputs(tx_id, batch.to_vec(), vec![]) {
+                for (encumbered_tx_id, _) in &batches {
+                    if let Err(cancel_err) = self.resources.db.cancel_pending_transaction_outputs(*encumbered_tx_id) {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to cancel pending outputs for batch {encumbered_tx_id} after encumber error: {cancel_err}"
+                        );
+                    }
+                }
+                return Err(e.into());
+            }
+            batches.push((tx_id, builder));
+        }
+        debug!(
+            target: LOG_TARGET,
+            "scrape_wallet: created {} transaction batch(es) from {} unspent outputs",
+            batches.len(),
+            src_outputs.len()
+        );
+        Ok(batches)
     }
 
     /// Fetch an unspent output from the base node. Every request handler that reaches the base node goes through here.

@@ -915,7 +915,7 @@ where
                     let res = self
                         .scrape_wallet(destination, fee_per_gram, transaction_broadcast_join_handles)
                         .await?;
-                    Ok(TransactionServiceResponse::TransactionSent(res))
+                    Ok(TransactionServiceResponse::TransactionsSent(res))
                 }
                 .await
             },
@@ -2662,127 +2662,239 @@ where
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
-    ) -> Result<TxId, TransactionServiceError> {
-        let temp_tx_id = TxId::new_random();
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
         self.verify_send(&dest_address, TariAddressFeatures::create_one_sided_only())?;
 
-        // Prepare sender part of the transaction
-        let mut tx_builder = self
+        // Prepare sender part of the transactions, batched by TRANSACTION_INPUTS_LIMIT
+        let batches = self
             .resources
             .output_manager_service
-            .scrape_wallet(temp_tx_id, fee_per_gram)
+            .scrape_wallet(fee_per_gram)
             .await?;
 
-        // Prepare receiver part of the transaction
+        let mut prepared_batches = Vec::with_capacity(batches.len());
+        let mut batches_iter = batches.into_iter();
 
-        // The whole wallet goes to one output, so the fee has to be known before the amount is - and the output does
-        // not exist yet at that point, because its sender offset key is only reserved once the builder knows how many
-        // outputs the transaction has.
-        let minimum_value_promise = MicroMinotari::zero();
-        let placeholder_memo = MemoField::new_address_and_data(
-            self.resources.one_sided_tari_address.clone(),
-            MicroMinotari::zero(),
-            true,
-            TxType::PaymentToOther,
-            vec![],
-        )
-        .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
-        let output_size = recipient_output_features_and_scripts_size(
-            self.resources
-                .consensus_manager
-                .consensus_constants(0)
-                .transaction_weight_params(),
-            &OutputFeatures::default(),
-            &push_pubkey_script(&Default::default()),
-            &Covenant::default(),
-            &placeholder_memo,
-        )?;
-        let fee = tx_builder.get_fee_estimate_with(&[PendingOutput::new(MicroMinotari::zero(), output_size)])?;
-        let amount = tx_builder
-            .get_total_input_value()?
-            .checked_sub(fee)
-            .ok_or_else(|| TransactionServiceError::ServiceError("Not enough to cover the fee".to_string()))?;
-        let payment_id = MemoField::new_address_and_data(
-            self.resources.one_sided_tari_address.clone(),
-            fee,
-            true,
-            TxType::PaymentToOther,
-            vec![],
-        )
-        .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
+        // Phase 1: Build and validate all batches before confirming or submitting any transaction so that a build/fee
+        // failure on a later batch cleanly cancels all pending batches without leaving partial sends behind.
+        while let Some((temp_tx_id, mut tx_builder)) = batches_iter.next() {
+            let dest_address = dest_address.clone();
+            let build_res: Result<_, TransactionServiceError> = async {
+                // Prepare receiver part of the transaction
 
-        tx_builder.with_recipient_spec(
-            RecipientSpec::stealth(
-                dest_address.clone(),
-                amount,
-                OutputFeatures::default(),
-                payment_id.clone(),
-            )
-            .with_keys(RecipientKeys::DiffieHellmanEncrypted)
-            .with_minimum_value_promise(minimum_value_promise),
-        )?;
-        tx_builder.reserve_sender_offset_keys(&[])?;
+                // The batch goes to one output, so the fee has to be known before the amount is - and the output
+                // does not exist yet at that point, because its sender offset key is only reserved once the
+                // builder knows how many outputs the transaction has.
+                let minimum_value_promise = MicroMinotari::zero();
+                let placeholder_memo = MemoField::new_address_and_data(
+                    self.resources.one_sided_tari_address.clone(),
+                    MicroMinotari::zero(),
+                    true,
+                    TxType::PaymentToOther,
+                    vec![],
+                )
+                .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
+                let output_size = recipient_output_features_and_scripts_size(
+                    self.resources
+                        .consensus_manager
+                        .consensus_constants(0)
+                        .transaction_weight_params(),
+                    &OutputFeatures::default(),
+                    &push_pubkey_script(&Default::default()),
+                    &Covenant::default(),
+                    &placeholder_memo,
+                )?;
+                let fee =
+                    tx_builder.get_fee_estimate_with(&[PendingOutput::new(MicroMinotari::zero(), output_size)])?;
+                let amount = tx_builder
+                    .get_total_input_value()?
+                    .checked_sub(fee)
+                    .ok_or_else(|| TransactionServiceError::ServiceError("Not enough to cover the fee".to_string()))?;
+                let payment_id = MemoField::new_address_and_data(
+                    self.resources.one_sided_tari_address.clone(),
+                    fee,
+                    true,
+                    TxType::PaymentToOther,
+                    vec![],
+                )
+                .map_err(|e| TransactionServiceError::InvalidPaymentId(e.to_string()))?;
 
-        let finalized = tx_builder.build()?;
-        let output = finalized
-            .spec_outputs
-            .first()
-            .cloned()
-            .ok_or_else(|| TransactionServiceError::ServiceError("The scrape output was not built".to_string()))?;
+                tx_builder.with_recipient_spec(
+                    RecipientSpec::stealth(
+                        dest_address.clone(),
+                        amount,
+                        OutputFeatures::default(),
+                        payment_id.clone(),
+                    )
+                    .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+                    .with_minimum_value_promise(minimum_value_promise),
+                )?;
+                tx_builder.reserve_sender_offset_keys(&[])?;
 
-        info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
+                let finalized = tx_builder.build()?;
+                let output = finalized.spec_outputs.first().cloned().ok_or_else(|| {
+                    TransactionServiceError::ServiceError("The scrape output was not built".to_string())
+                })?;
 
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
+                let tx = finalized.transaction;
+                let fee = finalized.fee;
+                let change = finalized.change.map(|change| vec![change]);
+                let received_hashes = finalized.sent_output_hashes;
+                let change_hashes = finalized.change_output_hashes;
 
-        // Broadcast one-sided transaction
+                let mut final_payment_id = payment_id;
+                final_payment_id.set_fee(fee);
+                let completed_tx = CompletedTransaction::new_with_output_hashes(
+                    finalized.tx_id,
+                    self.resources.one_sided_tari_address.clone(),
+                    dest_address,
+                    amount,
+                    fee,
+                    tx,
+                    LegacyTransactionStatus::Completed,
+                    Utc::now(),
+                    TransactionDirection::Outbound,
+                    None,
+                    None,
+                    final_payment_id,
+                    vec![],
+                    received_hashes,
+                    change_hashes,
+                    0,
+                )?;
+                check_transaction_size(&completed_tx.transaction, completed_tx.tx_id)?;
 
-        let tx = finalized.transaction.clone();
-        let fee = finalized.fee;
-        self.resources
-            .output_manager_service
-            .add_output_with_tx_id(temp_tx_id, output.clone(), Some(SpendingPriority::HtlcSpendAsap))
-            .await?;
-        let change = finalized.change.clone().map(|change| vec![change]);
-        self.resources
-            .output_manager_service
-            .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
-            .await
-            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
-        let received_hashes = finalized.sent_output_hashes.clone();
-        let change_hashes = finalized.change_output_hashes.clone();
+                Ok((output, change, completed_tx))
+            }
+            .await;
 
-        let mut final_payment_id = payment_id.clone();
-        final_payment_id.set_fee(fee);
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                finalized.tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                dest_address,
-                amount,
-                fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                final_payment_id,
-                vec![],
-                received_hashes,
-                change_hashes,
-                0,
-            )?,
-        )
-        .await?;
+            match build_res {
+                Ok((output, change, completed_tx)) => {
+                    prepared_batches.push((temp_tx_id, output, change, completed_tx));
+                },
+                Err(e) => {
+                    for (prev_temp_tx_id, _, _, _) in prepared_batches {
+                        if let Err(cancel_err) = self
+                            .resources
+                            .output_manager_service
+                            .cancel_pending_transaction(prev_temp_tx_id)
+                            .await
+                        {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Failed to cancel pending scrape batch {prev_temp_tx_id}: {cancel_err}"
+                            );
+                        }
+                    }
+                    if let Err(cancel_err) = self
+                        .resources
+                        .output_manager_service
+                        .cancel_pending_transaction(temp_tx_id)
+                        .await
+                    {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to cancel pending scrape batch {temp_tx_id}: {cancel_err}"
+                        );
+                    }
+                    for (remaining_tx_id, _) in batches_iter {
+                        if let Err(cancel_err) = self
+                            .resources
+                            .output_manager_service
+                            .cancel_pending_transaction(remaining_tx_id)
+                            .await
+                        {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Failed to cancel pending scrape batch {remaining_tx_id}: {cancel_err}"
+                            );
+                        }
+                    }
+                    return Err(e);
+                },
+            }
+        }
 
-        Ok(finalized.tx_id)
+        // Phase 2: Confirm and broadcast each validated batch.
+        let mut tx_ids = Vec::with_capacity(prepared_batches.len());
+        let mut prepared_iter = prepared_batches.into_iter();
+        while let Some((temp_tx_id, output, change, completed_tx)) = prepared_iter.next() {
+            let finalized_tx_id = completed_tx.tx_id;
+            let mut confirmed = false;
+            let submit_res: Result<TxId, TransactionServiceError> = async {
+                self.resources
+                    .output_manager_service
+                    .add_output_with_tx_id(temp_tx_id, output, Some(SpendingPriority::HtlcSpendAsap))
+                    .await?;
+                self.resources
+                    .output_manager_service
+                    .confirm_pending_transaction(temp_tx_id, Some(finalized_tx_id), change)
+                    .await
+                    .map_err(|e| TransactionServiceProtocolError::new(finalized_tx_id, e.into()))?;
+                confirmed = true;
+
+                info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {finalized_tx_id}");
+
+                // This event being sent is important, but not critical to the protocol being successful. Send only
+                // fails if there are no subscribers.
+                let _result = self
+                    .event_publisher
+                    .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                        finalized_tx_id,
+                    )));
+
+                self.submit_transaction(transaction_broadcast_join_handles, completed_tx)
+                    .await?;
+
+                Ok(finalized_tx_id)
+            }
+            .await;
+
+            match submit_res {
+                Ok(tx_id) => tx_ids.push(tx_id),
+                Err(e) => {
+                    let cancel_id = if confirmed { finalized_tx_id } else { temp_tx_id };
+                    if let Err(cancel_err) = self
+                        .resources
+                        .output_manager_service
+                        .cancel_pending_transaction(cancel_id)
+                        .await
+                    {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to cancel failed scrape batch {cancel_id}: {cancel_err}"
+                        );
+                    }
+                    for (remaining_tx_id, _, _, _) in prepared_iter {
+                        if let Err(cancel_err) = self
+                            .resources
+                            .output_manager_service
+                            .cancel_pending_transaction(remaining_tx_id)
+                            .await
+                        {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Failed to cancel remaining scrape batch {remaining_tx_id}: {cancel_err}"
+                            );
+                        }
+                    }
+                    if tx_ids.is_empty() {
+                        return Err(e);
+                    }
+                    error!(
+                        target: LOG_TARGET,
+                        "scrape_wallet failed to submit batch {finalized_tx_id} after {} batch(es) succeeded: {e}",
+                        tx_ids.len()
+                    );
+                    return Err(TransactionServiceError::PartialScrapeFailure {
+                        sent_tx_ids: tx_ids,
+                        error: Box::new(e),
+                    });
+                },
+            }
+        }
+
+        Ok(tx_ids)
     }
 
     /// Sends a one side payment transaction to a recipient
