@@ -2477,6 +2477,7 @@ impl LMDBDatabase {
             commitment: commitment.clone(),
             sidechain_public_key: sidechain_pk.cloned(),
             minimum_value_promise,
+            original_registration: vn_reg.clone(),
         };
 
         store.insert(&validator_node)?;
@@ -3100,33 +3101,6 @@ impl LMDBDatabase {
         self.consensus_manager.consensus_constants(height)
     }
 
-    fn fetch_utxo_by_commitment(
-        &self,
-        txn: &ConstTransaction<'_>,
-        commitment: &CompressedCommitment,
-    ) -> Result<OutputMinedInfo, ChainStorageError> {
-        let output_hash = lmdb_get::<_, HashOutput>(txn, &self.utxo_commitment_index, commitment.as_bytes())?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "UTXO (in fetch_utxo_by_commitment)",
-                field: "commitment",
-                value: commitment.to_hex(),
-            })?;
-        // The commitment is unique in the UTXO set; if several index entries exist (e.g. across
-        // reorgs), take the last mined one.
-        let mut outputs = self.fetch_outputs_in_txn(txn, output_hash.as_slice())?;
-        outputs.sort_by_key(|o| o.mined_height);
-        let output = outputs
-            .into_iter()
-            .next_back()
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "UTXO (in fetch_utxo_by_commitment)",
-                field: "hash",
-                value: output_hash.to_string(),
-            })?;
-
-        Ok(output)
-    }
-
     #[cfg(test)]
     pub(crate) fn create_write_txn(&self) -> WriteTransaction<'_> {
         self.write_transaction().expect("Failed to create write transaction")
@@ -3629,6 +3603,17 @@ impl BlockchainBackend for LMDBDatabase {
     fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
         let txn = self.read_transaction()?;
         self.fetch_outputs_in_txn(&txn, output_hash.as_slice())
+    }
+
+    fn contains_output_hash(&self, output_hash: &HashOutput) -> Result<bool, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        // As `fetch_outputs_in_txn`: an index key counts only if its row still exists
+        for key in lmdb_get_single_or_vec::<_, Vec<u8>>(&txn, &self.txos_hash_to_index_db, output_hash.as_slice())? {
+            if lmdb_exists(&txn, &self.utxos_db, &key)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
@@ -4374,24 +4359,13 @@ impl BlockchainBackend for LMDBDatabase {
 
         let mut nodes = Vec::with_capacity(vns.len());
         for node in vns {
-            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
-            let reg = output
-                .output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "fetch_all_active_validator_nodes",
-                    details: "Output does not have a sidechain feature".to_string(),
-                })?;
             nodes.push(ValidatorNodeRegistrationInfo {
                 public_key: node.public_key,
                 sidechain_id: node.sidechain_public_key,
                 shard_key: node.shard_key,
                 activation_epoch: node.activation_epoch,
-                original_registration: reg.clone(),
-                minimum_value_promise: output.output.minimum_value_promise,
+                original_registration: node.original_registration,
+                minimum_value_promise: node.minimum_value_promise,
             });
         }
 
@@ -4413,24 +4387,13 @@ impl BlockchainBackend for LMDBDatabase {
 
         let mut nodes = Vec::with_capacity(vns.len());
         for node in vns {
-            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
-            let reg = output
-                .output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "fetch_all_active_validator_nodes",
-                    details: "Output does not have a sidechain feature".to_string(),
-                })?;
             nodes.push(ValidatorNodeRegistrationInfo {
                 public_key: node.public_key,
                 sidechain_id: node.sidechain_public_key,
                 shard_key: node.shard_key,
                 activation_epoch: node.activation_epoch,
-                original_registration: reg.clone(),
-                minimum_value_promise: output.output.minimum_value_promise,
+                original_registration: node.original_registration,
+                minimum_value_promise: node.minimum_value_promise,
             });
         }
 
@@ -4447,24 +4410,13 @@ impl BlockchainBackend for LMDBDatabase {
         let vns = vn_store.get_activating_in_epoch(sidechain_pk, epoch)?;
         let mut nodes = Vec::with_capacity(vns.len());
         for node in vns {
-            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
-            let reg = output
-                .output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "fetch_validators_activating_in_epoch",
-                    details: "Output does not have a sidechain feature".to_string(),
-                })?;
             nodes.push(ValidatorNodeRegistrationInfo {
                 public_key: node.public_key,
                 sidechain_id: node.sidechain_public_key,
                 shard_key: node.shard_key,
                 activation_epoch: node.activation_epoch,
-                original_registration: reg.clone(),
-                minimum_value_promise: output.output.minimum_value_promise,
+                original_registration: node.original_registration,
+                minimum_value_promise: node.minimum_value_promise,
             });
         }
         Ok(nodes)
@@ -4480,24 +4432,13 @@ impl BlockchainBackend for LMDBDatabase {
         let vns = vn_store.get_exiting_in_epoch(sidechain_pk, epoch)?;
         let mut nodes = Vec::with_capacity(vns.len());
         for node in vns {
-            let output = self.fetch_utxo_by_commitment(&txn, &node.commitment)?;
-            let reg = output
-                .output
-                .features
-                .sidechain_feature
-                .as_ref()
-                .and_then(|f| f.validator_node_registration())
-                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                    function: "fetch_validators_exiting_in_epoch",
-                    details: "Output does not have a sidechain feature".to_string(),
-                })?;
             nodes.push(ValidatorNodeRegistrationInfo {
                 public_key: node.public_key,
                 sidechain_id: node.sidechain_public_key,
                 shard_key: node.shard_key,
                 activation_epoch: node.activation_epoch,
-                original_registration: reg.clone(),
-                minimum_value_promise: output.output.minimum_value_promise,
+                original_registration: node.original_registration,
+                minimum_value_promise: node.minimum_value_promise,
             });
         }
         Ok(nodes)

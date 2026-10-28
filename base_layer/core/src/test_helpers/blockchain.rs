@@ -448,6 +448,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().fetch_outputs(output_hash)
     }
 
+    fn contains_output_hash(&self, output_hash: &HashOutput) -> Result<bool, ChainStorageError> {
+        self.db.as_ref().unwrap().contains_output_hash(output_hash)
+    }
+
     fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
         self.db.as_ref().unwrap().fetch_inputs(output_hash)
     }
