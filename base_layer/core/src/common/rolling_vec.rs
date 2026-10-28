@@ -197,4 +197,38 @@ mod test {
         assert_eq!(subject[3], 8);
         assert_eq!(subject[4], 9);
     }
+
+    #[test]
+    fn it_keeps_insertion_order_on_push() {
+        let mut subject = RollingVec::new(5);
+        for item in [3, 1, 2] {
+            subject.push(item);
+        }
+        assert_eq!(&*subject, &[3, 1, 2]);
+    }
+
+    #[test]
+    fn it_keeps_insertion_order_on_extend() {
+        let mut subject = RollingVec::new(5);
+        subject.extend([3, 1, 2]);
+        assert_eq!(&*subject, &[3, 1, 2]);
+    }
+
+    #[test]
+    fn it_evicts_the_oldest_element_when_values_are_not_in_order() {
+        let mut subject = RollingVec::new(3);
+        subject.extend([5, 1, 9]);
+        assert_eq!(subject.push(2), Some(5));
+        assert_eq!(&*subject, &[1, 9, 2]);
+        assert_eq!(subject.push(0), Some(1));
+        assert_eq!(&*subject, &[9, 2, 0]);
+    }
+
+    #[test]
+    fn it_keeps_its_length_limit_when_cloned() {
+        let mut subject = RollingVec::new(2).clone();
+        subject.extend([1, 2, 3]);
+        assert_eq!(&*subject, &[2, 3]);
+        assert!(subject.is_full());
+    }
 }

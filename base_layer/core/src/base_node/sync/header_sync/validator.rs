@@ -539,6 +539,100 @@ mod test {
         }
     }
 
+    /// Header sync must judge each header against the same median timestamp window that block validation uses: the
+    /// 11 timestamps before it in height order.
+    mod median_timestamp_window {
+        #![allow(clippy::indexing_slicing)]
+
+        use super::*;
+
+        /// A 120s chain with one block 1800s ahead of schedule, as offsets from genesis.
+        fn chain_with_a_spike() -> Vec<u64> {
+            let mut offsets = (0..33).map(|h| h * 120).collect::<Vec<u64>>();
+            offsets[20] += 1800;
+            offsets
+        }
+
+        /// Starts a sync at genesis and validates a header for every offset after the first.
+        async fn sync_from_genesis(
+            offsets: &[u64],
+        ) -> (
+            BlockHeaderSyncValidator<TempDatabase>,
+            AsyncBlockchainDb<TempDatabase>,
+            BlockHeader,
+        ) {
+            let (mut validator, db, _) = setup();
+            let genesis = db.fetch_tip_header().await.unwrap();
+            validator.initialize_state(genesis.hash()).await.unwrap();
+            let mut prev = genesis.header().clone();
+            for offset in &offsets[1..] {
+                let mut header = BlockHeader::from_previous(&prev);
+                header.timestamp = EpochTime::from(genesis.header().timestamp.as_u64() + offset);
+                validator.validate(header.clone()).await.unwrap();
+                prev = header;
+            }
+            (validator, db, prev)
+        }
+
+        #[tokio::test]
+        async fn it_keeps_the_last_11_timestamps_in_height_order() {
+            let offsets = chain_with_a_spike();
+            let (mut validator, db, _) = setup();
+            let genesis = db.fetch_tip_header().await.unwrap();
+            let genesis_ts = genesis.header().timestamp.as_u64();
+            validator.initialize_state(genesis.hash()).await.unwrap();
+            let mut prev = genesis.header().clone();
+            for (height, offset) in offsets.iter().enumerate().skip(1) {
+                let mut header = BlockHeader::from_previous(&prev);
+                header.timestamp = EpochTime::from(genesis_ts + offset);
+                validator.validate(header.clone()).await.unwrap();
+                prev = header;
+
+                let start = (height + 1).saturating_sub(11);
+                let expected = offsets[start..=height]
+                    .iter()
+                    .map(|o| EpochTime::from(genesis_ts + o))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    &*validator.state().timestamps,
+                    expected.as_slice(),
+                    "at height {height}"
+                );
+            }
+        }
+
+        /// The median at height 19 is 723, so any timestamp above it is valid.
+        #[tokio::test]
+        async fn it_accepts_a_valid_header_after_out_of_order_timestamps() {
+            let offsets = [
+                0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200, 601, 721, 721, 722, 722, 842, 723, 1323,
+            ];
+            let (mut validator, db, prev) = sync_from_genesis(&offsets).await;
+            let genesis = db.fetch_header(0).await.unwrap().unwrap();
+
+            let mut header = BlockHeader::from_previous(&prev);
+            header.timestamp = EpochTime::from(genesis.timestamp.as_u64() + 724);
+            validator.validate(header.clone()).await.unwrap();
+
+            let (is_bad_block, reason) = db.bad_block_exists(header.hash()).await.unwrap();
+            assert!(!is_bad_block, "a valid header must not be blacklisted: {reason}");
+        }
+
+        /// The median at height 33 is 3240, so a timestamp at or below it is invalid.
+        #[tokio::test]
+        async fn it_rejects_a_header_at_or_below_the_median_after_a_timestamp_spike() {
+            let (mut validator, db, prev) = sync_from_genesis(&chain_with_a_spike()).await;
+            let genesis = db.fetch_header(0).await.unwrap().unwrap();
+
+            let mut header = BlockHeader::from_previous(&prev);
+            header.timestamp = EpochTime::from(genesis.timestamp.as_u64() + 3200);
+            let err = validator.validate(header).await.unwrap_err();
+            unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = err);
+            unpack_enum!(ValidationError::BlockHeaderError(header_err) = val_err);
+            unpack_enum!(BlockHeaderValidationError::InvalidTimestamp(_msg) = header_err);
+        }
+    }
+
     /// The Tari RandomX VM key must be resolved from the chain that is being validated, never from the chain sitting
     /// in the database.
     ///

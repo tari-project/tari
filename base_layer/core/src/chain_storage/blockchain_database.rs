@@ -6143,7 +6143,7 @@ mod test {
         use crate::{
             proof_of_work::AdjustedTarget,
             test_helpers::create_chain_header,
-            validation::{HeaderChainContext, ValidatedHeader},
+            validation::{HeaderChainContext, ValidatedHeader, helpers::check_header_timestamp_greater_than_median},
         };
 
         /// A validator that fails every header, so that a test can see what the orphan path does with the verdict.
@@ -6509,6 +6509,79 @@ mod test {
 
             let tip = access.fetch_orphan_chain_tip_by_hash(&parent.hash()).unwrap();
             assert_eq!(tip.unwrap().header(), &parent);
+        }
+
+        /// Checks only the median timestamp rule, on top of the mock validator.
+        struct MedianTimestampValidator(MockValidator);
+
+        impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MedianTimestampValidator {
+            fn validate(
+                &self,
+                db: &B,
+                header: &BlockHeader,
+                prev_header: &BlockHeader,
+                prev_timestamps: &[EpochTime],
+                target: Option<AdjustedTarget>,
+                chain_context: HeaderChainContext<'_>,
+            ) -> Result<ValidatedHeader, ValidationError> {
+                check_header_timestamp_greater_than_median(header, prev_timestamps)?;
+                self.0
+                    .validate(db, header, prev_header, prev_timestamps, target, chain_context)
+            }
+        }
+
+        /// Children that arrive before their parent are validated against the median of the 11 timestamps before
+        /// each of them in height order.
+        #[tokio::test]
+        async fn it_keeps_valid_descendants_after_out_of_order_timestamps() {
+            let db = create_new_blockchain();
+            let validator = MedianTimestampValidator(MockValidator::new(true));
+            let genesis = db.fetch_chain_header(0).unwrap();
+            let genesis_ts = genesis.header().timestamp.as_u64();
+
+            // A 120s main chain up to height 30, with height 20 1800s ahead of schedule
+            let mut headers = vec![genesis];
+            for height in 1..=30u64 {
+                let prev = headers.last().unwrap();
+                let mut header = BlockHeader::from_previous(prev.header());
+                let offset = if height == 20 {
+                    height * 120 + 1800
+                } else {
+                    height * 120
+                };
+                header.timestamp = EpochTime::from(genesis_ts + offset);
+                // The MMR size indexes need a unique key per header
+                header.kernel_mmr_size += 1;
+                header.output_smt_size += 1;
+                headers.push(create_chain_header(header, prev.accumulated_data()));
+            }
+            db.insert_valid_headers(headers[1..].to_vec()).unwrap();
+
+            // Heights 31, 32 and 33. The median before height 32 is 3120, so 3200 is valid there.
+            let mut fork = vec![];
+            let mut parent = headers[30].header().clone();
+            for offset in [3720u64, 3200, 3960] {
+                let mut header = BlockHeader::from_previous(&parent);
+                header.timestamp = EpochTime::from(genesis_ts + offset);
+                fork.push(header.clone());
+                parent = header;
+            }
+
+            let mut access = db.db_write_access().unwrap();
+            for header in fork.iter().rev() {
+                let block = Arc::new(header.clone().into_builder().build());
+                insert_orphan_and_find_new_tips(&mut *access, block, &validator, &db.consensus_manager).unwrap();
+            }
+
+            for header in &fork {
+                assert!(
+                    access.contains(&DbKey::OrphanBlock(header.hash())).unwrap(),
+                    "orphan at height {} must be kept",
+                    header.height
+                );
+            }
+            let tip = access.fetch_orphan_chain_tip_by_hash(&fork[2].hash()).unwrap();
+            assert_eq!(tip.unwrap().header(), &fork[2]);
         }
     }
 
