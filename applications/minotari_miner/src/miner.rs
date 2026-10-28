@@ -233,7 +233,7 @@ pub fn mining_task(
             },
         };
         if difficulty >= target_difficulty {
-            debug!(
+            trace!(
                 target: LOG_TARGET,
                 "Miner {} found nonce {} with matching difficulty {} on {}",
                 miner, hasher.header.nonce, difficulty, mining_algorithm

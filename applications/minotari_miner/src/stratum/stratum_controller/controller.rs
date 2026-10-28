@@ -217,14 +217,14 @@ impl Controller {
                     let block_header: tari_node_components::blocks::BlockHeader =
                         tari_node_components::blocks::BlockHeader::try_from(header).map_err(Error::MissingData)?;
                     let hash = block_header.hash().to_hex();
-                    debug!(
+                    trace!(
                         target: LOG_TARGET,
                         "Miner found share with hash {}, nonce {} and difficulty {:?}",
                         hash,
                         block_header.nonce,
                         report.difficulty
                     );
-                    debug!(
+                    trace!(
                         target: LOG_TARGET_FILE,
                         "Miner found share with hash {}, difficulty {:?} and data {}",
                         hash,

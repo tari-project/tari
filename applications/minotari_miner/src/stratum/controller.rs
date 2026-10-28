@@ -219,7 +219,7 @@ impl Controller {
     }
 
     fn send_message_submit(&mut self, job_id: u64, hash: String, nonce: u64) -> Result<(), Error> {
-        debug!(
+        trace!(
             target: LOG_TARGET,
             "Submitting share with hash {hash} and nonce {nonce}"
         );
