@@ -52,6 +52,8 @@ pub enum HorizonSyncError {
     FinalOutputRootMismatch(String),
     #[error("Output sync resumed from a checkpoint failed ({0}); output sync restarts from height 1")]
     ResumedOutputSyncFailed(String),
+    #[error("Local output state does not match the genesis block after clean up: {0}")]
+    LocalOutputStateInconsistent(String),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Final state validation failed: {0}")]
@@ -156,6 +158,7 @@ impl HorizonSyncError {
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::SyncPeerUnavailable(_) |
             HorizonSyncError::ResumedOutputSyncFailed(_) |
+            HorizonSyncError::LocalOutputStateInconsistent(_) |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 

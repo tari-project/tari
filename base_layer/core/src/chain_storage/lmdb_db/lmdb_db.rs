@@ -4224,14 +4224,26 @@ impl BlockchainBackend for LMDBDatabase {
 
         let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let root = output_smt
-            .get_root_hash(val)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        if root.0.as_slice() != expected_root.as_slice() {
+        let root = match output_smt
+            .get_root_hash_option(val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+        {
+            Some(root) => root.0,
+            // The tree writer deletes null nodes, so an empty tree has no root node at any version. jmt keeps the
+            // empty-tree hash private, so it is computed from an empty update, which is never written.
+            None => {
+                output_smt
+                    .put_value_set(Vec::<(KeyHash, Option<Vec<u8>>)>::new(), 0)
+                    .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+                    .0
+                    .0
+            },
+        };
+        if root.as_slice() != expected_root.as_slice() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Horizon sync output root mismatch at version {val}. Expected {}, got {}",
                 expected_root.to_hex(),
-                root.0.to_hex()
+                root.to_hex()
             )));
         }
         Ok(())

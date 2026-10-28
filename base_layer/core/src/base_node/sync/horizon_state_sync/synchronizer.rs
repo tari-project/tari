@@ -899,6 +899,23 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
         self.clean_up_stale_synced_outputs(sync_start_height).await?;
+        // A sync from height 1 can only blame the peer for a final root mismatch if it starts from the genesis state
+        if sync_start_height == 1 {
+            match db
+                .verify_horizon_sync_output_root(db.fetch_genesis_block().header().output_mr)
+                .await
+            {
+                Ok(()) => {},
+                Err(ChainStorageError::InvalidOperation(e)) => {
+                    error!(
+                        target: LOG_TARGET,
+                        "Local output state is inconsistent: after clean up it does not match the genesis block. {e}"
+                    );
+                    return Err(HorizonSyncError::LocalOutputStateInconsistent(e));
+                },
+                Err(e) => return Err(e.into()),
+            }
+        }
 
         if sync_start_height > to_header.height {
             info!(
@@ -2045,6 +2062,56 @@ mod tests {
             .unwrap();
         assert_eq!(honest.requests, 5, "output sync must start from height 1");
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    /// An output tree entry that clean up cannot see fails a sync from height 1 locally, before any tranche, without
+    /// banning the peer
+    #[tokio::test]
+    async fn stray_output_tree_entry_fails_locally_without_ban() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut txn = DbTransaction::new();
+        txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::from([7u8; 32]),
+            value: Some(FixedHash::from([9u8; 32])),
+            replaces_value: false,
+        }]);
+        db.write(txn).unwrap();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::LocalOutputStateInconsistent(_)),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(honest.requests, 0);
+    }
+
+    /// A LocalNet genesis block has no outputs, so its output tree has no root node yet. That counts as the empty
+    /// tree, so a sync from height 1 passes the genesis check.
+    #[tokio::test]
+    async fn empty_genesis_output_tree_passes_genesis_check() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let genesis = db.fetch_chain_header(0).unwrap();
+        assert!(chain.db().fetch_outputs_in_block(*genesis.hash()).unwrap().is_empty());
+        db.verify_horizon_sync_output_root(genesis.header().output_mr).unwrap();
+
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap();
+        assert_eq!(honest.requests, 5);
     }
 
     /// A malformed item from a peer is banned even when output sync resumed from a checkpoint
