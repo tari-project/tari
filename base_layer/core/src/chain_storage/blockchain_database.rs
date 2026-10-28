@@ -80,6 +80,7 @@ use tari_transaction_components::{
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    validation::helpers::is_all_unique_and_sorted,
 };
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 
@@ -2490,11 +2491,12 @@ impl std::fmt::Display for MmrRoots {
     }
 }
 
-/// Returns whether `block`'s body is the body its header commits to. The header's kernel, input and block output MMR
-/// roots and its kernel MMR size cover every kernel, input (including its input data and script signature) and output
-/// of the body, so a body that matches them is the body that was mined, and a validation failure of that body is a
-/// failure of the block itself. A body that does not match says nothing about the block: a peer can relay an honest
-/// header with a body of its own.
+/// Returns whether `block`'s body is the canonical body its header commits to: its kernel, input and block output MMR
+/// roots and its kernel MMR size match the header, and its inputs, outputs and kernels are each sorted and unique. The
+/// roots cover every kernel, input (including its input data and script signature) and output of the body, but not the
+/// order of coinbase outputs among the other outputs, so the sorting is required too. A body that matches is the body
+/// that was mined, and a validation failure of that body is a failure of the block itself. A body that does not match
+/// says nothing about the block: a peer can relay an honest header with a body of its own.
 ///
 /// Unlike [calculate_mmr_roots] this needs no state other than the parent's kernel MMR, and it works on compact inputs.
 /// Returns false if the parent's kernel MMR is not available.
@@ -2514,9 +2516,17 @@ pub fn body_matches_header<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         header.kernel_mmr_size == kernel_mmr.get_leaf_count()? as u64)
 }
 
-/// The part of [body_matches_header] that needs no state at all: whether the body's inputs and outputs are the ones the
-/// header's input and block output MMR roots commit to. The kernels are not covered.
+/// The part of [body_matches_header] that needs no state at all: whether the body's inputs, outputs and kernels are
+/// each sorted and unique, and its inputs and outputs are the ones the header's input and block output MMR roots commit
+/// to. The kernels are not checked against the header.
 pub fn inputs_and_outputs_match_header(block: &Block) -> Result<bool, ChainStorageError> {
+    let body = &block.body;
+    if !is_all_unique_and_sorted(body.inputs()) ||
+        !is_all_unique_and_sorted(body.outputs()) ||
+        !is_all_unique_and_sorted(body.kernels())
+    {
+        return Ok(false);
+    }
     let header = &block.header;
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     for input in block.body.inputs() {
