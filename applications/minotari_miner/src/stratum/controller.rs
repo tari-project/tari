@@ -47,6 +47,8 @@ const MAX_LINE_LEN: usize = 128 * 1024;
 const CLIENT_CHANNEL_CAPACITY: usize = 16;
 /// Lines read from the pool per pass of the client loop before queued shares and keepalives are sent.
 const MAX_LINES_PER_PASS: usize = 16;
+/// Longest worker identifier accepted from the pool; it is echoed in every request we send.
+const MAX_REQUEST_ID_LEN: usize = 256;
 /// Number of characters of pool-supplied text written to the log.
 const MAX_LOGGED_TEXT_LEN: usize = 256;
 
@@ -315,7 +317,16 @@ impl Controller {
                         target: LOG_TARGET,
                         "Got a new job for height {} with target difficulty {}", st.job.height, loggable(&st.job.target)
                     );
-                    self.last_request_id = st.id;
+                    if request_id_fits(&st.id) {
+                        self.last_request_id = st.id;
+                    } else {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Ignoring worker identifier of {} bytes from the pool: {}",
+                            st.id.len(),
+                            loggable(&st.id)
+                        );
+                    }
                     return self.send_miner_job(st.job);
                 };
                 let job_response = types::job_params::JobParams::deserialize(&result);
@@ -539,6 +550,10 @@ impl SubmitCounts {
     }
 }
 
+fn request_id_fits(id: &str) -> bool {
+    id.len() <= MAX_REQUEST_ID_LEN
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum MessageKind {
     Request,
@@ -656,6 +671,12 @@ mod tests {
             target: "2".to_string(),
             height: 3,
         }
+    }
+
+    #[test]
+    fn request_id_is_capped() {
+        assert!(request_id_fits(&"w".repeat(MAX_REQUEST_ID_LEN)));
+        assert!(!request_id_fits(&"w".repeat(MAX_REQUEST_ID_LEN + 1)));
     }
 
     #[test]
