@@ -37,6 +37,13 @@ pub enum AggregatedBodyValidationError {
     BlockTooLarge { actual_weight: u64, max_weight: u64 },
     #[error("The transaction is invalid: {0}")]
     TransactionError(#[from] TransactionError),
+    /// An input script failed to run, or its script signature or returned key is invalid. `height_dependent` is set
+    /// if the failing input's script reads the block height, so that the outcome can depend on it.
+    #[error("Input script validation failed: {error}")]
+    InputScript {
+        error: TransactionError,
+        height_dependent: bool,
+    },
     #[error(
         "The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO \
          commitments."

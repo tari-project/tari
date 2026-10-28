@@ -31,7 +31,6 @@ use tari_common_types::{
     types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_node_components::blocks::Block;
-use tari_script::Opcode;
 use tari_transaction_components::{
     BanPeriod,
     BanReason,
@@ -815,7 +814,7 @@ fn validate_attempt(
     tip: Option<&ChainMetadata>,
 ) -> Result<Result<Option<Vec<HashOutput>>, AttemptFailure>, MempoolError> {
     let failure = |error: ValidationError| AttemptFailure {
-        tip_dependent: is_tip_dependent(&error, tx),
+        tip_dependent: is_tip_dependent(&error),
         response: validation_error_to_response(error),
         ban_reason: None,
     };
@@ -836,7 +835,7 @@ fn validate_attempt(
         }
     }
     if let Err(e) = validator.validate_internal_consistency(tx, tip) {
-        let ban_reason = internal_failure_ban_reason(&e, tx);
+        let ban_reason = internal_failure_ban_reason(&e);
         return Ok(Err(AttemptFailure {
             ban_reason,
             ..failure(e)
@@ -846,20 +845,19 @@ fn validate_attempt(
 }
 
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
-/// never be valid. Covenant failures, and any failure of a transaction with an input script that reads the block
-/// height, are excluded since the outcome can depend on the height. Exceeding the covenant work limit is not banned
-/// either.
-fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Option<BanReason> {
-    if has_height_dependent_input_script(tx) {
-        return None;
-    }
+/// never be valid, and gets a long ban. Covenant failures are excluded since the outcome can depend on the height, and
+/// exceeding the covenant work limit is not banned either. An input script failure (see `is_tip_dependent`) is only
+/// excluded if the input that failed reads the block height. Such a failure cannot be told apart from the height
+/// having moved on, so it is never banned, even if the script could never have succeeded; reaching it means passing
+/// every earlier check first.
+fn internal_failure_ban_reason(error: &ValidationError) -> Option<BanReason> {
     match error {
         ValidationError::AggregatedBodyValidationError(
             AggregatedBodyValidationError::CovenantError(_) |
             AggregatedBodyValidationError::CovenantWorkLimitExceeded { .. } |
             AggregatedBodyValidationError::CovenantOutputsClaimedTwice { .. },
         ) => None,
-        ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error, tx) => Some(BanReason {
+        ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error) => Some(BanReason {
             reason: error.to_string(),
             ban_duration: BanPeriod::Long,
         }),
@@ -871,53 +869,36 @@ fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Opt
 /// transaction may be valid at a different tip:
 /// - inputs that are not (or no longer) in the chain,
 /// - input maturity and kernel lock heights,
-/// - a failing input script, but only if one of the transaction's input scripts reads the height of the next block. Any
-///   output in the chain can be spent with made-up input data to produce a failing script, so script failures in
-///   general are final. The script error does not identify which input failed, so any input with such a script counts;
-///   since failure-driven retries never take the lock, this costs at most the unlocked attempts.
+/// - an input script failure (running the script, its script signature or the key it returns), but only if the input
+///   that failed reads the height of the next block. Any output in the chain can be spent with made-up input data to
+///   produce a failing script, so other script failures are final. A script offset mismatch is final too: it is only
+///   checked once every script signature has verified against the key its script returned. Since failure-driven retries
+///   never take the lock, a height-reading script that can never succeed costs at most the unlocked attempts.
 ///
 /// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
-/// sizes, sorting, weight, versions etc.). That includes an input that is already spent and a kernel that is already
-/// mined: only a reorg can undo those, which is rare, and the mempool revalidates its transactions after a reorg
-/// anyway.
-fn is_tip_dependent(error: &ValidationError, tx: &Transaction) -> bool {
+/// sizes, sorting, weight, versions etc.), even if the transaction has an input script that reads the height. That
+/// includes an input that is already spent and a kernel that is already mined: only a reorg can undo those, which is
+/// rare, and the mempool revalidates its transactions after a reorg anyway.
+fn is_tip_dependent(error: &ValidationError) -> bool {
     match error {
         ValidationError::UnknownInputs(_) | ValidationError::UnknownInput | ValidationError::MaturityError => true,
         ValidationError::TransactionError(e) |
         ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::TransactionError(e)) => {
-            is_tip_dependent_transaction_error(e, tx)
+            is_tip_dependent_transaction_error(e)
         },
-        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::MaturityError) => true,
+        ValidationError::AggregatedBodyValidationError(
+            AggregatedBodyValidationError::MaturityError |
+            AggregatedBodyValidationError::InputScript {
+                height_dependent: true, ..
+            },
+        ) => true,
         _ => false,
     }
 }
 
-fn is_tip_dependent_transaction_error(error: &TransactionError, tx: &Transaction) -> bool {
-    match error {
-        TransactionError::InputMaturity => true,
-        TransactionError::ScriptError(_) | TransactionError::ScriptExecutionError(_) => {
-            has_height_dependent_input_script(tx)
-        },
-        _ => false,
-    }
-}
-
-/// Returns true if any input script of the transaction uses an opcode that reads the block height from the script
-/// context
-fn has_height_dependent_input_script(tx: &Transaction) -> bool {
-    tx.body.inputs().iter().any(|input| {
-        input.script().is_ok_and(|script| {
-            script.iter().any(|opcode| {
-                matches!(
-                    opcode,
-                    Opcode::CheckHeight(_) |
-                        Opcode::CheckHeightVerify(_) |
-                        Opcode::CompareHeight |
-                        Opcode::CompareHeightVerify
-                )
-            })
-        })
-    })
+/// Script errors only arrive wrapped in `AggregatedBodyValidationError::InputScript`, so they are not handled here
+fn is_tip_dependent_transaction_error(error: &TransactionError) -> bool {
+    matches!(error, TransactionError::InputMaturity)
 }
 
 /// Returns true if the chain may have changed since an attempt started with the mempool at `generation` and the
@@ -1362,8 +1343,12 @@ mod test {
         ))
     }
 
-    fn script_error(error: ScriptError) -> ValidationError {
-        AggregatedBodyValidationError::TransactionError(TransactionError::ScriptError(error)).into()
+    fn script_error(error: ScriptError, height_dependent: bool) -> ValidationError {
+        AggregatedBodyValidationError::InputScript {
+            error: TransactionError::ScriptError(error),
+            height_dependent,
+        }
+        .into()
     }
 
     #[test]
@@ -1382,7 +1367,7 @@ mod test {
                 TransactionError::InvalidSignatureError("bad".to_string()),
             )),
             // A failing script that does not read the block height, e.g. made-up input data
-            script_error(ScriptError::VerifyFailed),
+            script_error(ScriptError::VerifyFailed, false),
         ] {
             // The mempool processes a chain change, and the tip moves, during validation
             let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
@@ -1407,7 +1392,8 @@ mod test {
 
         let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
         validator.chain_changes.store(1, Ordering::SeqCst);
-        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed)), Ok(())].into();
+        *validator.internal_results.lock().unwrap() =
+            vec![Err(script_error(ScriptError::VerifyFailed, true)), Ok(())].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
@@ -1417,11 +1403,50 @@ mod test {
 
         // Without a chain change, the same failure is final
         let validator = ScriptedValidator::new(vec![], vec![validated_at]);
-        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed))].into();
+        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed, true))].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, tx).unwrap();
         assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
         assert_eq!(validator.internal_calls(), 1);
+    }
+
+    #[test]
+    fn only_a_height_dependent_input_script_failure_escapes_the_ban() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
+        let ban_for = |error: ValidationError| {
+            let validator = ScriptedValidator::new(vec![], vec![FixedHash::from([1u8; 32])]);
+            *validator.internal_results.lock().unwrap() = vec![Err(error)].into();
+            let storage = create_storage(&validator);
+            let (response, ban) = MempoolStorage::insert_unlocked_with_ban_reason(&storage, tx.clone()).unwrap();
+            assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+            ban.map(|ban| ban.ban_duration())
+        };
+
+        // Failures unrelated to the input scripts are banned, even though the transaction reads the height
+        let kernel_signature = AggregatedBodyValidationError::TransactionError(
+            TransactionError::InvalidSignatureError("Verifying kernel signature".to_string()),
+        );
+        let range_proof =
+            AggregatedBodyValidationError::TransactionError(TransactionError::RangeProofError("bad".to_string()));
+        let script_offset = AggregatedBodyValidationError::TransactionError(TransactionError::ScriptOffset);
+        for error in [
+            kernel_signature,
+            range_proof,
+            AggregatedBodyValidationError::InvalidAccountingBalance,
+            script_offset,
+        ] {
+            assert_eq!(ban_for(error.into()), Some(BanPeriod::Long));
+        }
+
+        // An input script failure is banned unless the failing input reads the height
+        assert_eq!(
+            ban_for(script_error(ScriptError::VerifyFailed, false)),
+            Some(BanPeriod::Long)
+        );
+        let height_dependent = script_error(ScriptError::VerifyFailed, true);
+        assert!(is_tip_dependent(&height_dependent));
+        assert_eq!(ban_for(height_dependent), None);
     }
 
     #[test]
@@ -1434,7 +1459,7 @@ mod test {
             with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
         type Case = (Arc<Transaction>, fn() -> ValidationError);
         let cases: [Case; 2] = [
-            (height_script_tx, || script_error(ScriptError::VerifyFailed)),
+            (height_script_tx, || script_error(ScriptError::VerifyFailed, true)),
             (create_tx(&key_manager), || ValidationError::MaturityError),
         ];
         for (tx, error) in cases {

@@ -788,15 +788,8 @@ mod test {
             }
         }
 
-        #[tokio::test]
-        async fn gossiped_transaction_with_height_reading_script_does_not_ban() {
-            let (mut handlers, mempool, _propagated, mut bans) =
-                create_handlers_with_bans(Box::new(InternalFailureValidator(|| {
-                    AggregatedBodyValidationError::TransactionError(TransactionError::InvalidSignatureError(
-                        "Verifying script signature".to_string(),
-                    ))
-                    .into()
-                })));
+        /// A copy of a fresh transaction whose input script reads the block height
+        fn height_reading_tx() -> Transaction {
             let key_manager = KeyManager::new_random().unwrap();
             let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
                 .expect("Failed to get tx")
@@ -808,24 +801,59 @@ mod test {
                 },
                 SpentOutput::OutputHash(_) => panic!("Expected a full input"),
             }
-            let height_reading = Transaction::new(
+            Transaction::new(
                 inputs,
                 tx.body.outputs().clone(),
                 tx.body.kernels().clone(),
                 tx.offset.clone(),
                 tx.script_offset.clone(),
-            );
+            )
+        }
 
+        #[tokio::test]
+        async fn gossiped_transaction_with_height_dependent_script_failure_does_not_ban() {
+            let (mut handlers, mempool, _propagated, mut bans) =
+                create_handlers_with_bans(Box::new(InternalFailureValidator(|| {
+                    AggregatedBodyValidationError::InputScript {
+                        error: TransactionError::InvalidSignatureError("Verifying script signature".to_string()),
+                        height_dependent: true,
+                    }
+                    .into()
+                })));
             handlers
-                .handle_transaction_message(Arc::new(transaction_message(height_reading)))
+                .handle_transaction_message(Arc::new(transaction_message(height_reading_tx())))
                 .await
                 .unwrap();
             assert!(bans.take().await.is_empty());
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
 
-            // The same failure without a height-reading script
+            // The same failure on an input that does not read the height
+            let (mut handlers, _mempool, _propagated, mut bans) =
+                create_handlers_with_bans(Box::new(InternalFailureValidator(|| {
+                    AggregatedBodyValidationError::InputScript {
+                        error: TransactionError::InvalidSignatureError("Verifying script signature".to_string()),
+                        height_dependent: false,
+                    }
+                    .into()
+                })));
             handlers
-                .handle_transaction_message(Arc::new(transaction_message(tx)))
+                .handle_transaction_message(Arc::new(transaction_message(height_reading_tx())))
+                .await
+                .unwrap();
+            assert_eq!(bans.take().await.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn gossiped_transaction_with_height_reading_script_and_unrelated_failure_bans() {
+            let (mut handlers, _mempool, _propagated, mut bans) =
+                create_handlers_with_bans(Box::new(InternalFailureValidator(|| {
+                    AggregatedBodyValidationError::TransactionError(TransactionError::InvalidSignatureError(
+                        "Verifying kernel signature".to_string(),
+                    ))
+                    .into()
+                })));
+            handlers
+                .handle_transaction_message(Arc::new(transaction_message(height_reading_tx())))
                 .await
                 .unwrap();
             assert_eq!(bans.take().await.len(), 1);
