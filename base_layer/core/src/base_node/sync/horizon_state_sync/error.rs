@@ -46,6 +46,12 @@ use crate::{MrHashError, chain_storage::ChainStorageError, validation::Validatio
 pub enum HorizonSyncError {
     #[error("Peer sent an invalid response: {0}")]
     IncorrectResponse(String),
+    #[error("Peer sent a spend of an output we do not have: {0}")]
+    UnknownSpentOutput(String),
+    #[error("Synced outputs do not match the output root of the sync target: {0}")]
+    FinalOutputRootMismatch(String),
+    #[error("Output sync resumed from a checkpoint failed ({0}); output sync restarts from height 1")]
+    ResumedOutputSyncFailed(String),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Final state validation failed: {0}")]
@@ -149,6 +155,7 @@ impl HorizonSyncError {
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::SyncPeerUnavailable(_) |
+            HorizonSyncError::ResumedOutputSyncFailed(_) |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
@@ -162,6 +169,8 @@ impl HorizonSyncError {
 
             // long ban
             err @ HorizonSyncError::IncorrectResponse(_) |
+            err @ HorizonSyncError::UnknownSpentOutput(_) |
+            err @ HorizonSyncError::FinalOutputRootMismatch(_) |
             err @ HorizonSyncError::FinalStateValidationFailed(_) |
             err @ HorizonSyncError::RangeProofError(_) |
             err @ HorizonSyncError::InvalidMrRoot { .. } |
@@ -179,6 +188,18 @@ impl HorizonSyncError {
 
             HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err),
         }
+    }
+
+    /// Whether an honest peer can cause this error when output sync resumed from a checkpoint, because the outputs
+    /// an earlier attempt committed may not match the peer's view of the chain.
+    pub fn may_be_caused_by_resumed_state(&self) -> bool {
+        matches!(
+            self,
+            HorizonSyncError::UnknownSpentOutput(_) |
+                HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
+                HorizonSyncError::FinalOutputRootMismatch(_) |
+                HorizonSyncError::FinalStateValidationFailed(_)
+        )
     }
 }
 
