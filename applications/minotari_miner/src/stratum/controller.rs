@@ -456,8 +456,11 @@ impl Controller {
                 }
             }
 
-            // Talk to the miner algorithm
-            while let Some(message) = self.rx.try_iter().next() {
+            // Talk to the miner algorithm, a bounded number of messages per pass so the pool is still read
+            for _ in 0..CLIENT_CHANNEL_CAPACITY {
+                let Ok(message) = self.rx.try_recv() else {
+                    break;
+                };
                 debug!(target: LOG_TARGET_FILE, "Client received message: {message:?}");
                 let result = match message {
                     types::client_message::ClientMessage::FoundSolution(job_id, hash, nonce) => {
