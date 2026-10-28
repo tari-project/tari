@@ -305,7 +305,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         self.hooks.call_on_starting_hook(sync_peer);
 
         // Prefer the connection that travelled with this SyncPeer from header_sync (Strong).
-        // We hand the attempt a Weak clone ÔÇö the SyncPeer's Strong handle keeps the connection
+        // We hand the attempt a Weak clone — the SyncPeer's Strong handle keeps the connection
         // pinned.
         let mut conn = match sync_peer.connection() {
             Some(stored) if stored.is_connected() => stored.clone_weak(),
@@ -915,15 +915,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     ) -> Result<(), HorizonSyncError> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
-        self.clean_up_stale_synced_outputs(sync_start_height).await?;
-
-        if sync_start_height > to_header.height {
-            info!(
-                target: LOG_TARGET,
-                "Output sync already complete (sync_start_height {} > horizon height {})",
-                sync_start_height,
-                to_header.height
-            );
+        if self
+            .prepare_or_finish_resumed_output_sync(to_header, sync_start_height)
+            .await?
+        {
             return Ok(());
         }
 
@@ -1179,18 +1174,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             tranche_start_height = tranche_end_height.saturating_add(1);
         }
 
-        if let Err(e) = db.verify_horizon_sync_output_root(to_header.output_mr).await {
-            warn!(
-                target: LOG_TARGET,
-                "Final JMT root verification failed! The entire synced state is poisoned. Clearing checkpoint."
-            );
-            let _unused = db
-                .write_transaction()
-                .clear_horizon_sync_output_checkpoint()
-                .commit()
-                .await;
-            return Err(HorizonSyncError::ChainStorageError(e));
-        }
+        self.verify_output_root_or_clear_checkpoint(to_header.output_mr).await?;
 
         debug!(
             target: LOG_TARGET,
@@ -1199,6 +1183,49 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             total_stxo_counter,
             timer.elapsed()
         );
+        Ok(())
+    }
+
+    /// Cleans up any uncommitted outputs at or above `sync_start_height` and, when all tranches up to
+    /// `to_header.height` were already checkpointed (`sync_start_height > to_header.height`), verifies the final
+    /// output SMT root before reporting output sync complete (clearing the checkpoint on mismatch).
+    async fn prepare_or_finish_resumed_output_sync(
+        &mut self,
+        to_header: &BlockHeader,
+        sync_start_height: u64,
+    ) -> Result<bool, HorizonSyncError> {
+        self.clean_up_stale_synced_outputs(sync_start_height).await?;
+
+        if sync_start_height > to_header.height {
+            self.verify_output_root_or_clear_checkpoint(to_header.output_mr).await?;
+            info!(
+                target: LOG_TARGET,
+                "Output sync already complete (sync_start_height {} > horizon height {})",
+                sync_start_height,
+                to_header.height
+            );
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn verify_output_root_or_clear_checkpoint(
+        &self,
+        expected_output_mr: FixedHash,
+    ) -> Result<(), HorizonSyncError> {
+        if let Err(e) = self.db.verify_horizon_sync_output_root(expected_output_mr).await {
+            warn!(
+                target: LOG_TARGET,
+                "Final JMT root verification failed! The entire synced state is poisoned. Clearing checkpoint."
+            );
+            let _unused = self
+                .db
+                .write_transaction()
+                .clear_horizon_sync_output_checkpoint()
+                .commit()
+                .await;
+            return Err(HorizonSyncError::ChainStorageError(e));
+        }
         Ok(())
     }
 
@@ -1820,5 +1847,57 @@ mod tests {
             replaces_value: false,
         }]);
         assert!(db.write(txn).is_err());
+    }
+
+    #[tokio::test]
+    async fn interrupted_final_tranche_verifies_output_root_on_resume_and_detects_bad_root() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let mined = chain.get_block_and_smt_by_name("2").unwrap();
+        let tranche_start = chain.get_block_and_smt_by_name("A").unwrap();
+
+        let db = create_custom_blockchain(chain.rules().clone());
+        let mut txn = DbTransaction::new();
+        for name in ["A", "1", "2"] {
+            txn.insert_chain_header(chain.get_block_and_smt_by_name(name).unwrap().to_chain_header());
+        }
+        db.write(txn).unwrap();
+
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, mined.height());
+
+        // Commit the final tranche and its checkpoint at mined.height, then simulate an interruption before
+        // erify_horizon_sync_output_root runs.
+        sync_tranche_from(&sync, chain.db(), tranche_start.header(), mined.header()).await;
+
+        // Resuming with a valid output root verifies the SMT root and completes cleanly.
+        let (resume_height, stop_header) = sync.calculate_output_sync_start_stop(mined.header()).await.unwrap();
+        assert_eq!(resume_height, mined.height() + 1);
+        assert!(
+            sync.prepare_or_finish_resumed_output_sync(&stop_header, resume_height)
+                .await
+                .unwrap()
+        );
+
+        // Corrupt the SMT state while the final-tranche checkpoint is still stored, then resume: the bad root must
+        // be detected and the poisoned checkpoint cleared.
+        let mut poison = DbTransaction::new();
+        poison.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::from([0xAA; 32]),
+            value: Some(FixedHash::from([0xBB; 32])),
+            replaces_value: false,
+        }]);
+        db.write(poison).unwrap();
+
+        let (resume_height, stop_header) = sync.calculate_output_sync_start_stop(mined.header()).await.unwrap();
+        assert_eq!(resume_height, mined.height() + 1);
+        let err = sync
+            .prepare_or_finish_resumed_output_sync(&stop_header, resume_height)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::ChainStorageError(_)), "{err:?}");
+        assert!(
+            db.fetch_horizon_sync_output_checkpoint().unwrap().is_none(),
+            "failed root verification on resume must clear the final-tranche checkpoint"
+        );
     }
 }
