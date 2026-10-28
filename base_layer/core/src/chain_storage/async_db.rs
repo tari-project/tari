@@ -625,6 +625,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
+    pub(crate) fn clear_horizon_sync_output_state(&mut self) -> &mut Self {
+        self.transaction.clear_horizon_sync_output_state();
+        self
+    }
+
     pub async fn commit(&mut self) -> Result<(), ChainStorageError> {
         let transaction = mem::take(&mut self.transaction);
         self.db.write(transaction).await

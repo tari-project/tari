@@ -1207,6 +1207,22 @@ impl LMDBDatabase {
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
+                ClearHorizonSyncOutputState => {
+                    // The tables `insert_output` writes, and the output tree
+                    lmdb_clear(&write_txn, &self.utxos_db)?;
+                    lmdb_clear(&write_txn, &self.utxo_commitment_index)?;
+                    lmdb_clear(&write_txn, &self.payref_to_output_index)?;
+                    lmdb_clear(&write_txn, &self.txos_hash_to_index_db)?;
+                    lmdb_clear(&write_txn, &self.jmt_node_data)?;
+                    lmdb_clear(&write_txn, &self.jmt_value_data)?;
+                    lmdb_delete(
+                        &write_txn,
+                        &self.metadata_db,
+                        &MetadataKey::JMTVersion.as_u32(),
+                        "metadata_db",
+                    )
+                    .optional()?;
+                },
                 SetHorizonSyncOutputCheckpoint { checkpoint } => match checkpoint {
                     Some(cp) => {
                         self.set_metadata(

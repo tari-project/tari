@@ -623,6 +623,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
+    async fn output_state_matches_genesis(&self) -> Result<bool, HorizonSyncError> {
+        let genesis_output_mr = self.db.fetch_genesis_block().header().output_mr;
+        match self.db.verify_horizon_sync_output_root(genesis_output_mr).await {
+            Ok(()) => Ok(true),
+            Err(ChainStorageError::InvalidOperation(e)) => {
+                error!(target: LOG_TARGET, "Local output state does not match the genesis block: {e}");
+                Ok(false)
+            },
+            Err(e) => Err(e.into()),
+        }
+    }
+
     async fn prune_if_needed(&mut self) -> Result<(), HorizonSyncError> {
         let local_metadata = self.db.get_chain_metadata().await?;
         let new_prune_height = cmp::min(local_metadata.best_block_height(), self.horizon_sync_height);
@@ -911,21 +923,19 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
         self.clean_up_stale_synced_outputs(sync_start_height).await?;
-        // A sync from height 1 can only blame the peer for a final root mismatch if it starts from the genesis state
-        if sync_start_height == 1 {
-            match db
-                .verify_horizon_sync_output_root(db.fetch_genesis_block().header().output_mr)
-                .await
-            {
-                Ok(()) => {},
-                Err(ChainStorageError::InvalidOperation(e)) => {
-                    error!(
-                        target: LOG_TARGET,
-                        "Local output state is inconsistent: after clean up it does not match the genesis block. {e}"
-                    );
-                    return Err(HorizonSyncError::LocalOutputStateInconsistent(e));
-                },
-                Err(e) => return Err(e.into()),
+        // A sync from height 1 must start from the genesis state. Clean up cannot remove output state it cannot
+        // find, so if the state does not match, all output state is cleared and the genesis outputs restored.
+        if sync_start_height == 1 && !self.output_state_matches_genesis().await? {
+            warn!(target: LOG_TARGET, "Clearing all output state and restoring the genesis outputs");
+            db.write_transaction()
+                .clear_horizon_sync_output_state()
+                .commit()
+                .await?;
+            self.clean_up_stale_synced_outputs(1).await?;
+            if !self.output_state_matches_genesis().await? {
+                return Err(HorizonSyncError::LocalOutputStateInconsistent(
+                    "output state does not match the genesis block after clearing it".to_string(),
+                ));
             }
         }
 
@@ -2080,34 +2090,41 @@ mod tests {
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
 
-    /// An output tree entry that clean up cannot see fails a sync from height 1 locally, before any tranche, without
-    /// banning the peer
+    /// Output state that clean up cannot see is cleared before a sync from height 1, which then completes
     #[tokio::test]
-    async fn stray_output_tree_entry_fails_locally_without_ban() {
+    async fn stray_output_state_is_cleared_before_sync_from_height_one() {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        // A tree value and a commitment index entry with no output row
+        let stray = chain.get_block_and_smt_by_name("4").unwrap().block().body.outputs()[0].clone();
         let mut txn = DbTransaction::new();
         txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
             key: FixedHash::from([7u8; 32]),
             value: Some(FixedHash::from([9u8; 32])),
             replaces_value: false,
         }]);
+        txn.insert_utxo(stray.clone(), FixedHash::zero(), 0, 0);
         db.write(txn).unwrap();
+        assert!(
+            db.fetch_unspent_output_hash_by_commitment(stray.commitment.clone())
+                .unwrap()
+                .is_some()
+        );
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
 
         let mut honest = DbTrancheSource::honest(chain.db());
-        let err = sync
-            .sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
             .await
-            .unwrap_err();
-        assert!(
-            matches!(err, HorizonSyncError::LocalOutputStateInconsistent(_)),
-            "{err}"
+            .unwrap();
+        assert_eq!(honest.requests, 5);
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+        assert_eq!(
+            db.fetch_outputs(stray.hash()).unwrap().len(),
+            1,
+            "only the synced instance of the output remains"
         );
-        assert!(err.get_ban_reason().is_none());
-        assert_eq!(honest.requests, 0);
     }
 
     /// A LocalNet genesis block has no outputs, so its output tree has no root node yet. That counts as the empty
@@ -2459,5 +2476,35 @@ mod tests {
             .unwrap();
         assert_eq!(honest.requests, 2, "output sync must resume after the checkpoint");
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    /// Clearing stray output state before a sync from height 1 restores the genesis outputs
+    #[tokio::test]
+    async fn cleared_output_state_restores_genesis_outputs() {
+        let (chain, genesis_output) = genesis_spend_chain();
+        let target = chain.get_block_and_smt_by_name("3").unwrap().header().clone();
+        let db = headers_only_db(&chain, &["1", "2", "3"]);
+        let mut txn = DbTransaction::new();
+        txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::from([7u8; 32]),
+            value: Some(FixedHash::from([9u8; 32])),
+            replaces_value: false,
+        }]);
+        db.write(txn).unwrap();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        // Block 1 spends the genesis output, so the sync only succeeds if it was restored first
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap();
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+        assert!(
+            db.fetch_unspent_output_hash_by_commitment(genesis_output.commitment)
+                .unwrap()
+                .is_none()
+        );
     }
 }

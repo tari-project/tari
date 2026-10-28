@@ -330,6 +330,13 @@ impl DbTransaction {
         self
     }
 
+    /// Removes every output and the whole output tree. Only for horizon sync, which then restores the genesis
+    /// outputs.
+    pub(crate) fn clear_horizon_sync_output_state(&mut self) -> &mut Self {
+        self.operations.push(WriteOperation::ClearHorizonSyncOutputState);
+        self
+    }
+
     pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
         self.operations
             .push(WriteOperation::ApplyHorizonStateTreeUpdates { updates });
@@ -446,6 +453,7 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
+    ClearHorizonSyncOutputState,
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
         checkpoint: Option<HorizonSyncOutputCheckpoint>,
@@ -614,6 +622,7 @@ impl fmt::Display for WriteOperation {
             },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
+            ClearHorizonSyncOutputState => write!(f, "Clear horizon sync output state"),
             SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,
