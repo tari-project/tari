@@ -35,6 +35,15 @@ ignore = [
     # Last reviewed 2026-09-29; re-review by 2027-03-29 or when an `rsa` fix is released. Kept in step with
     # .cargo/audit.toml.
     "RUSTSEC-2023-0071",
+    # RUSTSEC-2026-0387 (secret-dependent branches in `crypto-bigint` operations meant to be constant-time, patched
+    # only in 0.7.6). The tree carries 0.5.5, pinned by RustCrypto's `elliptic-curve` 0.13 line (`k256`, `p256`,
+    # `p384`, `p521`, `ecdsa`) and `cx448` 0.1, which have no 0.7-based release yet. In the root workspace it is
+    # linked only through `pgp`, which `tari_p2p` uses solely under `auto-update` to verify detached public-key
+    # signatures on release hash files (no private-key or secret scalar operations). In the excluded
+    # `minotari_ledger_wallet/comms_testing` workspace it is linked through `k256` in a non-shipped local Ledger
+    # test harness. Last reviewed 2026-10-27; remove once `pgp` and `k256` move off `elliptic-curve` 0.13. Kept in
+    # step with .cargo/audit.toml.
+    "RUSTSEC-2026-0387",
 ]
 
 [licenses]
