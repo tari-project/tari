@@ -3991,52 +3991,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libtor"
-version = "47.13.0+0.4.7.x"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be588c6a2f02b860a1c0e3b2a59edcb171058f8da71b8ca0ddd7bb40f102c5c"
-dependencies = [
- "libtor-derive",
- "libtor-sys",
- "log",
- "rand 0.8.6",
- "sha1 0.6.0",
-]
-
-[[package]]
-name = "libtor-derive"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "177781b25e83853831c5af66320ceaf5e456e1b6d533426fcd9c7544b5543043"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "libtor-src"
-version = "47.13.0+0.4.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73bef51ecfbe7e63ce5cb8757ebc59d09dca6985da7f7470931ac22eab00719"
-dependencies = [
- "fs_extra",
-]
-
-[[package]]
-name = "libtor-sys"
-version = "47.13.0+0.4.7.x"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb0bc2cfc5d03851617d33508acc511e46f0c2b3cbc3cda85defcb50efa628bb"
-dependencies = [
- "autotools",
- "cc",
- "libtor-src",
- "libz-sys",
- "openssl-sys",
-]
-
-[[package]]
 name = "libz-sys"
 version = "1.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7683,6 +7637,52 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "876fef147edbcbddc8ac5cbbba92c7b86519e314e86638596c09673b2ed01e7f"
 
 [[package]]
+name = "tari-libtor-core"
+version = "49.15.2+0.4.9.x"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4eb166a787353c33785cd17d44dee93c576495f0693a58a2309ac904448b6caa"
+dependencies = [
+ "log",
+ "rand 0.8.6",
+ "sha1 0.6.0",
+ "tari-libtor-derive",
+ "tari-libtor-sys",
+]
+
+[[package]]
+name = "tari-libtor-derive"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bffd6c052591f4753aff776f97ba4e1108a1d70208d1f270a7bc799422ec104d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "tari-libtor-src"
+version = "49.15.2+0.4.9.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d9dd3e86bdee6c8f3b7231e9c738fa3533d9a20a19e6464e3f3c05a05e9c862"
+dependencies = [
+ "fs_extra",
+]
+
+[[package]]
+name = "tari-libtor-sys"
+version = "49.15.2+0.4.9.x"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88f01ac626bbeba3e652a8d51da511e22f9e6adf42ea0eb318cc05c349f7b0d5"
+dependencies = [
+ "autotools",
+ "cc",
+ "libz-sys",
+ "openssl-sys",
+ "tari-libtor-src",
+]
+
+[[package]]
 name = "tari-tiny-keccak"
 version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8083,9 +8083,9 @@ name = "tari_libtor"
 version = "6.3.0-pre.1"
 dependencies = [
  "derivative",
- "libtor",
  "log",
  "rand 0.10.1",
+ "tari-libtor-core",
  "tari_common",
  "tari_p2p",
  "tor-hash-passwd",
