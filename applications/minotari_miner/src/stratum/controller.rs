@@ -68,6 +68,9 @@ pub struct Controller {
     submits: SubmitCounts,
     /// Top-level RPC errors from the pool since the last log summary; only the first is logged in full.
     pool_errors: u64,
+    /// Pool messages that could not be parsed or handled since the last log summary; only the first is logged in full.
+    bad_messages: u64,
+    last_logged_job_height: Option<u64>,
     share_log_time: Instant,
 }
 
@@ -101,6 +104,8 @@ impl Controller {
             last_request_id: "".to_string(),
             submits: SubmitCounts::default(),
             pool_errors: 0,
+            bad_messages: 0,
+            last_logged_job_height: None,
             share_log_time: Instant::now(),
         })
     }
@@ -279,10 +284,7 @@ impl Controller {
                 None => Err(Error::Request("No params in job request".to_owned())),
                 Some(params) => {
                     let job = serde_json::from_value::<types::job_params::JobParams>(params)?;
-                    info!(
-                        target: LOG_TARGET,
-                        "Got a new job for height {} with target difficulty {}", job.height, loggable(&job.target)
-                    );
+                    self.log_new_job(job.height, &job.target);
                     self.send_miner_job(job)
                 },
             },
@@ -313,10 +315,7 @@ impl Controller {
                         target: LOG_TARGET,
                         "Successful login to server, worker identifier is {}", loggable(&st.id)
                     );
-                    info!(
-                        target: LOG_TARGET,
-                        "Got a new job for height {} with target difficulty {}", st.job.height, loggable(&st.job.target)
-                    );
+                    self.log_new_job(st.job.height, &st.job.target);
                     if request_id_fits(&st.id) {
                         self.last_request_id = st.id;
                     } else {
@@ -331,10 +330,7 @@ impl Controller {
                 };
                 let job_response = types::job_params::JobParams::deserialize(&result);
                 if let Ok(st) = job_response {
-                    info!(
-                        target: LOG_TARGET,
-                        "Got a new job for height {} with target difficulty {}", st.height, loggable(&st.target)
-                    );
+                    self.log_new_job(st.height, &st.target);
                     return self.send_miner_job(st);
                 };
                 let submit_response = types::submit_response::SubmitResponse::deserialize(&result);
@@ -367,39 +363,68 @@ impl Controller {
         Ok(())
     }
 
+    /// Logs a pool message that could not be parsed or handled, in full only for the first one per log summary.
+    fn bad_message(&mut self, details: fmt::Arguments<'_>) {
+        if self.bad_messages == 0 {
+            error!(target: LOG_TARGET, "{details}");
+        }
+        self.bad_messages = self.bad_messages.saturating_add(1);
+    }
+
+    /// Logs a new job at info level when its height changes, and at debug level for further jobs at that height.
+    fn log_new_job(&mut self, height: u64, target: &str) {
+        let level = if self.last_logged_job_height == Some(height) {
+            Level::Debug
+        } else {
+            Level::Info
+        };
+        self.last_logged_job_height = Some(height);
+        log!(
+            target: LOG_TARGET,
+            level,
+            "Got a new job for height {} with target difficulty {}",
+            height,
+            loggable(target)
+        );
+    }
+
     fn handle_message(&mut self, m: &str) {
         debug!(target: LOG_TARGET_FILE, "Received message: {}", loggable(m));
         let Ok(v) = serde_json::from_str::<serde_json::Value>(m) else {
-            error!(target: LOG_TARGET, "Error parsing message: {}", loggable(m));
+            self.bad_message(format_args!("Error parsing message: {}", loggable(m)));
             return;
         };
         if classify_message(&v) == MessageKind::Request {
             match serde_json::from_value::<types::rpc_request::RpcRequest>(v) {
-                Err(e) => error!(
-                    target: LOG_TARGET,
-                    "Error parsing request {} : {}", loggable(m), loggable_debug(&e)
-                ),
+                Err(e) => self.bad_message(format_args!(
+                    "Error parsing request {} : {}",
+                    loggable(m),
+                    loggable_debug(&e)
+                )),
                 Ok(request) => {
                     if let Err(err) = self.handle_request(request) {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error handling request {} : :{}", loggable(m), loggable_debug(&err)
-                        )
+                        self.bad_message(format_args!(
+                            "Error handling request {} : :{}",
+                            loggable(m),
+                            loggable_debug(&err)
+                        ))
                     }
                 },
             }
         } else {
             match serde_json::from_value::<types::rpc_response::RpcResponse>(v) {
-                Err(e) => error!(
-                    target: LOG_TARGET,
-                    "Error parsing response {} : {}", loggable(m), loggable_debug(&e)
-                ),
+                Err(e) => self.bad_message(format_args!(
+                    "Error parsing response {} : {}",
+                    loggable(m),
+                    loggable_debug(&e)
+                )),
                 Ok(response) => {
                     if let Err(err) = self.handle_response(response) {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error handling response {} : :{}", loggable(m), loggable_debug(&err)
-                        )
+                        self.bad_message(format_args!(
+                            "Error handling response {} : :{}",
+                            loggable(m),
+                            loggable_debug(&err)
+                        ))
                     }
                 },
             }
@@ -493,18 +518,20 @@ impl Controller {
         } // loop
     }
 
-    /// Logs how many shares the pool accepted and rejected, and how many more RPC errors it sent, at most once per
-    /// `SHARE_LOG_INTERVAL`.
+    /// Logs how many shares the pool accepted and rejected, and how many more RPC errors and bad messages it sent, at
+    /// most once per `SHARE_LOG_INTERVAL`.
     fn log_submit_results(&mut self) {
         if self.share_log_time.elapsed() < SHARE_LOG_INTERVAL {
             return;
         }
         let secs = self.share_log_time.elapsed().as_secs();
         let more_errors = self.pool_errors.saturating_sub(1);
-        if self.submits.rejected > 0 || more_errors > 0 {
+        let more_bad = self.bad_messages.saturating_sub(1);
+        if self.submits.rejected > 0 || more_errors > 0 || more_bad > 0 {
             warn!(
                 target: LOG_TARGET,
-                "Pool rejected {} and accepted {} shares, and sent {more_errors} more RPC errors, in the last {secs}s",
+                "Pool rejected {} and accepted {} shares, and sent {more_errors} more RPC errors and {more_bad} more bad \
+                 messages, in the last {secs}s",
                 self.submits.rejected,
                 self.submits.accepted
             );
@@ -519,6 +546,7 @@ impl Controller {
         self.submits.accepted = 0;
         self.submits.rejected = 0;
         self.pool_errors = 0;
+        self.bad_messages = 0;
         self.share_log_time = Instant::now();
     }
 }
