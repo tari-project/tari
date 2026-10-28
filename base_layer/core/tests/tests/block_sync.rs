@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use tari_core::{
-    base_node::state_machine_service::states::StateEvent,
+    base_node::state_machine_service::states::{BlockSync, StateEvent},
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
 };
 use tari_node_components::blocks::{Block, ChainBlock};
@@ -453,4 +453,179 @@ async fn test_block_sync_peer_supplies_a_body_that_does_not_match_the_header() {
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
     assert!(!alice_node.blockchain_db.bad_block_exists(*tip.hash()).unwrap().0);
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// Alice's header tip is on a fork that came from Xavier. Bob claims a different tip and answers NotFound for the
+/// end hash; he is not to blame, so he is skipped without a ban and Xavier supplies the blocks.
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_block_sync_end_hash_not_found_from_other_peer_no_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let xavier_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+    sync::add_some_existing_blocks(&blocks[1..=2], &xavier_node);
+    let (xavier_blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &xavier_node,
+        &blocks[2],
+        &coinbases[2],
+        4,
+        &consensus_manager,
+        &key_manager,
+        &[3; 4],
+        &None,
+    );
+    assert_eq!(xavier_node.blockchain_db.get_height().unwrap(), 6);
+
+    // Alice takes her header tip from Xavier
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &xavier_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeadersSynchronized(..)), "{event:?}");
+    assert_eq!(
+        alice_node.blockchain_db.fetch_last_header().unwrap().hash(),
+        *xavier_blocks[4].hash()
+    );
+
+    // Bob is tried first and does not have Xavier's tip
+    let bob_peer = sync::sync_peer_from(&bob_node);
+    assert_ne!(
+        bob_peer.claimed_chain_metadata().best_block_hash(),
+        xavier_blocks[4].hash()
+    );
+    let mut block_sync = BlockSync::from(vec![bob_peer, sync::sync_peer_from(&xavier_node)]);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    assert!(matches!(event, StateEvent::BlocksSynchronized), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 6);
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, xavier_node.node_identity.node_id(), 1).await);
+}
+
+/// Alice's best block is on Xavier's fork. Bob does not have it and answers NotFound for the start hash; he is not
+/// to blame, so he is skipped without a ban and Xavier supplies the blocks.
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_block_sync_start_hash_not_found_from_other_peer_no_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let xavier_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &xavier_node);
+    let (xavier_blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &xavier_node,
+        &blocks[2],
+        &coinbases[2],
+        4,
+        &consensus_manager,
+        &key_manager,
+        &[3; 4],
+        &None,
+    );
+    // Alice holds Xavier's chain with blocks up to 4 and headers up to 6
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+    sync::add_some_existing_blocks(&xavier_blocks[1..=4], &alice_node);
+    sync::delete_some_blocks_and_headers(&xavier_blocks[2..=4], WhatToDelete::Blocks, &alice_node);
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
+    assert_eq!(
+        alice_node.blockchain_db.fetch_last_header().unwrap().hash(),
+        *xavier_blocks[4].hash()
+    );
+    assert!(
+        bob_node
+            .blockchain_db
+            .fetch_header_by_block_hash(*xavier_blocks[2].hash())
+            .unwrap()
+            .is_none()
+    );
+
+    let mut block_sync = BlockSync::from(vec![
+        sync::sync_peer_from(&bob_node),
+        sync::sync_peer_from(&xavier_node),
+    ]);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    assert!(matches!(event, StateEvent::BlocksSynchronized), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 6);
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// Alice took her header tip from Xavier, who serves headers past his own block tip. His claimed best block is not
+/// that tip, so his NotFound is not held against him: he is skipped without a ban.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_block_sync_header_source_with_stale_claim_not_found_no_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let xavier_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &xavier_node,
+        &initial_block,
+        &initial_coinbase,
+        6,
+        &consensus_manager,
+        &key_manager,
+        &[3; 6],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &xavier_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeadersSynchronized(..)), "{event:?}");
+    assert_eq!(
+        alice_node.blockchain_db.fetch_last_header().unwrap().hash(),
+        *blocks[6].hash()
+    );
+
+    // Xavier keeps his headers but only has blocks up to 4
+    sync::delete_some_blocks_and_headers(&blocks[4..=6], WhatToDelete::Blocks, &xavier_node);
+    let xavier_peer = sync::sync_peer_from(&xavier_node);
+    assert_ne!(xavier_peer.claimed_chain_metadata().best_block_hash(), blocks[6].hash());
+
+    let mut block_sync = BlockSync::from(vec![xavier_peer]);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    assert!(matches!(event, StateEvent::BlockSyncFailed), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, xavier_node.node_identity.node_id(), 1).await);
 }

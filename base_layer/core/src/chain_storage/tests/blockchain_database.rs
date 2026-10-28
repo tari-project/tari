@@ -728,13 +728,14 @@ mod validator_node_exit {
             SpentOutput,
             TransactionInput,
             TransactionOutput,
+            ValidatorNodeRegistration,
             ValidatorNodeSignature,
         },
     };
 
     use super::*;
     use crate::{
-        chain_storage::BlockchainBackend,
+        chain_storage::{BlockchainBackend, ValidatorNodeRegistrationInfo},
         validation::{
             ValidationError,
             aggregate_body::AggregateBodyChainLinkedValidator,
@@ -835,6 +836,48 @@ mod validator_node_exit {
 
         fn tip_height(&self) -> u64 {
             self.db.fetch_last_header().unwrap().height
+        }
+
+        /// The epoch of the tip block
+        fn tip_epoch(&self) -> VnEpoch {
+            self.db
+                .consensus_constants()
+                .unwrap()
+                .block_height_to_epoch(self.tip_height())
+        }
+
+        /// The first block height of `epoch`
+        fn epoch_height(&self, epoch: VnEpoch) -> u64 {
+            epoch.as_u64() * self.db.consensus_constants().unwrap().epoch_length()
+        }
+
+        /// Mines a block containing `output` as is, e.g. to mine an identical output again (the test chain does not
+        /// validate blocks)
+        fn mine_output(&mut self, output: TransactionOutput) {
+            let tx = Transaction::new(vec![], vec![output], vec![], Default::default(), Default::default());
+            self.mine_txs(vec![Arc::new(tx)]);
+        }
+
+        /// Mines until the next block starts an epoch, and returns that block (not added) with its roots applied
+        fn next_epoch_boundary_block(&mut self) -> Arc<Block> {
+            let length = self.db.consensus_constants().unwrap().epoch_length();
+            let remaining = (length - (self.tip_height() + 1) % length) % length;
+            let (_, outputs) =
+                add_many_chained_blocks(usize::try_from(remaining).unwrap(), &self.db, &self.key_manager);
+            self.spendable.extend(outputs);
+            let last_header = self.db.fetch_last_header().unwrap();
+            let prev_block = self.db.fetch_block(last_header.height, true).unwrap().into_block();
+            let (script_key_id, wallet_payment_address) = default_coinbase_entities(&self.key_manager);
+            let (block, _) = create_next_block(
+                &self.db,
+                &prev_block,
+                vec![],
+                &self.key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
+            assert_eq!(block.header.height % length, 0);
+            block
         }
 
         /// The registered entry's commitment, if the validator node is in the registered set
@@ -1331,5 +1374,252 @@ mod validator_node_exit {
         chain.mine(chain.exit_features(activation_epoch));
         chain.mine_epochs(2);
         chain.check_registration(&registration).unwrap();
+    }
+
+    fn registration_of(output: &TransactionOutput) -> ValidatorNodeRegistration {
+        output
+            .features
+            .sidechain_feature
+            .as_ref()
+            .and_then(|f| f.validator_node_registration())
+            .unwrap()
+            .clone()
+    }
+
+    /// Returns the info for `public_key` in `nodes`, checking that it carries `registration`'s data
+    fn find_vn(
+        nodes: Vec<ValidatorNodeRegistrationInfo>,
+        public_key: &CompressedPublicKey,
+        registration: &TransactionOutput,
+    ) -> Option<ValidatorNodeRegistrationInfo> {
+        let info = nodes.into_iter().find(|n| n.public_key == *public_key)?;
+        assert_eq!(info.original_registration, registration_of(registration));
+        assert_eq!(info.minimum_value_promise, registration.minimum_value_promise);
+        Some(info)
+    }
+
+    #[test]
+    fn validator_node_queries_include_an_exited_node_until_its_exit_takes_effect() {
+        let mut chain = Chain::new();
+        let (registration, activation_epoch) = chain.register_and_activate();
+        chain.mine(chain.exit_features(activation_epoch));
+        let exit_epoch = chain.tip_epoch() + VnEpoch(1);
+        let pk = chain.public_key.clone();
+        let activated_at = chain.epoch_height(activation_epoch);
+        let before_exit = chain.tip_height();
+        let after_exit = chain.epoch_height(exit_epoch);
+
+        for _ in 0..2 {
+            let db = chain.db.db_read_access().unwrap();
+            assert!(
+                find_vn(
+                    db.fetch_active_validator_nodes(None, activated_at).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_some()
+            );
+            assert!(
+                find_vn(
+                    db.fetch_active_validator_nodes(None, before_exit).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_some()
+            );
+            assert!(
+                find_vn(
+                    db.fetch_active_validator_nodes(None, after_exit).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_none()
+            );
+            assert!(
+                find_vn(
+                    db.fetch_all_active_validator_nodes(before_exit).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_some()
+            );
+            assert!(
+                find_vn(
+                    db.fetch_all_active_validator_nodes(after_exit).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_none()
+            );
+            // An exited validator node is still reported under the epoch it activated in
+            assert!(
+                find_vn(
+                    db.fetch_validators_activating_in_epoch(None, activation_epoch).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_some()
+            );
+            assert!(
+                find_vn(
+                    db.fetch_validators_exiting_in_epoch(None, exit_epoch).unwrap(),
+                    &pk,
+                    &registration
+                )
+                .is_some()
+            );
+            drop(db);
+            // Same answers once the exit has taken effect
+            chain.mine_epochs(2);
+            assert!(chain.current_epoch() > exit_epoch);
+        }
+    }
+
+    #[test]
+    fn validator_node_queries_work_after_an_exited_node_reclaims_its_stake() {
+        let mut chain = Chain::new();
+        let (registration, wallet_output) = chain.mine_spendable(chain.registration_features());
+        chain.mine_epochs(2);
+        let activation_epoch = chain.activation_epoch().unwrap();
+        chain.mine(chain.exit_features(activation_epoch));
+        let exit_epoch = chain.tip_epoch() + VnEpoch(1);
+        let before_exit = chain.tip_height();
+        chain.mine_epochs(2);
+        chain.spend(wallet_output);
+        assert!(
+            chain
+                .db
+                .fetch_unspent_output_hash_by_commitment(registration.commitment.clone())
+                .unwrap()
+                .is_none()
+        );
+
+        let pk = chain.public_key.clone();
+        let db = chain.db.db_read_access().unwrap();
+        assert!(
+            find_vn(
+                db.fetch_validators_exiting_in_epoch(None, exit_epoch).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_some()
+        );
+        assert!(
+            find_vn(
+                db.fetch_all_active_validator_nodes(before_exit).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_some()
+        );
+        assert!(
+            find_vn(
+                db.fetch_active_validator_nodes(None, before_exit).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_some()
+        );
+        assert!(
+            find_vn(
+                db.fetch_validators_activating_in_epoch(None, activation_epoch).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn the_epoch_root_after_a_re_mined_registration_is_the_same_on_a_pruned_database() {
+        // register R -> exit -> reclaim (spend R) -> mine R again: the second instance has the same output hash and
+        // commitment as the first, whose spent row is removed by pruning.
+        let mut chain = Chain::new();
+        let (registration, wallet_output) = chain.mine_spendable(chain.registration_features());
+        chain.mine_epochs(2);
+        let first_activation = chain.activation_epoch().unwrap();
+        chain.mine(chain.exit_features(first_activation));
+        let before_exit = chain.tip_height();
+        chain.mine_epochs(2);
+        chain.spend(wallet_output);
+        chain.mine_output(registration.clone());
+        assert_eq!(chain.registered_commitment(), Some(registration.commitment.clone()));
+        chain.mine_epochs(2);
+        assert!(chain.activation_epoch().unwrap() > first_activation);
+        let pk = chain.public_key.clone();
+
+        let archival = chain.next_epoch_boundary_block();
+        let boundary = archival.header.height;
+        let archival_nodes = chain.db.fetch_all_active_validator_nodes(boundary).unwrap();
+        assert!(find_vn(archival_nodes.clone(), &pk, &registration).is_some());
+        assert_eq!(archival.header.validator_node_size, archival_nodes.len() as u64);
+        let archival_history = chain.db.fetch_all_active_validator_nodes(before_exit).unwrap();
+        assert!(find_vn(archival_history.clone(), &pk, &registration).is_some());
+
+        chain.db.prune_to_height(chain.tip_height()).unwrap();
+        assert_eq!(chain.db.fetch_outputs(registration.hash()).unwrap().len(), 1);
+        let last_header = chain.db.fetch_last_header().unwrap();
+        let prev_block = chain.db.fetch_block(last_header.height, true).unwrap().into_block();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&chain.key_manager);
+        let (pruned, _) = create_next_block(
+            &chain.db,
+            &prev_block,
+            vec![],
+            &chain.key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        );
+        assert_eq!(pruned.header.validator_node_mr, archival.header.validator_node_mr);
+        assert_eq!(pruned.header.validator_node_size, archival.header.validator_node_size);
+        let pruned_history = chain.db.fetch_all_active_validator_nodes(before_exit).unwrap();
+        assert_eq!(
+            pruned_history.iter().map(|n| &n.public_key).collect::<Vec<_>>(),
+            archival_history.iter().map(|n| &n.public_key).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn rewinding_an_exit_restores_the_original_registration() {
+        let mut chain = Chain::new();
+        let (registration, activation_epoch) = chain.register_and_activate();
+        let height_activated = chain.tip_height();
+        chain.mine(chain.exit_features(activation_epoch));
+        chain.mine_epochs(2);
+        let pk = chain.public_key.clone();
+        assert!(
+            find_vn(
+                chain.db.fetch_active_validator_nodes(chain.tip_height(), None).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_none()
+        );
+
+        chain.db.rewind_to_height(height_activated).unwrap();
+        let entry = chain
+            .db
+            .db_read_access()
+            .unwrap()
+            .fetch_validator_node_entry(None, &pk)
+            .unwrap()
+            .unwrap();
+        assert_eq!(entry.original_registration, registration_of(&registration));
+        let db = chain.db.db_read_access().unwrap();
+        assert!(
+            find_vn(
+                db.fetch_active_validator_nodes(None, height_activated).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_some()
+        );
+        assert!(
+            find_vn(
+                db.fetch_validators_activating_in_epoch(None, activation_epoch).unwrap(),
+                &pk,
+                &registration
+            )
+            .is_some()
+        );
     }
 }

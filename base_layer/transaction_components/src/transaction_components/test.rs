@@ -528,7 +528,10 @@ fn inputs_not_malleable() {
     let factories = CryptoFactories::default();
     let validator = TransactionInternalConsistencyValidator::new(false, rules, factories);
     let err = validator.validate(&tx, None, None, u64::MAX).unwrap_err();
-    unpack_enum!(AggregatedBodyValidationError::TransactionError(_a) = err);
+    assert!(
+        matches!(err, AggregatedBodyValidationError::InputScript { .. }),
+        "{err:?}"
+    );
 }
 
 #[test]

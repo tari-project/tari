@@ -147,12 +147,14 @@ where B: BlockchainBackend + 'static
             let genesis_block = self.db.fetch_genesis_block();
             for output in genesis_block.block().body.outputs() {
                 let output_hash = output.hash();
-                if self
+                // Only the genesis instance counts; the same output may have been mined again later.
+                if !self
                     .db
                     .fetch_outputs(output_hash)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?
-                    .is_empty()
+                    .iter()
+                    .any(|o| o.header_hash == *genesis_block.hash())
                 {
                     trace!(
                         target: LOG_TARGET,
@@ -244,8 +246,8 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            // Look up all the spent outputs for this block in one call. Each entry is the last-mined entry for the
-            // spent output, which may be indexed under several headers. Blocks without inputs skip the call.
+            // Look up all the spent outputs for this block in one call. Each entry is the instance this block's input
+            // spent, which is not necessarily the latest one. Blocks without inputs skip the call.
             let mined_infos = if inputs_in_block.is_empty() {
                 Vec::new()
             } else {
@@ -255,7 +257,7 @@ where B: BlockchainBackend + 'static
                     .collect::<Vec<_>>();
                 let mined_infos = self
                     .db
-                    .fetch_outputs_mined_info(input_hashes)
+                    .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
                     .await
                     .rpc_status_internal_error(LOG_TARGET)?;
                 if tx.is_closed() {
@@ -379,5 +381,45 @@ where B: BlockchainBackend + 'static
         );
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_transaction_components::transaction_components::TransactionOutput;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn duplicate_output_stream_matches_spend_to_pre_tranche_instance() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let spent = chain.get_block_and_smt_by_name("3").unwrap();
+        let remined = chain.get_block_and_smt_by_name("4").unwrap();
+        let hash = spent.block().body.inputs().first().unwrap().output_hash();
+        let output = chain.db().fetch_outputs(hash).unwrap().pop().unwrap().output;
+        let task = SyncUtxosTask::new(chain.db().clone().into(), Arc::new(NodeId::new()));
+        // The tranche includes s1 and m2, but m1 belongs to the previous tranche.
+        let (mut tx, mut rx) = mpsc::channel(100);
+        task.start_streaming(&mut tx, spent.header().clone(), remined.header().clone())
+            .await
+            .unwrap();
+        drop(tx);
+        let mut lifecycle = Vec::new();
+        while let Some(response) = rx.recv().await {
+            let response = response.unwrap();
+            match response.txo {
+                Some(Txo::Commitment(c)) if c == output.commitment.as_bytes() => {
+                    lifecycle.push((false, response.mined_header));
+                },
+                Some(Txo::Output(o)) if TransactionOutput::try_from(o.clone()).unwrap().hash() == hash => {
+                    lifecycle.push((true, response.mined_header));
+                },
+                _ => {},
+            }
+        }
+        assert_eq!(lifecycle, vec![
+            (false, spent.hash().to_vec()),
+            (true, remined.hash().to_vec())
+        ]);
     }
 }

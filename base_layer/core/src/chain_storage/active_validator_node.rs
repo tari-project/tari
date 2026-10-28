@@ -22,12 +22,12 @@
 
 use std::cmp;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::Error};
 use tari_common_types::{
     epoch::VnEpoch,
     types::{CompressedCommitment, CompressedPublicKey},
 };
-use tari_transaction_components::MicroMinotari;
+use tari_transaction_components::{MicroMinotari, transaction_components::ValidatorNodeRegistration};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ValidatorNodeEntry {
@@ -40,6 +40,21 @@ pub struct ValidatorNodeEntry {
     pub commitment: CompressedCommitment,
     pub sidechain_public_key: Option<CompressedPublicKey>,
     pub minimum_value_promise: MicroMinotari,
+    /// The registration carried by the output that created this entry
+    #[serde(deserialize_with = "deserialize_original_registration")]
+    pub original_registration: ValidatorNodeRegistration,
+}
+
+/// Entries stored by older versions end before this field, so they fail to decode here instead of being misread.
+fn deserialize_original_registration<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<ValidatorNodeRegistration, D::Error> {
+    ValidatorNodeRegistration::deserialize(deserializer).map_err(|e| {
+        D::Error::custom(format!(
+            "validator node entry has no original_registration; it was stored by an older version and the chain \
+             database must be resynced: {e}"
+        ))
+    })
 }
 
 impl Ord for ValidatorNodeEntry {
@@ -63,3 +78,22 @@ impl PartialEq for ValidatorNodeEntry {
 }
 
 impl Eq for ValidatorNodeEntry {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_entry_without_original_registration_fails_to_decode() {
+        let entry = ValidatorNodeEntry::default();
+        let bytes = bincode::serialize(&entry).unwrap();
+        let registration_len = bincode::serialized_size(&entry.original_registration).unwrap();
+        let old_len = bytes
+            .len()
+            .checked_sub(usize::try_from(registration_len).unwrap())
+            .unwrap();
+        let err = bincode::deserialize::<ValidatorNodeEntry>(bytes.get(..old_len).unwrap()).unwrap_err();
+        assert!(err.to_string().contains("must be resynced"), "{err}");
+        assert!(bincode::deserialize::<ValidatorNodeEntry>(&bytes).is_ok());
+    }
+}

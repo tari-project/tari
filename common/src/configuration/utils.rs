@@ -1130,7 +1130,7 @@ pub fn print_env_vars(config_overrides: &[(String, String)]) {
 /// Also includes the common configuration defined in `config/presets/common.toml`.
 pub fn prompt_default_config() -> [&'static str; 12] {
     let mine = prompt(
-        "Node config does not exist.\nWould you like to mine (Y/n)?\nNOTE: this will enable additional gRPC methods \
+        "Node config does not exist.\nWould you like to mine (y/N)?\nNOTE: this will enable additional gRPC methods \
          that could be used to monitor and submit blocks from this node.",
     );
     get_default_config(mine)

@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
@@ -67,7 +67,7 @@ use crate::{
         HorizonStateTreeUpdate,
         HorizonSyncOutputCheckpoint,
         MmrTree,
-        async_db::AsyncBlockchainDb,
+        async_db::{AsyncBlockchainDb, AsyncDbTransaction},
     },
     common::rolling_avg::RollingAverageTime,
     consensus::BaseNodeConsensusManager,
@@ -563,6 +563,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // STXO commitment Bob streams for the genesis-spending block and bans the peer with
         // "Peer sent unknown commitment hash".
         let genesis_block = self.db.fetch_genesis_block();
+        let mut restored_keys = BTreeSet::new();
         let genesis_header_hash = *genesis_block.hash();
         let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
         for output in genesis_block.block().body.outputs() {
@@ -591,6 +592,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let smt_key = FixedHash::from(key_bytes);
             let smt_node = output.smt_hash(0);
             state_tree_updates.insert(smt_key, Some(smt_node));
+            // A rolled-back tranche may have left a value for this key, which the restore replaces.
+            restored_keys.insert(smt_key);
             // first make sure its deleted everywhere so we can cleanly reinsert it.
             debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
 
@@ -600,7 +603,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let tranche_updates = state_tree_updates
             .into_iter()
-            .map(|(key, value)| HorizonStateTreeUpdate { key, value })
+            .map(|(key, value)| HorizonStateTreeUpdate {
+                key,
+                value,
+                replaces_value: restored_keys.contains(&key),
+            })
             .collect::<Vec<_>>();
 
         txn.apply_horizon_state_tree_updates(tranche_updates);
@@ -794,6 +801,98 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
+    /// Validates a streamed output and queues it in `txn`, returning whether it was queued there. An output that
+    /// mines a commitment spent earlier in this tranche is held in `recreated_outputs` instead, because the spent
+    /// instance is only pruned when the tranche is applied.
+    fn queue_horizon_output(
+        &self,
+        output: TransactionOutput,
+        current_header: &BlockHeader,
+        state_tree_updates: &mut BTreeMap<FixedHash, Option<FixedHash>>,
+        recreated_outputs: &mut Vec<(TransactionOutput, FixedHash, u64, u64)>,
+        txn: &mut AsyncDbTransaction<'_, B>,
+    ) -> Result<bool, HorizonSyncError> {
+        let key_bytes: [u8; 32] = output
+            .commitment
+            .as_bytes()
+            .try_into()
+            .map_err(|e| HorizonSyncError::IncorrectResponse(format!("Peer sent malformed commitment: {}", e)))?;
+        let key = FixedHash::from(key_bytes);
+
+        let spent_in_tranche = match state_tree_updates.get(&key) {
+            Some(Some(_)) => {
+                return Err(HorizonSyncError::IncorrectResponse(
+                    "Peer sent duplicate output commitment during horizon sync".into(),
+                ));
+            },
+            Some(None) => true,
+            None => false,
+        };
+
+        let constants = self.rules.consensus_constants(current_header.height).clone();
+        validate_output_version(&constants, &output)?;
+        validate_individual_output(&output, &constants, self.rules.network().as_network())?;
+        batch_verify_range_proofs(&self.prover, &[&output])?;
+
+        state_tree_updates.insert(key, Some(output.smt_hash(current_header.height)));
+        if spent_in_tranche {
+            recreated_outputs.push((
+                output,
+                current_header.hash(),
+                current_header.height,
+                current_header.timestamp.as_u64(),
+            ));
+            return Ok(false);
+        }
+        txn.insert_output_via_horizon_sync(
+            output,
+            current_header.hash(),
+            current_header.height,
+            current_header.timestamp.as_u64(),
+        );
+        Ok(true)
+    }
+
+    /// Queues the spend of a streamed commitment. The spent instance is the one mined before this tranche.
+    async fn queue_horizon_spend(
+        &self,
+        commitment_bytes: &[u8],
+        tranche_start_height: u64,
+        state_tree_updates: &mut BTreeMap<FixedHash, Option<FixedHash>>,
+        inputs_to_delete: &mut Vec<TransactionOutput>,
+    ) -> Result<(), HorizonSyncError> {
+        let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes)?;
+        let key_bytes: [u8; 32] = commitment_bytes
+            .try_into()
+            .map_err(|e| HorizonSyncError::IncorrectResponse(format!("Peer sent malformed commitment: {}", e)))?;
+        let key = FixedHash::from(key_bytes);
+
+        // A commitment can only be spent once per tranche, and never after it was mined in the tranche.
+        if state_tree_updates.contains_key(&key) {
+            return Err(HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput));
+        }
+        let output_hash = self
+            .db()
+            .fetch_unspent_output_hash_by_commitment(commitment)
+            .await?
+            .ok_or_else(|| HorizonSyncError::IncorrectResponse("Peer sent unknown commitment hash".into()))?;
+        trace!(target: LOG_TARGET, "STXO hash `{output_hash}` received from sync peer");
+
+        let output_info = self
+            .db()
+            .fetch_outputs(output_hash)
+            .await?
+            .into_iter()
+            .filter(|o| o.mined_height < tranche_start_height)
+            .max_by_key(|o| o.mined_height)
+            .ok_or_else(|| {
+                HorizonSyncError::IncorrectResponse("Could not fetch full output for spent commitment".into())
+            })?;
+        state_tree_updates.insert(key, None);
+        inputs_to_delete.push(output_info.output);
+        Ok(())
+    }
+
     // Synchronize outputs in independently-verifiable tranches
     #[allow(clippy::too_many_lines)]
     async fn synchronize_outputs(
@@ -908,6 +1007,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             // stream has been received and the SMT root verified.
             let mut state_tree_updates = BTreeMap::<FixedHash, Option<FixedHash>>::new();
             let mut inputs_to_delete = Vec::new();
+            let mut recreated_outputs = Vec::new();
             let mut batch_op_counter = 0usize;
             let mut last_mined_header: Option<FixedHash> = None;
             let mut current_header_hash = tranche_start_header.hash();
@@ -974,78 +1074,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                 tranche_end_height,
                                 utxo_counter,
                             );
-                            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().map_err(|e| {
-                                HorizonSyncError::IncorrectResponse(format!("Peer sent malformed commitment: {}", e))
-                            })?;
-                            let key = FixedHash::from(key_bytes);
-
-                            if state_tree_updates
-                                .insert(key, Some(output.smt_hash(current_header.height)))
-                                .is_some()
-                            {
-                                return Err(HorizonSyncError::IncorrectResponse(
-                                    "Peer sent duplicate output commitment during horizon sync".into(),
-                                ));
-                            }
-
-                            let constants = self.rules.consensus_constants(current_header.height).clone();
-                            validate_output_version(&constants, &output)?;
-                            validate_individual_output(&output, &constants, self.rules.network().as_network())?;
-                            batch_verify_range_proofs(&self.prover, &[&output])?;
-
-                            txn.insert_output_via_horizon_sync(
+                            if self.queue_horizon_output(
                                 output,
-                                current_header.hash(),
-                                current_header.height,
-                                current_header.timestamp.as_u64(),
-                            );
-                            batch_op_counter = batch_op_counter.saturating_add(1);
+                                &current_header,
+                                &mut state_tree_updates,
+                                &mut recreated_outputs,
+                                &mut txn,
+                            )? {
+                                batch_op_counter = batch_op_counter.saturating_add(1);
+                            }
                         }
                     },
                     Txo::Commitment(commitment_bytes) => {
                         stxo_counter = stxo_counter.saturating_add(1);
-
-                        let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes.as_slice())?;
-                        match self
-                            .db()
-                            .fetch_unspent_output_hash_by_commitment(commitment.clone())
-                            .await?
-                        {
-                            Some(output_hash) => {
-                                trace!(
-                                    target: LOG_TARGET,
-                                    "STXO hash `{output_hash}` received from sync peer ({stxo_counter})",
-                                );
-                                let key_bytes: [u8; 32] = commitment_bytes.as_slice().try_into().map_err(|e| {
-                                    HorizonSyncError::IncorrectResponse(format!(
-                                        "Peer sent malformed commitment: {}",
-                                        e
-                                    ))
-                                })?;
-                                let key = FixedHash::from(key_bytes);
-
-                                if matches!(state_tree_updates.get(&key), Some(None)) {
-                                    return Err(HorizonSyncError::ChainStorageError(
-                                        ChainStorageError::UnspendableInput,
-                                    ));
-                                }
-                                state_tree_updates.insert(key, None);
-
-                                let mut outputs = self.db().fetch_outputs(output_hash).await?;
-                                outputs.sort_by_key(|o| o.mined_height);
-                                let output_info = outputs.into_iter().next_back().ok_or_else(|| {
-                                    HorizonSyncError::IncorrectResponse(
-                                        "Could not fetch full output for spent commitment".into(),
-                                    )
-                                })?;
-                                inputs_to_delete.push(output_info.output);
-                            },
-                            None => {
-                                return Err(HorizonSyncError::IncorrectResponse(
-                                    "Peer sent unknown commitment hash".into(),
-                                ));
-                            },
-                        }
+                        self.queue_horizon_spend(
+                            &commitment_bytes,
+                            tranche_start_height,
+                            &mut state_tree_updates,
+                            &mut inputs_to_delete,
+                        )
+                        .await?;
                     },
                 }
 
@@ -1092,19 +1140,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 )));
             }
 
-            let tranche_updates = state_tree_updates
-                .into_iter()
-                .map(|(key, value)| HorizonStateTreeUpdate { key, value })
-                .collect::<Vec<_>>();
-
-            txn.apply_horizon_state_tree_updates(tranche_updates);
-            // Spent validator node registrations need no validator node set update: a registration spend never changes
-            // the set in full block processing either (it is only allowed once the exit has taken effect). Note that
-            // horizon sync does not reconstruct the validator node set at all (pre-existing gap): a pruned node that
-            // horizon synced has an empty validator node set.
-            for output in inputs_to_delete {
-                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
-            }
+            apply_tranche_output_updates(state_tree_updates, inputs_to_delete, recreated_outputs, &mut txn);
             // Only checkpoint intermediate tranches for network recovery.
             // We intentionally do not checkpoint the final tranche before verification.
             // If the final root verification fails, the ENTIRE state is considered poisoned.
@@ -1306,16 +1342,51 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 }
 
+/// Queues the tranche's tree updates, then the pruning of spent instances, then the outputs that mine a spent
+/// commitment again, so that they all land in one write.
+fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
+    state_tree_updates: BTreeMap<FixedHash, Option<FixedHash>>,
+    inputs_to_delete: Vec<TransactionOutput>,
+    recreated_outputs: Vec<(TransactionOutput, FixedHash, u64, u64)>,
+    txn: &mut AsyncDbTransaction<'_, B>,
+) {
+    let recreated_keys = recreated_outputs
+        .iter()
+        .filter_map(|(output, ..)| FixedHash::try_from(output.commitment.as_bytes()).ok())
+        .collect::<BTreeSet<_>>();
+    let tranche_updates = state_tree_updates
+        .iter()
+        .map(|(key, value)| HorizonStateTreeUpdate {
+            key: *key,
+            value: *value,
+            replaces_value: recreated_keys.contains(key),
+        })
+        .collect::<Vec<_>>();
+    txn.apply_horizon_state_tree_updates(tranche_updates);
+    // Spent validator node registrations need no validator node set update: a registration spend never changes
+    // the set in full block processing either (it is only allowed once the exit has taken effect). Note that
+    // horizon sync does not reconstruct the validator node set at all (pre-existing gap): a pruned node that
+    // horizon synced has an empty validator node set.
+    for output in inputs_to_delete {
+        txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+    }
+    for (output, header_hash, height, timestamp) in recreated_outputs {
+        txn.insert_output_via_horizon_sync(output, header_hash, height, timestamp);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use tari_comms::test_utils::mocks::create_connectivity_mock;
+    #![allow(clippy::indexing_slicing)]
+    use tari_comms::{protocol::rpc::Request, test_utils::mocks::create_connectivity_mock};
     use tari_transaction_components::crypto_factories::CryptoFactories;
 
     use super::*;
     use crate::{
+        base_node::sync::rpc::SyncUtxosTask,
         chain_storage::{BlockchainDatabase, DbTransaction, HorizonSyncOutputCheckpoint},
         test_helpers::{
-            blockchain::{TempDatabase, create_main_chain, create_new_blockchain},
+            blockchain::{TempDatabase, create_custom_blockchain, create_main_chain, create_new_blockchain},
             create_consensus_rules,
         },
         validation::mocks::MockValidator,
@@ -1436,5 +1507,254 @@ mod tests {
             db_clone.fetch_outputs(output_hash).unwrap().is_empty(),
             "output above start_height must be pruned"
         );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn duplicate_output_horizon_spend_then_remine_preserves_new_instance() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let first = chain.get_block_and_smt_by_name("2").unwrap();
+        let spent = chain.get_block_and_smt_by_name("3").unwrap();
+        let remined = chain.get_block_and_smt_by_name("4").unwrap();
+        let hash = spent.block().body.inputs().first().unwrap().output_hash();
+        let output = chain.db().fetch_outputs(hash).unwrap().pop().unwrap().output;
+        // Reconstruct the receiving node's output state at the end of the preceding tranche.
+        let mut reset = DbTransaction::new();
+        // Horizon streams omit outputs created and spent within the same tranche.
+        reset.prune_outputs_spent_at_hash(*remined.hash());
+        reset.prune_output_from_all_dbs(hash, output.commitment.clone(), output.features.output_type);
+        reset.insert_utxo(
+            output.clone(),
+            *first.hash(),
+            first.height(),
+            first.header().timestamp.as_u64(),
+        );
+        reset.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::try_from(output.commitment.as_bytes()).unwrap(),
+            value: Some(output.smt_hash(first.height())),
+            replaces_value: true,
+        }]);
+        reset.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: first.height(),
+            checkpoint_hash: *first.hash(),
+            sync_target_height: remined.height(),
+            sync_target_hash: *remined.hash(),
+        });
+        chain.db().write(reset).unwrap();
+        let mut other_outputs = Vec::new();
+        for header in [spent.header(), remined.header()] {
+            for other in chain.db().fetch_outputs_in_block(header.hash()).unwrap() {
+                other_outputs.push((other, header.clone()));
+            }
+        }
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(chain.db().clone(), &mut peers, remined.height());
+        let db = sync.db().clone();
+        let mut txn = db.write_transaction();
+        let mut updates = BTreeMap::new();
+        let mut deletes = Vec::new();
+        let mut recreated = Vec::new();
+        sync.queue_horizon_spend(output.commitment.as_bytes(), spent.height(), &mut updates, &mut deletes)
+            .await
+            .unwrap();
+        assert_eq!(deletes.len(), 1);
+        assert!(matches!(
+            sync.queue_horizon_spend(output.commitment.as_bytes(), spent.height(), &mut updates, &mut deletes)
+                .await,
+            Err(HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput))
+        ));
+        sync.queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn)
+            .unwrap();
+        assert_eq!(deletes.len(), 1);
+        assert_eq!(recreated.len(), 1);
+        assert!(matches!(
+            sync.queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn),
+            Err(HorizonSyncError::IncorrectResponse(_))
+        ));
+        assert!(matches!(
+            sync.queue_horizon_spend(output.commitment.as_bytes(), spent.height(), &mut updates, &mut deletes)
+                .await,
+            Err(HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput))
+        ));
+        // Force the same intermediate commit as a full batch, then lose all tranche-local state.
+        txn.commit().await.unwrap();
+        drop(txn);
+        drop(updates);
+        drop(deletes);
+        drop(recreated);
+        let before_cleanup = chain.db().fetch_outputs(hash).unwrap();
+        assert_eq!(before_cleanup.len(), 1);
+        assert_eq!(before_cleanup[0].mined_height, first.height());
+        sync.clean_up_stale_synced_outputs(spent.height()).await.unwrap();
+        let surviving = chain.db().fetch_outputs(hash).unwrap();
+        assert_eq!(surviving.len(), 1);
+        assert_eq!(surviving[0].mined_height, first.height());
+        assert_eq!(
+            chain
+                .db()
+                .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                .unwrap(),
+            Some(hash)
+        );
+        let (resume_height, _) = sync.calculate_output_sync_start_stop(remined.header()).await.unwrap();
+        assert_eq!(resume_height, spent.height());
+        let mut txn = db.write_transaction();
+        let mut updates = BTreeMap::new();
+        let mut deletes = Vec::new();
+        let mut recreated = Vec::new();
+        sync.queue_horizon_spend(output.commitment.as_bytes(), resume_height, &mut updates, &mut deletes)
+            .await
+            .unwrap();
+        assert!(
+            !sync
+                .queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn)
+                .unwrap()
+        );
+        // Replay the remaining outputs removed by cleanup, as the resumed stream would.
+        for (other, header) in other_outputs {
+            assert!(
+                sync.queue_horizon_output(other, &header, &mut updates, &mut recreated, &mut txn)
+                    .unwrap()
+            );
+        }
+        apply_tranche_output_updates(updates, deletes, recreated, &mut txn);
+        txn.commit().await.unwrap();
+        chain
+            .db()
+            .verify_horizon_sync_output_root(remined.header().output_mr)
+            .unwrap();
+        let surviving = chain.db().fetch_outputs(hash).unwrap();
+        assert_eq!(surviving.len(), 1);
+        assert_eq!(surviving.first().unwrap().mined_height, remined.height());
+        assert_eq!(
+            chain
+                .db()
+                .fetch_unspent_output_hash_by_commitment(output.commitment)
+                .unwrap(),
+            Some(hash)
+        );
+        // The old input survives output-only pruning and must not pair with the re-mined instance.
+        assert!(
+            !chain
+                .db()
+                .fetch_outputs_in_block_with_spend_state(*remined.hash(), Some(*remined.hash()))
+                .unwrap()
+                .into_iter()
+                .find(|(o, _)| o.hash() == hash)
+                .unwrap()
+                .1
+        );
+        let info = chain.db().fetch_mined_info_by_output_hash(hash).unwrap();
+        assert_eq!(info.len(), 2);
+        assert!(info.first().unwrap().output.is_none());
+        assert_eq!(
+            info.first().unwrap().input.as_ref().unwrap().spent_height,
+            spent.height()
+        );
+        assert!(info.last().unwrap().input.is_none());
+        assert_eq!(
+            info.last().unwrap().output.as_ref().unwrap().mined_height,
+            remined.height()
+        );
+    }
+
+    /// Streams `start..=end` from `source` and applies it to `sync`'s database as one tranche.
+    async fn sync_tranche_from(
+        sync: &HorizonStateSynchronization<'_, TempDatabase>,
+        source: &BlockchainDatabase<TempDatabase>,
+        start: &BlockHeader,
+        end: &BlockHeader,
+    ) {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
+        SyncUtxosTask::new(source.clone().into(), Arc::new(NodeId::new()))
+            .run(
+                Request::new(0.into(), SyncUtxosRequest {
+                    start_header_hash: start.hash().to_vec(),
+                    end_header_hash: end.hash().to_vec(),
+                }),
+                tx,
+            )
+            .await
+            .unwrap();
+        let mut txn = sync.db().write_transaction();
+        let mut updates = BTreeMap::new();
+        let mut deletes = Vec::new();
+        let mut recreated = Vec::new();
+        while let Some(response) = rx.recv().await {
+            let response = response.unwrap();
+            let header = sync
+                .db()
+                .fetch_header_by_block_hash(FixedHash::try_from(response.mined_header).unwrap())
+                .await
+                .unwrap()
+                .unwrap();
+            match response.txo {
+                Some(Txo::Output(output)) => {
+                    let output = TransactionOutput::try_from(output).unwrap();
+                    if !output.is_burned() {
+                        sync.queue_horizon_output(output, &header, &mut updates, &mut recreated, &mut txn)
+                            .unwrap();
+                    }
+                },
+                Some(Txo::Commitment(commitment)) => {
+                    sync.queue_horizon_spend(&commitment, start.height, &mut updates, &mut deletes)
+                        .await
+                        .unwrap();
+                },
+                None => break,
+            }
+        }
+        apply_tranche_output_updates(updates, deletes, recreated, &mut txn);
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: end.height,
+            checkpoint_hash: end.hash(),
+            sync_target_height: end.height,
+            sync_target_hash: end.hash(),
+        });
+        txn.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn duplicate_output_horizon_sync_across_tranches() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let mined = chain.get_block_and_smt_by_name("2").unwrap();
+        let spent = chain.get_block_and_smt_by_name("3").unwrap();
+        let remined = chain.get_block_and_smt_by_name("4").unwrap();
+        let hash = spent.block().body.inputs()[0].output_hash();
+
+        // The receiving node has every header but no outputs past genesis.
+        let db = create_custom_blockchain(chain.rules().clone());
+        let mut txn = DbTransaction::new();
+        for name in ["A", "1", "2", "3", "4"] {
+            txn.insert_chain_header(chain.get_block_and_smt_by_name(name).unwrap().to_chain_header());
+        }
+        db.write(txn).unwrap();
+        let mut peers = Vec::new();
+        let sync = build_synchronizer(db.clone(), &mut peers, remined.height());
+
+        // Tranche A ends with the first instance; tranche B spends it and mines it again.
+        let tranche_a_start = chain.get_block_and_smt_by_name("A").unwrap();
+        sync_tranche_from(&sync, chain.db(), tranche_a_start.header(), mined.header()).await;
+        db.verify_horizon_sync_output_root(mined.header().output_mr).unwrap();
+        sync_tranche_from(&sync, chain.db(), spent.header(), remined.header()).await;
+        db.verify_horizon_sync_output_root(remined.header().output_mr).unwrap();
+
+        let outputs = db.fetch_outputs(hash).unwrap();
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].mined_height, remined.height());
+        assert_eq!(
+            db.fetch_unspent_output_hash_by_commitment(outputs[0].output.commitment.clone())
+                .unwrap(),
+            Some(hash)
+        );
+
+        // Only a key marked as re-created may replace an existing value.
+        let mut txn = DbTransaction::new();
+        txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::try_from(outputs[0].output.commitment.as_bytes()).unwrap(),
+            value: Some(FixedHash::default()),
+            replaces_value: false,
+        }]);
+        assert!(db.write(txn).is_err());
     }
 }

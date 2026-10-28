@@ -94,6 +94,15 @@ pub async fn sync_headers_execute(
     header_sync.next_event(state_machine).await
 }
 
+/// Helper function to build a sync peer from a node's current chain metadata
+pub fn sync_peer_from(peer_node_interfaces: &NodeInterfaces) -> SyncPeer {
+    SyncPeer::from(PeerChainMetadata::new(
+        peer_node_interfaces.node_identity.node_id().clone(),
+        peer_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
+        None,
+    ))
+}
+
 /// Helper function to initialize block sync with a single peer
 pub fn initialize_sync_blocks(peer_node_interfaces: &NodeInterfaces) -> BlockSync {
     BlockSync::from(vec![SyncPeer::from(PeerChainMetadata::new(

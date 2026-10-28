@@ -131,3 +131,53 @@ impl From<RangeProof> for GrpcRangeProof {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::convert::TryFrom;
+
+    use borsh::BorshSerialize;
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_transaction_components::transaction_components::{EncryptedData, TransactionOutput, covenants::Covenant};
+    use tari_utilities::ByteArray;
+
+    use crate::tari_rpc as grpc;
+
+    #[test]
+    fn try_from_rejects_8_mib_script() {
+        let sender_offset_public_key =
+            CompressedPublicKey::from_secret_key(&PrivateKey::from_canonical_bytes(&[1u8; 32]).unwrap());
+        let ephemeral_pubkey =
+            CompressedPublicKey::from_secret_key(&PrivateKey::from_canonical_bytes(&[2u8; 32]).unwrap());
+        let u_a = PrivateKey::from_canonical_bytes(&[3u8; 32]).unwrap();
+        let u_x = PrivateKey::from_canonical_bytes(&[4u8; 32]).unwrap();
+        let u_y = PrivateKey::from_canonical_bytes(&[5u8; 32]).unwrap();
+
+        let mut covenant = Vec::new();
+        Covenant::default().serialize(&mut covenant).unwrap();
+
+        let grpc_output = grpc::TransactionOutput {
+            hash: vec![0u8; 32],
+            features: Some(grpc::OutputFeatures::default()),
+            commitment: vec![0u8; 32],
+            range_proof: None,
+            script: vec![0x60; 8 * 1024 * 1024],
+            sender_offset_public_key: sender_offset_public_key.as_bytes().to_vec(),
+            metadata_signature: Some(grpc::ComAndPubSignature {
+                ephemeral_commitment: vec![0u8; 32],
+                ephemeral_pubkey: ephemeral_pubkey.as_bytes().to_vec(),
+                u_a: u_a.as_bytes().to_vec(),
+                u_x: u_x.as_bytes().to_vec(),
+                u_y: u_y.as_bytes().to_vec(),
+            }),
+            covenant,
+            version: 0,
+            encrypted_data: EncryptedData::default().to_byte_vec(),
+            minimum_value_promise: 0,
+            payment_reference: Vec::new(),
+        };
+
+        let err = TransactionOutput::try_from(grpc_output).unwrap_err();
+        assert!(err.contains("ScriptTooLarge"), "unexpected error: {err}");
+    }
+}
