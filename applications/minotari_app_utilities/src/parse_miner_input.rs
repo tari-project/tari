@@ -307,8 +307,8 @@ mod test {
                 .expect("base node prompt without TTY must fall back to default");
             assert_eq!(base_res, default_base);
 
-            let p2pool_res = prompt_for_p2pool_address(false)
-                .expect("p2pool prompt without TTY must fall back to default");
+            let p2pool_res =
+                prompt_for_p2pool_address(false).expect("p2pool prompt without TTY must fall back to default");
             assert_eq!(p2pool_res, "http://127.0.0.1:18145");
             return;
         }

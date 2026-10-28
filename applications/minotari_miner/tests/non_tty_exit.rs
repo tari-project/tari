@@ -13,7 +13,7 @@ use tari_common::exit_codes::ExitCode;
 #[test]
 fn miner_exits_promptly_when_stdin_is_null_and_payment_address_is_default() {
     let temp_dir = std::env::temp_dir().join(format!("tari_miner_non_tty_test_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _unused = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(&temp_dir).expect("create temp base dir");
 
     let start = Instant::now();
@@ -38,16 +38,16 @@ fn miner_exits_promptly_when_stdin_is_null_and_payment_address_is_default() {
     }
 
     if status.is_none() {
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = std::fs::remove_dir_all(&temp_dir);
+        let _unused = child.kill();
+        let _unused = child.wait();
+        let _unused = std::fs::remove_dir_all(&temp_dir);
         panic!("miner hung without a TTY instead of exiting promptly within {timeout:?}");
     }
 
     let output = child.wait_with_output().expect("wait_with_output on child");
     let elapsed = start.elapsed();
 
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _unused = std::fs::remove_dir_all(&temp_dir);
 
     assert!(
         !output.status.success(),
@@ -71,7 +71,7 @@ fn miner_exits_promptly_when_stdin_is_null_and_payment_address_is_default() {
 #[tokio::test]
 async fn start_miner_non_interactive_mode_rejects_default_payment_address() {
     let temp_dir = std::env::temp_dir().join(format!("tari_miner_ni_flag_test_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _unused = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(&temp_dir).expect("create temp base dir");
 
     let cli = Cli::parse_from([
@@ -83,7 +83,7 @@ async fn start_miner_non_interactive_mode_rejects_default_payment_address() {
     let err = run_miner(cli)
         .await
         .expect_err("non-interactive mode with default payment address must fail");
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    let _unused = std::fs::remove_dir_all(&temp_dir);
 
     assert!(matches!(err.exit_code, ExitCode::WalletPaymentAddress));
     assert!(
