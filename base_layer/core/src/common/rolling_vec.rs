@@ -24,12 +24,18 @@ use std::ops::Deref;
 
 /// A vector that contains up to a number of elements. As new elements are added to the end, the first elements are
 /// removed.
-#[derive(Debug)]
-pub struct RollingVec<T>(Vec<T>);
+#[derive(Debug, Clone)]
+pub struct RollingVec<T> {
+    inner: Vec<T>,
+    max_len: usize,
+}
 
 impl<T> RollingVec<T> {
-    pub fn new(capacity: usize) -> Self {
-        Self(Vec::with_capacity(capacity))
+    pub fn new(max_len: usize) -> Self {
+        Self {
+            inner: Vec::with_capacity(max_len),
+            max_len,
+        }
     }
 
     /// Adds a new element to the RollingVec.
@@ -42,55 +48,28 @@ impl<T> RollingVec<T> {
 
         let mut removed = None;
         if self.is_full() {
-            removed = Some(self.inner_mut().remove(0));
+            removed = Some(self.inner.remove(0));
         }
 
-        self.inner_mut().push(item);
+        self.inner.push(item);
         removed
     }
 
-    pub fn insert(&mut self, index: usize, item: T) {
-        assert!(index < self.capacity());
-        assert!(index < self.len());
-
-        if self.is_full() {
-            self.inner_mut().remove(0);
-        }
-
-        self.inner_mut().insert(index, item);
-    }
-
     pub fn pop(&mut self) -> Option<T> {
-        self.inner_mut().pop()
+        self.inner.pop()
     }
 
     #[inline]
     pub fn is_full(&self) -> bool {
         // len never exceeds capacity
-        debug_assert!(self.inner().len() <= self.inner().capacity());
+        debug_assert!(self.len() <= self.capacity());
         self.len() == self.capacity()
     }
 
+    /// The maximum number of elements this RollingVec holds.
     #[inline]
     pub fn capacity(&self) -> usize {
-        self.inner().capacity()
-    }
-
-    /// Sorts the slice, but might not preserve the order of equal elements.
-    /// This sort is unstable (i.e., may reorder equal elements), in-place (i.e., does not allocate), and O(n * log(n))
-    pub fn sort_unstable(&mut self)
-    where T: Ord {
-        self.inner_mut().sort_unstable();
-    }
-
-    #[inline]
-    fn inner(&self) -> &Vec<T> {
-        &self.0
-    }
-
-    #[inline]
-    fn inner_mut(&mut self) -> &mut Vec<T> {
-        &mut self.0
+        self.max_len
     }
 }
 
@@ -117,15 +96,7 @@ impl<T> Deref for RollingVec<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
-        self.inner()
-    }
-}
-
-impl<T: Clone> Clone for RollingVec<T> {
-    fn clone(&self) -> Self {
-        let mut v = Vec::with_capacity(self.capacity());
-        v.extend(self.0.clone());
-        Self(v)
+        &self.inner
     }
 }
 

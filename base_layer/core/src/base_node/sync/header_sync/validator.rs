@@ -297,16 +297,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         let state = self.state_mut();
         state.previous_header = header.clone();
 
-        // Ensure that timestamps are inserted in sorted order
-        let maybe_index = state.timestamps.iter().position(|ts| *ts >= header.timestamp());
-        match maybe_index {
-            Some(pos) => {
-                state.timestamps.insert(pos, header.timestamp());
-            },
-            None => {
-                state.timestamps.push(header.timestamp());
-            },
-        }
+        state.timestamps.push(header.timestamp());
 
         state.current_height = header.height;
         // Add a "more recent" datapoint onto the target difficulty

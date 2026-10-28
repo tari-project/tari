@@ -4614,17 +4614,18 @@ fn get_previous_timestamps<T: BlockchainBackend>(
 
     let prev_timestamps_count = cmp::min(median_timestamp_window_size, prev_height);
 
-    let mut timestamps = RollingVec::new(median_timestamp_window_size);
+    let mut newest_first = Vec::with_capacity(prev_timestamps_count);
     let mut curr_header = header.prev_hash;
     for _ in 0..prev_timestamps_count {
         let h = db.fetch_chain_header_in_all_chains(&curr_header)?;
         curr_header = h.header().prev_hash;
-        timestamps.push(EpochTime::from(h.timestamp()));
+        newest_first.push(EpochTime::from(h.timestamp()));
     }
+    // Oldest first, so that pushing a newer timestamp evicts the oldest one
+    newest_first.reverse();
 
-    // median calculation requires timestamps to be sorted
-    timestamps.sort_unstable();
-
+    let mut timestamps = RollingVec::new(median_timestamp_window_size);
+    timestamps.extend(newest_first);
     Ok(timestamps)
 }
 
