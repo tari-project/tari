@@ -311,20 +311,28 @@ impl Controller {
             Some(result) => {
                 let login_response = types::login_response::LoginResponse::deserialize(&result);
                 if let Ok(st) = login_response {
-                    info!(
+                    let fits = request_id_fits(&st.id);
+                    // Only a login that changes the stored identifier is worth an info line
+                    let level = if fits && st.id != self.last_request_id {
+                        Level::Info
+                    } else {
+                        Level::Debug
+                    };
+                    log!(
                         target: LOG_TARGET,
-                        "Successful login to server, worker identifier is {}", loggable(&st.id)
+                        level,
+                        "Successful login to server, worker identifier is {}",
+                        loggable(&st.id)
                     );
                     self.log_new_job(st.job.height, &st.job.target);
-                    if request_id_fits(&st.id) {
+                    if fits {
                         self.last_request_id = st.id;
                     } else {
-                        warn!(
-                            target: LOG_TARGET,
+                        self.bad_message(format_args!(
                             "Ignoring worker identifier of {} bytes from the pool: {}",
                             st.id.len(),
                             loggable(&st.id)
-                        );
+                        ));
                     }
                     return self.send_miner_job(st.job);
                 };
