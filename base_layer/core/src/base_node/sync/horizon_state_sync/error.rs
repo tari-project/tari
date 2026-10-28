@@ -50,8 +50,6 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
-    #[error("Output sync resumed from a checkpoint failed ({0}); output sync restarts from height 1")]
-    ResumedOutputSyncFailed(String),
     #[error("Local output state does not match the genesis block after clean up: {0}")]
     LocalOutputStateInconsistent(String),
     #[error("Chain storage error: {0}")]
@@ -157,8 +155,9 @@ impl HorizonSyncError {
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::SyncPeerUnavailable(_) |
-            HorizonSyncError::ResumedOutputSyncFailed(_) |
             HorizonSyncError::LocalOutputStateInconsistent(_) |
+            // An honest pruned peer cannot serve the target state if it has pruned past the target
+            HorizonSyncError::FinalOutputRootMismatch(_) |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
@@ -173,7 +172,6 @@ impl HorizonSyncError {
             // long ban
             err @ HorizonSyncError::IncorrectResponse(_) |
             err @ HorizonSyncError::UnknownSpentOutput(_) |
-            err @ HorizonSyncError::FinalOutputRootMismatch(_) |
             err @ HorizonSyncError::FinalStateValidationFailed(_) |
             err @ HorizonSyncError::RangeProofError(_) |
             err @ HorizonSyncError::InvalidMrRoot { .. } |
