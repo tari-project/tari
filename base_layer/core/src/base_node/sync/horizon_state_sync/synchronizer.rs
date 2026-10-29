@@ -1023,7 +1023,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let mut inputs_to_delete = Vec::new();
             let mut recreated_outputs = Vec::new();
             let mut batch_op_counter = 0usize;
-            let mut last_mined_header: Option<FixedHash> = None;
+            let mut saw_terminator = false;
             let mut previous_height = tranche_start_height;
             let mut current_header_hash = tranche_start_header.hash();
             let mut current_header = self
@@ -1068,14 +1068,22 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     )));
                 }
                 previous_height = current_header.height;
-                last_mined_header = Some(output_header_hash);
 
                 // A payload-less response is the stream terminator: it carries the tranche-end header hash
                 // with no TXO so completeness is verified explicitly rather than inferred from the last
                 // data-bearing message (the final block(s) of a tranche may legitimately stream no TXOs).
                 let proto_output = match res.txo {
                     Some(proto_output) => proto_output,
-                    None => break,
+                    None => {
+                        if output_header_hash != tranche_end_header.hash() {
+                            return Err(HorizonSyncError::IncorrectResponse(format!(
+                                "Peer ended the output stream for tranche {}-{} at height {}",
+                                tranche_start_height, tranche_end_height, current_header.height
+                            )));
+                        }
+                        saw_terminator = true;
+                        break;
+                    },
                 };
 
                 match proto_output {
@@ -1152,13 +1160,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             // Verify the stream completed the full tranche before committing.
-            if last_mined_header != Some(tranche_end_header.hash()) {
+            if !saw_terminator {
                 return Err(HorizonSyncError::IncorrectResponse(format!(
-                    "Sync peer did not complete output stream for tranche {}-{}. Last block received: {}, expected: {}",
-                    tranche_start_height,
-                    tranche_end_height,
-                    last_mined_header.map(|hash| hash.to_hex()).unwrap_or_default(),
-                    tranche_end_header.hash().to_hex()
+                    "Sync peer did not complete output stream for tranche {}-{}",
+                    tranche_start_height, tranche_end_height
                 )));
             }
 
@@ -2305,6 +2310,39 @@ mod tests {
         assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
         assert_eq!(mislabelled.requests, 1, "a data error is not retried from height 1");
+    }
+
+    /// A stream that ends without the terminator is incomplete, even if its last item is in the tranche-end block
+    #[tokio::test]
+    async fn stream_without_terminator_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut truncated = DbTrancheSource::new(
+            chain.db(),
+            Box::new(|request, items| {
+                if request == 2 {
+                    let terminator = items.pop().unwrap();
+                    assert!(terminator.txo.is_none());
+                    assert!(!items.is_empty());
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut truncated, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        assert_eq!(
+            checkpoint_height(&db),
+            Some(1),
+            "the truncated tranche must not be committed"
+        );
     }
 
     /// A checkpoint at the target is only finalized if the committed outputs match the target's output root
