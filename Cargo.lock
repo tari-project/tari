@@ -4248,7 +4248,6 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
- "tari_features",
  "tari_max_size",
  "tari_node_components",
  "tari_script",
