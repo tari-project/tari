@@ -150,7 +150,6 @@ impl ProcessLauncher {
             executable_path.display(),
             self.config.args
         );
-        log::debug!("Process launch config: {:?}", self.config);
 
         // Prepare command
         let mut command = Command::new(&executable_path);
@@ -171,7 +170,7 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        log::debug!("About to spawn process: {command:?}");
+        log::debug!("About to spawn process: {}", executable_path.display());
         let mut child = command.spawn().map_err(|e| {
             log::error!(
                 "Failed to spawn process: {} (executable: {})",
@@ -533,6 +532,7 @@ impl TariProcessLauncher {
         network: Option<String>,
         grpc_address: String,
         additional_args: Vec<String>,
+        env_vars: HashMap<String, String>,
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
         // Convert IP:PORT format to multiaddr format
         let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
@@ -562,12 +562,17 @@ impl TariProcessLauncher {
             max_wait_time: Duration::from_secs(180), // Wallet can take up to 3 minutes
         };
 
-        let config = LaunchConfigBuilder::new()
+        let mut builder = LaunchConfigBuilder::new()
             .with_executable(TariExecutables::find_wallet()?)
             .with_args(args)
             .with_startup_timeout(Duration::from_secs(200))
-            .with_health_check(health_config)
-            .build()?;
+            .with_health_check(health_config);
+
+        for (k, v) in env_vars {
+            builder = builder.with_env_var(k, v);
+        }
+
+        let config = builder.build()?;
 
         Ok(ProcessLauncher::new(config))
     }
