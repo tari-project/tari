@@ -891,9 +891,27 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut refusals = 0;
         let (mut kernel_stream, mut peer_wait) = loop {
             let fetch_started = Instant::now();
-            match source.fetch_kernels(req.clone()).await {
-                Ok(stream) => break (stream, fetch_started.elapsed()),
-                Err(err) => self.retry_after_session_refusal(err, &mut refusals).await?,
+            let mut stream = match source.fetch_kernels(req.clone()).await {
+                Ok(stream) => stream,
+                Err(err) => {
+                    self.retry_after_session_refusal(err, &mut refusals).await?;
+                    continue;
+                },
+            };
+            if !self.session_may_be_busy {
+                break (stream, fetch_started.elapsed());
+            }
+            // A peer refuses a request for a busy session with the first stream item
+            match stream.next().await {
+                Some(Err(err)) if is_existing_session_refusal(&err) => {
+                    self.retry_after_session_refusal(err, &mut refusals).await?
+                },
+                first => {
+                    break (
+                        futures::stream::iter(first).chain(stream).boxed(),
+                        fetch_started.elapsed(),
+                    );
+                },
             }
         };
         self.session_may_be_busy = false;
@@ -1399,12 +1417,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                             sync_peer.node_id()
                         )))
                     })?;
-                match result {
-                    Ok(stream) => {
-                        self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
-                        break stream;
+                let mut stream = match result {
+                    Ok(stream) => stream,
+                    Err(err) => {
+                        self.retry_after_session_refusal(err, &mut refusals).await?;
+                        continue;
                     },
-                    Err(err) => self.retry_after_session_refusal(err, &mut refusals).await?,
+                };
+                if !self.session_may_be_busy {
+                    self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                    break stream;
+                }
+                // A peer refuses a request for a busy session with the first stream item
+                match stream.next().await {
+                    Some(Err(err)) if is_existing_session_refusal(&err) => {
+                        self.retry_after_session_refusal(err, &mut refusals).await?
+                    },
+                    first => {
+                        self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                        break futures::stream::iter(first).chain(stream).boxed();
+                    },
                 }
             };
             self.session_may_be_busy = false;
@@ -2391,6 +2423,9 @@ mod tests {
         item_delay: Duration,
         max_kernels: usize,
         extra_kernel: bool,
+        /// Tranche requests, and the number of first kernel requests, refused for a busy session
+        refused_requests: Vec<usize>,
+        refused_kernel_requests: usize,
     }
 
     impl DbTrancheSource {
@@ -2402,6 +2437,8 @@ mod tests {
                 item_delay: Duration::ZERO,
                 max_kernels: usize::MAX,
                 extra_kernel: false,
+                refused_requests: Vec::new(),
+                refused_kernel_requests: 0,
             }
         }
 
@@ -2438,6 +2475,9 @@ mod tests {
                 items.push(item.unwrap());
             }
             self.requests = self.requests.saturating_add(1);
+            if self.refused_requests.contains(&self.requests) {
+                return Ok(session_refusal());
+            }
             (self.edit)(self.requests, &mut items)?;
             let delay = self.item_delay;
             Ok(futures::stream::iter(items)
@@ -2453,6 +2493,10 @@ mod tests {
             &mut self,
             request: SyncKernelsRequest,
         ) -> Result<BoxStream<'static, Result<proto::types::TransactionKernel, RpcError>>, RpcError> {
+            if self.refused_kernel_requests > 0 {
+                self.refused_kernel_requests = self.refused_kernel_requests.saturating_sub(1);
+                return Ok(session_refusal());
+            }
             let start = self
                 .db
                 .fetch_header_containing_kernel_mmr(request.start)
@@ -2486,6 +2530,16 @@ mod tests {
     }
 
     /// A sync peer with a new random node id
+    /// A peer refuses a request for a busy session with the first item of the response stream
+    fn session_refusal<T: Send + 'static>() -> BoxStream<'static, Result<T, RpcError>> {
+        futures::stream::once(async {
+            Err(RpcError::RequestFailed(RpcStatus::forbidden(
+                "Existing sync session found for this client. Only a single session is permitted",
+            )))
+        })
+        .boxed()
+    }
+
     fn test_sync_peer() -> SyncPeer {
         let public_key = CommsPublicKey::from_secret_key(&CommsSecretKey::random(&mut rand::rng()));
         PeerChainMetadata::new(
@@ -3259,23 +3313,38 @@ mod tests {
                 .unwrap_err();
 
             // Request 1 is the resume, which fails on the poisoned state; the retry's first requests are refused
-            let mut busy = DbTrancheSource::new(
-                chain.db(),
-                Box::new(move |request, _| {
-                    if request > 1 && request <= 1 + refusals {
-                        return Err(RpcError::RequestFailed(RpcStatus::forbidden(
-                            "Existing sync session found for this client. Only a single session is permitted",
-                        )));
-                    }
-                    Ok(())
-                }),
-            );
+            let mut busy = DbTrancheSource::honest(chain.db());
+            busy.refused_requests = (2..=1 + refusals).collect();
             let result = sync
                 .sync_outputs_and_finalize(test_sync_peer(), &mut busy, &target)
                 .await;
             if refusals == 1 {
                 result.unwrap();
                 assert_eq!(busy.requests, 7, "the resume, one refusal, then all five from height 1");
+            } else {
+                let err = result.unwrap_err();
+                assert!(matches!(err, HorizonSyncError::SyncPeerUnavailable(_)), "{err}");
+                assert!(err.get_ban_reason().is_none());
+            }
+        }
+    }
+
+    /// Kernel sync against a peer that may still hold an earlier session asks again while the peer refuses, and gives
+    /// up without blame if the refusal persists
+    #[tokio::test]
+    async fn kernel_sync_waits_for_a_busy_session() {
+        for refusals in [1, 4] {
+            let (chain, db) = duplicate_output_sync_setup();
+            let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+            let mut peers = Vec::new();
+            let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+            sync.session_may_be_busy = true;
+            let mut source = DbTrancheSource::honest(chain.db());
+            source.refused_kernel_requests = refusals;
+            let result = sync.synchronize_kernels(test_sync_peer(), &mut source, &target).await;
+            if refusals == 1 {
+                result.unwrap();
+                assert_eq!(db.fetch_mmr_size(MmrTree::Kernel).unwrap(), target.kernel_mmr_size);
             } else {
                 let err = result.unwrap_err();
                 assert!(matches!(err, HorizonSyncError::SyncPeerUnavailable(_)), "{err}");
