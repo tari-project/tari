@@ -355,7 +355,8 @@ fn decode_new_block_template(
     error_prefix: &str,
 ) -> Result<NewBlockTemplate, Status> {
     if let Some(ref body) = request.body {
-        check_body_size(body, consensus_rules.consensus_constants(u64::MAX)).map_err(|e| {
+        let constants = consensus_rules.consensus_constants(u64::MAX);
+        check_body_size(body, constants, constants.max_block_coinbase_count(), 1).map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("{error_prefix}: {e}")),
@@ -385,7 +386,8 @@ fn decode_submit_block_request(
     report_error_flag: bool,
 ) -> Result<Block, Status> {
     if let Some(ref body) = request.body {
-        check_body_size(body, consensus_rules.consensus_constants(u64::MAX)).map_err(|e| {
+        let constants = consensus_rules.consensus_constants(u64::MAX);
+        check_body_size(body, constants, constants.max_block_coinbase_count(), 1).map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("Invalid block provided: {e}")),
@@ -418,15 +420,7 @@ fn decode_submit_transaction_request(
         .transaction
         .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?;
     if let Some(ref body) = grpc_tx.body {
-        check_body_element_counts(
-            body.inputs.len(),
-            body.outputs.len(),
-            body.kernels.len(),
-            consensus_constants,
-            0,
-            0,
-        )
-        .map_err(|e| {
+        check_body_size(body, consensus_constants, 0, 0).map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("Invalid transaction provided: {e}")),
@@ -469,24 +463,25 @@ fn decode_block_blob(
     trace!(target: LOG_TARGET, "doing header");
     let header: BlockHeader = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
     let constants = consensus_rules.consensus_constants(u64::MAX);
-    let max_coinbases = constants.max_block_coinbase_count();
+    let max_coinbase_outputs = constants.max_block_coinbase_count();
     trace!(target: LOG_TARGET, "doing body");
     let num_inputs = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
-    check_body_element_counts(num_inputs, 0, 0, constants, max_coinbases, 1).map_err(malformed)?;
+    check_body_element_counts(num_inputs, 0, 0, constants, max_coinbase_outputs, 1).map_err(malformed)?;
     let mut inputs = Vec::with_capacity(num_inputs);
     for _ in 0..num_inputs {
         inputs.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
     }
 
     let num_outputs = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
-    check_body_element_counts(num_inputs, num_outputs, 0, constants, max_coinbases, 1).map_err(malformed)?;
+    check_body_element_counts(num_inputs, num_outputs, 0, constants, max_coinbase_outputs, 1).map_err(malformed)?;
     let mut outputs = Vec::with_capacity(num_outputs);
     for _ in 0..num_outputs {
         outputs.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
     }
 
     let num_kernels = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
-    check_body_element_counts(num_inputs, num_outputs, num_kernels, constants, max_coinbases, 1).map_err(malformed)?;
+    check_body_element_counts(num_inputs, num_outputs, num_kernels, constants, max_coinbase_outputs, 1)
+        .map_err(malformed)?;
     let mut kernels = Vec::with_capacity(num_kernels);
     for _ in 0..num_kernels {
         kernels.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
@@ -4057,7 +4052,7 @@ mod test {
             err.message()
         );
 
-        // SubmitTransaction decode path
+        // SubmitTransaction decode path (also receives no coinbase allowance for outputs or kernels)
         let tx_req = tari_rpc::SubmitTransactionRequest {
             transaction: Some(tari_rpc::Transaction {
                 offset: vec![0u8; 32],
@@ -4074,10 +4069,42 @@ mod test {
             err.message()
         );
 
+        let params = constants.transaction_weight_params().params();
+        let over_tx_outputs = usize::try_from(max_weight / params.output_weight + 1).unwrap();
+        let tx_over_outputs_req = tari_rpc::SubmitTransactionRequest {
+            transaction: Some(tari_rpc::Transaction {
+                offset: vec![0u8; 32],
+                body: Some(tari_rpc::AggregateBody {
+                    inputs: vec![],
+                    outputs: vec![tari_rpc::TransactionOutput::default(); over_tx_outputs],
+                    kernels: vec![],
+                }),
+                script_offset: vec![0u8; 32],
+            }),
+        };
+        let err = decode_submit_transaction_request(tx_over_outputs_req, constants, true)
+            .expect_err("Transaction with no coinbase allowance must reject max_tx_outputs + 1");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
+        let over_tx_kernels = usize::try_from(max_weight / params.kernel_weight + 1).unwrap();
+        let tx_over_kernels_req = tari_rpc::SubmitTransactionRequest {
+            transaction: Some(tari_rpc::Transaction {
+                offset: vec![0u8; 32],
+                body: Some(tari_rpc::AggregateBody {
+                    inputs: vec![],
+                    outputs: vec![],
+                    kernels: vec![tari_rpc::TransactionKernel::default(); over_tx_kernels],
+                }),
+                script_offset: vec![0u8; 32],
+            }),
+        };
+        let err = decode_submit_transaction_request(tx_over_kernels_req, constants, true)
+            .expect_err("Transaction with no coinbase allowance must reject max_tx_kernels + 1");
+        assert_eq!(err.code(), tonic::Code::InvalidArgument);
+
         // SubmitBlockBlob decode path (oversized inputs, outputs, and kernels rejected before element decoding)
         let (header_blob, _) = to_blobs(&mainnet_genesis());
         let max_coinbases = constants.max_block_coinbase_count();
-        let params = constants.transaction_weight_params().params();
         let over_inputs_u32 = u32::try_from(over_inputs).unwrap();
         let over_outputs_u32 = u32::try_from(max_weight / params.output_weight + max_coinbases + 1).unwrap();
         let over_kernels_u32 = u32::try_from(max_weight / params.kernel_weight + 2).unwrap();
