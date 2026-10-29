@@ -19,7 +19,7 @@ tor-hash-passwd = "1.0.1"
 zeroize = "1"
 
 [target.'cfg(unix)'.dependencies]
-libtor = { version = "47.13.0", features = ["vendored-openssl"] }
+libtor = { package = "tari-libtor-core", version = "49.15.2", features = ["vendored-openssl"] }
 
 [package.metadata.cargo-machete]
 ignored = [

@@ -23,15 +23,23 @@
 #![allow(clippy::indexing_slicing)]
 use std::sync::Arc;
 
+use tari_common::configuration::Network;
 use tari_core::{
     base_node::state_machine_service::states::{BlockSync, StateEvent},
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
 };
 use tari_node_components::blocks::{Block, ChainBlock};
-use tari_transaction_components::aggregated_body::AggregateBody;
+use tari_transaction_components::{
+    aggregated_body::AggregateBody,
+    tari_amount::T,
+    test_helpers::schema_to_transaction,
+    txn_schema,
+};
+use tempfile::tempdir;
 
 use crate::helpers::{
     block_builders::create_coinbase,
+    nodes::{BaseNodeBuilder, random_node_identity, wait_until_online},
     sync,
     sync::{WhatToDelete, state_event},
 };
@@ -453,6 +461,85 @@ async fn test_block_sync_peer_supplies_a_body_that_does_not_match_the_header() {
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
     assert!(!alice_node.blockchain_db.bad_block_exists(*tip.hash()).unwrap().0);
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A peer serving the honest bodies with the coinbase moved is banned, and the honest header is not marked as a bad
+/// block: the MMR roots do not commit to where the coinbase sits among the other outputs, so only the sorting shows
+/// that the body is not the one that was mined.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_block_sync_peer_supplies_the_body_with_its_coinbase_moved() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    // Bob's tip spends the genesis coinbase, so it has outputs other than its coinbase
+    let schema = txn_schema!(from: vec![initial_coinbase.clone()], to: vec![1 * T; 5]);
+    let (txs, _) = schema_to_transaction(&[schema], &key_manager);
+    let mut txs_per_block = vec![vec![]; 5];
+    txs_per_block[4] = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect();
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &Some(txs_per_block),
+    );
+    let tip = &blocks[5];
+    assert!(tip.block().body.outputs().len() > 1);
+
+    // Mallory has Bob's chain and serves its bodies with the coinbase moved
+    let (mallory_node, _) = BaseNodeBuilder::new(Network::LocalNet.into())
+        .with_node_identity(random_node_identity())
+        .with_peers(vec![alice_node.node_identity.clone()])
+        .with_consensus_manager(consensus_manager.clone())
+        .with_coinbase_moved_in_synced_bodies()
+        .start(
+            tempdir().unwrap().keep().to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
+        .await;
+    wait_until_online(&[&mallory_node]).await;
+    sync::add_some_existing_blocks(&blocks[1..=5], &mallory_node);
+    assert_eq!(mallory_node.blockchain_db.get_height().unwrap(), 5);
+
+    // Alice syncs the honest headers from Bob, then the bodies from Mallory
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeadersSynchronized(..)), "{event:?}");
+    let mut block_sync = sync::initialize_sync_blocks(&mallory_node);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    assert!(matches!(event, StateEvent::BlockSyncFailed), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
+    assert!(!alice_node.blockchain_db.bad_block_exists(*tip.hash()).unwrap().0);
+    let mallory_id = mallory_node.node_identity.node_id();
+    assert!(sync::wait_for_is_peer_banned(&alice_node, mallory_id, 1).await);
+    let mallory = alice_node
+        .comms
+        .peer_manager()
+        .find_by_node_id(mallory_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        mallory.banned_reason.contains("Mismatched block body MMR roots"),
+        "{}",
+        mallory.banned_reason
+    );
+
+    // Bob serves the honest body
+    let mut block_sync = sync::initialize_sync_blocks(&bob_node);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+    assert_eq!(event, StateEvent::BlocksSynchronized);
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 5);
 }
 
 /// Alice's header tip is on a fork that came from Xavier. Bob claims a different tip and answers NotFound for the

@@ -101,6 +101,7 @@ use crate::helpers::{
         create_chain_header,
         create_coinbase,
         find_header_with_achieved_difficulty,
+        move_coinbase,
     },
     sample_blockchains::{consensus_constants, create_new_blockchain},
 };
@@ -1438,6 +1439,65 @@ async fn a_fetched_full_block_with_a_swapped_kernel_is_rejected_on_arrival_when_
     assert_banned_and_not_stored(&err, &store, h1.hash());
 }
 
+/// H1 with its coinbase moved out of its sorted place: the MMR roots still match the header, but the body is not the
+/// canonical one
+fn with_coinbase_moved(h1: &Block) -> Block {
+    let (header, inputs, mut outputs, kernels) = h1.clone().dissolve();
+    move_coinbase(&mut outputs);
+    Block::new(header, AggregateBody::new_unsorted(inputs, outputs, kernels))
+}
+
+/// A peer serving an honest block with its coinbase moved is banned on arrival and nothing is stored. The honest block
+/// is not marked bad, and is accepted afterwards.
+#[tokio::test]
+async fn a_fetched_full_block_with_its_coinbase_moved_is_rejected_on_arrival() {
+    let (store, rules, _, h0, h1) = honest_chain(false);
+    let mut handlers = new_handlers_serving(&store, new_mempool(), rules.clone(), with_coinbase_moved(&h1));
+    let err = handlers
+        .handle_new_block_message(announce_with_a_transaction(&h1), NodeId::default())
+        .await
+        .unwrap_err();
+    assert_banned_and_not_stored(&err, &store, h1.hash());
+
+    let mut handlers = new_handlers(&store, new_mempool(), rules);
+    handlers
+        .handle_block(h0.block().clone(), Some(NodeId::default()))
+        .await
+        .unwrap();
+    assert!(!store.bad_block_exists(h1.hash()).unwrap().0);
+    handlers
+        .handle_block(h1.clone(), Some(NodeId::default()))
+        .await
+        .unwrap();
+    assert_eq!(store.fetch_tip_header().unwrap().hash(), &h1.hash());
+}
+
+/// A held orphan with its coinbase moved fails when its parent arrives. Its body is not the canonical one, so it is not
+/// marked bad and the sender of the parent is not blamed, and the honest block is accepted afterwards.
+#[tokio::test]
+async fn a_held_orphan_with_its_coinbase_moved_is_not_marked_bad() {
+    let (store, _, _, h0, h1) = honest_chain(false);
+    let result = store.add_block(Arc::new(with_coinbase_moved(&h1))).unwrap().result;
+    assert!(matches!(result, BlockAddResult::OrphanBlock), "{result:?}");
+
+    let outcome = store.add_block(Arc::new(h0.block().clone())).unwrap();
+    let BlockAddResult::Ok(tip) = &outcome.result else {
+        panic!("H0 was not added: {}", outcome.result);
+    };
+    assert_eq!(tip.hash(), h0.hash());
+    assert_eq!(outcome.rejected.len(), 1);
+    assert_eq!(outcome.rejected[0].hash, h1.hash());
+    assert!(!outcome.rejected[0].body_verified);
+    assert!(!outcome.rejected[0].blame_sender);
+    assert!(!store.bad_block_exists(h1.hash()).unwrap().0);
+    assert!(!store.chain_block_or_orphan_block_exists(h1.hash()).unwrap());
+
+    let BlockAddResult::Ok(tip) = store.add_block(Arc::new(h1.clone())).unwrap().result else {
+        panic!("the honest H1 was not added");
+    };
+    assert_eq!(*tip.hash(), h1.hash());
+}
+
 /// An announcement without transactions is built from its own coinbase. A block with more than its coinbase can still
 /// be announced that way (when it has no kernel of its own), so then the full block is fetched: the honest block is
 /// accepted, and a peer that serves another body is banned and nothing is stored.
@@ -1602,6 +1662,68 @@ async fn body_matches_header_agrees_with_the_mmr_roots() {
     assert!(inputs_and_outputs_match_header(&tampered[0]).unwrap());
     assert!(!inputs_and_outputs_match_header(&tampered[1]).unwrap());
     assert!(!inputs_and_outputs_match_header(&tampered[2]).unwrap());
+}
+
+/// The MMR roots do not commit to where the coinbase sits among the other outputs, so a body with its coinbase moved
+/// matches them. Only the canonical body, with its inputs, outputs and kernels each sorted, matches the header.
+#[tokio::test]
+async fn only_the_sorted_body_matches_its_header() {
+    fn body_matches(store: &BlockchainDatabase<TempDatabase>, block: &Block) -> bool {
+        let db = store.db_read_access().unwrap();
+        body_matches_header(&*db, block).unwrap()
+    }
+
+    let network = Network::LocalNet;
+    let (store, blocks, outputs, rules, key_manager) = create_new_blockchain(network);
+    let schema = txn_schema!(from: vec![outputs[0][0].clone()], to: vec![T, T]);
+    let (txs1, tx1_outputs) = schema_to_transaction(&[schema], &key_manager);
+    let schema = txn_schema!(from: vec![tx1_outputs[0].clone()], to: vec![MicroMinotari::from(5_000)]);
+    let (txs2, _) = schema_to_transaction(&[schema], &key_manager);
+    let block = prepare_block(
+        &store,
+        &blocks[0],
+        vec![(*txs1[0]).clone(), (*txs2[0]).clone()],
+        &rules,
+        &key_manager,
+    );
+    assert!(body_matches(&store, &block));
+    assert!(inputs_and_outputs_match_header(&block).unwrap());
+
+    let (header, inputs, outputs, kernels) = block.clone().dissolve();
+    assert!(inputs.len() >= 2 && kernels.len() >= 2);
+    let with_body =
+        |inputs: Vec<TransactionInput>, outputs: Vec<TransactionOutput>, kernels: Vec<TransactionKernel>| {
+            Block::new(
+                header.clone(),
+                AggregateBody::new_sorted_unchecked(inputs, outputs, kernels),
+            )
+        };
+
+    // The coinbase moved: the roots match
+    let moved = with_coinbase_moved(&block);
+    let (_, roots) = store
+        .calculate_mmr_roots(with_body(
+            moved.body.inputs().clone(),
+            moved.body.outputs().clone(),
+            moved.body.kernels().clone(),
+        ))
+        .unwrap();
+    assert_eq!(roots.input_mr, header.input_mr);
+    assert_eq!(roots.block_output_mr, header.block_output_mr);
+    assert_eq!(roots.kernel_mr, header.kernel_mr);
+    let mut reversed_inputs = inputs.clone();
+    reversed_inputs.reverse();
+    let mut reversed_kernels = kernels.clone();
+    reversed_kernels.reverse();
+    let unsorted = [
+        moved,
+        with_body(reversed_inputs, outputs.clone(), kernels),
+        with_body(inputs, outputs, reversed_kernels),
+    ];
+    for (i, block) in unsorted.iter().enumerate() {
+        assert!(!body_matches(&store, block), "case {i}");
+        assert!(!inputs_and_outputs_match_header(block).unwrap(), "case {i}");
+    }
 }
 
 /// A chain of `count` held orphans on `parent`, each with a coinbase-like output of its own. Written straight to the
