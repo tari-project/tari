@@ -219,7 +219,7 @@ services:
     image: ghcr.io/tari-project/minotari_node:latest-nextnet
     restart: unless-stopped
     volumes:
-      - ./data:/var/tari
+      - ./data/node:/var/tari/node
     # Required for an interactive session
     stdin_open: true
     tty: true
@@ -229,11 +229,24 @@ services:
       - "18189:18189"
 ```
 
-The image runs with `/var/tari` as the Tari home directory. Mounting the host `./data` directory there persists the
-node base path (`/var/tari/node`) and config path (`/var/tari/config/config.toml`).
+The image runs with `/var/tari` as the Tari home directory. Mounting per application (`./data/node:/var/tari/node`)
+ensures application files and identity key stores remain isolated under the node base path. If custom configuration
+is needed, a config file can also be mounted at `/var/tari/config/config.toml`, or configuration overrides can be passed
+directly via command arguments (for example, `-p base_node.grpc_address=/ip4/0.0.0.0/tcp/18142`).
 
 Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default, so
-publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0`.
+publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0` (`/ip4/0.0.0.0/tcp/18142`).
+
+On Linux, create the host directory before running `docker compose up` so Docker does not create it owned by `root`.
+The container runs as uid 1000, so the directory must be writable by that uid:
+
+```sh
+mkdir -p ./data/node
+# only needed if your user is not uid 1000, or Docker already created the directory as root
+sudo chown -R 1000:1000 ./data/node
+```
+
+Docker Desktop on macOS and Windows maps file ownership automatically, so these steps are not needed there.
 
 Start the service with `docker compose up -d` and check it with `docker compose ps`. To reach the console, find the
 container ID with `docker ps` and run `docker attach <container-id>`.
