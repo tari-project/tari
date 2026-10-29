@@ -1207,6 +1207,14 @@ impl LMDBDatabase {
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
+                PruneOutputCopy {
+                    header_hash,
+                    output_hash,
+                    commitment,
+                    output_type,
+                } => {
+                    self.prune_output_copy(&write_txn, header_hash, output_hash, commitment, *output_type)?;
+                },
                 DeleteUtxoCommitmentIndexEntry { commitment } => {
                     lmdb_delete(
                         &write_txn,
@@ -2807,6 +2815,39 @@ impl LMDBDatabase {
         }
 
         Ok(())
+    }
+
+    /// Prunes the row of an output stored under `header_hash` and the index entries for that row. The commitment
+    /// index is only cleared if it points at this output; copies under other blocks are left alone.
+    fn prune_output_copy(
+        &self,
+        write_txn: &WriteTransaction<'_>,
+        header_hash: &HashOutput,
+        output_hash: &HashOutput,
+        commitment: &CompressedCommitment,
+        output_type: OutputType,
+    ) -> Result<(), ChainStorageError> {
+        if !matches!(output_type, OutputType::Burn) &&
+            lmdb_get::<_, HashOutput>(write_txn, &self.utxo_commitment_index, commitment.as_bytes())?.as_ref() ==
+                Some(output_hash)
+        {
+            lmdb_delete(
+                write_txn,
+                &self.utxo_commitment_index,
+                commitment.as_bytes(),
+                "utxo_commitment_index",
+            )?;
+        }
+        let key = OutputKey::new(header_hash, output_hash)?;
+        lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
+        self.delete_payref_index_entry(write_txn, header_hash, output_hash)?;
+        self.remove_index_entry_for_header(
+            write_txn,
+            &self.txos_hash_to_index_db,
+            output_hash.as_slice(),
+            header_hash,
+            "txos_hash_to_index_db",
+        )
     }
 
     fn apply_horizon_state_tree_updates(

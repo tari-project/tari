@@ -337,6 +337,23 @@ impl DbTransaction {
         self
     }
 
+    /// Prunes the copy of an output stored under one block, leaving copies under other blocks. Only for horizon sync.
+    pub(crate) fn prune_output_copy(
+        &mut self,
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+        commitment: CompressedCommitment,
+        output_type: OutputType,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputCopy {
+            header_hash,
+            output_hash,
+            commitment,
+            output_type,
+        });
+        self
+    }
+
     /// Removes an output's commitment index entry and leaves its row, as spending it does. Only for horizon sync,
     /// which restores the genesis outputs the genesis block spends itself.
     pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
@@ -464,6 +481,12 @@ pub enum WriteOperation {
     ClearHorizonSyncOutputState,
     DeleteUtxoCommitmentIndexEntry {
         commitment: CompressedCommitment,
+    },
+    PruneOutputCopy {
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+        commitment: CompressedCommitment,
+        output_type: OutputType,
     },
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
@@ -637,6 +660,11 @@ impl fmt::Display for WriteOperation {
             DeleteUtxoCommitmentIndexEntry { commitment } => {
                 write!(f, "Delete commitment index entry {}", commitment.to_hex())
             },
+            PruneOutputCopy {
+                header_hash,
+                output_hash,
+                ..
+            } => write!(f, "Prune output {output_hash} stored under block {header_hash}"),
             SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,

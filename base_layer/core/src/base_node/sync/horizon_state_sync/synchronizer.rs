@@ -592,7 +592,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let outputs = self.db.fetch_outputs_in_block(current_header.hash()).await?;
             let mut state_tree_updates = Vec::new();
             for (count, output) in (1..=outputs.len()).zip(outputs.iter()) {
-                txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+                txn.prune_output_copy(
+                    current_header.hash(),
+                    output.hash(),
+                    output.commitment.clone(),
+                    output.features.output_type,
+                );
                 if !output.is_burned() {
                     let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
                     state_tree_updates.push(HorizonStateTreeUpdate {
@@ -625,8 +630,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let genesis_header_hash = *genesis_block.hash();
         let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
         let spent = genesis_spent_output_hashes(&genesis_block);
+        // Cleared in its own write. If the restore below does not happen, the empty state is not the genesis state, so
+        // the next attempt, which starts from height 1 as there is no checkpoint, resets again.
+        self.db
+            .write_transaction()
+            .clear_horizon_sync_output_state()
+            .commit()
+            .await?;
         let mut txn = self.db.write_transaction();
-        txn.clear_horizon_sync_output_state();
         let mut state_tree_updates = Vec::new();
         for output in genesis_block.block().body.outputs() {
             txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
@@ -1013,7 +1024,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         commitment_bytes: &[u8],
         tranche_start_height: u64,
         state_tree_updates: &mut BTreeMap<FixedHash, Option<FixedHash>>,
-        inputs_to_delete: &mut Vec<(FixedHash, CompressedCommitment, OutputType)>,
+        inputs_to_delete: &mut Vec<(FixedHash, FixedHash, CompressedCommitment, OutputType)>,
     ) -> Result<(), HorizonSyncError> {
         let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes)?;
         let key_bytes: [u8; 32] = commitment_bytes
@@ -1043,8 +1054,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 HorizonSyncError::UnknownSpentOutput("Could not fetch full output for spent commitment".into())
             })?;
         state_tree_updates.insert(key, None);
-        // Only what pruning the output needs is kept until the tranche is applied
+        // Only what pruning this copy of the output needs is kept until the tranche is applied
         inputs_to_delete.push((
+            output_info.header_hash,
             output_hash,
             output_info.output.commitment,
             output_info.output.features.output_type,
@@ -1634,7 +1646,7 @@ fn is_unspent_genesis_output(output: &TransactionOutput, spent: &BTreeSet<FixedH
 /// commitment again, so that they all land in one write.
 fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
     state_tree_updates: BTreeMap<FixedHash, Option<FixedHash>>,
-    inputs_to_delete: Vec<(FixedHash, CompressedCommitment, OutputType)>,
+    inputs_to_delete: Vec<(FixedHash, FixedHash, CompressedCommitment, OutputType)>,
     recreated_outputs: Vec<(TransactionOutput, FixedHash, u64, u64)>,
     txn: &mut AsyncDbTransaction<'_, B>,
 ) {
@@ -1655,8 +1667,8 @@ fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
     // the set in full block processing either (it is only allowed once the exit has taken effect). Note that
     // horizon sync does not reconstruct the validator node set at all (pre-existing gap): a pruned node that
     // horizon synced has an empty validator node set.
-    for (output_hash, commitment, output_type) in inputs_to_delete {
-        txn.prune_output_from_all_dbs(output_hash, commitment, output_type);
+    for (header_hash, output_hash, commitment, output_type) in inputs_to_delete {
+        txn.prune_output_copy(header_hash, output_hash, commitment, output_type);
     }
     for (output, header_hash, height, timestamp) in recreated_outputs {
         txn.insert_output_via_horizon_sync(output, header_hash, height, timestamp);
@@ -1845,35 +1857,6 @@ mod tests {
         let sync = build_synchronizer(db, &mut peers, target.height);
 
         assert_eq!(sync.calculate_output_sync_start(&target).await.unwrap(), 1);
-        assert!(db_clone.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn failed_clean_up_commit_errors_and_clears_checkpoint() {
-        let db = create_new_blockchain();
-        let (_, chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
-        let output = db.fetch_outputs_in_block(*chain.get("2").unwrap().hash()).unwrap()[0].clone();
-
-        // Removing only the commitment index entry of a block 2 output makes the commit that prunes it fail
-        let mut txn = DbTransaction::new();
-        txn.prune_output_from_all_dbs(
-            FixedHash::zero(),
-            output.commitment.clone(),
-            output.features.output_type,
-        );
-        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
-            checkpoint_height: 1,
-            checkpoint_hash: *chain.get("1").unwrap().hash(),
-            sync_target_height: 3,
-            sync_target_hash: *chain.get("3").unwrap().hash(),
-        });
-        db.write(txn).unwrap();
-
-        let db_clone = db.clone();
-        let mut peers: Vec<SyncPeer> = vec![];
-        let mut sync = build_synchronizer(db, &mut peers, 3);
-
-        assert!(sync.clean_up_stale_synced_outputs(2).await.is_err());
         assert!(db_clone.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
     }
 
@@ -3391,5 +3374,57 @@ mod tests {
     #[tokio::test]
     async fn genesis_with_inputs_syncs_from_pruned_peer() {
         sync_esmeralda_chain(true).await;
+    }
+
+    /// A node holding a genesis output's row, not indexed as if the genesis block spent it, plus an identical copy of
+    /// it stored under block "2"
+    fn genesis_row_with_later_copy() -> (TestBlockchain, BlockchainDatabase<TempDatabase>, TransactionOutput) {
+        let (chain, genesis_output) = genesis_spend_chain();
+        let db = headers_only_db(&chain, &["1", "2", "3"]);
+        let block_two = chain.get_block_and_smt_by_name("2").unwrap().header().clone();
+        let mut txn = DbTransaction::new();
+        txn.delete_utxo_commitment_index_entry(genesis_output.commitment.clone());
+        txn.insert_utxo(genesis_output.clone(), block_two.hash(), block_two.height, 0);
+        db.write(txn).unwrap();
+        assert_eq!(db.fetch_outputs(genesis_output.hash()).unwrap().len(), 2);
+        (chain, db, genesis_output)
+    }
+
+    fn assert_only_genesis_row_left(db: &BlockchainDatabase<TempDatabase>, output: &TransactionOutput) {
+        let rows = db.fetch_outputs(output.hash()).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].mined_height, 0);
+        assert!(
+            db.fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    /// Cleaning up a block removes only the copies of outputs stored under that block
+    #[tokio::test]
+    async fn clean_up_keeps_copy_of_output_under_other_block() {
+        let (_chain, db, genesis_output) = genesis_row_with_later_copy();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, 3);
+        sync.clean_up_stale_synced_outputs(2).await.unwrap();
+        assert_only_genesis_row_left(&db, &genesis_output);
+    }
+
+    /// A spend removes only the copy it spends
+    #[tokio::test]
+    async fn spend_keeps_copy_of_output_under_other_block() {
+        let (_chain, db, genesis_output) = genesis_row_with_later_copy();
+        let mut peers = Vec::new();
+        let sync = build_synchronizer(db.clone(), &mut peers, 3);
+        let mut txn = sync.db().write_transaction();
+        let mut updates = BTreeMap::new();
+        let mut deletes = Vec::new();
+        sync.queue_horizon_spend(genesis_output.commitment.as_bytes(), 3, &mut updates, &mut deletes)
+            .await
+            .unwrap();
+        apply_tranche_output_updates(updates, deletes, Vec::new(), &mut txn);
+        txn.commit().await.unwrap();
+        assert_only_genesis_row_left(&db, &genesis_output);
     }
 }
