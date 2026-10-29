@@ -418,7 +418,15 @@ fn decode_submit_transaction_request(
         .transaction
         .ok_or_else(|| obscure_error_if_true(report_error_flag, Status::invalid_argument("Transaction is empty")))?;
     if let Some(ref body) = grpc_tx.body {
-        check_body_size(body, consensus_constants).map_err(|e| {
+        check_body_element_counts(
+            body.inputs.len(),
+            body.outputs.len(),
+            body.kernels.len(),
+            consensus_constants,
+            0,
+            0,
+        )
+        .map_err(|e| {
             obscure_error_if_true(
                 report_error_flag,
                 Status::invalid_argument(format!("Invalid transaction provided: {e}")),
@@ -461,23 +469,24 @@ fn decode_block_blob(
     trace!(target: LOG_TARGET, "doing header");
     let header: BlockHeader = BorshDeserialize::deserialize(&mut header_bytes).map_err(|e| malformed(e.to_string()))?;
     let constants = consensus_rules.consensus_constants(u64::MAX);
+    let max_coinbases = constants.max_block_coinbase_count();
     trace!(target: LOG_TARGET, "doing body");
     let num_inputs = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
-    check_body_element_counts(num_inputs, 0, 0, constants).map_err(malformed)?;
+    check_body_element_counts(num_inputs, 0, 0, constants, max_coinbases, 1).map_err(malformed)?;
     let mut inputs = Vec::with_capacity(num_inputs);
     for _ in 0..num_inputs {
         inputs.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
     }
 
     let num_outputs = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
-    check_body_element_counts(num_inputs, num_outputs, 0, constants).map_err(malformed)?;
+    check_body_element_counts(num_inputs, num_outputs, 0, constants, max_coinbases, 1).map_err(malformed)?;
     let mut outputs = Vec::with_capacity(num_outputs);
     for _ in 0..num_outputs {
         outputs.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
     }
 
     let num_kernels = u32::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))? as usize;
-    check_body_element_counts(num_inputs, num_outputs, num_kernels, constants).map_err(malformed)?;
+    check_body_element_counts(num_inputs, num_outputs, num_kernels, constants, max_coinbases, 1).map_err(malformed)?;
     let mut kernels = Vec::with_capacity(num_kernels);
     for _ in 0..num_kernels {
         kernels.push(BorshDeserialize::deserialize(&mut body_bytes).map_err(|e| malformed(e.to_string()))?);
@@ -4071,7 +4080,7 @@ mod test {
         let params = constants.transaction_weight_params().params();
         let over_inputs_u32 = u32::try_from(over_inputs).unwrap();
         let over_outputs_u32 = u32::try_from(max_weight / params.output_weight + max_coinbases + 1).unwrap();
-        let over_kernels_u32 = u32::try_from(max_weight / params.kernel_weight + max_coinbases + 1).unwrap();
+        let over_kernels_u32 = u32::try_from(max_weight / params.kernel_weight + 2).unwrap();
 
         let body_blob_inputs = over_inputs_u32.to_le_bytes();
         let err = decode_block_blob(&header_blob, &body_blob_inputs, &consensus, true)

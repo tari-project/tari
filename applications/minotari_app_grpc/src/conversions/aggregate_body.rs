@@ -28,37 +28,41 @@ use tari_utilities::convert::try_convert_all;
 
 use crate::{conversions::transaction_output::grpc_output_with_payref, tari_rpc as grpc};
 
-/// Checks that the input, output and kernel counts of a gRPC `AggregateBody` can fit within the network's
-/// `max_block_transaction_weight` under `transaction_weight_params()`, allowing up to `max_block_coinbase_count()`
-/// coinbase outputs and kernels, without iterating any of the element vectors.
+/// Checks that the input, output and kernel counts of a block or block-template gRPC `AggregateBody` can fit within
+/// the network's `max_block_transaction_weight` under `transaction_weight_params()`, allowing up to
+/// `max_block_coinbase_count()` coinbase outputs and 1 coinbase kernel, without iterating any of the element vectors.
 pub fn check_body_size(body: &grpc::AggregateBody, consensus_constants: &ConsensusConstants) -> Result<(), String> {
     check_body_element_counts(
         body.inputs.len(),
         body.outputs.len(),
         body.kernels.len(),
         consensus_constants,
+        consensus_constants.max_block_coinbase_count(),
+        1,
     )
 }
 
 /// Checks that `(num_inputs, num_outputs, num_kernels)` can fit within `consensus_constants`'s
-/// `max_block_transaction_weight` under `transaction_weight_params()`, allowing up to `max_block_coinbase_count()`
-/// coinbase outputs and kernels.
+/// `max_block_transaction_weight` under `transaction_weight_params()`, subtracting up to `max_coinbase_outputs`
+/// outputs and `max_coinbase_kernels` kernels (`max_block_coinbase_count()` and `1` for blocks/templates, or `0` and
+/// `0` for transactions).
 pub fn check_body_element_counts(
     num_inputs: usize,
     num_outputs: usize,
     num_kernels: usize,
     consensus_constants: &ConsensusConstants,
+    max_coinbase_outputs: u64,
+    max_coinbase_kernels: u64,
 ) -> Result<(), String> {
     let max_weight = consensus_constants.max_block_transaction_weight();
-    let max_coinbases = consensus_constants.max_block_coinbase_count();
     let params = consensus_constants.transaction_weight_params().params();
 
     let num_inputs_u64 = u64::try_from(num_inputs).map_err(|_| "Body input count overflowed u64".to_string())?;
     let num_outputs_u64 = u64::try_from(num_outputs).map_err(|_| "Body output count overflowed u64".to_string())?;
     let num_kernels_u64 = u64::try_from(num_kernels).map_err(|_| "Body kernel count overflowed u64".to_string())?;
 
-    let non_coinbase_outputs = num_outputs_u64.saturating_sub(max_coinbases);
-    let non_coinbase_kernels = num_kernels_u64.saturating_sub(max_coinbases);
+    let non_coinbase_outputs = num_outputs_u64.saturating_sub(max_coinbase_outputs);
+    let non_coinbase_kernels = num_kernels_u64.saturating_sub(max_coinbase_kernels);
 
     let input_weight = params
         .input_weight
@@ -138,7 +142,7 @@ mod test {
 
         let max_inputs = usize::try_from(max_weight / params.input_weight).unwrap();
         let max_outputs = usize::try_from(max_weight / params.output_weight + max_coinbases).unwrap();
-        let max_kernels = usize::try_from(max_weight / params.kernel_weight + max_coinbases).unwrap();
+        let max_kernels = usize::try_from(max_weight / params.kernel_weight + 1).unwrap();
 
         let at_input_limit = grpc::AggregateBody {
             inputs: vec![grpc::TransactionInput::default(); max_inputs],
@@ -181,5 +185,13 @@ mod test {
             kernels: vec![grpc::TransactionKernel::default(); max_kernels + 1],
         };
         assert!(check_body_size(&over_kernel_limit, &constants).is_err());
+
+        // Transactions get no coinbase allowance (0 outputs, 0 kernels).
+        let tx_max_outputs = usize::try_from(max_weight / params.output_weight).unwrap();
+        let tx_max_kernels = usize::try_from(max_weight / params.kernel_weight).unwrap();
+        assert!(check_body_element_counts(0, tx_max_outputs, 0, &constants, 0, 0).is_ok());
+        assert!(check_body_element_counts(0, tx_max_outputs + 1, 0, &constants, 0, 0).is_err());
+        assert!(check_body_element_counts(0, 0, tx_max_kernels, &constants, 0, 0).is_ok());
+        assert!(check_body_element_counts(0, 0, tx_max_kernels + 1, &constants, 0, 0).is_err());
     }
 }
