@@ -705,6 +705,22 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(true)
     }
 
+    /// The number of unspent outputs stored, from the commitment index
+    async fn stored_unspent_output_count(&self) -> Result<u64, HorizonSyncError> {
+        let stats = self.db.get_stats().await?;
+        let entries = stats
+            .db_stats()
+            .iter()
+            .find(|stat| stat.name == "utxo_commitment_index")
+            .map(|stat| stat.entries)
+            .ok_or_else(|| ChainStorageError::ValueNotFound {
+                entity: "Database",
+                field: "name",
+                value: "utxo_commitment_index".to_string(),
+            })?;
+        Ok(u64::try_from(entries).unwrap_or(u64::MAX))
+    }
+
     async fn prune_if_needed(&mut self) -> Result<(), HorizonSyncError> {
         let local_metadata = self.db.get_chain_metadata().await?;
         let new_prune_height = cmp::min(local_metadata.best_block_height(), self.horizon_sync_height);
@@ -1141,6 +1157,19 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 } else {
                     0
                 });
+            // An honest tranche holds no more outputs than the output tree has leaves at its end block, and no more
+            // spends than the unspent outputs stored before it
+            let max_outputs = tranche_end_header.output_smt_size;
+            let max_spends = self
+                .stored_unspent_output_count()
+                .await?
+                .saturating_add(if tranche_start_height == 1 {
+                    genesis_output_count
+                } else {
+                    0
+                });
+            let mut outputs_received = 0u64;
+            let mut spends_received = 0u64;
             let mut previous_height = tranche_start_height;
             let mut current_header_hash = tranche_start_header.hash();
             let mut current_header = self
@@ -1212,6 +1241,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                 match proto_output {
                     Txo::Output(output) => {
+                        outputs_received = outputs_received.saturating_add(1);
+                        if outputs_received > max_outputs {
+                            return Err(HorizonSyncError::IncorrectResponse(format!(
+                                "Peer sent more than {max_outputs} outputs for tranche \
+                                 {tranche_start_height}-{tranche_end_height}"
+                            )));
+                        }
                         let output = TransactionOutput::try_from(output)
                             .map_err(|e| HorizonSyncError::ConversionError(e.to_string()))?;
                         // Burned outputs are never streamed
@@ -1245,6 +1281,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         }
                     },
                     Txo::Commitment(commitment_bytes) => {
+                        spends_received = spends_received.saturating_add(1);
+                        // Each spend must match a stored output, which a resumed attempt's state may lack
+                        if spends_received > max_spends {
+                            return Err(HorizonSyncError::UnknownSpentOutput(format!(
+                                "Peer sent more than {max_spends} spends for tranche \
+                                 {tranche_start_height}-{tranche_end_height}"
+                            )));
+                        }
                         stxo_counter = stxo_counter.saturating_add(1);
                         self.queue_horizon_spend(
                             &commitment_bytes,
@@ -2213,28 +2257,31 @@ mod tests {
         let mut planting = DbTrancheSource::new(
             chain.db(),
             Box::new(move |request, items| {
-                if request == 2 {
+                if request == 4 {
                     return Err(RpcError::ClientClosed);
                 }
-                let mined_header = items.last().unwrap().mined_header.clone();
-                items.insert(0, SyncUtxosResponse {
-                    txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
-                    mined_header,
-                });
+                // Tranche 3 has room for an extra output: its end block's leaf count includes block "1"'s outputs
+                if request == 3 {
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    items.insert(0, SyncUtxosResponse {
+                        txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
+                        mined_header,
+                    });
+                }
                 Ok(())
             }),
         );
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut planting, &target)
             .await
             .unwrap_err();
-        assert_eq!(checkpoint_height(&db), Some(1));
+        assert_eq!(checkpoint_height(&db), Some(3));
 
         // The resume fails at the colliding tranche, then the same peer finishes the sync from height 1
         let mut honest = DbTrancheSource::honest(chain.db());
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
             .await
             .unwrap();
-        assert_eq!(honest.requests, 9, "four resumed tranches, then all five from height 1");
+        assert_eq!(honest.requests, 7, "two resumed tranches, then all five from height 1");
         assert_eq!(checkpoint_height(&db), None);
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
@@ -2453,6 +2500,76 @@ mod tests {
         assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
         assert_eq!(honest.requests, 2);
+    }
+
+    /// A tranche with more outputs than the output tree has leaves at its end block is banned
+    #[tokio::test]
+    async fn tranche_with_more_outputs_than_end_block_holds_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        // Block "A" (height 1) holds one unspent output at its end
+        assert_eq!(
+            chain.get_block_and_smt_by_name("A").unwrap().header().output_smt_size,
+            1
+        );
+        let extra = block_one_coinbase(&chain);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 1 {
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    items.insert(0, SyncUtxosResponse {
+                        txo: Some(Txo::Output(extra.clone().try_into().unwrap())),
+                        mined_header,
+                    });
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert!(err.to_string().contains("outputs for tranche"), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+    }
+
+    /// A tranche with more spends than there are stored unspent outputs is banned
+    #[tokio::test]
+    async fn tranche_with_more_spends_than_stored_outputs_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        // Only the coinbase of block "A" is stored when block "1" (height 2) is streamed, and block "1" spends it
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(|request, items| {
+                if request == 2 {
+                    let terminator = items.pop().unwrap();
+                    items.push(SyncUtxosResponse {
+                        txo: Some(Txo::Commitment(vec![1u8; 32])),
+                        mined_header: terminator.mined_header.clone(),
+                    });
+                    items.push(terminator);
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::UnknownSpentOutput(_)), "{err}");
+        assert!(err.to_string().contains("spends for tranche"), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
     }
 
     /// The honest per-block bound covers every non-coinbase output and input a block's weight allows, plus the
@@ -2881,6 +2998,7 @@ mod tests {
             .get_genesis_block();
         let mut block = genesis.block().clone();
         block.body.add_output(output.clone());
+        block.header.output_smt_size = 1;
         let mock_store = MockTreeStore::new(true);
         let (root, _) = JellyfishMerkleTree::<_, SmtHasher>::new(&mock_store)
             .put_value_set(
