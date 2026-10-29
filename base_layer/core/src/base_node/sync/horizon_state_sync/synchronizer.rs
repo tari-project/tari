@@ -124,8 +124,6 @@ pub struct HorizonStateSynchronization<'a, B> {
     peer_ban_manager: PeerBanManager,
     tranche_size: u64,
     max_items_per_block: u64,
-    /// The peer whose resume from the checkpoint at (height, hash) failed on the local state
-    failed_resume: Option<(NodeId, u64, FixedHash)>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -158,7 +156,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             peer_ban_manager,
             tranche_size: HORIZON_SYNC_TRANCHE_SIZE,
             max_items_per_block,
-            failed_resume: None,
         }
     }
 
@@ -503,39 +500,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Err(err);
         }
         // The outputs an earlier attempt committed may be what the peer's data does not fit, so the peer is not
-        // blamed. The checkpoint is only discarded once a second peer fails on it, so that one peer cannot force a
-        // restart from height 1.
-        let Some(checkpoint) = self.db.fetch_horizon_sync_output_checkpoint().await? else {
-            // The last tranche already cleared the checkpoint, so the next attempt starts from height 1
-            return Err(HorizonSyncError::ResumedOutputSyncFailed(err.to_string()));
-        };
-        let node_id = sync_peer.node_id().clone();
-        match self.failed_resume.take() {
-            Some((other, height, hash))
-                if other != node_id && height == checkpoint.checkpoint_height && hash == checkpoint.checkpoint_hash =>
-            {
-                warn!(
-                    target: LOG_TARGET,
-                    "Resuming from the checkpoint at height {height} failed with two peers: {err}. Discarding \
-                     checkpoint and retrying from height 1."
-                );
-                self.db
-                    .write_transaction()
-                    .clear_horizon_sync_output_checkpoint()
-                    .commit()
-                    .await?;
-                self.attempt_outputs_and_finalize(sync_peer, source, to_header, 1).await
-            },
-            _ => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Resuming from the checkpoint at height {} failed: {err}. Keeping checkpoint.",
-                    checkpoint.checkpoint_height
-                );
-                self.failed_resume = Some((node_id, checkpoint.checkpoint_height, checkpoint.checkpoint_hash));
-                Err(HorizonSyncError::ResumedOutputSyncFailed(err.to_string()))
-            },
-        }
+        // blamed and is retried once from height 1
+        warn!(
+            target: LOG_TARGET,
+            "Output sync resumed at height {start_height} failed: {err}. Discarding checkpoint and retrying from height 1."
+        );
+        self.db
+            .write_transaction()
+            .clear_horizon_sync_output_checkpoint()
+            .commit()
+            .await?;
+        self.attempt_outputs_and_finalize(sync_peer, source, to_header, 1).await
     }
 
     async fn attempt_outputs_and_finalize<S: UtxoTrancheSource>(
@@ -553,8 +528,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Ok(()) => self.finalize_horizon_sync(&sync_peer, to_header).await,
             Err(err) => Err(err),
         };
-        if result.is_ok() {
+        let Err(err) = result else {
             return Ok(());
+        };
+        // The caller retries this from height 1, which resets the output state
+        if start_height > 1 && err.may_be_caused_by_resumed_state() {
+            return Err(err);
         }
         // Undo everything above the checkpoint, or everything when there is none
         let clean_up = match self.db.fetch_horizon_sync_output_checkpoint().await? {
@@ -568,7 +547,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             warn!(target: LOG_TARGET, "Failed to clean up after failed output sync: {}", e);
         }
         debug!(target: LOG_TARGET, "Finished clearing failed output sync");
-        result
+        Err(err)
     }
 
     /// Removes the outputs synced into blocks from `start_height` up. If this fails part way, the checkpoint is
@@ -2164,8 +2143,7 @@ mod tests {
     }
 
     /// A peer that leaves out an output spent in a later tranche and then drops the connection leaves a checkpoint
-    /// that honest peers' spends do not fit. No peer is blamed, and once two peers fail on it the second one finishes
-    /// the sync from height 1.
+    /// that an honest peer's spends do not fit. The honest peer is not blamed and finishes the sync from height 1.
     #[tokio::test]
     async fn poisoned_checkpoint_resume_restarts_without_ban() {
         let (chain, db) = duplicate_output_sync_setup();
@@ -2200,30 +2178,19 @@ mod tests {
         assert!(matches!(err, HorizonSyncError::RpcError(_)), "{err}");
         assert_eq!(checkpoint_height(&db), Some(1));
 
-        // The first peer's resume fails on the poisoned state. It is not banned or retried, and the checkpoint stays.
-        let mut first = DbTrancheSource::honest(chain.db());
-        let err = sync
-            .sync_outputs_and_finalize(test_sync_peer(), &mut first, &target)
-            .await
-            .unwrap_err();
-        assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
-        assert!(err.get_ban_reason().is_none());
-        assert_eq!(first.requests, 1);
-        assert_eq!(checkpoint_height(&db), Some(1));
-
-        // A second peer's resume fails too, so the checkpoint is discarded and that peer syncs from height 1
-        let mut second = DbTrancheSource::honest(chain.db());
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut second, &target)
+        // The resume fails on the poisoned state, then the same peer finishes the sync from height 1
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
             .await
             .unwrap();
-        assert_eq!(second.requests, 6, "one resumed tranche, then all five from height 1");
+        assert_eq!(honest.requests, 6, "one resumed tranche, then all five from height 1");
         assert_eq!(checkpoint_height(&db), None);
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), target.height);
     }
 
     /// A peer that plants a later block's output in an early tranche and then drops the connection leaves state
-    /// that honest peers' copies of that output collide with. No peer is blamed, and the second one finishes the sync
+    /// that an honest peer's copy of that output collides with. The honest peer is not blamed and finishes the sync
     /// from height 1.
     #[tokio::test]
     async fn planted_output_resume_restarts_without_ban() {
@@ -2262,20 +2229,12 @@ mod tests {
             .unwrap_err();
         assert_eq!(checkpoint_height(&db), Some(1));
 
-        // Two peers' resumes fail at the colliding tranche, then the second peer finishes the sync from height 1
-        let mut first = DbTrancheSource::honest(chain.db());
-        let err = sync
-            .sync_outputs_and_finalize(test_sync_peer(), &mut first, &target)
-            .await
-            .unwrap_err();
-        assert!(err.get_ban_reason().is_none(), "{err}");
-        // The tranches before the colliding one were committed
-        assert_eq!(checkpoint_height(&db), Some(4));
-        let mut second = DbTrancheSource::honest(chain.db());
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut second, &target)
+        // The resume fails at the colliding tranche, then the same peer finishes the sync from height 1
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
             .await
             .unwrap();
-        assert_eq!(second.requests, 6, "the colliding tranche, then all five from height 1");
+        assert_eq!(honest.requests, 9, "four resumed tranches, then all five from height 1");
         assert_eq!(checkpoint_height(&db), None);
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
@@ -2575,57 +2534,46 @@ mod tests {
         assert_eq!(honest.requests, 5);
     }
 
-    /// The same peer failing to resume twice does not discard the checkpoint
+    /// A resumer that corrupts only the final tranche fails the root check after the checkpoint was cleared, and is
+    /// still retried from height 1
     #[tokio::test]
-    async fn same_peer_failing_resume_twice_keeps_checkpoint() {
+    async fn resumer_corrupting_final_tranche_is_retried_from_height_one() {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
-        let spent_hash = chain.get_block_and_smt_by_name("1").unwrap().block().body.inputs()[0].output_hash();
-        let commitment = chain
-            .db()
-            .fetch_outputs(spent_hash)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .output
-            .commitment;
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
 
-        let mut poisoned = DbTrancheSource::new(
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::drops_at(chain.db(), 2), &target)
+            .await
+            .unwrap_err();
+        assert_eq!(checkpoint_height(&db), Some(1));
+
+        // Request 4 is the final tranche of the resume, at height 5
+        let mut corrupting = DbTrancheSource::new(
             chain.db(),
-            Box::new(move |request, items| {
-                if request == 2 {
-                    return Err(RpcError::ClientClosed);
+            Box::new(|request, items| {
+                if request == 4 {
+                    let index = items
+                        .iter()
+                        .position(|item| matches!(item.txo, Some(Txo::Output(_))))
+                        .unwrap();
+                    items.remove(index);
                 }
-                items.retain(|item| match &item.txo {
-                    Some(Txo::Output(output)) => {
-                        TransactionOutput::try_from(output.clone()).unwrap().commitment != commitment
-                    },
-                    _ => true,
-                });
                 Ok(())
             }),
         );
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut poisoned, &target)
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut corrupting, &target)
             .await
-            .unwrap_err();
-
-        let peer = test_sync_peer();
-        for _ in 0..2 {
-            let mut source = DbTrancheSource::honest(chain.db());
-            let err = sync
-                .sync_outputs_and_finalize(peer.clone(), &mut source, &target)
-                .await
-                .unwrap_err();
-            assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
-            assert_eq!(source.requests, 1);
-            assert_eq!(checkpoint_height(&db), Some(1));
-        }
+            .unwrap();
+        assert_eq!(
+            corrupting.requests, 9,
+            "four resumed tranches, then all five from height 1"
+        );
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
 
-    /// The second peer whose resume fails on the local state is retried from height 1, where malformed data bans it
+    /// A peer whose resume fails on the local state is retried from height 1, where malformed data still bans it
     #[tokio::test]
     async fn resumed_peer_that_misbehaves_from_height_one_is_banned() {
         let (chain, db) = duplicate_output_sync_setup();
@@ -2663,14 +2611,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(checkpoint_height(&db), Some(1));
 
-        let mut first = DbTrancheSource::honest(chain.db());
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut first, &target)
-            .await
-            .unwrap_err();
-        assert_eq!(checkpoint_height(&db), Some(1));
-
-        // Request 1 is the second peer's resumed tranche, which fails on the poisoned state. Its retry from height 1
-        // is malformed.
+        // Request 1 is the resumed tranche, which fails on the poisoned state. The retry from height 1 is malformed.
         let mut malicious = DbTrancheSource::new(
             chain.db(),
             Box::new(|request, items| {
@@ -2776,12 +2717,6 @@ mod tests {
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
 
-        let err = sync
-            .sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
-            .await
-            .unwrap_err();
-        assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
-        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0, "not finalized");
         let mut honest = DbTrancheSource::honest(chain.db());
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
             .await
