@@ -50,6 +50,8 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
+    #[error("Synced outputs do not match the output root of the sync target, delivered slowly: {0}")]
+    SlowFinalOutputRootMismatch(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
     IncompleteOutputStream(String),
     #[error("Peer sent an output whose commitment is already stored unspent: {0}")]
@@ -172,6 +174,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::MaxLatencyExceeded { .. } |
             // A dropped connection also ends the stream without an error
             err @ HorizonSyncError::IncompleteOutputStream(_) |
+            err @ HorizonSyncError::SlowFinalOutputRootMismatch(_) |
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{err}"),
