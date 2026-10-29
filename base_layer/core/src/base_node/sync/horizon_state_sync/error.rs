@@ -52,8 +52,6 @@ pub enum HorizonSyncError {
     FinalOutputRootMismatch(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
     IncompleteOutputStream(String),
-    #[error("Peer sent too many outputs that mine a commitment spent earlier in the tranche: {0}")]
-    TooManyRecreatedOutputs(String),
     #[error("Peer sent an output whose commitment is already stored unspent: {0}")]
     OutputAlreadyStored(String),
     #[error("Local output state does not match the genesis block after clean up: {0}")]
@@ -165,7 +163,6 @@ impl HorizonSyncError {
             // An honest pruned peer that pruned a spend after streaming the spent output sends a re-mined
             // commitment again
             HorizonSyncError::OutputAlreadyStored(_) |
-            HorizonSyncError::TooManyRecreatedOutputs(_) |
             // An honest pruned peer cannot serve the target state if it has pruned past the target
             HorizonSyncError::FinalOutputRootMismatch(_) |
             HorizonSyncError::JoinError(_) |
@@ -212,7 +209,6 @@ impl HorizonSyncError {
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
             HorizonSyncError::FinalOutputRootMismatch(_) |
             HorizonSyncError::OutputAlreadyStored(_) |
-            HorizonSyncError::TooManyRecreatedOutputs(_) |
             HorizonSyncError::FinalStateValidationFailed(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
             HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(

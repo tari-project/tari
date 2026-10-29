@@ -89,10 +89,6 @@ const MAX_LATENCY_INCREASES: usize = 5;
 const HORIZON_SYNC_BATCH_SIZE: usize = 10_000;
 const PROGRESS_REPORT_INTERVAL: u64 = 100;
 const HORIZON_SYNC_TRANCHE_SIZE: u64 = 5_000;
-/// Commitments spent and mined again within one tranche. Each costs a validation that is not bounded by the stored
-/// outputs, so they are capped; honestly republishing an identical output is rare. What remains is up to the end
-/// block's leaf count (`output_smt_size`) of validated outputs per tranche, summed over the tranches of an attempt.
-const MAX_RECREATED_OUTPUTS_PER_TRANCHE: usize = 100;
 
 /// Where output sync gets the TXO stream of each tranche from.
 trait UtxoTrancheSource {
@@ -135,7 +131,6 @@ pub struct HorizonStateSynchronization<'a, B> {
     max_items_per_block: u64,
     /// The time a tranche may take per block, on top of the RPC deadline
     tranche_time_per_block: Duration,
-    max_recreated_outputs: usize,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -170,7 +165,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             tranche_size: HORIZON_SYNC_TRANCHE_SIZE,
             max_items_per_block,
             tranche_time_per_block,
-            max_recreated_outputs: MAX_RECREATED_OUTPUTS_PER_TRANCHE,
         }
     }
 
@@ -960,12 +954,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Some(None) => true,
             None => false,
         };
-        if spent_in_tranche && recreated_outputs.len() >= self.max_recreated_outputs {
-            return Err(HorizonSyncError::TooManyRecreatedOutputs(format!(
-                "more than {} at height {}",
-                self.max_recreated_outputs, current_header.height
-            )));
-        }
         let constants = self.rules.consensus_constants(current_header.height).clone();
         validate_output_version(&constants, &output)?;
         validate_individual_output(&output, &constants, self.rules.network().as_network())?;
@@ -1205,7 +1193,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     0
                 });
             // An honest tranche holds no more outputs than the output tree has leaves at its end block, and no more
-            // spends than the unspent outputs stored before it
+            // spends than the unspent outputs stored before it. Outputs that mine a commitment spent earlier in the
+            // tranche count as outputs too, so the outputs held per tranche are bounded by the end block's leaf count,
+            // and an attempt validates at most the sum of those over its tranches.
             let max_outputs = tranche_end_header.output_smt_size;
             let max_spends = self
                 .stored_unspent_output_count()
@@ -2621,31 +2611,19 @@ mod tests {
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
     }
 
-    /// Tranches 1-3 and 4-5: block "4" (height 5) mines again the output block "3" (height 4) spent, which was mined
-    /// before the second tranche
-    async fn sync_in_two_tranches(max_recreated_outputs: usize) -> Result<(), HorizonSyncError> {
+    /// In tranches 1-3 and 4-5, block "4" (height 5) mines again the output block "3" (height 4) spent, which was
+    /// mined before the second tranche
+    #[tokio::test]
+    async fn output_recreated_within_a_tranche_syncs() {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 2;
-        sync.max_recreated_outputs = max_recreated_outputs;
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
             .await
-    }
-
-    /// The chain's one recreated output stays within the limit
-    #[tokio::test]
-    async fn recreated_output_within_limit_syncs() {
-        sync_in_two_tranches(MAX_RECREATED_OUTPUTS_PER_TRANCHE).await.unwrap();
-    }
-
-    /// More recreated outputs in a tranche than the limit fails the sync without a ban
-    #[tokio::test]
-    async fn too_many_recreated_outputs_fail_without_ban() {
-        let err = sync_in_two_tranches(0).await.unwrap_err();
-        assert!(matches!(err, HorizonSyncError::TooManyRecreatedOutputs(_)), "{err}");
-        assert!(err.get_ban_reason().is_none());
+            .unwrap();
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
 
     /// A peer that streams a tranche slower than its time budget allows exceeds the maximum latency, even when each
