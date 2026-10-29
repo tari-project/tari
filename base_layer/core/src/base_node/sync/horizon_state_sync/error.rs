@@ -50,6 +50,8 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
+    #[error("Peer sent an output whose commitment is already stored unspent: {0}")]
+    OutputAlreadyStored(String),
     #[error("Local output state does not match the genesis block after clean up: {0}")]
     LocalOutputStateInconsistent(String),
     #[error("Chain storage error: {0}")]
@@ -156,6 +158,9 @@ impl HorizonSyncError {
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::SyncPeerUnavailable(_) |
             HorizonSyncError::LocalOutputStateInconsistent(_) |
+            // An honest pruned peer that pruned a spend after streaming the spent output sends a re-mined
+            // commitment again
+            HorizonSyncError::OutputAlreadyStored(_) |
             // An honest pruned peer cannot serve the target state if it has pruned past the target
             HorizonSyncError::FinalOutputRootMismatch(_) |
             HorizonSyncError::JoinError(_) |
@@ -199,15 +204,8 @@ impl HorizonSyncError {
             HorizonSyncError::UnknownSpentOutput(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
             HorizonSyncError::FinalOutputRootMismatch(_) |
-            HorizonSyncError::FinalStateValidationFailed(_) => true,
-            err => err.is_duplicate_key(),
-        }
-    }
-
-    /// Whether writing a synced output failed because its key is already stored, in the output tables or the
-    /// output tree.
-    pub fn is_duplicate_key(&self) -> bool {
-        match self {
+            HorizonSyncError::OutputAlreadyStored(_) |
+            HorizonSyncError::FinalStateValidationFailed(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
             HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
                 e.downcast_ref::<ChainStorageError>(),

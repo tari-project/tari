@@ -513,9 +513,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Ok(()) => self.finalize_horizon_sync(&sync_peer, to_header).await,
             Err(err) => Err(err),
         };
-        let Err(err) = result else {
+        if result.is_ok() {
             return Ok(());
-        };
+        }
         // Undo everything above the checkpoint. Without one, the next attempt starts from height 1 and resets all
         // output state anyway.
         if let Some(checkpoint) = self.db.fetch_horizon_sync_output_checkpoint().await? {
@@ -527,13 +527,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
             debug!(target: LOG_TARGET, "Finished clearing failed output sync");
         }
-        // A sync from height 1 starts from cleared output state, so a duplicate key can only come from the peer
-        if start_height == 1 && err.is_duplicate_key() {
-            return Err(HorizonSyncError::IncorrectResponse(format!(
-                "Peer sent an output that is already stored: {err}"
-            )));
-        }
-        Err(err)
+        result
     }
 
     /// Removes the outputs synced into blocks from `start_height` up. If this fails part way, the checkpoint is
@@ -817,7 +811,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     /// Validates a streamed output and queues it in `txn`, returning whether it was queued there. An output that
     /// mines a commitment spent earlier in this tranche is held in `recreated_outputs` instead, because the spent
     /// instance is only pruned when the tranche is applied.
-    fn queue_horizon_output(
+    async fn queue_horizon_output(
         &self,
         output: TransactionOutput,
         current_header: &BlockHeader,
@@ -841,6 +835,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Some(None) => true,
             None => false,
         };
+        // An honest peer can send a commitment we already hold unspent when it pruned that output's spend after
+        // streaming the output to us
+        if !spent_in_tranche &&
+            self.db()
+                .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                .await?
+                .is_some()
+        {
+            return Err(HorizonSyncError::OutputAlreadyStored(format!(
+                "commitment {} streamed at height {}",
+                output.commitment.to_hex(),
+                current_header.height
+            )));
+        }
 
         let constants = self.rules.consensus_constants(current_header.height).clone();
         validate_output_version(&constants, &output)?;
@@ -1105,13 +1113,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                 tranche_end_height,
                                 utxo_counter,
                             );
-                            if self.queue_horizon_output(
-                                output,
-                                &current_header,
-                                &mut state_tree_updates,
-                                &mut recreated_outputs,
-                                &mut txn,
-                            )? {
+                            if self
+                                .queue_horizon_output(
+                                    output,
+                                    &current_header,
+                                    &mut state_tree_updates,
+                                    &mut recreated_outputs,
+                                    &mut txn,
+                                )
+                                .await?
+                            {
                                 batch_op_counter = batch_op_counter.saturating_add(1);
                             }
                         }
@@ -1684,11 +1695,13 @@ mod tests {
             Err(HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput))
         ));
         sync.queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn)
+            .await
             .unwrap();
         assert_eq!(deletes.len(), 1);
         assert_eq!(recreated.len(), 1);
         assert!(matches!(
-            sync.queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn),
+            sync.queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn)
+                .await,
             Err(HorizonSyncError::IncorrectResponse(_))
         ));
         assert!(matches!(
@@ -1728,12 +1741,14 @@ mod tests {
         assert!(
             !sync
                 .queue_horizon_output(output.clone(), remined.header(), &mut updates, &mut recreated, &mut txn)
+                .await
                 .unwrap()
         );
         // Replay the remaining outputs removed by cleanup, as the resumed stream would.
         for (other, header) in other_outputs {
             assert!(
                 sync.queue_horizon_output(other, &header, &mut updates, &mut recreated, &mut txn)
+                    .await
                     .unwrap()
             );
         }
@@ -1813,6 +1828,7 @@ mod tests {
                     let output = TransactionOutput::try_from(output).unwrap();
                     if !output.is_burned() {
                         sync.queue_horizon_output(output, &header, &mut updates, &mut recreated, &mut txn)
+                            .await
                             .unwrap();
                     }
                 },
@@ -2116,13 +2132,12 @@ mod tests {
         );
     }
 
-    /// A sync from height 1 starts from cleared output state, so an output sent again in a later tranche is banned
-    #[tokio::test]
-    async fn output_sent_again_in_later_tranche_is_banned() {
+    /// Syncs the duplicate output chain from height 1, with tranche 3 (height 3) also sending `change` applied to
+    /// the never-spent coinbase of block "1" (height 2), which tranche 2 already sent
+    async fn sync_with_block_one_coinbase_in_tranche_three(change: fn(&mut TransactionOutput)) -> HorizonSyncError {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
-        // Block "1" (height 2) has a coinbase that is never spent
-        let coinbase = chain
+        let stored = chain
             .get_block_and_smt_by_name("1")
             .unwrap()
             .block()
@@ -2132,29 +2147,50 @@ mod tests {
             .find(|output| output.is_coinbase())
             .unwrap()
             .clone();
+        let mut extra = stored.clone();
+        change(&mut extra);
+        assert_eq!(extra.commitment, stored.commitment);
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
 
-        let mut resending = DbTrancheSource::new(
+        let mut source = DbTrancheSource::new(
             chain.db(),
             Box::new(move |request, items| {
                 if request == 3 {
                     let mined_header = items.last().unwrap().mined_header.clone();
                     items.insert(0, SyncUtxosResponse {
-                        txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
+                        txo: Some(Txo::Output(extra.clone().try_into().unwrap())),
                         mined_header,
                     });
                 }
                 Ok(())
             }),
         );
-        let err = sync
-            .sync_outputs_and_finalize(test_sync_peer(), &mut resending, &target)
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
             .await
-            .unwrap_err();
-        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
-        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+            .unwrap_err()
+    }
+
+    /// An output sent again in a later tranche is indistinguishable from an honest pruned peer re-mining it after
+    /// pruning its spend, so it fails the sync without a ban
+    #[tokio::test]
+    async fn output_sent_again_in_later_tranche_is_not_banned() {
+        let err = sync_with_block_one_coinbase_in_tranche_three(|_| {}).await;
+        assert!(matches!(err, HorizonSyncError::OutputAlreadyStored(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+    }
+
+    /// A different output with the commitment of a stored unspent output, as an output re-mined after a spend the
+    /// peer pruned, fails the sync without a ban
+    #[tokio::test]
+    async fn different_output_with_stored_commitment_is_not_banned() {
+        let err = sync_with_block_one_coinbase_in_tranche_three(|output| {
+            output.minimum_value_promise = MicroMinotari::from(1);
+        })
+        .await;
+        assert!(matches!(err, HorizonSyncError::OutputAlreadyStored(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
     }
 
     /// A commitment index entry with no output row is cleared before a sync from height 1, so the honest peer that
