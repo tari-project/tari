@@ -44,6 +44,7 @@ use minotari_app_utilities::parse_miner_input::{
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
     verify_base_node_grpc_mining_responses,
+    verify_p2pool_coinbase_payout,
     wallet_payment_address,
 };
 use tari_common::{
@@ -533,6 +534,7 @@ async fn get_new_block_p2pool_node(
         .into_inner();
     let new_block_result = block_result.block.ok_or_else(|| err_empty("block result"))?;
     let block = new_block_result.block.ok_or_else(|| err_empty("block response"))?;
+    verify_p2pool_coinbase_payout(&block, wallet_payment_address, LOG_TARGET).map_err(MinerError::CoinbaseError)?;
     Ok(GetNewBlockResponse {
         block,
         target_difficulty: block_result.target_difficulty,
@@ -723,6 +725,27 @@ async fn validate_tip(
 mod test {
     use std::any::Any;
 
+    use minotari_app_grpc::tari_rpc::{
+        AggregateBody as GrpcAggregateBody,
+        GetNewBlockResponse as GrpcGetNewBlockResponse,
+        GetNewBlockResult,
+        GetTipInfoRequest,
+        GetTipInfoResponse,
+        sha_p2_pool_server::{ShaP2Pool, ShaP2PoolServer},
+    };
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        tari_address::TariAddressFeatures,
+        types::{CompressedPublicKey, PrivateKey},
+    };
+    use tari_transaction_components::transaction_components::RangeProofType;
+    use tonic::{
+        Request,
+        Response,
+        Status,
+        transport::{Server, server::TcpIncoming},
+    };
+
     use super::*;
 
     #[test]
@@ -737,5 +760,151 @@ mod test {
     fn panic_message_falls_back_for_other_payloads() {
         let payload: Box<dyn Any + Send> = Box::new(42u32);
         assert_eq!(panic_message(payload.as_ref()), "panicked");
+    }
+
+    struct MockShaP2Pool {
+        block: Block,
+    }
+
+    #[tonic::async_trait]
+    impl ShaP2Pool for MockShaP2Pool {
+        async fn get_tip_info(
+            &self,
+            _request: Request<GetTipInfoRequest>,
+        ) -> Result<Response<GetTipInfoResponse>, Status> {
+            Ok(Response::new(GetTipInfoResponse::default()))
+        }
+
+        async fn get_new_block(
+            &self,
+            _request: Request<GetNewBlockRequest>,
+        ) -> Result<Response<GrpcGetNewBlockResponse>, Status> {
+            Ok(Response::new(GrpcGetNewBlockResponse {
+                block: Some(GetNewBlockResult {
+                    block: Some(self.block.clone()),
+                    ..Default::default()
+                }),
+                target_difficulty: 10,
+            }))
+        }
+
+        async fn submit_block(
+            &self,
+            _request: Request<SubmitBlockRequest>,
+        ) -> Result<Response<SubmitBlockResponse>, Status> {
+            Ok(Response::new(SubmitBlockResponse::default()))
+        }
+    }
+
+    fn sample_address(seed: u64) -> TariAddress {
+        let view_key = CompressedPublicKey::from_secret_key(&PrivateKey::from(seed));
+        let spend_key = CompressedPublicKey::from_secret_key(&PrivateKey::from(seed + 100));
+        TariAddress::new_dual_address(
+            view_key,
+            spend_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap()
+    }
+
+    fn build_p2pool_block_paying(recipient: &TariAddress, reward: MicroMinotari) -> Block {
+        let key_manager = KeyManager::new_random().unwrap();
+        let consensus_manager = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let (coinbase_output, coinbase_kernel) = generate_coinbase(
+            MicroMinotari::zero(),
+            reward,
+            1,
+            &CoinBaseExtra::default(),
+            &key_manager,
+            recipient,
+            false,
+            consensus_manager.consensus_constants(1),
+            RangeProofType::RevealedValue,
+            MemoField::new_open(vec![], TxType::Coinbase).unwrap(),
+        )
+        .unwrap();
+        let block_output_mr = tari_transaction_components::transaction_components::calculate_block_output_mr(
+            std::slice::from_ref(&coinbase_output),
+        )
+        .unwrap();
+        let grpc_output = grpc_output_with_payref(coinbase_output, None).unwrap();
+        Block {
+            header: Some(minotari_app_grpc::tari_rpc::BlockHeader {
+                block_output_mr: block_output_mr.to_vec(),
+                output_mr: block_output_mr.to_vec(),
+                ..Default::default()
+            }),
+            body: Some(GrpcAggregateBody {
+                inputs: vec![],
+                outputs: vec![grpc_output],
+                kernels: vec![coinbase_kernel.into()],
+            }),
+        }
+    }
+
+    async fn spawn_mock_p2pool(block: Block) -> (ShaP2PoolGrpcClient, tokio::task::JoinHandle<()>) {
+        let listener = TcpIncoming::bind(([127, 0, 0, 1], 0).into()).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            let _ = Server::builder()
+                .add_service(ShaP2PoolServer::new(MockShaP2Pool { block }))
+                .serve_with_incoming(listener)
+                .await;
+        });
+        let config = MinerConfig {
+            base_node_grpc_address: Some(format!("http://{addr}")),
+            network: Network::LocalNet,
+            sha_p2pool_enabled: true,
+            ..MinerConfig::default()
+        };
+        let client = connect_sha_p2pool(&config, true).await.unwrap();
+        (client, handle)
+    }
+
+    #[tokio::test]
+    async fn p2pool_block_paying_different_address_returns_error_and_does_not_mine() {
+        let miner_address = sample_address(1);
+        let attacker_address = sample_address(2);
+        let block = build_p2pool_block_paying(&attacker_address, MicroMinotari::from(5_000_000));
+        let (mut p2pool_client, handle) = spawn_mock_p2pool(block).await;
+        let config = MinerConfig {
+            network: Network::LocalNet,
+            sha_p2pool_enabled: true,
+            ..MinerConfig::default()
+        };
+
+        let result = get_new_block_p2pool_node(&config, &mut p2pool_client, &miner_address).await;
+        handle.abort();
+
+        let err = result.err().expect("miner must refuse block paying another address");
+        assert!(
+            matches!(
+                err,
+                MinerError::CoinbaseError(ref msg)
+                    if msg.contains(&miner_address.to_base58()) &&
+                        msg.contains(&attacker_address.public_spend_key().to_hex())
+            ),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn p2pool_block_paying_configured_address_is_accepted() {
+        let miner_address = sample_address(3);
+        let block = build_p2pool_block_paying(&miner_address, MicroMinotari::from(9_000_000));
+        let (mut p2pool_client, handle) = spawn_mock_p2pool(block).await;
+        let config = MinerConfig {
+            network: Network::LocalNet,
+            sha_p2pool_enabled: true,
+            ..MinerConfig::default()
+        };
+
+        let response = get_new_block_p2pool_node(&config, &mut p2pool_client, &miner_address)
+            .await
+            .expect("miner must accept block paying configured address");
+        handle.abort();
+        assert_eq!(response.target_difficulty, 10);
     }
 }

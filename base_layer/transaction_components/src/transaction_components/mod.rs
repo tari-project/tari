@@ -53,6 +53,7 @@ pub use wallet_output_builder::WalletOutputBuilder;
 use zeroize::Zeroize;
 
 pub mod burn_output_proof;
+pub use burn_output_proof::calculate_block_output_mr;
 pub mod encrypted_data;
 mod error;
 mod kernel_builder;
