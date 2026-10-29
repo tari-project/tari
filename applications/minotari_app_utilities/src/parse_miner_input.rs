@@ -22,7 +22,8 @@
 
 use std::str::FromStr;
 
-use dialoguer::Input as InputPrompt;
+use dialoguer::{Input as InputPrompt, console::Term};
+use log::*;
 use minotari_app_grpc::{
     authentication::ClientAuthenticationInterceptor,
     tari_rpc::{
@@ -45,6 +46,13 @@ use tonic::{
     transport::{Channel, Uri},
 };
 
+const LOG_TARGET: &str = "minotari::app_utilities::parse_miner_input";
+
+/// User requested quit from interactive prompt
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("User requested quit")]
+pub struct UserQuit;
+
 /// Error parsing input
 #[derive(Debug, Error)]
 pub enum ParseInputError {
@@ -52,19 +60,35 @@ pub enum ParseInputError {
     WalletPaymentAddress(String),
     #[error("Could not convert data:{0}")]
     BaseNodeSocketAddress(String),
+    #[error("Non-interactive mode (or missing terminal TTY) requires '{0}' to be configured")]
+    NonInteractive(&'static str),
+    #[error("Prompt interaction error: {0}")]
+    PromptError(#[from] std::io::Error),
+    #[error(transparent)]
+    UserQuit(#[from] UserQuit),
 }
 
-pub fn prompt_for_base_node_address(network: Network) -> Result<String, ParseInputError> {
+pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> Result<String, ParseInputError> {
+    let default_address = format!(
+        "http://127.0.0.1:{}",
+        grpc_default_port(ApplicationType::BaseNode, network)
+    );
+    if non_interactive || !Term::stderr().is_term() {
+        info!(
+            target: LOG_TARGET,
+            "Non-interactive mode or missing terminal: assuming default base node address '{default_address}'"
+        );
+        return Ok(default_address);
+    }
     loop {
         let mut address = InputPrompt::<String>::new()
             .with_prompt("Please enter 'base-node-grpc-address' ('quit' or 'exit' to quit) ")
-            .default(format!(
-                "http://127.0.0.1:{}",
-                grpc_default_port(ApplicationType::BaseNode, network)
-            ))
-            .interact()
-            .unwrap();
-        process_quit(&address);
+            .default(default_address.clone())
+            .interact()?;
+        process_quit(&address)?;
+        if address == default_address {
+            info!(target: LOG_TARGET, "Assumed default base node address '{default_address}'");
+        }
         if Uri::from_str(&address).is_err() {
             println!("  Error - base node address '{address}' not valid");
             continue;
@@ -75,14 +99,24 @@ pub fn prompt_for_base_node_address(network: Network) -> Result<String, ParseInp
     }
 }
 
-pub fn prompt_for_p2pool_address() -> Result<String, ParseInputError> {
+pub fn prompt_for_p2pool_address(non_interactive: bool) -> Result<String, ParseInputError> {
+    let default_address = format!("http://127.0.0.1:{}", 18145);
+    if non_interactive || !Term::stderr().is_term() {
+        info!(
+            target: LOG_TARGET,
+            "Non-interactive mode or missing terminal: assuming default p2pool address '{default_address}'"
+        );
+        return Ok(default_address);
+    }
     loop {
         let mut address = InputPrompt::<String>::new()
             .with_prompt("Please enter 'p2pool-grpc-address' ('quit' or 'exit' to quit) ")
-            .default(format!("http://127.0.0.1:{}", 18145))
-            .interact()
-            .unwrap();
-        process_quit(&address);
+            .default(default_address.clone())
+            .interact()?;
+        process_quit(&address)?;
+        if address == default_address {
+            info!(target: LOG_TARGET, "Assumed default p2pool address '{default_address}'");
+        }
         if Uri::from_str(&address).is_err() {
             println!("  Error - p2pool address '{address}' not valid");
             continue;
@@ -97,19 +131,22 @@ pub fn prompt_for_p2pool_address() -> Result<String, ParseInputError> {
 pub fn wallet_payment_address(
     config_wallet_payment_address: String,
     network: Network,
+    non_interactive: bool,
 ) -> Result<TariAddress, ParseInputError> {
     // Verify config setting
     match TariAddress::from_str(&config_wallet_payment_address) {
         Ok(address) => {
             if address == TariAddress::default() {
+                if non_interactive || !Term::stderr().is_term() {
+                    return Err(ParseInputError::NonInteractive("wallet_payment_address"));
+                }
                 println!();
                 // Get it on the command line
                 loop {
                     let mut address = InputPrompt::<String>::new()
                         .with_prompt("Please enter 'wallet-payment-address' ('quit' or 'exit' to quit) ")
-                        .interact()
-                        .unwrap();
-                    process_quit(&address);
+                        .interact()?;
+                    process_quit(&address)?;
                     // Remove leading and trailing whitespace
                     address = address.trim().to_string();
                     let wallet_address: Result<TariAddress, String> = address.parse().map_err(|e| format!("{e:?}"));
@@ -142,20 +179,11 @@ pub fn wallet_payment_address(
 }
 
 /// User requested quit
-pub fn process_quit(command: &str) {
+pub fn process_quit(command: &str) -> Result<(), UserQuit> {
     if command.to_uppercase() == "QUIT" || command.to_uppercase() == "EXIT" {
-        println!("\nUser requested quit (Press 'Enter')");
-        wait_for_keypress();
-        std::process::exit(0);
+        return Err(UserQuit);
     }
-}
-
-/// Wait for a keypress before continuing
-pub fn wait_for_keypress() {
-    use std::io::{Read, stdin};
-    let mut stdin = stdin();
-    let buf: &mut [u8] = &mut [0; 2];
-    let _unused = stdin.read(buf).expect("Error reading keypress");
+    Ok(())
 }
 
 /// Base node gRPC client
@@ -193,4 +221,108 @@ pub async fn verify_base_node_grpc_mining_responses(
         return Err("'submit_block'".to_string());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::process::{Command, Stdio};
+
+    use super::*;
+
+    const VALID_MAINNET_ADDRESS: &str =
+        "126J92Yow5y9UoRFd1DNujPmVFq9C1ZeiYWT95UKxz5Y1rzbfjtHg4SCZS1dk83ivzt3m2XRQHTaYUk9SwmyeCvy5BJ";
+
+    #[test]
+    fn test_process_quit_returns_user_quit() {
+        assert!(matches!(process_quit("quit"), Err(UserQuit)));
+        assert!(matches!(process_quit("QUIT"), Err(UserQuit)));
+        assert!(matches!(process_quit("exit"), Err(UserQuit)));
+        assert!(matches!(process_quit("EXIT"), Err(UserQuit)));
+        assert!(process_quit("continue").is_ok());
+        assert!(process_quit("").is_ok());
+    }
+
+    #[test]
+    fn test_wallet_payment_address_non_interactive_error() {
+        let default_addr = TariAddress::default().to_string();
+        let res = wallet_payment_address(default_addr, Network::Esmeralda, true);
+        match res {
+            Err(ParseInputError::NonInteractive(key)) => assert_eq!(key, "wallet_payment_address"),
+            _ => panic!("Expected NonInteractive error, got {res:?}"),
+        }
+    }
+
+    #[test]
+    fn test_prompt_for_base_node_address_non_interactive_fallback() {
+        let res = prompt_for_base_node_address(Network::Esmeralda, true).expect("should fall back to default");
+        let expected = format!(
+            "http://127.0.0.1:{}",
+            grpc_default_port(ApplicationType::BaseNode, Network::Esmeralda)
+        );
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_prompt_for_p2pool_address_non_interactive_fallback() {
+        let res = prompt_for_p2pool_address(true).expect("should fall back to default");
+        assert_eq!(res, "http://127.0.0.1:18145");
+    }
+
+    #[test]
+    fn test_wallet_payment_address_valid_config() {
+        let valid_addr = TariAddress::from_str(VALID_MAINNET_ADDRESS).expect("fixture must be a valid TariAddress");
+        let res = wallet_payment_address(VALID_MAINNET_ADDRESS.to_string(), valid_addr.network(), true)
+            .expect("valid address should succeed");
+        assert_eq!(res, valid_addr);
+    }
+
+    #[test]
+    fn test_wallet_payment_address_network_mismatch() {
+        let valid_addr = TariAddress::from_str(VALID_MAINNET_ADDRESS).expect("fixture must be a valid TariAddress");
+        let other_net = if valid_addr.network() == Network::MainNet {
+            Network::Esmeralda
+        } else {
+            Network::MainNet
+        };
+        let res = wallet_payment_address(VALID_MAINNET_ADDRESS.to_string(), other_net, true);
+        assert!(matches!(res, Err(ParseInputError::WalletPaymentAddress(_))));
+    }
+
+    #[test]
+    fn test_prompts_non_tty_with_null_stdin() {
+        if std::env::var("TARI_TEST_NON_TTY_CHILD").is_ok() {
+            assert!(!Term::stderr().is_term(), "child stderr must not be a TTY");
+            let default_addr = TariAddress::default().to_string();
+            let err = wallet_payment_address(default_addr, Network::Esmeralda, false)
+                .expect_err("default address without TTY must error even when non_interactive is false");
+            assert!(matches!(err, ParseInputError::NonInteractive("wallet_payment_address")));
+            assert!(err.to_string().contains("wallet_payment_address"));
+            assert!(err.to_string().contains("TTY"));
+
+            let default_base = format!(
+                "http://127.0.0.1:{}",
+                grpc_default_port(ApplicationType::BaseNode, Network::Esmeralda)
+            );
+            let base_res = prompt_for_base_node_address(Network::Esmeralda, false)
+                .expect("base node prompt without TTY must fall back to default");
+            assert_eq!(base_res, default_base);
+
+            let p2pool_res =
+                prompt_for_p2pool_address(false).expect("p2pool prompt without TTY must fall back to default");
+            assert_eq!(p2pool_res, "http://127.0.0.1:18145");
+            return;
+        }
+
+        let exe = std::env::current_exe().expect("current test executable path");
+        let status = Command::new(exe)
+            .arg("--exact")
+            .arg("parse_miner_input::test::test_prompts_non_tty_with_null_stdin")
+            .env("TARI_TEST_NON_TTY_CHILD", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("failed to spawn child test process");
+        assert!(status.success(), "non-TTY child test failed with status: {status}");
+    }
 }

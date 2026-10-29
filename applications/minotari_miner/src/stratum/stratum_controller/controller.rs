@@ -22,7 +22,7 @@
 use std::{
     convert::TryFrom,
     sync::mpsc,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 use borsh::BorshDeserialize;
@@ -36,13 +36,20 @@ use tari_utilities::{ByteArray, hex::Hex};
 use crate::{
     miner::Miner,
     run_miner::display_report,
-    stratum::{error::Error, stratum_types as types},
+    stratum::{controller::loggable_debug, error::Error, stratum_types as types},
 };
 
 pub const LOG_TARGET: &str = "minotari::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "minotari::logging::miner::stratum::controller";
 
-type CurrentBlob = MaxSizeBytes<{ 4 * 1024 * 1024 }>; // 4 MiB
+/// Largest job blob accepted from the pool.
+pub(crate) const MAX_JOB_BLOB_LEN: usize = 4 * 1024 * 1024;
+/// How often found and dropped shares are summarised in the log.
+pub(crate) const SHARE_LOG_INTERVAL: Duration = Duration::from_secs(10);
+/// Messages the client thread can queue for the mining controller before it blocks.
+const MINER_CHANNEL_CAPACITY: usize = 16;
+
+type CurrentBlob = MaxSizeBytes<MAX_JOB_BLOB_LEN>;
 
 /// Decodes the blob of a job received from the pool.
 ///
@@ -63,22 +70,38 @@ fn decode_job_blob(height: u64, job_id: u64, blob: Vec<u8>) -> Option<CurrentBlo
     }
 }
 
+/// Sends to the client thread without blocking. Returns `false` if the queue was full and the message was dropped;
+/// a closed queue is an error.
+fn try_send_to_client(
+    client_tx: &mpsc::SyncSender<types::client_message::ClientMessage>,
+    message: types::client_message::ClientMessage,
+) -> Result<bool, Error> {
+    match client_tx.try_send(message) {
+        Ok(()) => Ok(true),
+        Err(mpsc::TrySendError::Full(_)) => Ok(false),
+        Err(mpsc::TrySendError::Disconnected(message)) => Err(mpsc::SendError(message).into()),
+    }
+}
+
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,
-    pub tx: mpsc::Sender<types::miner_message::MinerMessage>,
-    client_tx: Option<mpsc::Sender<types::client_message::ClientMessage>>,
+    pub tx: mpsc::SyncSender<types::miner_message::MinerMessage>,
+    client_tx: Option<mpsc::SyncSender<types::client_message::ClientMessage>>,
     current_height: u64,
     current_job_id: u64,
     current_difficulty_target: u64,
     current_blob: CurrentBlob,
     current_header: Option<BlockHeader>,
-    keep_alive_time: SystemTime,
+    keep_alive_time: Instant,
     num_mining_threads: usize,
+    shares_found: u64,
+    shares_dropped: u64,
+    share_log_time: Instant,
 }
 
 impl Controller {
     pub fn new(num_mining_threads: usize) -> Result<Controller, String> {
-        let (tx, rx) = mpsc::channel::<types::miner_message::MinerMessage>();
+        let (tx, rx) = mpsc::sync_channel::<types::miner_message::MinerMessage>(MINER_CHANNEL_CAPACITY);
         Ok(Controller {
             rx,
             tx,
@@ -88,12 +111,15 @@ impl Controller {
             current_difficulty_target: 0,
             current_blob: CurrentBlob::default(),
             current_header: None,
-            keep_alive_time: SystemTime::now(),
+            keep_alive_time: Instant::now(),
             num_mining_threads,
+            shares_found: 0,
+            shares_dropped: 0,
+            share_log_time: Instant::now(),
         })
     }
 
-    pub fn set_client_tx(&mut self, client_tx: mpsc::Sender<types::client_message::ClientMessage>) {
+    pub fn set_client_tx(&mut self, client_tx: mpsc::SyncSender<types::client_message::ClientMessage>) {
         self.client_tx = Some(client_tx);
     }
 
@@ -103,7 +129,15 @@ impl Controller {
         loop {
             // lets see if we need to change the state of the miner.
             while let Some(message) = self.rx.try_iter().next() {
-                debug!(target: LOG_TARGET_FILE, "Miner received message: {message:?}");
+                if let types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) = &message {
+                    debug!(
+                        target: LOG_TARGET_FILE,
+                        "Miner received job height {height} id {job_id} diff {diff} blob {} bytes",
+                        blob.len()
+                    );
+                } else {
+                    debug!(target: LOG_TARGET_FILE, "Miner received message: {message:?}");
+                }
                 match message {
                     types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) => {
                         // A job from the pool with an oversized blob is skipped; it must not stop the controller
@@ -138,8 +172,6 @@ impl Controller {
                                     target: LOG_TARGET_FILE,
                                     "Miner could not decipher miner message: {e:?}"
                                 );
-                                // lets wait a second before we try again
-                                tokio::time::sleep(Duration::from_secs(1)).await;
                                 continue;
                             },
                         }
@@ -147,11 +179,13 @@ impl Controller {
                     types::miner_message::MinerMessage::StopJob => {
                         debug!(target: LOG_TARGET_FILE, "Stopping jobs");
                         miner = None;
+                        self.forget_current_job();
                         continue;
                     },
                     types::miner_message::MinerMessage::ResumeJob => {
                         debug!(target: LOG_TARGET_FILE, "Resuming jobs");
                         miner = None;
+                        self.forget_current_job();
                         continue;
                     },
                     types::miner_message::MinerMessage::Shutdown => {
@@ -183,42 +217,86 @@ impl Controller {
                     let block_header: tari_node_components::blocks::BlockHeader =
                         tari_node_components::blocks::BlockHeader::try_from(header).map_err(Error::MissingData)?;
                     let hash = block_header.hash().to_hex();
-                    info!(
+                    trace!(
                         target: LOG_TARGET,
                         "Miner found share with hash {}, nonce {} and difficulty {:?}",
                         hash,
                         block_header.nonce,
                         report.difficulty
                     );
-                    debug!(
+                    trace!(
                         target: LOG_TARGET_FILE,
-                        "Miner found share with hash {}, difficulty {:?} and data {:?}",
+                        "Miner found share with hash {}, difficulty {:?} and data {}",
                         hash,
                         report.difficulty,
-                        block_header
+                        loggable_debug(&block_header)
                     );
-                    self.client_tx
-                        .as_mut()
-                        .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?
-                        .send(types::client_message::ClientMessage::FoundSolution(
+                    let client_tx = self
+                        .client_tx
+                        .as_ref()
+                        .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?;
+                    let sent = try_send_to_client(
+                        client_tx,
+                        types::client_message::ClientMessage::FoundSolution(
                             self.current_job_id,
                             hash,
                             block_header.nonce,
-                        ))?;
-                    self.keep_alive_time = SystemTime::now();
+                        ),
+                    )?;
+                    self.shares_found = self.shares_found.saturating_add(1);
+                    if !sent {
+                        self.shares_dropped = self.shares_dropped.saturating_add(1);
+                    }
+                    self.log_shares();
+                    self.keep_alive_time = Instant::now();
+                    tokio::task::yield_now().await;
                     continue;
                 } else {
                     display_report(&report, self.num_mining_threads).await;
                 }
             }
-            if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
-                self.keep_alive_time = SystemTime::now();
-                self.client_tx
-                    .as_mut()
-                    .ok_or(Error::ClientTxNotSet)?
-                    .send(types::client_message::ClientMessage::KeepAlive)?;
+            if self.keep_alive_time.elapsed().as_secs() >= 30 {
+                self.keep_alive_time = Instant::now();
+                let client_tx = self.client_tx.as_ref().ok_or(Error::ClientTxNotSet)?;
+                if !try_send_to_client(client_tx, types::client_message::ClientMessage::KeepAlive)? {
+                    warn!(target: LOG_TARGET, "Stratum client busy, dropping keepalive");
+                }
+            }
+            self.log_shares();
+            // Await on every pass so other futures, such as the client controller thread supervisor, get to run.
+            if miner.is_none() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            } else {
+                tokio::task::yield_now().await;
             }
         }
+    }
+
+    /// Logs how many shares were found and dropped, at most once per `SHARE_LOG_INTERVAL`.
+    fn log_shares(&mut self) {
+        if self.share_log_time.elapsed() < SHARE_LOG_INTERVAL {
+            return;
+        }
+        if self.shares_found > 0 {
+            info!(
+                target: LOG_TARGET,
+                "Miner found {} shares in the last {}s, {} dropped because the stratum client was busy",
+                self.shares_found,
+                self.share_log_time.elapsed().as_secs(),
+                self.shares_dropped
+            );
+        }
+        self.shares_found = 0;
+        self.shares_dropped = 0;
+        self.share_log_time = Instant::now();
+    }
+
+    /// Clears the stored job so that the next job received starts mining, even if the pool re-sends the same one.
+    fn forget_current_job(&mut self) {
+        self.current_height = 0;
+        self.current_job_id = 0;
+        self.current_difficulty_target = 0;
+        self.current_blob = CurrentBlob::default();
     }
 
     pub fn should_we_update_job(
@@ -253,18 +331,31 @@ impl Controller {
 mod test {
     use super::*;
 
-    const MAX_BLOB: usize = 4 * 1024 * 1024;
+    #[test]
+    fn a_full_client_queue_drops_the_message_but_a_closed_one_is_an_error() {
+        let (client_tx, client_rx) = mpsc::sync_channel(1);
+        assert!(try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap());
+        assert!(!try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).unwrap());
+        assert!(client_rx.try_recv().is_ok());
+        assert!(client_rx.try_recv().is_err());
+
+        drop(client_rx);
+        assert!(try_send_to_client(&client_tx, types::client_message::ClientMessage::KeepAlive).is_err());
+    }
 
     #[test]
     fn decode_job_blob_accepts_blobs_up_to_the_limit() {
         assert_eq!(decode_job_blob(1, 2, vec![]).unwrap().len(), 0);
         assert_eq!(decode_job_blob(1, 2, vec![7u8; 10]).unwrap().as_bytes(), &[7u8; 10]);
-        assert_eq!(decode_job_blob(1, 2, vec![0u8; MAX_BLOB]).unwrap().len(), MAX_BLOB);
+        assert_eq!(
+            decode_job_blob(1, 2, vec![0u8; MAX_JOB_BLOB_LEN]).unwrap().len(),
+            MAX_JOB_BLOB_LEN
+        );
     }
 
     #[test]
     fn decode_job_blob_skips_an_oversized_blob_instead_of_failing() {
-        assert!(decode_job_blob(1, 2, vec![0u8; MAX_BLOB + 1]).is_none());
+        assert!(decode_job_blob(1, 2, vec![0u8; MAX_JOB_BLOB_LEN + 1]).is_none());
     }
 
     #[test]
@@ -289,5 +380,22 @@ mod test {
         assert_eq!(controller.current_difficulty_target, 11);
         assert_eq!(controller.current_blob, valid);
         assert_eq!(controller.current_header, header);
+    }
+
+    #[test]
+    fn the_same_job_is_mined_again_after_the_job_is_forgotten() {
+        use borsh::BorshSerialize;
+
+        let mut controller = Controller::new(1).unwrap();
+        let mut blob = Vec::new();
+        tari_node_components::blocks::BlockHeader::new(0)
+            .serialize(&mut blob)
+            .unwrap();
+        let blob = CurrentBlob::try_from(blob).unwrap();
+        assert!(controller.should_we_update_job(5, 7, 11, blob.clone()).unwrap());
+        assert!(!controller.should_we_update_job(5, 7, 11, blob.clone()).unwrap());
+
+        controller.forget_current_job();
+        assert!(controller.should_we_update_job(5, 7, 11, blob).unwrap());
     }
 }

@@ -31,7 +31,6 @@ use tari_common_types::{
     types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_node_components::blocks::Block;
-use tari_script::Opcode;
 use tari_transaction_components::{
     BanPeriod,
     BanReason,
@@ -116,8 +115,8 @@ impl MempoolStorage {
         {
             return Ok(response);
         }
-        let dependent_outputs = match self.validate_locked(&tx) {
-            Ok(dependent_outputs) => dependent_outputs,
+        let parents = match self.validate_locked(&tx) {
+            Ok(parents) => parents,
             Err(response) => return Ok(response),
         };
         debug!(
@@ -126,7 +125,7 @@ impl MempoolStorage {
             tx_id(&tx),
             timer.elapsed()
         );
-        self.insert_into_unconfirmed_pool(tx, dependent_outputs)
+        self.insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs))
     }
 
     /// Insert a new unconfirmed transaction into the Mempool, without holding the storage write lock while validating
@@ -182,8 +181,8 @@ impl MempoolStorage {
                 warn!(target: LOG_TARGET, "Could not fetch the chain tip: {e}");
                 None
             });
-            let dependent_outputs = match validate_attempt(storage, validator.as_ref(), &tx, tip.as_ref())? {
-                Ok(dependent_outputs) => dependent_outputs,
+            let parents = match validate_attempt(storage, validator.as_ref(), &tx, tip.as_ref())? {
+                Ok(parents) => parents,
                 Err(AttemptFailure {
                     response,
                     tip_dependent,
@@ -229,13 +228,13 @@ impl MempoolStorage {
                 continue;
             }
             // The parents may have been removed from the pool since they were looked up
-            if let Some(dependent_outputs) = &dependent_outputs &&
-                let Err(response) = check_pool_parents(&lock.unconfirmed_pool, dependent_outputs)
+            if let Some(parents) = &parents &&
+                let Err(response) = check_pool_parents(&lock.unconfirmed_pool, parents)
             {
                 return Ok((response, None));
             }
             return lock
-                .insert_into_unconfirmed_pool(tx, dependent_outputs)
+                .insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs))
                 .map(|response| (response, None))
                 .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
@@ -336,13 +335,13 @@ impl MempoolStorage {
 
     /// Validates the transaction in the same order as [`MempoolStorage::insert_unlocked`]: chain-linked checks, then
     /// the mempool parents of any inputs not in the chain, then internal consistency.
-    fn validate_locked(&self, tx: &Transaction) -> Result<Option<Vec<HashOutput>>, TxStorageResponse> {
-        let dependent_outputs = validate_chain_linked(self.validator.as_ref(), tx)?;
-        if let Some(dependent_outputs) = &dependent_outputs {
-            check_pool_parents(&self.unconfirmed_pool, dependent_outputs)?;
+    fn validate_locked(&self, tx: &Transaction) -> Result<Option<PoolParents>, TxStorageResponse> {
+        let parents = validate_chain_linked(self.validator.as_ref(), tx)?;
+        if let Some(parents) = &parents {
+            check_pool_parents(&self.unconfirmed_pool, parents)?;
         }
         validate_internal_consistency(self.validator.as_ref(), tx, None)?;
-        Ok(dependent_outputs)
+        Ok(parents)
     }
 
     /// Checks the fee of the transaction, which is almost free, so is done before any expensive validation. Returns
@@ -517,9 +516,7 @@ impl MempoolStorage {
             for (key, tx) in self.unconfirmed_pool.validator_node_transactions() {
                 let still_valid = match validate_chain_linked(self.validator.as_ref(), &tx) {
                     Ok(None) => true,
-                    Ok(Some(dependent_outputs)) => {
-                        check_pool_parents(&self.unconfirmed_pool, &dependent_outputs).is_ok()
-                    },
+                    Ok(Some(parents)) => check_pool_parents(&self.unconfirmed_pool, &parents).is_ok(),
                     Err(response) => {
                         debug!(
                             target: LOG_TARGET,
@@ -813,20 +810,19 @@ fn validate_attempt(
     validator: &dyn TransactionValidator,
     tx: &Transaction,
     tip: Option<&ChainMetadata>,
-) -> Result<Result<Option<Vec<HashOutput>>, AttemptFailure>, MempoolError> {
+) -> Result<Result<Option<PoolParents>, AttemptFailure>, MempoolError> {
     let failure = |error: ValidationError| AttemptFailure {
-        tip_dependent: is_tip_dependent(&error, tx),
+        tip_dependent: is_tip_dependent(&error),
         response: validation_error_to_response(error),
         ban_reason: None,
     };
-    let dependent_outputs = match validator.validate_chain_linked(tx) {
-        Ok(()) => None,
-        Err(ValidationError::UnknownInputs(dependent_outputs)) => Some(dependent_outputs),
+    let parents = match pool_parents(validator.validate_chain_linked(tx)) {
+        Ok(parents) => parents,
         Err(e) => return Ok(Err(failure(e))),
     };
-    if let Some(dependent_outputs) = &dependent_outputs {
+    if let Some(parents) = &parents {
         let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
-        if let Err(response) = check_pool_parents(&lock.unconfirmed_pool, dependent_outputs) {
+        if let Err(response) = check_pool_parents(&lock.unconfirmed_pool, parents) {
             // The parents may have been mined (and so removed from the pool) during validation
             return Ok(Err(AttemptFailure {
                 response,
@@ -836,30 +832,29 @@ fn validate_attempt(
         }
     }
     if let Err(e) = validator.validate_internal_consistency(tx, tip) {
-        let ban_reason = internal_failure_ban_reason(&e, tx);
+        let ban_reason = internal_failure_ban_reason(&e);
         return Ok(Err(AttemptFailure {
             ban_reason,
             ..failure(e)
         }));
     }
-    Ok(Ok(dependent_outputs))
+    Ok(Ok(parents))
 }
 
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
-/// never be valid. Covenant failures, and any failure of a transaction with an input script that reads the block
-/// height, are excluded since the outcome can depend on the height. Exceeding the covenant work limit is not banned
-/// either.
-fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Option<BanReason> {
-    if has_height_dependent_input_script(tx) {
-        return None;
-    }
+/// never be valid, and gets a long ban. Covenant failures are excluded since the outcome can depend on the height, and
+/// exceeding the covenant work limit is not banned either. An input script failure (see `is_tip_dependent`) is only
+/// excluded if the input that failed reads the block height. Such a failure cannot be told apart from the height
+/// having moved on, so it is never banned, even if the script could never have succeeded; reaching it means passing
+/// every earlier check first.
+fn internal_failure_ban_reason(error: &ValidationError) -> Option<BanReason> {
     match error {
         ValidationError::AggregatedBodyValidationError(
             AggregatedBodyValidationError::CovenantError(_) |
             AggregatedBodyValidationError::CovenantWorkLimitExceeded { .. } |
             AggregatedBodyValidationError::CovenantOutputsClaimedTwice { .. },
         ) => None,
-        ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error, tx) => Some(BanReason {
+        ValidationError::AggregatedBodyValidationError(_) if !is_tip_dependent(error) => Some(BanReason {
             reason: error.to_string(),
             ban_duration: BanPeriod::Long,
         }),
@@ -871,53 +866,36 @@ fn internal_failure_ban_reason(error: &ValidationError, tx: &Transaction) -> Opt
 /// transaction may be valid at a different tip:
 /// - inputs that are not (or no longer) in the chain,
 /// - input maturity and kernel lock heights,
-/// - a failing input script, but only if one of the transaction's input scripts reads the height of the next block. Any
-///   output in the chain can be spent with made-up input data to produce a failing script, so script failures in
-///   general are final. The script error does not identify which input failed, so any input with such a script counts;
-///   since failure-driven retries never take the lock, this costs at most the unlocked attempts.
+/// - an input script failure (running the script, its script signature or the key it returns), but only if the input
+///   that failed reads the height of the next block. Any output in the chain can be spent with made-up input data to
+///   produce a failing script, so other script failures are final. A script offset mismatch is final too: it is only
+///   checked once every script signature has verified against the key its script returned. Since failure-driven retries
+///   never take the lock, a height-reading script that can never succeed costs at most the unlocked attempts.
 ///
 /// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
-/// sizes, sorting, weight, versions etc.). That includes an input that is already spent and a kernel that is already
-/// mined: only a reorg can undo those, which is rare, and the mempool revalidates its transactions after a reorg
-/// anyway.
-fn is_tip_dependent(error: &ValidationError, tx: &Transaction) -> bool {
+/// sizes, sorting, weight, versions etc.), even if the transaction has an input script that reads the height. That
+/// includes an input that is already spent and a kernel that is already mined: only a reorg can undo those, which is
+/// rare, and the mempool revalidates its transactions after a reorg anyway.
+fn is_tip_dependent(error: &ValidationError) -> bool {
     match error {
         ValidationError::UnknownInputs(_) | ValidationError::UnknownInput | ValidationError::MaturityError => true,
         ValidationError::TransactionError(e) |
         ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::TransactionError(e)) => {
-            is_tip_dependent_transaction_error(e, tx)
+            is_tip_dependent_transaction_error(e)
         },
-        ValidationError::AggregatedBodyValidationError(AggregatedBodyValidationError::MaturityError) => true,
+        ValidationError::AggregatedBodyValidationError(
+            AggregatedBodyValidationError::MaturityError |
+            AggregatedBodyValidationError::InputScript {
+                height_dependent: true, ..
+            },
+        ) => true,
         _ => false,
     }
 }
 
-fn is_tip_dependent_transaction_error(error: &TransactionError, tx: &Transaction) -> bool {
-    match error {
-        TransactionError::InputMaturity => true,
-        TransactionError::ScriptError(_) | TransactionError::ScriptExecutionError(_) => {
-            has_height_dependent_input_script(tx)
-        },
-        _ => false,
-    }
-}
-
-/// Returns true if any input script of the transaction uses an opcode that reads the block height from the script
-/// context
-fn has_height_dependent_input_script(tx: &Transaction) -> bool {
-    tx.body.inputs().iter().any(|input| {
-        input.script().is_ok_and(|script| {
-            script.iter().any(|opcode| {
-                matches!(
-                    opcode,
-                    Opcode::CheckHeight(_) |
-                        Opcode::CheckHeightVerify(_) |
-                        Opcode::CompareHeight |
-                        Opcode::CompareHeightVerify
-                )
-            })
-        })
-    })
+/// Script errors only arrive wrapped in `AggregatedBodyValidationError::InputScript`, so they are not handled here
+fn is_tip_dependent_transaction_error(error: &TransactionError) -> bool {
+    matches!(error, TransactionError::InputMaturity)
 }
 
 /// Returns true if the chain may have changed since an attempt started with the mempool at `generation` and the
@@ -948,18 +926,37 @@ fn chain_changed(
     })
 }
 
-/// Validates the transaction against the chain state. On success, returns the hashes of the outputs spent by the
-/// transaction that are not in the chain (and must therefore be in the mempool), if any. On failure, returns the
-/// storage response for the rejected transaction.
+/// The outputs spent by a transaction that are not in the chain's unspent set, and so must be in the mempool
+struct PoolParents {
+    outputs: Vec<HashOutput>,
+    /// Those of `outputs` that were already mined and spent: without them in the pool the transaction is a double
+    /// spend
+    spent: Vec<HashOutput>,
+}
+
+/// Turns the result of chain-linked validation into the outputs the transaction spends from the mempool, if any
+fn pool_parents(result: Result<(), ValidationError>) -> Result<Option<PoolParents>, ValidationError> {
+    match result {
+        Ok(()) => Ok(None),
+        Err(ValidationError::UnknownInputs(outputs)) => Ok(Some(PoolParents { outputs, spent: vec![] })),
+        Err(ValidationError::SpentInputs { mut unknown, spent }) => {
+            unknown.extend_from_slice(&spent);
+            Ok(Some(PoolParents {
+                outputs: unknown,
+                spent,
+            }))
+        },
+        Err(e) => Err(e),
+    }
+}
+
+/// Validates the transaction against the chain state. On success, returns the outputs spent by the transaction that
+/// must be in the mempool, if any. On failure, returns the storage response for the rejected transaction.
 fn validate_chain_linked(
     validator: &dyn TransactionValidator,
     tx: &Transaction,
-) -> Result<Option<Vec<HashOutput>>, TxStorageResponse> {
-    match validator.validate_chain_linked(tx) {
-        Ok(()) => Ok(None),
-        Err(ValidationError::UnknownInputs(dependent_outputs)) => Ok(Some(dependent_outputs)),
-        Err(e) => Err(validation_error_to_response(e)),
-    }
+) -> Result<Option<PoolParents>, TxStorageResponse> {
+    pool_parents(validator.validate_chain_linked(tx)).map_err(validation_error_to_response)
 }
 
 fn validate_internal_consistency(
@@ -972,11 +969,15 @@ fn validate_internal_consistency(
         .map_err(validation_error_to_response)
 }
 
-/// Checks that every output in `dependent_outputs` is in the unconfirmed pool. The unconfirmed pool indexes outputs by
-/// their hash, and an input's output hash commits to all of the spent output's data (commitment, script, features
-/// etc.), so an input that does not spend a pool output exactly as it was created is not found and is an orphan.
-fn check_pool_parents(pool: &UnconfirmedPool, dependent_outputs: &[HashOutput]) -> Result<(), TxStorageResponse> {
-    if pool.contains_all_outputs(dependent_outputs) {
+/// Checks that every parent output is in the unconfirmed pool. The unconfirmed pool indexes outputs by their hash, and
+/// an input's output hash commits to all of the spent output's data (commitment, script, features etc.), so an input
+/// that does not spend a pool output exactly as it was created is not found and is an orphan, or a double spend if
+/// the output was already spent in the chain.
+fn check_pool_parents(pool: &UnconfirmedPool, parents: &PoolParents) -> Result<(), TxStorageResponse> {
+    if !pool.contains_all_outputs(&parents.spent) {
+        return Err(TxStorageResponse::NotStoredAlreadySpent);
+    }
+    if pool.contains_all_outputs(&parents.outputs) {
         Ok(())
     } else {
         Err(TxStorageResponse::NotStoredOrphan)
@@ -986,7 +987,7 @@ fn check_pool_parents(pool: &UnconfirmedPool, dependent_outputs: &[HashOutput]) 
 fn validation_error_to_response(error: ValidationError) -> TxStorageResponse {
     match error {
         ValidationError::UnknownInputs(_) => TxStorageResponse::NotStoredOrphan,
-        ValidationError::ContainsSTxO => {
+        ValidationError::ContainsSTxO | ValidationError::SpentInputs { .. } => {
             info!(target: LOG_TARGET, "Validation failed due to already spent input");
             TxStorageResponse::NotStoredAlreadySpent
         },
@@ -1362,8 +1363,12 @@ mod test {
         ))
     }
 
-    fn script_error(error: ScriptError) -> ValidationError {
-        AggregatedBodyValidationError::TransactionError(TransactionError::ScriptError(error)).into()
+    fn script_error(error: ScriptError, height_dependent: bool) -> ValidationError {
+        AggregatedBodyValidationError::InputScript {
+            error: TransactionError::ScriptError(error),
+            height_dependent,
+        }
+        .into()
     }
 
     #[test]
@@ -1382,7 +1387,7 @@ mod test {
                 TransactionError::InvalidSignatureError("bad".to_string()),
             )),
             // A failing script that does not read the block height, e.g. made-up input data
-            script_error(ScriptError::VerifyFailed),
+            script_error(ScriptError::VerifyFailed, false),
         ] {
             // The mempool processes a chain change, and the tip moves, during validation
             let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
@@ -1407,7 +1412,8 @@ mod test {
 
         let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
         validator.chain_changes.store(1, Ordering::SeqCst);
-        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed)), Ok(())].into();
+        *validator.internal_results.lock().unwrap() =
+            vec![Err(script_error(ScriptError::VerifyFailed, true)), Ok(())].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
@@ -1417,11 +1423,50 @@ mod test {
 
         // Without a chain change, the same failure is final
         let validator = ScriptedValidator::new(vec![], vec![validated_at]);
-        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed))].into();
+        *validator.internal_results.lock().unwrap() = vec![Err(script_error(ScriptError::VerifyFailed, true))].into();
         let storage = create_storage(&validator);
         let response = MempoolStorage::insert_unlocked(&storage, tx).unwrap();
         assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
         assert_eq!(validator.internal_calls(), 1);
+    }
+
+    #[test]
+    fn only_a_height_dependent_input_script_failure_escapes_the_ban() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
+        let ban_for = |error: ValidationError| {
+            let validator = ScriptedValidator::new(vec![], vec![FixedHash::from([1u8; 32])]);
+            *validator.internal_results.lock().unwrap() = vec![Err(error)].into();
+            let storage = create_storage(&validator);
+            let (response, ban) = MempoolStorage::insert_unlocked_with_ban_reason(&storage, tx.clone()).unwrap();
+            assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+            ban.map(|ban| ban.ban_duration())
+        };
+
+        // Failures unrelated to the input scripts are banned, even though the transaction reads the height
+        let kernel_signature = AggregatedBodyValidationError::TransactionError(
+            TransactionError::InvalidSignatureError("Verifying kernel signature".to_string()),
+        );
+        let range_proof =
+            AggregatedBodyValidationError::TransactionError(TransactionError::RangeProofError("bad".to_string()));
+        let script_offset = AggregatedBodyValidationError::TransactionError(TransactionError::ScriptOffset);
+        for error in [
+            kernel_signature,
+            range_proof,
+            AggregatedBodyValidationError::InvalidAccountingBalance,
+            script_offset,
+        ] {
+            assert_eq!(ban_for(error.into()), Some(BanPeriod::Long));
+        }
+
+        // An input script failure is banned unless the failing input reads the height
+        assert_eq!(
+            ban_for(script_error(ScriptError::VerifyFailed, false)),
+            Some(BanPeriod::Long)
+        );
+        let height_dependent = script_error(ScriptError::VerifyFailed, true);
+        assert!(is_tip_dependent(&height_dependent));
+        assert_eq!(ban_for(height_dependent), None);
     }
 
     #[test]
@@ -1434,7 +1479,7 @@ mod test {
             with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
         type Case = (Arc<Transaction>, fn() -> ValidationError);
         let cases: [Case; 2] = [
-            (height_script_tx, || script_error(ScriptError::VerifyFailed)),
+            (height_script_tx, || script_error(ScriptError::VerifyFailed, true)),
             (create_tx(&key_manager), || ValidationError::MaturityError),
         ];
         for (tx, error) in cases {

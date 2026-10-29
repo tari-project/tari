@@ -133,6 +133,10 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// vector means the output was not found.
     fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError>;
 
+    /// Returns true if [`Self::fetch_outputs`] would return any output for the given output hash, without reading the
+    /// outputs.
+    fn contains_output_hash(&self, output_hash: &HashOutput) -> Result<bool, ChainStorageError>;
+
     /// Returns the mined info for every input indexed under the given output hash. A hash may be
     /// indexed under more than one header (e.g. across reorgs), so callers that need a specific block
     /// should filter the result by `header_hash`; an input is unique within a single block. An empty

@@ -99,6 +99,13 @@ pub struct BaseNodeConfig {
     /// GRPC address of base node
     pub grpc_address: Option<Multiaddr>,
     /// GRPC server config - which methods are active and which not, only active when `grpc_enabled = true`.
+    /// Setting `mining_enabled = true` adds the mining method set (`get_version`, `get_new_block_template`,
+    /// `get_new_block_with_coinbases`, `get_new_block_template_with_coinbases`, `get_new_block`, `get_new_block_blob`,
+    /// `get_network_difficulty`, `get_network_state`, `submit_block`, `submit_block_blob`, `get_tip_info`, `identify`,
+    /// `get_sync_progress`) and setting `second_layer_grpc_enabled = true` adds the second-layer method set
+    /// (`get_version`, `get_constants`, `get_mempool_transactions`, `get_mempool_stats`, `list_headers`,
+    /// `get_tip_info`, `get_active_validator_nodes`, `get_validator_node_changes`, `get_shard_key`,
+    /// `get_header_by_hash`, `get_side_chain_utxos`) on top of this list.
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
