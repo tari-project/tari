@@ -129,7 +129,8 @@ pub struct HorizonStateSynchronization<'a, B> {
     peer_ban_manager: PeerBanManager,
     tranche_size: u64,
     max_items_per_block: u64,
-    /// The time a tranche may take per block, on top of the RPC deadline
+    /// The time a tranche may spend waiting on the peer per block, on top of the RPC deadline, at the initial maximum
+    /// latency
     tranche_time_per_block: Duration,
 }
 
@@ -925,17 +926,29 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
-    /// A tranche must finish within its time budget, so a peer cannot drip-feed it just under the latency limit
-    fn check_tranche_time(&self, peer: &NodeId, started: Instant, budget: Duration) -> Result<(), HorizonSyncError> {
-        let elapsed = started.elapsed();
-        if elapsed > budget {
+    /// A tranche must not wait on the peer for longer than its budget, so a peer cannot drip-feed it just under the
+    /// latency limit
+    fn check_peer_wait(&self, peer: &NodeId, waited: Duration, budget: Duration) -> Result<(), HorizonSyncError> {
+        if waited > budget {
             return Err(HorizonSyncError::MaxLatencyExceeded {
                 peer: peer.clone(),
-                latency: elapsed,
+                latency: waited,
                 max_latency: budget,
             });
         }
         Ok(())
+    }
+
+    /// The per-block allowance, relaxed in step with the maximum latency when all sync peers are too slow
+    fn relaxed_tranche_time_per_block(&self) -> Duration {
+        let initial = self.config.initial_max_sync_latency.as_millis();
+        let millis = self
+            .tranche_time_per_block
+            .as_millis()
+            .saturating_mul(self.max_latency.as_millis())
+            .checked_div(initial)
+            .unwrap_or(self.tranche_time_per_block.as_millis());
+        Duration::from_millis(u64::try_from(millis).unwrap_or(u64::MAX))
     }
 
     fn check_latency(&self, peer: &NodeId, avg_latency: &RollingAverageTime) -> Result<(), HorizonSyncError> {
@@ -1173,14 +1186,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 start_header_hash: tranche_start_header.hash().to_vec(),
                 end_header_hash: tranche_end_header.hash().to_vec(),
             };
-            let tranche_timer = Instant::now();
             let blocks_in_tranche = tranche_end_height
                 .saturating_sub(tranche_start_height)
                 .saturating_add(1);
             let tranche_time_budget = self.config.rpc_deadline.saturating_add(
-                self.tranche_time_per_block
+                self.relaxed_tranche_time_per_block()
                     .saturating_mul(u32::try_from(blocks_in_tranche).unwrap_or(u32::MAX)),
             );
+            let fetch_started = Instant::now();
             let mut output_stream = tokio::time::timeout(self.config.rpc_deadline, source.fetch_tranche(req))
                 .await
                 .map_err(|_| {
@@ -1189,6 +1202,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         sync_peer.node_id()
                     )))
                 })??;
+            // Only time spent waiting on the peer counts against the budget, not local validation and writes
+            let mut peer_wait = fetch_started.elapsed();
 
             let mut txn = db.write_transaction();
             let mut utxo_counter = 0u64;
@@ -1244,7 +1259,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let latency = last_sync_timer.elapsed();
                 avg_latency.add_sample(latency);
                 let res: SyncUtxosResponse = response?;
-                self.check_tranche_time(sync_peer.node_id(), tranche_timer, tranche_time_budget)?;
+                peer_wait = peer_wait.saturating_add(latency);
+                self.check_peer_wait(sync_peer.node_id(), peer_wait, tranche_time_budget)?;
                 items_received = items_received.saturating_add(1);
                 if items_received > item_budget {
                     return Err(HorizonSyncError::IncorrectResponse(format!(
@@ -1396,7 +1412,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             // Verify the stream completed the full tranche before committing.
-            self.check_tranche_time(sync_peer.node_id(), tranche_timer, tranche_time_budget)?;
+            if !saw_terminator {
+                peer_wait = peer_wait.saturating_add(last_sync_timer.elapsed());
+            }
+            self.check_peer_wait(sync_peer.node_id(), peer_wait, tranche_time_budget)?;
             if !saw_terminator {
                 return Err(HorizonSyncError::IncompleteOutputStream(format!(
                     "tranche {}-{}",
@@ -2667,6 +2686,63 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, HorizonSyncError::MaxLatencyExceeded { .. }), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
+    }
+
+    /// Block "1" (height 2) splits block "A"'s coinbase into many outputs, so one tranche streams more than a
+    /// hundred items
+    fn many_outputs_chain() -> TestBlockchain {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build()
+            .unwrap();
+        let mut chain = TestBlockchain::create(rules);
+        let (_, coinbase) = chain.add_next_tip(block_spec!("A")).unwrap();
+        let (txs, _) = schema_to_transaction(
+            &[txn_schema!(from: vec![coinbase], to: vec![MicroMinotari::from(9000); 120])],
+            &chain.km,
+        );
+        chain
+            .add_next_tip(block_spec!("1", transactions: txs.iter().map(|tx| (**tx).clone()).collect()))
+            .unwrap();
+        chain
+    }
+
+    /// Time spent on local validation and writes does not count against a tranche's peer-wait budget
+    #[tokio::test]
+    async fn local_processing_does_not_count_against_tranche_budget() {
+        let chain = many_outputs_chain();
+        let target = chain.get_block_and_smt_by_name("1").unwrap().header().clone();
+        let db = headers_only_db(&chain, &["A", "1"]);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.config.rpc_deadline = Duration::from_secs(1);
+        sync.tranche_time_per_block = Duration::ZERO;
+        // Progress is reported every hundred items, inside the tranche; sleeping there stands in for slow local work
+        sync.on_progress(|info| {
+            if matches!(info.status, HorizonSyncStatus::Outputs { .. }) {
+                std::thread::sleep(Duration::from_millis(1500));
+            }
+        });
+
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+            .unwrap();
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    /// The per-block allowance grows with the maximum latency when slow peers make it relax
+    #[test]
+    fn tranche_allowance_relaxes_with_max_latency() {
+        let db = create_new_blockchain();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db, &mut peers, 0);
+        let base = sync.relaxed_tranche_time_per_block();
+        sync.max_latency = sync.config.initial_max_sync_latency.saturating_mul(2);
+        assert_eq!(sync.relaxed_tranche_time_per_block(), base.saturating_mul(2));
     }
 
     /// The honest per-block bound covers every non-coinbase output and input a block's weight allows, plus the
