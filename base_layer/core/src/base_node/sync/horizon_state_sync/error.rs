@@ -198,9 +198,17 @@ impl HorizonSyncError {
         match self {
             HorizonSyncError::UnknownSpentOutput(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
-            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) |
             HorizonSyncError::FinalOutputRootMismatch(_) |
             HorizonSyncError::FinalStateValidationFailed(_) => true,
+            err => err.is_duplicate_key(),
+        }
+    }
+
+    /// Whether writing a synced output failed because its key is already stored, in the output tables or the
+    /// output tree.
+    pub fn is_duplicate_key(&self) -> bool {
+        match self {
+            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
             HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
                 e.downcast_ref::<ChainStorageError>(),
                 Some(ChainStorageError::KeyExists { .. })

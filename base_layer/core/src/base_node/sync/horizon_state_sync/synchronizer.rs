@@ -513,18 +513,27 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Ok(()) => self.finalize_horizon_sync(&sync_peer, to_header).await,
             Err(err) => Err(err),
         };
-        if result.is_err() {
-            // Undo everything above the checkpoint, or everything when there is none
-            let clean_up_height = match self.db.fetch_horizon_sync_output_checkpoint().await? {
-                Some(checkpoint) => checkpoint.checkpoint_height.saturating_add(1),
-                None => 1,
-            };
-            if let Err(e) = self.clean_up_stale_synced_outputs(clean_up_height).await {
+        let Err(err) = result else {
+            return Ok(());
+        };
+        // Undo everything above the checkpoint. Without one, the next attempt starts from height 1 and resets all
+        // output state anyway.
+        if let Some(checkpoint) = self.db.fetch_horizon_sync_output_checkpoint().await? {
+            if let Err(e) = self
+                .clean_up_stale_synced_outputs(checkpoint.checkpoint_height.saturating_add(1))
+                .await
+            {
                 warn!(target: LOG_TARGET, "Failed to clean up after failed output sync: {}", e);
             }
             debug!(target: LOG_TARGET, "Finished clearing failed output sync");
         }
-        result
+        // A sync from height 1 starts from cleared output state, so a duplicate key can only come from the peer
+        if start_height == 1 && err.is_duplicate_key() {
+            return Err(HorizonSyncError::IncorrectResponse(format!(
+                "Peer sent an output that is already stored: {err}"
+            )));
+        }
+        Err(err)
     }
 
     /// Removes the outputs synced into blocks from `start_height` up. If this fails part way, the checkpoint is
@@ -579,57 +588,43 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             current_height = current_height.saturating_add(1);
         }
         debug!(target: LOG_TARGET, "Finished cleaning up failed output sync, cleaned to height {}", stop_height);
-        if start_height > 1 {
-            return Ok(());
-        }
-        // Restore genesis-block outputs that an earlier horizon sync spent: `prune_output_from_all_dbs`
-        // purged them from the UTXO LMDB tables when their STXO marker streamed in. A sync from height 1
-        // streams their spends again. A clean up from a later height keeps spends committed below it.
+        Ok(())
+    }
+
+    /// Clears all output state and restores the genesis outputs in one write. Clean up only finds outputs under
+    /// canonical blocks, so this is what guarantees a sync from height 1 starts from the genesis state.
+    async fn reset_output_state_to_genesis(&self) -> Result<(), HorizonSyncError> {
         let genesis_block = self.db.fetch_genesis_block();
         let genesis_header_hash = *genesis_block.hash();
         let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
+        let mut txn = self.db.write_transaction();
+        txn.clear_horizon_sync_output_state();
         let mut state_tree_updates = Vec::new();
         for output in genesis_block.block().body.outputs() {
-            if output.is_burned() {
-                continue;
+            if !output.is_burned() {
+                let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+                state_tree_updates.push(HorizonStateTreeUpdate {
+                    key: FixedHash::from(key_bytes),
+                    value: Some(output.smt_hash(0)),
+                    replaces_value: false,
+                });
             }
-            let present = self
-                .db
-                .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
-                .await?
-                .is_some();
-            if present {
-                debug!(target: LOG_TARGET, "skipping genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
-                continue;
-            }
-            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
-            // A rolled-back tranche may have left a value for this key, which the restore replaces.
-            state_tree_updates.push(HorizonStateTreeUpdate {
-                key: FixedHash::from(key_bytes),
-                value: Some(output.smt_hash(0)),
-                replaces_value: true,
-            });
-            // first make sure its deleted everywhere so we can cleanly reinsert it.
-            debug!(target: LOG_TARGET, "Restoring genesis output {} with commitment({}) from pruned state", output.hash(), output.commitment.to_hex());
-
-            txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
             txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
         }
         if !state_tree_updates.is_empty() {
             txn.apply_horizon_state_tree_updates(state_tree_updates);
-            txn.commit().await?;
         }
-        debug!(target: LOG_TARGET, "Genesis outputs restored");
-        Ok(())
-    }
+        txn.commit().await?;
 
-    async fn output_state_matches_genesis(&self) -> Result<bool, HorizonSyncError> {
-        let genesis_output_mr = self.db.fetch_genesis_block().header().output_mr;
-        match self.db.verify_horizon_sync_output_root(genesis_output_mr).await {
-            Ok(()) => Ok(true),
+        match self
+            .db
+            .verify_horizon_sync_output_root(genesis_block.header().output_mr)
+            .await
+        {
+            Ok(()) => Ok(()),
             Err(ChainStorageError::InvalidOperation(e)) => {
-                error!(target: LOG_TARGET, "Local output state does not match the genesis block: {e}");
-                Ok(false)
+                error!(target: LOG_TARGET, "Output state does not match the genesis block after resetting it: {e}");
+                Err(HorizonSyncError::LocalOutputStateInconsistent(e))
             },
             Err(e) => Err(e.into()),
         }
@@ -922,21 +917,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     ) -> Result<(), HorizonSyncError> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
         let db = self.db().clone();
-        self.clean_up_stale_synced_outputs(sync_start_height).await?;
-        // A sync from height 1 must start from the genesis state. Clean up cannot remove output state it cannot
-        // find, so if the state does not match, all output state is cleared and the genesis outputs restored.
-        if sync_start_height == 1 && !self.output_state_matches_genesis().await? {
-            warn!(target: LOG_TARGET, "Clearing all output state and restoring the genesis outputs");
-            db.write_transaction()
-                .clear_horizon_sync_output_state()
-                .commit()
-                .await?;
-            self.clean_up_stale_synced_outputs(1).await?;
-            if !self.output_state_matches_genesis().await? {
-                return Err(HorizonSyncError::LocalOutputStateInconsistent(
-                    "output state does not match the genesis block after clearing it".to_string(),
-                ));
-            }
+        if sync_start_height == 1 {
+            self.reset_output_state_to_genesis().await?;
+        } else {
+            self.clean_up_stale_synced_outputs(sync_start_height).await?;
         }
 
         // No tranche is left when the checkpoint is at the target, but the committed state is still verified below
@@ -2125,6 +2109,90 @@ mod tests {
             1,
             "only the synced instance of the output remains"
         );
+    }
+
+    /// A sync from height 1 starts from cleared output state, so an output sent again in a later tranche is banned
+    #[tokio::test]
+    async fn output_sent_again_in_later_tranche_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        // Block "1" (height 2) has a coinbase that is never spent
+        let coinbase = chain
+            .get_block_and_smt_by_name("1")
+            .unwrap()
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .find(|output| output.is_coinbase())
+            .unwrap()
+            .clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut resending = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 3 {
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    items.insert(0, SyncUtxosResponse {
+                        txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
+                        mined_header,
+                    });
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut resending, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+    }
+
+    /// A commitment index entry with no output row is cleared before a sync from height 1, so the honest peer that
+    /// sends that output is not banned
+    #[tokio::test]
+    async fn stray_commitment_index_entry_does_not_ban_honest_peer() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let coinbase = |name| {
+            chain
+                .get_block_and_smt_by_name(name)
+                .unwrap()
+                .block()
+                .body
+                .outputs()
+                .iter()
+                .find(|output| output.is_coinbase())
+                .unwrap()
+                .clone()
+        };
+        let stray = coinbase("4");
+        let other = coinbase("3");
+        // Pruning `stray` with the commitment of `other` leaves the commitment index entry of `stray` behind
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(stray.clone(), FixedHash::zero(), 0, 0);
+        txn.insert_utxo(other.clone(), FixedHash::zero(), 0, 0);
+        txn.prune_output_from_all_dbs(stray.hash(), other.commitment.clone(), other.features.output_type);
+        db.write(txn).unwrap();
+        assert!(db.fetch_outputs(stray.hash()).unwrap().is_empty());
+        assert_eq!(
+            db.fetch_unspent_output_hash_by_commitment(stray.commitment.clone())
+                .unwrap(),
+            Some(stray.hash())
+        );
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap();
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
 
     /// A LocalNet genesis block has no outputs, so its output tree has no root node yet. That counts as the empty
