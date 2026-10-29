@@ -42,7 +42,7 @@ use tari_comms::{
     protocol::rpc::{RpcClient, RpcError, RpcStatus},
 };
 use tari_crypto::commitment::HomomorphicCommitment;
-use tari_node_components::blocks::{BlockHeader, ChainHeader};
+use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
 use tari_transaction_components::{
     BanPeriod,
     transaction_components::{
@@ -624,19 +624,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let genesis_block = self.db.fetch_genesis_block();
         let genesis_header_hash = *genesis_block.hash();
         let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
+        let spent = genesis_spent_output_hashes(&genesis_block);
         let mut txn = self.db.write_transaction();
         txn.clear_horizon_sync_output_state();
         let mut state_tree_updates = Vec::new();
         for output in genesis_block.block().body.outputs() {
-            if !output.is_burned() {
-                let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
-                state_tree_updates.push(HorizonStateTreeUpdate {
-                    key: FixedHash::from(key_bytes),
-                    value: Some(output.smt_hash(0)),
-                    replaces_value: false,
-                });
-            }
             txn.insert_output_via_horizon_sync(output.clone(), genesis_header_hash, 0, genesis_timestamp);
+            if output.is_burned() {
+                continue;
+            }
+            if spent.contains(&output.hash()) {
+                // Spent by the genesis block itself
+                txn.delete_utxo_commitment_index_entry(output.commitment.clone());
+                continue;
+            }
+            let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+            state_tree_updates.push(HorizonStateTreeUpdate {
+                key: FixedHash::from(key_bytes),
+                value: Some(output.smt_hash(0)),
+                replaces_value: false,
+            });
         }
         if !state_tree_updates.is_empty() {
             txn.apply_horizon_state_tree_updates(state_tree_updates);
@@ -657,7 +664,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
     }
 
-    /// Whether the output tables and the output tree hold exactly the genesis outputs
+    /// Whether the output tables and the output tree hold exactly what inserting the genesis block leaves
     async fn output_state_is_genesis(&self) -> Result<bool, HorizonSyncError> {
         let genesis_block = self.db.fetch_genesis_block();
         match self
@@ -670,13 +677,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Err(e) => return Err(e.into()),
         }
         let outputs = genesis_block.block().body.outputs();
-        let unburned = outputs.iter().filter(|output| !output.is_burned()).count();
+        let spent = genesis_spent_output_hashes(&genesis_block);
+        let unspent = outputs
+            .iter()
+            .filter(|output| is_unspent_genesis_output(output, &spent))
+            .count();
         // The tables `insert_output` writes and the output tree values, by their table names
         let mut tables_checked = 0usize;
         for stat in self.db.get_stats().await?.db_stats() {
             let expected = match stat.name {
                 "utxos" | "txos_hash_to_index" | "payref_to_output_index" => outputs.len(),
-                "utxo_commitment_index" | "jmt_values_data" => unburned,
+                "utxo_commitment_index" | "jmt_values_data" => unspent,
                 _ => continue,
             };
             if stat.entries != expected {
@@ -687,7 +698,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         if tables_checked != 5 {
             return Ok(false);
         }
-        // With the counts matching, every genesis output being stored leaves no room for anything else
+        // With the counts matching, every genesis output being stored as expected leaves no room for anything else
         let genesis_hash = *genesis_block.hash();
         for output in outputs {
             let hash = output.hash();
@@ -697,17 +708,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .await?
                 .iter()
                 .any(|row| row.header_hash == genesis_hash);
-            let indexed = output.is_burned() ||
+            let indexed_hash = if output.is_burned() {
+                None
+            } else {
                 self.db
                     .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
-                    .await? ==
-                    Some(hash);
+                    .await?
+            };
+            let expected_hash = is_unspent_genesis_output(output, &spent).then_some(hash);
             let has_payref = self
                 .db
                 .fetch_mined_info_by_payref(generate_payment_reference(&genesis_hash, &hash))
                 .await
                 .is_ok();
-            if !stored || !indexed || !has_payref {
+            if !stored || indexed_hash != expected_hash || !has_payref {
                 return Ok(false);
             }
         }
@@ -1599,6 +1613,23 @@ fn max_streamed_items_per_block(rules: &BaseNodeConsensusManager) -> u64 {
         .unwrap_or(0)
 }
 
+/// The outputs the genesis block's own inputs spend. Inserting the genesis block keeps their rows but removes them
+/// from the commitment index and the output tree.
+fn genesis_spent_output_hashes(genesis_block: &ChainBlock) -> BTreeSet<FixedHash> {
+    genesis_block
+        .block()
+        .body
+        .inputs()
+        .iter()
+        .map(|input| input.output_hash())
+        .collect()
+}
+
+/// Whether a genesis output is indexed and in the output tree after inserting the genesis block
+fn is_unspent_genesis_output(output: &TransactionOutput, spent: &BTreeSet<FixedHash>) -> bool {
+    !output.is_burned() && !spent.contains(&output.hash())
+}
+
 /// Queues the tranche's tree updates, then the pruning of spent instances, then the outputs that mine a spent
 /// commitment again, so that they all land in one write.
 fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
@@ -1645,7 +1676,6 @@ mod tests {
         types::{CommsPublicKey, CommsSecretKey},
     };
     use tari_crypto::keys::SecretKey as _;
-    use tari_node_components::blocks::ChainBlock;
     use tari_script::script;
     use tari_transaction_components::{
         consensus::ConsensusConstantsBuilder,
@@ -1679,8 +1709,16 @@ mod tests {
         sync_peers: &'a mut Vec<SyncPeer>,
         horizon_sync_height: u64,
     ) -> HorizonStateSynchronization<'a, TempDatabase> {
+        build_synchronizer_with_rules(db, sync_peers, horizon_sync_height, create_consensus_rules())
+    }
+
+    fn build_synchronizer_with_rules<'a>(
+        db: BlockchainDatabase<TempDatabase>,
+        sync_peers: &'a mut Vec<SyncPeer>,
+        horizon_sync_height: u64,
+        rules: BaseNodeConsensusManager,
+    ) -> HorizonStateSynchronization<'a, TempDatabase> {
         let (connectivity, _mock) = create_connectivity_mock();
-        let rules = create_consensus_rules();
         let prover = CryptoFactories::default().range_proof;
         let validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> = Arc::new(MockValidator::new(true));
         HorizonStateSynchronization::new(
@@ -3263,5 +3301,95 @@ mod tests {
                 .unwrap(),
             Some(genesis_output.hash())
         );
+    }
+
+    /// Esmeralda rules: its genesis block has inputs that spend some of its own outputs
+    fn esmeralda_rules() -> BaseNodeConsensusManager {
+        BaseNodeConsensusManager::builder(Network::Esmeralda)
+            .add_consensus_constants(ConsensusConstantsBuilder::new(Network::Esmeralda).build())
+            .build()
+            .unwrap()
+    }
+
+    /// The genesis output state check matches what inserting a genesis block with inputs leaves, and the reset
+    /// rebuilds exactly that
+    #[tokio::test]
+    async fn genesis_with_inputs_output_state_is_reset_exactly() {
+        let rules = esmeralda_rules();
+        let db = create_custom_blockchain(rules.clone());
+        let genesis = db.fetch_genesis_block();
+        let spent = genesis_spent_output_hashes(&genesis);
+        assert!(!spent.is_empty(), "the genesis block spends some of its own outputs");
+        let mut peers = Vec::new();
+        let sync = build_synchronizer_with_rules(db.clone(), &mut peers, 0, rules);
+        assert!(
+            sync.output_state_is_genesis().await.unwrap(),
+            "a fresh database holds the genesis state"
+        );
+
+        let stray = genesis.block().body.outputs()[0].clone();
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(stray, FixedHash::zero(), 1, 0);
+        db.write(txn).unwrap();
+        assert!(!sync.output_state_is_genesis().await.unwrap());
+
+        sync.reset_output_state_to_genesis().await.unwrap();
+        assert!(sync.output_state_is_genesis().await.unwrap());
+        for output in genesis.block().body.outputs() {
+            assert!(!db.fetch_outputs(output.hash()).unwrap().is_empty());
+            if spent.contains(&output.hash()) {
+                assert!(
+                    db.fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                        .unwrap()
+                        .is_none()
+                );
+            }
+        }
+    }
+
+    /// Syncs from height 1 on a chain whose genesis block spends some of its own outputs, from an archival or a
+    /// pruned peer
+    async fn sync_esmeralda_chain(pruned_source: bool) {
+        let rules = esmeralda_rules();
+        let mut chain = TestBlockchain::create(rules.clone());
+        for name in ["1", "2", "3"] {
+            chain.add_next_tip(block_spec!(name)).unwrap();
+        }
+        if pruned_source {
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(1);
+            chain.db().write(txn).unwrap();
+            chain.db().prune_to_height(2).unwrap();
+        }
+        let target = chain.get_block_and_smt_by_name("3").unwrap().header().clone();
+        let db = headers_only_db(&chain, &["1", "2", "3"]);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer_with_rules(db.clone(), &mut peers, target.height, rules);
+        sync.tranche_size = 0;
+
+        // The genesis outputs the genesis block spends are never pruned, so no spend is sent for them
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(|request, items| {
+                if request == 1 {
+                    assert!(items.iter().all(|item| !matches!(item.txo, Some(Txo::Commitment(_)))));
+                }
+                Ok(())
+            }),
+        );
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap();
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    #[tokio::test]
+    async fn genesis_with_inputs_syncs_from_archival_peer() {
+        sync_esmeralda_chain(false).await;
+    }
+
+    #[tokio::test]
+    async fn genesis_with_inputs_syncs_from_pruned_peer() {
+        sync_esmeralda_chain(true).await;
     }
 }

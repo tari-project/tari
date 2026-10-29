@@ -1207,6 +1207,14 @@ impl LMDBDatabase {
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
+                DeleteUtxoCommitmentIndexEntry { commitment } => {
+                    lmdb_delete(
+                        &write_txn,
+                        &self.utxo_commitment_index,
+                        commitment.as_bytes(),
+                        "utxo_commitment_index",
+                    )?;
+                },
                 ClearHorizonSyncOutputState => {
                     // The tables `insert_output` writes, and the output tree. Emptied with `mdb_drop` rather than row
                     // by row; the databases themselves are kept.

@@ -337,6 +337,14 @@ impl DbTransaction {
         self
     }
 
+    /// Removes an output's commitment index entry and leaves its row, as spending it does. Only for horizon sync,
+    /// which restores the genesis outputs the genesis block spends itself.
+    pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
+        self.operations
+            .push(WriteOperation::DeleteUtxoCommitmentIndexEntry { commitment });
+        self
+    }
+
     pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
         self.operations
             .push(WriteOperation::ApplyHorizonStateTreeUpdates { updates });
@@ -454,6 +462,9 @@ pub enum WriteOperation {
     },
     ClearAllReorgs,
     ClearHorizonSyncOutputState,
+    DeleteUtxoCommitmentIndexEntry {
+        commitment: CompressedCommitment,
+    },
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
         checkpoint: Option<HorizonSyncOutputCheckpoint>,
@@ -623,6 +634,9 @@ impl fmt::Display for WriteOperation {
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
             ClearHorizonSyncOutputState => write!(f, "Clear horizon sync output state"),
+            DeleteUtxoCommitmentIndexEntry { commitment } => {
+                write!(f, "Delete commitment index entry {}", commitment.to_hex())
+            },
             SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,

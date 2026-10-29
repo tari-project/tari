@@ -630,6 +630,11 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
+    pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
+        self.transaction.delete_utxo_commitment_index_entry(commitment);
+        self
+    }
+
     pub async fn commit(&mut self) -> Result<(), ChainStorageError> {
         let transaction = mem::take(&mut self.transaction);
         self.db.write(transaction).await
