@@ -1208,13 +1208,20 @@ impl LMDBDatabase {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
                 ClearHorizonSyncOutputState => {
-                    // The tables `insert_output` writes, and the output tree
-                    lmdb_clear(&write_txn, &self.utxos_db)?;
-                    lmdb_clear(&write_txn, &self.utxo_commitment_index)?;
-                    lmdb_clear(&write_txn, &self.payref_to_output_index)?;
-                    lmdb_clear(&write_txn, &self.txos_hash_to_index_db)?;
-                    lmdb_clear(&write_txn, &self.jmt_node_data)?;
-                    lmdb_clear(&write_txn, &self.jmt_value_data)?;
+                    // The tables `insert_output` writes, and the output tree. Emptied with `mdb_drop` rather than row
+                    // by row; the databases themselves are kept.
+                    let mut access = write_txn.access();
+                    for db in [
+                        &self.utxos_db,
+                        &self.utxo_commitment_index,
+                        &self.payref_to_output_index,
+                        &self.txos_hash_to_index_db,
+                        &self.jmt_node_data,
+                        &self.jmt_value_data,
+                    ] {
+                        access.clear_db(db)?;
+                    }
+                    drop(access);
                     lmdb_delete(
                         &write_txn,
                         &self.metadata_db,

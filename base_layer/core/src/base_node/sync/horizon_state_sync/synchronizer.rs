@@ -30,7 +30,10 @@ use std::{
 
 use futures::{StreamExt, stream::BoxStream};
 use log::*;
-use tari_common_types::types::{CompressedCommitment, FixedHash, RangeProofService};
+use tari_common_types::{
+    payment_reference::generate_payment_reference,
+    types::{CompressedCommitment, FixedHash, RangeProofService},
+};
 use tari_comms::{
     PeerConnection,
     RefKind,
@@ -120,6 +123,9 @@ pub struct HorizonStateSynchronization<'a, B> {
     max_latency: Duration,
     peer_ban_manager: PeerBanManager,
     tranche_size: u64,
+    max_items_per_block: u64,
+    /// The peer whose resume from the checkpoint at (height, hash) failed on the local state
+    failed_resume: Option<(NodeId, u64, FixedHash)>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -135,6 +141,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
+        let max_items_per_block = max_streamed_items_per_block(&rules);
         Self {
             max_latency: config.initial_max_sync_latency,
             config,
@@ -150,6 +157,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             final_state_validator,
             peer_ban_manager,
             tranche_size: HORIZON_SYNC_TRANCHE_SIZE,
+            max_items_per_block,
+            failed_resume: None,
         }
     }
 
@@ -411,12 +420,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             debug!(target: LOG_TARGET, "No stored checkpoint, starting output sync from scratch");
             return Ok(1);
         };
-        let canonical_hash = self
-            .db
-            .fetch_header(checkpoint.checkpoint_height)
-            .await?
-            .map(|header| header.hash());
-        if canonical_hash == Some(checkpoint.checkpoint_hash) && sync_to_header.height >= checkpoint.checkpoint_height {
+        // An interrupted tranche may have left outputs under any block up to the recorded target. Clean up only finds
+        // them while that target is still canonical.
+        if self
+            .is_canonical(checkpoint.checkpoint_height, checkpoint.checkpoint_hash)
+            .await? &&
+            self.is_canonical(checkpoint.sync_target_height, checkpoint.sync_target_hash)
+                .await? &&
+            sync_to_header.height >= checkpoint.checkpoint_height
+        {
             info!(
                 target: LOG_TARGET,
                 "Resuming output sync from checkpoint at height {} to target height {}",
@@ -427,10 +439,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         warn!(
             target: LOG_TARGET,
-            "Output sync checkpoint at height {} ({}) is not on the canonical chain or is above target height {}. \
-             Discarding checkpoint and restarting output sync from scratch.",
+            "Output sync checkpoint at height {} ({}) or its target at height {} ({}) is not on the canonical chain, or \
+             the checkpoint is above target height {}. Discarding checkpoint and restarting output sync from scratch.",
             checkpoint.checkpoint_height,
             checkpoint.checkpoint_hash.to_hex(),
+            checkpoint.sync_target_height,
+            checkpoint.sync_target_hash.to_hex(),
             sync_to_header.height
         );
         self.db
@@ -439,6 +453,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .commit()
             .await?;
         Ok(1)
+    }
+
+    async fn is_canonical(&self, height: u64, hash: FixedHash) -> Result<bool, HorizonSyncError> {
+        Ok(self.db.fetch_header(height).await?.map(|header| header.hash()) == Some(hash))
     }
 
     /// The largest kernel or output (each streamed one at a time) a peer can legitimately send. A non-coinbase
@@ -485,17 +503,39 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Err(err);
         }
         // The outputs an earlier attempt committed may be what the peer's data does not fit, so the peer is not
-        // blamed and output sync is retried with it from height 1.
-        warn!(
-            target: LOG_TARGET,
-            "Output sync resumed at height {start_height} failed: {err}. Discarding checkpoint and retrying from height 1."
-        );
-        self.db
-            .write_transaction()
-            .clear_horizon_sync_output_checkpoint()
-            .commit()
-            .await?;
-        self.attempt_outputs_and_finalize(sync_peer, source, to_header, 1).await
+        // blamed. The checkpoint is only discarded once a second peer fails on it, so that one peer cannot force a
+        // restart from height 1.
+        let Some(checkpoint) = self.db.fetch_horizon_sync_output_checkpoint().await? else {
+            // The last tranche already cleared the checkpoint, so the next attempt starts from height 1
+            return Err(HorizonSyncError::ResumedOutputSyncFailed(err.to_string()));
+        };
+        let node_id = sync_peer.node_id().clone();
+        match self.failed_resume.take() {
+            Some((other, height, hash))
+                if other != node_id && height == checkpoint.checkpoint_height && hash == checkpoint.checkpoint_hash =>
+            {
+                warn!(
+                    target: LOG_TARGET,
+                    "Resuming from the checkpoint at height {height} failed with two peers: {err}. Discarding \
+                     checkpoint and retrying from height 1."
+                );
+                self.db
+                    .write_transaction()
+                    .clear_horizon_sync_output_checkpoint()
+                    .commit()
+                    .await?;
+                self.attempt_outputs_and_finalize(sync_peer, source, to_header, 1).await
+            },
+            _ => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Resuming from the checkpoint at height {} failed: {err}. Keeping checkpoint.",
+                    checkpoint.checkpoint_height
+                );
+                self.failed_resume = Some((node_id, checkpoint.checkpoint_height, checkpoint.checkpoint_hash));
+                Err(HorizonSyncError::ResumedOutputSyncFailed(err.to_string()))
+            },
+        }
     }
 
     async fn attempt_outputs_and_finalize<S: UtxoTrancheSource>(
@@ -516,17 +556,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         if result.is_ok() {
             return Ok(());
         }
-        // Undo everything above the checkpoint. Without one, the next attempt starts from height 1 and resets all
-        // output state anyway.
-        if let Some(checkpoint) = self.db.fetch_horizon_sync_output_checkpoint().await? {
-            if let Err(e) = self
+        // Undo everything above the checkpoint, or everything when there is none
+        let clean_up = match self.db.fetch_horizon_sync_output_checkpoint().await? {
+            Some(checkpoint) => self
                 .clean_up_stale_synced_outputs(checkpoint.checkpoint_height.saturating_add(1))
                 .await
-            {
-                warn!(target: LOG_TARGET, "Failed to clean up after failed output sync: {}", e);
-            }
-            debug!(target: LOG_TARGET, "Finished clearing failed output sync");
+                .map_err(HorizonSyncError::from),
+            None => self.reset_output_state_to_genesis().await,
+        };
+        if let Err(e) = clean_up {
+            warn!(target: LOG_TARGET, "Failed to clean up after failed output sync: {}", e);
         }
+        debug!(target: LOG_TARGET, "Finished clearing failed output sync");
         result
     }
 
@@ -588,6 +629,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     /// Clears all output state and restores the genesis outputs in one write. Clean up only finds outputs under
     /// canonical blocks, so this is what guarantees a sync from height 1 starts from the genesis state.
     async fn reset_output_state_to_genesis(&self) -> Result<(), HorizonSyncError> {
+        if self.output_state_is_genesis().await? {
+            debug!(target: LOG_TARGET, "Output state is already the genesis state");
+            return Ok(());
+        }
         let genesis_block = self.db.fetch_genesis_block();
         let genesis_header_hash = *genesis_block.hash();
         let genesis_timestamp = genesis_block.block().header.timestamp.as_u64();
@@ -622,6 +667,63 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             },
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Whether the output tables and the output tree hold exactly the genesis outputs
+    async fn output_state_is_genesis(&self) -> Result<bool, HorizonSyncError> {
+        let genesis_block = self.db.fetch_genesis_block();
+        match self
+            .db
+            .verify_horizon_sync_output_root(genesis_block.header().output_mr)
+            .await
+        {
+            Ok(()) => {},
+            Err(ChainStorageError::InvalidOperation(_)) => return Ok(false),
+            Err(e) => return Err(e.into()),
+        }
+        let outputs = genesis_block.block().body.outputs();
+        let unburned = outputs.iter().filter(|output| !output.is_burned()).count();
+        // The tables `insert_output` writes and the output tree values, by their table names
+        let mut tables_checked = 0usize;
+        for stat in self.db.get_stats().await?.db_stats() {
+            let expected = match stat.name {
+                "utxos" | "txos_hash_to_index" | "payref_to_output_index" => outputs.len(),
+                "utxo_commitment_index" | "jmt_values_data" => unburned,
+                _ => continue,
+            };
+            if stat.entries != expected {
+                return Ok(false);
+            }
+            tables_checked = tables_checked.saturating_add(1);
+        }
+        if tables_checked != 5 {
+            return Ok(false);
+        }
+        // With the counts matching, every genesis output being stored leaves no room for anything else
+        let genesis_hash = *genesis_block.hash();
+        for output in outputs {
+            let hash = output.hash();
+            let stored = self
+                .db
+                .fetch_outputs(hash)
+                .await?
+                .iter()
+                .any(|row| row.header_hash == genesis_hash);
+            let indexed = output.is_burned() ||
+                self.db
+                    .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
+                    .await? ==
+                    Some(hash);
+            let has_payref = self
+                .db
+                .fetch_mined_info_by_payref(generate_payment_reference(&genesis_hash, &hash))
+                .await
+                .is_ok();
+            if !stored || !indexed || !has_payref {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     async fn prune_if_needed(&mut self) -> Result<(), HorizonSyncError> {
@@ -835,8 +937,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Some(None) => true,
             None => false,
         };
+        let constants = self.rules.consensus_constants(current_header.height).clone();
+        validate_output_version(&constants, &output)?;
+        validate_individual_output(&output, &constants, self.rules.network().as_network())?;
+        batch_verify_range_proofs(&self.prover, &[&output])?;
+
         // An honest peer can send a commitment we already hold unspent when it pruned that output's spend after
-        // streaming the output to us
+        // streaming the output to us. Checked after validation, so this unbanned exit needs a valid output.
         if !spent_in_tranche &&
             self.db()
                 .fetch_unspent_output_hash_by_commitment(output.commitment.clone())
@@ -849,11 +956,6 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 current_header.height
             )));
         }
-
-        let constants = self.rules.consensus_constants(current_header.height).clone();
-        validate_output_version(&constants, &output)?;
-        validate_individual_output(&output, &constants, self.rules.network().as_network())?;
-        batch_verify_range_proofs(&self.prover, &[&output])?;
 
         state_tree_updates.insert(key, Some(output.smt_hash(current_header.height)));
         if spent_in_tranche {
@@ -929,6 +1031,17 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             self.reset_output_state_to_genesis().await?;
         } else {
             self.clean_up_stale_synced_outputs(sync_start_height).await?;
+            // Outputs this attempt commits before its next checkpoint sit under blocks up to this target
+            if let Some(mut checkpoint) = db.fetch_horizon_sync_output_checkpoint().await? &&
+                checkpoint.sync_target_hash != to_header.hash()
+            {
+                checkpoint.sync_target_height = to_header.height;
+                checkpoint.sync_target_hash = to_header.hash();
+                db.write_transaction()
+                    .set_horizon_sync_output_checkpoint(checkpoint)
+                    .commit()
+                    .await?;
+            }
         }
 
         // No tranche is left when the checkpoint is at the target, but the committed state is still verified below
@@ -967,6 +1080,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             latency.unwrap_or_default().as_millis(),
         );
 
+        // A pruned peer also streams the spends of pruned genesis outputs at height 1
+        let genesis_output_count =
+            u64::try_from(db.fetch_genesis_block().block().body.outputs().len()).unwrap_or(u64::MAX);
         let timer = Instant::now();
         let mut total_utxo_counter = 0u64;
         let mut total_stxo_counter = 0u64;
@@ -1032,6 +1148,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let mut recreated_outputs = Vec::new();
             let mut batch_op_counter = 0usize;
             let mut saw_terminator = false;
+            let mut items_received = 0u64;
+            let item_budget = self
+                .max_items_per_block
+                .saturating_mul(
+                    tranche_end_height
+                        .saturating_sub(tranche_start_height)
+                        .saturating_add(1),
+                )
+                .saturating_add(1)
+                .saturating_add(if tranche_start_height == 1 {
+                    genesis_output_count
+                } else {
+                    0
+                });
             let mut previous_height = tranche_start_height;
             let mut current_header_hash = tranche_start_header.hash();
             let mut current_header = self
@@ -1043,6 +1173,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let latency = last_sync_timer.elapsed();
                 avg_latency.add_sample(latency);
                 let res: SyncUtxosResponse = response?;
+                items_received = items_received.saturating_add(1);
+                if items_received > item_budget {
+                    return Err(HorizonSyncError::IncorrectResponse(format!(
+                        "Peer sent more than {item_budget} items for tranche \
+                         {tranche_start_height}-{tranche_end_height}"
+                    )));
+                }
 
                 let output_header_hash = FixedHash::try_from(res.mined_header).map_err(|e| {
                     HorizonSyncError::IncorrectResponse(format!("Peer sent invalid mined header: {}", e))
@@ -1096,35 +1233,36 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
                 match proto_output {
                     Txo::Output(output) => {
-                        if current_header.height == 0 {
-                            continue;
-                        }
                         let output = TransactionOutput::try_from(output)
                             .map_err(|e| HorizonSyncError::ConversionError(e.to_string()))?;
-                        if !output.is_burned() {
-                            utxo_counter = utxo_counter.saturating_add(1);
-                            let output_hash = output.hash();
-                            trace!(
-                                target: LOG_TARGET,
-                                "UTXO `{}` received from sync peer at height {} (tranche {}-{}, {} in tranche)",
-                                output_hash,
-                                current_header.height,
-                                tranche_start_height,
-                                tranche_end_height,
-                                utxo_counter,
-                            );
-                            if self
-                                .queue_horizon_output(
-                                    output,
-                                    &current_header,
-                                    &mut state_tree_updates,
-                                    &mut recreated_outputs,
-                                    &mut txn,
-                                )
-                                .await?
-                            {
-                                batch_op_counter = batch_op_counter.saturating_add(1);
-                            }
+                        // Burned outputs are never streamed
+                        if output.is_burned() {
+                            return Err(HorizonSyncError::IncorrectResponse(
+                                "Peer sent a burned output".to_string(),
+                            ));
+                        }
+                        utxo_counter = utxo_counter.saturating_add(1);
+                        let output_hash = output.hash();
+                        trace!(
+                            target: LOG_TARGET,
+                            "UTXO `{}` received from sync peer at height {} (tranche {}-{}, {} in tranche)",
+                            output_hash,
+                            current_header.height,
+                            tranche_start_height,
+                            tranche_end_height,
+                            utxo_counter,
+                        );
+                        if self
+                            .queue_horizon_output(
+                                output,
+                                &current_header,
+                                &mut state_tree_updates,
+                                &mut recreated_outputs,
+                                &mut txn,
+                            )
+                            .await?
+                        {
+                            batch_op_counter = batch_op_counter.saturating_add(1);
                         }
                     },
                     Txo::Commitment(commitment_bytes) => {
@@ -1172,8 +1310,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             // Verify the stream completed the full tranche before committing.
             if !saw_terminator {
-                return Err(HorizonSyncError::IncorrectResponse(format!(
-                    "Sync peer did not complete output stream for tranche {}-{}",
+                return Err(HorizonSyncError::IncompleteOutputStream(format!(
+                    "tranche {}-{}",
                     tranche_start_height, tranche_end_height
                 )));
             }
@@ -1379,6 +1517,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 }
 
+/// The most TXO items an honest peer streams for one block: an unspent output or a spend for each output or input
+/// in the block. Every input and every non-coinbase output costs at least its base weight, and coinbase outputs,
+/// which are not weighed, are capped in number.
+fn max_streamed_items_per_block(rules: &BaseNodeConsensusManager) -> u64 {
+    rules
+        .consensus_constants_vec()
+        .iter()
+        .map(|c| {
+            let max_weight = c.max_block_transaction_weight();
+            let params = c.transaction_weight_params().params();
+            max_weight
+                .checked_div(params.output_weight)
+                .unwrap_or(max_weight)
+                .saturating_add(max_weight.checked_div(params.input_weight).unwrap_or(max_weight))
+                .saturating_add(c.max_block_coinbase_count())
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 /// Queues the tranche's tree updates, then the pruning of spent instances, then the outputs that mine a spent
 /// commitment again, so that they all land in one write.
 fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
@@ -1419,7 +1577,12 @@ mod tests {
     use primitive_types::U512;
     use tari_common::configuration::Network;
     use tari_common_types::chain_metadata::ChainMetadata;
-    use tari_comms::{protocol::rpc::Request, test_utils::mocks::create_connectivity_mock};
+    use tari_comms::{
+        protocol::rpc::Request,
+        test_utils::mocks::create_connectivity_mock,
+        types::{CommsPublicKey, CommsSecretKey},
+    };
+    use tari_crypto::keys::SecretKey as _;
     use tari_node_components::blocks::ChainBlock;
     use tari_script::script;
     use tari_transaction_components::{
@@ -1428,7 +1591,7 @@ mod tests {
         key_manager::KeyManager,
         tari_amount::MicroMinotari,
         test_helpers::{TestParams, create_wallet_output_with_data, schema_to_transaction},
-        transaction_components::OutputFeatures,
+        transaction_components::{OutputFeatures, OutputType},
         txn_schema,
     };
 
@@ -1965,9 +2128,11 @@ mod tests {
         }
     }
 
+    /// A sync peer with a new random node id
     fn test_sync_peer() -> SyncPeer {
+        let public_key = CommsPublicKey::from_secret_key(&CommsSecretKey::random(&mut rand::rng()));
         PeerChainMetadata::new(
-            NodeId::new(),
+            NodeId::from_key(&public_key),
             ChainMetadata::new(0, FixedHash::zero(), 0, 0, U512::from(1), 0).unwrap(),
             None,
         )
@@ -1999,7 +2164,8 @@ mod tests {
     }
 
     /// A peer that leaves out an output spent in a later tranche and then drops the connection leaves a checkpoint
-    /// that an honest peer's spends do not fit. The honest peer is not blamed and finishes the sync from height 1.
+    /// that honest peers' spends do not fit. No peer is blamed, and once two peers fail on it the second one finishes
+    /// the sync from height 1.
     #[tokio::test]
     async fn poisoned_checkpoint_resume_restarts_without_ban() {
         let (chain, db) = duplicate_output_sync_setup();
@@ -2034,19 +2200,30 @@ mod tests {
         assert!(matches!(err, HorizonSyncError::RpcError(_)), "{err}");
         assert_eq!(checkpoint_height(&db), Some(1));
 
-        // The resume fails on the poisoned state, then the same peer finishes the sync from height 1
-        let mut honest = DbTrancheSource::honest(chain.db());
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+        // The first peer's resume fails on the poisoned state. It is not banned or retried, and the checkpoint stays.
+        let mut first = DbTrancheSource::honest(chain.db());
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut first, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(first.requests, 1);
+        assert_eq!(checkpoint_height(&db), Some(1));
+
+        // A second peer's resume fails too, so the checkpoint is discarded and that peer syncs from height 1
+        let mut second = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut second, &target)
             .await
             .unwrap();
-        assert_eq!(honest.requests, 6, "one resumed tranche, then all five from height 1");
+        assert_eq!(second.requests, 6, "one resumed tranche, then all five from height 1");
         assert_eq!(checkpoint_height(&db), None);
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), target.height);
     }
 
     /// A peer that plants a later block's output in an early tranche and then drops the connection leaves state
-    /// that an honest peer's copy of that output collides with. The honest peer is not blamed and finishes the sync
+    /// that honest peers' copies of that output collide with. No peer is blamed, and the second one finishes the sync
     /// from height 1.
     #[tokio::test]
     async fn planted_output_resume_restarts_without_ban() {
@@ -2085,12 +2262,20 @@ mod tests {
             .unwrap_err();
         assert_eq!(checkpoint_height(&db), Some(1));
 
-        // The resume fails at the colliding tranche, then the same peer finishes the sync from height 1
-        let mut honest = DbTrancheSource::honest(chain.db());
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+        // Two peers' resumes fail at the colliding tranche, then the second peer finishes the sync from height 1
+        let mut first = DbTrancheSource::honest(chain.db());
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut first, &target)
+            .await
+            .unwrap_err();
+        assert!(err.get_ban_reason().is_none(), "{err}");
+        // The tranches before the colliding one were committed
+        assert_eq!(checkpoint_height(&db), Some(4));
+        let mut second = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut second, &target)
             .await
             .unwrap();
-        assert_eq!(honest.requests, 9, "four resumed tranches, then all five from height 1");
+        assert_eq!(second.requests, 6, "the colliding tranche, then all five from height 1");
         assert_eq!(checkpoint_height(&db), None);
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
     }
@@ -2132,12 +2317,9 @@ mod tests {
         );
     }
 
-    /// Syncs the duplicate output chain from height 1, with tranche 3 (height 3) also sending `change` applied to
-    /// the never-spent coinbase of block "1" (height 2), which tranche 2 already sent
-    async fn sync_with_block_one_coinbase_in_tranche_three(change: fn(&mut TransactionOutput)) -> HorizonSyncError {
-        let (chain, db) = duplicate_output_sync_setup();
-        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
-        let stored = chain
+    /// The never-spent coinbase of block "1" (height 2)
+    fn block_one_coinbase(chain: &TestBlockchain) -> TransactionOutput {
+        chain
             .get_block_and_smt_by_name("1")
             .unwrap()
             .block()
@@ -2146,10 +2328,16 @@ mod tests {
             .iter()
             .find(|output| output.is_coinbase())
             .unwrap()
-            .clone();
-        let mut extra = stored.clone();
-        change(&mut extra);
-        assert_eq!(extra.commitment, stored.commitment);
+            .clone()
+    }
+
+    /// An output sent again in a later tranche is indistinguishable from an honest pruned peer re-mining it after
+    /// pruning its spend, so it fails the sync without a ban
+    #[tokio::test]
+    async fn output_sent_again_in_later_tranche_is_not_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let coinbase = block_one_coinbase(&chain);
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
@@ -2160,37 +2348,168 @@ mod tests {
                 if request == 3 {
                     let mined_header = items.last().unwrap().mined_header.clone();
                     items.insert(0, SyncUtxosResponse {
-                        txo: Some(Txo::Output(extra.clone().try_into().unwrap())),
+                        txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
                         mined_header,
                     });
                 }
                 Ok(())
             }),
         );
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
             .await
-            .unwrap_err()
-    }
-
-    /// An output sent again in a later tranche is indistinguishable from an honest pruned peer re-mining it after
-    /// pruning its spend, so it fails the sync without a ban
-    #[tokio::test]
-    async fn output_sent_again_in_later_tranche_is_not_banned() {
-        let err = sync_with_block_one_coinbase_in_tranche_three(|_| {}).await;
+            .unwrap_err();
         assert!(matches!(err, HorizonSyncError::OutputAlreadyStored(_)), "{err}");
         assert!(err.get_ban_reason().is_none());
     }
 
-    /// A different output with the commitment of a stored unspent output, as an output re-mined after a spend the
-    /// peer pruned, fails the sync without a ban
+    /// An invalid output is banned even when its commitment is already stored, since outputs are validated first
     #[tokio::test]
-    async fn different_output_with_stored_commitment_is_not_banned() {
-        let err = sync_with_block_one_coinbase_in_tranche_three(|output| {
-            output.minimum_value_promise = MicroMinotari::from(1);
-        })
-        .await;
+    async fn invalid_output_with_stored_commitment_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut forged = block_one_coinbase(&chain);
+        // Changing the minimum value promise invalidates the metadata signature
+        forged.minimum_value_promise = MicroMinotari::from(1);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 3 {
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    items.insert(0, SyncUtxosResponse {
+                        txo: Some(Txo::Output(forged.clone().try_into().unwrap())),
+                        mined_header,
+                    });
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long, "{err}");
+    }
+
+    /// A valid output whose commitment matches a different stored output, as after a spend the peer pruned, fails the
+    /// sync without a ban
+    #[tokio::test]
+    async fn output_matching_a_different_stored_output_is_not_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let coinbase = block_one_coinbase(&chain);
+        let block_one_hash = chain.get_block_and_smt_by_name("1").unwrap().header().hash();
+        let mut stored = coinbase.clone();
+        stored.minimum_value_promise = MicroMinotari::from(1);
+        assert_ne!(stored.hash(), coinbase.hash());
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let receiving = db.clone();
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 2 {
+                    // The peer leaves the coinbase out, and a different output with its commitment is stored instead
+                    items.retain(|item| match &item.txo {
+                        Some(Txo::Output(output)) => {
+                            TransactionOutput::try_from(output.clone()).unwrap().hash() != coinbase.hash()
+                        },
+                        _ => true,
+                    });
+                    let mut txn = DbTransaction::new();
+                    txn.insert_utxo(stored.clone(), block_one_hash, 2, 0);
+                    receiving.write(txn).unwrap();
+                }
+                if request == 3 {
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    items.insert(0, SyncUtxosResponse {
+                        txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
+                        mined_header,
+                    });
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
         assert!(matches!(err, HorizonSyncError::OutputAlreadyStored(_)), "{err}");
         assert!(err.get_ban_reason().is_none());
+    }
+
+    /// A burned output is never streamed, so sending one is banned
+    #[tokio::test]
+    async fn burned_output_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(|_, items| {
+                let item = items
+                    .iter_mut()
+                    .find(|item| matches!(item.txo, Some(Txo::Output(_))))
+                    .unwrap();
+                if let Some(Txo::Output(output)) = &item.txo {
+                    let mut output = TransactionOutput::try_from(output.clone()).unwrap();
+                    output.features.output_type = OutputType::Burn;
+                    item.txo = Some(Txo::Output(output.try_into().unwrap()));
+                }
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+    }
+
+    /// A tranche with more items than its blocks can hold is banned
+    #[tokio::test]
+    async fn tranche_over_item_budget_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+        // Block "A" streams one output and the terminator; block "1" streams more
+        sync.max_items_per_block = 1;
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        assert_eq!(honest.requests, 2);
+    }
+
+    /// The honest per-block bound covers every non-coinbase output and input a block's weight allows, plus the
+    /// coinbase limit
+    #[test]
+    fn item_budget_covers_a_full_block() {
+        let rules = create_consensus_rules();
+        let constants = rules.consensus_constants(0);
+        let params = constants.transaction_weight_params().params();
+        let max_weight = constants.max_block_transaction_weight();
+        assert!(
+            max_streamed_items_per_block(&rules) >=
+                max_weight / params.output_weight +
+                    max_weight / params.input_weight +
+                    constants.max_block_coinbase_count()
+        );
     }
 
     /// A commitment index entry with no output row is cleared before a sync from height 1, so the honest peer that
@@ -2256,7 +2575,57 @@ mod tests {
         assert_eq!(honest.requests, 5);
     }
 
-    /// A peer whose resume fails on the local state is retried from height 1, where malformed data still bans it
+    /// The same peer failing to resume twice does not discard the checkpoint
+    #[tokio::test]
+    async fn same_peer_failing_resume_twice_keeps_checkpoint() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let spent_hash = chain.get_block_and_smt_by_name("1").unwrap().block().body.inputs()[0].output_hash();
+        let commitment = chain
+            .db()
+            .fetch_outputs(spent_hash)
+            .unwrap()
+            .pop()
+            .unwrap()
+            .output
+            .commitment;
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut poisoned = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 2 {
+                    return Err(RpcError::ClientClosed);
+                }
+                items.retain(|item| match &item.txo {
+                    Some(Txo::Output(output)) => {
+                        TransactionOutput::try_from(output.clone()).unwrap().commitment != commitment
+                    },
+                    _ => true,
+                });
+                Ok(())
+            }),
+        );
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut poisoned, &target)
+            .await
+            .unwrap_err();
+
+        let peer = test_sync_peer();
+        for _ in 0..2 {
+            let mut source = DbTrancheSource::honest(chain.db());
+            let err = sync
+                .sync_outputs_and_finalize(peer.clone(), &mut source, &target)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
+            assert_eq!(source.requests, 1);
+            assert_eq!(checkpoint_height(&db), Some(1));
+        }
+    }
+
+    /// The second peer whose resume fails on the local state is retried from height 1, where malformed data bans it
     #[tokio::test]
     async fn resumed_peer_that_misbehaves_from_height_one_is_banned() {
         let (chain, db) = duplicate_output_sync_setup();
@@ -2294,7 +2663,14 @@ mod tests {
             .unwrap_err();
         assert_eq!(checkpoint_height(&db), Some(1));
 
-        // Request 1 is the resumed tranche, which fails on the poisoned state. The retry from height 1 is malformed.
+        let mut first = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut first, &target)
+            .await
+            .unwrap_err();
+        assert_eq!(checkpoint_height(&db), Some(1));
+
+        // Request 1 is the second peer's resumed tranche, which fails on the poisoned state. Its retry from height 1
+        // is malformed.
         let mut malicious = DbTrancheSource::new(
             chain.db(),
             Box::new(|request, items| {
@@ -2350,7 +2726,7 @@ mod tests {
 
     /// A stream that ends without the terminator is incomplete, even if its last item is in the tranche-end block
     #[tokio::test]
-    async fn stream_without_terminator_is_banned() {
+    async fn stream_without_terminator_is_short_banned() {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
         let mut peers = Vec::new();
@@ -2372,8 +2748,9 @@ mod tests {
             .sync_outputs_and_finalize(test_sync_peer(), &mut truncated, &target)
             .await
             .unwrap_err();
-        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
-        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        // A dropped connection also ends the stream without an error, so this is only a short ban
+        assert!(matches!(err, HorizonSyncError::IncompleteOutputStream(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
         assert_eq!(
             checkpoint_height(&db),
             Some(1),
@@ -2399,6 +2776,12 @@ mod tests {
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
 
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::ResumedOutputSyncFailed(_)), "{err}");
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0, "not finalized");
         let mut honest = DbTrancheSource::honest(chain.db());
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
             .await
@@ -2520,6 +2903,13 @@ mod tests {
         // An honest pruned peer that pruned past the target cannot serve its state either
         assert!(err.get_ban_reason().is_none());
         assert_eq!(checkpoint_height(&db), None);
+        // Only the genesis outputs, of which there are none here, are left
+        for name in ["A", "1", "2", "3", "4"] {
+            let block_hash = chain.get_block_and_smt_by_name(name).unwrap().header().hash();
+            assert!(db.fetch_outputs_in_block(block_hash).unwrap().is_empty());
+        }
+        db.verify_horizon_sync_output_root(db.fetch_chain_header(0).unwrap().header().output_mr)
+            .unwrap();
 
         let mut honest = DbTrancheSource::honest(chain.db());
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
@@ -2647,6 +3037,102 @@ mod tests {
             db.fetch_unspent_output_hash_by_commitment(genesis_output.commitment)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    /// A checkpoint whose recorded target left the canonical chain may have outputs under blocks clean up cannot
+    /// find, so output sync restarts from height 1 and those outputs are removed
+    #[tokio::test]
+    async fn resume_discards_checkpoint_whose_target_left_the_chain() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let checkpoint = chain.get_block_and_smt_by_name("A").unwrap().header().clone();
+        let real = chain
+            .get_block_and_smt_by_name("4")
+            .unwrap()
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .find(|output| output.is_coinbase())
+            .unwrap()
+            .clone();
+        let mut stray = real.clone();
+        stray.minimum_value_promise = MicroMinotari::from(1);
+        // An interrupted attempt committed a batch under a block that a reorg has since replaced
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(stray.clone(), FixedHash::from([5u8; 32]), 4, 0);
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: checkpoint.height,
+            checkpoint_hash: checkpoint.hash(),
+            sync_target_height: target.height,
+            sync_target_hash: FixedHash::from([6u8; 32]),
+        });
+        db.write(txn).unwrap();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap();
+        assert_eq!(honest.requests, 5, "output sync must start from height 1");
+        assert!(db.fetch_outputs(stray.hash()).unwrap().is_empty());
+        assert_eq!(
+            db.fetch_unspent_output_hash_by_commitment(real.commitment.clone())
+                .unwrap(),
+            Some(real.hash())
+        );
+    }
+
+    /// A resumed attempt records its target before streaming, so a crash leaves the target its outputs sit under
+    #[tokio::test]
+    async fn resume_records_its_target_before_streaming() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let old_target = chain.get_block_and_smt_by_name("2").unwrap().header().clone();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, old_target.height);
+        sync.tranche_size = 0;
+
+        sync.sync_outputs_and_finalize(
+            test_sync_peer(),
+            &mut DbTrancheSource::drops_at(chain.db(), 2),
+            &old_target,
+        )
+        .await
+        .unwrap_err();
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::drops_at(chain.db(), 1), &target)
+            .await
+            .unwrap_err();
+        let checkpoint = db.fetch_horizon_sync_output_checkpoint().unwrap().unwrap();
+        assert_eq!(checkpoint.checkpoint_height, 1);
+        assert_eq!(checkpoint.sync_target_hash, target.hash());
+    }
+
+    /// The output state check sees any output beyond the genesis outputs, and the reset restores exactly them
+    #[tokio::test]
+    async fn output_state_is_genesis_until_anything_else_is_stored() {
+        let (chain, genesis_output) = genesis_spend_chain();
+        let db = headers_only_db(&chain, &["1", "2", "3"]);
+        let mut peers = Vec::new();
+        let sync = build_synchronizer(db.clone(), &mut peers, 3);
+        assert!(sync.output_state_is_genesis().await.unwrap());
+
+        let stray = chain.get_block_and_smt_by_name("3").unwrap().block().body.outputs()[0].clone();
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(stray.clone(), FixedHash::zero(), 3, 0);
+        db.write(txn).unwrap();
+        assert!(!sync.output_state_is_genesis().await.unwrap());
+
+        sync.reset_output_state_to_genesis().await.unwrap();
+        assert!(sync.output_state_is_genesis().await.unwrap());
+        assert!(db.fetch_outputs(stray.hash()).unwrap().is_empty());
+        assert_eq!(
+            db.fetch_unspent_output_hash_by_commitment(genesis_output.commitment.clone())
+                .unwrap(),
+            Some(genesis_output.hash())
         );
     }
 }
