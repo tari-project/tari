@@ -54,6 +54,8 @@ pub enum HorizonSyncError {
     SlowFinalOutputRootMismatch(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
     IncompleteOutputStream(String),
+    #[error("Kernel stream ended before all kernels were sent: {0}")]
+    IncompleteKernelStream(String),
     #[error("Peer sent an output whose commitment is already stored unspent: {0}")]
     OutputAlreadyStored(String),
     #[error("Local output state does not match the genesis block after clean up: {0}")]
@@ -181,6 +183,7 @@ impl HorizonSyncError {
             err @ HorizonSyncError::PeerWaitBudgetExceeded { .. } |
             // A dropped connection also ends the stream without an error
             err @ HorizonSyncError::IncompleteOutputStream(_) |
+            err @ HorizonSyncError::IncompleteKernelStream(_) |
             err @ HorizonSyncError::SlowFinalOutputRootMismatch(_) |
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {

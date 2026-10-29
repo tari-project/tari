@@ -969,10 +969,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             peer_wait,
             self.peer_wait_budget(kernel_allowance, bytes_received),
         )?;
+        // A dropped connection also ends the stream without an error
         if mmr_position != end {
-            return Err(HorizonSyncError::IncorrectResponse(
-                "Sync node did not send all kernels requested".to_string(),
-            ));
+            return Err(HorizonSyncError::IncompleteKernelStream(format!(
+                "received up to kernel {mmr_position} of {end}"
+            )));
         }
         Ok(())
     }
@@ -2310,6 +2311,7 @@ mod tests {
         requests: usize,
         edit: EditTranche,
         item_delay: Duration,
+        max_kernels: usize,
     }
 
     impl DbTrancheSource {
@@ -2319,6 +2321,7 @@ mod tests {
                 requests: 0,
                 edit,
                 item_delay: Duration::ZERO,
+                max_kernels: usize::MAX,
             }
         }
 
@@ -2384,6 +2387,7 @@ mod tests {
                     kernels.push(proto::types::TransactionKernel::from(kernel));
                 }
             }
+            kernels.truncate(self.max_kernels);
             let delay = self.item_delay;
             Ok(futures::stream::iter(kernels)
                 .then(move |kernel| async move {
@@ -3111,6 +3115,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(db.fetch_mmr_size(MmrTree::Kernel).unwrap(), target.kernel_mmr_size);
+    }
+
+    /// A kernel stream that ends early, as a dropped connection does, gets a short ban
+    #[tokio::test]
+    async fn kernel_stream_ending_early_is_short_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        let mut source = DbTrancheSource::honest(chain.db());
+        source.max_kernels = 2;
+        let err = sync
+            .synchronize_kernels(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncompleteKernelStream(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
     }
 
     /// A peer that delivers kernels slower than the minimum throughput exceeds the peer-wait budget, even when each
