@@ -45,7 +45,12 @@ use tari_crypto::commitment::HomomorphicCommitment;
 use tari_node_components::blocks::{BlockHeader, ChainHeader};
 use tari_transaction_components::{
     BanPeriod,
-    transaction_components::{TransactionKernel, TransactionOutput, transaction_output::batch_verify_range_proofs},
+    transaction_components::{
+        OutputType,
+        TransactionKernel,
+        TransactionOutput,
+        transaction_output::batch_verify_range_proofs,
+    },
     validation::{aggregate_body::validate_individual_output, helpers::validate_output_version},
 };
 use tari_utilities::{ByteArray, hex::Hex};
@@ -84,6 +89,10 @@ const MAX_LATENCY_INCREASES: usize = 5;
 const HORIZON_SYNC_BATCH_SIZE: usize = 10_000;
 const PROGRESS_REPORT_INTERVAL: u64 = 100;
 const HORIZON_SYNC_TRANCHE_SIZE: u64 = 5_000;
+/// Commitments spent and mined again within one tranche. Each costs a validation that is not bounded by the stored
+/// outputs, so they are capped; honestly republishing an identical output is rare. What remains is up to the end
+/// block's leaf count (`output_smt_size`) of validated outputs per tranche, summed over the tranches of an attempt.
+const MAX_RECREATED_OUTPUTS_PER_TRANCHE: usize = 100;
 
 /// Where output sync gets the TXO stream of each tranche from.
 trait UtxoTrancheSource {
@@ -124,6 +133,9 @@ pub struct HorizonStateSynchronization<'a, B> {
     peer_ban_manager: PeerBanManager,
     tranche_size: u64,
     max_items_per_block: u64,
+    /// The time a tranche may take per block, on top of the RPC deadline
+    tranche_time_per_block: Duration,
+    max_recreated_outputs: usize,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -140,6 +152,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         let max_items_per_block = max_streamed_items_per_block(&rules);
+        let tranche_time_per_block = config.initial_max_sync_latency.checked_div(4).unwrap_or_default();
         Self {
             max_latency: config.initial_max_sync_latency,
             config,
@@ -156,6 +169,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             peer_ban_manager,
             tranche_size: HORIZON_SYNC_TRANCHE_SIZE,
             max_items_per_block,
+            tranche_time_per_block,
+            max_recreated_outputs: MAX_RECREATED_OUTPUTS_PER_TRANCHE,
         }
     }
 
@@ -891,6 +906,19 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
+    /// A tranche must finish within its time budget, so a peer cannot drip-feed it just under the latency limit
+    fn check_tranche_time(&self, peer: &NodeId, started: Instant, budget: Duration) -> Result<(), HorizonSyncError> {
+        let elapsed = started.elapsed();
+        if elapsed > budget {
+            return Err(HorizonSyncError::MaxLatencyExceeded {
+                peer: peer.clone(),
+                latency: elapsed,
+                max_latency: budget,
+            });
+        }
+        Ok(())
+    }
+
     fn check_latency(&self, peer: &NodeId, avg_latency: &RollingAverageTime) -> Result<(), HorizonSyncError> {
         if let Some(avg_latency) = avg_latency.calculate_average_with_min_samples(5) &&
             avg_latency > self.max_latency
@@ -932,6 +960,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Some(None) => true,
             None => false,
         };
+        if spent_in_tranche && recreated_outputs.len() >= self.max_recreated_outputs {
+            return Err(HorizonSyncError::TooManyRecreatedOutputs(format!(
+                "more than {} at height {}",
+                self.max_recreated_outputs, current_header.height
+            )));
+        }
         let constants = self.rules.consensus_constants(current_header.height).clone();
         validate_output_version(&constants, &output)?;
         validate_individual_output(&output, &constants, self.rules.network().as_network())?;
@@ -977,7 +1011,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         commitment_bytes: &[u8],
         tranche_start_height: u64,
         state_tree_updates: &mut BTreeMap<FixedHash, Option<FixedHash>>,
-        inputs_to_delete: &mut Vec<TransactionOutput>,
+        inputs_to_delete: &mut Vec<(FixedHash, CompressedCommitment, OutputType)>,
     ) -> Result<(), HorizonSyncError> {
         let commitment = CompressedCommitment::from_canonical_bytes(commitment_bytes)?;
         let key_bytes: [u8; 32] = commitment_bytes
@@ -1007,7 +1041,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 HorizonSyncError::UnknownSpentOutput("Could not fetch full output for spent commitment".into())
             })?;
         state_tree_updates.insert(key, None);
-        inputs_to_delete.push(output_info.output);
+        // Only what pruning the output needs is kept until the tranche is applied
+        inputs_to_delete.push((
+            output_hash,
+            output_info.output.commitment,
+            output_info.output.features.output_type,
+        ));
         Ok(())
     }
 
@@ -1120,6 +1159,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 start_header_hash: tranche_start_header.hash().to_vec(),
                 end_header_hash: tranche_end_header.hash().to_vec(),
             };
+            let tranche_timer = Instant::now();
+            let blocks_in_tranche = tranche_end_height
+                .saturating_sub(tranche_start_height)
+                .saturating_add(1);
+            let tranche_time_budget = self.config.rpc_deadline.saturating_add(
+                self.tranche_time_per_block
+                    .saturating_mul(u32::try_from(blocks_in_tranche).unwrap_or(u32::MAX)),
+            );
             let mut output_stream = tokio::time::timeout(self.config.rpc_deadline, source.fetch_tranche(req))
                 .await
                 .map_err(|_| {
@@ -1181,6 +1228,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let latency = last_sync_timer.elapsed();
                 avg_latency.add_sample(latency);
                 let res: SyncUtxosResponse = response?;
+                self.check_tranche_time(sync_peer.node_id(), tranche_timer, tranche_time_budget)?;
                 items_received = items_received.saturating_add(1);
                 if items_received > item_budget {
                     return Err(HorizonSyncError::IncorrectResponse(format!(
@@ -1332,6 +1380,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             // Verify the stream completed the full tranche before committing.
+            self.check_tranche_time(sync_peer.node_id(), tranche_timer, tranche_time_budget)?;
             if !saw_terminator {
                 return Err(HorizonSyncError::IncompleteOutputStream(format!(
                     "tranche {}-{}",
@@ -1564,7 +1613,7 @@ fn max_streamed_items_per_block(rules: &BaseNodeConsensusManager) -> u64 {
 /// commitment again, so that they all land in one write.
 fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
     state_tree_updates: BTreeMap<FixedHash, Option<FixedHash>>,
-    inputs_to_delete: Vec<TransactionOutput>,
+    inputs_to_delete: Vec<(FixedHash, CompressedCommitment, OutputType)>,
     recreated_outputs: Vec<(TransactionOutput, FixedHash, u64, u64)>,
     txn: &mut AsyncDbTransaction<'_, B>,
 ) {
@@ -1585,8 +1634,8 @@ fn apply_tranche_output_updates<B: BlockchainBackend + 'static>(
     // the set in full block processing either (it is only allowed once the exit has taken effect). Note that
     // horizon sync does not reconstruct the validator node set at all (pre-existing gap): a pruned node that
     // horizon synced has an empty validator node set.
-    for output in inputs_to_delete {
-        txn.prune_output_from_all_dbs(output.hash(), output.commitment.clone(), output.features.output_type);
+    for (output_hash, commitment, output_type) in inputs_to_delete {
+        txn.prune_output_from_all_dbs(output_hash, commitment, output_type);
     }
     for (output, header_hash, height, timestamp) in recreated_outputs {
         txn.insert_output_via_horizon_sync(output, header_hash, height, timestamp);
@@ -1614,7 +1663,7 @@ mod tests {
         key_manager::KeyManager,
         tari_amount::MicroMinotari,
         test_helpers::{TestParams, create_wallet_output_with_data, schema_to_transaction},
-        transaction_components::{OutputFeatures, OutputType},
+        transaction_components::OutputFeatures,
         txn_schema,
     };
 
@@ -2570,6 +2619,55 @@ mod tests {
         assert!(matches!(err, HorizonSyncError::UnknownSpentOutput(_)), "{err}");
         assert!(err.to_string().contains("spends for tranche"), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+    }
+
+    /// Tranches 1-3 and 4-5: block "4" (height 5) mines again the output block "3" (height 4) spent, which was mined
+    /// before the second tranche
+    async fn sync_in_two_tranches(max_recreated_outputs: usize) -> Result<(), HorizonSyncError> {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 2;
+        sync.max_recreated_outputs = max_recreated_outputs;
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+    }
+
+    /// The chain's one recreated output stays within the limit
+    #[tokio::test]
+    async fn recreated_output_within_limit_syncs() {
+        sync_in_two_tranches(MAX_RECREATED_OUTPUTS_PER_TRANCHE).await.unwrap();
+    }
+
+    /// More recreated outputs in a tranche than the limit fails the sync without a ban
+    #[tokio::test]
+    async fn too_many_recreated_outputs_fail_without_ban() {
+        let err = sync_in_two_tranches(0).await.unwrap_err();
+        assert!(matches!(err, HorizonSyncError::TooManyRecreatedOutputs(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+    }
+
+    /// A peer that streams a tranche slower than its time budget allows exceeds the maximum latency, even when each
+    /// item arrives well within the latency limit
+    #[tokio::test]
+    async fn tranche_over_time_budget_exceeds_max_latency() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.config.rpc_deadline = Duration::from_secs(1);
+        sync.tranche_time_per_block = Duration::ZERO;
+
+        // One tranche of all five blocks streams more than ten items
+        let mut slow = DbTrancheSource::honest(chain.db());
+        slow.item_delay = Duration::from_millis(100);
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut slow, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::MaxLatencyExceeded { .. }), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
     }
 
     /// The honest per-block bound covers every non-coinbase output and input a block's weight allows, plus the
