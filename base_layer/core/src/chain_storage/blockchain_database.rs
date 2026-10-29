@@ -709,7 +709,7 @@ where B: BlockchainBackend
 
             let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
             // The genesis block will not be at fault - start at height 1 if no data exists.
-            let start_height = initial_status.last_check_height.unwrap_or(1);
+            let start_height = initial_status.last_check_height.unwrap_or(1).max(1);
             let mut last_status = initial_status.clone();
             debug!(
                 target: LOG_TARGET,
@@ -5778,10 +5778,7 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
         .read()
         .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
     let metadata = read_lock.fetch_chain_metadata()?;
-    // Safety check to ensure we do not check block data for a height that has been reorged out or lies ahead of the
-    // best block while headers are syncing ahead of blocks.
-    let height = min(height, metadata.best_block_height());
-    if height == 0 {
+    if metadata.best_block_height() == 0 {
         drop(read_lock);
         let write_lock = db
             .write()
@@ -5793,6 +5790,9 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
             current_height: metadata.best_block_height(),
         });
     }
+    // Safety check to ensure we do not check block data for a height that has been reorged out or lies ahead of the
+    // best block while headers are syncing ahead of blocks, and never check genesis (height 0).
+    let height = min(height.max(1), metadata.best_block_height());
 
     let block_data = {
         let horizon_height = metadata.pruned_height();
