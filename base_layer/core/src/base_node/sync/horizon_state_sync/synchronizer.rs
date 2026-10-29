@@ -889,6 +889,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     u32::try_from(remote_num_kernels.saturating_sub(local_num_kernels)).unwrap_or(u32::MAX),
                 ));
         let mut refusals = 0;
+        let mut refused_wait = Duration::ZERO;
         let (mut kernel_stream, mut peer_wait) = loop {
             let fetch_started = Instant::now();
             let mut stream = match source.fetch_kernels(req.clone()).await {
@@ -899,17 +900,24 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 },
             };
             if !self.session_may_be_busy {
-                break (stream, fetch_started.elapsed());
+                break (stream, refused_wait.saturating_add(fetch_started.elapsed()));
             }
-            // A peer refuses a request for a busy session with the first stream item
+            // A peer refuses a request for a busy session with the first stream item. Waiting for a refusal is still
+            // waiting on the peer.
             match stream.next().await {
                 Some(Err(err)) if is_existing_session_refusal(&err) => {
+                    refused_wait = refused_wait.saturating_add(fetch_started.elapsed());
+                    self.check_peer_wait(
+                        sync_peer.node_id(),
+                        refused_wait,
+                        self.peer_wait_budget(kernel_allowance, 0),
+                    )?;
                     self.retry_after_session_refusal(err, &mut refusals).await?
                 },
                 first => {
                     break (
                         futures::stream::iter(first).chain(stream).boxed(),
-                        fetch_started.elapsed(),
+                        refused_wait.saturating_add(fetch_started.elapsed()),
                     );
                 },
             }
@@ -1428,9 +1436,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
                     break stream;
                 }
-                // A peer refuses a request for a busy session with the first stream item
+                // A peer refuses a request for a busy session with the first stream item. Waiting for a refusal is
+                // still waiting on the peer.
                 match stream.next().await {
                     Some(Err(err)) if is_existing_session_refusal(&err) => {
+                        self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                        self.check_attempt_wait(sync_peer.node_id(), precredit)?;
                         self.retry_after_session_refusal(err, &mut refusals).await?
                     },
                     first => {
@@ -2426,6 +2437,7 @@ mod tests {
         /// Tranche requests, and the number of first kernel requests, refused for a busy session
         refused_requests: Vec<usize>,
         refused_kernel_requests: usize,
+        refusal_delay: Duration,
     }
 
     impl DbTrancheSource {
@@ -2439,6 +2451,7 @@ mod tests {
                 extra_kernel: false,
                 refused_requests: Vec::new(),
                 refused_kernel_requests: 0,
+                refusal_delay: Duration::ZERO,
             }
         }
 
@@ -2476,7 +2489,7 @@ mod tests {
             }
             self.requests = self.requests.saturating_add(1);
             if self.refused_requests.contains(&self.requests) {
-                return Ok(session_refusal());
+                return Ok(session_refusal(self.refusal_delay));
             }
             (self.edit)(self.requests, &mut items)?;
             let delay = self.item_delay;
@@ -2495,7 +2508,7 @@ mod tests {
         ) -> Result<BoxStream<'static, Result<proto::types::TransactionKernel, RpcError>>, RpcError> {
             if self.refused_kernel_requests > 0 {
                 self.refused_kernel_requests = self.refused_kernel_requests.saturating_sub(1);
-                return Ok(session_refusal());
+                return Ok(session_refusal(self.refusal_delay));
             }
             let start = self
                 .db
@@ -2531,8 +2544,9 @@ mod tests {
 
     /// A sync peer with a new random node id
     /// A peer refuses a request for a busy session with the first item of the response stream
-    fn session_refusal<T: Send + 'static>() -> BoxStream<'static, Result<T, RpcError>> {
-        futures::stream::once(async {
+    fn session_refusal<T: Send + 'static>(delay: Duration) -> BoxStream<'static, Result<T, RpcError>> {
+        futures::stream::once(async move {
+            tokio::time::sleep(delay).await;
             Err(RpcError::RequestFailed(RpcStatus::forbidden(
                 "Existing sync session found for this client. Only a single session is permitted",
             )))
@@ -3351,6 +3365,29 @@ mod tests {
                 assert!(err.get_ban_reason().is_none());
             }
         }
+    }
+
+    /// A peer that holds its refusals back keeps us waiting, which counts against its budget
+    #[tokio::test]
+    async fn slow_session_refusals_count_as_peer_wait() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.session_may_be_busy = true;
+        // With no kernel allowance and no data the budget is the 1 s RPC deadline
+        sync.config.rpc_deadline = Duration::from_secs(1);
+        sync.server_time_per_kernel = Duration::ZERO;
+        let mut source = DbTrancheSource::honest(chain.db());
+        // Refusals that persist would otherwise end in a no-ban give-up
+        source.refused_kernel_requests = 4;
+        source.refusal_delay = Duration::from_millis(1500);
+        let err = sync
+            .synchronize_kernels(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
     }
 
     /// A from-height-1 attempt that ends in an output root mismatch after using over 90% of its time budget is short
