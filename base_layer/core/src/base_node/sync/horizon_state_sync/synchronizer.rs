@@ -1504,10 +1504,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Ok(()) => {},
             // The root comparison is the only source of `InvalidOperation` here
             Err(ChainStorageError::InvalidOperation(e)) => {
-                // An honest pruned peer that pruned past the target is not banned, but a peer that used most of its
-                // time budget to deliver a mismatching state is. A resumed attempt is retried from height 1 instead.
+                // An honest pruned peer that pruned past the target is not banned, but a peer that used over 90% of
+                // its time budget to deliver a mismatching state is. A resumed attempt is retried from height 1.
                 let budget = self.peer_wait_budget(tranche_allowance, bytes_received);
-                if sync_start_height == 1 && peer_wait.saturating_mul(4) > budget.saturating_mul(3) {
+                if sync_start_height == 1 && peer_wait.saturating_mul(10) > budget.saturating_mul(9) {
                     return Err(HorizonSyncError::SlowFinalOutputRootMismatch(format!(
                         "{e}, after waiting {peer_wait:.2?} of {budget:.2?}"
                     )));
@@ -2868,39 +2868,58 @@ mod tests {
         assert!(matches!(err, HorizonSyncError::MaxLatencyExceeded { .. }), "{err}");
     }
 
-    /// A from-height-1 attempt that ends in an output root mismatch after using most of its time budget is short
-    /// banned, while a fast one is not banned
-    #[tokio::test]
-    async fn slow_final_root_mismatch_is_short_banned() {
+    /// Syncs from height 1 where the last tranche leaves out an output, after the peer kept us waiting for
+    /// `percent` of the budget at the root check
+    #[allow(clippy::arithmetic_side_effects)]
+    async fn mismatch_after_waiting(percent: u32) -> HorizonSyncError {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
-        // Five tranches give about 5 s, the chain's kernels about 0.1 s and its data about 0.5 s at 40 KB/s
         sync.config.rpc_deadline = Duration::from_secs(1);
+        sync.server_time_per_kernel = Duration::ZERO;
 
-        // The last tranche leaves out an output, after the peer kept us waiting for about 85% of the budget
-        let mut slow = DbTrancheSource::new(
+        // Five tranches allow 5 s, plus the data at 40 KB/s, which the source counts as it serves it
+        let mut bytes_served = 0u64;
+        let mut source = DbTrancheSource::new(
             chain.db(),
-            Box::new(|request, items| {
+            Box::new(move |request, items| {
                 if request == 5 {
-                    std::thread::sleep(Duration::from_millis(4800));
                     let index = items
                         .iter()
                         .position(|item| matches!(item.txo, Some(Txo::Output(_))))
                         .unwrap();
                     items.remove(index);
                 }
+                bytes_served += items.iter().map(|item| item.encoded_len() as u64).sum::<u64>();
+                if request == 5 {
+                    let budget_millis = 5000 + bytes_served * 1000 / MIN_SYNC_THROUGHPUT;
+                    std::thread::sleep(Duration::from_millis(budget_millis * u64::from(percent) / 100));
+                }
                 Ok(())
             }),
         );
-        let err = sync
-            .sync_outputs_and_finalize(test_sync_peer(), &mut slow, &target)
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
             .await
-            .unwrap_err();
+            .unwrap_err()
+    }
+
+    /// A from-height-1 attempt that ends in an output root mismatch after using over 90% of its time budget is short
+    /// banned
+    #[tokio::test]
+    async fn slow_final_root_mismatch_is_short_banned() {
+        let err = mismatch_after_waiting(94).await;
         assert!(matches!(err, HorizonSyncError::SlowFinalOutputRootMismatch(_)), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
+    }
+
+    /// A mismatch after using less than 90% of the budget is not banned
+    #[tokio::test]
+    async fn moderately_slow_final_root_mismatch_is_not_banned() {
+        let err = mismatch_after_waiting(80).await;
+        assert!(matches!(err, HorizonSyncError::FinalOutputRootMismatch(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
     }
 
     /// The honest per-block bound covers every non-coinbase output and input a block's weight allows, plus the
