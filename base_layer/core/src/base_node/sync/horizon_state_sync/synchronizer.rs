@@ -40,7 +40,7 @@ use tari_comms::{
     RefKind,
     connectivity::ConnectivityRequester,
     peer_manager::NodeId,
-    protocol::rpc::{RpcClient, RpcError, RpcStatus},
+    protocol::rpc::{RpcClient, RpcError, RpcStatus, RpcStatusCode},
 };
 use tari_crypto::commitment::HomomorphicCommitment;
 use tari_node_components::blocks::{BlockHeader, ChainBlock, ChainHeader};
@@ -99,6 +99,9 @@ const MIN_SYNC_THROUGHPUT: u64 = 40_000;
 /// The time a slow peer may spend reading one transaction's outputs and inputs from disk to stream a tranche. A
 /// kernel stands for a transaction of a few outputs and inputs, each costing an LMDB lookup or two on a cold disk.
 const SERVER_TIME_PER_KERNEL: Duration = Duration::from_millis(10);
+/// How often, and how long apart, the first request to a peer asks again while it still holds an earlier session
+const SESSION_RETRY_ATTEMPTS: usize = 3;
+const SESSION_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 /// Where horizon sync gets the kernel stream and the TXO stream of each tranche from.
 trait HorizonSyncSource {
@@ -152,6 +155,15 @@ pub struct HorizonStateSynchronization<'a, B> {
     tranche_size: u64,
     max_items_per_block: u64,
     server_time_per_kernel: Duration,
+    /// Peer wait of the current output attempt, the allowance of the tranches it streamed, and the bytes received
+    attempt_waited: Duration,
+    attempt_allowance: Duration,
+    attempt_bytes: u64,
+    /// Peer wait a failed resume charges to its same-peer retry
+    carried_wait: Duration,
+    /// Set until the first request of an attempt succeeds, if the peer may still hold an earlier session
+    session_may_be_busy: bool,
+    attempted_peers: Vec<NodeId>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -185,6 +197,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             tranche_size: HORIZON_SYNC_TRANCHE_SIZE,
             max_items_per_block,
             server_time_per_kernel: SERVER_TIME_PER_KERNEL,
+            attempt_waited: Duration::ZERO,
+            attempt_allowance: Duration::ZERO,
+            attempt_bytes: 0,
+            carried_wait: Duration::ZERO,
+            session_may_be_busy: false,
+            attempted_peers: Vec::new(),
         }
     }
 
@@ -348,6 +366,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // terminates every RPC client created from a handle once the last handle goes away, so
         // letting it fall out of scope here would tear down `client` mid-sync.
         let (mut client, sync_peer, _conn) = self.connect_sync_peer(node_id).await?;
+        // The peer may still hold the session of an earlier attempt in this sync
+        self.session_may_be_busy = self.attempted_peers.contains(node_id);
+        if !self.session_may_be_busy {
+            self.attempted_peers.push(node_id.clone());
+        }
 
         // Perform horizon sync
         debug!(target: LOG_TARGET, "Check if pruning is needed");
@@ -546,6 +569,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .clear_horizon_sync_output_checkpoint()
             .commit()
             .await?;
+        // The retry is charged what the resume waited beyond the allowance of the tranches it streamed, so the credit
+        // for the skipped tranches is not spent twice
+        self.carried_wait = self
+            .attempt_waited
+            .saturating_sub(self.peer_wait_budget(self.attempt_allowance, self.attempt_bytes));
+        self.session_may_be_busy = true;
         self.attempt_outputs_and_finalize(sync_peer, source, to_header, 1).await
     }
 
@@ -564,12 +593,24 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Ok(()) => self.finalize_horizon_sync(&sync_peer, to_header).await,
             Err(err) => Err(err),
         };
-        let Err(err) = result else {
+        let Err(mut err) = result else {
             return Ok(());
         };
         // The caller retries this from height 1, which resets the output state
         if start_height > 1 && err.may_be_caused_by_resumed_state() {
             return Err(err);
+        }
+        // A failure honest peers can cause is not banned, unless the peer first kept us waiting for over 90% of its
+        // budget
+        let budget = self.peer_wait_budget(self.attempt_allowance, self.attempt_bytes);
+        if start_height == 1 &&
+            err.is_unblamed_peer_failure() &&
+            self.attempt_waited.saturating_mul(10) > budget.saturating_mul(9)
+        {
+            err = HorizonSyncError::SlowPeerFailure(format!(
+                "{err}, after waiting {:.2?} of {budget:.2?}",
+                self.attempt_waited
+            ));
         }
         // Undo everything above the checkpoint, or everything when there is none
         let clean_up = match self.db.fetch_horizon_sync_output_checkpoint().await? {
@@ -847,9 +888,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .saturating_add(self.server_time_per_kernel.saturating_mul(
                     u32::try_from(remote_num_kernels.saturating_sub(local_num_kernels)).unwrap_or(u32::MAX),
                 ));
-        let fetch_started = Instant::now();
-        let mut kernel_stream = source.fetch_kernels(req).await?;
-        let mut peer_wait = fetch_started.elapsed();
+        let mut refusals = 0;
+        let (mut kernel_stream, mut peer_wait) = loop {
+            let fetch_started = Instant::now();
+            match source.fetch_kernels(req.clone()).await {
+                Ok(stream) => break (stream, fetch_started.elapsed()),
+                Err(err) => self.retry_after_session_refusal(err, &mut refusals).await?,
+            }
+        };
+        self.session_may_be_busy = false;
         let mut bytes_received = 0u64;
 
         debug!(
@@ -876,16 +923,16 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 peer_wait,
                 self.peer_wait_budget(kernel_allowance, bytes_received),
             )?;
-            let kernel: TransactionKernel = kernel.try_into().map_err(HorizonSyncError::ConversionError)?;
-            kernel.verify_signature()?;
-
-            kernel_hashes.push(kernel.hash());
-
-            if mmr_position > end {
+            // Positions run from the local kernel count up to, but excluding, the end header's kernel count
+            if mmr_position >= end {
                 return Err(HorizonSyncError::IncorrectResponse(
                     "Peer sent too many kernels".to_string(),
                 ));
             }
+            let kernel: TransactionKernel = kernel.try_into().map_err(HorizonSyncError::ConversionError)?;
+            kernel.verify_signature()?;
+
+            kernel_hashes.push(kernel.hash());
 
             txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position);
             if mmr_position == current_header.header().kernel_mmr_size.saturating_sub(1) {
@@ -970,7 +1017,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             self.peer_wait_budget(kernel_allowance, bytes_received),
         )?;
         // A dropped connection also ends the stream without an error
-        if mmr_position != end {
+        if mmr_position < end {
             return Err(HorizonSyncError::IncompleteKernelStream(format!(
                 "received up to kernel {mmr_position} of {end}"
             )));
@@ -1040,6 +1087,36 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .rpc_deadline
                 .saturating_mul(u32::try_from(tranches.saturating_sub(1)).unwrap_or(u32::MAX)),
         ))
+    }
+
+    /// Checks the output attempt's peer wait against its budget, including a resumed attempt's credit for the tranches
+    /// before its checkpoint
+    fn check_attempt_wait(&self, peer: &NodeId, precredit: Duration) -> Result<(), HorizonSyncError> {
+        self.check_peer_wait(
+            peer,
+            self.attempt_waited,
+            self.peer_wait_budget(self.attempt_allowance.saturating_add(precredit), self.attempt_bytes),
+        )
+    }
+
+    /// Handles a failed first request to a peer that may still hold an earlier session: waits and lets the caller ask
+    /// again a few times, and gives up without blaming the peer. Any other failure is returned as it is.
+    async fn retry_after_session_refusal(
+        &mut self,
+        err: RpcError,
+        refusals: &mut usize,
+    ) -> Result<(), HorizonSyncError> {
+        if !self.session_may_be_busy || !is_existing_session_refusal(&err) {
+            return Err(err.into());
+        }
+        if *refusals >= SESSION_RETRY_ATTEMPTS {
+            self.session_may_be_busy = false;
+            return Err(HorizonSyncError::SyncPeerUnavailable(err));
+        }
+        *refusals = refusals.saturating_add(1);
+        debug!(target: LOG_TARGET, "Peer still holds an earlier sync session: {err}");
+        tokio::time::sleep(SESSION_RETRY_DELAY).await;
+        Ok(())
     }
 
     /// A peer cannot drip-feed an attempt just under the per-item latency limit
@@ -1190,6 +1267,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         sync_start_height: u64,
     ) -> Result<(), HorizonSyncError> {
         info!(target: LOG_TARGET, "Starting output sync from peer {sync_peer}");
+        // Only time spent waiting on the peer counts against the attempt's budget, not local validation and writes
+        self.attempt_waited = std::mem::take(&mut self.carried_wait);
+        self.attempt_allowance = Duration::ZERO;
+        self.attempt_bytes = 0;
         let db = self.db().clone();
         if sync_start_height == 1 {
             self.reset_output_state_to_genesis().await.map_err(|e| match e {
@@ -1258,12 +1339,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut total_utxo_counter = 0u64;
         let mut total_stxo_counter = 0u64;
         let mut tranche_start_height = sync_start_height;
-        // Only time spent waiting on the peer counts against the attempt's budget, not local validation and writes
-        let mut peer_wait = Duration::ZERO;
-        let mut bytes_received = 0u64;
         // A resumed attempt starts with the allowance the tranches before its checkpoint earned, as an attempt from
         // height 1 would have at this point
-        let mut tranche_allowance = if sync_start_height > 1 {
+        let precredit = if sync_start_height > 1 {
             self.skipped_tranche_allowance(sync_start_height).await?
         } else {
             Duration::ZERO
@@ -1306,25 +1384,31 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 start_header_hash: tranche_start_header.hash().to_vec(),
                 end_header_hash: tranche_end_header.hash().to_vec(),
             };
-            tranche_allowance = tranche_allowance.saturating_add(
+            self.attempt_allowance = self.attempt_allowance.saturating_add(
                 self.tranche_allowance(tranche_start_height, &tranche_end_header)
                     .await?,
             );
-            let fetch_started = Instant::now();
-            let mut output_stream = tokio::time::timeout(self.config.rpc_deadline, source.fetch_tranche(req))
-                .await
-                .map_err(|_| {
-                    HorizonSyncError::RpcStatus(RpcStatus::general(&format!(
-                        "Timed out waiting for sync_utxos stream from peer {}",
-                        sync_peer.node_id()
-                    )))
-                })??;
-            peer_wait = peer_wait.saturating_add(fetch_started.elapsed());
-            self.check_peer_wait(
-                sync_peer.node_id(),
-                peer_wait,
-                self.peer_wait_budget(tranche_allowance, bytes_received),
-            )?;
+            let mut refusals = 0;
+            let mut output_stream = loop {
+                let fetch_started = Instant::now();
+                let result = tokio::time::timeout(self.config.rpc_deadline, source.fetch_tranche(req.clone()))
+                    .await
+                    .map_err(|_| {
+                        HorizonSyncError::RpcStatus(RpcStatus::general(&format!(
+                            "Timed out waiting for sync_utxos stream from peer {}",
+                            sync_peer.node_id()
+                        )))
+                    })?;
+                match result {
+                    Ok(stream) => {
+                        self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                        break stream;
+                    },
+                    Err(err) => self.retry_after_session_refusal(err, &mut refusals).await?,
+                }
+            };
+            self.session_may_be_busy = false;
+            self.check_attempt_wait(sync_peer.node_id(), precredit)?;
 
             let mut txn = db.write_transaction();
             let mut utxo_counter = 0u64;
@@ -1381,13 +1465,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let latency = last_sync_timer.elapsed();
                 avg_latency.add_sample(latency);
                 let res: SyncUtxosResponse = response?;
-                peer_wait = peer_wait.saturating_add(latency);
-                bytes_received = bytes_received.saturating_add(u64::try_from(res.encoded_len()).unwrap_or(u64::MAX));
-                self.check_peer_wait(
-                    sync_peer.node_id(),
-                    peer_wait,
-                    self.peer_wait_budget(tranche_allowance, bytes_received),
-                )?;
+                self.attempt_waited = self.attempt_waited.saturating_add(latency);
+                self.attempt_bytes = self
+                    .attempt_bytes
+                    .saturating_add(u64::try_from(res.encoded_len()).unwrap_or(u64::MAX));
+                self.check_attempt_wait(sync_peer.node_id(), precredit)?;
                 items_received = items_received.saturating_add(1);
                 if items_received > item_budget {
                     return Err(HorizonSyncError::IncorrectResponse(format!(
@@ -1540,13 +1622,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
             // Verify the stream completed the full tranche before committing.
             if !saw_terminator {
-                peer_wait = peer_wait.saturating_add(last_sync_timer.elapsed());
+                self.attempt_waited = self.attempt_waited.saturating_add(last_sync_timer.elapsed());
             }
-            self.check_peer_wait(
-                sync_peer.node_id(),
-                peer_wait,
-                self.peer_wait_budget(tranche_allowance, bytes_received),
-            )?;
+            self.check_attempt_wait(sync_peer.node_id(), precredit)?;
             if !saw_terminator {
                 return Err(HorizonSyncError::IncompleteOutputStream(format!(
                     "tranche {}-{}",
@@ -1586,17 +1664,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         match db.verify_horizon_sync_output_root(to_header.output_mr).await {
             Ok(()) => {},
             // The root comparison is the only source of `InvalidOperation` here
-            Err(ChainStorageError::InvalidOperation(e)) => {
-                // An honest pruned peer that pruned past the target is not banned, but a peer that used over 90% of
-                // its time budget to deliver a mismatching state is. A resumed attempt is retried from height 1.
-                let budget = self.peer_wait_budget(tranche_allowance, bytes_received);
-                if sync_start_height == 1 && peer_wait.saturating_mul(10) > budget.saturating_mul(9) {
-                    return Err(HorizonSyncError::SlowFinalOutputRootMismatch(format!(
-                        "{e}, after waiting {peer_wait:.2?} of {budget:.2?}"
-                    )));
-                }
-                return Err(HorizonSyncError::FinalOutputRootMismatch(e));
-            },
+            Err(ChainStorageError::InvalidOperation(e)) => return Err(HorizonSyncError::FinalOutputRootMismatch(e)),
             Err(e) => return Err(e.into()),
         }
 
@@ -1783,6 +1851,16 @@ fn max_streamed_items_per_block(rules: &BaseNodeConsensusManager) -> u64 {
         })
         .max()
         .unwrap_or(0)
+}
+
+/// Whether a peer refused a request because this node already has a sync session with it
+fn is_existing_session_refusal(err: &RpcError) -> bool {
+    matches!(
+        err,
+        RpcError::RequestFailed(status)
+            if status.as_status_code() == RpcStatusCode::Forbidden &&
+                status.details().starts_with("Existing sync session")
+    )
 }
 
 /// The outputs the genesis block's own inputs spend. Inserting the genesis block keeps their rows but removes them
@@ -2312,6 +2390,7 @@ mod tests {
         edit: EditTranche,
         item_delay: Duration,
         max_kernels: usize,
+        extra_kernel: bool,
     }
 
     impl DbTrancheSource {
@@ -2322,6 +2401,7 @@ mod tests {
                 edit,
                 item_delay: Duration::ZERO,
                 max_kernels: usize::MAX,
+                extra_kernel: false,
             }
         }
 
@@ -2388,6 +2468,9 @@ mod tests {
                 }
             }
             kernels.truncate(self.max_kernels);
+            if self.extra_kernel {
+                kernels.push(kernels.last().unwrap().clone());
+            }
             let delay = self.item_delay;
             Ok(futures::stream::iter(kernels)
                 .then(move |kernel| async move {
@@ -2976,13 +3059,12 @@ mod tests {
                 Ok(())
             }),
         );
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
             .await
-            .unwrap();
-        assert_eq!(
-            source.requests, 6,
-            "the resume exceeded its budget and was retried from height 1"
-        );
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+        assert_eq!(source.requests, 2, "the retry is charged the resume's excess wait");
     }
 
     /// Syncs from height 1 where the last tranche leaves out an output, after the peer kept us waiting for
@@ -3022,12 +3104,192 @@ mod tests {
             .unwrap_err()
     }
 
+    /// Syncs from height 1 where tranche 3 first resends the coinbase tranche 2 already sent, after the peer kept us
+    /// waiting for `percent` of the budget at that point
+    #[allow(clippy::arithmetic_side_effects)]
+    async fn stored_output_resent_after_waiting(percent: u32) -> HorizonSyncError {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let coinbase = block_one_coinbase(&chain);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+        sync.config.rpc_deadline = Duration::from_secs(2);
+        sync.server_time_per_kernel = Duration::ZERO;
+
+        // Three tranches allow 6 s, plus the data received at 40 KB/s
+        let mut bytes_served = 0u64;
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request < 3 {
+                    bytes_served += items.iter().map(|item| item.encoded_len() as u64).sum::<u64>();
+                    return Ok(());
+                }
+                if request == 3 {
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    let resent = SyncUtxosResponse {
+                        txo: Some(Txo::Output(coinbase.clone().try_into().unwrap())),
+                        mined_header,
+                    };
+                    bytes_served += resent.encoded_len() as u64;
+                    items.insert(0, resent);
+                    let budget_millis = 6000 + bytes_served * 1000 / MIN_SYNC_THROUGHPUT;
+                    std::thread::sleep(Duration::from_millis(budget_millis * u64::from(percent) / 100));
+                }
+                Ok(())
+            }),
+        );
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err()
+    }
+
+    /// Any failure an honest peer can cause is short banned on an attempt from height 1 if the peer first used over
+    /// 90% of its budget
+    #[tokio::test]
+    async fn slow_stored_output_resend_is_short_banned() {
+        let err = stored_output_resent_after_waiting(95).await;
+        assert!(matches!(err, HorizonSyncError::SlowPeerFailure(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
+    }
+
+    #[tokio::test]
+    async fn moderately_slow_stored_output_resend_is_not_banned() {
+        let err = stored_output_resent_after_waiting(80).await;
+        assert!(matches!(err, HorizonSyncError::OutputAlreadyStored(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+    }
+
+    /// A resumed attempt that waits `delay` in its first tranche and then fails on the local state, with a checkpoint
+    /// at height 3, credited about 3 s for the skipped tranches and allowed about 1 s per tranche
+    async fn resume_waits_then_fails(delay: Duration) -> (Result<(), HorizonSyncError>, usize) {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let unknown = chain
+            .get_block_and_smt_by_name("4")
+            .unwrap()
+            .block()
+            .body
+            .outputs()
+            .iter()
+            .find(|output| output.is_coinbase())
+            .unwrap()
+            .commitment
+            .clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        checkpoint_at_three(&chain, &mut sync, &target).await;
+        sync.config.rpc_deadline = Duration::from_secs(1);
+        sync.server_time_per_kernel = Duration::ZERO;
+        let mut source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(move |request, items| {
+                if request == 1 {
+                    std::thread::sleep(delay);
+                    let mined_header = items.last().unwrap().mined_header.clone();
+                    items.insert(0, SyncUtxosResponse {
+                        txo: Some(Txo::Commitment(unknown.as_bytes().to_vec())),
+                        mined_header,
+                    });
+                }
+                Ok(())
+            }),
+        );
+        let result = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+            .await;
+        (result, source.requests)
+    }
+
+    /// A resumer that spends the credit for the skipped tranches and then fails is retried from height 1 with that
+    /// wait already charged, so the retry runs out of budget at its first tranche
+    #[tokio::test]
+    async fn spent_credit_is_charged_to_the_retry() {
+        let (result, requests) = resume_waits_then_fails(Duration::from_millis(2600)).await;
+        let err = result.unwrap_err();
+        assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+        assert_eq!(requests, 2, "the resumed tranche and the retry's first tranche");
+    }
+
+    /// An honest resumer that only used a little of the credit before failing on the local state finishes the retry
+    #[tokio::test]
+    async fn retry_after_honest_resume_completes() {
+        let (result, requests) = resume_waits_then_fails(Duration::from_millis(1200)).await;
+        result.unwrap();
+        assert_eq!(requests, 6, "one resumed tranche, then all five from height 1");
+    }
+
+    /// A same-peer retry whose first request is refused because the peer still holds the failed resume's session
+    /// asks again and completes, without blame; a refusal that persists ends the attempt without a ban
+    #[tokio::test]
+    async fn retry_waits_for_the_previous_session_to_close() {
+        for refusals in [1, 4] {
+            let (chain, db) = duplicate_output_sync_setup();
+            let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+            let spent_hash = chain.get_block_and_smt_by_name("1").unwrap().block().body.inputs()[0].output_hash();
+            let commitment = chain
+                .db()
+                .fetch_outputs(spent_hash)
+                .unwrap()
+                .pop()
+                .unwrap()
+                .output
+                .commitment;
+            let mut peers = Vec::new();
+            let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+            sync.tranche_size = 0;
+            let mut poisoned = DbTrancheSource::new(
+                chain.db(),
+                Box::new(move |request, items| {
+                    if request == 2 {
+                        return Err(RpcError::ClientClosed);
+                    }
+                    items.retain(|item| match &item.txo {
+                        Some(Txo::Output(output)) => {
+                            TransactionOutput::try_from(output.clone()).unwrap().commitment != commitment
+                        },
+                        _ => true,
+                    });
+                    Ok(())
+                }),
+            );
+            sync.sync_outputs_and_finalize(test_sync_peer(), &mut poisoned, &target)
+                .await
+                .unwrap_err();
+
+            // Request 1 is the resume, which fails on the poisoned state; the retry's first requests are refused
+            let mut busy = DbTrancheSource::new(
+                chain.db(),
+                Box::new(move |request, _| {
+                    if request > 1 && request <= 1 + refusals {
+                        return Err(RpcError::RequestFailed(RpcStatus::forbidden(
+                            "Existing sync session found for this client. Only a single session is permitted",
+                        )));
+                    }
+                    Ok(())
+                }),
+            );
+            let result = sync
+                .sync_outputs_and_finalize(test_sync_peer(), &mut busy, &target)
+                .await;
+            if refusals == 1 {
+                result.unwrap();
+                assert_eq!(busy.requests, 7, "the resume, one refusal, then all five from height 1");
+            } else {
+                let err = result.unwrap_err();
+                assert!(matches!(err, HorizonSyncError::SyncPeerUnavailable(_)), "{err}");
+                assert!(err.get_ban_reason().is_none());
+            }
+        }
+    }
+
     /// A from-height-1 attempt that ends in an output root mismatch after using over 90% of its time budget is short
     /// banned
     #[tokio::test]
     async fn slow_final_root_mismatch_is_short_banned() {
         let err = mismatch_after_waiting(94).await;
-        assert!(matches!(err, HorizonSyncError::SlowFinalOutputRootMismatch(_)), "{err}");
+        assert!(matches!(err, HorizonSyncError::SlowPeerFailure(_)), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
     }
 
@@ -3085,9 +3347,10 @@ mod tests {
         assert_eq!(source.requests, 2, "the resume finished without a retry");
     }
 
-    /// A resumed attempt that exceeds its budget anyway is retried from height 1 instead of being banned
+    /// A resumed attempt that exceeds its budget anyway is not banned for it, but is retried from height 1 with the
+    /// excess charged, so the retry runs out of budget at its first tranche
     #[tokio::test]
-    async fn resumed_attempt_over_budget_is_retried_from_height_one() {
+    async fn resumed_attempt_over_budget_is_charged_in_the_retry() {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
         let mut peers = Vec::new();
@@ -3097,11 +3360,12 @@ mod tests {
         sync.config.rpc_deadline = Duration::from_millis(500);
         sync.server_time_per_kernel = Duration::ZERO;
         let mut source = slow_first_read(&chain, Duration::from_secs(3));
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
             .await
-            .unwrap();
-        assert_eq!(source.requests, 6, "one resumed tranche, then all five from height 1");
-        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+        assert_eq!(source.requests, 2, "the resumed tranche and the retry's first tranche");
     }
 
     /// Kernel sync completes from an honest peer
@@ -3115,6 +3379,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(db.fetch_mmr_size(MmrTree::Kernel).unwrap(), target.kernel_mmr_size);
+    }
+
+    /// A kernel stream with one kernel more than requested is banned for long
+    #[tokio::test]
+    async fn kernel_stream_with_extra_kernel_is_banned() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        let mut source = DbTrancheSource::honest(chain.db());
+        source.extra_kernel = true;
+        let err = sync
+            .synchronize_kernels(test_sync_peer(), &mut source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
     }
 
     /// A kernel stream that ends early, as a dropped connection does, gets a short ban

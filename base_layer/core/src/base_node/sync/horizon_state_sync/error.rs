@@ -50,8 +50,8 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
-    #[error("Synced outputs do not match the output root of the sync target, delivered slowly: {0}")]
-    SlowFinalOutputRootMismatch(String),
+    #[error("Peer kept sync waiting for most of its budget, then failed it: {0}")]
+    SlowPeerFailure(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
     IncompleteOutputStream(String),
     #[error("Kernel stream ended before all kernels were sent: {0}")]
@@ -184,7 +184,7 @@ impl HorizonSyncError {
             // A dropped connection also ends the stream without an error
             err @ HorizonSyncError::IncompleteOutputStream(_) |
             err @ HorizonSyncError::IncompleteKernelStream(_) |
-            err @ HorizonSyncError::SlowFinalOutputRootMismatch(_) |
+            err @ HorizonSyncError::SlowPeerFailure(_) |
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{err}"),
@@ -210,6 +210,20 @@ impl HorizonSyncError {
             }),
 
             HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err),
+        }
+    }
+
+    /// Whether peer data caused this failure but it is not blamed, because an honest peer can cause it too
+    pub fn is_unblamed_peer_failure(&self) -> bool {
+        match self {
+            HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::OutputAlreadyStored(_) |
+            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
+            HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
+                e.downcast_ref::<ChainStorageError>(),
+                Some(ChainStorageError::KeyExists { .. })
+            ),
+            _ => false,
         }
     }
 
