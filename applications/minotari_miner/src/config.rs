@@ -41,6 +41,11 @@ use tari_common::{
 };
 use tari_common_types::{grpc_authentication::GrpcAuthentication, tari_address::TariAddress};
 use tari_transaction_components::{tari_proof_of_work::PowAlgorithm, transaction_components::RangeProofType};
+
+const fn default_base_node_grpc_allow_insecure_auth() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)]
@@ -53,8 +58,9 @@ pub struct MinerConfig {
     pub base_node_grpc_tls_domain_name: Option<String>,
     /// GRPC ca cert name for TLS
     pub base_node_grpc_ca_cert_filename: String,
-    /// Allow sending gRPC Basic authentication credentials over a plaintext `http://` connection
-    #[serde(default)]
+    /// Allow sending gRPC Basic authentication credentials over a plaintext `http://` connection to a non-loopback
+    /// endpoint (logs a warning at startup; set to `false` to refuse startup without TLS)
+    #[serde(default = "default_base_node_grpc_allow_insecure_auth")]
     pub base_node_grpc_allow_insecure_auth: bool,
     /// Number of mining threads
     pub num_mining_threads: usize,
@@ -103,7 +109,7 @@ impl Default for MinerConfig {
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
-            base_node_grpc_allow_insecure_auth: false,
+            base_node_grpc_allow_insecure_auth: true,
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: PowAlgorithm::Sha3x,
@@ -182,11 +188,35 @@ mine_on_tip_only = false
             Some("http://my_base_node:1234".to_string())
         );
         assert!(!config.mine_on_tip_only);
-        assert!(!config.base_node_grpc_allow_insecure_auth);
+        assert!(config.base_node_grpc_allow_insecure_auth);
     }
 
     #[test]
-    fn miner_refuses_tls_domain_on_http_and_basic_auth_on_http_without_override() {
+    fn existing_miner_config_with_basic_auth_and_non_loopback_http_still_starts() {
+        use minotari_app_grpc::tls::validate_client_grpc_tls_and_auth;
+
+        const EXISTING_CONFIG: &str = r#"
+[miner]
+base_node_grpc_address = "http://192.168.1.10:18142"
+base_node_grpc_authentication = { username = "miner", password = "secret_password" }
+"#;
+        let cfg = config::Config::builder()
+            .add_source(config::File::from_str(EXISTING_CONFIG, config::FileFormat::Toml))
+            .build()
+            .unwrap();
+        let config = MinerConfig::load_from(&cfg).expect("existing miner config should load");
+        assert!(config.base_node_grpc_allow_insecure_auth);
+        validate_client_grpc_tls_and_auth(
+            config.base_node_grpc_address.as_deref().unwrap(),
+            config.base_node_grpc_tls_domain_name.as_deref(),
+            &config.base_node_grpc_authentication,
+            config.base_node_grpc_allow_insecure_auth,
+        )
+        .expect("existing miner config with Basic auth and http://192.168.1.10:18142 must still start");
+    }
+
+    #[test]
+    fn miner_refuses_tls_domain_on_http_and_basic_auth_on_http_when_disallowed() {
         use minotari_app_grpc::tls::validate_client_grpc_tls_and_auth;
         use tari_common_types::grpc_authentication::GrpcAuthentication;
         use tari_utilities::SafePassword;
@@ -194,6 +224,7 @@ mine_on_tip_only = false
         let mut config = MinerConfig {
             base_node_grpc_address: Some("http://127.0.0.1:18142".to_string()),
             base_node_grpc_tls_domain_name: Some("localhost".to_string()),
+            base_node_grpc_allow_insecure_auth: false,
             ..Default::default()
         };
         let err = validate_client_grpc_tls_and_auth(
@@ -217,7 +248,7 @@ mine_on_tip_only = false
             &config.base_node_grpc_authentication,
             config.base_node_grpc_allow_insecure_auth,
         )
-        .expect("Basic auth on loopback http://127.0.0.1:18142 must succeed without override");
+        .expect("Basic auth on loopback http://127.0.0.1:18142 must succeed even when insecure auth is disallowed");
 
         config.base_node_grpc_address = Some("http://192.168.1.10:18142".to_string());
         let err = validate_client_grpc_tls_and_auth(
@@ -226,7 +257,7 @@ mine_on_tip_only = false
             &config.base_node_grpc_authentication,
             config.base_node_grpc_allow_insecure_auth,
         )
-        .expect_err("Basic auth on non-loopback http:// without override must fail");
+        .expect_err("Basic auth on non-loopback http:// must fail when base_node_grpc_allow_insecure_auth = false");
         assert!(err.to_string().contains("base_node_grpc_allow_insecure_auth = true"));
 
         config.base_node_grpc_allow_insecure_auth = true;

@@ -84,9 +84,9 @@
 #base_node_grpc_address = "http://127.0.0.1:18142"
 
 # GRPC authentication for the base node (default = "none").
-# Sending Basic credentials to a non-loopback address requires an `https://` address with TLS configured unless
-# `base_node_grpc_allow_insecure_auth = true` is explicitly set (loopback hosts `127.0.0.1`, `::1`, and `localhost`
-# are exempt).
+# Sending Basic credentials to a non-loopback `http://` address transmits credentials in cleartext and logs a startup
+# warning unless an `https://` address with TLS is configured or the endpoint is a loopback host (`127.0.0.1`, `::1`,
+# or `localhost`). Set `base_node_grpc_allow_insecure_auth = false` to refuse startup on cleartext Basic auth.
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 
 # GRPC TLS communication is turned on by defining the domain name for the service AND setting `base_node_grpc_address`
@@ -95,8 +95,9 @@
 #base_node_grpc_tls_domain_name = "localhost"
 #base_node_grpc_ca_cert_filename = "node_ca.pem"
 
-# Deliberate acceptance of sending gRPC Basic authentication credentials in cleartext over `http://` (default = false)
-#base_node_grpc_allow_insecure_auth = false
+# Allow sending gRPC Basic authentication credentials in cleartext over `http://` to a non-loopback endpoint (logs a
+# warning at startup; set to `false` to refuse startup without TLS) (default = true)
+#base_node_grpc_allow_insecure_auth = true
 
 # Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"

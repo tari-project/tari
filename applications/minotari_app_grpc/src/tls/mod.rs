@@ -151,9 +151,11 @@ pub fn validate_client_grpc_tls_and_auth(
         if allow_insecure_auth {
             warn!(
                 target: LOG_TARGET,
-                "gRPC Basic authentication is enabled over plaintext '{http_scheme}' transport to non-loopback \
-                 endpoint '{addr}' because 'base_node_grpc_allow_insecure_auth = true'; credentials will be \
-                 transmitted in cleartext"
+                "WARNING: gRPC Basic authentication is enabled over plaintext '{http_scheme}' transport to \
+                 non-loopback endpoint '{addr}'; credentials will be transmitted in cleartext! Use an \
+                 '{https_scheme}' endpoint with TLS configured, connect to a loopback host ('127.0.0.1', '::1', or \
+                 'localhost'), or set 'base_node_grpc_allow_insecure_auth = false' to refuse cleartext Basic \
+                 authentication."
             );
             return Ok(());
         }

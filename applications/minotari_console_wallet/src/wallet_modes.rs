@@ -447,6 +447,9 @@ pub fn grpc_mode(
 }
 
 pub(crate) fn validate_wallet_grpc_config(config: &WalletConfig, address: &Multiaddr) -> Result<(), ExitError> {
+    if !config.grpc_enabled {
+        return Ok(());
+    }
     validate_server_grpc_tls_and_auth(
         &address.to_string(),
         &config.grpc_authentication,
@@ -707,14 +710,17 @@ grpc_tls_enabled = false
     fn wallet_grpc_config_refuses_basic_auth_without_tls_on_non_loopback_unless_overridden() {
         use tari_utilities::SafePassword;
 
-        let mut config = WalletConfig::default();
         let non_loopback: Multiaddr = "/ip4/0.0.0.0/tcp/18143".parse().unwrap();
-        config.grpc_authentication = GrpcAuthentication::Basic {
-            username: "admin".to_string(),
-            password: SafePassword::from("secret_password"),
+        let mut config = WalletConfig {
+            grpc_enabled: true,
+            grpc_authentication: GrpcAuthentication::Basic {
+                username: "admin".to_string(),
+                password: SafePassword::from("secret_password"),
+            },
+            grpc_tls_enabled: false,
+            grpc_allow_insecure_auth: false,
+            ..Default::default()
         };
-        config.grpc_tls_enabled = false;
-        config.grpc_allow_insecure_auth = false;
 
         let err = validate_wallet_grpc_config(&config, &non_loopback)
             .expect_err("non-loopback Basic auth without TLS must be rejected");
@@ -726,19 +732,27 @@ grpc_tls_enabled = false
         config.grpc_allow_insecure_auth = true;
         validate_wallet_grpc_config(&config, &non_loopback)
             .expect("override should permit non-loopback Basic auth without TLS");
+
+        config.grpc_allow_insecure_auth = false;
+        config.grpc_enabled = false;
+        validate_wallet_grpc_config(&config, &non_loopback)
+            .expect("disabled gRPC server should skip TLS/auth validation");
     }
 
     #[test]
     fn wallet_grpc_config_allows_basic_auth_without_tls_on_loopback() {
         use tari_utilities::SafePassword;
 
-        let mut config = WalletConfig::default();
-        config.grpc_authentication = GrpcAuthentication::Basic {
-            username: "admin".to_string(),
-            password: SafePassword::from("secret_password"),
+        let config = WalletConfig {
+            grpc_enabled: true,
+            grpc_authentication: GrpcAuthentication::Basic {
+                username: "admin".to_string(),
+                password: SafePassword::from("secret_password"),
+            },
+            grpc_tls_enabled: false,
+            grpc_allow_insecure_auth: false,
+            ..Default::default()
         };
-        config.grpc_tls_enabled = false;
-        config.grpc_allow_insecure_auth = false;
 
         let ipv4_loopback: Multiaddr = "/ip4/127.0.0.1/tcp/18143".parse().unwrap();
         validate_wallet_grpc_config(&config, &ipv4_loopback)

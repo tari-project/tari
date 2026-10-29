@@ -482,7 +482,7 @@ async fn prepare_grpc_params(
     }
 
     let mut tls_identity = None;
-    if config.base_node.grpc_tls_enabled {
+    if config.base_node.grpc_enabled && config.base_node.grpc_tls_enabled {
         tls_identity = read_identity(config.base_node.config_dir.clone())
             .await
             .map(Some)
@@ -781,6 +781,12 @@ grpc_tls_enabled = false
         prepare_grpc_params(&config)
             .await
             .expect("override should permit non-loopback Basic auth without TLS");
+
+        config.base_node.grpc_allow_insecure_auth = false;
+        config.base_node.grpc_enabled = false;
+        prepare_grpc_params(&config)
+            .await
+            .expect("disabled gRPC server should skip TLS/auth validation");
     }
 
     #[tokio::test]
