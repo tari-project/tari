@@ -4231,7 +4231,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "base64 0.22.1",
  "bincode",
@@ -4264,7 +4264,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "clap",
  "dialoguer 0.10.4",
@@ -4287,7 +4287,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4344,7 +4344,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "borsh",
  "bs58",
@@ -4353,7 +4353,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "borsh",
  "ledger-transport",
@@ -4373,7 +4373,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms_testing"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "blake2 0.10.6",
  "dialoguer 0.11.0",
@@ -4397,7 +4397,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_common"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4423,7 +4423,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_node"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4444,7 +4444,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_wallet"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4465,7 +4465,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4512,7 +4512,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -4549,7 +4549,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4613,7 +4613,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_grpc_client"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "minotari_app_grpc",
  "tokio",
@@ -4621,7 +4621,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4639,7 +4639,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_offline_signer"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "argon2 0.6.0",
@@ -4661,7 +4661,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_peer_sync"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "clap",
  "config",
@@ -4685,7 +4685,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_utils"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "bytesize",
@@ -4704,7 +4704,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "argon2 0.6.0",
@@ -4763,7 +4763,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -4803,7 +4803,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_grpc_client"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "minotari_app_grpc",
  "tari_common",
@@ -7716,7 +7716,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "config",
@@ -7742,7 +7742,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -7761,7 +7761,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "argon2 0.6.0",
  "base64 0.22.1",
@@ -7801,7 +7801,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7854,7 +7854,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "bitflags 2.13.0",
@@ -7896,7 +7896,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "futures 0.3.32",
  "proc-macro2",
@@ -7912,7 +7912,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8002,11 +8002,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 
 [[package]]
 name = "tari_hashing"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8020,7 +8020,7 @@ dependencies = [
 
 [[package]]
 name = "tari_integration_tests"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8080,7 +8080,7 @@ dependencies = [
 
 [[package]]
 name = "tari_libtor"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "derivative",
  "log",
@@ -8094,7 +8094,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "bincode",
  "borsh",
@@ -8119,7 +8119,7 @@ dependencies = [
 
 [[package]]
 name = "tari_metrics"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "futures 0.3.32",
@@ -8134,7 +8134,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "bincode",
  "blake2 0.10.6",
@@ -8151,7 +8151,7 @@ dependencies = [
 
 [[package]]
 name = "tari_node_components"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8171,7 +8171,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -8205,7 +8205,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8223,7 +8223,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8240,7 +8240,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "futures 0.3.32",
  "tokio",
@@ -8266,7 +8266,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -8279,7 +8279,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "futures 0.3.32",
  "futures-test",
@@ -8291,7 +8291,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_components"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "anyhow",
  "argon2 0.6.0",
@@ -8345,7 +8345,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_key_manager"
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 dependencies = [
  "async-trait",
  "blake2 0.10.6",
