@@ -2819,7 +2819,6 @@ mod tests {
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
-        sync.config.rpc_deadline = Duration::from_millis(200);
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::drops_at(chain.db(), 2), &target)
             .await
             .unwrap_err();
@@ -2827,6 +2826,7 @@ mod tests {
 
         // Block "1" (height 2) has a coinbase and a transaction. The peer takes 1 s to read it, more than the RPC
         // deadline and the data allow, but within a second per kernel.
+        sync.config.rpc_deadline = Duration::from_millis(200);
         sync.server_time_per_kernel = Duration::from_secs(1);
         let mut source = DbTrancheSource::new(
             chain.db(),
@@ -2847,11 +2847,11 @@ mod tests {
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
-        sync.config.rpc_deadline = Duration::from_millis(200);
-        sync.server_time_per_kernel = Duration::ZERO;
         sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::drops_at(chain.db(), 2), &target)
             .await
             .unwrap_err();
+        sync.config.rpc_deadline = Duration::from_millis(200);
+        sync.server_time_per_kernel = Duration::ZERO;
         let mut source = DbTrancheSource::new(
             chain.db(),
             Box::new(|request, _| {
@@ -2877,10 +2877,10 @@ mod tests {
         let mut peers = Vec::new();
         let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
         sync.tranche_size = 0;
-        sync.config.rpc_deadline = Duration::from_secs(1);
+        sync.config.rpc_deadline = Duration::from_secs(2);
         sync.server_time_per_kernel = Duration::ZERO;
 
-        // Five tranches allow 5 s, plus the data at 40 KB/s, which the source counts as it serves it
+        // Five tranches allow 10 s, plus the data at 40 KB/s, which the source counts as it serves it
         let mut bytes_served = 0u64;
         let mut source = DbTrancheSource::new(
             chain.db(),
@@ -2894,7 +2894,7 @@ mod tests {
                 }
                 bytes_served += items.iter().map(|item| item.encoded_len() as u64).sum::<u64>();
                 if request == 5 {
-                    let budget_millis = 5000 + bytes_served * 1000 / MIN_SYNC_THROUGHPUT;
+                    let budget_millis = 10_000 + bytes_served * 1000 / MIN_SYNC_THROUGHPUT;
                     std::thread::sleep(Duration::from_millis(budget_millis * u64::from(percent) / 100));
                 }
                 Ok(())
