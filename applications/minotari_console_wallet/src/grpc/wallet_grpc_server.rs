@@ -172,7 +172,6 @@ use tari_common_types::{
         CompressedPublicKey,
         CompressedSignature,
         FixedHash,
-        PrivateKey,
         SignatureWithDomain,
     },
 };
@@ -1609,8 +1608,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<CreateBurnTransactionRequest>,
     ) -> Result<Response<CreateBurnTransactionResponse>, Status> {
+        let mut message = request.into_inner();
+        let sidechain_deployment_key = message.take_sidechain_deployment_key();
         self.check_method_enabled(WalletGrpcMethod::CreateBurnTransaction)?;
-        let message = request.into_inner();
 
         let mut transaction_service = self.get_transaction_service();
         debug!(target: LOG_TARGET, "Trying to burn {} Minotari", message.amount);
@@ -1625,11 +1625,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     .map(CompressedPublicKey::from_canonical_bytes)
                     .transpose()
                     .map_err(|e| Status::invalid_argument(e.to_string()))?,
-                Some(message.sidechain_deployment_key.as_slice())
-                    .filter(|v| !v.is_empty())
-                    .map(PrivateKey::from_canonical_bytes)
-                    .transpose()
-                    .map_err(|e| Status::invalid_argument(e.to_string()))?,
+                sidechain_deployment_key.map_err(|e| Status::invalid_argument(e.to_string()))?,
             )
             .await;
 
@@ -2626,8 +2622,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<RegisterValidatorNodeRequest>,
     ) -> Result<Response<RegisterValidatorNodeResponse>, Status> {
+        let mut request = request.into_inner();
+        let sidechain_deployment_key = request.take_sidechain_deployment_key();
         self.check_method_enabled(WalletGrpcMethod::RegisterValidatorNode)?;
-        let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
@@ -2640,14 +2637,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             CompressedPublicKey::from_canonical_bytes(&request.validator_node_claim_public_key)
                 .map_err(|_| Status::invalid_argument("Claim public key is malformed"))?;
 
-        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
-            None
-        } else {
-            Some(
-                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
-                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
-            )
-        };
+        let sidechain_key =
+            sidechain_deployment_key.map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?;
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
@@ -2689,8 +2680,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
         &self,
         request: Request<SubmitValidatorNodeExitRequest>,
     ) -> Result<Response<SubmitValidatorNodeExitResponse>, Status> {
+        let mut request = request.into_inner();
+        let sidechain_deployment_key = request.take_sidechain_deployment_key();
         self.check_method_enabled(WalletGrpcMethod::SubmitValidatorNodeExit)?;
-        let request = request.into_inner();
         let mut transaction_service = self.get_transaction_service();
         let validator_node_public_key = CommsPublicKey::from_canonical_bytes(&request.validator_node_public_key)
             .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
@@ -2700,14 +2692,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .try_into()
             .map_err(|_| Status::invalid_argument("Validator node signature is malformed!"))?;
 
-        let sidechain_key = if request.sidechain_deployment_key.is_empty() {
-            None
-        } else {
-            Some(
-                PrivateKey::from_canonical_bytes(&request.sidechain_deployment_key)
-                    .map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?,
-            )
-        };
+        let sidechain_key =
+            sidechain_deployment_key.map_err(|_| Status::invalid_argument("sidechain_id is malformed"))?;
 
         let constants = self.get_consensus_constants().map_err(|e| {
             error!(target: LOG_TARGET, "Failed to get consensus constants: {e}");
