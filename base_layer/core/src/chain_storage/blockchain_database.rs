@@ -913,7 +913,9 @@ where B: BlockchainBackend
                             let db_rw_lock = db_rw_lock.clone();
                             let res = tokio::task::spawn_blocking(move || {
                                 if let Ok(mut db) = db_rw_lock.write() {
-                                    rewind_to_height(&mut *db, height.saturating_sub(1))
+                                    let rewind_height = height.saturating_sub(1);
+                                    refuse_if_rewind_is_impossible(&*db, rewind_height)?;
+                                    rewind_to_height(&mut *db, rewind_height)
                                 } else {
                                     Err(ChainStorageError::AccessError(
                                         "Write lock on blockchain backend failed".into(),
@@ -5775,13 +5777,25 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
     let read_lock = db
         .read()
         .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
-    let last_chain_header = read_lock.fetch_last_chain_header()?;
-    // Safety check to ensure we do not check accumulated data for a height that has been reorged out.
-    let height = min(height, last_chain_header.height());
+    let metadata = read_lock.fetch_chain_metadata()?;
+    // Safety check to ensure we do not check block data for a height that has been reorged out or lies ahead of the
+    // best block while headers are syncing ahead of blocks.
+    let height = min(height, metadata.best_block_height());
+    if height == 0 {
+        drop(read_lock);
+        let write_lock = db
+            .write()
+            .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
+        let metadata = write_lock.fetch_chain_metadata()?;
+        return write_lock.update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
+            has_concluded: true,
+            last_check_height: 0,
+            current_height: metadata.best_block_height(),
+        });
+    }
 
     let block_data = {
-        let metadata = read_lock.fetch_chain_metadata()?;
-        let horizon_height = metadata.pruned_height_at_given_chain_tip(height);
+        let horizon_height = metadata.pruned_height();
         if height > horizon_height {
             let historical_block = fetch_block(&*read_lock, height, false).map_err(|e| {
                 ChainStorageError::CorruptedDatabase(format!("Could not fetch block for height {height}: {e}"))
@@ -5847,11 +5861,11 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
     let write_lock = db
         .write()
         .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
-    let last_chain_header = write_lock.fetch_last_chain_header()?;
+    let metadata = write_lock.fetch_chain_metadata()?;
     let status = write_lock.update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
-        has_concluded: height == last_chain_header.height(),
+        has_concluded: height >= metadata.best_block_height(),
         last_check_height: height,
-        current_height: last_chain_header.height(),
+        current_height: metadata.best_block_height(),
     })?;
 
     Ok(status)
@@ -10333,6 +10347,101 @@ mod test {
                 "the pre-fork orphan chain tip must be left alone"
             );
         }
+    }
+
+    #[test]
+    fn verify_blockchain_consistency_for_height_handles_pruned_horizon_and_headers_ahead_of_blocks() {
+        use tari_transaction_components::{
+            tari_amount::MicroMinotari,
+            test_helpers::schema_to_transaction,
+            txn_schema,
+        };
+
+        use crate::{
+            block_spec,
+            test_helpers::blockchain::{TestBlockchain, create_store_with_consensus},
+        };
+
+        let rules = create_consensus_rules();
+        let db = create_store_with_consensus(rules.clone());
+        let mut blockchain = TestBlockchain::new(db, rules);
+
+        // Mine B1..B6 where B3 spends B1's coinbase output (LocalNet coinbase_min_maturity = 2).
+        let (_, coinbase_1) = blockchain.add_next_tip(block_spec!("B1")).unwrap();
+        blockchain.add_next_tip(block_spec!("B2")).unwrap();
+        let (txs, _) = schema_to_transaction(
+            &[txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(500_000)])],
+            &blockchain.km,
+        );
+        blockchain
+            .add_next_tip(block_spec!(
+                "B3",
+                transactions: txs.iter().map(|t| (**t).clone()).collect()
+            ))
+            .unwrap();
+        blockchain.add_next_tip(block_spec!("B4")).unwrap();
+        blockchain.add_next_tip(block_spec!("B5")).unwrap();
+        let (block_b6, _) = blockchain.add_next_tip(block_spec!("B6")).unwrap();
+
+        // Configure pruning_horizon = 2 and prune to height 4 (best_block_height = 6, pruned_height = 4).
+        {
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(2);
+            blockchain.db().write(txn).unwrap();
+        }
+        blockchain.db().prune_to_height(4).unwrap();
+        let metadata = blockchain.db().get_chain_metadata().unwrap();
+        assert_eq!(metadata.best_block_height(), 6);
+        assert_eq!(metadata.pruned_height(), 4);
+        assert!(metadata.is_pruned_node());
+
+        // Pruned heights (<= pruned_height) are checked via headers only and succeed under full_validation = true.
+        for height in 1..=4 {
+            let status = verify_blockchain_consistency_for_height(
+                blockchain.db().db.clone(),
+                &blockchain.db().validators,
+                height,
+                true,
+            )
+            .unwrap();
+            assert_eq!(status.has_concluded, Some(false));
+            assert_eq!(status.last_check_height, Some(height));
+        }
+
+        // Unpruned heights (> pruned_height) are validated with full block bodies.
+        for height in 5..=6 {
+            let status = verify_blockchain_consistency_for_height(
+                blockchain.db().db.clone(),
+                &blockchain.db().validators,
+                height,
+                true,
+            )
+            .unwrap();
+            assert_eq!(status.has_concluded, Some(height == 6));
+            assert_eq!(status.last_check_height, Some(height));
+        }
+
+        // Insert a valid header H7 ahead of best_block_height (6); checking height 7 clamps to best_block_height (6)
+        // and concludes cleanly without failing `fetch_block(7)`.
+        let (block_b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+        assert_eq!(block_b6.height(), 6);
+        assert_eq!(block_b7.height(), 7);
+        blockchain
+            .db()
+            .insert_valid_headers(vec![block_b7.to_chain_header()])
+            .unwrap();
+        assert_eq!(blockchain.db().fetch_last_header().unwrap().height, 7);
+        assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+
+        let status_h7 = verify_blockchain_consistency_for_height(
+            blockchain.db().db.clone(),
+            &blockchain.db().validators,
+            7,
+            true,
+        )
+        .unwrap();
+        assert_eq!(status_h7.has_concluded, Some(true));
+        assert_eq!(status_h7.last_check_height, Some(6));
     }
 
     fn create_consensus_rules() -> BaseNodeConsensusManager {
