@@ -4494,25 +4494,65 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
 
     txn.set_accumulated_data_for_orphan(chain_block.header().version, chain_block.accumulated_data().clone());
     db.write(txn)?;
-    let tips = find_orphan_descendant_tips_of(
-        db,
-        chain_header,
-        prev_timestamps,
-        validator,
-        rules,
+    let branch_context = OrphanBranchContext {
         fork_height,
-    )?;
+        vm_key_height: tari_rx_vm_key_height(chain_header.height()),
+        vm_key,
+    };
+    let tips = find_orphan_descendant_tips_of(db, chain_header, prev_timestamps, validator, rules, branch_context)?;
     let mut txn = DbTransaction::new();
     debug!(target: LOG_TARGET, "Found {} new orphan tips", tips.len());
     for new_tip in &tips {
-        txn.insert_orphan_chain_tip(
-            *new_tip.hash(),
-            new_tip.accumulated_data().total_accumulated_difficulty,
-        );
+        txn.insert_orphan_chain_tip(*new_tip.hash(), new_tip.accumulated_data().total_accumulated_difficulty);
     }
 
     db.write(txn)?;
     Ok(true)
+}
+
+#[derive(Clone, Copy)]
+struct OrphanBranchContext {
+    // The highest height at which this orphan chain and the chain in the database are the same chain. Every
+    // descendant on this branch shares the same main-chain fork point.
+    fork_height: u64,
+    vm_key_height: u64,
+    vm_key: FixedHash,
+}
+
+impl OrphanBranchContext {
+    fn for_child<T: BlockchainBackend>(
+        self,
+        db: &T,
+        prev_chain_header: &ChainHeader,
+        child_header: &BlockHeader,
+    ) -> Result<Self, ChainStorageError> {
+        if child_header.height != prev_chain_header.height().saturating_add(1) {
+            return Ok(self);
+        }
+        let child_vm_key_height = tari_rx_vm_key_height(child_header.height);
+        if child_vm_key_height == self.vm_key_height {
+            return Ok(self);
+        }
+        let vm_key = if child_vm_key_height <= self.fork_height {
+            *db.fetch_chain_header_by_height(child_vm_key_height)?.hash()
+        } else if child_vm_key_height == prev_chain_header.height() {
+            *prev_chain_header.hash()
+        } else {
+            let mut current = prev_chain_header.header().clone();
+            loop {
+                let ancestor = db.fetch_chain_header_in_all_chains(&current.prev_hash)?;
+                if ancestor.height() == child_vm_key_height || ancestor.height() == 0 {
+                    break *ancestor.hash();
+                }
+                current = ancestor.header().clone();
+            }
+        };
+        Ok(Self {
+            fork_height: self.fork_height,
+            vm_key_height: child_vm_key_height,
+            vm_key,
+        })
+    }
 }
 
 // Find the tip set of any orphans that have hash as an ancestor
@@ -4522,9 +4562,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
     prev_timestamps: RollingVec<EpochTime>,
     validator: &dyn HeaderChainLinkedValidator<T>,
     rules: &BaseNodeConsensusManager,
-    // The highest height at which this orphan chain and the chain in the database are the same chain. Every
-    // descendant found here is on the same orphan chain, so they all share it.
-    fork_height: u64,
+    branch_context: OrphanBranchContext,
 ) -> Result<Vec<ChainHeader>, ChainStorageError> {
     let children = db.fetch_orphan_children_of(*prev_chain_header.hash())?;
     if children.is_empty() {
@@ -4557,9 +4595,8 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         );
 
         // We need to validate the header here because it may never have been validated.
-        // Resolve the RandomX VM key along the orphan chain itself rather than querying the main chain directly,
-        // as an orphan fork may have split below its RandomX VM key boundary.
-        let (vm_key, _) = get_vm_key_for_candidate_header(db, child.header.clone())?;
+        // Reuse the branch's resolved RandomX VM key unless this child crosses into a new VM key epoch.
+        let child_branch_context = branch_context.for_child(db, &prev_chain_header, &child.header)?;
         match validator.validate(
             db,
             &child.header,
@@ -4568,7 +4605,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
             None,
             // As in `insert_orphan_and_find_new_tips`: no pending seeds for the orphan chain, so the seed age rule
             // is deliberately best effort on this path and fails open, with body validation as the backstop.
-            HeaderChainContext::candidate_chain(vm_key, fork_height, None),
+            HeaderChainContext::candidate_chain(child_branch_context.vm_key, child_branch_context.fork_height, None),
         ) {
             Ok(validated) => {
                 let achieved_target = validated.achieved_target;
@@ -4604,7 +4641,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     prev_timestamps_for_children,
                     validator,
                     rules,
-                    fork_height,
+                    child_branch_context,
                 )?;
                 res.extend(children);
             },
@@ -8026,8 +8063,9 @@ mod test {
                 "a rejected child header must not remove its parent from orphan_chain_tips_db"
             );
 
-            // Now F2 arrives: `bad_child` and `bad_grandchild` fail header validation in `find_orphan_descendant_tips_of`
-            // and are deleted, while F2 is preserved as the orphan tip and triggers the reorg to A <- F1 <- F2.
+            // Now F2 arrives: `bad_child` and `bad_grandchild` fail header validation in
+            // `find_orphan_descendant_tips_of` and are deleted, while F2 is preserved as the orphan tip and
+            // triggers the reorg to A <- F1 <- F2.
             let outcome = h.add(&f2);
             let BlockAddResult::ChainReorg { added, removed } = outcome.result else {
                 panic!("expected a reorg to F1 <- F2, got {}", outcome.result);
@@ -8077,7 +8115,10 @@ mod test {
             // Re-receiving F1 must cleanly re-link F1 <- F2 without `KeyExists` and reorg onto F1 <- F2.
             let outcome = h.add(&f1);
             let BlockAddResult::ChainReorg { added, .. } = outcome.result else {
-                panic!("expected a reorg to F1 <- F2 after F1 is re-received, got {}", outcome.result);
+                panic!(
+                    "expected a reorg to F1 <- F2 after F1 is re-received, got {}",
+                    outcome.result
+                );
             };
             assert_eq!(hashes(&added), vec![*f1.hash(), *f2.hash()]);
             assert_eq!(h.tip_hash(), *f2.hash());
@@ -8096,20 +8137,18 @@ mod test {
             assert_ne!(expected_diff, a.accumulated_data().total_accumulated_difficulty);
 
             h.db.rewind_to_height(1).unwrap();
-            let tip = h
-                .db
-                .db_read_access()
-                .unwrap()
-                .fetch_orphan_chain_tip_by_hash(b.hash())
-                .unwrap()
-                .expect("rewound tip B must be in orphan_chain_tips_db");
+            let tip =
+                h.db.db_read_access()
+                    .unwrap()
+                    .fetch_orphan_chain_tip_by_hash(b.hash())
+                    .unwrap()
+                    .expect("rewound tip B must be in orphan_chain_tips_db");
             assert_eq!(tip.accumulated_data().total_accumulated_difficulty, expected_diff);
-            let strongest = h
-                .db
-                .db_read_access()
-                .unwrap()
-                .fetch_strongest_orphan_chain_tips()
-                .unwrap();
+            let strongest =
+                h.db.db_read_access()
+                    .unwrap()
+                    .fetch_strongest_orphan_chain_tips()
+                    .unwrap();
             assert_eq!(strongest.len(), 1);
             assert_eq!(strongest[0].hash(), b.hash());
         }
@@ -8120,18 +8159,49 @@ mod test {
         /// chain (not 0).
         #[test]
         fn candidate_vm_key_and_fork_height_resolve_along_the_fork_below_vm_key_boundary() {
-            let h = Harness::new();
-            let genesis = h.db.fetch_chain_header(0).unwrap();
+            use tari_transaction_components::{
+                consensus::consensus_constants::{POW_BACKOFF_DISABLED, PowAlgorithmConstants},
+                tari_proof_of_work::{PowAlgorithm, PowError},
+            };
+
+            use crate::{
+                proof_of_work::{randomx_factory::RandomXFactory, tari_randomx_difficulty},
+                test_helpers::blockchain::create_custom_blockchain,
+                validation::{DifficultyCalculator, header::HeaderFullValidator},
+            };
+
+            let network = Network::LocalNet;
+            let constants = ConsensusConstantsBuilder::new(network)
+                .with_pow_backoff_cap(POW_BACKOFF_DISABLED)
+                .add_proof_of_work(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+                    min_difficulty: Difficulty::from_u64(2).unwrap(),
+                    max_difficulty: Difficulty::from_u64(1_000_000).unwrap(),
+                    target_time: 120,
+                })
+                .build();
+            let rules = BaseNodeConsensusManager::builder(network)
+                .add_consensus_constants(constants)
+                .on_ties(strongest_chain().by_sha3x_difficulty().build())
+                .build()
+                .unwrap();
+            let randomx_factory = RandomXFactory::new(2);
+            let validator = HeaderFullValidator::new(
+                rules.clone(),
+                DifficultyCalculator::new(rules.clone(), randomx_factory.clone()),
+            );
+            let db = create_custom_blockchain(rules.clone());
+            let genesis = db.fetch_chain_header(0).unwrap();
             let mut txn = DbTransaction::new();
 
-            // Insert main-chain headers 1..=2048 sequentially in one transaction.
+            // Insert contiguous main-chain Sha3x headers 1..=2048 in one transaction.
             let mut prev_header = genesis.clone();
             let mut chain_2047 = None;
             let mut chain_main_2048 = None;
             for height in 1..=2048 {
-                let mut hdr = prev_header.header().clone();
+                let mut hdr = BlockHeader::from_previous(prev_header.header());
                 hdr.height = height;
-                hdr.prev_hash = *prev_header.hash();
+                hdr.timestamp = prev_header.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
+                hdr.pow.pow_algo = PowAlgorithm::Sha3x;
                 hdr.nonce = height;
                 hdr.kernel_mmr_size = height;
                 let mut accum = prev_header.accumulated_data().clone();
@@ -8147,35 +8217,150 @@ mod test {
             }
             let chain_2047 = chain_2047.unwrap();
             let chain_main_2048 = chain_main_2048.unwrap();
-            let main_2047 = chain_2047.header().clone();
-            let accum_2047 = chain_2047.accumulated_data().clone();
+            let main_2048_hash = *chain_main_2048.hash();
 
-            // Insert a competing orphan fork starting at height 2048 (forking off main_2047) and candidate at 2113.
-            let mut fork_2048 = main_2047;
-            fork_2048.height = 2048;
-            fork_2048.prev_hash = *chain_2047.hash();
-            fork_2048.nonce = 99_999;
-            let fork_2048_hash = fork_2048.hash();
-            assert_ne!(fork_2048_hash, *chain_main_2048.hash());
-            let mut accum_fork_2048 = accum_2047;
-            accum_fork_2048.hash = fork_2048_hash;
-            let fork_block_2048 = ChainBlock::try_construct(
-                Arc::new(Block::new(fork_2048.clone(), AggregateBody::empty())),
-                accum_fork_2048,
-            )
-            .unwrap();
-            txn.insert_chained_orphan(Arc::new(fork_block_2048));
-            h.db.write(txn).unwrap();
+            // Build a contiguous competing orphan fork 2048..=2110 off height 2047, with 2110 as the active orphan tip.
+            let mut prev_fork = chain_2047.clone();
+            let mut fork_2048_hash = FixedHash::zero();
+            for height in 2048..=2110 {
+                let mut hdr = BlockHeader::from_previous(prev_fork.header());
+                hdr.height = height;
+                hdr.timestamp = prev_fork.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
+                hdr.pow.pow_algo = PowAlgorithm::Sha3x;
+                hdr.nonce = 100_000 + height;
+                let mut accum = prev_fork.accumulated_data().clone();
+                accum.hash = hdr.hash();
+                if height == 2048 {
+                    fork_2048_hash = hdr.hash();
+                    assert_ne!(fork_2048_hash, main_2048_hash);
+                }
+                let block =
+                    ChainBlock::try_construct(Arc::new(Block::new(hdr, AggregateBody::empty())), accum).unwrap();
+                prev_fork = block.to_chain_header();
+                txn.insert_chained_orphan(Arc::new(block));
+            }
+            txn.insert_orphan_chain_tip(
+                *prev_fork.hash(),
+                prev_fork.accumulated_data().total_accumulated_difficulty,
+            );
+            db.write(txn).unwrap();
 
-            let mut candidate_2113 = fork_2048;
+            // Contiguous tail 2111 -> 2112 -> 2113 on the fork, where 2111 and 2112 are in VM-key epoch 0 and 2113 is
+            // the first height in VM-key epoch 2048 (`tari_rx_vm_key_height(2113) == 2048`).
+            let mut fork_2111 = BlockHeader::from_previous(prev_fork.header());
+            fork_2111.height = 2111;
+            fork_2111.timestamp = prev_fork.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
+            fork_2111.pow.pow_algo = PowAlgorithm::Sha3x;
+            fork_2111.nonce = 200_111;
+
+            let mut fork_2112 = BlockHeader::from_previous(&fork_2111);
+            fork_2112.height = 2112;
+            fork_2112.timestamp = fork_2111.timestamp.checked_add(EpochTime::from(1)).unwrap();
+            fork_2112.pow.pow_algo = PowAlgorithm::Sha3x;
+            fork_2112.nonce = 200_112;
+
+            let mut candidate_2113 = BlockHeader::from_previous(&fork_2112);
             candidate_2113.height = 2113;
-            candidate_2113.prev_hash = fork_2048_hash;
+            candidate_2113.timestamp = fork_2112.timestamp.checked_add(EpochTime::from(1)).unwrap();
+            candidate_2113.pow.pow_algo = PowAlgorithm::RandomXT;
+            assert_eq!(tari_rx_vm_key_height(fork_2112.height), 0);
             assert_eq!(tari_rx_vm_key_height(candidate_2113.height), 2048);
 
-            let access = h.db.db_read_access().unwrap();
-            let (vm_key, fork_height) = get_vm_key_for_candidate_header(&*access, candidate_2113).unwrap();
+            // Grind a nonce where `candidate_2113` clears the target difficulty (2) under the fork's VM key
+            // (`fork_2048_hash`), but achieves only 1 (< 2) under the main chain's VM key (`main_2048_hash`).
+            let target = Difficulty::from_u64(2).unwrap();
+            for nonce in 0..10_000 {
+                candidate_2113.nonce = nonce;
+                let fork_diff = tari_randomx_difficulty(&candidate_2113, &randomx_factory, &fork_2048_hash).unwrap();
+                let main_diff = tari_randomx_difficulty(&candidate_2113, &randomx_factory, &main_2048_hash).unwrap();
+                if fork_diff >= target && main_diff < target {
+                    break;
+                }
+                assert!(nonce < 9_999, "could not find a distinguishing nonce");
+            }
+            let candidate_2113_hash = candidate_2113.hash();
+
+            // Hold 2112 and 2113 as unlinked orphans first, then admit 2111 so `find_orphan_descendant_tips_of` walks
+            // the contiguous held branch 2111 -> 2112 -> 2113 through `HeaderFullValidator` with `target_difficulty:
+            // None`.
+            let mut access = db.db_write_access().unwrap();
+            assert!(
+                insert_orphan_and_find_new_tips(
+                    &mut *access,
+                    Arc::new(Block::new(candidate_2113.clone(), AggregateBody::empty())),
+                    &validator,
+                    &rules,
+                )
+                .unwrap()
+            );
+            assert!(
+                insert_orphan_and_find_new_tips(
+                    &mut *access,
+                    Arc::new(Block::new(fork_2112.clone(), AggregateBody::empty())),
+                    &validator,
+                    &rules,
+                )
+                .unwrap()
+            );
+            assert!(
+                insert_orphan_and_find_new_tips(
+                    &mut *access,
+                    Arc::new(Block::new(fork_2111, AggregateBody::empty())),
+                    &validator,
+                    &rules,
+                )
+                .unwrap()
+            );
+
+            let (vm_key, fork_height) = get_vm_key_for_candidate_header(&*access, candidate_2113.clone()).unwrap();
             assert_eq!(vm_key, fork_2048_hash, "must resolve the fork's own block at vm_height");
-            assert_eq!(fork_height, 2047, "must continue walking to find the true main-chain fork_height");
+            assert_eq!(
+                fork_height, 2047,
+                "must continue walking to find the true main-chain fork_height"
+            );
+            assert!(
+                access
+                    .fetch_orphan_chain_tip_by_hash(&candidate_2113_hash)
+                    .unwrap()
+                    .is_some(),
+                "contiguous held branch must validate under the fork VM key and promote 2113 as the orphan chain tip"
+            );
+
+            // Directly exercise `HeaderFullValidator::validate` with `target_difficulty: None`: the fork VM key
+            // succeeds while the main-chain VM key fails with `AchievedDifficultyTooLow`.
+            let prev_timestamps = get_previous_timestamps(&*access, &candidate_2113, &rules).unwrap();
+            assert!(
+                validator
+                    .validate(
+                        &*access,
+                        &candidate_2113,
+                        &fork_2112,
+                        &prev_timestamps,
+                        None,
+                        HeaderChainContext::candidate_chain(fork_2048_hash, fork_height, None),
+                    )
+                    .is_ok(),
+                "HeaderFullValidator with target_difficulty: None must succeed with the fork VM key"
+            );
+            let err = validator
+                .validate(
+                    &*access,
+                    &candidate_2113,
+                    &fork_2112,
+                    &prev_timestamps,
+                    None,
+                    HeaderChainContext::candidate_chain(main_2048_hash, fork_height, None),
+                )
+                .unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
+                        PowError::AchievedDifficultyTooLow { .. }
+                    ))
+                ),
+                "HeaderFullValidator with target_difficulty: None must reject the main-chain VM key, got {err:?}"
+            );
         }
 
         /// The public swap reports the change it made, for the caller to publish
