@@ -393,7 +393,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     sync_peer.claimed_chain_metadata().best_block_height(),
                     sync_peer,
                 );
-                self.synchronize_headers(sync_peer.clone(), &mut client, *split_info, max_latency)
+                self.synchronize_headers(sync_peer.clone(), &mut client, *split_info, best_header, max_latency)
                     .await?;
                 Ok(AttemptSyncResult {
                     headers_returned: peer_response.peer_headers.len() as u64,
@@ -720,18 +720,107 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok(blocks)
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn synchronize_headers(
+        &mut self,
+        sync_peer: SyncPeer,
+        client: &mut rpc::BaseNodeSyncRpcClient,
+        split_info: ChainSplitInfo,
+        previous_best_header: ChainHeader,
+        max_latency: Duration,
+    ) -> Result<(), BlockHeaderSyncError> {
+        let mut has_switched_to_new_chain = false;
+        let reorg_steps_back = split_info.reorg_steps_back;
+        let result = self
+            .synchronize_headers_inner(
+                sync_peer,
+                client,
+                split_info,
+                max_latency,
+                &mut has_switched_to_new_chain,
+            )
+            .await;
+        if let Err(ref err) = result &&
+            has_switched_to_new_chain
+        {
+            self.rollback_failed_header_sync(reorg_steps_back, &previous_best_header, err)
+                .await;
+        }
+        result
+    }
+
+    async fn rollback_failed_header_sync(
+        &self,
+        reorg_steps_back: u64,
+        previous_best_header: &ChainHeader,
+        err: &BlockHeaderSyncError,
+    ) {
+        if reorg_steps_back == 0 {
+            if err.get_ban_reason().is_some() &&
+                let Err(e) = self.db.rewind_to_height(previous_best_header.height()).await
+            {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to rewind headers to previous header tip height {} after failed header sync: {e}",
+                    previous_best_header.height()
+                );
+            }
+            return;
+        }
+
+        match self.db.fetch_horizon_sync_output_checkpoint().await {
+            Ok(Some(checkpoint)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Deferring swap to highest proof-of-work chain after failed header sync while horizon sync output checkpoint at height {} remains active",
+                    checkpoint.checkpoint_height
+                );
+                return;
+            },
+            Ok(None) => {},
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to check horizon sync output checkpoint after failed header sync: {e}"
+                );
+                return;
+            },
+        }
+        if let Err(e) = self.db.swap_to_highest_pow_chain().await {
+            error!(
+                target: LOG_TARGET,
+                "Failed to restore highest proof-of-work chain after failed header sync: {e}"
+            );
+        }
+        match self.db.get_chain_metadata().await {
+            Ok(metadata) => {
+                if let Err(e) = self.db.rewind_to_height(metadata.best_block_height()).await {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to rewind uncommitted headers to height {} after failed header sync: {e}",
+                        metadata.best_block_height()
+                    );
+                }
+            },
+            Err(e) => {
+                error!(
+                    target: LOG_TARGET,
+                    "Failed to fetch chain metadata after failed header sync: {e}"
+                );
+            },
+        }
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn synchronize_headers_inner(
         &mut self,
         mut sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
         split_info: ChainSplitInfo,
         max_latency: Duration,
+        has_switched_to_new_chain: &mut bool,
     ) -> Result<(), BlockHeaderSyncError> {
         info!(target: LOG_TARGET, "Starting header sync from peer {sync_peer}");
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
-
-        let mut has_switched_to_new_chain = false;
         let pending_len = self.header_validator.valid_headers().len();
 
         // Find the hash to start syncing the rest of the headers.
@@ -765,6 +854,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Remote chain from peer {} has higher PoW. Switching",
                 sync_peer.node_id()
             );
+            *has_switched_to_new_chain = true;
             self.switch_to_pending_chain(&split_info).await?;
             return Ok(());
         }
@@ -777,8 +867,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Remote chain from peer {} has higher PoW. Switching",
                 sync_peer.node_id()
             );
+            *has_switched_to_new_chain = true;
             self.switch_to_pending_chain(&split_info).await?;
-            has_switched_to_new_chain = true;
         }
 
         debug!(
@@ -849,7 +939,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             let current_height = header.height;
             last_total_accumulated_difficulty = self.header_validator.validate(header).await?;
 
-            if has_switched_to_new_chain {
+            if *has_switched_to_new_chain {
                 // If we've switched to the new chain, we simply commit every COMMIT_EVERY_N_HEADERS headers
                 if self.header_validator.valid_headers().len() >= COMMIT_EVERY_N_HEADERS {
                     self.commit_pending_headers().await?;
@@ -859,8 +949,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // We check the tip difficulties, switching over to the new chain if a higher accumulated difficulty is
                 // achieved.
                 if self.pending_chain_has_higher_pow(&split_info.best_block_header) {
+                    *has_switched_to_new_chain = true;
                     self.switch_to_pending_chain(&split_info).await?;
-                    has_switched_to_new_chain = true;
                 }
             }
 
@@ -887,7 +977,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             prev_height = Some(current_height);
         }
 
-        if !has_switched_to_new_chain {
+        if !*has_switched_to_new_chain {
             let best_local_before_sync = split_info
                 .best_block_header
                 .accumulated_data()
@@ -906,8 +996,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             local: best_local_before_sync,
                         });
                     } else if self.pending_chain_has_higher_pow(&split_info.best_block_header) {
+                        *has_switched_to_new_chain = true;
                         self.switch_to_pending_chain(&split_info).await?;
-                        has_switched_to_new_chain = true;
                         info!(
                             target: LOG_TARGET,
                             "Received PoW from peer exceeds local tip. Before sync: {}, received: {}. Committed.",
@@ -935,11 +1025,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
         }
 
-        // Commit the last blocks only if we have switched to the new chain.
-        if has_switched_to_new_chain && !self.header_validator.valid_headers().is_empty() {
-            self.commit_pending_headers().await?;
-        }
-
         // This rule is strict: if the peer advertised a higher PoW than they were able to provide (without
         // some other external factor like a disconnect etc), we detect the and ban the peer.
         if last_total_accumulated_difficulty < claimed_total_accumulated_diff {
@@ -951,6 +1036,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     .accumulated_data()
                     .total_accumulated_difficulty,
             });
+        }
+
+        // Commit the last blocks only if we have switched to the new chain.
+        if *has_switched_to_new_chain && !self.header_validator.valid_headers().is_empty() {
+            self.commit_pending_headers().await?;
         }
 
         Ok(())

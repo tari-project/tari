@@ -137,6 +137,9 @@ impl HorizonStateSync {
                     randomx_vm_flags,
                 });
                 warn!(target: LOG_TARGET, "Synchronizing horizon state has failed. {err}");
+                if matches!(shared.db.fetch_horizon_sync_output_checkpoint().await, Ok(None)) {
+                    super::block_sync::swap_to_highest_pow_chain_and_publish(shared).await;
+                }
                 StateEvent::HorizonStateSyncFailure(err.to_string())
             },
         }

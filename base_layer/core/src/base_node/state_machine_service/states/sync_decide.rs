@@ -132,6 +132,7 @@ impl DecideNextSync {
 
         if sync_peers.is_empty() {
             warn!(target: LOG_TARGET, "Unable to find any appropriate sync peers for block sync");
+            super::block_sync::swap_to_highest_pow_chain_and_publish(shared).await;
             return Continue;
         }
 

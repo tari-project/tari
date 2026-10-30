@@ -1990,10 +1990,9 @@ where B: BlockchainBackend
             after_lock.saturating_sub(before_lock),
         );
 
-        // If this is true, we already got the header in our database due to header-sync, between us starting the
-        // process of processing an incoming block and now getting a write-lock on the database. Block-sync will
-        // download the body for us, so we can safely exit here.
-        if db.contains(&DbKey::HeaderHash(block_hash))? {
+        // Only exit early when the full block (not merely a header stored ahead of `best_block` by header sync) is
+        // already on the main chain. If only the header is stored, we still need to validate and commit the body.
+        if is_main_chain_block(&*db, &block_hash)? {
             return Ok(AddBlockOutcome {
                 result: BlockAddResult::BlockExists,
                 rejected: vec![],
@@ -2197,7 +2196,7 @@ where B: BlockchainBackend
     pub fn chain_block_or_orphan_block_exists(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
         // we need to check if the block accumulated data exists, and the header might exist without a body
-        Ok(db.fetch_block_accumulated_data(&hash)?.is_some() || db.contains(&DbKey::OrphanBlock(hash))?)
+        Ok(is_main_chain_block(&*db, &hash)? || db.contains(&DbKey::OrphanBlock(hash))?)
     }
 
     /// Returns true if this block header in the chain, or is orphaned.
@@ -2813,6 +2812,15 @@ fn fetch_header_by_block_hash<T: BlockchainBackend>(
     try_fetch!(db, hash, HeaderHash)
 }
 
+/// Whether `hash` is a committed full block on the main chain (rather than a header stored ahead of `best_block`).
+fn is_main_chain_block<T: BlockchainBackend>(db: &T, hash: &HashOutput) -> Result<bool, ChainStorageError> {
+    let Some(header) = fetch_header_by_block_hash(db, *hash)? else {
+        return Ok(false);
+    };
+    let metadata = db.fetch_chain_metadata()?;
+    Ok(header.height <= metadata.best_block_height() && db.fetch_block_accumulated_data(hash)?.is_some())
+}
+
 fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, ChainStorageError> {
     fetch!(db, hash, OrphanBlock)
 }
@@ -3292,7 +3300,9 @@ fn fetch_block_by_hash<T: BlockchainBackend>(
     hash: BlockHash,
     compact: bool,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-    if let Some(header) = fetch_header_by_block_hash(db, hash)? {
+    if let Some(header) = fetch_header_by_block_hash(db, hash)? &&
+        header.height <= db.fetch_chain_metadata()?.best_block_height()
+    {
         return Ok(Some(fetch_block(db, header.height, compact)?));
     }
     Ok(None)
@@ -4334,11 +4344,12 @@ fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
     header: BlockHeader,
 ) -> Result<(FixedHash, u64), ChainStorageError> {
     let vm_height = tari_rx_vm_key_height(header.height);
+    let best_block_height = db.fetch_chain_metadata()?.best_block_height();
     let mut current_header = header.clone();
     while current_header.height != vm_height {
         let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
         let chain_header = db.fetch_chain_header_by_height(h.height()).optional()?;
-        if chain_header.is_some_and(|c| *h.header() == *c.header()) {
+        if h.height() <= best_block_height && chain_header.is_some_and(|c| *h.header() == *c.header()) {
             // Now we now the orphan links back to the main chain here
             return Ok((*db.fetch_chain_header_by_height(vm_height)?.hash(), h.height()));
         }
@@ -4379,7 +4390,14 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             .fetch_chain_header_in_all_chains(&candidate_block.header.prev_hash)
             .optional()?
         {
-            Some(curr_parent) => {
+            // A header stored ahead of `best_block` has no block body on the main chain, so an aligned block whose
+            // header is already on the main header chain is only connected if its parent's body is on the main chain
+            // or held as a connected orphan.
+            Some(curr_parent)
+                if is_main_chain_block(db, &candidate_block.header.prev_hash)? ||
+                    db.fetch_orphan_chain_block(candidate_block.header.prev_hash)?.is_some() ||
+                    fetch_header_by_block_hash(db, hash)?.is_none() =>
+            {
                 debug!(
                     target: LOG_TARGET,
                     "New orphan #{} ({}) does not have a parent in the current tip set. Parent is {}",
@@ -4389,7 +4407,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
                 );
                 curr_parent
             },
-            None => {
+            Some(_) | None => {
                 if db.contains(&DbKey::OrphanBlock(hash))? {
                     info!(
                         target: LOG_TARGET,
@@ -4656,9 +4674,10 @@ fn get_orphan_link_main_chain<T: BlockchainBackend>(
         curr_hash = curr_block.header().prev_hash;
         chain.push_front(Arc::new(curr_block));
 
-        // If this hash is part of the main chain, we're done - since curr_hash has already been set to the previous
-        // hash, the chain Vec does not include the fork block in common with both chains
-        if db.contains(&DbKey::HeaderHash(curr_hash))? {
+        // If this hash is a committed block on the main chain, we're done - since curr_hash has already been set to
+        // the previous hash, the chain Vec does not include the fork block in common with both chains. Headers stored
+        // ahead of `best_block` have no block body on the main chain and must be walked past.
+        if is_main_chain_block(db, &curr_hash)? {
             break;
         }
     }
@@ -6043,6 +6062,26 @@ mod test {
             assert_eq!(orphan_tip.height(), 3);
             let (_, fork_height) = get_vm_key_for_candidate_header(&*access, orphan_tip.header().clone()).unwrap();
             assert_eq!(fork_height, 1, "the orphan forks at A, not at its own parent");
+        }
+
+        #[tokio::test]
+        async fn it_does_not_treat_headers_stored_ahead_of_best_block_as_main_chain_blocks() {
+            let db = create_new_blockchain();
+            let (_, main_chain) = create_main_chain(&db, &[("A->GB", 1, 120), ("B->A", 1, 120), ("C->B", 1, 120)]);
+            let block_b = main_chain.get("B").unwrap().clone();
+            let block_c = main_chain.get("C").unwrap().clone();
+
+            db.rewind_to_height(1).unwrap();
+            db.cleanup_all_orphans().unwrap();
+            db.insert_valid_headers(vec![block_b.to_chain_header()]).unwrap();
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 1);
+
+            let access = db.db_write_access().unwrap();
+            let (_, fork_height) = get_vm_key_for_candidate_header(&*access, block_c.header().clone()).unwrap();
+            assert_eq!(
+                fork_height, 1,
+                "a header stored ahead of best_block has no committed body and must not be treated as the fork point"
+            );
         }
 
         /// When the walk ends without ever meeting the main chain, nothing about the database can be trusted, so it
@@ -8591,6 +8630,56 @@ mod test {
                 .iter()
                 .all(|h| test.db.fetch_header_by_block_hash(*h.hash()).unwrap().is_none())
         );
+    }
+
+    #[tokio::test]
+    async fn test_add_block_and_descendant_when_aligned_headers_are_stored_ahead_of_best_block() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(["B1->GB"], ["B2->B1"], ["B3->B2"], ["H4->B3"], ["H5->H4"]),
+        );
+        let fork_root = main_chain.get("B3").unwrap().clone();
+        let h4 = main_chain.get("H4").unwrap().clone();
+        let h5 = main_chain.get("H5").unwrap().clone();
+
+        test.db.rewind_to_height(fork_root.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        test.db
+            .insert_valid_headers(vec![h4.to_chain_header(), h5.to_chain_header()])
+            .unwrap();
+
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 3);
+        assert_eq!(test.db.fetch_last_header().unwrap().height, 5);
+        assert!(test.db.fetch_header_by_block_hash(*h4.hash()).unwrap().is_some());
+        assert!(!test.db.chain_block_or_orphan_block_exists(*h4.hash()).unwrap());
+        assert!(test.db.fetch_block_by_hash(*h4.hash(), false).unwrap().is_none());
+
+        // Descendant block H5 arriving before H4's body must be held as an unconnected orphan without poisoning
+        // `orphan_chain_tips_db` or failing `get_orphan_link_main_chain`.
+        let outcome_h5 = test.db.add_block(h5.to_arc_block()).unwrap();
+        assert!(matches!(outcome_h5.result, BlockAddResult::OrphanBlock));
+        assert!(outcome_h5.rejected.is_empty());
+        assert!(test.db.chain_block_or_orphan_block_exists(*h5.hash()).unwrap());
+        assert!(
+            test.db
+                .db_read_access()
+                .unwrap()
+                .fetch_strongest_orphan_chain_tips()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 3);
+
+        // Parent block H4 arriving next (whose header is already stored at height 4) must not be ignored as
+        // `BlockExists`; it must commit H4 and link the held orphan H5 to advance `best_block` to height 5.
+        let outcome_h4 = test.db.add_block(h4.to_arc_block()).unwrap();
+        assert!(outcome_h4.rejected.is_empty());
+        assert!(outcome_h4.result.was_chain_modified());
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 5);
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_hash(), h5.hash());
+        assert!(test.db.fetch_block_by_hash(*h4.hash(), false).unwrap().is_some());
+        assert!(test.db.fetch_block_by_hash(*h5.hash(), false).unwrap().is_some());
     }
 
     #[ignore]

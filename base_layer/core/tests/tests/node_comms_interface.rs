@@ -880,6 +880,60 @@ async fn compact_inputs_that_cannot_be_hydrated() {
     assert!(err.get_ban_reason().is_none());
 }
 
+#[tokio::test]
+async fn blocks_arriving_when_parent_header_is_stored_ahead_of_best_block_are_accepted_without_ban() {
+    let network = Network::LocalNet;
+    let (store, blocks, _, rules, key_manager) = create_new_blockchain(network);
+    let mut handlers = new_handlers(&store, new_mempool(), rules.clone());
+
+    let (block1, _) = append_block(
+        &store,
+        &blocks[0],
+        vec![],
+        &rules,
+        Difficulty::from_u64(10).unwrap(),
+        &key_manager,
+    )
+    .unwrap();
+    let (block2, _) = append_block(
+        &store,
+        &block1,
+        vec![],
+        &rules,
+        Difficulty::from_u64(10).unwrap(),
+        &key_manager,
+    )
+    .unwrap();
+
+    // Leave headers 1 and 2 stored ahead of `best_block` at height 0, as header sync leaves them.
+    store.rewind_to_height(0).unwrap();
+    store.cleanup_all_orphans().unwrap();
+    store
+        .insert_valid_headers(vec![block1.to_chain_header(), block2.to_chain_header()])
+        .unwrap();
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 0);
+    assert_eq!(store.fetch_last_header().unwrap().height, 2);
+
+    // Block 2 arriving first builds on header 1 (which has no body yet). It must be orphaned without a ban.
+    let hash2 = handlers
+        .handle_block(block2.block().clone().to_compact(), None)
+        .await
+        .unwrap();
+    assert_eq!(&hash2, block2.hash());
+    assert!(store.chain_block_or_orphan_block_exists(*block2.hash()).unwrap());
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 0);
+
+    // Block 1 arriving next has its header already stored at height 1, but its body is not yet committed.
+    // It must be accepted and link block 2 so the chain advances to height 2.
+    let hash1 = handlers
+        .handle_block(block1.block().clone().to_compact(), None)
+        .await
+        .unwrap();
+    assert_eq!(&hash1, block1.hash());
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_height(), 2);
+    assert_eq!(store.get_chain_metadata().unwrap().best_block_hash(), block2.hash());
+}
+
 /// Inputs that are not in the database are looked up among the block's own outputs. That lookup must not cost a pass
 /// over every output for every input.
 #[tokio::test]
