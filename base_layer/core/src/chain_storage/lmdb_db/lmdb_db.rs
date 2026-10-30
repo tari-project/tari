@@ -3115,6 +3115,26 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Stores a header and its accumulated data at the next header height without checking that it links to the
+    /// header below, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn insert_unlinked_header_for_test(&self, chain_header: &ChainHeader) {
+        let txn = self.create_write_txn();
+        let header = chain_header.header();
+        match BlockVersion::try_from(header.version).unwrap() {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                let row: LmdbRowBlockHeaderAccumulatedDataV1 = chain_header.accumulated_data().into();
+                lmdb_insert_typed(&txn, &self.header_accumulated_data_db, &header.height, &row).unwrap();
+            },
+            BlockVersion::V2 => {
+                let row: LmdbRowBlockHeaderAccumulatedDataV2 = chain_header.accumulated_data().into();
+                lmdb_insert_typed(&txn, &self.header_accumulated_data_v2_db, &header.height, &row).unwrap();
+            },
+        }
+        lmdb_insert(&txn, &self.headers_db, &header.height, header, "headers_db").unwrap();
+        txn.commit().unwrap();
+    }
+
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
         LmdbTreeWriter::new(

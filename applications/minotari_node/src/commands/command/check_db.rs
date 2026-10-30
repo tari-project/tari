@@ -222,6 +222,18 @@ impl CommandContext {
                 Mode::AllFullAutocorrect
         );
 
+        let metadata = self.node_service.get_metadata().await?;
+        if auto_correct && metadata.is_pruned_node() {
+            println!(
+                "\n[check-db] WARNING: this is a pruned node (pruned height #{}, tip #{}). If '{}' finds corruption \
+                 and has to rewind past the pruned height, the chain is wiped to height 0 and the node has to resync \
+                 from scratch.",
+                metadata.pruned_height(),
+                metadata.best_block_height(),
+                args.mode,
+            );
+        }
+
         match args.mode {
             Mode::AccDiff | Mode::AccDiffAutocorrect => {
                 self.blockchain_db

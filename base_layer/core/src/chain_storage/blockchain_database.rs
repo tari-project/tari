@@ -913,6 +913,7 @@ where B: BlockchainBackend
                             let db_rw_lock = db_rw_lock.clone();
                             let res = tokio::task::spawn_blocking(move || {
                                 if let Ok(mut db) = db_rw_lock.write() {
+                                    warn_before_consistency_rewind(&*db, height.saturating_sub(1))?;
                                     rewind_to_height(&mut *db, height.saturating_sub(1))
                                 } else {
                                     Err(ChainStorageError::AccessError(
@@ -5762,6 +5763,29 @@ fn verify_accumulated_data_for_height<B: BlockchainBackend>(
     Ok(status)
 }
 
+// Log the rewind the consistency check is about to do, and call out a pruned node rewinding past its horizon,
+// which `rewind_to_height` turns into a wipe to height 0.
+fn warn_before_consistency_rewind<B: BlockchainBackend>(db: &B, rewind_to: u64) -> Result<(), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let tip = metadata.best_block_height();
+    let steps_back = tip.saturating_sub(rewind_to);
+    let effective_pruning_horizon = tip.saturating_sub(metadata.pruned_height());
+    if metadata.is_pruned_node() && steps_back > effective_pruning_horizon {
+        error!(
+            target: LOG_TARGET,
+            "[Blockchain check] Autocorrect is rewinding this chain to height {rewind_to} ({steps_back} blocks), past \
+            this pruned node's effective pruning horizon of {effective_pruning_horizon}. This wipes the chain to \
+            height 0 and the node has to resync from scratch."
+        );
+    } else {
+        warn!(
+            target: LOG_TARGET,
+            "[Blockchain check] Autocorrect is rewinding this chain to height {rewind_to} ({steps_back} blocks)."
+        );
+    }
+    Ok(())
+}
+
 // Verify blockchain consistency for the given height
 fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
@@ -5780,8 +5804,8 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
 
     let block_data = {
         let metadata = read_lock.fetch_chain_metadata()?;
-        let horizon_height = metadata.pruned_height_at_given_chain_tip(height);
-        if height > horizon_height {
+        // Bodies only exist above the pruned height and up to the block tip; other heights are header-only.
+        if metadata.pruned_height() < height && height <= metadata.best_block_height() {
             let historical_block = fetch_block(&*read_lock, height, false).map_err(|e| {
                 ChainStorageError::CorruptedDatabase(format!("Could not fetch block for height {height}: {e}"))
             })?;
@@ -10258,6 +10282,115 @@ mod test {
                 access.fetch_orphan_chain_tip_by_hash(&below_hash).unwrap().is_some(),
                 "the pre-fork orphan chain tip must be left alone"
             );
+        }
+    }
+
+    mod blockchain_consistency_check {
+        use tari_transaction_components::{
+            tari_amount::MicroMinotari,
+            test_helpers::schema_to_transaction,
+            txn_schema,
+        };
+
+        use super::*;
+        use crate::{
+            block_spec,
+            test_helpers::blockchain::{TestBlockchain, create_store_with_consensus},
+        };
+
+        /// B1..B6, where B3 spends the B1 coinbase.
+        fn create_chain_with_spend() -> TestBlockchain {
+            let rules = create_consensus_rules();
+            let db = create_store_with_consensus(rules.clone());
+            let mut blockchain = TestBlockchain::new(db, rules);
+            let (_, coinbase_1) = blockchain.add_next_tip(block_spec!("B1")).unwrap();
+            blockchain.add_next_tip(block_spec!("B2")).unwrap();
+            let (txs, _) = schema_to_transaction(
+                &[txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(500_000)])],
+                &blockchain.km,
+            );
+            let txs = txs.iter().map(|t| (**t).clone()).collect();
+            blockchain.add_next_tip(block_spec!("B3", transactions: txs)).unwrap();
+            blockchain.add_next_tip(block_spec!("B4")).unwrap();
+            blockchain.add_next_tip(block_spec!("B5")).unwrap();
+            blockchain.add_next_tip(block_spec!("B6")).unwrap();
+            blockchain
+        }
+
+        fn check(
+            blockchain: &TestBlockchain,
+            height: u64,
+            full_validation: bool,
+        ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+            verify_blockchain_consistency_for_height(
+                blockchain.db().db.clone(),
+                &blockchain.db().validators,
+                height,
+                full_validation,
+            )
+        }
+
+        #[test]
+        fn archival_chain_passes_full_check() {
+            let blockchain = create_chain_with_spend();
+            for height in 1..=6 {
+                check(&blockchain, height, true).unwrap();
+            }
+        }
+
+        #[test]
+        fn pruned_bodies_pass_full_check() {
+            let blockchain = create_chain_with_spend();
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(2);
+            blockchain.db().write(txn).unwrap();
+            blockchain.db().prune_to_height(4).unwrap();
+            assert!(blockchain.db().get_chain_metadata().unwrap().is_pruned_node());
+
+            for height in 1..=6 {
+                check(&blockchain, height, true).unwrap();
+            }
+        }
+
+        #[test]
+        fn headers_ahead_of_block_tip_pass_check() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+
+            for full_validation in [false, true] {
+                let status = check(&blockchain, 7, full_validation).unwrap();
+                let (has_concluded, last_check_height, current_height) = status.checked_status();
+                assert!(has_concluded);
+                assert_eq!(last_check_height, 7);
+                assert_eq!(current_height, 7);
+            }
+        }
+
+        #[test]
+        fn header_not_linked_to_previous_is_corruption() {
+            let mut blockchain = create_chain_with_spend();
+            let b1 = blockchain.get_block_and_smt_by_name("B1").unwrap();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            let mut header = b7.header().clone();
+            header.prev_hash = *b1.hash();
+            let mut accumulated_data = b7.accumulated_data().clone();
+            accumulated_data.hash = header.hash();
+            let unlinked = ChainHeader::try_construct(header, accumulated_data).unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .insert_unlinked_header_for_test(&unlinked);
+
+            for full_validation in [false, true] {
+                let err = check(&blockchain, 7, full_validation).unwrap_err();
+                assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+            }
         }
     }
 
