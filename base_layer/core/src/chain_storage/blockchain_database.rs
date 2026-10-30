@@ -4653,11 +4653,13 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
                     child.hash(),
                     e
                 );
-                let mut txn = DbTransaction::new();
-                for orphan_hash in orphan_subtree_hashes(db, child.hash())?.iter().rev() {
-                    txn.delete_orphan(*orphan_hash);
+                if is_block_fault(&e) {
+                    let mut txn = DbTransaction::new();
+                    for orphan_hash in orphan_subtree_hashes(db, child.hash())?.iter().rev() {
+                        txn.delete_orphan(*orphan_hash);
+                    }
+                    db.write(txn)?;
                 }
-                db.write(txn)?;
             },
         };
     }
@@ -8131,10 +8133,15 @@ mod test {
             let h = Harness::new();
             let a = h.build("A");
             h.add(&a);
+            let s = h.build_with_difficulty("S", 3);
             let b = h.build_with_difficulty("B", 7);
             h.add(&b);
+            h.add(&s).result.assert_orphaned();
             let expected_diff = b.accumulated_data().total_accumulated_difficulty;
-            assert_ne!(expected_diff, a.accumulated_data().total_accumulated_difficulty);
+            assert!(
+                a.accumulated_data().total_accumulated_difficulty < s.accumulated_data().total_accumulated_difficulty
+            );
+            assert!(s.accumulated_data().total_accumulated_difficulty < expected_diff);
 
             h.db.rewind_to_height(1).unwrap();
             let tip =
