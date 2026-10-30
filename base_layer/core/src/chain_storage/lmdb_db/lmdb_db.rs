@@ -3151,6 +3151,21 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Deletes the accumulated data row of a stored header, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn delete_header_accumulated_data_for_test(&self, header: &BlockHeader) {
+        let txn = self.create_write_txn();
+        match BlockVersion::try_from(header.version).unwrap() {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                lmdb_delete_typed(&txn, &self.header_accumulated_data_db, &header.height).unwrap();
+            },
+            BlockVersion::V2 => {
+                lmdb_delete_typed(&txn, &self.header_accumulated_data_v2_db, &header.height).unwrap();
+            },
+        }
+        txn.commit().unwrap();
+    }
+
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
         LmdbTreeWriter::new(
