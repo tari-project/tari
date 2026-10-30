@@ -49,6 +49,7 @@ use minotari_wallet::{
         service::UseOutput,
     },
     transaction_service::{
+        error::TransactionServiceError,
         handle::{TransactionEvent, TransactionServiceHandle},
         storage::models::{CompletedTransaction, WalletTransaction},
     },
@@ -2532,28 +2533,59 @@ pub async fn command_runner(
                             MicroMinotari::from(config.fee_per_gram),
                         )
                         .await
-                        .map_err(CommandError::TransactionServiceError)
                     {
-                        Ok(tx_id) => {
-                            debug!(target: LOG_TARGET, "send-minotari concluded with tx_id {tx_id}");
+                        Ok(tx_ids) => {
+                            debug!(target: LOG_TARGET, "scrape-wallet concluded with tx_ids {:?}", tx_ids);
+                            if tx_ids.is_empty() {
+                                println!("Done! No spendable outputs found to scrape.");
+                            } else {
+                                let duration = config.command_send_wait_timeout;
+                                match timeout(duration, monitor_transactions(tms.clone(), tx_ids, wait_stage)).await {
+                                    Ok(txs) => {
+                                        debug!(
+                                            target: LOG_TARGET,
+                                            "monitor_transactions done to stage {wait_stage:?} with tx_ids: {txs:?}"
+                                        );
+                                        println!("Done! All transactions monitored to {wait_stage:?} stage.");
+                                    },
+                                    Err(_e) => {
+                                        println!(
+                                            "The configured timeout ({duration:#?}) was reached before all \
+                                             transactions reached the {wait_stage:?} stage. See the logs for more \
+                                             info."
+                                        );
+                                    },
+                                }
+                            }
+                        },
+                        Err(TransactionServiceError::PartialScrapeFailure { sent_tx_ids, error }) => {
+                            eprintln!(
+                                "Warning: wallet scrape failed after broadcasting {} batch(es) ({sent_tx_ids:?}): {error}",
+                                sent_tx_ids.len()
+                            );
                             let duration = config.command_send_wait_timeout;
-                            match timeout(duration, monitor_transactions(tms.clone(), vec![tx_id], wait_stage)).await {
+                            match timeout(duration, monitor_transactions(tms.clone(), sent_tx_ids, wait_stage)).await {
                                 Ok(txs) => {
                                     debug!(
                                         target: LOG_TARGET,
-                                        "monitor_transactions done to stage {wait_stage:?} with tx_ids: {txs:?}"
+                                        "monitor_transactions done for partial scrape to stage {wait_stage:?} with tx_ids: {txs:?}"
                                     );
-                                    println!("Done! All transactions monitored to {wait_stage:?} stage.");
+                                    println!(
+                                        "Partial scrape: {} broadcast transaction(s) monitored to {wait_stage:?} \
+                                         stage, but remaining outputs were not scraped ({error}).",
+                                        txs.len()
+                                    );
                                 },
                                 Err(_e) => {
                                     println!(
-                                        "The configured timeout ({duration:#?}) was reached before all transactions \
-                                         reached the {wait_stage:?} stage. See the logs for more info."
+                                        "The configured timeout ({duration:#?}) was reached before the broadcast \
+                                         transactions reached the {wait_stage:?} stage, and remaining outputs were \
+                                         not scraped ({error}). See the logs for more info."
                                     );
                                 },
                             }
                         },
-                        Err(e) => eprintln!("SendMinotari error! {e}"),
+                        Err(e) => eprintln!("SendMinotari error! {}", CommandError::TransactionServiceError(e)),
                     }
                     Ok(())
                 }

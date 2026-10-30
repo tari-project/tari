@@ -830,7 +830,7 @@ impl TransactionServiceHandle {
         &mut self,
         destination: TariAddress,
         fee_per_gram: MicroMinotari,
-    ) -> Result<TxId, TransactionServiceError> {
+    ) -> Result<Vec<TxId>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ScrapeWallet {
@@ -840,7 +840,7 @@ impl TransactionServiceHandle {
             .await
             .inspect_err(|e| warn!(target: LOG_TARGET, "TransactionServiceRequest::ScrapeWallet({e})"))??
         {
-            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            TransactionServiceResponse::TransactionsSent(tx_ids) => Ok(tx_ids),
             _ => Err(TransactionServiceError::UnexpectedApiResponse(
                 "TransactionServiceRequest::ScrapeWallet".to_string(),
             )),

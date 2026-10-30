@@ -232,6 +232,12 @@ pub enum TransactionServiceError {
     InvalidArgument(String),
     #[error("Failed to cancel one sided transaction: {0}")]
     FailedToCancelTransaction(String),
+    #[error("Wallet scrape failed after broadcasting {sent_tx_ids:?}: {error}")]
+    PartialScrapeFailure {
+        sent_tx_ids: Vec<TxId>,
+        #[source]
+        error: Box<TransactionServiceError>,
+    },
 }
 
 impl From<RangeProofError> for TransactionServiceError {
