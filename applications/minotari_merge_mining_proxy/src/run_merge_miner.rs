@@ -27,6 +27,7 @@ use log::*;
 use minotari_app_grpc::tari_rpc::sha_p2_pool_client::ShaP2PoolClient;
 use minotari_app_utilities::parse_miner_input::{
     BaseNodeGrpcClient,
+    ParseInputError,
     ShaP2PoolGrpcClient,
     prompt_for_base_node_address,
     prompt_for_p2pool_address,
@@ -70,9 +71,18 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
-    let wallet_payment_address = wallet_payment_address(config.wallet_payment_address.clone(), config.network)?;
-    let mut base_node_client = match connect_base_node(&config).await {
+    let wallet_payment_address = match wallet_payment_address(
+        config.wallet_payment_address.clone(),
+        config.network,
+        cli.non_interactive_mode,
+    ) {
+        Ok(addr) => addr,
+        Err(ParseInputError::UserQuit(_)) => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    let mut base_node_client = match connect_base_node(&config, cli.non_interactive_mode).await {
         Ok(client) => client,
+        Err(MmProxyError::ParseInputError(ParseInputError::UserQuit(_))) => return Ok(()),
         Err(e) => {
             error!(target: LOG_TARGET, "Could not connect to base node: {e}");
             let msg = "Could not connect to base node. \nIs the base node's gRPC running? Try running it with \
@@ -83,13 +93,17 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     };
 
     let p2pool_client = if config.p2pool_enabled {
-        Some(connect_sha_p2pool(&config).await.map_err(|e| {
-            error!(target: LOG_TARGET, "Could not connect to p2pool node: {e}");
-            let msg = "Could not connect to p2pool node. \nIs the p2pool node's gRPC running? Try running it with \
-                       `--enable-grpc` or enable it in the config.";
-            println!("{msg}");
-            e
-        })?)
+        match connect_sha_p2pool(&config, cli.non_interactive_mode).await {
+            Ok(client) => Some(client),
+            Err(MmProxyError::ParseInputError(ParseInputError::UserQuit(_))) => return Ok(()),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Could not connect to p2pool node: {e}");
+                let msg = "Could not connect to p2pool node. \nIs the p2pool node's gRPC running? Try running it with \
+                           `--enable-grpc` or enable it in the config.";
+                println!("{msg}");
+                return Err(e.into());
+            },
+        }
     } else {
         None
     };
@@ -212,12 +226,15 @@ async fn verify_base_node_responses(node_conn: &mut BaseNodeGrpcClient) -> Resul
     Ok(())
 }
 
-async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGrpcClient, MmProxyError> {
+async fn connect_base_node(
+    config: &MergeMiningProxyConfig,
+    non_interactive: bool,
+) -> Result<BaseNodeGrpcClient, MmProxyError> {
     let base_node_addr;
     if let Some(ref a) = config.base_node_grpc_address {
         base_node_addr = a.clone();
     } else {
-        base_node_addr = prompt_for_base_node_address(config.network)?;
+        base_node_addr = prompt_for_base_node_address(config.network, non_interactive)?;
     };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
@@ -264,12 +281,15 @@ async fn connect_base_node(config: &MergeMiningProxyConfig) -> Result<BaseNodeGr
     unreachable!()
 }
 
-async fn connect_sha_p2pool(config: &MergeMiningProxyConfig) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
+async fn connect_sha_p2pool(
+    config: &MergeMiningProxyConfig,
+    non_interactive: bool,
+) -> Result<ShaP2PoolGrpcClient, MmProxyError> {
     let p2pool_node_addr;
     if let Some(ref a) = config.p2pool_node_grpc_address {
         p2pool_node_addr = a.clone();
     } else {
-        p2pool_node_addr = prompt_for_p2pool_address()?;
+        p2pool_node_addr = prompt_for_p2pool_address(non_interactive)?;
     };
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
     let mut endpoint = Endpoint::new(p2pool_node_addr)?;

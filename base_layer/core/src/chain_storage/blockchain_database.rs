@@ -80,6 +80,7 @@ use tari_transaction_components::{
     consensus::{ConsensusConstants, DomainSeparatedConsensusHasher},
     tari_proof_of_work::{Difficulty, PowAlgorithm},
     transaction_components::{TransactionInput, TransactionKernel, TransactionOutput},
+    validation::helpers::is_all_unique_and_sorted,
 };
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
 
@@ -2490,11 +2491,12 @@ impl std::fmt::Display for MmrRoots {
     }
 }
 
-/// Returns whether `block`'s body is the body its header commits to. The header's kernel, input and block output MMR
-/// roots and its kernel MMR size cover every kernel, input (including its input data and script signature) and output
-/// of the body, so a body that matches them is the body that was mined, and a validation failure of that body is a
-/// failure of the block itself. A body that does not match says nothing about the block: a peer can relay an honest
-/// header with a body of its own.
+/// Returns whether `block`'s body is the canonical body its header commits to: its kernel, input and block output MMR
+/// roots and its kernel MMR size match the header, and its inputs, outputs and kernels are each sorted and unique. The
+/// roots cover every kernel, input (including its input data and script signature) and output of the body, but not the
+/// order of coinbase outputs among the other outputs, so the sorting is required too. A body that matches is the body
+/// that was mined, and a validation failure of that body is a failure of the block itself. A body that does not match
+/// says nothing about the block: a peer can relay an honest header with a body of its own.
 ///
 /// Unlike [calculate_mmr_roots] this needs no state other than the parent's kernel MMR, and it works on compact inputs.
 /// Returns false if the parent's kernel MMR is not available.
@@ -2514,9 +2516,17 @@ pub fn body_matches_header<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
         header.kernel_mmr_size == kernel_mmr.get_leaf_count()? as u64)
 }
 
-/// The part of [body_matches_header] that needs no state at all: whether the body's inputs and outputs are the ones the
-/// header's input and block output MMR roots commit to. The kernels are not covered.
+/// The part of [body_matches_header] that needs no state at all: whether the body's inputs, outputs and kernels are
+/// each sorted and unique, and its inputs and outputs are the ones the header's input and block output MMR roots commit
+/// to. The kernels are not checked against the header.
 pub fn inputs_and_outputs_match_header(block: &Block) -> Result<bool, ChainStorageError> {
+    let body = &block.body;
+    if !is_all_unique_and_sorted(body.inputs()) ||
+        !is_all_unique_and_sorted(body.outputs()) ||
+        !is_all_unique_and_sorted(body.kernels())
+    {
+        return Ok(false);
+    }
     let header = &block.header;
     let mut input_mmr = PrunedInputMmr::new(PrunedHashSet::default());
     for input in block.body.inputs() {
@@ -4614,17 +4624,18 @@ fn get_previous_timestamps<T: BlockchainBackend>(
 
     let prev_timestamps_count = cmp::min(median_timestamp_window_size, prev_height);
 
-    let mut timestamps = RollingVec::new(median_timestamp_window_size);
+    let mut newest_first = Vec::with_capacity(prev_timestamps_count);
     let mut curr_header = header.prev_hash;
     for _ in 0..prev_timestamps_count {
         let h = db.fetch_chain_header_in_all_chains(&curr_header)?;
         curr_header = h.header().prev_hash;
-        timestamps.push(EpochTime::from(h.timestamp()));
+        newest_first.push(EpochTime::from(h.timestamp()));
     }
+    // Oldest first, so that pushing a newer timestamp evicts the oldest one
+    newest_first.reverse();
 
-    // median calculation requires timestamps to be sorted
-    timestamps.sort_unstable();
-
+    let mut timestamps = RollingVec::new(median_timestamp_window_size);
+    timestamps.extend(newest_first);
     Ok(timestamps)
 }
 
@@ -6143,7 +6154,7 @@ mod test {
         use crate::{
             proof_of_work::AdjustedTarget,
             test_helpers::create_chain_header,
-            validation::{HeaderChainContext, ValidatedHeader},
+            validation::{HeaderChainContext, ValidatedHeader, helpers::check_header_timestamp_greater_than_median},
         };
 
         /// A validator that fails every header, so that a test can see what the orphan path does with the verdict.
@@ -6509,6 +6520,79 @@ mod test {
 
             let tip = access.fetch_orphan_chain_tip_by_hash(&parent.hash()).unwrap();
             assert_eq!(tip.unwrap().header(), &parent);
+        }
+
+        /// Checks only the median timestamp rule, on top of the mock validator.
+        struct MedianTimestampValidator(MockValidator);
+
+        impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for MedianTimestampValidator {
+            fn validate(
+                &self,
+                db: &B,
+                header: &BlockHeader,
+                prev_header: &BlockHeader,
+                prev_timestamps: &[EpochTime],
+                target: Option<AdjustedTarget>,
+                chain_context: HeaderChainContext<'_>,
+            ) -> Result<ValidatedHeader, ValidationError> {
+                check_header_timestamp_greater_than_median(header, prev_timestamps)?;
+                self.0
+                    .validate(db, header, prev_header, prev_timestamps, target, chain_context)
+            }
+        }
+
+        /// Children that arrive before their parent are validated against the median of the 11 timestamps before
+        /// each of them in height order.
+        #[tokio::test]
+        async fn it_keeps_valid_descendants_after_out_of_order_timestamps() {
+            let db = create_new_blockchain();
+            let validator = MedianTimestampValidator(MockValidator::new(true));
+            let genesis = db.fetch_chain_header(0).unwrap();
+            let genesis_ts = genesis.header().timestamp.as_u64();
+
+            // A 120s main chain up to height 30, with height 20 1800s ahead of schedule
+            let mut headers = vec![genesis];
+            for height in 1..=30u64 {
+                let prev = headers.last().unwrap();
+                let mut header = BlockHeader::from_previous(prev.header());
+                let offset = if height == 20 {
+                    height * 120 + 1800
+                } else {
+                    height * 120
+                };
+                header.timestamp = EpochTime::from(genesis_ts + offset);
+                // The MMR size indexes need a unique key per header
+                header.kernel_mmr_size += 1;
+                header.output_smt_size += 1;
+                headers.push(create_chain_header(header, prev.accumulated_data()));
+            }
+            db.insert_valid_headers(headers[1..].to_vec()).unwrap();
+
+            // Heights 31, 32 and 33. The median before height 32 is 3120, so 3200 is valid there.
+            let mut fork = vec![];
+            let mut parent = headers[30].header().clone();
+            for offset in [3720u64, 3200, 3960] {
+                let mut header = BlockHeader::from_previous(&parent);
+                header.timestamp = EpochTime::from(genesis_ts + offset);
+                fork.push(header.clone());
+                parent = header;
+            }
+
+            let mut access = db.db_write_access().unwrap();
+            for header in fork.iter().rev() {
+                let block = Arc::new(header.clone().into_builder().build());
+                insert_orphan_and_find_new_tips(&mut *access, block, &validator, &db.consensus_manager).unwrap();
+            }
+
+            for header in &fork {
+                assert!(
+                    access.contains(&DbKey::OrphanBlock(header.hash())).unwrap(),
+                    "orphan at height {} must be kept",
+                    header.height
+                );
+            }
+            let tip = access.fetch_orphan_chain_tip_by_hash(&fork[2].hash()).unwrap();
+            assert_eq!(tip.unwrap().header(), &fork[2]);
         }
     }
 

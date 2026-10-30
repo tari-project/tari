@@ -1497,22 +1497,6 @@ criteria = "safe-to-deploy"
 version = "0.25.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.libtor]]
-version = "47.13.0+0.4.7.x"
-criteria = "safe-to-deploy"
-
-[[exemptions.libtor-derive]]
-version = "0.1.2"
-criteria = "safe-to-deploy"
-
-[[exemptions.libtor-src]]
-version = "47.13.0+0.4.7.13"
-criteria = "safe-to-deploy"
-
-[[exemptions.libtor-sys]]
-version = "47.13.0+0.4.7.x"
-criteria = "safe-to-deploy"
-
 [[exemptions.libz-sys]]
 version = "1.1.20"
 criteria = "safe-to-deploy"
@@ -2755,6 +2739,22 @@ criteria = "safe-to-deploy"
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.tari-libtor-core]]
+version = "49.15.2+0.4.9.x"
+criteria = "safe-to-deploy"
+
+[[exemptions.tari-libtor-derive]]
+version = "0.1.2"
+criteria = "safe-to-deploy"
+
+[[exemptions.tari-libtor-src]]
+version = "49.15.2+0.4.9.15"
+criteria = "safe-to-deploy"
+
+[[exemptions.tari-libtor-sys]]
+version = "49.15.2+0.4.9.x"
+criteria = "safe-to-deploy"
+
 [[exemptions.tari-tiny-keccak]]
 version = "2.0.2"
 criteria = "safe-to-deploy"
@@ -3278,7 +3278,7 @@ version = "4.4.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.which]]
-version = "6.3.0-pre.1"
+version = "6.3.0-pre.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.widestring]]

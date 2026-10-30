@@ -66,6 +66,18 @@ use tari_transaction_components::{
 };
 use tari_utilities::ByteArray;
 
+/// Moves the coinbase output out of its sorted place: to the front, or to the back if it is first already. The block
+/// output MMR root does not commit to where the coinbase sits among the other outputs, so it still matches.
+pub fn move_coinbase(outputs: &mut Vec<TransactionOutput>) {
+    let cb_idx = outputs.iter().position(|o| o.is_coinbase()).unwrap();
+    let cb = outputs.remove(cb_idx);
+    if cb_idx == 0 {
+        outputs.push(cb);
+    } else {
+        outputs.insert(0, cb);
+    }
+}
+
 pub fn create_coinbase(
     value: MicroMinotari,
     maturity_height: u64,

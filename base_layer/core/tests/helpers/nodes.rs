@@ -30,19 +30,26 @@ use tari_comms::{
     CommsNode,
     UnspawnedCommsNode,
     peer_manager::{NodeIdentity, PeerFeatures},
-    protocol::{messaging::MessagingEventSender, rpc::RpcServer},
+    protocol::{
+        messaging::MessagingEventSender,
+        rpc::{Request, Response, RpcServer, RpcStatus, Streaming},
+    },
     transports::MemoryTransport,
 };
 use tari_comms_dht::{Dht, outbound::OutboundMessageRequester};
 use tari_core::{
     base_node,
     base_node::{
+        BaseNodeSyncService,
         LocalNodeCommsInterface,
         StateMachineHandle,
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         comms_interface::OutboundNodeCommsInterface,
         service::BaseNodeServiceInitializer,
-        sync::BlockchainSyncConfig,
+        sync::{
+            BlockchainSyncConfig,
+            rpc::{BaseNodeSyncRpcServer, BaseNodeSyncRpcService},
+        },
     },
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
     consensus::{BaseNodeConsensusManager, BaseNodeConsensusManagerBuilder},
@@ -55,6 +62,16 @@ use tari_core::{
         service::{LocalMempoolService, MempoolHandle, PeerBanPeriods},
     },
     proof_of_work::randomx_factory::RandomXFactory,
+    proto,
+    proto::base_node::{
+        FindChainSplitRequest,
+        FindChainSplitResponse,
+        SyncBlocksRequest,
+        SyncHeadersRequest,
+        SyncKernelsRequest,
+        SyncUtxosRequest,
+        SyncUtxosResponse,
+    },
     test_helpers::blockchain::{TempDatabase, create_store_with_consensus_and_validators_and_config},
     validation::{
         CandidateBlockValidator,
@@ -72,9 +89,10 @@ use tari_p2p::{
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
-use tari_transaction_components::consensus::NetworkConsensus;
+use tari_transaction_components::{aggregated_body::AggregateBody, consensus::NetworkConsensus};
+use tokio::sync::mpsc;
 
-use crate::helpers::mock_state_machine::MockBaseNodeStateMachine;
+use crate::helpers::{block_builders::move_coinbase, mock_state_machine::MockBaseNodeStateMachine};
 
 /// The NodeInterfaces is used as a container for providing access to all the services and interfaces of a single node.
 #[allow(dead_code)]
@@ -118,6 +136,7 @@ pub struct BaseNodeBuilder {
     validators: Option<Validators<TempDatabase>>,
     consensus_manager: Option<BaseNodeConsensusManager>,
     network: NetworkConsensus,
+    move_coinbase_in_synced_bodies: bool,
 }
 
 #[allow(dead_code)]
@@ -134,6 +153,7 @@ impl BaseNodeBuilder {
             validators: None,
             consensus_manager: None,
             network,
+            move_coinbase_in_synced_bodies: false,
         }
     }
 
@@ -190,6 +210,12 @@ impl BaseNodeBuilder {
         self
     }
 
+    /// Serve block sync with the coinbase moved out of its sorted place in every block body
+    pub fn with_coinbase_moved_in_synced_bodies(mut self) -> Self {
+        self.move_coinbase_in_synced_bodies = true;
+        self
+    }
+
     /// Build the test base node and start its services.
     #[allow(clippy::redundant_closure)]
     pub async fn start(
@@ -230,6 +256,7 @@ impl BaseNodeBuilder {
             self.liveness_service_config.unwrap_or_default(),
             self.p2p_config.unwrap_or_default(),
             data_path,
+            self.move_coinbase_in_synced_bodies,
         )
         .await;
 
@@ -343,6 +370,7 @@ async fn setup_base_node_services(
     liveness_service_config: LivenessConfig,
     p2p_config: P2pConfig,
     data_path: &str,
+    move_coinbase_in_synced_bodies: bool,
 ) -> NodeInterfaces {
     let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
@@ -387,16 +415,21 @@ async fn setup_base_node_services(
         .with_maximum_sessions_per_client(p2p_config.rpc_max_sessions_per_peer)
         .with_cull_oldest_peer_rpc_connection_on_full(p2p_config.cull_oldest_peer_rpc_connection_on_full)
         .finish();
-    let rpc_server = rpc_server.add_service(base_node::create_base_node_sync_rpc_service(
-        blockchain_db.clone().into(),
-        base_node_service,
-        BlockchainSyncConfig::default().rpc_block_batch_size,
-    ));
-    let mut comms = comms
-        .add_protocol_extension(rpc_server)
-        .spawn_with_transport(MemoryTransport)
-        .await
-        .unwrap();
+    let block_batch_size = BlockchainSyncConfig::default().rpc_block_batch_size;
+    let comms = if move_coinbase_in_synced_bodies {
+        comms.add_protocol_extension(
+            rpc_server.add_service(BaseNodeSyncRpcServer::new(CoinbaseMovingSyncService(
+                BaseNodeSyncRpcService::new(blockchain_db.clone().into(), base_node_service, block_batch_size),
+            ))),
+        )
+    } else {
+        comms.add_protocol_extension(rpc_server.add_service(base_node::create_base_node_sync_rpc_service(
+            blockchain_db.clone().into(),
+            base_node_service,
+            block_batch_size,
+        )))
+    };
+    let mut comms = comms.spawn_with_transport(MemoryTransport).await.unwrap();
     // Set the public address for tests
     let address = comms
         .connection_manager_requester()
@@ -433,5 +466,73 @@ async fn setup_base_node_services(
         mock_base_node_state_machine: mock_state_machine,
         shutdown,
         state_machine_handle,
+    }
+}
+
+/// The node's sync service, with the coinbase moved out of its sorted place in every block body it serves
+struct CoinbaseMovingSyncService(BaseNodeSyncRpcService<TempDatabase>);
+
+#[tari_comms::async_trait]
+impl BaseNodeSyncService for CoinbaseMovingSyncService {
+    async fn sync_blocks(
+        &self,
+        request: Request<SyncBlocksRequest>,
+    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
+        let mut blocks = self.0.sync_blocks(request).await?.into_inner();
+        let (tx, rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            while let Some(mut item) = blocks.recv().await {
+                if let Ok(response) = &mut item {
+                    let body = AggregateBody::try_from(response.body.take().unwrap()).unwrap();
+                    let (inputs, mut outputs, kernels) = body.dissolve();
+                    move_coinbase(&mut outputs);
+                    let body = AggregateBody::new_unsorted(inputs, outputs, kernels);
+                    response.body = Some(proto::types::AggregateBody::try_from(body).unwrap());
+                }
+                if tx.send(item).await.is_err() {
+                    break;
+                }
+            }
+        });
+        Ok(Streaming::new(rx))
+    }
+
+    async fn sync_headers(
+        &self,
+        request: Request<SyncHeadersRequest>,
+    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus> {
+        self.0.sync_headers(request).await
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        self.0.get_header_by_height(request).await
+    }
+
+    async fn find_chain_split(
+        &self,
+        request: Request<FindChainSplitRequest>,
+    ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
+        self.0.find_chain_split(request).await
+    }
+
+    async fn get_chain_metadata(
+        &self,
+        request: Request<()>,
+    ) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
+        self.0.get_chain_metadata(request).await
+    }
+
+    async fn sync_kernels(
+        &self,
+        request: Request<SyncKernelsRequest>,
+    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
+        self.0.sync_kernels(request).await
+    }
+
+    async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
+        self.0.sync_utxos(request).await
     }
 }
