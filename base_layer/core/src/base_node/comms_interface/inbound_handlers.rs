@@ -921,20 +921,7 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| {
                         CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e))
                     })?;
-                // A block whose ancestry we hold is checked against the key of its own chain, which for a fork below
-                // the key block is not the main chain's
-                let vm_key = match self
-                    .blockchain_db
-                    .fetch_vm_key_for_held_ancestry(new_block.header.clone())
-                    .await?
-                {
-                    Some(vm_key) => vm_key,
-                    None => *self
-                        .blockchain_db
-                        .fetch_chain_header(tari_rx_vm_key_height(new_block.header.height))
-                        .await?
-                        .hash(),
-                };
+                let vm_key = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
                 task::spawn_blocking(move || tari_randomx_difficulty(&header, &randomx_factory, &vm_key))
@@ -1687,6 +1674,21 @@ fn retain_requested_transactions(
     (retained, dropped)
 }
 
+/// The Tari RandomX VM key to check `header` against. A block whose ancestry we hold takes the key of its own chain,
+/// which for a fork below the key block is not the main chain's; any other block takes the main chain's.
+async fn fetch_tari_rx_vm_key<B: BlockchainBackend + 'static>(
+    db: &AsyncBlockchainDb<B>,
+    header: &BlockHeader,
+) -> Result<FixedHash, CommsInterfaceError> {
+    match db.fetch_vm_key_for_held_ancestry(header.clone()).await? {
+        Some(vm_key) => Ok(vm_key),
+        None => Ok(*db
+            .fetch_chain_header(tari_rx_vm_key_height(header.height))
+            .await?
+            .hash()),
+    }
+}
+
 impl<B> Clone for InboundNodeCommsHandlers<B> {
     fn clone(&self) -> Self {
         Self {
@@ -1710,6 +1712,59 @@ mod test {
     use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
 
     use super::*;
+
+    /// A block on a fork held below its VM key block 2048 is checked against the fork's key; a block whose ancestry
+    /// is unknown is checked against the main chain's
+    #[tokio::test]
+    async fn the_tari_randomx_key_is_the_key_of_the_blocks_own_chain() {
+        use tari_transaction_components::aggregated_body::AggregateBody;
+        use tari_utilities::epoch_time::EpochTime;
+
+        use crate::{
+            chain_storage::DbTransaction,
+            test_helpers::{blockchain::create_new_blockchain, create_chain_header},
+        };
+
+        let db = create_new_blockchain();
+        let mut main_chain = vec![db.fetch_chain_header(0).unwrap()];
+        while main_chain.len() <= 2105 {
+            let prev = main_chain.last().unwrap();
+            let mut header = BlockHeader::from_previous(prev.header());
+            header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+            // The MMR size indexes need a unique key per header
+            header.kernel_mmr_size += 1;
+            header.output_smt_size += 1;
+            main_chain.push(create_chain_header(header, prev.accumulated_data()));
+        }
+        db.insert_valid_headers(main_chain[1..].to_vec()).unwrap();
+        let mut txn = DbTransaction::new();
+        let mut parent = main_chain[2040].clone();
+        let mut fork_key = FixedHash::zero();
+        while parent.height() < 2120 {
+            let mut header = BlockHeader::from_previous(parent.header());
+            header.timestamp = parent.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+            header.nonce = 1;
+            let chain_header = create_chain_header(header, parent.accumulated_data());
+            let block = Block::new(chain_header.header().clone(), AggregateBody::empty());
+            let block = ChainBlock::try_construct(Arc::new(block), chain_header.accumulated_data().clone()).unwrap();
+            if block.height() == 2048 {
+                fork_key = *block.hash();
+            }
+            parent = chain_header;
+            txn.insert_chained_orphan(Arc::new(block));
+        }
+        db.write(txn).unwrap();
+        let db = AsyncBlockchainDb::from(db);
+        let main_key = *main_chain[2048].hash();
+        assert_ne!(fork_key, main_key);
+
+        let header = BlockHeader::from_previous(parent.header());
+        assert_eq!(tari_rx_vm_key_height(header.height), 2048);
+        assert_eq!(fetch_tari_rx_vm_key(&db, &header).await.unwrap(), fork_key);
+        let mut unknown = header;
+        unknown.prev_hash = FixedHash::from([7u8; 32]);
+        assert_eq!(fetch_tari_rx_vm_key(&db, &unknown).await.unwrap(), main_key);
+    }
 
     fn create_tx(key_manager: &KeyManager) -> Arc<Transaction> {
         Arc::new(

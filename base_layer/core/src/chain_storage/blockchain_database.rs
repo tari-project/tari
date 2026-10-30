@@ -8313,6 +8313,67 @@ mod test {
             assert_eq!(h.tip_hash(), *y.hash());
         }
 
+        /// Holds on A the header of W, mined to `difficulty`, with an empty body that is not the one it commits to.
+        /// Applying W then fails to store it (its output root does not match), which is an error, not a verdict on W.
+        /// Our chain outweighs W while it is added, and then falls back to A <- B <- B2. Returns B2.
+        fn with_a_held_block_that_cannot_be_stored(h: &Harness, difficulty: u64) -> Arc<ChainBlock> {
+            let a = h.build("A");
+            h.add(&a);
+            let w = h.build_with_difficulty("W", difficulty);
+            let extra = outweigh_with_our_chain(h, &[]);
+            h.db.add_block(without_body(&w)).unwrap().result.assert_orphaned();
+            fall_back_to_height_3(h, &extra[2..]);
+            extra[1].clone()
+        }
+
+        /// An error in a later attempt does not swallow the blame found in an earlier one
+        #[tokio::test]
+        async fn an_error_after_a_blamed_failure_keeps_the_blame() {
+            let h = Harness::new();
+            let b2 = with_a_held_block_that_cannot_be_stored(&h, 3);
+            let c = h.build_with_difficulty("C", 5);
+            h.fail(&c);
+
+            let err = h.db.add_block(c.to_arc_block()).unwrap_err();
+
+            assert!(matches!(err, ChainStorageError::ValidationError { .. }), "{err:?}");
+            assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+            assert_eq!(h.tip_hash(), *b2.hash());
+        }
+
+        /// An error in a later attempt does not hide the chain change of an earlier one, and the change reported is
+        /// where the database actually is
+        #[tokio::test]
+        async fn an_error_after_a_chain_change_reports_the_change() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let w = h.build_with_difficulty("W", 4);
+            let extra = outweigh_with_our_chain(&h, &[]);
+            fall_back_to_height_3(&h, &extra[2..]);
+            let y = h.build("Y");
+            h.add(&y);
+            let x = h.build_with_difficulty("X", 5);
+            fall_back_to_height_3(&h, std::slice::from_ref(&y));
+            // X and W are held while our chain is as strong as W, so neither is tried
+            let q1 = h.build("Q1");
+            h.add(&q1);
+            let q2 = h.build("Q2");
+            h.add(&q2);
+            h.add(&x).result.assert_orphaned();
+            h.db.add_block(without_body(&w)).unwrap().result.assert_orphaned();
+            fall_back_to_height_3(&h, &[q1, q2]);
+            h.fail(&x);
+
+            // Y is kept when X fails, and W, still stronger than Y, cannot be stored
+            let outcome = h.add(&y);
+
+            assert_eq!(outcome.result.assert_added().hash(), y.hash());
+            assert_eq!(hashes_of_rejected(&outcome), vec![(*x.hash(), false)]);
+            assert_eq!(h.tip_hash(), *y.hash());
+            assert!(h.is_orphan(&w));
+        }
+
         /// Our chain A <- B <- B2, and on A an orphan F1 <- X <- X2, where X2 is not built. F1 is added to the main
         /// chain while X is built on it, then everything above A is forgotten. Returns F1, X and X2.
         fn with_a_fork_and_ours(
