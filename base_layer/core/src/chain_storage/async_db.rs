@@ -625,6 +625,28 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
+    pub(crate) fn clear_horizon_sync_output_state(&mut self) -> &mut Self {
+        self.transaction.clear_horizon_sync_output_state();
+        self
+    }
+
+    pub(crate) fn prune_output_copy(
+        &mut self,
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+        commitment: CompressedCommitment,
+        output_type: OutputType,
+    ) -> &mut Self {
+        self.transaction
+            .prune_output_copy(header_hash, output_hash, commitment, output_type);
+        self
+    }
+
+    pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
+        self.transaction.delete_utxo_commitment_index_entry(commitment);
+        self
+    }
+
     pub async fn commit(&mut self) -> Result<(), ChainStorageError> {
         let transaction = mem::take(&mut self.transaction);
         self.db.write(transaction).await

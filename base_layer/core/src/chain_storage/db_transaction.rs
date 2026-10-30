@@ -330,6 +330,38 @@ impl DbTransaction {
         self
     }
 
+    /// Removes every output and the whole output tree. Only for horizon sync, which then restores the genesis
+    /// outputs.
+    pub(crate) fn clear_horizon_sync_output_state(&mut self) -> &mut Self {
+        self.operations.push(WriteOperation::ClearHorizonSyncOutputState);
+        self
+    }
+
+    /// Prunes the copy of an output stored under one block, leaving copies under other blocks. Only for horizon sync.
+    pub(crate) fn prune_output_copy(
+        &mut self,
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+        commitment: CompressedCommitment,
+        output_type: OutputType,
+    ) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputCopy {
+            header_hash,
+            output_hash,
+            commitment,
+            output_type,
+        });
+        self
+    }
+
+    /// Removes an output's commitment index entry and leaves its row, as spending it does. Only for horizon sync,
+    /// which restores the genesis outputs the genesis block spends itself.
+    pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
+        self.operations
+            .push(WriteOperation::DeleteUtxoCommitmentIndexEntry { commitment });
+        self
+    }
+
     pub fn apply_horizon_state_tree_updates(&mut self, updates: Vec<HorizonStateTreeUpdate>) -> &mut Self {
         self.operations
             .push(WriteOperation::ApplyHorizonStateTreeUpdates { updates });
@@ -446,6 +478,16 @@ pub enum WriteOperation {
         reorg: Reorg,
     },
     ClearAllReorgs,
+    ClearHorizonSyncOutputState,
+    DeleteUtxoCommitmentIndexEntry {
+        commitment: CompressedCommitment,
+    },
+    PruneOutputCopy {
+        header_hash: HashOutput,
+        output_hash: HashOutput,
+        commitment: CompressedCommitment,
+        output_type: OutputType,
+    },
     /// Set or clear the horizon sync output checkpoint. `None` clears the checkpoint.
     SetHorizonSyncOutputCheckpoint {
         checkpoint: Option<HorizonSyncOutputCheckpoint>,
@@ -614,6 +656,15 @@ impl fmt::Display for WriteOperation {
             },
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
+            ClearHorizonSyncOutputState => write!(f, "Clear horizon sync output state"),
+            DeleteUtxoCommitmentIndexEntry { commitment } => {
+                write!(f, "Delete commitment index entry {}", commitment.to_hex())
+            },
+            PruneOutputCopy {
+                header_hash,
+                output_hash,
+                ..
+            } => write!(f, "Prune output {output_hash} stored under block {header_hash}"),
             SetHorizonSyncOutputCheckpoint { checkpoint: Some(cp) } => {
                 write!(
                     f,
