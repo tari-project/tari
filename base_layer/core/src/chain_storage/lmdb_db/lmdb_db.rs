@@ -3132,6 +3132,22 @@ impl LMDBDatabase {
             },
         }
         lmdb_insert(&txn, &self.headers_db, &header.height, header, "headers_db").unwrap();
+        lmdb_insert(
+            &txn,
+            &self.block_hashes_db,
+            header.hash().as_slice(),
+            &header.height,
+            "block_hashes_db",
+        )
+        .unwrap();
+        lmdb_insert(
+            &txn,
+            &self.kernel_mmr_size_index,
+            &header.kernel_mmr_size.to_be_bytes(),
+            &header.height,
+            "kernel_mmr_size_index",
+        )
+        .unwrap();
         txn.commit().unwrap();
     }
 
