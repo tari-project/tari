@@ -48,7 +48,7 @@ use futures::{StreamExt, future, stream};
 use log::*;
 use minotari_app_utilities::{
     consts,
-    identity_management::{load_tor_identity, setup_node_identity},
+    identity_management::{load_tor_identity, setup_node_identity_read_only},
     utilities::setup_runtime,
 };
 use tari_common::{
@@ -372,10 +372,9 @@ fn with_tcp_port(addr: &Multiaddr, port: u16) -> Multiaddr {
 /// accept an address-less identity claim, and we never expect inbound connections.
 fn build_node_identity(cli: &Cli, config: &PeerSyncConfig) -> Result<Arc<NodeIdentity>, ExitError> {
     if cli.use_node_identity {
-        return setup_node_identity(
+        return setup_node_identity_read_only(
             &config.base_node.identity_file,
             config.base_node.p2p.public_addresses.clone().into_vec(),
-            true,
             PeerFeatures::COMMUNICATION_NODE,
             config.base_node.p2p.transport.transport_type,
         );
