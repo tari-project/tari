@@ -22,7 +22,11 @@
 
 use std::{
     collections::HashSet,
-    sync::{Arc, RwLock},
+    sync::{
+        Arc,
+        RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use log::{debug, info};
@@ -54,11 +58,25 @@ pub const LOG_TARGET: &str = "c::mp::mempool";
 /// The most times a block template is selected from the pool (see [Mempool::retrieve])
 const MAX_TEMPLATE_SELECTION_PASSES: usize = 3;
 
-/// The most pool transactions with an input script or covenant that reads the height that are visited by the
-/// background re-check after each block (see [Mempool::sweep_height_reading]). With the default pool capacity of 40,000
-/// every one of them is visited within 80 blocks, and a batch costs at most about half a second of script runs
-/// (a script of signature checks at the size limit costs about a millisecond), without holding the storage lock.
+/// The most pool transactions with an input script or covenant that reads the height that the background re-check
+/// after each block visits (see [Mempool::sweep_height_reading]), which bounds its walk of the pool's index
 const HEIGHT_READING_SWEEP_BATCH: usize = 500;
+
+/// The most height-reading inputs the background re-check after each block re-checks (see
+/// [Mempool::sweep_height_reading]). A height-reading script at the script size limit, packed with signature checks,
+/// takes about a millisecond to run, so a sweep runs at most about a second of scripts, without holding the storage
+/// lock, and only one sweep runs at a time. A single transaction with more such inputs is still re-checked, alone; its
+/// inputs are bounded by the block weight, to a few thousand.
+const HEIGHT_READING_SWEEP_INPUTS: usize = 1_000;
+
+/// Clears the flag of a running background re-check when dropped, however the re-check ends
+struct SweepRunning(Arc<AtomicBool>);
+
+impl Drop for SweepRunning {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 
 /// The outcome of re-checking transactions whose input scripts or covenants read the height (see [height_check])
 #[derive(Default)]
@@ -93,6 +111,8 @@ pub struct Mempool {
     // reconstruction never waits behind a flood of inbound transactions. That work is triggered by block propagation
     // and bounded by the block size, but still bounded here, since several peers can announce blocks at once.
     reconciliation_permits: Arc<Semaphore>,
+    // Set while a background re-check of height-reading transactions runs (see `Mempool::sweep_height_reading`)
+    sweep_running: Arc<AtomicBool>,
 }
 
 /// The maximum number of compact block reconciliations (`Mempool::insert_all`) validated concurrently
@@ -136,6 +156,7 @@ impl Mempool {
             last_seen_tx,
             validation_permits: Arc::new(Semaphore::new(max_concurrent_validations())),
             reconciliation_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_RECONCILIATIONS)),
+            sweep_running: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -248,15 +269,27 @@ impl Mempool {
     }
 
     /// Re-checks the next batch of pool transactions with an input script or covenant that reads the height (see
-    /// [HEIGHT_READING_SWEEP_BATCH]) for the block at `height` on top of `prev_hash`, and drops the ones that are not
-    /// valid there with their descendants, so that they do not stay in the pool of a node that never builds block
-    /// templates. The scripts run without holding the storage lock.
+    /// [HEIGHT_READING_SWEEP_BATCH] and [HEIGHT_READING_SWEEP_INPUTS]) for the block at `height` on top of `prev_hash`,
+    /// and drops the ones that are not valid there with their descendants, so that they do not stay in the pool of a
+    /// node that never builds block templates. The scripts run without holding the storage lock. If the re-check for
+    /// an earlier block is still running, this one is skipped: the next one continues where the running one stops.
     async fn sweep_height_reading(&self, height: u64, prev_hash: HashOutput) -> Result<(), MempoolError> {
+        if self.sweep_running.swap(true, Ordering::SeqCst) {
+            debug!(
+                target: LOG_TARGET,
+                "A re-check of height-reading transactions is still running, skipping the one for height {height}"
+            );
+            return Ok(());
+        }
+        let _running = SweepRunning(self.sweep_running.clone());
         let (batch, next_cursor) = self
             .with_read_access(move |storage| {
-                Ok(storage
-                    .unconfirmed_pool
-                    .height_reading_sweep_batch(HEIGHT_READING_SWEEP_BATCH, height, &prev_hash))
+                Ok(storage.unconfirmed_pool.height_reading_sweep_batch(
+                    HEIGHT_READING_SWEEP_BATCH,
+                    HEIGHT_READING_SWEEP_INPUTS,
+                    height,
+                    &prev_hash,
+                ))
             })
             .await?;
         let checks = run_height_checks(batch, height, prev_hash).await?;
@@ -823,5 +856,53 @@ mod test {
             "{response:?}"
         );
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_background_re_check_is_skipped_while_one_runs() {
+        use tari_script::script;
+        use tari_transaction_components::{transaction_components::SpentOutput, weight::TransactionWeight};
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        // Its input script only passes from height 100 on
+        let tx = create_tx(&key_manager);
+        let mut inputs = tx.body.inputs().clone();
+        match &mut inputs.first_mut().unwrap().spent_output {
+            SpentOutput::OutputData { script, .. } => *script = script!(CheckHeightVerify(100)).unwrap(),
+            SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+        }
+        let tx = Arc::new(Transaction::new(
+            inputs,
+            tx.body.outputs().clone(),
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ));
+        mempool
+            .pool_storage
+            .write()
+            .unwrap()
+            .unconfirmed_pool
+            .insert(tx.clone(), None, &TransactionWeight::latest())
+            .unwrap();
+        let excess_sig = tx.first_kernel_excess_sig().unwrap().clone();
+
+        // While a re-check runs, another one does nothing
+        mempool.sweep_running.store(true, Ordering::SeqCst);
+        mempool.sweep_height_reading(2, FixedHash::zero()).await.unwrap();
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(excess_sig.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        // Otherwise it drops the transaction, and is no longer running when it returns
+        mempool.sweep_running.store(false, Ordering::SeqCst);
+        mempool.sweep_height_reading(2, FixedHash::zero()).await.unwrap();
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(excess_sig).await.unwrap(),
+            TxStorageResponse::NotStored(None)
+        );
+        assert!(!mempool.sweep_running.load(Ordering::SeqCst));
     }
 }

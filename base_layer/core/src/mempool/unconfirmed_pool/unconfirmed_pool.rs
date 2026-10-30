@@ -261,6 +261,8 @@ pub struct HeightValidation {
 #[derive(Debug, Clone)]
 struct HeightReadingEntry {
     validation: HeightValidation,
+    /// The number of its inputs with a script or covenant that reads the height: the work of re-checking it
+    inputs: usize,
     /// The previous block hash of the last block it was re-checked for and passed
     passed_at: Option<HashOutput>,
 }
@@ -297,10 +299,18 @@ type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
 /// Whether any input of `body` has a script or covenant that reads the block height, so that whether `body` is valid
 /// can change from one block to the next
 pub(crate) fn reads_block_height(body: &AggregateBody) -> bool {
-    body.inputs().iter().any(|input| {
-        input.script().is_ok_and(|script| script.is_context_sensitive()) ||
-            input.covenant().is_ok_and(|covenant| covenant.reads_block_height())
-    })
+    height_reading_inputs(body) > 0
+}
+
+/// The number of inputs of `body` with a script or covenant that reads the block height
+fn height_reading_inputs(body: &AggregateBody) -> usize {
+    body.inputs()
+        .iter()
+        .filter(|input| {
+            input.script().is_ok_and(|script| script.is_context_sensitive()) ||
+                input.covenant().is_ok_and(|covenant| covenant.reads_block_height())
+        })
+        .count()
 }
 
 /// The validator nodes `body` registers or exits. A registration and an exit for the same validator node share a key:
@@ -749,9 +759,11 @@ impl UnconfirmedPool {
         for vn_key in validator_node_keys(&prioritized_tx.transaction.body) {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
         }
-        if reads_block_height(&prioritized_tx.transaction.body) {
+        let inputs = height_reading_inputs(&prioritized_tx.transaction.body);
+        if inputs > 0 {
             self.txs_reading_height.insert(new_key, HeightReadingEntry {
                 validation: height_validation,
+                inputs,
                 passed_at: None,
             });
         }
@@ -881,14 +893,17 @@ impl UnconfirmedPool {
         }
     }
 
-    /// Up to `limit` of the transactions whose input scripts or covenants read the block height, to re-check for the
-    /// block at `height` on top of `prev_hash` in the background, starting at the sweep cursor and wrapping around, so
-    /// that successive batches visit every one of them. Transactions validated for a higher height (they may only
-    /// become valid there) and those that already passed for this block are visited but not returned. Also returns the
-    /// key to move the sweep cursor to (see [UnconfirmedPool::set_sweep_cursor]).
+    /// The transactions whose input scripts or covenants read the block height to re-check next for the block at
+    /// `height` on top of `prev_hash` in the background, starting at the sweep cursor and wrapping around, so that
+    /// successive batches visit every one of them. At most `max_entries` are visited, and those returned have at most
+    /// `max_inputs` height-reading inputs in total, except that the first one to re-check is always returned, so that
+    /// every batch makes progress (a transaction's inputs are bounded by the block weight). Transactions validated for
+    /// a higher height (they may only become valid there) and those that already passed for this block are visited but
+    /// not returned. Also returns the key to move the sweep cursor to (see [UnconfirmedPool::set_sweep_cursor]).
     pub fn height_reading_sweep_batch(
         &self,
-        limit: usize,
+        max_entries: usize,
+        max_inputs: usize,
         height: u64,
         prev_hash: &HashOutput,
     ) -> (
@@ -896,18 +911,25 @@ impl UnconfirmedPool {
         TransactionKey,
     ) {
         let mut batch = Vec::new();
+        let mut inputs = 0usize;
         let mut next_cursor = self.sweep_cursor;
         let visited = self
             .txs_reading_height
             .range(self.sweep_cursor..)
             .chain(self.txs_reading_height.range(..self.sweep_cursor))
-            .take(limit);
+            .take(max_entries);
         for (key, entry) in visited {
+            let skip = entry.validation.height > height || entry.passed_at.as_ref() == Some(prev_hash);
+            if !skip && !batch.is_empty() && inputs.saturating_add(entry.inputs) > max_inputs {
+                // Left for the next batch
+                break;
+            }
             next_cursor = key.wrapping_add(1);
-            if entry.validation.height > height || entry.passed_at.as_ref() == Some(prev_hash) {
+            if skip {
                 continue;
             }
             if let Some(tx) = self.tx_by_key.get(key) {
+                inputs = inputs.saturating_add(entry.inputs);
                 batch.push((*key, tx.transaction.clone(), entry.validation.clone()));
             }
         }
@@ -5834,7 +5856,7 @@ mod test {
             // Batches of 2 visit every one of the 5, then wrap around
             let mut visited = Vec::new();
             for _ in 0..3 {
-                let (batch, cursor) = pool.height_reading_sweep_batch(2, 10, &tip);
+                let (batch, cursor) = pool.height_reading_sweep_batch(2, usize::MAX, 10, &tip);
                 visited.extend(batch.iter().map(|(key, ..)| *key));
                 pool.set_sweep_cursor(cursor);
             }
@@ -5855,8 +5877,57 @@ mod test {
             })
             .unwrap();
             pool.set_sweep_cursor(0);
-            let (batch, _) = pool.height_reading_sweep_batch(100, 10, &tip);
+            let (batch, _) = pool.height_reading_sweep_batch(100, usize::MAX, 10, &tip);
             assert_eq!(batch.iter().map(|(key, ..)| *key).collect::<Vec<_>>(), all[1..]);
+        }
+
+        #[test]
+        fn a_sweep_batch_is_bounded_by_height_reading_inputs() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            // A transaction with 3 height-reading inputs, then 3 with one each
+            let tx = tx!(MicroMinotari(15_000), fee: MicroMinotari(5), inputs: 3, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let mut inputs = tx.body.inputs().clone();
+            for input in &mut inputs {
+                match &mut input.spent_output {
+                    SpentOutput::OutputData { script, .. } => *script = script!(CheckHeightVerify(1)).unwrap(),
+                    SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+                }
+            }
+            let multi = Arc::new(Transaction::new(
+                inputs,
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                tx.offset.clone(),
+                tx.script_offset.clone(),
+            ));
+            pool.insert(multi.clone(), None, &weight).unwrap();
+            for _ in 0..3 {
+                let single = tx_with_input(
+                    script!(CheckHeightVerify(1)).unwrap(),
+                    Covenant::default(),
+                    &key_manager,
+                );
+                pool.insert(single, None, &weight).unwrap();
+            }
+            let all = pool.txs_reading_height.keys().copied().collect::<Vec<_>>();
+            assert_eq!(pool.txs_reading_height[&all[0]].inputs, 3);
+            let tip = FixedHash::from([1u8; 32]);
+            let next = |pool: &mut UnconfirmedPool, max_inputs| {
+                let (batch, cursor) = pool.height_reading_sweep_batch(100, max_inputs, 10, &tip);
+                pool.set_sweep_cursor(cursor);
+                batch.iter().map(|(key, ..)| *key).collect::<Vec<_>>()
+            };
+
+            // 3 + 1 inputs fit a budget of 4, the next single does not
+            assert_eq!(next(&mut pool, 4), all[..2]);
+            assert_eq!(next(&mut pool, 4), all[2..]);
+            // A transaction over the budget on its own is still taken, alone
+            assert_eq!(next(&mut pool, 2), all[..1]);
+            assert_eq!(next(&mut pool, 2), all[1..3]);
         }
 
         #[test]
