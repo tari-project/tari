@@ -4170,10 +4170,18 @@ mod tests {
             .unwrap()
     }
 
+    /// Esmeralda's genesis block only validates in binaries built for it, like the genesis sanity checks
+    fn esmeralda_available() -> bool {
+        tari_common::network_check::is_network_choice_valid(Network::Esmeralda).is_ok()
+    }
+
     /// The genesis output state check matches what inserting a genesis block with inputs leaves, and the reset
     /// rebuilds exactly that
     #[tokio::test]
     async fn genesis_with_inputs_output_state_is_reset_exactly() {
+        if !esmeralda_available() {
+            return;
+        }
         let rules = esmeralda_rules();
         let db = create_custom_blockchain(rules.clone());
         let genesis = db.fetch_genesis_block();
@@ -4209,6 +4217,9 @@ mod tests {
     /// Syncs from height 1 on a chain whose genesis block spends some of its own outputs, from an archival or a
     /// pruned peer
     async fn sync_esmeralda_chain(pruned_source: bool) {
+        if !esmeralda_available() {
+            return;
+        }
         let rules = esmeralda_rules();
         let mut chain = TestBlockchain::create(rules.clone());
         for name in ["1", "2", "3"] {
