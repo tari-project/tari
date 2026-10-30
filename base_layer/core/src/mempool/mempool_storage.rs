@@ -132,13 +132,17 @@ impl MempoolStorage {
             Ok(parents) => parents,
             Err(response) => return Ok(response),
         };
+        let script_keys = match validated_script_keys(&tx, tip.as_ref()) {
+            Ok(keys) => keys,
+            Err(response) => return Ok(response),
+        };
         debug!(
             target: LOG_TARGET,
             "Transaction {} is VALID ({:.2?}), inserting in unconfirmed pool",
             tx_id(&tx),
             timer.elapsed()
         );
-        self.insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs), tip.as_ref())
+        self.insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs), script_keys)
     }
 
     /// Insert a new unconfirmed transaction into the Mempool, without holding the storage write lock while validating
@@ -198,32 +202,33 @@ impl MempoolStorage {
                 warn!(target: LOG_TARGET, "Could not fetch the chain tip: {e}");
                 None
             });
-            let parents = match validate_attempt(storage, validator.as_ref(), &tx, tip.as_ref())? {
-                Ok(parents) => parents,
-                Err(AttemptFailure {
-                    response,
-                    tip_dependent,
-                    ban_reason,
-                }) => {
-                    // A failure that depends on the tip (e.g. a mempool parent that was mined and removed from the
-                    // pool, or a height check) may be due to the chain changing during validation, so it is only
-                    // final if the chain did not change. Any other failure is final.
-                    if tip_dependent && chain_changed(storage, validator.as_ref(), generation, tip.as_ref())? {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Chain changed while validating transaction {} (attempt {}/{}), which failed with {}, \
-                             validating it again",
-                            tx_id(&tx),
-                            attempt,
-                            MAX_VALIDATION_ATTEMPTS,
-                            response
-                        );
-                        last_failure = Some(response);
-                        continue;
-                    }
-                    return Ok((response, ban_reason));
-                },
-            };
+            let ValidatedTransaction { parents, script_keys } =
+                match validate_attempt(storage, validator.as_ref(), &tx, tip.as_ref())? {
+                    Ok(validated) => validated,
+                    Err(AttemptFailure {
+                        response,
+                        tip_dependent,
+                        ban_reason,
+                    }) => {
+                        // A failure that depends on the tip (e.g. a mempool parent that was mined and removed from the
+                        // pool, or a height check) may be due to the chain changing during validation, so it is only
+                        // final if the chain did not change. Any other failure is final.
+                        if tip_dependent && chain_changed(storage, validator.as_ref(), generation, tip.as_ref())? {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Chain changed while validating transaction {} (attempt {}/{}), which failed with {}, \
+                                 validating it again",
+                                tx_id(&tx),
+                                attempt,
+                                MAX_VALIDATION_ATTEMPTS,
+                                response
+                            );
+                            last_failure = Some(response);
+                            continue;
+                        }
+                        return Ok((response, ban_reason));
+                    },
+                };
             debug!(
                 target: LOG_TARGET,
                 "Transaction {} is VALID ({:.2?}), inserting in unconfirmed pool",
@@ -251,7 +256,7 @@ impl MempoolStorage {
                 return Ok((response, None));
             }
             return lock
-                .insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs), tip.as_ref())
+                .insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs), script_keys)
                 .map(|response| (response, None))
                 .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
@@ -382,22 +387,16 @@ impl MempoolStorage {
         None
     }
 
-    /// Inserts a transaction that was validated against `tip` (or the validator's own tip, if `None`)
+    /// Inserts a validated transaction, with the keys its height-reading input scripts returned at the tip it was
+    /// validated against (see `validated_script_keys`)
     fn insert_into_unconfirmed_pool(
         &mut self,
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
-        tip: Option<&ChainMetadata>,
+        script_keys: Vec<CompressedPublicKey>,
     ) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
-        let script_keys = match validated_script_keys(&tx, tip) {
-            Ok(keys) => keys,
-            Err(response) => {
-                debug!(target: LOG_TARGET, "Tx: ({tx_id}) rejected: {response}");
-                return Ok(response);
-            },
-        };
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
         // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
@@ -905,6 +904,14 @@ fn tx_id(tx: &Transaction) -> String {
         .unwrap_or_else(|| "None?!".into())
 }
 
+/// A successful validation attempt
+struct ValidatedTransaction {
+    /// The outputs the transaction spends from the mempool, if any
+    parents: Option<PoolParents>,
+    /// The keys its height-reading input scripts return at the tip it was validated against
+    script_keys: Vec<CompressedPublicKey>,
+}
+
 /// A failed validation attempt
 struct AttemptFailure {
     response: TxStorageResponse,
@@ -917,13 +924,14 @@ struct AttemptFailure {
 
 /// One unlocked validation attempt: chain-linked checks, then the mempool parents of any inputs not in the chain
 /// (under a brief read lock), then internal consistency against `tip`. On success, returns the hashes of the outputs
-/// spent in the mempool, if any.
+/// spent in the mempool, if any, and the keys its height-reading input scripts return at `tip` (see
+/// `validated_script_keys`), so that no script runs under the write lock.
 fn validate_attempt(
     storage: &RwLock<MempoolStorage>,
     validator: &dyn TransactionValidator,
     tx: &Transaction,
     tip: Option<&ChainMetadata>,
-) -> Result<Result<Option<PoolParents>, AttemptFailure>, MempoolError> {
+) -> Result<Result<ValidatedTransaction, AttemptFailure>, MempoolError> {
     let failure = |error: ValidationError| AttemptFailure {
         tip_dependent: is_tip_dependent(&error),
         response: validation_error_to_response(error),
@@ -951,7 +959,14 @@ fn validate_attempt(
             ..failure(e)
         }));
     }
-    Ok(Ok(parents))
+    match validated_script_keys(tx, tip) {
+        Ok(script_keys) => Ok(Ok(ValidatedTransaction { parents, script_keys })),
+        Err(response) => Ok(Err(AttemptFailure {
+            response,
+            tip_dependent: false,
+            ban_reason: None,
+        })),
+    }
 }
 
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
@@ -1522,6 +1537,27 @@ mod test {
             assert_eq!(validator.internal_lock_free(), vec![true]);
             assert_eq!(pool_len(&storage), 0);
         }
+    }
+
+    #[test]
+    fn insert_unlocked_keeps_the_script_keys_returned_at_the_validation_tip() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(2) Nop).unwrap());
+        let tip = FixedHash::from([1u8; 32]);
+        let validator = ScriptedValidator::new(vec![Ok(())], vec![tip]);
+        let storage = create_storage(&validator);
+        let response = MempoolStorage::insert_unlocked(&storage, tx.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+
+        // The scripted tip is at height 1, so the transaction was validated for height 2
+        let expected = run_height_reading_scripts(&tx.body, 2, &tip).unwrap();
+        assert_eq!(expected.len(), 1);
+        let lock = storage.read().unwrap();
+        let to_check = lock
+            .unconfirmed_pool
+            .height_reading_to_check(&[tx], &FixedHash::from([2u8; 32]));
+        assert_eq!(to_check.len(), 1);
+        assert_eq!(to_check[0].2, expected);
     }
 
     #[test]
