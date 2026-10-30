@@ -1071,7 +1071,7 @@ impl LMDBDatabase {
                     )?;
                 },
                 InsertOrphanChainTip(hash, total_accumulated_difficulty) => {
-                    lmdb_insert(
+                    lmdb_replace(
                         &write_txn,
                         &self.orphan_chain_tips_db,
                         hash.deref(),
@@ -1079,7 +1079,7 @@ impl LMDBDatabase {
                             hash: *hash,
                             total_accumulated_difficulty: *total_accumulated_difficulty,
                         },
-                        "orphan_chain_tips_db",
+                        None,
                     )?;
                 },
                 DeleteTipBlock(hash) => {
@@ -1566,13 +1566,13 @@ impl LMDBDatabase {
                 let db = &self.orphan_header_accumulated_data_db;
 
                 let row: LmdbRowBlockHeaderAccumulatedDataV1 = accumulated_data.into();
-                lmdb_insert_typed(txn, db, hash.as_slice(), &row)?;
+                lmdb_replace(txn, &db.db, hash.as_slice(), &row, None)?;
             },
             BlockVersion::V2 => {
                 let db = &self.orphan_header_accumulated_data_v2_db;
                 let row: LmdbRowBlockHeaderAccumulatedDataV2 = accumulated_data.into();
 
-                lmdb_insert_typed(txn, db, hash.as_slice(), &row)?;
+                lmdb_replace(txn, &db.db, hash.as_slice(), &row, None)?;
             },
         }
 
@@ -4173,7 +4173,8 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Sort the orphans by age, oldest first
         orphans.sort_by_key(|a| a.0);
-        let mut txn = DbTransaction::new();
+        let mut evicted_hashes = Vec::new();
+        let write_txn = self.write_transaction()?;
         for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {
             if height > horizon_height && removed_count >= num_over_limit {
                 break;
@@ -4184,9 +4185,34 @@ impl BlockchainBackend for LMDBDatabase {
                 height,
                 block_hash.to_hex()
             );
-            txn.delete_orphan(block_hash);
+            self.delete_orphan(&write_txn, &block_hash)?;
+            evicted_hashes.push(block_hash);
         }
-        self.write(txn)?;
+
+        // Any surviving descendants of an evicted ancestor are no longer connected to the main chain. Demote them back
+        // to unlinked ("true") orphans by stripping their accumulated data and chain-tip entries while keeping their
+        // `orphans_db` and `orphan_parent_map_index` entries intact so they can be re-linked if the missing ancestor
+        // arrives again.
+        let mut to_visit: std::collections::VecDeque<HashOutput> = evicted_hashes.into();
+        let mut visited = std::collections::HashSet::new();
+        while let Some(parent_hash) = to_visit.pop_front() {
+            if !visited.insert(parent_hash) {
+                continue;
+            }
+            let children: Vec<HashOutput> =
+                lmdb_get_multiple(&write_txn, &self.orphan_parent_map_index, parent_hash.as_slice())?;
+            for child_hash in children {
+                lmdb_delete_if_exists(&write_txn, &self.orphan_chain_tips_db, child_hash.as_slice())?;
+                if lmdb_exists_typed(&write_txn, &self.orphan_header_accumulated_data_db, child_hash.as_slice())? {
+                    lmdb_delete_typed(&write_txn, &self.orphan_header_accumulated_data_db, child_hash.as_slice())?;
+                }
+                if lmdb_exists_typed(&write_txn, &self.orphan_header_accumulated_data_v2_db, child_hash.as_slice())? {
+                    lmdb_delete_typed(&write_txn, &self.orphan_header_accumulated_data_v2_db, child_hash.as_slice())?;
+                }
+                to_visit.push_back(child_hash);
+            }
+        }
+        write_txn.commit()?;
 
         Ok(())
     }

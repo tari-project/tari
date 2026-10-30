@@ -99,7 +99,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
             )?
         } else {
             self.difficulty_calculator
-                .check_achieved_and_target_difficulty(db, header)?
+                .check_achieved_and_target_difficulty_with_vm_key(db, header, chain_context.vm_key())?
         };
 
         // Deliberately last, and deliberately after the proof of work has been checked: this is the only chain
