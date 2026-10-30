@@ -263,11 +263,8 @@ impl ServerMessageHandler {
         });
 
         let mut security_context = self.security_context.write().await;
-        let _session_id = security_context.check_permission(
-            &format!("tool:{}", params.name),
-            permission_level,
-            request_data,
-        )?;
+        let _session_id =
+            security_context.check_permission(&format!("tool:{}", params.name), permission_level, request_data)?;
         drop(security_context);
 
         // Execute the tool with sanitized arguments

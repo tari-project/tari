@@ -127,6 +127,19 @@ pub fn resolve_grpc_authentication_from_vars(vars: &HashMap<String, String>) -> 
     Ok(None)
 }
 
+struct DefaultWalletOverrideCli<'a> {
+    cli: &'a Cli,
+    override_from: String,
+}
+
+impl tari_common::configuration::ConfigOverrideProvider for DefaultWalletOverrideCli<'_> {
+    fn get_config_property_overrides(&self, network: &tari_common::configuration::Network) -> Vec<(String, String)> {
+        let mut overrides = self.cli.get_config_property_overrides(network);
+        overrides.push(("wallet.override_from".to_string(), self.override_from.clone()));
+        overrides
+    }
+}
+
 fn resolve_grpc_authentication_from_file(config_path: &Path, cli: &Cli) -> McpResult<GrpcAuthentication> {
     if !config_path.exists() {
         return Ok(GrpcAuthentication::None);
@@ -146,22 +159,18 @@ fn resolve_grpc_authentication_from_file(config_path: &Path, cli: &Cli) -> McpRe
             .map(|n| n.to_string())
             .or_else(|| cfg.get_string("network").ok())
     {
-        cfg = config::Config::builder()
-            .add_source(cfg)
-            .set_override("wallet.override_from", network)
-            .map_err(|e| {
+        let fallback_cli = DefaultWalletOverrideCli {
+            cli,
+            override_from: network,
+        };
+        cfg = tari_common::load_configuration(config_path, false, true, &fallback_cli, cli.common.network).map_err(
+            |e| {
                 McpError::config_error(format!(
-                    "Failed to apply default wallet.override_from for {}: {e}",
+                    "Failed to load configuration from {}: {e}",
                     config_path.display()
                 ))
-            })?
-            .build()
-            .map_err(|e| {
-                McpError::config_error(format!(
-                    "Failed to build configuration from {}: {e}",
-                    config_path.display()
-                ))
-            })?;
+            },
+        )?;
     }
 
     let wallet_section = WalletAuthSection::load_from(&cfg).map_err(|e| {
