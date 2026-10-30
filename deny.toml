@@ -100,6 +100,6 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
-    # The project's own LMDB fork (`liblmdb-sys`), pinned by tag in the root `Cargo.toml`.
+    # The project's own LMDB fork (`liblmdb-sys`), pinned by commit rev in the root `Cargo.toml`.
     "https://github.com/tari-project/lmdb-rs",
 ]

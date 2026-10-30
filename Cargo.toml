@@ -139,7 +139,7 @@ tari_sidechain = { version = "9.0.0" }
 anyhow = { version = "1.0" }
 serde_json = "1"
 serde = "1"
-rand = { version = "0.10.1" }
+rand = { version = "0.10.2" }
 rand_core = { version = "0.10.1" }
 thiserror = { version = "2" }
 borsh = { version = "1.5.7" }
@@ -161,4 +161,4 @@ debug = false
 #   $env:CARGO_PROFILE_RELEASE_DEBUG = "true"; cargo build --release --features=dhat-heap     ...(PowerShell)
 
 [patch.crates-io]
-liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", tag = "0.7.6-tari.1" }
+liblmdb-sys = { git = "https://github.com/tari-project/lmdb-rs", rev = "8d88933179c4ab7ceafb407a9615ecdd5c569a5f" }
