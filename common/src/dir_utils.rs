@@ -20,9 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use path_clean::PathClean;
+
+/// Guard to ensure the unset home directory warning is logged at most once per process.
+static WARNED_NO_HOME_DIR: AtomicBool = AtomicBool::new(false);
+static PENDING_NO_HOME_WARNING: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
@@ -47,18 +57,62 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
 }
 
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
+    let home_fn = || {
+        if std::env::var_os("TARI_FORCE_NO_HOME").is_some() {
+            None
+        } else {
+            dirs_next::home_dir()
+        }
+    };
+    default_path_with_home_fn(filename, base_path, home_fn)
+}
+
+pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
+    filename: &str,
+    base_path: Option<&PathBuf>,
+    home_fn: F,
+) -> PathBuf {
     let mut home = base_path.cloned().unwrap_or_else(|| {
-        [
-            dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(".")),
-            PathBuf::from(".tari"),
-        ]
-        .iter()
-        .collect()
+        let home_dir = home_fn().unwrap_or_else(|| {
+            let fallback = PathBuf::from(".");
+            let fallback_abs = absolute_path(&fallback);
+            if !WARNED_NO_HOME_DIR.swap(true, Ordering::Relaxed) {
+                let msg = format!(
+                    "Could not determine user home directory; falling back to current working directory: {}",
+                    fallback_abs.display()
+                );
+                eprintln!("{msg}");
+                log::warn!("{msg}");
+                if let Ok(mut pending) = PENDING_NO_HOME_WARNING.lock() {
+                    *pending = Some(fallback_abs);
+                }
+            }
+            fallback
+        });
+        [home_dir, PathBuf::from(".tari")].iter().collect()
     });
     for component in PathBuf::from(filename).components() {
         home.push(component);
     }
     home
+}
+
+/// Flushes any pending unset home directory warning that occurred before the logger was installed.
+pub fn flush_pending_no_home_warning() {
+    if let Some(fallback_abs) = PENDING_NO_HOME_WARNING.lock().ok().and_then(|mut p| p.take()) {
+        log::warn!(
+            "Could not determine user home directory; falling back to current working directory: {}",
+            fallback_abs.display()
+        );
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn reset_warned_no_home_dir() {
+    WARNED_NO_HOME_DIR.store(false, Ordering::Relaxed);
+    if let Ok(mut pending) = PENDING_NO_HOME_WARNING.lock() {
+        *pending = None;
+    }
 }
 
 pub fn absolute_path<P>(path: P) -> PathBuf
@@ -107,5 +161,47 @@ mod test {
         let relative_path = PathBuf::from("./01/02/");
         let joined_path = current_path.join(&relative_path);
         assert_eq!(dir_utils::absolute_path(&relative_path), joined_path);
+    }
+
+    #[test]
+    fn test_default_path_unset_home_warns_exactly_once() {
+        crate::test_logger::init();
+        dir_utils::reset_warned_no_home_dir();
+
+        let fallback_abs = dir_utils::absolute_path(".").display().to_string();
+        let count_before = crate::test_logger::get_logs()
+            .iter()
+            .filter(|(level, msg)| *level == log::Level::Warn && msg.contains(&fallback_abs))
+            .count();
+
+        let path1 = dir_utils::default_path_with_home_fn("test_file", None, || None);
+        assert_eq!(path1, PathBuf::from("./.tari/test_file"));
+
+        let count_after_first = crate::test_logger::get_logs()
+            .iter()
+            .filter(|(level, msg)| *level == log::Level::Warn && msg.contains(&fallback_abs))
+            .count();
+        assert_eq!(count_after_first, count_before + 1, "Expected exactly 1 new warn log");
+
+        // Second call should NOT log another warning
+        let path2 = dir_utils::default_path_with_home_fn("another_file", None, || None);
+        assert_eq!(path2, PathBuf::from("./.tari/another_file"));
+
+        let count_after_second = crate::test_logger::get_logs()
+            .iter()
+            .filter(|(level, msg)| *level == log::Level::Warn && msg.contains(&fallback_abs))
+            .count();
+        assert_eq!(
+            count_after_second,
+            count_before + 1,
+            "Should still be exactly 1 new warn log after second call"
+        );
+    }
+
+    #[test]
+    fn test_default_path_with_explicit_base_path() {
+        let base = PathBuf::from("/custom/base");
+        let path = dir_utils::default_path_with_home_fn("file.txt", Some(&base), || None);
+        assert_eq!(path, PathBuf::from("/custom/base/file.txt"));
     }
 }
