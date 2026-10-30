@@ -337,6 +337,29 @@ grpc_address = "/ip4/127.0.0.1/tcp/18143"
 #grpc_authentication = { username = "admin", password = "xxxx" }
 ```
 
+> **Per-method allow-list (`grpc_server_allow_methods`):** By default, all wallet gRPC methods are enabled. On the Monitoring Wallet, restrict `grpc_server_allow_methods` under `[wallet]` to only the read/monitoring methods (plus `prepare_one_sided_transaction_for_signing` and `broadcast_signed_one_sided_transaction` when building and broadcasting offline-signed sweeps on the Monitoring Wallet), so that spend and signing RPCs (`transfer`, `coin_split`, `create_burn_transaction`, `import_utxos`, `sign_message`, etc.) return `PERMISSION_DENIED`:
+>
+> ```toml
+> grpc_server_allow_methods = [
+>     "get_version",
+>     "get_state",
+>     "check_connectivity",
+>     "get_balance",
+>     "get_address",
+>     "get_complete_address",
+>     "get_payment_id_address",
+>     "get_transaction_info",
+>     "get_completed_transactions",
+>     "get_all_completed_transactions",
+>     "get_all_completed_transactions_stream",
+>     "get_payment_by_reference",
+>     "get_transaction_pay_refs",
+>     "stream_transaction_events",
+>     "prepare_one_sided_transaction_for_signing",
+>     "broadcast_signed_one_sided_transaction",
+> ]
+> ```
+
 > Note: Also set `num_confirmations_required` under both `[wallet.transactions]` and `[wallet.outputs]` to your `REQUIRED_CONFIRMATIONS` (see [Block Confirmations](#block-confirmations); recommended 10). The default is 3.
 
 4. Set the wallet's base node. By default the Tari provided public server will be used, but it can also be set to a private base node. Set this value to the `minotari_node` you created or chose at the beginning of this guide in **Section 1**.

@@ -61,6 +61,61 @@
 # gRPC authentication method (default = "none")
 #grpc_authentication = { username = "admin", password = "xxxx" }
 
+# Uncomment and trim `grpc_server_allow_methods` to restrict which gRPC server methods are allowed
+# (only active when `grpc_enabled = true`; by default all methods are allowed):
+#grpc_server_allow_methods = [
+#    "get_version",
+#    "get_state",
+#    "check_connectivity",
+#    "check_for_updates",
+#    "identify",
+#    "get_address",
+#    "get_payment_id_address",
+#    "get_complete_address",
+#    "prepare_one_sided_transaction_for_signing",
+#    "prepare_deposit_multisig_transaction",
+#    "prepare_withdraw_multisig_transaction",
+#    "broadcast_signed_one_sided_transaction",
+#    "transfer",
+#    "range_limited_coin_join",
+#    "get_transaction_info",
+#    "get_completed_transactions",
+#    "get_block_height_transactions",
+#    "get_transaction_pay_refs",
+#    "get_balance",
+#    "get_unspent_amounts",
+#    "coin_split",
+#    "coin_histogram",
+#    "import_utxos",
+#    "get_network_status",
+#    "get_connected_http_peer",
+#    "cancel_transaction",
+#    "revalidate_all_transactions",
+#    "validate_all_transactions",
+#    "send_sha_atomic_swap_transaction",
+#    "create_burn_transaction",
+#    "claim_sha_atomic_swap_transaction",
+#    "claim_htlc_refund_transaction",
+#    "sign_message",
+#    "stream_transaction_events",
+#    "import_transactions",
+#    "get_all_completed_transactions",
+#    "get_all_completed_transactions_stream",
+#    "get_payment_by_reference",
+#    "get_fee_estimate",
+#    "get_fee_per_gram_stats",
+#    "replace_by_fee",
+#    "user_pay_for_fee",
+#    "register_validator_node",
+#    "submit_validator_node_exit",
+#    "get_burn_claim_proof",
+#    "rescan_wallet",
+#    "scan_and_import_utxos",
+#    "debug_transaction",
+#    "validate_transaction",
+#    "validate_outputs",
+#]
+
 # A list of base node peers that the wallet should use for service requests and tracking chain state in the form
 # ["public_key::net_address", ...] (default = [])
 #base_node_service_peers = []
