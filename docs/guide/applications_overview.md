@@ -100,7 +100,7 @@ These rules apply to every application that uses a log4rs YAML file (`--log-conf
 - `base_node.grpc_address=<address>` - gRPC server address
 - `base_node.grpc_server_allow_methods=<methods>` - Allowed gRPC methods (comma-separated)
 - `base_node.grpc_authentication=<auth>` - gRPC authentication mode
-- `base_node.grpc_tls_enabled=<bool>` - Enable gRPC TLS
+- `base_node.grpc_tls_enabled=<bool>` - Enable gRPC TLS (certificates generated via `create-tls-certs [--san <name-or-ip>] [--validity-days <days>] [--ca-validity-days <days>] [--renew-leaf] [--force]`)
 
 **LMDB Configuration**:
 
@@ -349,7 +349,7 @@ The wallet supports extensive subcommands for various operations:
 - `count-utxos` - Count UTXOs
 - `revalidate-wallet-db` - Revalidate wallet database
 - `register-validator-node` - Register as validator node
-- `create-tls-certs` - Create TLS certificates
+- `create-tls-certs` - Create or renew gRPC TLS certificates (`--san <name-or-ip>`, `--validity-days <days>`, `--ca-validity-days <days>`, `--renew-leaf`, `--force`)
 
 **Payment References**:
 
