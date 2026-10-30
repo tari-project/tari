@@ -588,13 +588,23 @@ mod validator_node_merkle_root {
     use std::convert::TryFrom;
 
     use tari_common::configuration::Network;
-    use tari_common_types::{epoch::VnEpoch, types::CompressedPublicKey};
-    use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedPublicKey, PrivateKey},
+    };
+    use tari_test_utils::paths::create_temporary_data_path;
+    use tari_transaction_components::{
+        consensus::ConsensusConstantsBuilder,
+        transaction_components::{OutputFeatures, ValidatorNodeSignature},
+    };
+    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::{
         blocks::genesis_block::VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH,
         chain_storage::calculate_validator_node_mr,
+        consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparerBuilder},
+        test_helpers::blockchain::create_custom_blockchain_at_path,
     };
     #[tokio::test]
     async fn it_has_the_correct_genesis_merkle_root() {
@@ -701,6 +711,108 @@ mod validator_node_merkle_root {
         let tip = db.fetch_tip_header().unwrap();
         assert_eq!(tip.header().validator_node_mr, merkle_root);
         assert_ne!(tip.header().validator_node_mr, VALIDATOR_MR_EMPTY_PLACEHOLDER_HASH);
+    }
+
+    /// Mines a block registering a new validator node on `sidechain` (private, public), spending `from`, and returns
+    /// the validator node's public key
+    fn mine_registration(
+        db: &BlockchainDatabase<TempDatabase>,
+        key_manager: &KeyManager,
+        from: WalletOutput,
+        sidechain: Option<&(PrivateKey, CompressedPublicKey)>,
+    ) -> CompressedPublicKey {
+        let (sk, public_key) = CompressedPublicKey::random_keypair(&mut rand::rng());
+        let signature = ValidatorNodeSignature::sign_for_registration(
+            &sk,
+            Network::LocalNet.as_byte(),
+            sidechain.map(|(_, pk)| pk),
+            &public_key,
+            VnEpoch::zero(),
+        );
+        let features = OutputFeatures::for_validator_node_registration(
+            signature,
+            public_key.clone(),
+            sidechain.map(|(sk, _)| sk),
+            VnEpoch::zero(),
+        );
+        let (tx, _outputs) = schema_to_transaction(
+            &[txn_schema!(from: vec![from], to: vec![T], features: features)],
+            key_manager,
+        );
+        let tip = db.fetch_last_header().unwrap();
+        let prev_block = db.fetch_block(tip.height, true).unwrap().into_block();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager);
+        let (block, _) = create_next_block(
+            db,
+            &prev_block,
+            tx,
+            key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        );
+        db.add_block(block).unwrap().result.assert_added();
+        public_key
+    }
+
+    #[tokio::test]
+    async fn it_queues_a_default_sidechain_registration_past_a_later_sidechains_full_epoch() {
+        let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+            .with_vn_registration_max_vns_initial_epoch(1)
+            .with_vn_registration_max_vns_per_epoch(1)
+            .build();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(constants)
+            .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
+            .build()
+            .unwrap();
+        // The LMDB backend must run under these rules too: it assigns the activation epochs
+        let db = create_custom_blockchain_at_path(create_temporary_data_path(), rules, true);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (_, mut outputs) = add_many_chained_blocks(3, &db, &key_manager);
+
+        // A fixed sidechain key that sorts after the default (all zero) sidechain
+        let sidechain_sk = PrivateKey::from(1u64);
+        let sidechain = (
+            sidechain_sk.clone(),
+            CompressedPublicKey::from_secret_key(&sidechain_sk),
+        );
+        assert_ne!(sidechain.1.as_bytes()[0], 0);
+
+        // All registered in epoch 0. The sidechain's and the default sidechain's first validator nodes are initial
+        // validators and activate in epoch 1. The second default sidechain validator node finds epoch 1 full, and the
+        // seek for epoch 2 lands on the sidechain's (full) epoch 1, which must not count.
+        let on_sidechain = mine_registration(&db, &key_manager, outputs.pop().unwrap(), Some(&sidechain));
+        let first = mine_registration(&db, &key_manager, outputs.pop().unwrap(), None);
+        let second = mine_registration(&db, &key_manager, outputs.pop().unwrap(), None);
+
+        let on_sidechain = db
+            .get_validator_node(Some(sidechain.1.clone()), on_sidechain)
+            .unwrap()
+            .unwrap();
+        let first = db.get_validator_node(None, first).unwrap().unwrap();
+        let second = db.get_validator_node(None, second).unwrap().unwrap();
+        assert_eq!(on_sidechain.activation_epoch, VnEpoch(1));
+        assert_eq!(first.activation_epoch, VnEpoch(1));
+        assert_eq!(second.activation_epoch, VnEpoch(2));
+
+        let epoch_length = db.consensus_constants().unwrap().epoch_length();
+        let tip_height = db.fetch_last_header().unwrap().height;
+        let (_, _) = add_many_chained_blocks(
+            usize::try_from(2 * epoch_length - tip_height).unwrap(),
+            &db,
+            &key_manager,
+        );
+
+        let epoch_1 = db.fetch_header(epoch_length).unwrap().unwrap();
+        assert_eq!(
+            epoch_1.validator_node_mr,
+            calculate_validator_node_mr(&[on_sidechain.clone(), first.clone()]).unwrap()
+        );
+        let epoch_2 = db.fetch_header(2 * epoch_length).unwrap().unwrap();
+        assert_eq!(
+            epoch_2.validator_node_mr,
+            calculate_validator_node_mr(&[on_sidechain, first, second]).unwrap()
+        );
     }
 }
 

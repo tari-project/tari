@@ -1855,6 +1855,18 @@ impl ConsensusConstantsBuilder {
         self
     }
 
+    /// Sets how many validator nodes a sidechain can register before activations are limited per epoch.
+    pub fn with_vn_registration_max_vns_initial_epoch(mut self, max_vns: u32) -> Self {
+        self.consensus.vn_registration_max_vns_initial_epoch = max_vns;
+        self
+    }
+
+    /// Sets how many validator nodes of a sidechain can activate per epoch once its initial phase is over.
+    pub fn with_vn_registration_max_vns_per_epoch(mut self, max_vns: u32) -> Self {
+        self.consensus.vn_registration_max_vns_per_epoch = max_vns;
+        self
+    }
+
     pub fn build(self) -> ConsensusConstants {
         self.consensus.debug_assert_validator_node_exit_rules();
         self.consensus

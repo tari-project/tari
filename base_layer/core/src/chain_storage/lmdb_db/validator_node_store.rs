@@ -530,6 +530,7 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             ));
         }
 
+        let sidechain_bytes = sid_as_slice(sidechain_id);
         let mut cursor = self.activation_queue_read_cursor()?;
         loop {
             let key = create_activation_key(sidechain_id, activation_epoch);
@@ -537,8 +538,13 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
                 break;
             }
 
-            // No activations in this epoch
-            if key.to_be_u64(PK_SIZE)? != activation_epoch.as_u64() {
+            // next_key returns the landed key without moving the cursor, so count_dups below still counts it
+            let Some(landed) = cursor.next_key()? else {
+                break;
+            };
+            // No activations for this sidechain in this epoch
+            let mut sections = landed.section_iter(ACTIVATION_QUEUE_KEY_SECTIONS);
+            if sections.next() != Some(sidechain_bytes) || sections.next_be_u64() != Some(activation_epoch.as_u64()) {
                 break;
             }
 
@@ -548,7 +554,12 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             if num_queued < validators_per_epoch {
                 break;
             }
-            activation_epoch = activation_epoch.saturating_add(VnEpoch(1));
+            activation_epoch = activation_epoch.as_u64().checked_add(1).map(VnEpoch).ok_or_else(|| {
+                ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::get_next_activation_epoch",
+                    details: "Activation epoch overflowed".to_string(),
+                }
+            })?;
         }
 
         Ok(activation_epoch)
@@ -1065,6 +1076,94 @@ mod tests {
             // the next epoch regardless of the other sidechain's registrations.
             let next = store.get_next_activation_epoch(None, VnEpoch(5), 2, 1).unwrap();
             assert_eq!(next, VnEpoch(6));
+        }
+    }
+
+    mod get_next_activation_epoch {
+        use super::*;
+
+        /// A random sidechain key that sorts after the default (all zero) sidechain
+        fn sidechain_after_default() -> CompressedPublicKey {
+            loop {
+                let pk = new_public_key();
+                if pk.as_bytes()[0] != 0 {
+                    return pk;
+                }
+            }
+        }
+
+        #[test]
+        fn it_activates_in_an_empty_epoch_before_a_full_later_epoch() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let sidechain = new_public_key();
+            insert_n_vns(&store, 10, 0, 2, Some(&sidechain));
+
+            let next = store
+                .get_next_activation_epoch(Some(&sidechain), VnEpoch(5), 1, 2)
+                .unwrap();
+            assert_eq!(next, VnEpoch(6));
+        }
+
+        #[test]
+        fn it_ignores_a_full_epoch_on_a_later_sidechain() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let other = sidechain_after_default();
+            // The default sidechain is past its initial phase, and the seek for it lands on `other`'s full epoch 6
+            insert_n_vns(&store, 3, 0, 1, None);
+            insert_n_vns(&store, 6, 0, 1, Some(&other));
+
+            let next = store.get_next_activation_epoch(None, VnEpoch(5), 1, 1).unwrap();
+            assert_eq!(next, VnEpoch(6));
+        }
+
+        #[test]
+        fn it_activates_in_the_next_epoch_when_the_seek_passes_the_last_key() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let sidechain = new_public_key();
+            insert_n_vns(&store, 3, 0, 1, Some(&sidechain));
+
+            let next = store
+                .get_next_activation_epoch(Some(&sidechain), VnEpoch(5), 1, 1)
+                .unwrap();
+            assert_eq!(next, VnEpoch(6));
+        }
+
+        #[test]
+        fn it_skips_consecutive_full_epochs() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let sidechain = new_public_key();
+            // Epochs 6, 7 and 8 are full, epoch 9 has room
+            insert_n_vns(&store, 6, 0, 2, Some(&sidechain));
+            insert_n_vns(&store, 7, 0, 2, Some(&sidechain));
+            insert_n_vns(&store, 8, 0, 2, Some(&sidechain));
+            insert_n_vns(&store, 9, 0, 1, Some(&sidechain));
+
+            let next = store
+                .get_next_activation_epoch(Some(&sidechain), VnEpoch(5), 1, 2)
+                .unwrap();
+            assert_eq!(next, VnEpoch(9));
+        }
+
+        #[test]
+        fn it_does_not_count_another_sidechains_validators_in_the_same_epoch() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let other = sidechain_after_default();
+            // Epoch 6 is full on the default sidechain; epoch 7 is full only on `other`
+            insert_n_vns(&store, 6, 0, 2, None);
+            insert_n_vns(&store, 7, 0, 2, Some(&other));
+
+            let next = store.get_next_activation_epoch(None, VnEpoch(5), 1, 2).unwrap();
+            assert_eq!(next, VnEpoch(7));
         }
     }
 
