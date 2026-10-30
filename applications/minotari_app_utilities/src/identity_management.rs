@@ -1728,7 +1728,7 @@ mod test {
             .filter_map(|(lvl, msg)| (*lvl == Level::Warn).then_some(msg))
             .collect();
         assert_eq!(warn_logs.len(), 1, "expected one warning log on non-atomic fallback");
-        assert!(warn_logs[0].contains("falling back to non-atomic in-place write"));
+        assert!(warn_logs.first().is_some_and(|msg| msg.contains("falling back to non-atomic in-place write")));
     }
 }
 
