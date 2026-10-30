@@ -5832,6 +5832,10 @@ fn check_consistency_at_height<B: BlockchainBackend>(
     let last_chain_header = db.fetch_last_chain_header()?;
     // Safety check to ensure we do not check a height that has been reorged out.
     let height = min(height, last_chain_header.height());
+    // Genesis has no parent to link to.
+    if height == 0 {
+        return Ok(0);
+    }
 
     let metadata = db.fetch_chain_metadata()?;
     // Bodies only exist above the pruned height and up to the block tip; other heights are header-only.
@@ -10440,6 +10444,25 @@ mod test {
             assert_eq!(rewound_to, Some(6));
             assert_eq!(db.fetch_last_header().unwrap().height, 6);
             check(&blockchain, 6, true).unwrap();
+        }
+
+        #[test]
+        fn genesis_only_database_passes_check() {
+            let db = create_store_with_consensus(create_consensus_rules());
+            for full_validation in [false, true] {
+                let status =
+                    verify_blockchain_consistency_for_height(db.db.clone(), &db.validators, 1, full_validation)
+                        .unwrap();
+                let (has_concluded, last_check_height, current_height) = status.checked_status();
+                assert!(has_concluded);
+                assert_eq!(last_check_height, 0);
+                assert_eq!(current_height, 0);
+
+                let rewound_to =
+                    rewind_if_still_corrupt(&mut *db.db_write_access().unwrap(), &db.validators, 1, full_validation)
+                        .unwrap();
+                assert_eq!(rewound_to, None);
+            }
         }
 
         #[test]
