@@ -137,6 +137,7 @@ pub struct BaseNodeBuilder {
     consensus_manager: Option<BaseNodeConsensusManager>,
     network: NetworkConsensus,
     move_coinbase_in_synced_bodies: bool,
+    skip_a_header_in_chain_split: bool,
 }
 
 #[allow(dead_code)]
@@ -154,6 +155,7 @@ impl BaseNodeBuilder {
             consensus_manager: None,
             network,
             move_coinbase_in_synced_bodies: false,
+            skip_a_header_in_chain_split: false,
         }
     }
 
@@ -216,6 +218,12 @@ impl BaseNodeBuilder {
         self
     }
 
+    /// Serve `find_chain_split` with the second header left out, so the headers no longer follow one another
+    pub fn with_a_header_skipped_in_chain_split(mut self) -> Self {
+        self.skip_a_header_in_chain_split = true;
+        self
+    }
+
     /// Build the test base node and start its services.
     #[allow(clippy::redundant_closure)]
     pub async fn start(
@@ -257,6 +265,7 @@ impl BaseNodeBuilder {
             self.p2p_config.unwrap_or_default(),
             data_path,
             self.move_coinbase_in_synced_bodies,
+            self.skip_a_header_in_chain_split,
         )
         .await;
 
@@ -371,6 +380,7 @@ async fn setup_base_node_services(
     p2p_config: P2pConfig,
     data_path: &str,
     move_coinbase_in_synced_bodies: bool,
+    skip_a_header_in_chain_split: bool,
 ) -> NodeInterfaces {
     let (publisher, subscription_factory) = pubsub_connector(100);
     let subscription_factory = Arc::new(subscription_factory);
@@ -419,6 +429,12 @@ async fn setup_base_node_services(
     let comms = if move_coinbase_in_synced_bodies {
         comms.add_protocol_extension(
             rpc_server.add_service(BaseNodeSyncRpcServer::new(CoinbaseMovingSyncService(
+                BaseNodeSyncRpcService::new(blockchain_db.clone().into(), base_node_service, block_batch_size),
+            ))),
+        )
+    } else if skip_a_header_in_chain_split {
+        comms.add_protocol_extension(
+            rpc_server.add_service(BaseNodeSyncRpcServer::new(HeaderSkippingSyncService(
                 BaseNodeSyncRpcService::new(blockchain_db.clone().into(), base_node_service, block_batch_size),
             ))),
         )
@@ -516,6 +532,64 @@ impl BaseNodeSyncService for CoinbaseMovingSyncService {
         request: Request<FindChainSplitRequest>,
     ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
         self.0.find_chain_split(request).await
+    }
+
+    async fn get_chain_metadata(
+        &self,
+        request: Request<()>,
+    ) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
+        self.0.get_chain_metadata(request).await
+    }
+
+    async fn sync_kernels(
+        &self,
+        request: Request<SyncKernelsRequest>,
+    ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
+        self.0.sync_kernels(request).await
+    }
+
+    async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
+        self.0.sync_utxos(request).await
+    }
+}
+
+/// The node's sync service, with the second header left out of every `find_chain_split` response
+struct HeaderSkippingSyncService(BaseNodeSyncRpcService<TempDatabase>);
+
+#[tari_comms::async_trait]
+impl BaseNodeSyncService for HeaderSkippingSyncService {
+    async fn sync_blocks(
+        &self,
+        request: Request<SyncBlocksRequest>,
+    ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
+        self.0.sync_blocks(request).await
+    }
+
+    async fn sync_headers(
+        &self,
+        request: Request<SyncHeadersRequest>,
+    ) -> Result<Streaming<proto::core::BlockHeader>, RpcStatus> {
+        self.0.sync_headers(request).await
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<u64>,
+    ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
+        self.0.get_header_by_height(request).await
+    }
+
+    async fn find_chain_split(
+        &self,
+        request: Request<FindChainSplitRequest>,
+    ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
+        let response = self.0.find_chain_split(request).await?;
+        Ok(response.map(|mut response| {
+            if response.headers.len() > 1 {
+                response.headers.remove(1);
+            }
+            response
+        }))
     }
 
     async fn get_chain_metadata(
