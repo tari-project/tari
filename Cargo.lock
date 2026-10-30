@@ -8066,9 +8066,9 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "7.0.0"
+version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe7acf105d2cc232162b381072cd17dbfe753705aac44d2b6a24da86fa6356cb"
+checksum = "c76546a09a260003b146dcad761ec0c5052fb947ed4b616b96e88aa753b2c9bd"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8248,9 +8248,9 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "8.0.0"
+version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27dd5fbbf0991e051a0016c773a907ec2e492487317108966a6049617d741deb"
+checksum = "f8fc81efebfab1e692f80b2f61e4cd93949a158d0cb1f254b65a2684d820aac5"
 dependencies = [
  "base64 0.22.1",
  "borsh",
