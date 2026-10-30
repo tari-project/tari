@@ -910,8 +910,8 @@ async fn test_horizon_sync_discards_mismatched_checkpoint() {
     let _event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 10);
 
-    // Inject a checkpoint whose target doesn't match the upcoming horizon target. The
-    // synchronizer's `calculate_output_sync_start_stop` must discard this and start from height 1.
+    // Inject a checkpoint whose block is not on Alice's chain. The
+    // synchronizer must discard this and start from height 1.
     let mut txn = DbTransaction::new();
     txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
         checkpoint_height: 99,

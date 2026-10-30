@@ -234,6 +234,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f02882884d3e1bc524fb12c79f107f6ad0e1cfd498c536ffb494301740995dfe"
 
 [[package]]
+name = "asn1-rs"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f43a50ac4fdca5df8e885c21b835997f0a1cdee65494a6847694a98652d9d8"
+dependencies = [
+ "asn1-rs-derive",
+ "asn1-rs-impl",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-traits",
+ "rusticata-macros",
+ "thiserror 2.0.21",
+ "time",
+]
+
+[[package]]
+name = "asn1-rs-derive"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3109e49b1e4909e9db6515a30c633684d68cdeaa252f215214cb4fa1a5bfee2c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+ "synstructure",
+]
+
+[[package]]
+name = "asn1-rs-impl"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b18050c2cd6fe86c3a76584ef5e0baf286d038cda203eb6223df2cc413565f7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -499,7 +538,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0700ddab506f33b20a03b13996eccd309a48e5ff77d0d95926aa0210fb4e95f1"
 dependencies = [
- "bit-vec",
+ "bit-vec 0.6.3",
 ]
 
 [[package]]
@@ -507,6 +546,15 @@ name = "bit-vec"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
+
+[[package]]
+name = "bit-vec"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bitfields"
@@ -1844,6 +1892,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "der-parser"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07da5016415d5a3c4dd39b11ed26f915f52fc4e0dc197d87908bc916e51bc1a6"
+dependencies = [
+ "asn1-rs",
+ "displaydoc",
+ "nom 7.1.3",
+ "num-bigint",
+ "num-traits",
+ "rusticata-macros",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3020,7 +3082,7 @@ dependencies = [
  "jni",
  "lru-cache",
  "parking_lot 0.12.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "ring",
  "rustls",
  "rustls-pki-types",
@@ -3047,7 +3109,7 @@ dependencies = [
  "jni",
  "once_cell",
  "prefix-trie",
- "rand 0.10.1",
+ "rand 0.10.3",
  "ring",
  "rustls-pki-types",
  "thiserror 2.0.21",
@@ -3074,7 +3136,7 @@ dependencies = [
  "ndk-context",
  "once_cell",
  "parking_lot 0.12.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "resolv-conf",
  "rustls",
  "smallvec",
@@ -3935,7 +3997,7 @@ dependencies = [
 [[package]]
 name = "liblmdb-sys"
 version = "0.2.3"
-source = "git+https://github.com/tari-project/lmdb-rs?tag=0.7.6-tari.1#8d88933179c4ab7ceafb407a9615ecdd5c569a5f"
+source = "git+https://github.com/tari-project/lmdb-rs?rev=8d88933179c4ab7ceafb407a9615ecdd5c569a5f#8d88933179c4ab7ceafb407a9615ecdd5c569a5f"
 dependencies = [
  "cc",
  "libc",
@@ -4238,7 +4300,7 @@ dependencies = [
  "borsh",
  "log",
  "prost 0.13.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "rcgen",
  "serde",
  "serde_json",
@@ -4272,7 +4334,7 @@ dependencies = [
  "json5",
  "log",
  "minotari_app_grpc",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "tari_common",
  "tari_common_types",
@@ -4310,7 +4372,7 @@ dependencies = [
  "minotari_node_wallet_client",
  "minotari_wallet",
  "qrcode",
- "rand 0.10.1",
+ "rand 0.10.3",
  "regex",
  "rpassword",
  "rustyline",
@@ -4360,7 +4422,7 @@ dependencies = [
  "ledger-transport-hid",
  "log",
  "minotari_ledger_wallet_common",
- "rand 0.10.1",
+ "rand 0.10.3",
  "semver",
  "serde",
  "tari_common",
@@ -4384,7 +4446,7 @@ dependencies = [
  "log",
  "minotari_ledger_wallet_common",
  "minotari_ledger_wallet_comms",
- "rand 0.10.1",
+ "rand 0.10.3",
  "semver",
  "serde_json",
  "sha2",
@@ -4490,7 +4552,7 @@ dependencies = [
  "minotari_node_grpc_client",
  "minotari_wallet_grpc_client",
  "monero",
- "rand 0.10.1",
+ "rand 0.10.3",
  "reqwest",
  "serde",
  "serde_json",
@@ -4532,7 +4594,7 @@ dependencies = [
  "native-tls",
  "num_cpus",
  "prost-types 0.13.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "tari_common",
@@ -4648,7 +4710,7 @@ dependencies = [
  "keyring",
  "libc",
  "phc",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "tari_common",
@@ -4669,7 +4731,7 @@ dependencies = [
  "log",
  "log4rs",
  "minotari_app_utilities",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "tari_common",
  "tari_comms",
@@ -4728,7 +4790,7 @@ dependencies = [
  "minotari_node_wallet_client",
  "phc",
  "prost 0.13.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "sha2",
@@ -4779,7 +4841,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "openssl",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde_json",
  "tari_common",
  "tari_common_types",
@@ -5236,6 +5298,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "oid-registry"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
+dependencies = [
+ "asn1-rs",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5532,11 +5603,11 @@ checksum = "9555b1514d2d99d78150d3c799d4c357a3e2c2a8062cd108e93a06d9057629c5"
 
 [[package]]
 name = "pem"
-version = "3.0.6"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "serde_core",
 ]
 
@@ -6172,7 +6243,7 @@ checksum = "95c589f335db0f6aaa168a7cd27b1fc6920f5e1470c804f814d9cd6e62a0f70b"
 dependencies = [
  "env_logger",
  "log",
- "rand 0.10.1",
+ "rand 0.10.3",
 ]
 
 [[package]]
@@ -6246,9 +6317,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.10.1"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2e8e8bcc7961af1fdac401278c6a831614941f6164ee3bf4ce61b7edb162207"
+checksum = "65c9fb96cbc91e3478eaae79a69fcd3f1ae4ad052e471fe6732fff548984b4af"
 dependencies = [
  "chacha20 0.10.2",
  "getrandom 0.4.3",
@@ -6343,13 +6414,15 @@ dependencies = [
 
 [[package]]
 name = "rcgen"
-version = "0.12.1"
+version = "0.14.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48406db8ac1f3cbc7dcdb56ec355343817958a356ff430259bb07baf7607e1e1"
+checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
  "pem",
  "ring",
+ "rustls-pki-types",
  "time",
+ "x509-parser",
  "yasna",
 ]
 
@@ -6631,6 +6704,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rusticata-macros"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "faf0c4a6ece9950b9abdb62b1cfcf2a68b3b67a10ba445b3bb85be2a293d0632"
+dependencies = [
+ "nom 7.1.3",
 ]
 
 [[package]]
@@ -7750,7 +7832,7 @@ dependencies = [
  "libc",
  "libsqlite3-sys",
  "log",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "tari_utilities",
@@ -7781,7 +7863,7 @@ dependencies = [
  "newtype-ops",
  "once_cell",
  "primitive-types",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "strum",
@@ -7824,7 +7906,7 @@ dependencies = [
  "once_cell",
  "pin-project 1.1.13",
  "prost 0.13.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_derive",
  "serde_json",
@@ -7875,7 +7957,7 @@ dependencies = [
  "petgraph 0.5.1",
  "pin-project 0.4.30",
  "prost 0.13.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "tari_common",
  "tari_common_sqlite",
@@ -7939,7 +8021,7 @@ dependencies = [
  "primitive-types",
  "prost 0.13.5",
  "quickcheck",
- "rand 0.10.1",
+ "rand 0.10.3",
  "randomx-rs",
  "serde",
  "serde_json",
@@ -8041,7 +8123,7 @@ dependencies = [
  "minotari_wallet",
  "minotari_wallet_ffi",
  "minotari_wallet_grpc_client",
- "rand 0.10.1",
+ "rand 0.10.3",
  "reqwest",
  "serde_json",
  "tari_common",
@@ -8066,9 +8148,9 @@ dependencies = [
 
 [[package]]
 name = "tari_jellyfish"
-version = "7.0.0"
+version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe7acf105d2cc232162b381072cd17dbfe753705aac44d2b6a24da86fa6356cb"
+checksum = "c76546a09a260003b146dcad761ec0c5052fb947ed4b616b96e88aa753b2c9bd"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8084,7 +8166,7 @@ version = "6.3.0-pre.2"
 dependencies = [
  "derivative",
  "log",
- "rand 0.10.1",
+ "rand 0.10.3",
  "tari-libtor-core",
  "tari_common",
  "tari_p2p",
@@ -8141,7 +8223,7 @@ dependencies = [
  "borsh",
  "criterion",
  "digest 0.10.7",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "tari_crypto",
@@ -8182,7 +8264,7 @@ dependencies = [
  "log",
  "pgp",
  "prost 0.13.5",
- "rand 0.10.1",
+ "rand 0.10.3",
  "reqwest",
  "semver",
  "serde",
@@ -8211,7 +8293,7 @@ dependencies = [
  "borsh",
  "digest 0.10.7",
  "integer-encoding",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "sha2",
  "sha3",
@@ -8248,9 +8330,9 @@ dependencies = [
 
 [[package]]
 name = "tari_sidechain"
-version = "8.0.0"
+version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27dd5fbbf0991e051a0016c773a907ec2e492487317108966a6049617d741deb"
+checksum = "f8fc81efebfab1e692f80b2f61e4cd93949a158d0cb1f254b65a2684d820aac5"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -8271,7 +8353,7 @@ dependencies = [
  "bincode",
  "lmdb-zero",
  "log",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "tari_utilities",
  "thiserror 2.0.21",
@@ -8283,7 +8365,7 @@ version = "6.3.0-pre.2"
 dependencies = [
  "futures 0.3.32",
  "futures-test",
- "rand 0.10.1",
+ "rand 0.10.3",
  "tari_shutdown",
  "tempfile",
  "tokio",
@@ -8317,7 +8399,7 @@ dependencies = [
  "num-format",
  "num-traits",
  "primitive-types",
- "rand 0.10.1",
+ "rand 0.10.3",
  "semver",
  "serde",
  "serde_json",
@@ -8358,7 +8440,7 @@ dependencies = [
  "futures 0.3.32",
  "log",
  "minotari_ledger_wallet_common",
- "rand 0.10.1",
+ "rand 0.10.3",
  "serde",
  "strum",
  "strum_macros",
@@ -9887,6 +9969,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "x509-parser"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
+dependencies = [
+ "asn1-rs",
+ "data-encoding",
+ "der-parser",
+ "lazy_static",
+ "nom 7.1.3",
+ "oid-registry",
+ "ring",
+ "rusticata-macros",
+ "thiserror 2.0.21",
+ "time",
+]
+
+[[package]]
 name = "yaml-rust2"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9915,10 +10015,11 @@ dependencies = [
 
 [[package]]
 name = "yasna"
-version = "0.5.2"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+checksum = "b5f6765e852b9b4dc8e2a76843e4d64d1cea8e79bcde0b6901aea8e7c7f08282"
 dependencies = [
+ "bit-vec 0.9.1",
  "time",
 ]
 

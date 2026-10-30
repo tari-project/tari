@@ -30,7 +30,10 @@ pub enum GrpcAuthentication {
     None,
     Basic {
         username: String,
-        #[serde(deserialize_with = "deserialize_safe_password")]
+        #[serde(
+            serialize_with = "serialize_redacted_password",
+            deserialize_with = "deserialize_safe_password"
+        )]
         password: SafePassword,
     },
 }
@@ -44,8 +47,48 @@ impl GrpcAuthentication {
     }
 }
 
+const REDACTED_PASSWORD_PLACEHOLDER: &str = "<redacted>";
+
+fn serialize_redacted_password<S>(_password: &SafePassword, serializer: S) -> Result<S::Ok, S::Error>
+where S: serde::Serializer {
+    serializer.serialize_str(REDACTED_PASSWORD_PLACEHOLDER)
+}
+
 fn deserialize_safe_password<'de, D>(deserializer: D) -> Result<SafePassword, D::Error>
 where D: serde::Deserializer<'de> {
     let password: String = Deserialize::deserialize(deserializer)?;
+    if password == REDACTED_PASSWORD_PLACEHOLDER {
+        return Err(serde::de::Error::custom(
+            "password cannot be the '<redacted>' placeholder",
+        ));
+    }
     Ok(SafePassword::from(password))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serializing_grpc_authentication_redacts_password_and_rejects_placeholder_round_trip() {
+        let secret = "super_secret_grpc_password_123";
+        let auth = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from(secret),
+        };
+
+        let json_out = serde_json::to_string(&auth).unwrap();
+        assert!(!json_out.contains(secret));
+        assert!(json_out.contains(REDACTED_PASSWORD_PLACEHOLDER));
+
+        // Deserializing the redacted output back into GrpcAuthentication must fail rather than
+        // silently authenticating against the literal "<redacted>" placeholder.
+        assert!(serde_json::from_str::<GrpcAuthentication>(&json_out).is_err());
+
+        let valid: GrpcAuthentication =
+            serde_json::from_str(r#"{"username":"admin","password":"real_password"}"#).unwrap();
+        let (user, pass) = valid.username_password().unwrap();
+        assert_eq!(user, "admin");
+        assert_eq!(pass.reveal(), b"real_password");
+    }
 }

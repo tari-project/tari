@@ -1207,6 +1207,45 @@ impl LMDBDatabase {
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;
                 },
+                PruneOutputCopy {
+                    header_hash,
+                    output_hash,
+                    commitment,
+                    output_type,
+                } => {
+                    self.prune_output_copy(&write_txn, header_hash, output_hash, commitment, *output_type)?;
+                },
+                DeleteUtxoCommitmentIndexEntry { commitment } => {
+                    lmdb_delete(
+                        &write_txn,
+                        &self.utxo_commitment_index,
+                        commitment.as_bytes(),
+                        "utxo_commitment_index",
+                    )?;
+                },
+                ClearHorizonSyncOutputState => {
+                    // The tables `insert_output` writes, and the output tree. Emptied with `mdb_drop` rather than row
+                    // by row; the databases themselves are kept.
+                    let mut access = write_txn.access();
+                    for db in [
+                        &self.utxos_db,
+                        &self.utxo_commitment_index,
+                        &self.payref_to_output_index,
+                        &self.txos_hash_to_index_db,
+                        &self.jmt_node_data,
+                        &self.jmt_value_data,
+                    ] {
+                        access.clear_db(db)?;
+                    }
+                    drop(access);
+                    lmdb_delete(
+                        &write_txn,
+                        &self.metadata_db,
+                        &MetadataKey::JMTVersion.as_u32(),
+                        "metadata_db",
+                    )
+                    .optional()?;
+                },
                 SetHorizonSyncOutputCheckpoint { checkpoint } => match checkpoint {
                     Some(cp) => {
                         self.set_metadata(
@@ -2778,6 +2817,39 @@ impl LMDBDatabase {
         Ok(())
     }
 
+    /// Prunes the row of an output stored under `header_hash` and the index entries for that row. The commitment
+    /// index is only cleared if it points at this output; copies under other blocks are left alone.
+    fn prune_output_copy(
+        &self,
+        write_txn: &WriteTransaction<'_>,
+        header_hash: &HashOutput,
+        output_hash: &HashOutput,
+        commitment: &CompressedCommitment,
+        output_type: OutputType,
+    ) -> Result<(), ChainStorageError> {
+        if !matches!(output_type, OutputType::Burn) &&
+            lmdb_get::<_, HashOutput>(write_txn, &self.utxo_commitment_index, commitment.as_bytes())?.as_ref() ==
+                Some(output_hash)
+        {
+            lmdb_delete(
+                write_txn,
+                &self.utxo_commitment_index,
+                commitment.as_bytes(),
+                "utxo_commitment_index",
+            )?;
+        }
+        let key = OutputKey::new(header_hash, output_hash)?;
+        lmdb_delete(write_txn, &self.utxos_db, &key.convert_to_comp_key(), LMDB_DB_UTXOS)?;
+        self.delete_payref_index_entry(write_txn, header_hash, output_hash)?;
+        self.remove_index_entry_for_header(
+            write_txn,
+            &self.txos_hash_to_index_db,
+            output_hash.as_slice(),
+            header_hash,
+            "txos_hash_to_index_db",
+        )
+    }
+
     fn apply_horizon_state_tree_updates(
         &self,
         write_txn: &WriteTransaction<'_>,
@@ -4224,14 +4296,26 @@ impl BlockchainBackend for LMDBDatabase {
 
         let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
         let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
-        let root = output_smt
-            .get_root_hash(val)
-            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
-        if root.0.as_slice() != expected_root.as_slice() {
+        let root = match output_smt
+            .get_root_hash_option(val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+        {
+            Some(root) => root.0,
+            // The tree writer deletes null nodes, so an empty tree has no root node at any version. jmt keeps the
+            // empty-tree hash private, so it is computed from an empty update, which is never written.
+            None => {
+                output_smt
+                    .put_value_set(Vec::<(KeyHash, Option<Vec<u8>>)>::new(), 0)
+                    .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+                    .0
+                    .0
+            },
+        };
+        if root.as_slice() != expected_root.as_slice() {
             return Err(ChainStorageError::InvalidOperation(format!(
                 "Horizon sync output root mismatch at version {val}. Expected {}, got {}",
                 expected_root.to_hex(),
-                root.0.to_hex()
+                root.to_hex()
             )));
         }
         Ok(())

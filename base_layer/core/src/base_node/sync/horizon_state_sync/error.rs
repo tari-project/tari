@@ -46,6 +46,20 @@ use crate::{MrHashError, chain_storage::ChainStorageError, validation::Validatio
 pub enum HorizonSyncError {
     #[error("Peer sent an invalid response: {0}")]
     IncorrectResponse(String),
+    #[error("Peer sent a spend of an output we do not have: {0}")]
+    UnknownSpentOutput(String),
+    #[error("Synced outputs do not match the output root of the sync target: {0}")]
+    FinalOutputRootMismatch(String),
+    #[error("Peer kept sync waiting for most of its budget, then failed it: {0}")]
+    SlowPeerFailure(String),
+    #[error("Output stream ended before the tranche terminator: {0}")]
+    IncompleteOutputStream(String),
+    #[error("Kernel stream ended before all kernels were sent: {0}")]
+    IncompleteKernelStream(String),
+    #[error("Peer sent an output whose commitment is already stored unspent: {0}")]
+    OutputAlreadyStored(String),
+    #[error("Local output state does not match the genesis block after clean up: {0}")]
+    LocalOutputStateInconsistent(String),
     #[error("Chain storage error: {0}")]
     ChainStorageError(#[from] ChainStorageError),
     #[error("Final state validation failed: {0}")]
@@ -90,6 +104,12 @@ pub enum HorizonSyncError {
         peer: NodeId,
         latency: Duration,
         max_latency: Duration,
+    },
+    #[error("Peer {peer} kept sync waiting for {waited:.2?}, over its budget of {budget:.2?}")]
+    PeerWaitBudgetExceeded {
+        peer: NodeId,
+        waited: Duration,
+        budget: Duration,
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
@@ -149,11 +169,22 @@ impl HorizonSyncError {
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::SyncPeerUnavailable(_) |
+            HorizonSyncError::LocalOutputStateInconsistent(_) |
+            // An honest pruned peer that pruned a spend after streaming the spent output sends a re-mined
+            // commitment again
+            HorizonSyncError::OutputAlreadyStored(_) |
+            // An honest pruned peer cannot serve the target state if it has pruned past the target
+            HorizonSyncError::FinalOutputRootMismatch(_) |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
             // short ban
             err @ HorizonSyncError::MaxLatencyExceeded { .. } |
+            err @ HorizonSyncError::PeerWaitBudgetExceeded { .. } |
+            // A dropped connection also ends the stream without an error
+            err @ HorizonSyncError::IncompleteOutputStream(_) |
+            err @ HorizonSyncError::IncompleteKernelStream(_) |
+            err @ HorizonSyncError::SlowPeerFailure(_) |
             err @ HorizonSyncError::RpcError { .. } |
             err @ HorizonSyncError::RpcStatus { .. } => Some(BanReason {
                 reason: format!("{err}"),
@@ -162,6 +193,7 @@ impl HorizonSyncError {
 
             // long ban
             err @ HorizonSyncError::IncorrectResponse(_) |
+            err @ HorizonSyncError::UnknownSpentOutput(_) |
             err @ HorizonSyncError::FinalStateValidationFailed(_) |
             err @ HorizonSyncError::RangeProofError(_) |
             err @ HorizonSyncError::InvalidMrRoot { .. } |
@@ -180,6 +212,46 @@ impl HorizonSyncError {
             HorizonSyncError::ValidationError(err) => ValidationError::get_ban_reason(err),
         }
     }
+
+    /// Whether peer data caused this failure but it is not blamed, because an honest peer can cause it too
+    pub fn is_unblamed_peer_failure(&self) -> bool {
+        match self {
+            HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::OutputAlreadyStored(_) |
+            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
+            HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
+                e.downcast_ref::<ChainStorageError>(),
+                Some(ChainStorageError::KeyExists { .. })
+            ),
+            _ => false,
+        }
+    }
+
+    /// Whether this is a fault in the local database that no peer data causes, so trying other peers cannot help
+    pub fn is_local_failure(&self) -> bool {
+        matches!(self, HorizonSyncError::LocalOutputStateInconsistent(_))
+    }
+
+    /// Whether an honest peer can cause this error when output sync resumed from a checkpoint, because the outputs
+    /// an earlier attempt committed may not match the peer's view of the chain. A duplicate key comes from an output
+    /// that state already holds, in the output tables or in the output tree.
+    pub fn may_be_caused_by_resumed_state(&self) -> bool {
+        match self {
+            HorizonSyncError::UnknownSpentOutput(_) |
+            HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
+            HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::OutputAlreadyStored(_) |
+            // A resumed attempt only earns the budget of the tranches it streams
+            HorizonSyncError::PeerWaitBudgetExceeded { .. } |
+            HorizonSyncError::FinalStateValidationFailed(_) |
+            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
+            HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
+                e.downcast_ref::<ChainStorageError>(),
+                Some(ChainStorageError::KeyExists { .. })
+            ),
+            _ => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -191,6 +263,24 @@ mod connect_error_test {
     };
 
     use super::*;
+
+    /// Only faults in the local database end a sync round without trying other peers; storage errors that peer data
+    /// can cause do not
+    #[test]
+    fn only_local_faults_end_the_round() {
+        assert!(HorizonSyncError::LocalOutputStateInconsistent("reset failed".to_string()).is_local_failure());
+        for err in [
+            HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists {
+                table_name: "utxo_commitment_index",
+                key: String::new(),
+            }),
+            HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput),
+            HorizonSyncError::FinalOutputRootMismatch(String::new()),
+            HorizonSyncError::OutputAlreadyStored(String::new()),
+        ] {
+            assert!(!err.is_local_failure(), "{err}");
+        }
+    }
 
     /// Our own connection refusing to open the RPC substream, because too many are open on it, is not the peer's fault
     #[test]
