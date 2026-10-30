@@ -23,10 +23,78 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::BlockHash;
-use tari_transaction_components::aggregated_body::AggregateBody;
+use tari_transaction_components::{aggregated_body::AggregateBody, consensus::ConsensusConstants};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{conversions::transaction_output::grpc_output_with_payref, tari_rpc as grpc};
+
+/// Checks that the input, output and kernel counts of a gRPC `AggregateBody` can fit within the network's
+/// `max_block_transaction_weight` under `transaction_weight_params()`, allowing up to `max_coinbase_outputs`
+/// coinbase outputs and `max_coinbase_kernels` coinbase kernels, without iterating any of the element vectors.
+pub fn check_body_size(
+    body: &grpc::AggregateBody,
+    consensus_constants: &ConsensusConstants,
+    max_coinbase_outputs: u64,
+    max_coinbase_kernels: u64,
+) -> Result<(), String> {
+    check_body_element_counts(
+        body.inputs.len(),
+        body.outputs.len(),
+        body.kernels.len(),
+        consensus_constants,
+        max_coinbase_outputs,
+        max_coinbase_kernels,
+    )
+}
+
+/// Checks that `(num_inputs, num_outputs, num_kernels)` can fit within `consensus_constants`'s
+/// `max_block_transaction_weight` under `transaction_weight_params()`, allowing up to `max_coinbase_outputs`
+/// coinbase outputs and `max_coinbase_kernels` coinbase kernels.
+pub fn check_body_element_counts(
+    num_inputs: usize,
+    num_outputs: usize,
+    num_kernels: usize,
+    consensus_constants: &ConsensusConstants,
+    max_coinbase_outputs: u64,
+    max_coinbase_kernels: u64,
+) -> Result<(), String> {
+    let max_weight = consensus_constants.max_block_transaction_weight();
+    let params = consensus_constants.transaction_weight_params().params();
+
+    let num_inputs_u64 = u64::try_from(num_inputs).map_err(|_| "Body input count overflowed u64".to_string())?;
+    let num_outputs_u64 = u64::try_from(num_outputs).map_err(|_| "Body output count overflowed u64".to_string())?;
+    let num_kernels_u64 = u64::try_from(num_kernels).map_err(|_| "Body kernel count overflowed u64".to_string())?;
+
+    let non_coinbase_outputs = num_outputs_u64.saturating_sub(max_coinbase_outputs);
+    let non_coinbase_kernels = num_kernels_u64.saturating_sub(max_coinbase_kernels);
+
+    let input_weight = params
+        .input_weight
+        .checked_mul(num_inputs_u64)
+        .ok_or_else(|| "Body input weight overflowed".to_string())?;
+    let output_weight = params
+        .output_weight
+        .checked_mul(non_coinbase_outputs)
+        .ok_or_else(|| "Body output weight overflowed".to_string())?;
+    let kernel_weight = params
+        .kernel_weight
+        .checked_mul(non_coinbase_kernels)
+        .ok_or_else(|| "Body kernel weight overflowed".to_string())?;
+
+    let min_weight = input_weight
+        .checked_add(output_weight)
+        .and_then(|w| w.checked_add(kernel_weight))
+        .ok_or_else(|| "Body weight overflowed".to_string())?;
+
+    if min_weight > max_weight {
+        return Err(format!(
+            "AggregateBody element counts ({num_inputs} inputs, {num_outputs} outputs, {num_kernels} kernels) exceed \
+             maximum block transaction weight {max_weight} (minimum weight {min_weight})"
+        ));
+    }
+
+    Ok(())
+}
 
 pub fn grpc_aggregate_body_with_payrefs(
     block: AggregateBody,
@@ -55,5 +123,105 @@ impl TryFrom<grpc::AggregateBody> for AggregateBody {
         let kernels = try_convert_all(body.kernels).map_err(|err: String| format!("kernels {err}"))?;
         let body = AggregateBody::new_unsorted(inputs, outputs, kernels);
         Ok(body)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #![allow(clippy::arithmetic_side_effects)]
+    use super::*;
+
+    fn mainnet_constants() -> ConsensusConstants {
+        ConsensusConstants::mainnet()
+            .pop()
+            .expect("mainnet consensus constants are non-empty")
+    }
+
+    #[test]
+    fn check_body_size_enforces_mainnet_weight_bounds_without_iterating() {
+        let constants = mainnet_constants();
+        let max_weight = constants.max_block_transaction_weight();
+        let max_coinbases = constants.max_block_coinbase_count();
+        let params = constants.transaction_weight_params().params();
+
+        let max_inputs = usize::try_from(max_weight / params.input_weight).unwrap();
+        let max_block_outputs = usize::try_from(max_weight / params.output_weight + max_coinbases).unwrap();
+        let max_block_kernels = usize::try_from(max_weight / params.kernel_weight + 1).unwrap();
+        let max_tx_outputs = usize::try_from(max_weight / params.output_weight).unwrap();
+        let max_tx_kernels = usize::try_from(max_weight / params.kernel_weight).unwrap();
+
+        let at_input_limit = grpc::AggregateBody {
+            inputs: vec![grpc::TransactionInput::default(); max_inputs],
+            outputs: vec![],
+            kernels: vec![],
+        };
+        assert!(check_body_size(&at_input_limit, &constants, max_coinbases, 1).is_ok());
+        assert!(check_body_size(&at_input_limit, &constants, 0, 0).is_ok());
+
+        let over_input_limit = grpc::AggregateBody {
+            inputs: vec![grpc::TransactionInput::default(); max_inputs + 1],
+            outputs: vec![],
+            kernels: vec![],
+        };
+        assert!(check_body_size(&over_input_limit, &constants, max_coinbases, 1).is_err());
+        assert!(check_body_size(&over_input_limit, &constants, 0, 0).is_err());
+
+        let at_block_output_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![grpc::TransactionOutput::default(); max_block_outputs],
+            kernels: vec![],
+        };
+        assert!(check_body_size(&at_block_output_limit, &constants, max_coinbases, 1).is_ok());
+
+        let over_block_output_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![grpc::TransactionOutput::default(); max_block_outputs + 1],
+            kernels: vec![],
+        };
+        assert!(check_body_size(&over_block_output_limit, &constants, max_coinbases, 1).is_err());
+
+        // Blocks get a single coinbase kernel allowance: `max_weight / kernel_weight + 1` passes, `+ 2` is rejected.
+        let at_block_kernel_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![],
+            kernels: vec![grpc::TransactionKernel::default(); max_block_kernels],
+        };
+        assert!(check_body_size(&at_block_kernel_limit, &constants, max_coinbases, 1).is_ok());
+
+        let over_block_kernel_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![],
+            kernels: vec![grpc::TransactionKernel::default(); max_block_kernels + 1],
+        };
+        assert!(check_body_size(&over_block_kernel_limit, &constants, max_coinbases, 1).is_err());
+
+        // Transactions get no coinbase allowance (`0` outputs, `0` kernels).
+        let at_tx_output_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![grpc::TransactionOutput::default(); max_tx_outputs],
+            kernels: vec![],
+        };
+        assert!(check_body_size(&at_tx_output_limit, &constants, 0, 0).is_ok());
+
+        let over_tx_output_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![grpc::TransactionOutput::default(); max_tx_outputs + 1],
+            kernels: vec![],
+        };
+        assert!(check_body_size(&over_tx_output_limit, &constants, 0, 0).is_err());
+
+        let at_tx_kernel_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![],
+            kernels: vec![grpc::TransactionKernel::default(); max_tx_kernels],
+        };
+        assert!(check_body_size(&at_tx_kernel_limit, &constants, 0, 0).is_ok());
+
+        let over_tx_kernel_limit = grpc::AggregateBody {
+            inputs: vec![],
+            outputs: vec![],
+            kernels: vec![grpc::TransactionKernel::default(); max_tx_kernels + 1],
+        };
+        assert!(check_body_size(&over_tx_kernel_limit, &constants, 0, 0).is_err());
     }
 }

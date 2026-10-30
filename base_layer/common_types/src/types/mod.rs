@@ -80,7 +80,8 @@ pub const RANGE_PROOF_AGGREGATION_FACTOR: usize = 1;
 /// The serialized size of a BulletProofPlus range proof for `RANGE_PROOF_BIT_LENGTH` bits, aggregation factor
 /// `RANGE_PROOF_AGGREGATION_FACTOR` and default Pedersen commitments:
 /// 1 + 32 * (1 + 5 + 2 * log2(64 * 1)). No valid proof is longer, so decoders reject anything that is.
-pub const MAX_RANGE_PROOF_BYTES: usize = 577;
+pub const MAX_RANGE_PROOF_BYTES: usize =
+    1 + 32 * (1 + 5 + 2 * (RANGE_PROOF_BIT_LENGTH * RANGE_PROOF_AGGREGATION_FACTOR).ilog2() as usize);
 
 /// Specify the range proof type
 pub type RangeProofService = BulletproofsPlusService;

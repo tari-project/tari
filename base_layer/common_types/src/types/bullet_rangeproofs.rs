@@ -59,6 +59,20 @@ impl BulletRangeProof {
     pub fn as_vec(&self) -> &Vec<u8> {
         &self.0
     }
+
+    /// Checks that this range proof has the exact canonical serialized byte length (`MAX_RANGE_PROOF_BYTES`) for a
+    /// single-output Bulletproofs+ proof under the network's range proof parameters.
+    pub fn check_exact_len(&self) -> Result<(), ByteArrayError> {
+        check_exact_range_proof_len(self.0.len()).map_err(|reason| ByteArrayError::ConversionError { reason })
+    }
+
+    /// Constructs a [`BulletRangeProof`] only when `bytes` has the exact canonical length (`MAX_RANGE_PROOF_BYTES`).
+    /// Used at new-data submission boundaries while keeping the shared storage/sync decoders at `<=
+    /// MAX_RANGE_PROOF_BYTES`.
+    pub fn from_exact_bytes(bytes: &[u8]) -> Result<Self, ByteArrayError> {
+        check_exact_range_proof_len(bytes.len()).map_err(|reason| ByteArrayError::ConversionError { reason })?;
+        Ok(BulletRangeProof(bytes.to_vec()))
+    }
 }
 
 impl ByteArray for BulletRangeProof {
@@ -107,6 +121,15 @@ fn check_range_proof_len(len: usize) -> Result<(), String> {
     if len > MAX_RANGE_PROOF_BYTES {
         return Err(format!(
             "Range proof of {len} bytes exceeds the maximum of {MAX_RANGE_PROOF_BYTES} bytes"
+        ));
+    }
+    Ok(())
+}
+
+fn check_exact_range_proof_len(len: usize) -> Result<(), String> {
+    if len != MAX_RANGE_PROOF_BYTES {
+        return Err(format!(
+            "Range proof of {len} bytes does not match the expected size of {MAX_RANGE_PROOF_BYTES} bytes"
         ));
     }
     Ok(())
@@ -169,30 +192,56 @@ impl_validated_decode!(BulletRangeProof);
 
 #[cfg(test)]
 mod test {
+    #![allow(clippy::arithmetic_side_effects)]
     use super::*;
+    use crate::types::{RANGE_PROOF_AGGREGATION_FACTOR, RANGE_PROOF_BIT_LENGTH};
 
     fn proof_bytes(len: usize) -> Vec<u8> {
         vec![0xab; len]
     }
 
     #[test]
-    fn range_proof_decoders_reject_more_than_the_cap() {
-        for (len, accept) in [(MAX_RANGE_PROOF_BYTES, true), (MAX_RANGE_PROOF_BYTES + 1, false)] {
+    fn range_proof_decoders_reject_more_than_the_cap_and_from_exact_bytes_requires_577() {
+        let expected_size =
+            1 + 32 * (1 + 5 + 2 * (RANGE_PROOF_BIT_LENGTH * RANGE_PROOF_AGGREGATION_FACTOR).ilog2() as usize);
+        assert_eq!(expected_size, 577);
+        assert_eq!(MAX_RANGE_PROOF_BYTES, expected_size);
+
+        for (len, accept_shared, accept_exact) in [
+            (0, true, false),
+            (expected_size - 1, true, false),
+            (expected_size, true, true),
+            (expected_size + 1, false, false),
+        ] {
             let bytes = proof_bytes(len);
             let hex = to_hex(&bytes);
-            assert_eq!(BulletRangeProof::from_canonical_bytes(&bytes).is_ok(), accept, "{len}");
-            assert_eq!(BulletRangeProof::from_vec(&bytes).is_ok(), accept, "{len}");
-            assert_eq!(BulletRangeProof::from_hex(&hex).is_ok(), accept, "{len}");
+            assert_eq!(
+                BulletRangeProof::from_canonical_bytes(&bytes).is_ok(),
+                accept_shared,
+                "{len}"
+            );
+            assert_eq!(BulletRangeProof::from_vec(&bytes).is_ok(), accept_shared, "{len}");
+            assert_eq!(BulletRangeProof::from_hex(&hex).is_ok(), accept_shared, "{len}");
+            assert_eq!(
+                BulletRangeProof::from_exact_bytes(&bytes).is_ok(),
+                accept_exact,
+                "{len}"
+            );
 
             let json = format!("\"{hex}\"");
-            assert_eq!(serde_json::from_str::<BulletRangeProof>(&json).is_ok(), accept, "{len}");
+            assert_eq!(
+                serde_json::from_str::<BulletRangeProof>(&json).is_ok(),
+                accept_shared,
+                "{len}"
+            );
 
-            // Encode with the unchecked constructor, so the oversized proof reaches the decoders
+            // Encode with the unchecked constructor, so the proof reaches the decoders
             let proof = BulletRangeProof(bytes);
+            assert_eq!(proof.check_exact_len().is_ok(), accept_exact, "{len}");
             let borsh_bytes = borsh::to_vec(&proof).unwrap();
             let decoded = borsh::from_slice::<BulletRangeProof>(&borsh_bytes);
-            assert_eq!(decoded.is_ok(), accept, "{len}");
-            if accept {
+            assert_eq!(decoded.is_ok(), accept_shared, "{len}");
+            if accept_shared {
                 assert_eq!(decoded.unwrap(), proof);
             }
         }
