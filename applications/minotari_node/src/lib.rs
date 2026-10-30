@@ -49,7 +49,7 @@ pub use grpc_method::GrpcMethod;
 pub use http::HttpCacheConfig;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ServerAuthenticationInterceptor,
+    authentication::{ServerAuthenticationInterceptor, resolve_server_grpc_credentials},
     tari_rpc::{
         self,
         base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
@@ -63,7 +63,7 @@ use tari_common::{
     configuration::bootstrap::{ApplicationType, grpc_default_port},
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::GrpcCredentials;
 use tari_comms::{NodeIdentity, multiaddr::Multiaddr, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_core::base_node::{StateMachineHandle, state_machine_service::states::StatusInfo};
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -353,7 +353,7 @@ pub async fn run_base_node_with_cli(
 async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     grpc: T,
     grpc_address: Multiaddr,
-    auth_config: GrpcAuthentication,
+    auth_config: GrpcCredentials,
     tls_identity: Option<Identity>,
     health_state_machine: Option<StateMachineHandle>,
     interrupt_signal: ShutdownSignal,
@@ -361,7 +361,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
+    let auth = ServerAuthenticationInterceptor::from_credentials(auth_config)
         .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
 
     let sized_server = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc)
@@ -463,13 +463,17 @@ fn is_grpc_health_serving(status: &StatusInfo) -> bool {
 /// Prepares the parameters required to call the `run_grpc` function
 async fn prepare_grpc_params(
     config: &ApplicationConfig,
-) -> Result<(Multiaddr, GrpcAuthentication, Option<Identity>), ExitError> {
+) -> Result<(Multiaddr, GrpcCredentials, Option<Identity>), ExitError> {
     let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
         let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
         format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap()
     });
 
-    let auth = config.base_node.grpc_authentication.clone();
+    let auth = resolve_server_grpc_credentials(
+        "base_node",
+        &config.base_node.grpc_credentials,
+        &config.base_node.grpc_authentication,
+    );
 
     let mut tls_identity = None;
     if config.base_node.grpc_tls_enabled {

@@ -8,8 +8,13 @@ grpc_readiness_enabled = false
 # The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18142")
 #grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
-# gRPC authentication method (default = "none")
-#grpc_authentication = { username = "admin", password = "xxxx" }
+# Per-client plaintext gRPC Basic authentication credentials (default = []).
+# Restrict any config file containing plaintext passwords to owner-only permissions (`chmod 0600 config.toml`), or
+# inject credentials via the `TARI_BASE_NODE__GRPC_CREDENTIALS` environment variable.
+#grpc_credentials = [
+#    { username = "miner", password = "xxxx" },
+#    { username = "monitor", password = "yyyy" },
+#]
 
 # Use gRPC over TLS (default = false)
 #grpc_tls_enabled = false

@@ -123,6 +123,8 @@ fn constant_time_verify_padded(
 /// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt) by allowing authentication of provided credentials
 #[derive(Clone)]
 pub struct BasicAuthCredentials {
+    /// The canonical username string
+    user_name: String,
     /// The username bytes length
     pub user_name_bytes_length: usize,
     /// The username in bytes representation for constant time comparison
@@ -137,9 +139,14 @@ pub struct BasicAuthCredentials {
     password_random_bytes: Vec<u8>,
 }
 
+/// Alias for [`BasicAuthCredentials`], which stores constant-time comparison material prepared from plaintext
+/// credentials at startup without per-request KDF work.
+pub type PlaintextBasicAuthCredentials = BasicAuthCredentials;
+
 impl fmt::Debug for BasicAuthCredentials {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BasicAuthCredentials")
+            .field("user_name", &self.user_name)
             .field("user_name_bytes_length", &self.user_name_bytes_length)
             .field("user_name_bytes", &self.user_name_bytes)
             .field("random_bytes", &self.random_bytes)
@@ -168,15 +175,33 @@ impl BasicAuthCredentials {
         // comparison for the same credential across instances forces a different bitwise comparison.
         let (user_name_bytes, random_bytes) = prepare_padded_bytes::<MAX_USERNAME_LEN>(user_name.as_bytes());
         let (password_bytes, password_random_bytes) = prepare_padded_vec(password_slice, MIN_PASSWORD_PAD_LEN);
+        let user_name_bytes_length = user_name.len();
 
         Ok(Self {
-            user_name_bytes_length: user_name.len(),
+            user_name,
+            user_name_bytes_length,
             user_name_bytes,
             random_bytes,
             password_bytes_length: password_slice.len(),
             password_bytes,
             password_random_bytes,
         })
+    }
+
+    /// Builds constant-time comparison material from a plaintext username and password.
+    pub fn from_plaintext(user_name: String, password: &SafePassword) -> Result<Self, BasicAuthError> {
+        Self::new(user_name, password.clone())
+    }
+
+    /// Returns the username for this credential entry.
+    pub fn username(&self) -> &str {
+        &self.user_name
+    }
+
+    /// Evaluates whether `username` and `password` match this credential in constant time.
+    pub fn constant_time_matches(&self, username: &str, password: &SafePassword) -> Choice {
+        self.constant_time_verify_username(username)
+            .bitand(self.constant_time_verify_password(password))
     }
 
     /// Parses the contents of an HTTP Authorization (Basic) header into a username and password

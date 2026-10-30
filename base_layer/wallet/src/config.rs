@@ -37,7 +37,7 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredentials};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
@@ -105,7 +105,11 @@ pub struct WalletConfig {
     pub grpc_enabled: bool,
     /// GRPC bind address of the wallet
     pub grpc_address: Option<Multiaddr>,
-    /// GRPC authentication mode
+    /// GRPC server credentials (list of `{ username, password }` entries)
+    #[serde(default)]
+    pub grpc_credentials: GrpcCredentials,
+    /// DEPRECATED: GRPC authentication mode (use `grpc_credentials` instead)
+    #[serde(default)]
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
@@ -174,6 +178,7 @@ impl Default for WalletConfig {
             notify_file: None,
             grpc_enabled: false,
             grpc_address: None,
+            grpc_credentials: GrpcCredentials::default(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             base_node_service_peers: StringList::default(),

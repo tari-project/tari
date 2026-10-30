@@ -212,36 +212,53 @@ const client = new walletProto('localhost:18183', grpc.credentials.createInsecur
 This would need to be placed before any method call.
 
 ### Authentication with gRPC
-The `GrpcAuthentication` object supports two modes:
-- **None**: No authentication is required.
-- **Basic**: Username and password are used for authentication. Note that these are distinct from your wallet's credentials and are configured separately.
+Server-side gRPC authentication (`minotari_node` and `minotari_console_wallet`) is configured via `grpc_credentials`, a list of per-client plaintext `{ username, password }` entries:
+- **Empty list (`[]`, default)**: No authentication is required.
+- **One or more `{ username, password }` entries**: Each client (miner, merge-mining proxy, monitor, or exchange integration) can be issued its own plaintext username and password so credentials can be rotated or revoked per client. Note that these credentials are distinct from your wallet encryption password and are configured separately.
+- The legacy single-credential `grpc_authentication` server key is deprecated; use `grpc_credentials` on servers, while client-side configs (`base_node_grpc_authentication` on `minotari_miner` and `minotari_merge_mining_proxy`) continue to send a single `{ username, password }` pair.
 
-Here are step-by-step instructions for enabling and configuring basic gRPC authentication in the Tari wallet using the `config.toml` file:
+Here are step-by-step instructions for enabling and configuring basic gRPC authentication in the Tari node or wallet using `config.toml` or environment variables:
 
 #### 1. **Locate the Configuration File**
-   - Navigate to the `config.toml` file for your Tari wallet.
-   - Example path: `common/config/presets/d_console_wallet.toml`.
+   - Navigate to the `config.toml` file for your Tari node or wallet.
+   - Example preset paths: `common/config/presets/c_base_node_b_mining_allow_methods.toml` and `common/config/presets/d_console_wallet.toml`.
 
-#### 2. **Enable gRPC Authentication**
+#### 2. **Enable gRPC Authentication (`grpc_credentials`)**
    - Open the configuration file in a text editor.
-   - Find the following commented-out section:
+   - Find the commented-out `grpc_credentials` section:
      ```toml
-     # gRPC authentication method (default = "none")
-     #grpc_authentication = { username = "admin", password = "xxxx" }
+     # Per-client plaintext gRPC Basic authentication credentials (default = []).
+     # Restrict any config file containing plaintext passwords to owner-only permissions (`chmod 0600 config.toml`), or
+     # inject credentials via the `TARI_WALLET__GRPC_CREDENTIALS` environment variable.
+     #grpc_credentials = [
+     #    { username = "admin", password = "xxxx" },
+     #]
      ```
 
-#### 3. **Uncomment and Configure**
-   - Uncomment the `grpc_authentication` line by removing the `#` at the beginning.
-   - Set a clear-text username and password. For example:
+#### 3. **Uncomment and Configure Per-Client Plaintext Credentials**
+   - Uncomment `grpc_credentials` and configure one entry per client using plaintext usernames and passwords:
      ```toml
-     grpc_authentication = { username = "admin", password = "mysecurepassword" }
+     grpc_credentials = [
+         { username = "miner", password = "mysecureminerpassword" },
+         { username = "monitor", password = "mysecuremonitorpassword" },
+     ]
+     ```
+   - Because `config.toml` holds plaintext passwords, restrict its permissions to owner-only (`0600`):
+     ```bash
+     chmod 0600 config.toml
+     ```
+   - Alternatively, for deployments that inject secrets via environment variables instead of storing them on disk:
+     ```bash
+     export TARI_BASE_NODE__GRPC_CREDENTIALS='[{"username":"miner","password":"mysecureminerpassword"},{"username":"monitor","password":"mysecuremonitorpassword"}]'
+     export TARI_WALLET__GRPC_CREDENTIALS='[{"username":"admin","password":"mysecurepassword"}]'
+     export TARI_MINER__BASE_NODE_GRPC_AUTHENTICATION__PASSWORD='mysecureminerpassword'
      ```
 
 #### 4. **Save the File**
-   - After making the changes, save the `config.toml` file.
+   - After making the changes, save the `config.toml` file and verify its mode is `0600`.
 
-#### 5. **Restart the Wallet**
-   - Restart your Tari wallet application to apply the updated configuration.
+#### 5. **Restart the Node or Wallet**
+   - Restart your Tari node or wallet application to apply the updated configuration.
 
 #### 6. **Client-Side Configuration**
    - Ensure your gRPC client connects using basic authentication. For example, in JavaScript:
@@ -249,8 +266,8 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
      ```javascript
      const grpc = require('@grpc/grpc-js');
      const metadata = new grpc.Metadata();
-     metadata.add('username', 'admin');
-     metadata.add('password', 'mysecurepassword');
+     const token = Buffer.from('admin:mysecurepassword', 'utf8').toString('base64');
+     metadata.add('authorization', `Basic ${token}`);
 
      const callCredentials = grpc.credentials.createFromMetadataGenerator((_, callback) => {
          callback(null, metadata);
@@ -267,7 +284,7 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
 #### 7. **Test the Connection**
    - Verify that the gRPC client can successfully connect using the provided username and password.
 
-   - Ensure the username and password are secure and not shared publicly.
+   - Ensure the username and password are secure, not shared across unrelated clients, and any config file storing them has mode `0600`.
    - If you’re using SSL (`grpc.credentials.createSsl()`), combine it with the credentials for a secure connection.
    - If the gRPC server is running locally, you may use `grpc.credentials.createInsecure()` for testing purposes (not recommended for production).
 
@@ -317,8 +334,6 @@ console.log('Client created:', client);
 
 ## gRPC Base Node Methods
 These methods are dependent on access to a base node and use of the [`base_node.proto`](https://github.com/tari-project/tari/blob/development/applications/minotari_app_grpc/proto/base_node.proto) file.
-
-Exposed base node gRPC methods are controlled by `base_node.grpc_server_allow_methods` in `config.toml` (only `get_version` is enabled by default). Note that setting `mining_enabled = true` adds the mining method set (`get_version`, `get_new_block_template`, `get_new_block_with_coinbases`, `get_new_block_template_with_coinbases`, `get_new_block`, `get_new_block_blob`, `get_network_difficulty`, `get_network_state`, `submit_block`, `submit_block_blob`, `get_tip_info`, `identify`, `get_sync_progress`) and setting `second_layer_grpc_enabled = true` adds the second-layer method set (`get_version`, `get_constants`, `get_mempool_transactions`, `get_mempool_stats`, `list_headers`, `get_tip_info`, `get_active_validator_nodes`, `get_validator_node_changes`, `get_shard_key`, `get_header_by_hash`, `get_side_chain_utxos`) on top of `grpc_server_allow_methods`.
 
 ### Get Max Height
 You can call the base node's gRPC method to get the current blockchain height.
