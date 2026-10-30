@@ -921,11 +921,20 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| {
                         CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e))
                     })?;
-                let vm_key = *self
+                // A block whose ancestry we hold is checked against the key of its own chain, which for a fork below
+                // the key block is not the main chain's
+                let vm_key = match self
                     .blockchain_db
-                    .fetch_chain_header(tari_rx_vm_key_height(new_block.header.height))
+                    .fetch_vm_key_for_held_ancestry(new_block.header.clone())
                     .await?
-                    .hash();
+                {
+                    Some(vm_key) => vm_key,
+                    None => *self
+                        .blockchain_db
+                        .fetch_chain_header(tari_rx_vm_key_height(new_block.header.height))
+                        .await?
+                        .hash(),
+                };
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
                 task::spawn_blocking(move || tari_randomx_difficulty(&header, &randomx_factory, &vm_key))

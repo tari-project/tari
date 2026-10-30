@@ -328,6 +328,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
+        fetch_vm_key_for_held_ancestry(header: BlockHeader) -> Option<FixedHash>,
+        "fetch_vm_key_for_held_ancestry"
+    );
+
+    make_async_fn!(
         bad_block_exists(block_hash: BlockHash) -> (bool, String),
         "bad_block_exists"
     );
