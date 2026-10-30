@@ -709,7 +709,7 @@ where B: BlockchainBackend
 
             let difficulty_calculator = DifficultyCalculator::new(rules.clone(), RandomXFactory::new(1));
             // The genesis block will not be at fault - start at height 1 if no data exists.
-            let start_height = initial_status.last_check_height.unwrap_or(1).max(1);
+            let start_height = initial_status.last_check_height.unwrap_or(1);
             let mut last_status = initial_status.clone();
             debug!(
                 target: LOG_TARGET,
@@ -10433,13 +10433,9 @@ mod test {
         assert_eq!(blockchain.db().fetch_last_header().unwrap().height, 7);
         assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
 
-        let status_h7 = verify_blockchain_consistency_for_height(
-            blockchain.db().db.clone(),
-            &blockchain.db().validators,
-            7,
-            true,
-        )
-        .unwrap();
+        let status_h7 =
+            verify_blockchain_consistency_for_height(blockchain.db().db.clone(), &blockchain.db().validators, 7, true)
+                .unwrap();
         assert_eq!(status_h7.has_concluded, Some(true));
         assert_eq!(status_h7.last_check_height, Some(6));
     }
