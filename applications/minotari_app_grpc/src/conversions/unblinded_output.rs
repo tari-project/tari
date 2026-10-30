@@ -25,7 +25,7 @@ use std::{
     fmt,
 };
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
@@ -225,8 +225,7 @@ fn convert_unblinded_output(output: &mut grpc::UnblindedOutput) -> Result<Unblin
         .try_into()
         .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-    let mut buffer = output.covenant.as_bytes();
-    let covenant = BorshDeserialize::deserialize(&mut buffer).map_err(|err| err.to_string())?;
+    let covenant = borsh::from_slice(&output.covenant).map_err(|err| err.to_string())?;
 
     let encrypted_data = EncryptedData::from_bytes(&output.encrypted_data).map_err(|err| err.to_string())?;
 
@@ -268,7 +267,7 @@ mod test {
     use tari_transaction_components::transaction_components::{EncryptedData, covenants::Covenant};
     use tari_utilities::ByteArray;
 
-    use super::convert_unblinded_output;
+    use super::{UnblindedOutput, convert_unblinded_output};
     use crate::tari_rpc as grpc;
 
     fn sample_grpc_unblinded_output() -> grpc::UnblindedOutput {
@@ -425,5 +424,14 @@ mod test {
         assert!(!exit_debug.contains(&format!("{key_bytes:?}")));
         assert_eq!(exit_req.take_sidechain_deployment_key().unwrap(), Some(valid_key));
         assert_eq!(exit_req.sidechain_deployment_key, vec![0u8; 32]);
+    }
+
+    #[test]
+    fn rejects_covenant_with_trailing_byte() {
+        let mut proto = sample_grpc_unblinded_output();
+        assert!(UnblindedOutput::try_from(proto.clone()).is_ok());
+
+        proto.covenant.push(0);
+        assert!(UnblindedOutput::try_from(proto).is_err());
     }
 }

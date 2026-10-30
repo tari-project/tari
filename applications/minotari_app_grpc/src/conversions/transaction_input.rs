@@ -24,9 +24,11 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{CompressedCommitment, CompressedPublicKey};
 use tari_script::{ExecutionStack, TariScript};
-use tari_transaction_components::{
-    helpers::borsh::FromBytes,
-    transaction_components::{EncryptedData, TransactionInput, TransactionInputVersion, covenants::Covenant},
+use tari_transaction_components::transaction_components::{
+    EncryptedData,
+    TransactionInput,
+    TransactionInputVersion,
+    covenants::Covenant,
 };
 use tari_utilities::ByteArray;
 
@@ -89,7 +91,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{err:?}"))?,
                 script_signature,
                 sender_offset_public_key,
-                Covenant::borsh_from_bytes(&mut input.covenant.as_bytes()).map_err(|err| err.to_string())?,
+                borsh::from_slice::<Covenant>(&input.covenant).map_err(|err| err.to_string())?,
                 encrypted_data,
                 metadata_signature,
                 rangeproof_hash,
@@ -174,5 +176,41 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .as_u64(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_covenant_with_trailing_byte() {
+        let sig = grpc::ComAndPubSignature {
+            ephemeral_commitment: vec![0u8; 32],
+            ephemeral_pubkey: vec![0u8; 32],
+            u_a: vec![0u8; 32],
+            u_x: vec![0u8; 32],
+            u_y: vec![0u8; 32],
+        };
+        let mut proto = grpc::TransactionInput {
+            features: Some(grpc::OutputFeatures::default()),
+            commitment: vec![0u8; 32],
+            script: vec![],
+            input_data: vec![],
+            script_signature: Some(sig.clone()),
+            sender_offset_public_key: vec![0u8; 32],
+            covenant: borsh::to_vec(&Covenant::default()).unwrap(),
+            version: 0,
+            encrypted_data: EncryptedData::default().to_byte_vec(),
+            metadata_signature: Some(sig),
+            rangeproof_hash: vec![0u8; 32],
+            minimum_value_promise: 0,
+            ..Default::default()
+        };
+
+        assert!(TransactionInput::try_from(proto.clone()).is_ok());
+
+        proto.covenant.push(0);
+        assert!(TransactionInput::try_from(proto).is_err());
     }
 }
