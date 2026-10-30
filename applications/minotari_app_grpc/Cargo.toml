@@ -30,7 +30,7 @@ borsh = { workspace = true }
 log = { workspace = true }
 prost = "0.13.3"
 rand = { workspace = true }
-rcgen = "0.12.1"
+rcgen = "0.14"
 subtle = "2.5.0"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
