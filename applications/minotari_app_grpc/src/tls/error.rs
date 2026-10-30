@@ -26,6 +26,12 @@ use std::io;
 pub enum GrpcTlsError {
     #[error("Couldn't read file: {0}")]
     FileReadError(String),
+    #[error("CA certificate public key does not match CA private key")]
+    CaKeyMismatch,
+    #[error("Invalid certificate validity period `{0}` days: must be at least 1 day and within valid date range")]
+    InvalidValidityDays(u64),
+    #[error("CA certificate has already expired (not_after: {0}); regenerate the CA with `create-tls-certs --force`")]
+    CaExpired(String),
     #[error("Error generating the certificate: {0}")]
     CertGenerationError(#[from] rcgen::Error),
     #[error("Error opening or writing the file: {0}")]

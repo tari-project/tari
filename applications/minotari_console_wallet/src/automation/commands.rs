@@ -34,7 +34,13 @@ use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use log::*;
-use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
+use minotari_app_grpc::tls::certs::{
+    generate_self_signed_certs_with_sans_and_validity,
+    print_warning,
+    renew_leaf_cert_from_ca_files_with_validity,
+    write_ca_and_server_certs_to_disk,
+    write_cert_and_key_pair_to_disk,
+};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
@@ -2280,24 +2286,61 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "Registering VN tx_id {tx_id}");
                 tx_ids.push(tx_id);
             },
-            CreateTlsCerts => match generate_self_signed_certs() {
-                Ok((cacert, cert, private_key)) => {
+            CreateTlsCerts(args) => {
+                if args.renew_leaf {
+                    let (cert, private_key) = renew_leaf_cert_from_ca_files_with_validity(
+                        &config.config_dir,
+                        "wallet_ca.pem",
+                        "wallet_ca.key",
+                        &args.san,
+                        args.validity_days,
+                    )?;
                     print_warning();
-
-                    write_cert_to_disk(config.config_dir.clone(), "wallet_ca.pem", &cacert)?;
-                    write_cert_to_disk(config.config_dir.clone(), "server.pem", &cert)?;
-                    write_cert_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
-
+                    write_cert_and_key_pair_to_disk(
+                        &config.config_dir,
+                        "server.pem",
+                        &cert,
+                        "server.key",
+                        &private_key,
+                        true,
+                    )?;
                     println!();
-                    println!("Certificates generated successfully.");
-                    println!(
-                        "To continue configuration move the `wallet_ca.pem` to the client service's \
-                         `application/config/` directory. Restart the base node with the configuration \
-                         grpc_tls_enabled=true"
-                    );
+                    println!("Leaf certificate renewed successfully.");
                     println!();
-                },
-                Err(err) => eprintln!("Error generating certificates: {err}"),
+                } else {
+                    match generate_self_signed_certs_with_sans_and_validity(
+                        &args.san,
+                        args.validity_days,
+                        args.ca_validity_days,
+                    ) {
+                        Ok((cacert, ca_key, cert, private_key)) => {
+                            print_warning();
+
+                            write_ca_and_server_certs_to_disk(
+                                &config.config_dir,
+                                "wallet_ca.pem",
+                                &cacert,
+                                "wallet_ca.key",
+                                &ca_key,
+                                "server.pem",
+                                &cert,
+                                "server.key",
+                                &private_key,
+                                args.force,
+                            )?;
+
+                            println!();
+                            println!("Certificates generated successfully.");
+                            println!(
+                                "To continue configuration copy the `wallet_ca.pem` to the client service's \
+                                 `application/config/` directory. Restart the base node with the configuration \
+                                 grpc_tls_enabled=true"
+                            );
+                            println!();
+                        },
+                        Err(err) => eprintln!("Error generating certificates: {err}"),
+                    }
+                }
             },
             Sync(args) => {
                 let mut utxo_scanner = wallet.utxo_scanner_service.clone();
