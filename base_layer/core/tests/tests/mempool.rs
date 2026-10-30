@@ -2486,6 +2486,152 @@ async fn spend_validated_at_the_chain_tip_is_selected_while_the_mempool_lags() {
     assert!(block_3.block().body.kernels().contains(&spend.body.kernels()[0]));
 }
 
+#[tokio::test]
+#[allow(clippy::identity_op)]
+#[allow(clippy::arithmetic_side_effects)]
+async fn template_is_filled_after_selected_spends_fail_their_height_re_check() {
+    let key_manager = KeyManager::new_random().unwrap();
+    let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
+    let h = 2;
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 1 * T, 1 * T]);
+    schema.script = script_passing_only_at(h);
+    let (height_limited_tx, height_limited_outputs) = spend_utxos(schema, &key_manager);
+    let block_1 = mine_block(&db, &rules, &key_manager, &genesis, vec![height_limited_tx]);
+
+    let mempool = create_fully_validating_mempool(&db, &rules);
+    // Three high-fee spends valid only at height `h`, and a low-fee ordinary transaction
+    let mut spends = Vec::new();
+    for output in &height_limited_outputs[..3] {
+        let (spend, _) = spend_utxos(
+            txn_schema!(from: vec![output.clone()], to: vec![500_000 * uT], fee: 100.into(), lock: 0, features: OutputFeatures::default()),
+            &key_manager,
+        );
+        assert_eq!(
+            mempool.insert(Arc::new(spend.clone())).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        spends.push(spend);
+    }
+    let (ordinary_tx, _) = spend_utxos(
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    assert_eq!(
+        mempool.insert(Arc::new(ordinary_tx.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    // The mempool has not processed block 2, so its background re-check has not visited the spends
+    let block_2 = mine_block(&db, &rules, &key_manager, &block_1, vec![]);
+    // Room for one transaction: each selection picks one of the failing spends first
+    let weighting = rules.consensus_constants(h + 1).transaction_weight_params();
+    let spend_weight = spends[0].calculate_weight(weighting).unwrap();
+    assert!(ordinary_tx.calculate_weight(weighting).unwrap() <= spend_weight);
+    let txs = mempool.retrieve(spend_weight, h + 1, *block_2.hash()).await.unwrap();
+
+    // Two selections dropped a spend each; the last left out the third, unchecked, and is filled
+    assert_eq!(txs, vec![Arc::new(ordinary_tx.clone())]);
+    let mut still_stored = 0;
+    for spend in &spends {
+        if pool_status(&mempool, spend).await == TxStorageResponse::UnconfirmedPool {
+            still_stored += 1;
+        }
+    }
+    assert_eq!(still_stored, 1);
+    let block_3 = mine_block(&db, &rules, &key_manager, &block_2, vec![ordinary_tx]);
+    assert_eq!(block_3.height(), h + 1);
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn transactions_valid_from_their_validation_height_are_left_out_of_an_older_template_but_kept() {
+    let key_manager = KeyManager::new_random().unwrap();
+    let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
+    // An output that can only be spent from height 3 on
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T]);
+    schema.script = script!(CheckHeightVerify(3)).unwrap();
+    let (height_locked_tx, height_locked_outputs) = spend_utxos(schema, &key_manager);
+    let block_1 = mine_block(&db, &rules, &key_manager, &genesis, vec![height_locked_tx]);
+    let block_2 = mine_block(&db, &rules, &key_manager, &block_1, vec![]);
+
+    // Validated against the chain tip (height 2), so for height 3
+    let mempool = create_fully_validating_mempool(&db, &rules);
+    let (height_reading_spend, _) = spend_utxos(
+        txn_schema!(from: vec![height_locked_outputs[0].clone()], to: vec![500_000 * uT]),
+        &key_manager,
+    );
+    let (lock_height_tx, _) = spend_utxos(
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![1 * T], fee: 5.into(), lock: 3, features: OutputFeatures::default()),
+        &key_manager,
+    );
+    for tx in [&height_reading_spend, &lock_height_tx] {
+        assert_eq!(
+            mempool.insert(Arc::new(tx.clone())).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    // A template on top of block 1 (height 2) leaves both out, but keeps them in the pool
+    let max_weight = rules.consensus_constants(3).max_block_transaction_weight();
+    let txs = mempool.retrieve(max_weight, 2, *block_1.hash()).await.unwrap();
+    assert!(txs.is_empty());
+    for tx in [&height_reading_spend, &lock_height_tx] {
+        assert_eq!(pool_status(&mempool, tx).await, TxStorageResponse::UnconfirmedPool);
+    }
+
+    let block_3 = mine_template(&mempool, &db, &rules, &key_manager, &block_2).await;
+    let kernels = block_3.block().body.kernels();
+    assert!(kernels.contains(&height_reading_spend.body.kernels()[0]));
+    assert!(kernels.contains(&lock_height_tx.body.kernels()[0]));
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
+async fn expired_spend_and_its_descendants_are_dropped_after_a_block_without_a_template() {
+    let key_manager = KeyManager::new_random().unwrap();
+    let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
+    let h = 2;
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T]);
+    schema.script = script_passing_only_at(h);
+    let (height_limited_tx, height_limited_outputs) = spend_utxos(schema, &key_manager);
+    let block_1 = mine_block(&db, &rules, &key_manager, &genesis, vec![height_limited_tx]);
+
+    let mempool = create_fully_validating_mempool(&db, &rules);
+    let (parent, parent_outputs) = spend_utxos(
+        txn_schema!(from: vec![height_limited_outputs[0].clone()], to: vec![500_000 * uT]),
+        &key_manager,
+    );
+    let (child, child_outputs) = spend_utxos(
+        txn_schema!(from: vec![parent_outputs[0].clone()], to: vec![200_000 * uT]),
+        &key_manager,
+    );
+    let (grandchild, _) = spend_utxos(
+        txn_schema!(from: vec![child_outputs[0].clone()], to: vec![100_000 * uT]),
+        &key_manager,
+    );
+    let (ordinary_tx, _) = spend_utxos(
+        txn_schema!(from: vec![outputs[2].clone()], to: vec![1 * T]),
+        &key_manager,
+    );
+    for tx in [&parent, &child, &grandchild, &ordinary_tx] {
+        assert_eq!(
+            mempool.insert(Arc::new(tx.clone())).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    // No block template is requested
+    let block_2 = mine_block(&db, &rules, &key_manager, &block_1, vec![]);
+    mempool.process_published_block(block_2.to_arc_block()).await.unwrap();
+    for tx in [&parent, &child, &grandchild] {
+        assert_eq!(pool_status(&mempool, tx).await, TxStorageResponse::NotStored(None));
+    }
+    assert_eq!(
+        pool_status(&mempool, &ordinary_tx).await,
+        TxStorageResponse::UnconfirmedPool
+    );
+}
+
 /// A script that reads the height and verifies `num_signatures` signatures before returning the key from the input
 /// data, and the signatures and keys to append to that input data
 fn signature_heavy_script(num_signatures: usize) -> (TariScript, Vec<StackItem>) {

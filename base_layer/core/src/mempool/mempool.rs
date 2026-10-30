@@ -25,7 +25,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use log::debug;
+use log::{debug, info};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{BanReason, rpc::models::FeePerGramStat, transaction_components::Transaction};
@@ -43,16 +43,30 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
         error::MempoolError,
-        mempool_storage::{MempoolStorage, height_check_failure},
+        mempool_storage::{HeightCheck, MempoolStorage, height_check},
+        unconfirmed_pool::{HeightValidation, TemplateFilter, TransactionKey},
     },
     validation::TransactionValidator,
 };
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
 
-/// The most times a block template is selected from the pool, when the transactions it selected that read the block
-/// height fail their re-check (see [Mempool::retrieve])
+/// The most times a block template is selected from the pool (see [Mempool::retrieve])
 const MAX_TEMPLATE_SELECTION_PASSES: usize = 3;
+
+/// The most pool transactions with an input script or covenant that reads the height that are visited by the
+/// background re-check after each block (see [Mempool::sweep_height_reading]). With the default pool capacity of 40,000
+/// every one of them is visited within 80 blocks, and a batch costs at most about half a second of script runs
+/// (a script of signature checks at the size limit costs about a millisecond), without holding the storage lock.
+const HEIGHT_READING_SWEEP_BATCH: usize = 500;
+
+/// The outcome of re-checking transactions whose input scripts or covenants read the height (see [height_check])
+#[derive(Default)]
+struct HeightChecks {
+    passed: Vec<TransactionKey>,
+    failed: Vec<TransactionKey>,
+    not_yet_valid: Vec<TransactionKey>,
+}
 
 /// A snapshot of the last block the mempool has processed. Broadcast over a watch channel so consumers can wait for
 /// the mempool to reach a given tip - and detect when the mempool has moved *past* it - without busy-polling.
@@ -229,6 +243,37 @@ impl Mempool {
             .await?;
         // Notify any subscribers (e.g. new-block-template requests) that the mempool has advanced.
         self.last_seen_tx.send_replace(last_seen);
+        self.sweep_height_reading(last_seen.height.saturating_add(1), last_seen.hash)
+            .await
+    }
+
+    /// Re-checks the next batch of pool transactions with an input script or covenant that reads the height (see
+    /// [HEIGHT_READING_SWEEP_BATCH]) for the block at `height` on top of `prev_hash`, and drops the ones that are not
+    /// valid there with their descendants, so that they do not stay in the pool of a node that never builds block
+    /// templates. The scripts run without holding the storage lock.
+    async fn sweep_height_reading(&self, height: u64, prev_hash: HashOutput) -> Result<(), MempoolError> {
+        let (batch, next_cursor) = self
+            .with_read_access(move |storage| {
+                Ok(storage
+                    .unconfirmed_pool
+                    .height_reading_sweep_batch(HEIGHT_READING_SWEEP_BATCH, height, &prev_hash))
+            })
+            .await?;
+        let checks = run_height_checks(batch, height, prev_hash).await?;
+        let dropped = checks.failed.len();
+        let removed = self
+            .with_write_access(move |storage| {
+                storage.unconfirmed_pool.set_sweep_cursor(next_cursor);
+                storage.record_height_checks(&checks.passed, &checks.failed, prev_hash)
+            })
+            .await?;
+        if dropped > 0 {
+            info!(
+                target: LOG_TARGET,
+                "Dropped {dropped} transaction(s) that are not valid at height {height}, with {} descendant(s)",
+                removed.saturating_sub(dropped)
+            );
+        }
         Ok(())
     }
 
@@ -269,27 +314,42 @@ impl Mempool {
     }
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight, for a block template at
-    /// `height` on top of the block `prev_hash`. Only transactions that fit into a block will be returned.
+    /// `height` on top of the block `prev_hash`. Only transactions that fit into a block will be returned, and none
+    /// with an input that is not mature at `height` or a kernel locked above it.
     ///
     /// A selected transaction with an input script or covenant that reads the block height is re-checked at the
-    /// template's height (see `height_check_failure`), without holding the storage lock. The ones that fail are dropped
-    /// from the pool and the template is selected again, at most [MAX_TEMPLATE_SELECTION_PASSES] times; if the last
-    /// selection still has failures, they are left out of it with the transactions that spend their outputs. A
-    /// transaction that passed is not checked again for a template on top of the same block, so the work per tip is
-    /// bounded by the height-reading transactions that get selected, each failing one being dropped once.
+    /// template's height (see `height_check`), without holding the storage lock. The ones that fail are dropped from
+    /// the pool with their descendants, and the template is selected again. One that fails only below the height it
+    /// was validated for (the template is built on an older block) is left out of the template but kept. The last of
+    /// at most [MAX_TEMPLATE_SELECTION_PASSES] selections leaves out every such transaction that has not passed for
+    /// this block, so it checks nothing. A transaction that passed is not checked again for a block on top of the same
+    /// one, so the work per tip is bounded by the height-reading transactions that get selected, each failing one being
+    /// dropped once.
     pub async fn retrieve(
         &self,
         total_weight: u64,
         height: u64,
         prev_hash: HashOutput,
     ) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+        let mut filter = TemplateFilter {
+            height,
+            excluded: HashSet::new(),
+            only_checked_at: None,
+        };
+        let mut dropped = 0usize;
+        let mut removed = 0usize;
         let mut passes = 0usize;
         loop {
             passes = passes.saturating_add(1);
+            let last_pass = passes >= MAX_TEMPLATE_SELECTION_PASSES;
+            if last_pass {
+                filter.only_checked_at = Some(prev_hash);
+            }
             let start = std::time::Instant::now();
+            let pass_filter = filter.clone();
             let (retrieved, to_check) = self
                 .with_read_access(move |storage| {
-                    let retrieved = storage.retrieve(total_weight)?;
+                    let retrieved = storage.retrieve(total_weight, &pass_filter)?;
                     let to_check = storage
                         .unconfirmed_pool
                         .height_reading_to_check(&retrieved.retrieved_transactions, &prev_hash);
@@ -303,51 +363,48 @@ impl Mempool {
                 start.elapsed()
             );
 
-            let (passed, failed) = task::spawn_blocking(move || {
-                let mut passed = Vec::new();
-                let mut failed = Vec::new();
-                for (key, tx, script_keys) in to_check {
-                    match height_check_failure(&tx, &script_keys, height, &prev_hash) {
-                        None => passed.push(key),
-                        Some(reason) => {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Tx: ({}) is not valid at height {height}: {reason}, dropping",
-                                tx.first_kernel_excess_sig()
-                                    .map(|sig| sig.get_signature().to_hex())
-                                    .unwrap_or_default()
-                            );
-                            failed.push((key, tx));
-                        },
-                    }
-                }
-                (passed, failed)
-            })
-            .await?;
-
-            let failed_keys = failed.iter().map(|(key, _)| *key).collect::<Vec<_>>();
+            // Nothing is left to check on the last pass
+            let checks = run_height_checks(to_check, height, prev_hash).await?;
+            let failed = checks.failed.len();
+            let not_yet_valid = checks.not_yet_valid.len();
             let transactions_to_remove_and_insert = retrieved.transactions_to_remove_and_insert.clone();
-            if !passed.is_empty() || !failed_keys.is_empty() || !transactions_to_remove_and_insert.is_empty() {
+            if !checks.passed.is_empty() || failed > 0 || !transactions_to_remove_and_insert.is_empty() {
                 debug!(
                     target: LOG_TARGET,
-                    "Removing {} transaction(s) that failed a height re-check and {} that need re-evaluation from the \
-                     unconfirmed pool",
-                    failed_keys.len(),
+                    "Removing {failed} transaction(s) that failed a height re-check and {} that need re-evaluation \
+                     from the unconfirmed pool",
                     transactions_to_remove_and_insert.len()
                 );
-                self.with_write_access(move |storage| {
-                    storage.record_height_checks(&passed, &failed_keys, prev_hash)?;
-                    storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)
-                })
-                .await?;
+                let (passed, failed) = (checks.passed, checks.failed);
+                removed = removed.saturating_add(
+                    self.with_write_access(move |storage| {
+                        let removed = storage.record_height_checks(&passed, &failed, prev_hash)?;
+                        storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)?;
+                        Ok(removed)
+                    })
+                    .await?,
+                );
             }
+            dropped = dropped.saturating_add(failed);
+            filter.excluded.extend(checks.not_yet_valid);
 
-            if failed.is_empty() {
+            if last_pass || (failed == 0 && not_yet_valid == 0) {
+                if dropped > 0 || !filter.excluded.is_empty() {
+                    info!(
+                        target: LOG_TARGET,
+                        "Block template at height {height}: dropped {dropped} transaction(s) that failed a height \
+                         re-check, with {} descendant(s), and left out {} not valid until a later height, in \
+                         {passes} selection pass(es){}",
+                        removed.saturating_sub(dropped),
+                        filter.excluded.len(),
+                        if last_pass {
+                            ", the last leaving out unchecked height-reading transactions"
+                        } else {
+                            ""
+                        }
+                    );
+                }
                 return Ok(retrieved.retrieved_transactions);
-            }
-            if passes >= MAX_TEMPLATE_SELECTION_PASSES {
-                let failed = failed.into_iter().map(|(_, tx)| tx).collect::<Vec<_>>();
-                return Ok(without_failed(retrieved.retrieved_transactions, &failed));
             }
         }
     }
@@ -434,31 +491,49 @@ impl Mempool {
     }
 }
 
-/// `selected` without the `failed` transactions and the transactions that spend their outputs, directly or through
-/// other selected transactions, so that the rest is still a valid block body
-fn without_failed(selected: Vec<Arc<Transaction>>, failed: &[Arc<Transaction>]) -> Vec<Arc<Transaction>> {
-    let mut dropped_outputs = HashSet::new();
-    for tx in failed {
-        dropped_outputs.extend(tx.body.outputs().iter().map(|output| output.hash()));
+/// Re-checks `to_check` for the block at `height` on top of `prev_hash` (see [height_check]), without holding the
+/// storage lock
+async fn run_height_checks(
+    to_check: Vec<(TransactionKey, Arc<Transaction>, HeightValidation)>,
+    height: u64,
+    prev_hash: HashOutput,
+) -> Result<HeightChecks, MempoolError> {
+    if to_check.is_empty() {
+        return Ok(HeightChecks::default());
     }
-    let mut kept = selected;
-    loop {
-        let before = kept.len();
-        kept.retain(|tx| {
-            let drop = failed.contains(tx) ||
-                tx.body
-                    .inputs()
-                    .iter()
-                    .any(|input| dropped_outputs.contains(&input.output_hash()));
-            if drop {
-                dropped_outputs.extend(tx.body.outputs().iter().map(|output| output.hash()));
+    let checks = task::spawn_blocking(move || {
+        let mut checks = HeightChecks::default();
+        for (key, tx, validation) in to_check {
+            match height_check(&tx, &validation, height, &prev_hash) {
+                HeightCheck::Passed => checks.passed.push(key),
+                HeightCheck::Failed(reason) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tx: ({}) is not valid at height {height}: {reason}, dropping",
+                        tx_id(&tx)
+                    );
+                    checks.failed.push(key);
+                },
+                HeightCheck::NotYetValid(reason) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tx: ({}) is not valid at height {height}, below the height it was validated for: {reason}",
+                        tx_id(&tx)
+                    );
+                    checks.not_yet_valid.push(key);
+                },
             }
-            !drop
-        });
-        if kept.len() == before {
-            return kept;
         }
-    }
+        checks
+    })
+    .await?;
+    Ok(checks)
+}
+
+fn tx_id(tx: &Transaction) -> String {
+    tx.first_kernel_excess_sig()
+        .map(|sig| sig.get_signature().to_hex())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -748,34 +823,5 @@ mod test {
             "{response:?}"
         );
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
-    }
-
-    #[test]
-    #[allow(clippy::indexing_slicing)]
-    fn without_failed_drops_the_failed_transactions_and_their_descendants() {
-        use tari_transaction_components::{test_helpers::spend_utxos, txn_schema};
-
-        let key_manager = KeyManager::new_random().unwrap();
-        let (parent, _, parent_outputs) =
-            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager).unwrap();
-        let (child, child_outputs) = spend_utxos(
-            txn_schema!(from: vec![parent_outputs[0].clone()], to: vec![MicroMinotari(50_000)]),
-            &key_manager,
-        );
-        let (grandchild, _) = spend_utxos(
-            txn_schema!(from: vec![child_outputs[0].clone()], to: vec![MicroMinotari(20_000)]),
-            &key_manager,
-        );
-        let unrelated = create_tx(&key_manager);
-        let (parent, child, grandchild) = (Arc::new(parent), Arc::new(child), Arc::new(grandchild));
-
-        // Descendants are dropped wherever they are in the selection
-        let selected = vec![grandchild.clone(), unrelated.clone(), child.clone(), parent.clone()];
-        assert_eq!(without_failed(selected.clone(), &[parent]), vec![unrelated.clone()]);
-        assert_eq!(without_failed(selected.clone(), &[child]), vec![
-            unrelated.clone(),
-            selected[3].clone()
-        ]);
-        assert_eq!(without_failed(selected.clone(), &[]), selected);
     }
 }
