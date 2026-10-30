@@ -32,7 +32,11 @@ use std::{
 use log::{debug, info};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
-use tari_transaction_components::{BanReason, rpc::models::FeePerGramStat, transaction_components::Transaction};
+use tari_transaction_components::{
+    BanReason,
+    rpc::models::FeePerGramStat,
+    transaction_components::{Transaction, covenants::MAX_COVENANT_WORK_PER_BODY},
+};
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, watch},
@@ -62,12 +66,14 @@ const MAX_TEMPLATE_SELECTION_PASSES: usize = 3;
 /// after each block visits (see [Mempool::sweep_height_reading]), which bounds its walk of the pool's index
 const HEIGHT_READING_SWEEP_BATCH: usize = 500;
 
-/// The most height-reading inputs the background re-check after each block re-checks (see
-/// [Mempool::sweep_height_reading]). A height-reading script at the script size limit, packed with signature checks,
-/// takes about a millisecond to run, so a sweep runs at most about a second of scripts, without holding the storage
-/// lock, and only one sweep runs at a time. A single transaction with more such inputs is still re-checked, alone; its
-/// inputs are bounded by the block weight, to a few thousand.
-const HEIGHT_READING_SWEEP_INPUTS: usize = 1_000;
+/// The most work the background re-check after each block does (see [Mempool::sweep_height_reading]), in covenant
+/// work units: input scripts that read the height are charged `SCRIPT_INPUT_WORK` each (about 0.8 ms at most), and a
+/// transaction with a covenant that reads the height is charged its covenant work limit, `MAX_COVENANT_WORK_PER_BODY`
+/// (at most about a second, if every unit hashes a field at its size limit). So a re-check runs at most about a second
+/// of scripts and covenants, without holding the storage lock, and only one runs at a time. A single transaction over
+/// the budget is still re-checked, alone: about a second for its covenants, plus its height-reading scripts, of which
+/// the block weight allows a few thousand.
+const HEIGHT_READING_SWEEP_WORK: u64 = MAX_COVENANT_WORK_PER_BODY;
 
 /// Clears the flag of a running background re-check when dropped, however the re-check ends
 struct SweepRunning(Arc<AtomicBool>);
@@ -269,7 +275,7 @@ impl Mempool {
     }
 
     /// Re-checks the next batch of pool transactions with an input script or covenant that reads the height (see
-    /// [HEIGHT_READING_SWEEP_BATCH] and [HEIGHT_READING_SWEEP_INPUTS]) for the block at `height` on top of `prev_hash`,
+    /// [HEIGHT_READING_SWEEP_BATCH] and [HEIGHT_READING_SWEEP_WORK]) for the block at `height` on top of `prev_hash`,
     /// and drops the ones that are not valid there with their descendants, so that they do not stay in the pool of a
     /// node that never builds block templates. The scripts run without holding the storage lock. If the re-check for
     /// an earlier block is still running, this one is skipped: the next one continues where the running one stops.
@@ -286,7 +292,7 @@ impl Mempool {
             .with_read_access(move |storage| {
                 Ok(storage.unconfirmed_pool.height_reading_sweep_batch(
                     HEIGHT_READING_SWEEP_BATCH,
-                    HEIGHT_READING_SWEEP_INPUTS,
+                    HEIGHT_READING_SWEEP_WORK,
                     height,
                     &prev_hash,
                 ))

@@ -38,7 +38,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::consensus_constants::MAX_BLOCK_BODY_BYTES,
     rpc::models::FeePerGramStat,
-    transaction_components::{Transaction, TransactionError},
+    transaction_components::{Transaction, TransactionError, covenants::MAX_COVENANT_WORK_PER_BODY},
     weight::TransactionWeight,
 };
 use tari_utilities::ByteArray;
@@ -261,8 +261,8 @@ pub struct HeightValidation {
 #[derive(Debug, Clone)]
 struct HeightReadingEntry {
     validation: HeightValidation,
-    /// The number of its inputs with a script or covenant that reads the height: the work of re-checking it
-    inputs: usize,
+    /// A bound on the work of re-checking it (see [height_check_work])
+    work: u64,
     /// The previous block hash of the last block it was re-checked for and passed
     passed_at: Option<HashOutput>,
 }
@@ -299,18 +299,36 @@ type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
 /// Whether any input of `body` has a script or covenant that reads the block height, so that whether `body` is valid
 /// can change from one block to the next
 pub(crate) fn reads_block_height(body: &AggregateBody) -> bool {
-    height_reading_inputs(body) > 0
+    body.inputs().iter().any(|input| {
+        input.script().is_ok_and(|script| script.is_context_sensitive()) ||
+            input.covenant().is_ok_and(|covenant| covenant.reads_block_height())
+    })
 }
 
-/// The number of inputs of `body` with a script or covenant that reads the block height
-fn height_reading_inputs(body: &AggregateBody) -> usize {
-    body.inputs()
-        .iter()
-        .filter(|input| {
-            input.script().is_ok_and(|script| script.is_context_sensitive()) ||
-                input.covenant().is_ok_and(|covenant| covenant.reads_block_height())
-        })
-        .count()
+/// The cost of running one input script, in covenant work units (see [MAX_COVENANT_WORK_PER_BODY]). A script at the
+/// size limit, packed with signature checks, runs in about 0.8 ms. A covenant work unit costs about 60 ns for typical
+/// outputs, and up to a few microseconds when it hashes a field at its size limit, so a script is charged as 200 units.
+pub const SCRIPT_INPUT_WORK: u64 = 200;
+
+/// A bound, in covenant work units, on the work of re-checking `body` for another height (see `height_check` in the
+/// mempool storage): [SCRIPT_INPUT_WORK] for each input script that reads the height, and if any covenant reads the
+/// height, the limit on evaluating all of them, [MAX_COVENANT_WORK_PER_BODY] (each is evaluated again, and the
+/// outputs a height filter admits can change with the height, so the work seen at admission is no bound).
+fn height_check_work(body: &AggregateBody) -> u64 {
+    let mut work = 0u64;
+    let mut covenant_reads_height = false;
+    for input in body.inputs() {
+        if input.script().is_ok_and(|script| script.is_context_sensitive()) {
+            work = work.saturating_add(SCRIPT_INPUT_WORK);
+        }
+        if input.covenant().is_ok_and(|covenant| covenant.reads_block_height()) {
+            covenant_reads_height = true;
+        }
+    }
+    if covenant_reads_height {
+        work = work.saturating_add(MAX_COVENANT_WORK_PER_BODY);
+    }
+    work
 }
 
 /// The validator nodes `body` registers or exits. A registration and an exit for the same validator node share a key:
@@ -759,11 +777,10 @@ impl UnconfirmedPool {
         for vn_key in validator_node_keys(&prioritized_tx.transaction.body) {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
         }
-        let inputs = height_reading_inputs(&prioritized_tx.transaction.body);
-        if inputs > 0 {
+        if reads_block_height(&prioritized_tx.transaction.body) {
             self.txs_reading_height.insert(new_key, HeightReadingEntry {
                 validation: height_validation,
-                inputs,
+                work: height_check_work(&prioritized_tx.transaction.body),
                 passed_at: None,
             });
         }
@@ -895,15 +912,16 @@ impl UnconfirmedPool {
 
     /// The transactions whose input scripts or covenants read the block height to re-check next for the block at
     /// `height` on top of `prev_hash` in the background, starting at the sweep cursor and wrapping around, so that
-    /// successive batches visit every one of them. At most `max_entries` are visited, and those returned have at most
-    /// `max_inputs` height-reading inputs in total, except that the first one to re-check is always returned, so that
-    /// every batch makes progress (a transaction's inputs are bounded by the block weight). Transactions validated for
+    /// successive batches visit every one of them. At most `max_entries` are visited, and those returned cost at most
+    /// `max_work` to re-check in total (see [height_check_work]), except that the first one to re-check is always
+    /// returned, so that every batch makes progress (its work is bounded by its block weight and covenant work limit).
+    /// Transactions validated for
     /// a higher height (they may only become valid there) and those that already passed for this block are visited but
     /// not returned. Also returns the key to move the sweep cursor to (see [UnconfirmedPool::set_sweep_cursor]).
     pub fn height_reading_sweep_batch(
         &self,
         max_entries: usize,
-        max_inputs: usize,
+        max_work: u64,
         height: u64,
         prev_hash: &HashOutput,
     ) -> (
@@ -911,7 +929,7 @@ impl UnconfirmedPool {
         TransactionKey,
     ) {
         let mut batch = Vec::new();
-        let mut inputs = 0usize;
+        let mut work = 0u64;
         let mut next_cursor = self.sweep_cursor;
         let visited = self
             .txs_reading_height
@@ -920,7 +938,7 @@ impl UnconfirmedPool {
             .take(max_entries);
         for (key, entry) in visited {
             let skip = entry.validation.height > height || entry.passed_at.as_ref() == Some(prev_hash);
-            if !skip && !batch.is_empty() && inputs.saturating_add(entry.inputs) > max_inputs {
+            if !skip && !batch.is_empty() && work.saturating_add(entry.work) > max_work {
                 // Left for the next batch
                 break;
             }
@@ -929,7 +947,7 @@ impl UnconfirmedPool {
                 continue;
             }
             if let Some(tx) = self.tx_by_key.get(key) {
-                inputs = inputs.saturating_add(entry.inputs);
+                work = work.saturating_add(entry.work);
                 batch.push((*key, tx.transaction.clone(), entry.validation.clone()));
             }
         }
@@ -5856,7 +5874,7 @@ mod test {
             // Batches of 2 visit every one of the 5, then wrap around
             let mut visited = Vec::new();
             for _ in 0..3 {
-                let (batch, cursor) = pool.height_reading_sweep_batch(2, usize::MAX, 10, &tip);
+                let (batch, cursor) = pool.height_reading_sweep_batch(2, u64::MAX, 10, &tip);
                 visited.extend(batch.iter().map(|(key, ..)| *key));
                 pool.set_sweep_cursor(cursor);
             }
@@ -5877,16 +5895,17 @@ mod test {
             })
             .unwrap();
             pool.set_sweep_cursor(0);
-            let (batch, _) = pool.height_reading_sweep_batch(100, usize::MAX, 10, &tip);
+            let (batch, _) = pool.height_reading_sweep_batch(100, u64::MAX, 10, &tip);
             assert_eq!(batch.iter().map(|(key, ..)| *key).collect::<Vec<_>>(), all[1..]);
         }
 
         #[test]
-        fn a_sweep_batch_is_bounded_by_height_reading_inputs() {
+        fn a_sweep_batch_is_bounded_by_re_check_work() {
             let key_manager = KeyManager::new_random().unwrap();
             let weight = TransactionWeight::latest();
             let mut pool = pool();
-            // A transaction with 3 height-reading inputs, then 3 with one each
+            // A transaction with 3 height-reading input scripts, then 3 with one each, then one with a height-reading
+            // covenant
             let tx = tx!(MicroMinotari(15_000), fee: MicroMinotari(5), inputs: 3, outputs: 1, &key_manager)
                 .unwrap()
                 .0;
@@ -5913,21 +5932,34 @@ mod test {
                 );
                 pool.insert(single, None, &weight).unwrap();
             }
+            let covenant_reads = tx_with_input(
+                script!(Nop).unwrap(),
+                covenant!(not(absolute_height(@uint(10)))).unwrap(),
+                &key_manager,
+            );
+            pool.insert(covenant_reads, None, &weight).unwrap();
             let all = pool.txs_reading_height.keys().copied().collect::<Vec<_>>();
-            assert_eq!(pool.txs_reading_height[&all[0]].inputs, 3);
+            assert_eq!(pool.txs_reading_height[&all[0]].work, 3 * SCRIPT_INPUT_WORK);
+            assert_eq!(pool.txs_reading_height[&all[1]].work, SCRIPT_INPUT_WORK);
+            assert_eq!(pool.txs_reading_height[&all[4]].work, MAX_COVENANT_WORK_PER_BODY);
             let tip = FixedHash::from([1u8; 32]);
-            let next = |pool: &mut UnconfirmedPool, max_inputs| {
-                let (batch, cursor) = pool.height_reading_sweep_batch(100, max_inputs, 10, &tip);
+            let next = |pool: &mut UnconfirmedPool, max_work| {
+                let (batch, cursor) = pool.height_reading_sweep_batch(100, max_work, 10, &tip);
                 pool.set_sweep_cursor(cursor);
                 batch.iter().map(|(key, ..)| *key).collect::<Vec<_>>()
             };
 
-            // 3 + 1 inputs fit a budget of 4, the next single does not
-            assert_eq!(next(&mut pool, 4), all[..2]);
-            assert_eq!(next(&mut pool, 4), all[2..]);
-            // A transaction over the budget on its own is still taken, alone
-            assert_eq!(next(&mut pool, 2), all[..1]);
-            assert_eq!(next(&mut pool, 2), all[1..3]);
+            // The 3 scripts and one more fit a budget of 4 scripts, the next one does not
+            assert_eq!(next(&mut pool, 4 * SCRIPT_INPUT_WORK), all[..2]);
+            assert_eq!(next(&mut pool, 4 * SCRIPT_INPUT_WORK), all[2..4]);
+            // The covenant evaluation takes a whole budget, alone
+            assert_eq!(next(&mut pool, 4 * SCRIPT_INPUT_WORK), all[4..]);
+            // Over the budget on its own, a transaction is still taken, alone
+            assert_eq!(next(&mut pool, 2 * SCRIPT_INPUT_WORK), all[..1]);
+            assert_eq!(next(&mut pool, 2 * SCRIPT_INPUT_WORK), all[1..3]);
+            assert_eq!(next(&mut pool, MAX_COVENANT_WORK_PER_BODY + SCRIPT_INPUT_WORK), vec![
+                all[3], all[4]
+            ]);
         }
 
         #[test]
