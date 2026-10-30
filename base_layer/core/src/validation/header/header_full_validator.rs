@@ -102,12 +102,12 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
                 .check_achieved_and_target_difficulty(db, header)?
         };
 
-        // Deliberately last, and deliberately after the proof of work has been checked: this is the only chain
-        // dependent verdict in header validation, and the only one a caller must not record against the header
-        // itself (see
+        // Deliberately last, and deliberately after the proof of work has been checked: the seed age is a chain
+        // dependent verdict that a caller must not record against the header itself (see
         // `BlockHeaderSyncValidator::blacklist_unless_verdict_can_change`). A header that fails an absolute check
         // has to fail on that, so that it can still be blacklisted; only a header that is sound on its own terms
-        // gets to be judged against the chain it claims to extend.
+        // gets to be judged against the chain it claims to extend. Height and previous hash are chain dependent too;
+        // header sync checks them against the previous header before calling this validator.
         let monero_seed = check_monero_seed_height(db, header, constants, &self.rules, chain_context)?;
 
         Ok(ValidatedHeader {

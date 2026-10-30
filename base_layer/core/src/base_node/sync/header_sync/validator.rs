@@ -189,6 +189,10 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // chain dependent verdict must not outlive the sync that made it: discard the header and ban the peer,
             // and let a later sync judge it on its own chain.
             ValidationError::BlockHeaderError(BlockHeaderValidationError::OldSeedHash) |
+            // Height and previous hash are judged against the previous header in the peer's stream, not the header
+            // alone. `validate` rejects these before they get here; this keeps them off the bad block list regardless.
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidHeight { .. }) |
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidPreviousHash { .. }) |
             // We dont want to mark a block as bad for internal failures, including a local RandomX VM build failure
             // (for example a failed cache allocation), which says nothing about the header
             ValidationError::FatalStorageError(_) |
@@ -205,7 +209,30 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         }
     }
 
+    /// A header that does not follow the previous one in the peer's stream may still be a valid block on its own
+    /// chain, so these are peer faults only and are never recorded as bad blocks.
+    fn check_follows_previous_header(&self, header: &BlockHeader) -> Result<(), BlockHeaderSyncError> {
+        let previous_header = &self.state().previous_header;
+        let expected_height = previous_header.height.saturating_add(1);
+        if header.height != expected_height {
+            return Err(BlockHeaderSyncError::InvalidBlockHeight {
+                expected: expected_height,
+                actual: header.height,
+            });
+        }
+        let previous_hash = previous_header.hash();
+        if header.prev_hash != previous_hash {
+            return Err(BlockHeaderSyncError::ChainLinkBroken {
+                height: header.height,
+                actual: header.prev_hash.to_hex(),
+                expected: previous_hash.to_hex(),
+            });
+        }
+        Ok(())
+    }
+
     pub async fn validate(&mut self, header: BlockHeader) -> Result<U512, BlockHeaderSyncError> {
+        self.check_follows_previous_header(&header)?;
         let constants = self.consensus_rules.consensus_constants(header.height).clone();
         if constants.effective_from_height() == header.height &&
             let Some(&mut ref mut mut_state) = self.state.as_mut()
@@ -387,6 +414,7 @@ mod test {
     use crate::{
         proof_of_work::randomx_factory::RandomXVMFactoryError,
         test_helpers::blockchain::{TempDatabase, create_new_blockchain},
+        validation::helpers::check_header_timestamp_greater_than_median,
     };
 
     fn setup() -> (
@@ -522,11 +550,185 @@ mod test {
             let mut next = BlockHeader::from_previous(tip.header());
             next.height = 14;
             let err = validator.validate(next).await.unwrap_err();
-            unpack_enum!(BlockHeaderSyncError::ValidationFailed(val_err) = err);
-            unpack_enum!(ValidationError::BlockHeaderError(header_err) = val_err);
-            unpack_enum!(BlockHeaderValidationError::InvalidHeight { actual, expected } = header_err);
+            unpack_enum!(BlockHeaderSyncError::InvalidBlockHeight { expected, actual } = err);
             assert_eq!(actual, 14);
             assert_eq!(expected, 13);
+        }
+
+        fn validator_for(db: &AsyncBlockchainDb<TempDatabase>) -> BlockHeaderSyncValidator<TempDatabase> {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+            BlockHeaderSyncValidator::new(db.clone(), rules, RandomXFactory::default())
+        }
+
+        fn child_of(prev: &BlockHeader, timestamp: u64) -> BlockHeader {
+            let mut header = BlockHeader::from_previous(prev);
+            header.timestamp = EpochTime::from(timestamp);
+            // Needed to have unique keys for the blockchain db mmr count indexes (MDB_KEY_EXIST error)
+            header.kernel_mmr_size = prev.kernel_mmr_size + 1;
+            header.output_smt_size = prev.output_smt_size + 1;
+            header
+        }
+
+        async fn insert_header(db: &AsyncBlockchainDb<TempDatabase>, header: &BlockHeader) {
+            let acc_data = BlockHeaderAccumulatedData::genesis(header.hash(), header.total_kernel_offset.clone());
+            let chain_header = ChainHeader::try_construct(header.clone(), acc_data).unwrap();
+            db.insert_valid_headers(vec![chain_header]).await.unwrap();
+        }
+
+        async fn assert_not_bad_block(db: &AsyncBlockchainDb<TempDatabase>, header: &BlockHeader) {
+            let (is_bad_block, reason) = db.bad_block_exists(header.hash()).await.unwrap();
+            assert!(
+                !is_bad_block,
+                "header #{} was recorded as a bad block: {reason}",
+                header.height
+            );
+        }
+
+        /// The same header sent twice in a row fails as out of sequence, and is still accepted afterwards.
+        #[tokio::test]
+        async fn a_repeated_header_is_rejected_but_not_blacklisted() {
+            let (mut validator, db, tip) = setup_with_headers(12).await;
+            let h13 = child_of(tip.header(), tip.header().timestamp.as_u64() + 1);
+            validator.initialize_state(tip.hash()).await.unwrap();
+            validator.validate(h13.clone()).await.unwrap();
+
+            let err = validator.validate(h13.clone()).await.unwrap_err();
+            assert!(
+                err.get_ban_reason().is_some(),
+                "an out of sequence header must be bannable"
+            );
+            unpack_enum!(BlockHeaderSyncError::InvalidBlockHeight { expected, actual } = err);
+            assert_eq!(expected, 14);
+            assert_eq!(actual, 13);
+            assert_not_bad_block(&db, &h13).await;
+
+            let mut fresh = validator_for(&db);
+            fresh.initialize_state(tip.hash()).await.unwrap();
+            fresh.validate(h13).await.unwrap();
+        }
+
+        /// A header that skips a height fails as out of sequence, and is still accepted once its parent is supplied.
+        #[tokio::test]
+        async fn a_header_that_skips_a_height_is_rejected_but_not_blacklisted() {
+            let (mut validator, db, tip) = setup_with_headers(12).await;
+            let h13 = child_of(tip.header(), tip.header().timestamp.as_u64() + 1);
+            let h14 = child_of(&h13, h13.timestamp.as_u64() + 1);
+            let h15 = child_of(&h14, h14.timestamp.as_u64() + 1);
+            validator.initialize_state(tip.hash()).await.unwrap();
+            validator.validate(h13.clone()).await.unwrap();
+
+            let err = validator.validate(h15.clone()).await.unwrap_err();
+            assert!(
+                err.get_ban_reason().is_some(),
+                "an out of sequence header must be bannable"
+            );
+            unpack_enum!(BlockHeaderSyncError::InvalidBlockHeight { expected, actual } = err);
+            assert_eq!(expected, 14);
+            assert_eq!(actual, 15);
+            assert_not_bad_block(&db, &h13).await;
+            assert_not_bad_block(&db, &h15).await;
+
+            let mut fresh = validator_for(&db);
+            fresh.initialize_state(tip.hash()).await.unwrap();
+            for header in [h13, h14, h15] {
+                fresh.validate(header).await.unwrap();
+            }
+        }
+
+        /// A header at the right height that names a different parent breaks the chain, and is not blacklisted.
+        #[tokio::test]
+        async fn a_header_with_another_parent_is_rejected_but_not_blacklisted() {
+            let (mut validator, db, tip) = setup_with_headers(12).await;
+            let mut h13 = child_of(tip.header(), tip.header().timestamp.as_u64() + 1);
+            h13.prev_hash = tip.header().prev_hash;
+            validator.initialize_state(tip.hash()).await.unwrap();
+
+            let err = validator.validate(h13.clone()).await.unwrap_err();
+            assert!(err.get_ban_reason().is_some(), "a broken chain link must be bannable");
+            unpack_enum!(
+                BlockHeaderSyncError::ChainLinkBroken {
+                    height,
+                    actual,
+                    expected
+                } = err
+            );
+            assert_eq!(height, 13);
+            assert_eq!(actual, tip.header().prev_hash.to_hex());
+            assert_eq!(expected, tip.hash().to_hex());
+            assert_not_bad_block(&db, &h13).await;
+        }
+
+        /// Returns a sync validator started at height 11 of a chain whose timestamps go backwards in places, the
+        /// headers for heights 12..=26 still to be synced, and a reference database that holds the whole chain.
+        /// Every header passes the median timestamp rule against the reference database's window.
+        async fn non_monotonic_chain() -> (
+            BlockHeaderSyncValidator<TempDatabase>,
+            AsyncBlockchainDb<TempDatabase>,
+            AsyncBlockchainDb<TempDatabase>,
+            Vec<BlockHeader>,
+        ) {
+            let (mut validator, db, _) = setup();
+            let ref_db: AsyncBlockchainDb<TempDatabase> = create_new_blockchain().into();
+            let genesis = db.fetch_tip_header().await.unwrap().header().clone();
+            assert_eq!(genesis.hash(), ref_db.fetch_tip_header().await.unwrap().hash().clone());
+            let base = genesis.timestamp.as_u64();
+
+            let mut prev = genesis;
+            let mut to_sync = Vec::new();
+            for height in 1..=26u64 {
+                let timestamp = match height {
+                    1..=6 => base + height,
+                    7..=11 => base + 100 + height,
+                    12..=22 => base + 8 + height,
+                    23..=25 => base + 200 + (height - 22),
+                    _ => base + 50,
+                };
+                let header = child_of(&prev, timestamp);
+                assert_eq!(header.height, height);
+                let window = ref_db.fetch_block_timestamps(prev.hash()).await.unwrap();
+                check_header_timestamp_greater_than_median(&header, &window).unwrap();
+                insert_header(&ref_db, &header).await;
+                if height <= 11 {
+                    insert_header(&db, &header).await;
+                } else {
+                    to_sync.push(header.clone());
+                }
+                prev = header;
+            }
+            validator
+                .initialize_state(&to_sync.first().unwrap().prev_hash)
+                .await
+                .unwrap();
+            (validator, db, ref_db, to_sync)
+        }
+
+        #[tokio::test]
+        async fn a_chain_with_non_monotonic_timestamps_validates() {
+            let (mut validator, db, _, to_sync) = non_monotonic_chain().await;
+            let count = to_sync.len();
+            for header in to_sync {
+                let height = header.height;
+                if let Err(err) = validator.validate(header.clone()).await {
+                    panic!("header #{height} was rejected: {err}");
+                }
+                assert_not_bad_block(&db, &header).await;
+            }
+            assert_eq!(validator.valid_headers().len(), count);
+        }
+
+        /// The sync window must hold the same timestamps the database would return for the same chain.
+        #[tokio::test]
+        async fn the_timestamp_window_matches_the_database_window() {
+            let (mut validator, _, ref_db, to_sync) = non_monotonic_chain().await;
+            for header in to_sync {
+                let (height, hash) = (header.height, header.hash());
+                validator.validate(header).await.unwrap();
+                let mut ours = validator.state().timestamps.to_vec();
+                ours.sort();
+                let mut expected = ref_db.fetch_block_timestamps(hash).await.unwrap().to_vec();
+                expected.sort();
+                assert_eq!(ours, expected, "timestamp window differs after header #{height}");
+            }
         }
     }
 
