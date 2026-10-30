@@ -156,9 +156,9 @@ impl MempoolStorage {
     /// attempt is also a stale success, the final one of the [`MAX_VALIDATION_ATTEMPTS`] attempts validates under the
     /// lock. A chain change that the mempool has not processed yet by the time the transaction is inserted is safe,
     /// since the mempool reconciles its stored transactions with it when it does process it: a block removes the
-    /// transactions it mined or double spent, and re-checks those whose validity can change with the height (validator
-    /// node transactions, and inputs with a script or covenant that reads the height); a reorg or sync revalidates
-    /// every transaction.
+    /// transactions it mined or double spent and re-checks the validator node transactions, and a reorg or sync
+    /// revalidates every transaction. A transaction with an input script or covenant that reads the height is
+    /// re-checked when it is selected for a block template, at the template's height (see `Mempool::retrieve`).
     ///
     /// Most failures are final. Only a failure that depends on the chain tip (inputs not in the chain or pool, input
     /// maturity and lock heights, and scripts and covenants that read the height of the next block; see
@@ -533,12 +533,12 @@ impl MempoolStorage {
         // The validity of the remaining validator node transactions (registrations, exits and spends of a pending
         // registration) depends on the validator node set and the epoch: a cancelling spend becomes invalid once its
         // registration activates, an exit once the node has exited, a registration once the node is registered by
-        // another transaction. Templates are built from the pool without validating them again, so every rule that a
-        // block can change for a pool transaction is re-checked here. When this block can have changed validator node
-        // state (an epoch boundary, or validator node transactions in the block), re-check the chain-linked rules for
-        // each of them in place and drop the ones that fail. Only the cheap chain-linked checks are re-run (not
-        // internal consistency), and only for the validator node transactions, so a flood of them cannot stall the
-        // mempool on every block.
+        // another transaction. Templates are built from the pool without validating them again in full (only the
+        // input scripts and covenants that read the height are re-checked, at the template's height), so when this
+        // block can have changed validator node state (an epoch boundary, or validator node transactions in the
+        // block), re-check the chain-linked rules for each of them in place and drop the ones that fail. Only the cheap
+        // chain-linked checks are re-run (not internal consistency), and only for the validator node
+        // transactions, so a flood of them cannot stall the mempool on every block.
         let block_epoch = self
             .rules
             .consensus_constants(published_block.header.height)
@@ -572,15 +572,12 @@ impl MempoolStorage {
                 );
             }
         }
-        let block_hash = published_block.header.hash();
-        self.remove_height_expired_transactions(next_height, block_hash)?;
-
         let timer = Instant::now();
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
         self.last_seen_height = published_block.header.height;
-        self.last_seen_hash = block_hash;
+        self.last_seen_hash = published_block.header.hash();
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         match self.stats() {
             Ok(stats) => debug!(target: LOG_TARGET, "{stats}"),
@@ -593,48 +590,23 @@ impl MempoolStorage {
         Ok(())
     }
 
-    /// An input script or covenant that reads the block height can make a transaction invalid at the next height (e.g.
-    /// a spend that is only valid up to some height), so those transactions are re-checked for the block at `height` on
-    /// top of `prev_hash`, and the ones that fail are dropped (not moved to the reorg pool, and not banned). A pool
-    /// child of a dropped transaction is left in place and is removed when a template is retrieved, as its parent is
-    /// missing.
-    ///
-    /// The script signatures and the script offset were verified against the keys the height-reading scripts returned
-    /// when the transaction was validated. A script that returns the same key gives the same result for both, and a
-    /// different key cannot satisfy the script signature, so only those scripts are run, and their keys compared.
-    ///
-    /// This holds the write lock. Per block, each indexed transaction costs a run of each of its height-reading input
-    /// scripts (no signature checks, other than any signature opcodes in the scripts themselves, within the script size
-    /// limit) and, if one of its covenants reads the height, one covenant evaluation within
-    /// `MAX_COVENANT_WORK_PER_BODY`. The number of indexed transactions is bounded only by the pool's storage capacity,
-    /// and the pool can hold many conflicting spends of the same output.
-    fn remove_height_expired_transactions(&mut self, height: u64, prev_hash: HashOutput) -> Result<(), MempoolError> {
-        let timer = Instant::now();
-        let mut dropped = 0usize;
-        for (key, tx, validated_keys) in self.unconfirmed_pool.height_reading_transactions() {
-            let failure = match run_height_reading_scripts(&tx.body, height, &prev_hash) {
-                Err(e) => Some(e.to_string()),
-                Ok(keys) if keys != validated_keys => Some("an input script returns a different key".to_string()),
-                Ok(_) if has_height_reading_covenant(&tx) => {
-                    validate_covenants(&tx.body, height).err().map(|e| e.to_string())
-                },
-                Ok(_) => None,
-            };
-            if let Some(reason) = failure {
-                debug!(
-                    target: LOG_TARGET,
-                    "Tx: ({}) is not valid at height {height}: {reason}, dropping",
-                    tx_id(&tx)
-                );
-                self.unconfirmed_pool.remove_transaction(key)?;
-                dropped = dropped.saturating_add(1);
-            }
+    /// Records the outcome of re-checking height-reading transactions selected for a block template on top of
+    /// `prev_hash` (see [height_check_failure]): the ones that `failed` are dropped (not moved to the reorg pool, and
+    /// not banned), and the ones that `passed` are not checked again for a template on top of the same block. A pool
+    /// child of a dropped transaction is left in place, and is removed when a template is next selected, as its parent
+    /// is missing.
+    pub fn record_height_checks(
+        &mut self,
+        passed: &[TransactionKey],
+        failed: &[TransactionKey],
+        prev_hash: HashOutput,
+    ) -> Result<(), MempoolError> {
+        for key in passed {
+            self.unconfirmed_pool.record_height_check_passed(*key, prev_hash);
         }
-        debug!(
-            target: LOG_TARGET,
-            "Re-checked height dependent transactions in {:.2?}, dropped {dropped} invalid at height {height}",
-            timer.elapsed()
-        );
+        for key in failed {
+            self.unconfirmed_pool.remove_transaction(*key)?;
+        }
         Ok(())
     }
 
@@ -880,9 +852,31 @@ fn has_height_reading_covenant(tx: &Transaction) -> bool {
         .any(|input| input.covenant().is_ok_and(|covenant| covenant.reads_block_height()))
 }
 
+/// Re-checks a pool transaction whose input scripts or covenants read the block height for the block at `height` on top
+/// of `prev_hash`, given `script_keys`, the keys its height-reading input scripts returned when it was validated.
+/// Returns why it is not valid there, if it is not.
+///
+/// The script signatures and the script offset were verified against those keys. A script that returns the same key
+/// gives the same result for both, and a different key cannot satisfy the script signature, so only the
+/// height-reading scripts are run (no signature checks, other than any signature opcodes in the scripts themselves),
+/// and their keys compared. Covenants are evaluated if one of them reads the height.
+pub(crate) fn height_check_failure(
+    tx: &Transaction,
+    script_keys: &[CompressedPublicKey],
+    height: u64,
+    prev_hash: &HashOutput,
+) -> Option<String> {
+    match run_height_reading_scripts(&tx.body, height, prev_hash) {
+        Err(e) => Some(e.to_string()),
+        Ok(keys) if keys != script_keys => Some("an input script returns a different key".to_string()),
+        Ok(_) if has_height_reading_covenant(tx) => validate_covenants(&tx.body, height).err().map(|e| e.to_string()),
+        Ok(_) => None,
+    }
+}
+
 /// The keys the height-reading input scripts of `tx` return for the block after `tip`, the tip it was validated
-/// against, to compare against after each block (see `remove_height_expired_transactions`). A transaction with such a
-/// script is rejected if that tip is not known, or if its scripts fail there.
+/// against, to compare against when it is selected for a block template (see [height_check_failure]). A transaction
+/// with such a script is rejected if that tip is not known, or if its scripts fail there.
 fn validated_script_keys(
     tx: &Transaction,
     tip: Option<&ChainMetadata>,

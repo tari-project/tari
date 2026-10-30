@@ -20,12 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashSet,
+    sync::{Arc, RwLock},
+};
 
 use log::debug;
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{BanReason, rpc::models::FeePerGramStat, transaction_components::Transaction};
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, watch},
     task,
@@ -39,12 +43,16 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
         error::MempoolError,
-        mempool_storage::MempoolStorage,
+        mempool_storage::{MempoolStorage, height_check_failure},
     },
     validation::TransactionValidator,
 };
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
+
+/// The most times a block template is selected from the pool, when the transactions it selected that read the block
+/// height fail their re-check (see [Mempool::retrieve])
+const MAX_TEMPLATE_SELECTION_PASSES: usize = 3;
 
 /// A snapshot of the last block the mempool has processed. Broadcast over a watch channel so consumers can wait for
 /// the mempool to reach a given tip - and detect when the mempool has moved *past* it - without busy-polling.
@@ -260,36 +268,88 @@ impl Mempool {
         self.with_read_access(|storage| Ok(storage.snapshot())).await
     }
 
-    /// Returns a list of transaction ranked by transaction priority up to a given weight.
-    /// Only transactions that fit into a block will be returned
-    pub async fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        let start = std::time::Instant::now();
-        let retrieved = self
-            .with_read_access(move |storage| storage.retrieve(total_weight))
-            .await?;
-        debug!(
-            target: LOG_TARGET,
-            "Retrieved {} highest priority transaction(s) from the mempool in {:.0?} ms",
-            retrieved.retrieved_transactions.len(),
-            start.elapsed()
-        );
-
-        if !retrieved.transactions_to_remove_and_insert.is_empty() {
-            // we need to remove all transactions that need to be rechecked.
+    /// Returns a list of transaction ranked by transaction priority up to a given weight, for a block template at
+    /// `height` on top of the block `prev_hash`. Only transactions that fit into a block will be returned.
+    ///
+    /// A selected transaction with an input script or covenant that reads the block height is re-checked at the
+    /// template's height (see `height_check_failure`), without holding the storage lock. The ones that fail are dropped
+    /// from the pool and the template is selected again, at most [MAX_TEMPLATE_SELECTION_PASSES] times; if the last
+    /// selection still has failures, they are left out of it with the transactions that spend their outputs. A
+    /// transaction that passed is not checked again for a template on top of the same block, so the work per tip is
+    /// bounded by the height-reading transactions that get selected, each failing one being dropped once.
+    pub async fn retrieve(
+        &self,
+        total_weight: u64,
+        height: u64,
+        prev_hash: HashOutput,
+    ) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+        let mut passes = 0usize;
+        loop {
+            passes = passes.saturating_add(1);
+            let start = std::time::Instant::now();
+            let (retrieved, to_check) = self
+                .with_read_access(move |storage| {
+                    let retrieved = storage.retrieve(total_weight)?;
+                    let to_check = storage
+                        .unconfirmed_pool
+                        .height_reading_to_check(&retrieved.retrieved_transactions, &prev_hash);
+                    Ok((retrieved, to_check))
+                })
+                .await?;
             debug!(
                 target: LOG_TARGET,
-                "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
-                retrieved.transactions_to_remove_and_insert.len()
+                "Retrieved {} highest priority transaction(s) from the mempool in {:.0?} ms",
+                retrieved.retrieved_transactions.len(),
+                start.elapsed()
             );
 
-            let transactions_to_remove_and_insert = retrieved.transactions_to_remove_and_insert.clone();
-            self.with_write_access(move |storage| {
-                storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)
+            let (passed, failed) = task::spawn_blocking(move || {
+                let mut passed = Vec::new();
+                let mut failed = Vec::new();
+                for (key, tx, script_keys) in to_check {
+                    match height_check_failure(&tx, &script_keys, height, &prev_hash) {
+                        None => passed.push(key),
+                        Some(reason) => {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Tx: ({}) is not valid at height {height}: {reason}, dropping",
+                                tx.first_kernel_excess_sig()
+                                    .map(|sig| sig.get_signature().to_hex())
+                                    .unwrap_or_default()
+                            );
+                            failed.push((key, tx));
+                        },
+                    }
+                }
+                (passed, failed)
             })
             .await?;
-        }
 
-        Ok(retrieved.retrieved_transactions)
+            let failed_keys = failed.iter().map(|(key, _)| *key).collect::<Vec<_>>();
+            let transactions_to_remove_and_insert = retrieved.transactions_to_remove_and_insert.clone();
+            if !passed.is_empty() || !failed_keys.is_empty() || !transactions_to_remove_and_insert.is_empty() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Removing {} transaction(s) that failed a height re-check and {} that need re-evaluation from the \
+                     unconfirmed pool",
+                    failed_keys.len(),
+                    transactions_to_remove_and_insert.len()
+                );
+                self.with_write_access(move |storage| {
+                    storage.record_height_checks(&passed, &failed_keys, prev_hash)?;
+                    storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)
+                })
+                .await?;
+            }
+
+            if failed.is_empty() {
+                return Ok(retrieved.retrieved_transactions);
+            }
+            if passes >= MAX_TEMPLATE_SELECTION_PASSES {
+                let failed = failed.into_iter().map(|(_, tx)| tx).collect::<Vec<_>>();
+                return Ok(without_failed(retrieved.retrieved_transactions, &failed));
+            }
+        }
     }
 
     pub async fn retrieve_by_excess_sigs(
@@ -371,6 +431,33 @@ impl Mempool {
 
     pub async fn get_last_seen_hash(&self) -> Result<FixedHash, MempoolError> {
         self.with_read_access(|storage| Ok(storage.last_seen_hash)).await
+    }
+}
+
+/// `selected` without the `failed` transactions and the transactions that spend their outputs, directly or through
+/// other selected transactions, so that the rest is still a valid block body
+fn without_failed(selected: Vec<Arc<Transaction>>, failed: &[Arc<Transaction>]) -> Vec<Arc<Transaction>> {
+    let mut dropped_outputs = HashSet::new();
+    for tx in failed {
+        dropped_outputs.extend(tx.body.outputs().iter().map(|output| output.hash()));
+    }
+    let mut kept = selected;
+    loop {
+        let before = kept.len();
+        kept.retain(|tx| {
+            let drop = failed.contains(tx) ||
+                tx.body
+                    .inputs()
+                    .iter()
+                    .any(|input| dropped_outputs.contains(&input.output_hash()));
+            if drop {
+                dropped_outputs.extend(tx.body.outputs().iter().map(|output| output.hash()));
+            }
+            !drop
+        });
+        if kept.len() == before {
+            return kept;
+        }
     }
 }
 
@@ -631,7 +718,7 @@ mod test {
                 TxStorageResponse::UnconfirmedPool
             );
         }
-        let retrieved = mempool.retrieve(u64::MAX).await.unwrap();
+        let retrieved = mempool.retrieve(u64::MAX, 1, FixedHash::zero()).await.unwrap();
         assert_eq!(retrieved.len(), normal.len());
         for tx in &normal {
             assert!(retrieved.contains(tx));
@@ -661,5 +748,34 @@ mod test {
             "{response:?}"
         );
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+    }
+
+    #[test]
+    #[allow(clippy::indexing_slicing)]
+    fn without_failed_drops_the_failed_transactions_and_their_descendants() {
+        use tari_transaction_components::{test_helpers::spend_utxos, txn_schema};
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let (parent, _, parent_outputs) =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager).unwrap();
+        let (child, child_outputs) = spend_utxos(
+            txn_schema!(from: vec![parent_outputs[0].clone()], to: vec![MicroMinotari(50_000)]),
+            &key_manager,
+        );
+        let (grandchild, _) = spend_utxos(
+            txn_schema!(from: vec![child_outputs[0].clone()], to: vec![MicroMinotari(20_000)]),
+            &key_manager,
+        );
+        let unrelated = create_tx(&key_manager);
+        let (parent, child, grandchild) = (Arc::new(parent), Arc::new(child), Arc::new(grandchild));
+
+        // Descendants are dropped wherever they are in the selection
+        let selected = vec![grandchild.clone(), unrelated.clone(), child.clone(), parent.clone()];
+        assert_eq!(without_failed(selected.clone(), &[parent]), vec![unrelated.clone()]);
+        assert_eq!(without_failed(selected.clone(), &[child]), vec![
+            unrelated.clone(),
+            selected[3].clone()
+        ]);
+        assert_eq!(without_failed(selected.clone(), &[]), selected);
     }
 }

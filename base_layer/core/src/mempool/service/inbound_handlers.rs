@@ -1190,7 +1190,10 @@ mod test {
             );
 
             // So a template never carries two transactions for one validator node
-            let template = mempool.retrieve(1_000_000).await.unwrap();
+            let template = mempool
+                .retrieve(1_000_000, 1, tari_common_types::types::FixedHash::zero())
+                .await
+                .unwrap();
             assert_eq!(template.len(), 2);
             assert!(template.contains(&exit2));
             assert!(template.contains(&other));

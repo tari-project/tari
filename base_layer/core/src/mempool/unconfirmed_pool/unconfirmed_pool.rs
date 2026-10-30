@@ -237,12 +237,21 @@ pub struct UnconfirmedPool {
     /// validated, so two such transactions in the pool would make every block template fail (see
     /// [UnconfirmedPool::validator_node_conflict_holders]).
     txs_by_validator_node: HashMap<ValidatorNodeKey, TransactionKey>,
-    /// The pool transactions with an input script or covenant that reads the block height (see [reads_block_height]),
-    /// with the keys their height-reading input scripts returned when they were validated. Unlike every other check,
-    /// these can stop being valid as the chain grows, so they are re-checked after each block.
-    txs_reading_height: BTreeMap<TransactionKey, Vec<CompressedPublicKey>>,
+    /// The pool transactions with an input script or covenant that reads the block height (see [reads_block_height]).
+    /// Unlike every other check, these can stop being valid as the chain grows, so they are re-checked when they are
+    /// selected for a block template.
+    txs_reading_height: BTreeMap<TransactionKey, HeightReadingEntry>,
     /// The template byte budget used for selection and for effective weights (see [effective_weight])
     max_body_bytes: usize,
+}
+
+/// A pool transaction whose input scripts or covenants read the block height
+#[derive(Debug, Clone)]
+struct HeightReadingEntry {
+    /// The keys its height-reading input scripts returned at the tip it was validated against, in input order
+    script_keys: Vec<CompressedPublicKey>,
+    /// The previous block hash of the last block template it was re-checked for and passed
+    passed_at: Option<HashOutput>,
 }
 
 /// A validator node registered or exited by a transaction: (sidechain public key, validator node public key), as bytes
@@ -698,7 +707,10 @@ impl UnconfirmedPool {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
         }
         if reads_block_height(&prioritized_tx.transaction.body) {
-            self.txs_reading_height.insert(new_key, script_keys);
+            self.txs_reading_height.insert(new_key, HeightReadingEntry {
+                script_keys,
+                passed_at: None,
+            });
         }
 
         debug!(
@@ -787,18 +799,43 @@ impl UnconfirmedPool {
             .collect()
     }
 
-    /// Every transaction with an input script or covenant that reads the block height, with its key and the keys its
-    /// height-reading input scripts returned when it was validated, so that the caller can re-check them against the
-    /// new chain tip
-    pub fn height_reading_transactions(&self) -> Vec<(TransactionKey, Arc<Transaction>, Vec<CompressedPublicKey>)> {
-        self.txs_reading_height
-            .iter()
-            .filter_map(|(key, script_keys)| {
-                self.tx_by_key
-                    .get(key)
-                    .map(|tx| (*key, tx.transaction.clone(), script_keys.clone()))
-            })
-            .collect()
+    /// The transactions of `selected` (as returned by [UnconfirmedPool::fetch_highest_priority_txs]) whose input
+    /// scripts or covenants read the block height and that have not yet passed a re-check for a block template on top
+    /// of `prev_hash`, each with its key and the keys its height-reading input scripts returned when it was validated
+    pub fn height_reading_to_check(
+        &self,
+        selected: &[Arc<Transaction>],
+        prev_hash: &HashOutput,
+    ) -> Vec<(TransactionKey, Arc<Transaction>, Vec<CompressedPublicKey>)> {
+        let mut to_check = Vec::new();
+        for tx in selected {
+            let Some(kernel) = tx.body.kernels().first() else {
+                continue;
+            };
+            for key in self
+                .txs_by_signature
+                .get(kernel.excess_sig.get_signature())
+                .into_iter()
+                .flatten()
+            {
+                let Some(entry) = self.txs_reading_height.get(key) else {
+                    continue;
+                };
+                let is_selected = self.tx_by_key.get(key).is_some_and(|stored| stored.transaction == *tx);
+                if is_selected && entry.passed_at.as_ref() != Some(prev_hash) {
+                    to_check.push((*key, tx.clone(), entry.script_keys.clone()));
+                }
+            }
+        }
+        to_check
+    }
+
+    /// Records that the pool transaction `key` passed its re-check for a block template on top of `prev_hash`, so that
+    /// it is not checked again for that template
+    pub fn record_height_check_passed(&mut self, key: TransactionKey, prev_hash: HashOutput) {
+        if let Some(entry) = self.txs_reading_height.get_mut(&key) {
+            entry.passed_at = Some(prev_hash);
+        }
     }
 
     /// Whether `body` registers, exits or cancels any validator node, i.e. whether mining it can change the validator
@@ -5437,9 +5474,9 @@ mod test {
         }
 
         fn indexed(pool: &UnconfirmedPool) -> Vec<Arc<Transaction>> {
-            pool.height_reading_transactions()
-                .into_iter()
-                .map(|(_, tx, _)| tx)
+            pool.txs_reading_height
+                .keys()
+                .map(|key| pool.tx_by_key[key].transaction.clone())
                 .collect()
         }
 
@@ -5471,7 +5508,7 @@ mod test {
             assert!(pool.check_data_consistency());
 
             // Remove
-            let (key, ..) = pool.height_reading_transactions()[0].clone();
+            let key = *pool.txs_reading_height.keys().next().unwrap();
             pool.remove_transaction(key).unwrap();
             assert_eq!(indexed(&pool), vec![covenant_reads.clone()]);
             assert!(pool.check_data_consistency());
@@ -5482,15 +5519,62 @@ mod test {
             assert!(pool.check_data_consistency());
 
             // The consistency check covers the index
-            let (key, ..) = pool.height_reading_transactions()[0].clone();
-            let script_keys = pool.txs_reading_height.remove(&key).unwrap();
+            let key = *pool.txs_reading_height.keys().next().unwrap();
+            let entry = pool.txs_reading_height.remove(&key).unwrap();
             assert!(!pool.check_data_consistency());
-            pool.txs_reading_height.insert(key, script_keys);
+            pool.txs_reading_height.insert(key, entry);
             assert!(pool.check_data_consistency());
 
             // Drain
             assert_eq!(pool.drain_all_mempool_transactions().len(), 2);
             assert!(indexed(&pool).is_empty());
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn only_selected_height_reading_transactions_not_yet_passed_at_the_tip_are_checked() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let plain = tx_with_input(script!(Nop).unwrap(), Covenant::default(), &key_manager);
+            let selected = tx_with_input(
+                script!(CheckHeightVerify(10)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            let not_selected = tx_with_input(
+                script!(CheckHeightVerify(10)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                storage_capacity: 10,
+                weight_tx_skip_count: 3,
+                min_fee: 0,
+            });
+            let weight = TransactionWeight::latest();
+            for tx in [&plain, &selected, &not_selected] {
+                pool.insert(tx.clone(), None, &weight).unwrap();
+            }
+            let tip = FixedHash::from([1u8; 32]);
+            let to_check = pool.height_reading_to_check(&[plain.clone(), selected.clone()], &tip);
+            assert_eq!(to_check.len(), 1);
+            let (key, tx, _) = to_check[0].clone();
+            assert_eq!(tx, selected);
+            // An equal copy of the stored transaction is checked too
+            let copy = Arc::new((*selected).clone());
+            assert_eq!(pool.height_reading_to_check(&[copy], &tip).len(), 1);
+
+            // Once passed at a tip, it is not checked again at that tip, only at another
+            pool.record_height_check_passed(key, tip);
+            assert!(
+                pool.height_reading_to_check(std::slice::from_ref(&selected), &tip)
+                    .is_empty()
+            );
+            let next_tip = FixedHash::from([2u8; 32]);
+            assert_eq!(
+                pool.height_reading_to_check(std::slice::from_ref(&selected), &next_tip)
+                    .len(),
+                1
+            );
             assert!(pool.check_data_consistency());
         }
     }

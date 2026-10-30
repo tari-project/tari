@@ -526,7 +526,7 @@ where B: BlockchainBackend + 'static
                 );
                 let transactions = self
                     .mempool
-                    .retrieve(asking_weight)
+                    .retrieve(asking_weight, header.height, header.prev_hash)
                     .await?
                     .into_iter()
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
