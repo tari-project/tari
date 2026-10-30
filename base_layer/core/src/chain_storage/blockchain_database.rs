@@ -10571,6 +10571,24 @@ mod test {
         }
 
         #[test]
+        fn undecodable_header_accumulated_data_is_corruption() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .write_undecodable_header_accumulated_data_for_test(b7.header());
+
+            let err = check(&blockchain, 7, false).unwrap_err();
+            assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+        }
+
+        #[test]
         fn body_verdict_rewinds_only_while_the_same_block_is_stored() {
             let blockchain = create_chain_with_spend();
             let b5 = blockchain.get_block_and_smt_by_name("B5").unwrap();
