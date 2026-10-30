@@ -410,6 +410,15 @@ mod test {
         ) -> Result<(), ValidationError> {
             Ok(())
         }
+
+        fn validate_height_dependent(
+            &self,
+            _tx: &Transaction,
+            _height: u64,
+            _prev_hash: tari_common_types::types::HashOutput,
+        ) -> Result<(), ValidationError> {
+            Ok(())
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -473,6 +482,15 @@ mod test {
             &self,
             _tx: &Transaction,
             _tip: Option<&tari_common_types::chain_metadata::ChainMetadata>,
+        ) -> Result<(), ValidationError> {
+            Ok(())
+        }
+
+        fn validate_height_dependent(
+            &self,
+            _tx: &Transaction,
+            _height: u64,
+            _prev_hash: tari_common_types::types::HashOutput,
         ) -> Result<(), ValidationError> {
             Ok(())
         }

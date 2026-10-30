@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_transaction_components::{
     crypto_factories::CryptoFactories,
     transaction_components::Transaction,
@@ -92,6 +92,17 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionFullValidator<B> 
             },
         };
         self.internal_validator.validate_with_current_tip(tx, tip)?;
+        Ok(())
+    }
+
+    fn validate_height_dependent(
+        &self,
+        tx: &Transaction,
+        height: u64,
+        prev_hash: HashOutput,
+    ) -> Result<(), ValidationError> {
+        self.internal_validator
+            .validate_height_dependent(tx, height, prev_hash)?;
         Ok(())
     }
 

@@ -501,6 +501,15 @@ mod test {
             ) -> Result<(), ValidationError> {
                 Err((self.0)())
             }
+
+            fn validate_height_dependent(
+                &self,
+                _tx: &Transaction,
+                _height: u64,
+                _prev_hash: tari_common_types::types::HashOutput,
+            ) -> Result<(), ValidationError> {
+                Ok(())
+            }
         }
 
         fn create_handlers_with_bans(
@@ -769,12 +778,40 @@ mod test {
 
         #[tokio::test]
         async fn gossiped_transaction_with_tip_dependent_failure_does_not_ban() {
-            let errors: [fn() -> ValidationError; 4] = [
+            let errors: [fn() -> ValidationError; 6] = [
                 || AggregatedBodyValidationError::MaturityError.into(),
                 // Covenants can read the block height
-                || AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs).into(),
+                || {
+                    AggregatedBodyValidationError::Covenant {
+                        error: CovenantError::NoMatchingOutputs,
+                        height_dependent: true,
+                    }
+                    .into()
+                },
+                || {
+                    AggregatedBodyValidationError::Covenant {
+                        error: CovenantError::NoMatchingOutputs,
+                        height_dependent: false,
+                    }
+                    .into()
+                },
                 || AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit: 1 }.into(),
-                || AggregatedBodyValidationError::CovenantOutputsClaimedTwice { inputs: 2, matched: 1 }.into(),
+                || {
+                    AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                        inputs: 2,
+                        matched: 1,
+                        height_dependent: true,
+                    }
+                    .into()
+                },
+                || {
+                    AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                        inputs: 2,
+                        matched: 1,
+                        height_dependent: false,
+                    }
+                    .into()
+                },
             ];
             for error in errors {
                 let (mut handlers, mempool, _propagated, mut bans) =

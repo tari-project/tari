@@ -159,6 +159,21 @@ impl AggregateBodyInternalConsistencyValidator {
 
         Ok(())
     }
+
+    /// Runs only the checks whose outcome can depend on the block height or the previous block hash: the input
+    /// covenants, and the input scripts with the script offset (the keys the scripts return feed the offset). Every
+    /// other check in [`Self::validate`] gives the same result at any height a transaction can be mined at.
+    pub fn validate_height_dependent(
+        &self,
+        body: &AggregateBody,
+        script_offset: &PrivateKey,
+        prev_header: Option<HashOutput>,
+        height: u64,
+    ) -> Result<(), AggregatedBodyValidationError> {
+        validate_covenants(body, height)?;
+        let script_offset_g = CompressedPublicKey::from_secret_key(script_offset);
+        validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)
+    }
 }
 
 fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), AggregatedBodyValidationError> {
@@ -431,13 +446,20 @@ pub(crate) fn validate_covenants_with_limit(
             Err(CovenantError::WorkLimitExceeded) => {
                 return Err(AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit });
             },
-            Err(e) => return Err(e.into()),
+            Err(error) => {
+                return Err(AggregatedBodyValidationError::Covenant {
+                    error,
+                    height_dependent: covenant.reads_block_height(),
+                });
+            },
         }
     }
+    // Every input with a non-empty covenant needs an output at any height, so this does not depend on the height
     if demands.len() > outputs.len() {
         return Err(AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
             inputs: demands.len(),
             matched: outputs.len(),
+            height_dependent: false,
         });
     }
 
@@ -463,9 +485,14 @@ pub(crate) fn validate_covenants_with_limit(
 
     let matched = hopcroft_karp(&demands, outputs.len());
     if matched < demands.len() {
+        let height_dependent = body
+            .inputs()
+            .iter()
+            .any(|input| input.covenant().is_ok_and(|covenant| covenant.reads_block_height()));
         return Err(AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
             inputs: demands.len(),
             matched,
+            height_dependent,
         });
     }
     Ok(())
@@ -988,7 +1015,8 @@ mod test {
             assert!(
                 matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
                     inputs: 2,
-                    matched: 1
+                    matched: 1,
+                    height_dependent: false
                 }),
                 "{err}"
             );
@@ -996,7 +1024,8 @@ mod test {
             assert!(
                 matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
                     inputs: 2,
-                    matched: 1
+                    matched: 1,
+                    height_dependent: false
                 }),
                 "{err}"
             );
@@ -1006,6 +1035,40 @@ mod test {
             // Inputs with an empty covenant claim nothing
             let empty = || input_with_covenant(Covenant::default());
             check(vec![empty(), admits_one(&o1), empty(), empty()], vec![o1]).unwrap();
+        }
+
+        #[test]
+        fn covenant_failures_are_flagged_height_dependent_if_a_covenant_reads_the_height() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let outputs = outputs(2, &key_manager);
+            let o1 = outputs[0].clone();
+
+            // Admits every output below height 10 only
+            let expiring = input_with_covenant(covenant!(not(absolute_height(@uint(10)))).unwrap());
+            let body = AggregateBody::new_sorted_unchecked(vec![expiring], outputs.clone(), Vec::new());
+            validate_covenants(&body, 9).unwrap();
+            let err = validate_covenants(&body, 10).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::Covenant {
+                    error: CovenantError::NoMatchingOutputs,
+                    height_dependent: true
+                }),
+                "{err}"
+            );
+
+            // Both inputs only admit o1; one of them reads the height
+            let height_reading = input_with_covenant(
+                covenant!(and(absolute_height(@uint(0),), output_hash_eq(@hash(o1.hash())))).unwrap(),
+            );
+            let err = check(vec![admits_one(&o1), height_reading], outputs).unwrap_err();
+            assert!(
+                matches!(err, AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                    inputs: 2,
+                    matched: 1,
+                    height_dependent: true
+                }),
+                "{err}"
+            );
         }
 
         #[test]
@@ -1067,10 +1130,10 @@ mod test {
             .validate(&body, &Default::default(), &Default::default(), None, None, 0)
             .unwrap_err();
             assert!(
-                matches!(
-                    err,
-                    AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs)
-                ),
+                matches!(err, AggregatedBodyValidationError::Covenant {
+                    error: CovenantError::NoMatchingOutputs,
+                    height_dependent: false
+                }),
                 "{err}"
             );
         }

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{BTreeMap, BinaryHeap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -237,12 +237,25 @@ pub struct UnconfirmedPool {
     /// validated, so two such transactions in the pool would make every block template fail (see
     /// [UnconfirmedPool::validator_node_conflict_holders]).
     txs_by_validator_node: HashMap<ValidatorNodeKey, TransactionKey>,
+    /// The pool transactions with an input script or covenant that reads the block height (see [reads_block_height]).
+    /// Unlike every other check, these can stop being valid as the chain grows, so they are re-checked after each
+    /// block.
+    txs_reading_height: BTreeSet<TransactionKey>,
     /// The template byte budget used for selection and for effective weights (see [effective_weight])
     max_body_bytes: usize,
 }
 
 /// A validator node registered or exited by a transaction: (sidechain public key, validator node public key), as bytes
 type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
+
+/// Whether any input of `body` has a script or covenant that reads the block height, so that whether `body` is valid
+/// can change from one block to the next
+fn reads_block_height(body: &AggregateBody) -> bool {
+    body.inputs().iter().any(|input| {
+        input.script().is_ok_and(|script| script.is_context_sensitive()) ||
+            input.covenant().is_ok_and(|covenant| covenant.reads_block_height())
+    })
+}
 
 /// The validator nodes `body` registers or exits. A registration and an exit for the same validator node share a key:
 /// they can never both be valid against the same chain state.
@@ -599,6 +612,7 @@ impl UnconfirmedPool {
             txs_by_kernel_excess: HashMap::new(),
             txs_by_unique_id: HashMap::new(),
             txs_by_validator_node: HashMap::new(),
+            txs_reading_height: BTreeSet::new(),
             max_body_bytes: MAX_BLOCK_TEMPLATE_BODY_BYTES,
         }
     }
@@ -668,6 +682,9 @@ impl UnconfirmedPool {
 
         for vn_key in validator_node_keys(&prioritized_tx.transaction.body) {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
+        }
+        if reads_block_height(&prioritized_tx.transaction.body) {
+            self.txs_reading_height.insert(new_key);
         }
 
         debug!(
@@ -753,6 +770,15 @@ impl UnconfirmedPool {
         keys.dedup();
         keys.into_iter()
             .filter_map(|key| self.tx_by_key.get(&key).map(|tx| (key, tx.transaction.clone())))
+            .collect()
+    }
+
+    /// Every transaction with an input script or covenant that reads the block height, with its key, so that the caller
+    /// can re-check them against the new chain tip
+    pub fn height_reading_transactions(&self) -> Vec<(TransactionKey, Arc<Transaction>)> {
+        self.txs_reading_height
+            .iter()
+            .filter_map(|key| self.tx_by_key.get(key).map(|tx| (*key, tx.transaction.clone())))
             .collect()
     }
 
@@ -1922,6 +1948,7 @@ impl UnconfirmedPool {
         self.txs_by_output_commitment.clear();
         self.txs_by_kernel_excess.clear();
         self.txs_by_validator_node.clear();
+        self.txs_reading_height.clear();
         self.tx_by_key.drain().map(|(_, val)| val.transaction).collect()
     }
 
@@ -2226,6 +2253,7 @@ impl UnconfirmedPool {
                 self.txs_by_validator_node.remove(&vn_key);
             }
         }
+        self.txs_reading_height.remove(&tx_key);
 
         trace!(
             target: LOG_TARGET,
@@ -2368,7 +2396,13 @@ impl UnconfirmedPool {
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
             self.txs_by_validator_node
                 .values()
-                .all(|tx_key| self.tx_by_key.contains_key(tx_key))
+                .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
+            self.txs_reading_height
+                .iter()
+                .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
+            self.tx_by_key
+                .iter()
+                .all(|(key, tx)| reads_block_height(&tx.transaction.body) == self.txs_reading_height.contains(key))
     }
 
     fn get_next_key(&mut self) -> usize {
@@ -5347,6 +5381,98 @@ mod test {
             assert_eq!(results.retrieved_transactions.len(), 1);
             // The higher fee one is selected first
             assert!(results.retrieved_transactions.contains(&exit2));
+        }
+    }
+
+    mod height_reading_index {
+        use tari_script::{TariScript, script};
+        use tari_transaction_components::{
+            covenant,
+            transaction_components::{SpentOutput, covenants::Covenant},
+        };
+
+        use super::*;
+
+        /// A fresh transaction whose first input has the given script and covenant
+        fn tx_with_input(script: TariScript, covenant: Covenant, key_manager: &KeyManager) -> Arc<Transaction> {
+            let tx = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, key_manager)
+                .expect("Failed to get tx")
+                .0;
+            let mut inputs = tx.body.inputs().clone();
+            match &mut inputs[0].spent_output {
+                SpentOutput::OutputData {
+                    script: s, covenant: c, ..
+                } => {
+                    *s = script;
+                    *c = covenant;
+                },
+                SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+            }
+            Arc::new(Transaction::new(
+                inputs,
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                tx.offset.clone(),
+                tx.script_offset.clone(),
+            ))
+        }
+
+        fn indexed(pool: &UnconfirmedPool) -> Vec<Arc<Transaction>> {
+            pool.height_reading_transactions()
+                .into_iter()
+                .map(|(_, tx)| tx)
+                .collect()
+        }
+
+        #[test]
+        fn it_indexes_transactions_whose_input_script_or_covenant_reads_the_height() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let plain = tx_with_input(script!(Nop).unwrap(), Covenant::default(), &key_manager);
+            let script_reads = tx_with_input(
+                script!(CheckHeightVerify(10)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            let covenant_reads = tx_with_input(
+                script!(Nop).unwrap(),
+                covenant!(not(absolute_height(@uint(10)))).unwrap(),
+                &key_manager,
+            );
+
+            let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                storage_capacity: 10,
+                weight_tx_skip_count: 3,
+                min_fee: 0,
+            });
+            let weight = TransactionWeight::latest();
+            for tx in [&plain, &script_reads, &covenant_reads] {
+                pool.insert(tx.clone(), None, &weight).unwrap();
+            }
+            assert_eq!(indexed(&pool), vec![script_reads.clone(), covenant_reads.clone()]);
+            assert!(pool.check_data_consistency());
+
+            // Remove
+            let (key, _) = pool.height_reading_transactions()[0].clone();
+            pool.remove_transaction(key).unwrap();
+            assert_eq!(indexed(&pool), vec![covenant_reads.clone()]);
+            assert!(pool.check_data_consistency());
+
+            // Compact
+            pool.compact();
+            assert_eq!(indexed(&pool), vec![covenant_reads.clone()]);
+            assert!(pool.check_data_consistency());
+
+            // The consistency check covers the index
+            let (key, _) = pool.height_reading_transactions()[0].clone();
+            pool.txs_reading_height.remove(&key);
+            assert!(!pool.check_data_consistency());
+            pool.txs_reading_height.insert(key);
+            assert!(pool.check_data_consistency());
+
+            // Drain
+            assert_eq!(pool.drain_all_mempool_transactions().len(), 2);
+            assert!(indexed(&pool).is_empty());
+            assert!(pool.check_data_consistency());
         }
     }
 }

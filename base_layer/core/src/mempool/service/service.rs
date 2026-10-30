@@ -512,6 +512,15 @@ mod test {
         ) -> Result<(), crate::validation::ValidationError> {
             Ok(())
         }
+
+        fn validate_height_dependent(
+            &self,
+            _tx: &Transaction,
+            _height: u64,
+            _prev_hash: tari_common_types::types::HashOutput,
+        ) -> Result<(), crate::validation::ValidationError> {
+            Ok(())
+        }
     }
 
     struct RunningService {

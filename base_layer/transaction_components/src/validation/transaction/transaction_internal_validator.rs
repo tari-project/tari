@@ -96,6 +96,18 @@ impl TransactionInternalConsistencyValidator {
             tip_metadata.best_block_height().saturating_add(1),
         )
     }
+
+    /// Re-check only the parts of the transaction that can depend on the block it is mined in (input scripts with the
+    /// script offset, and covenants), as if it is mined at `height` on top of `prev_hash`.
+    pub fn validate_height_dependent(
+        &self,
+        tx: &Transaction,
+        height: u64,
+        prev_hash: HashOutput,
+    ) -> Result<(), AggregatedBodyValidationError> {
+        self.aggregate_body_validator
+            .validate_height_dependent(&tx.body, &tx.script_offset, Some(prev_hash), height)
+    }
 }
 
 #[cfg(test)]

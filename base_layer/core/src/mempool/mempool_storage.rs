@@ -142,16 +142,20 @@ impl MempoolStorage {
     /// the successful validation is stale: it is repeated from the start, without the lock. If the last unlocked
     /// attempt is also a stale success, the final one of the [`MAX_VALIDATION_ATTEMPTS`] attempts validates under the
     /// lock. A chain change that the mempool has not processed yet by the time the transaction is inserted is safe,
-    /// since the mempool reconciles every stored transaction with it when it does process it.
+    /// since the mempool reconciles its stored transactions with it when it does process it: a block removes the
+    /// transactions it mined or double spent, and re-checks those whose validity can change with the height (validator
+    /// node transactions, and inputs with a script or covenant that reads the height); a reorg or sync revalidates
+    /// every transaction.
     ///
     /// Most failures are final. Only a failure that depends on the chain tip (inputs not in the chain or pool, input
-    /// maturity and lock heights, and scripts that read the height of the next block; see `is_tip_dependent`) may be
-    /// due to the chain changing during validation. Such a failure is validated again, in the same way, if the mempool
-    /// processed a chain change or the chain tip moved since the attempt started. The near-free fee and weight checks
-    /// do not depend on the chain and are not repeated. Failure-driven retries are capped at the unlocked attempts and
-    /// never take the lock: if the last unlocked attempt failed, that failure is returned. Only a stale success falls
-    /// back to the locked attempt, so a transaction that keeps failing (e.g. a never-valid spend of an output whose
-    /// script reads the block height, during block sync) costs at most the unlocked attempts.
+    /// maturity and lock heights, and scripts and covenants that read the height of the next block; see
+    /// `is_tip_dependent`) may be due to the chain changing during validation. Such a failure is validated again, in
+    /// the same way, if the mempool processed a chain change or the chain tip moved since the attempt started. The
+    /// near-free fee and weight checks do not depend on the chain and are not repeated. Failure-driven retries are
+    /// capped at the unlocked attempts and never take the lock: if the last unlocked attempt failed, that failure
+    /// is returned. Only a stale success falls back to the locked attempt, so a transaction that keeps failing
+    /// (e.g. a never-valid spend of an output whose script reads the block height, during block sync) costs at most
+    /// the unlocked attempts.
     pub fn insert_unlocked(
         storage: &RwLock<MempoolStorage>,
         tx: Arc<Transaction>,
@@ -502,9 +506,10 @@ impl MempoolStorage {
         // The validity of the remaining validator node transactions (registrations, exits and spends of a pending
         // registration) depends on the validator node set and the epoch: a cancelling spend becomes invalid once its
         // registration activates, an exit once the node has exited, a registration once the node is registered by
-        // another transaction. Templates are not validated before they are mined, so when this block can have changed
-        // that state (an epoch boundary, or validator node transactions in the block) re-check the chain-linked rules
-        // for each of them in place and drop the ones that fail. Only the cheap chain-linked checks are re-run (not
+        // another transaction. Templates are built from the pool without validating them again, so every rule that a
+        // block can change for a pool transaction is re-checked here. When this block can have changed validator node
+        // state (an epoch boundary, or validator node transactions in the block), re-check the chain-linked rules for
+        // each of them in place and drop the ones that fail. Only the cheap chain-linked checks are re-run (not
         // internal consistency), and only for the validator node transactions, so a flood of them cannot stall the
         // mempool on every block.
         let block_epoch = self
@@ -540,12 +545,15 @@ impl MempoolStorage {
                 );
             }
         }
+        let block_hash = published_block.header.hash();
+        self.remove_height_expired_transactions(next_height, block_hash)?;
+
         let timer = Instant::now();
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
         self.last_seen_height = published_block.header.height;
-        self.last_seen_hash = published_block.header.hash();
+        self.last_seen_hash = block_hash;
         debug!(target: LOG_TARGET, "Compaction took {:.2?}", timer.elapsed());
         match self.stats() {
             Ok(stats) => debug!(target: LOG_TARGET, "{stats}"),
@@ -555,6 +563,37 @@ impl MempoolStorage {
         // we set this to 0, as we have not removed any invalid double spent txs due to a reorg
         #[cfg(feature = "metrics")]
         metrics::reorg_invalid_transactions().set(0);
+        Ok(())
+    }
+
+    /// An input script or covenant that reads the block height can make a transaction invalid at the next height (e.g.
+    /// a spend that is only valid up to some height), so those transactions are re-checked for the block at `height` on
+    /// top of `prev_hash`, and the ones that fail are dropped (not moved to the reorg pool, and not banned). Only their
+    /// scripts, script offset and covenants are re-run.
+    ///
+    /// This holds the write lock: the worst case is a pool full of such transactions, bounded by the pool's storage
+    /// capacity, each costing at most its covenant work limit and one script run and signature check per input. A pool
+    /// child of a dropped transaction is left in place and is removed when a template is retrieved, as its parent is
+    /// missing.
+    fn remove_height_expired_transactions(&mut self, height: u64, prev_hash: HashOutput) -> Result<(), MempoolError> {
+        let timer = Instant::now();
+        let mut dropped = 0usize;
+        for (key, tx) in self.unconfirmed_pool.height_reading_transactions() {
+            if let Err(e) = self.validator.validate_height_dependent(&tx, height, prev_hash) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({}) is not valid at height {height}: {e}, dropping",
+                    tx_id(&tx)
+                );
+                self.unconfirmed_pool.remove_transaction(key)?;
+                dropped = dropped.saturating_add(1);
+            }
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Re-checked height dependent transactions in {:.2?}, dropped {dropped} invalid at height {height}",
+            timer.elapsed()
+        );
         Ok(())
     }
 
@@ -842,15 +881,15 @@ fn validate_attempt(
 }
 
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
-/// never be valid, and gets a long ban. Covenant failures are excluded since the outcome can depend on the height, and
-/// exceeding the covenant work limit is not banned either. An input script failure (see `is_tip_dependent`) is only
-/// excluded if the input that failed reads the block height. Such a failure cannot be told apart from the height
-/// having moved on, so it is never banned, even if the script could never have succeeded; reaching it means passing
-/// every earlier check first.
+/// never be valid, and gets a long ban. Covenant failures are not banned, whether or not the failing covenant reads the
+/// height (see `is_tip_dependent`), and exceeding the covenant work limit is not banned either. An input script failure
+/// (see `is_tip_dependent`) is only excluded if the input that failed reads the block height. Such a failure cannot be
+/// told apart from the height having moved on, so it is never banned, even if the script could never have succeeded;
+/// reaching it means passing every earlier check first.
 fn internal_failure_ban_reason(error: &ValidationError) -> Option<BanReason> {
     match error {
         ValidationError::AggregatedBodyValidationError(
-            AggregatedBodyValidationError::CovenantError(_) |
+            AggregatedBodyValidationError::Covenant { .. } |
             AggregatedBodyValidationError::CovenantWorkLimitExceeded { .. } |
             AggregatedBodyValidationError::CovenantOutputsClaimedTwice { .. },
         ) => None,
@@ -871,6 +910,8 @@ fn internal_failure_ban_reason(error: &ValidationError) -> Option<BanReason> {
 ///   produce a failing script, so other script failures are final. A script offset mismatch is final too: it is only
 ///   checked once every script signature has verified against the key its script returned. Since failure-driven retries
 ///   never take the lock, a height-reading script that can never succeed costs at most the unlocked attempts.
+/// - a covenant failure, but only if a covenant that reads the block height is involved (the failing input's, or for an
+///   output claimed twice any input's). Exceeding the covenant work limit is final.
 ///
 /// Every other failure is final, since it cannot be fixed by a different tip (signatures, range proofs, balances,
 /// sizes, sorting, weight, versions etc.), even if the transaction has an input script that reads the height. That
@@ -886,6 +927,12 @@ fn is_tip_dependent(error: &ValidationError) -> bool {
         ValidationError::AggregatedBodyValidationError(
             AggregatedBodyValidationError::MaturityError |
             AggregatedBodyValidationError::InputScript {
+                height_dependent: true, ..
+            } |
+            AggregatedBodyValidationError::Covenant {
+                height_dependent: true, ..
+            } |
+            AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
                 height_dependent: true, ..
             },
         ) => true,
@@ -1118,6 +1165,15 @@ mod test {
                 }
             }
             self.internal_results.lock().unwrap().pop_front().unwrap_or(Ok(()))
+        }
+
+        fn validate_height_dependent(
+            &self,
+            _tx: &Transaction,
+            _height: u64,
+            _prev_hash: HashOutput,
+        ) -> Result<(), ValidationError> {
+            Ok(())
         }
 
         fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
@@ -1467,6 +1523,43 @@ mod test {
         let height_dependent = script_error(ScriptError::VerifyFailed, true);
         assert!(is_tip_dependent(&height_dependent));
         assert_eq!(ban_for(height_dependent), None);
+    }
+
+    #[test]
+    fn covenant_failure_is_tip_dependent_only_if_a_covenant_reads_the_height() {
+        use tari_transaction_components::transaction_components::covenants::CovenantError;
+
+        let covenant = |height_dependent| -> ValidationError {
+            AggregatedBodyValidationError::Covenant {
+                error: CovenantError::NoMatchingOutputs,
+                height_dependent,
+            }
+            .into()
+        };
+        let claimed_twice = |height_dependent| -> ValidationError {
+            AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                inputs: 2,
+                matched: 1,
+                height_dependent,
+            }
+            .into()
+        };
+        assert!(is_tip_dependent(&covenant(true)));
+        assert!(is_tip_dependent(&claimed_twice(true)));
+        assert!(!is_tip_dependent(&covenant(false)));
+        assert!(!is_tip_dependent(&claimed_twice(false)));
+        let work_limit = AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit: 1 }.into();
+        assert!(!is_tip_dependent(&work_limit));
+        // None of them is banned
+        for error in [
+            covenant(true),
+            covenant(false),
+            claimed_twice(true),
+            claimed_twice(false),
+            work_limit,
+        ] {
+            assert!(internal_failure_ban_reason(&error).is_none(), "{error}");
+        }
     }
 
     #[test]
