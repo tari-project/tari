@@ -9,10 +9,16 @@ grpc_readiness_enabled = false
 #grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # gRPC authentication method (default = "none")
+# When Basic authentication is configured on a non-loopback `grpc_address` without TLS (`grpc_tls_enabled = false`),
+# the node logs a warning at startup; set `grpc_allow_insecure_auth = false` to refuse starting without TLS.
 #grpc_authentication = { username = "admin", password = "xxxx" }
 
 # Use gRPC over TLS (default = false)
 #grpc_tls_enabled = false
+
+# Allow cleartext gRPC Basic authentication credentials without TLS on a non-loopback address (default = true; logs a
+# startup warning). Set to `false` to refuse starting with Basic auth and no TLS on a non-loopback address.
+#grpc_allow_insecure_auth = true
 
 # Uncomment all gRPC server methods that should be allowed (only active when `grpc_enabled = true`).
 # Setting `mining_enabled = true` adds the mining method set (`get_version`, `get_new_block_template`,
