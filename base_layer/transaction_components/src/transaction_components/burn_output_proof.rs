@@ -190,6 +190,42 @@ fn consensus_decode<T: BorshDeserialize>(field: &'static str, bytes: &[u8]) -> R
     })
 }
 
+/// Recomputes the block output Merkle root (`BlockHeader::block_output_mr`) from a slice of block body outputs,
+/// pushing coinbase output hashes into the block output MMR, non-coinbase output hashes into the normal output MMR,
+/// and finally pushing the normal output MMR root as the last leaf of the block output MMR.
+pub fn calculate_block_output_mr(outputs: &[TransactionOutput]) -> Result<FixedHash, String> {
+    use tari_mmr::{Hash, MerkleMountainRange};
+
+    type OutputMmr = MerkleMountainRange<InputMmrHasherBlake256, Vec<Hash>>;
+
+    let mut block_output_mmr = OutputMmr::new(Vec::new());
+    let mut normal_output_mmr = OutputMmr::new(Vec::new());
+
+    for output in outputs {
+        let hash = output.hash().to_vec();
+        if output.features.is_coinbase() {
+            block_output_mmr
+                .push(hash)
+                .map_err(|e| format!("Failed to push coinbase output to block output MMR: {e}"))?;
+        } else {
+            normal_output_mmr
+                .push(hash)
+                .map_err(|e| format!("Failed to push normal output to normal output MMR: {e}"))?;
+        }
+    }
+
+    let normal_output_mr = normal_output_mmr
+        .get_merkle_root()
+        .map_err(|e| format!("Failed to compute normal output MMR root: {e}"))?;
+    block_output_mmr
+        .push(normal_output_mr)
+        .map_err(|e| format!("Failed to push normal output MMR root into block output MMR: {e}"))?;
+    let root = block_output_mmr
+        .get_merkle_root()
+        .map_err(|e| format!("Failed to compute block output MMR root: {e}"))?;
+    FixedHash::try_from(root).map_err(|e| format!("Invalid block output MMR root length: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use tari_mmr::{Hash, MerkleMountainRange};

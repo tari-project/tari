@@ -4341,6 +4341,8 @@ dependencies = [
  "tari_comms",
  "tari_features",
  "tari_p2p",
+ "tari_script",
+ "tari_transaction_components",
  "tari_utilities",
  "thiserror 2.0.21",
  "tokio",
