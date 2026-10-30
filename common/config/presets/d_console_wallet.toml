@@ -58,8 +58,12 @@
 #grpc_enabled = false
 # The socket to expose for the gRPC base node server (default = "http://127.0.0.1:18143")
 #grpc_address = "/ip4/127.0.0.1/tcp/18143"
-# gRPC authentication method (default = "none")
-#grpc_authentication = { username = "admin", password = "xxxx" }
+# Per-client plaintext gRPC Basic authentication credentials (default = []).
+# Restrict any config file containing plaintext passwords to owner-only permissions (`chmod 0600 config.toml`), or
+# inject credentials via the `TARI_WALLET__GRPC_CREDENTIALS` environment variable.
+#grpc_credentials = [
+#    { username = "admin", password = "xxxx" },
+#]
 
 # A list of base node peers that the wallet should use for service requests and tracking chain state in the form
 # ["public_key::net_address", ...] (default = [])

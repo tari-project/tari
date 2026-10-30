@@ -41,7 +41,7 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredentials};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
@@ -107,7 +107,11 @@ pub struct BaseNodeConfig {
     /// `get_tip_info`, `get_active_validator_nodes`, `get_validator_node_changes`, `get_shard_key`,
     /// `get_header_by_hash`, `get_side_chain_utxos`) on top of this list.
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
-    /// GRPC authentication mode
+    /// GRPC server credentials (list of `{ username, password }` entries)
+    #[serde(default)]
+    pub grpc_credentials: GrpcCredentials,
+    /// DEPRECATED: GRPC authentication mode (use `grpc_credentials` instead)
+    #[serde(default)]
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
@@ -229,6 +233,7 @@ impl Default for BaseNodeConfig {
             grpc_enabled: true,
             grpc_address: None,
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
+            grpc_credentials: GrpcCredentials::default(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             grpc_readiness_enabled: true,

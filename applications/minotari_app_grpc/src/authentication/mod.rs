@@ -24,7 +24,7 @@ mod client_interceptor;
 pub use client_interceptor::ClientAuthenticationInterceptor;
 
 mod basic_auth;
-pub use basic_auth::{BasicAuthCredentials, BasicAuthError};
+pub use basic_auth::{BasicAuthCredentials, BasicAuthError, PlaintextBasicAuthCredentials};
 
 mod server_interceptor;
-pub use server_interceptor::ServerAuthenticationInterceptor;
+pub use server_interceptor::{AuthenticatedUser, ServerAuthenticationInterceptor, resolve_server_grpc_credentials};

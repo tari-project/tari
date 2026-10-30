@@ -81,7 +81,9 @@
 # The Minotari base node's GRPC address. (default = "http://127.0.0.1:18142")
 #base_node_grpc_address = "http://127.0.0.1:18142"
 
-# GRPC authentication for the base node (default = "none")
+# Plaintext GRPC authentication credential for the base node (default = "none").
+# Restrict any config file containing a plaintext password to owner-only permissions (`chmod 0600 config.toml`), or
+# inject the secret via `TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_AUTHENTICATION__PASSWORD`.
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 
 # Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
