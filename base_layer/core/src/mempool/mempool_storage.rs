@@ -28,7 +28,7 @@ use std::{
 use log::*;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    types::{CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_node_components::blocks::Block;
 use tari_transaction_components::{
@@ -37,7 +37,10 @@ use tari_transaction_components::{
     helpers::borsh::SerializedSize,
     rpc::models::FeePerGramStat,
     transaction_components::{Transaction, TransactionError},
-    validation::AggregatedBodyValidationError,
+    validation::{
+        AggregatedBodyValidationError,
+        aggregate_body::{run_height_reading_scripts, validate_covenants},
+    },
     weight::TransactionWeight,
 };
 use tari_utilities::hex::Hex;
@@ -115,7 +118,17 @@ impl MempoolStorage {
         {
             return Ok(response);
         }
-        let parents = match self.validate_locked(&tx) {
+        // A transaction with an input script that reads the height is validated against an explicit tip, so that the
+        // keys its scripts return there can be kept (see `validated_script_keys`)
+        let tip = if has_height_reading_script(&tx) {
+            self.validator.chain_metadata().unwrap_or_else(|e| {
+                warn!(target: LOG_TARGET, "Could not fetch the chain tip: {e}");
+                None
+            })
+        } else {
+            None
+        };
+        let parents = match self.validate_locked(&tx, tip.as_ref()) {
             Ok(parents) => parents,
             Err(response) => return Ok(response),
         };
@@ -125,7 +138,7 @@ impl MempoolStorage {
             tx_id(&tx),
             timer.elapsed()
         );
-        self.insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs))
+        self.insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs), tip.as_ref())
     }
 
     /// Insert a new unconfirmed transaction into the Mempool, without holding the storage write lock while validating
@@ -238,7 +251,7 @@ impl MempoolStorage {
                 return Ok((response, None));
             }
             return lock
-                .insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs))
+                .insert_into_unconfirmed_pool(tx, parents.map(|p| p.outputs), tip.as_ref())
                 .map(|response| (response, None))
                 .map_err(|e| MempoolError::InternalError(e.to_string()));
         }
@@ -339,12 +352,16 @@ impl MempoolStorage {
 
     /// Validates the transaction in the same order as [`MempoolStorage::insert_unlocked`]: chain-linked checks, then
     /// the mempool parents of any inputs not in the chain, then internal consistency.
-    fn validate_locked(&self, tx: &Transaction) -> Result<Option<PoolParents>, TxStorageResponse> {
+    fn validate_locked(
+        &self,
+        tx: &Transaction,
+        tip: Option<&ChainMetadata>,
+    ) -> Result<Option<PoolParents>, TxStorageResponse> {
         let parents = validate_chain_linked(self.validator.as_ref(), tx)?;
         if let Some(parents) = &parents {
             check_pool_parents(&self.unconfirmed_pool, parents)?;
         }
-        validate_internal_consistency(self.validator.as_ref(), tx, None)?;
+        validate_internal_consistency(self.validator.as_ref(), tx, tip)?;
         Ok(parents)
     }
 
@@ -365,13 +382,22 @@ impl MempoolStorage {
         None
     }
 
+    /// Inserts a transaction that was validated against `tip` (or the validator's own tip, if `None`)
     fn insert_into_unconfirmed_pool(
         &mut self,
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
+        tip: Option<&ChainMetadata>,
     ) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
+        let script_keys = match validated_script_keys(&tx, tip) {
+            Ok(keys) => keys,
+            Err(response) => {
+                debug!(target: LOG_TARGET, "Tx: ({tx_id}) rejected: {response}");
+                return Ok(response);
+            },
+        };
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
         // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
@@ -408,7 +434,8 @@ impl MempoolStorage {
                 }
             }
         }
-        self.unconfirmed_pool.insert(tx, dependent_outputs, &weight)?;
+        self.unconfirmed_pool
+            .insert_with_script_keys(tx, dependent_outputs, &weight, script_keys)?;
         debug!(
             target: LOG_TARGET,
             "Transaction {} inserted in {:.2?}",
@@ -568,21 +595,35 @@ impl MempoolStorage {
 
     /// An input script or covenant that reads the block height can make a transaction invalid at the next height (e.g.
     /// a spend that is only valid up to some height), so those transactions are re-checked for the block at `height` on
-    /// top of `prev_hash`, and the ones that fail are dropped (not moved to the reorg pool, and not banned). Only their
-    /// scripts, script offset and covenants are re-run.
-    ///
-    /// This holds the write lock: the worst case is a pool full of such transactions, bounded by the pool's storage
-    /// capacity, each costing at most its covenant work limit and one script run and signature check per input. A pool
+    /// top of `prev_hash`, and the ones that fail are dropped (not moved to the reorg pool, and not banned). A pool
     /// child of a dropped transaction is left in place and is removed when a template is retrieved, as its parent is
     /// missing.
+    ///
+    /// The script signatures and the script offset were verified against the keys the height-reading scripts returned
+    /// when the transaction was validated. A script that returns the same key gives the same result for both, and a
+    /// different key cannot satisfy the script signature, so only those scripts are run, and their keys compared.
+    ///
+    /// This holds the write lock. Per block, each indexed transaction costs a run of each of its height-reading input
+    /// scripts (no signature checks, other than any signature opcodes in the scripts themselves, within the script size
+    /// limit) and, if one of its covenants reads the height, one covenant evaluation within
+    /// `MAX_COVENANT_WORK_PER_BODY`. The number of indexed transactions is bounded only by the pool's storage capacity,
+    /// and the pool can hold many conflicting spends of the same output.
     fn remove_height_expired_transactions(&mut self, height: u64, prev_hash: HashOutput) -> Result<(), MempoolError> {
         let timer = Instant::now();
         let mut dropped = 0usize;
-        for (key, tx) in self.unconfirmed_pool.height_reading_transactions() {
-            if let Err(e) = self.validator.validate_height_dependent(&tx, height, prev_hash) {
+        for (key, tx, validated_keys) in self.unconfirmed_pool.height_reading_transactions() {
+            let failure = match run_height_reading_scripts(&tx.body, height, &prev_hash) {
+                Err(e) => Some(e.to_string()),
+                Ok(keys) if keys != validated_keys => Some("an input script returns a different key".to_string()),
+                Ok(_) if has_height_reading_covenant(&tx) => {
+                    validate_covenants(&tx.body, height).err().map(|e| e.to_string())
+                },
+                Ok(_) => None,
+            };
+            if let Some(reason) = failure {
                 debug!(
                     target: LOG_TARGET,
-                    "Tx: ({}) is not valid at height {height}: {e}, dropping",
+                    "Tx: ({}) is not valid at height {height}: {reason}, dropping",
                     tx_id(&tx)
                 );
                 self.unconfirmed_pool.remove_transaction(key)?;
@@ -821,6 +862,45 @@ fn fee_per_gram_millis(tx: &Transaction, weighting: &TransactionWeight) -> Optio
         .as_u64()
         .saturating_mul(1000)
         .checked_div(weight)
+}
+
+/// Whether any input script of `tx` reads the block height
+fn has_height_reading_script(tx: &Transaction) -> bool {
+    tx.body
+        .inputs()
+        .iter()
+        .any(|input| input.script().is_ok_and(|script| script.is_context_sensitive()))
+}
+
+/// Whether any input covenant of `tx` reads the block height
+fn has_height_reading_covenant(tx: &Transaction) -> bool {
+    tx.body
+        .inputs()
+        .iter()
+        .any(|input| input.covenant().is_ok_and(|covenant| covenant.reads_block_height()))
+}
+
+/// The keys the height-reading input scripts of `tx` return for the block after `tip`, the tip it was validated
+/// against, to compare against after each block (see `remove_height_expired_transactions`). A transaction with such a
+/// script is rejected if that tip is not known, or if its scripts fail there.
+fn validated_script_keys(
+    tx: &Transaction,
+    tip: Option<&ChainMetadata>,
+) -> Result<Vec<CompressedPublicKey>, TxStorageResponse> {
+    let Some(tip) = tip else {
+        if has_height_reading_script(tx) {
+            return Err(TxStorageResponse::NotStored(Some(
+                "The chain tip the transaction was validated against is not known".to_string(),
+            )));
+        }
+        return Ok(Vec::new());
+    };
+    run_height_reading_scripts(
+        &tx.body,
+        tip.best_block_height().saturating_add(1),
+        tip.best_block_hash(),
+    )
+    .map_err(|e| TxStorageResponse::NotStored(Some(e.to_string())))
 }
 
 fn tx_id(tx: &Transaction) -> String {
@@ -1167,15 +1247,6 @@ mod test {
             self.internal_results.lock().unwrap().pop_front().unwrap_or(Ok(()))
         }
 
-        fn validate_height_dependent(
-            &self,
-            _tx: &Transaction,
-            _height: u64,
-            _prev_hash: HashOutput,
-        ) -> Result<(), ValidationError> {
-            Ok(())
-        }
-
         fn chain_metadata(&self) -> Result<Option<ChainMetadata>, ValidationError> {
             let mut tips = self.tips.lock().unwrap();
             // Keep returning the last tip once the scripted ones run out
@@ -1460,11 +1531,30 @@ mod test {
     }
 
     #[test]
+    fn height_reading_transaction_is_rejected_if_its_validation_tip_is_unknown() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let height_reading = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(2) Nop).unwrap());
+        // No chain tip is known, so the validator validates against its own
+        let validator = ScriptedValidator::new(vec![], vec![]);
+        let storage = create_storage(&validator);
+        let response = MempoolStorage::insert_unlocked(&storage, height_reading.clone()).unwrap();
+        assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+        let response = storage.write().unwrap().insert(height_reading).unwrap();
+        assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+        assert_eq!(pool_len(&storage), 0);
+
+        // A transaction without such a script does not need the tip
+        let response = MempoolStorage::insert_unlocked(&storage, create_tx(&key_manager)).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+    }
+
+    #[test]
     fn height_dependent_script_failure_is_retried_if_chain_changed() {
         let key_manager = KeyManager::new_random().unwrap();
         let validated_at = FixedHash::from([1u8; 32]);
         let new_tip = FixedHash::from([2u8; 32]);
-        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(100) Nop).unwrap());
+        // Reads the height, and runs at the height after the scripted tips, where its keys are cached on insert
+        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(2) Nop).unwrap());
 
         let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
         validator.chain_changes.store(1, Ordering::SeqCst);

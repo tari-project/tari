@@ -25,10 +25,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, HashOutput},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
@@ -175,15 +172,6 @@ impl TransactionValidator for MockValidator {
         _tip: Option<&ChainMetadata>,
     ) -> Result<(), ValidationError> {
         // `validate_chain_linked` already returned the mock's verdict
-        Ok(())
-    }
-
-    fn validate_height_dependent(
-        &self,
-        _transaction: &Transaction,
-        _height: u64,
-        _prev_hash: HashOutput,
-    ) -> Result<(), ValidationError> {
         Ok(())
     }
 }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+use tari_common_types::chain_metadata::ChainMetadata;
 use tari_transaction_components::transaction_components::Transaction;
 
 use crate::{
@@ -55,15 +55,6 @@ impl<B: BlockchainBackend> TransactionValidator for TransactionChainLinkedValida
         &self,
         _tx: &Transaction,
         _tip: Option<&ChainMetadata>,
-    ) -> Result<(), ValidationError> {
-        Ok(())
-    }
-
-    fn validate_height_dependent(
-        &self,
-        _tx: &Transaction,
-        _height: u64,
-        _prev_hash: HashOutput,
     ) -> Result<(), ValidationError> {
         Ok(())
     }

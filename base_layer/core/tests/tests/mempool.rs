@@ -49,7 +49,7 @@ use tari_core::{
         transaction::{TransactionChainLinkedValidator, TransactionFullValidator},
     },
 };
-use tari_crypto::keys::SecretKey;
+use tari_crypto::keys::{PublicKey, SecretKey};
 use tari_node_components::blocks::ChainBlock;
 use tari_p2p::{P2pConfig, services::liveness::LivenessConfig, tari_message::TariMessageType};
 use tari_script::{ExecutionStack, Opcode, ScriptError, TariScript, script};
@@ -2314,6 +2314,39 @@ async fn expired_height_limited_spend_is_dropped_after_a_block() {
 #[tokio::test]
 #[allow(clippy::identity_op)]
 #[allow(clippy::arithmetic_side_effects)]
+async fn spend_whose_script_returns_another_key_after_a_block_is_dropped() {
+    let key_manager = KeyManager::new_random().unwrap();
+    let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
+    let h = 2;
+    // Returns the spender's key (from the input data) up to height `h`, and an unrelated key above it
+    let other_key = CompressedPublicKey::new_from_pk(UncompressedPublicKey::from_secret_key(&PrivateKey::random(
+        &mut rand::rng(),
+    )));
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T]);
+    schema.script = script!(CheckHeight(h) GtZero IfThen Drop PushPubKey(Box::new(other_key)) Else Nop EndIf).unwrap();
+    let (key_switching_tx, key_switching_outputs) = spend_utxos(schema, &key_manager);
+    let block_1 = mine_block(&db, &rules, &key_manager, &genesis, vec![key_switching_tx]);
+
+    let mempool = create_fully_validating_mempool(&db, &rules);
+    let (spend, _) = spend_utxos(
+        txn_schema!(from: vec![key_switching_outputs[0].clone()], to: vec![500_000 * uT]),
+        &key_manager,
+    );
+    assert_eq!(
+        mempool.insert(Arc::new(spend.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    let block_2 = mine_block(&db, &rules, &key_manager, &block_1, vec![]);
+    mempool.process_published_block(block_2.to_arc_block()).await.unwrap();
+    assert_eq!(pool_status(&mempool, &spend).await, TxStorageResponse::NotStored(None));
+    let block_3 = mine_template(&mempool, &db, &rules, &key_manager, &block_2).await;
+    assert_eq!(block_3.height(), h + 1);
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
+#[allow(clippy::arithmetic_side_effects)]
 async fn expired_covenant_spend_is_dropped_after_a_block() {
     let key_manager = KeyManager::new_random().unwrap();
     let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
@@ -2411,19 +2444,24 @@ async fn child_of_dropped_spend_is_not_mined_and_height_locked_spend_stays() {
 }
 
 #[tokio::test]
+#[allow(clippy::arithmetic_side_effects)]
 async fn re_checking_height_reading_transactions_after_a_block() {
-    const NUM_TXS: usize = 50;
+    const NUM_TXS: usize = 30;
+    const INPUTS_PER_TX: usize = 4;
     let key_manager = KeyManager::new_random().unwrap();
     let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
-    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![50_000 * uT; NUM_TXS]);
+    // Every input of every pool transaction has a script and a covenant that read the height
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT; NUM_TXS * INPUTS_PER_TX]);
     schema.script = script!(CheckHeightVerify(1)).unwrap();
+    schema.covenant = covenant!(absolute_height(@uint(1))).unwrap();
     let (tx, height_reading_outputs) = spend_utxos(schema, &key_manager);
     let block_1 = mine_block(&db, &rules, &key_manager, &genesis, vec![tx]);
 
     let mempool = create_fully_validating_mempool(&db, &rules);
-    for output in height_reading_outputs.iter().take(NUM_TXS) {
+    for inputs in height_reading_outputs[..NUM_TXS * INPUTS_PER_TX].chunks(INPUTS_PER_TX) {
+        // One output per input, for the covenants
         let (spend, _) = spend_utxos(
-            txn_schema!(from: vec![output.clone()], to: vec![20_000 * uT]),
+            txn_schema!(from: inputs.to_vec(), to: vec![5_000 * uT; INPUTS_PER_TX]),
             &key_manager,
         );
         assert_eq!(
@@ -2437,8 +2475,8 @@ async fn re_checking_height_reading_transactions_after_a_block() {
     mempool.process_published_block(block_2.to_arc_block()).await.unwrap();
     let elapsed = timer.elapsed();
     println!(
-        "Processing a block with {NUM_TXS} height reading pool transactions took {elapsed:.2?} ({:.2?} per \
-         transaction)",
+        "Processing a block with {NUM_TXS} height reading pool transactions of {INPUTS_PER_TX} inputs each took \
+         {elapsed:.2?} ({:.2?} per transaction)",
         elapsed / u32::try_from(NUM_TXS).unwrap()
     );
     assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, NUM_TXS as u64);

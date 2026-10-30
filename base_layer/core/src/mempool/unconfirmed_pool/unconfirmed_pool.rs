@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet},
+    collections::{BTreeMap, BinaryHeap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -29,7 +29,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    types::{CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::protocol::rpc::RPC_MAX_FRAME_SIZE;
 use tari_node_components::blocks::Block;
@@ -237,10 +237,10 @@ pub struct UnconfirmedPool {
     /// validated, so two such transactions in the pool would make every block template fail (see
     /// [UnconfirmedPool::validator_node_conflict_holders]).
     txs_by_validator_node: HashMap<ValidatorNodeKey, TransactionKey>,
-    /// The pool transactions with an input script or covenant that reads the block height (see [reads_block_height]).
-    /// Unlike every other check, these can stop being valid as the chain grows, so they are re-checked after each
-    /// block.
-    txs_reading_height: BTreeSet<TransactionKey>,
+    /// The pool transactions with an input script or covenant that reads the block height (see [reads_block_height]),
+    /// with the keys their height-reading input scripts returned when they were validated. Unlike every other check,
+    /// these can stop being valid as the chain grows, so they are re-checked after each block.
+    txs_reading_height: BTreeMap<TransactionKey, Vec<CompressedPublicKey>>,
     /// The template byte budget used for selection and for effective weights (see [effective_weight])
     max_body_bytes: usize,
 }
@@ -612,7 +612,7 @@ impl UnconfirmedPool {
             txs_by_kernel_excess: HashMap::new(),
             txs_by_unique_id: HashMap::new(),
             txs_by_validator_node: HashMap::new(),
-            txs_reading_height: BTreeSet::new(),
+            txs_reading_height: BTreeMap::new(),
             max_body_bytes: MAX_BLOCK_TEMPLATE_BODY_BYTES,
         }
     }
@@ -624,14 +624,28 @@ impl UnconfirmedPool {
         self
     }
 
-    /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
-    /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
-    /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
+    /// Insert a new transaction into the UnconfirmedPool, with no script keys (see
+    /// [UnconfirmedPool::insert_with_script_keys])
+    #[cfg(test)]
     pub fn insert(
         &mut self,
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
+    ) -> Result<(), UnconfirmedPoolError> {
+        self.insert_with_script_keys(tx, dependent_outputs, transaction_weighting, Vec::new())
+    }
+
+    /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
+    /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
+    /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
+    /// `script_keys` are the keys the transaction's height-reading input scripts returned when it was validated.
+    pub fn insert_with_script_keys(
+        &mut self,
+        tx: Arc<Transaction>,
+        dependent_outputs: Option<Vec<HashOutput>>,
+        transaction_weighting: &TransactionWeight,
+        script_keys: Vec<CompressedPublicKey>,
     ) -> Result<(), UnconfirmedPoolError> {
         if tx
             .body
@@ -684,7 +698,7 @@ impl UnconfirmedPool {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
         }
         if reads_block_height(&prioritized_tx.transaction.body) {
-            self.txs_reading_height.insert(new_key);
+            self.txs_reading_height.insert(new_key, script_keys);
         }
 
         debug!(
@@ -773,12 +787,17 @@ impl UnconfirmedPool {
             .collect()
     }
 
-    /// Every transaction with an input script or covenant that reads the block height, with its key, so that the caller
-    /// can re-check them against the new chain tip
-    pub fn height_reading_transactions(&self) -> Vec<(TransactionKey, Arc<Transaction>)> {
+    /// Every transaction with an input script or covenant that reads the block height, with its key and the keys its
+    /// height-reading input scripts returned when it was validated, so that the caller can re-check them against the
+    /// new chain tip
+    pub fn height_reading_transactions(&self) -> Vec<(TransactionKey, Arc<Transaction>, Vec<CompressedPublicKey>)> {
         self.txs_reading_height
             .iter()
-            .filter_map(|key| self.tx_by_key.get(key).map(|tx| (*key, tx.transaction.clone())))
+            .filter_map(|(key, script_keys)| {
+                self.tx_by_key
+                    .get(key)
+                    .map(|tx| (*key, tx.transaction.clone(), script_keys.clone()))
+            })
             .collect()
     }
 
@@ -2398,11 +2417,11 @@ impl UnconfirmedPool {
                 .values()
                 .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
             self.txs_reading_height
-                .iter()
+                .keys()
                 .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
-            self.tx_by_key
-                .iter()
-                .all(|(key, tx)| reads_block_height(&tx.transaction.body) == self.txs_reading_height.contains(key))
+            self.tx_by_key.iter().all(|(key, tx)| {
+                reads_block_height(&tx.transaction.body) == self.txs_reading_height.contains_key(key)
+            })
     }
 
     fn get_next_key(&mut self) -> usize {
@@ -5420,7 +5439,7 @@ mod test {
         fn indexed(pool: &UnconfirmedPool) -> Vec<Arc<Transaction>> {
             pool.height_reading_transactions()
                 .into_iter()
-                .map(|(_, tx)| tx)
+                .map(|(_, tx, _)| tx)
                 .collect()
         }
 
@@ -5452,7 +5471,7 @@ mod test {
             assert!(pool.check_data_consistency());
 
             // Remove
-            let (key, _) = pool.height_reading_transactions()[0].clone();
+            let (key, ..) = pool.height_reading_transactions()[0].clone();
             pool.remove_transaction(key).unwrap();
             assert_eq!(indexed(&pool), vec![covenant_reads.clone()]);
             assert!(pool.check_data_consistency());
@@ -5463,10 +5482,10 @@ mod test {
             assert!(pool.check_data_consistency());
 
             // The consistency check covers the index
-            let (key, _) = pool.height_reading_transactions()[0].clone();
-            pool.txs_reading_height.remove(&key);
+            let (key, ..) = pool.height_reading_transactions()[0].clone();
+            let script_keys = pool.txs_reading_height.remove(&key).unwrap();
             assert!(!pool.check_data_consistency());
-            pool.txs_reading_height.insert(key);
+            pool.txs_reading_height.insert(key, script_keys);
             assert!(pool.check_data_consistency());
 
             // Drain

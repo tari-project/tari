@@ -159,21 +159,6 @@ impl AggregateBodyInternalConsistencyValidator {
 
         Ok(())
     }
-
-    /// Runs only the checks whose outcome can depend on the block height or the previous block hash: the input
-    /// covenants, and the input scripts with the script offset (the keys the scripts return feed the offset). Every
-    /// other check in [`Self::validate`] gives the same result at any height a transaction can be mined at.
-    pub fn validate_height_dependent(
-        &self,
-        body: &AggregateBody,
-        script_offset: &PrivateKey,
-        prev_header: Option<HashOutput>,
-        height: u64,
-    ) -> Result<(), AggregatedBodyValidationError> {
-        validate_covenants(body, height)?;
-        let script_offset_g = CompressedPublicKey::from_secret_key(script_offset);
-        validate_script_and_script_offset(body, script_offset_g, &self.factories.commitment, prev_header, height)
-    }
 }
 
 fn check_template_registration_utxo(sidechain_feature: &SideChainFeature) -> Result<(), AggregatedBodyValidationError> {
@@ -420,7 +405,26 @@ fn validate_script_and_script_offset(
     Ok(())
 }
 
-fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), AggregatedBodyValidationError> {
+/// Runs the input scripts that read the block height (see `TariScript::is_context_sensitive`) for the block at `height`
+/// on top of `prev_hash`, and returns the keys they return, in input order. Script signatures are not checked.
+pub fn run_height_reading_scripts(
+    body: &AggregateBody,
+    height: u64,
+    prev_hash: &HashOutput,
+) -> Result<Vec<CompressedPublicKey>, TransactionError> {
+    let prev_hash: [u8; 32] = prev_hash.as_slice().try_into().unwrap_or([0; 32]);
+    let mut keys = Vec::new();
+    for input in body.inputs() {
+        if input.script()?.is_context_sensitive() {
+            let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
+            keys.push(input.run_script(Some(context))?);
+        }
+    }
+    Ok(keys)
+}
+
+/// Evaluates the input covenants of `body` for the block at `height`, within [`MAX_COVENANT_WORK_PER_BODY`]
+pub fn validate_covenants(body: &AggregateBody, height: u64) -> Result<(), AggregatedBodyValidationError> {
     validate_covenants_with_limit(body, height, MAX_COVENANT_WORK_PER_BODY)
 }
 

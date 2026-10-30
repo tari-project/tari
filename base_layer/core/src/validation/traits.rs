@@ -20,10 +20,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use tari_common_types::{
-    chain_metadata::ChainMetadata,
-    types::{CompressedCommitment, HashOutput},
-};
+use tari_common_types::{chain_metadata::ChainMetadata, types::CompressedCommitment};
 use tari_node_components::blocks::{Block, BlockHeader, ChainBlock};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::epoch_time::EpochTime;
@@ -82,17 +79,6 @@ pub trait TransactionValidator: Send + Sync {
         &self,
         tx: &Transaction,
         tip: Option<&ChainMetadata>,
-    ) -> Result<(), ValidationError>;
-
-    /// Re-check only the parts of a transaction whose outcome can depend on the block it is mined in (input scripts
-    /// with the script offset, and covenants), as if it is mined at `height` on top of the block `prev_hash`.
-    ///
-    /// Required, with no default, so that an implementation cannot silently skip these checks.
-    fn validate_height_dependent(
-        &self,
-        tx: &Transaction,
-        height: u64,
-        prev_hash: HashOutput,
     ) -> Result<(), ValidationError>;
 
     /// The chain tip that validation is currently performed against, or `None` if it is not known. Used to detect

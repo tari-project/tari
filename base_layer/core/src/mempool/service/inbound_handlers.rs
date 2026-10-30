@@ -501,15 +501,6 @@ mod test {
             ) -> Result<(), ValidationError> {
                 Err((self.0)())
             }
-
-            fn validate_height_dependent(
-                &self,
-                _tx: &Transaction,
-                _height: u64,
-                _prev_hash: tari_common_types::types::HashOutput,
-            ) -> Result<(), ValidationError> {
-                Ok(())
-            }
         }
 
         fn create_handlers_with_bans(
