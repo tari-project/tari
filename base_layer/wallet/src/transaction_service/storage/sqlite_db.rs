@@ -1210,6 +1210,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
             .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
             .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+            .filter(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmedLocked as i32))
             .filter(
                 completed_transactions::cancelled
                     .is_null()
@@ -2473,8 +2474,10 @@ impl CompletedTransactionSql {
                     .eq(LegacyTransactionStatus::Imported as i32)
                     .or(completed_transactions::status.eq(LegacyTransactionStatus::OneSidedUnconfirmed as i32))
                     .or(completed_transactions::status.eq(LegacyTransactionStatus::OneSidedConfirmed as i32))
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::OneSidedConfirmedLocked as i32))
                     .or(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
-                    .or(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseConfirmed as i32)),
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+                    .or(completed_transactions::status.eq(LegacyTransactionStatus::CoinbaseConfirmedLocked as i32)),
             )
             .filter(
                 completed_transactions::mined_height
@@ -3057,17 +3060,23 @@ impl UnconfirmedTransactionInfoSql {
                     .ne(LegacyTransactionStatus::Imported as i32)
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedUnconfirmed as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmedLocked as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmedLocked as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
                     // Filter out any transaction without a kernel signature
                     .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
                     .and(completed_transactions::transaction_signature_key.ne(vec![0u8; 32]))
-                    // Allow the remainder of the unconfirmed transactions
+                    // Allow the remainder of the unconfirmed or time-locked transactions
                     .and(
                         completed_transactions::mined_height
                             .is_null()
-                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32)),
+                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32))
+                            .or(
+                                completed_transactions::status
+                                    .eq(LegacyTransactionStatus::MinedConfirmedLocked as i32),
+                            ),
                     ),
             )
             .filter(completed_transactions::cancelled.is_null())

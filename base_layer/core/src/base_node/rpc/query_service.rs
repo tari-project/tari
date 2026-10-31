@@ -425,62 +425,44 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
 
         let mut left_height = 0u64;
         let mut right_height = tip_header.height();
+        let mut best_height = 0u64;
 
         while left_height <= right_height {
-            let mut mid_height = left_height.saturating_add(right_height) / 2;
-
-            if mid_height == 0 {
-                return Ok(0u64);
-            }
-            // If the two bounds are adjacent then perform the test between the right and left sides
-            if left_height == mid_height {
-                mid_height = right_height;
-            }
-
+            let mid_height = left_height + (right_height - left_height) / 2;
             let mid_header = self
                 .db
                 .fetch_header(mid_height)
                 .await?
                 .ok_or_else(|| Error::HeaderNotFound { height: mid_height })?;
-            let before_mid_header = self
-                .db
-                .fetch_header(mid_height.saturating_sub(1))
-                .await?
-                .ok_or_else(|| Error::HeaderNotFound {
-                    height: mid_height.saturating_sub(1),
-                })?;
+            let mid_timestamp = mid_header.timestamp.as_u64();
             trace!(
                 target: LOG_TARGET,
-                "requested_epoch_time: {}, left: {}, mid: {}/{} ({}/{}), right: {}",
+                "requested_epoch_time: {}, left: {}, mid: {} ({}), right: {}",
                 epoch_time,
                 left_height,
                 mid_height,
-                mid_height.saturating_sub(1),
-                mid_header.timestamp.as_u64(),
-                before_mid_header.timestamp.as_u64(),
+                mid_timestamp,
                 right_height
             );
-            if epoch_time < mid_header.timestamp.as_u64() && epoch_time >= before_mid_header.timestamp.as_u64() {
-                trace!(
-                    target: LOG_TARGET,
-                    "requested_epoch_time: {}, selected height: {}",
-                    epoch_time, before_mid_header.height
-                );
-                return Ok(before_mid_header.height);
-            } else if mid_height == right_height {
-                trace!(
-                    target: LOG_TARGET,
-                    "requested_epoch_time: {epoch_time}, selected height: {right_height}"
-                );
-                return Ok(right_height);
-            } else if epoch_time <= mid_header.timestamp.as_u64() {
-                right_height = mid_height;
+            if mid_timestamp <= epoch_time {
+                best_height = mid_height;
+                if let Some(next_left) = mid_height.checked_add(1) {
+                    left_height = next_left;
+                } else {
+                    break;
+                }
+            } else if let Some(next_right) = mid_height.checked_sub(1) {
+                right_height = next_right;
             } else {
-                left_height = mid_height;
+                break;
             }
         }
 
-        Ok(0u64)
+        trace!(
+            target: LOG_TARGET,
+            "requested_epoch_time: {epoch_time}, selected height: {best_height}"
+        );
+        Ok(best_height)
     }
 
     async fn transaction_query(
@@ -1135,5 +1117,33 @@ mod tests {
         assert_eq!(response.utxos[0].found_in_header.as_ref().unwrap().0, remined.height());
         assert_eq!(response.utxos[0].spent_in_header, None);
         assert_eq!(response.utxos[0].spent_timestamp, None);
+    }
+
+    #[tokio::test]
+    async fn get_height_at_time_handles_boundary_and_intermediate_timestamps() {
+        use crate::test_helpers::blockchain::create_main_chain;
+
+        let db = create_new_blockchain_with_network(Network::LocalNet);
+        let (_names, _chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"]));
+        let service = Service::new(db.into(), make_state_machine_handle(), make_mempool_handle());
+
+        let h0 = service.db().fetch_header(0).await.unwrap().unwrap();
+        let h1 = service.db().fetch_header(1).await.unwrap().unwrap();
+        let h2 = service.db().fetch_header(2).await.unwrap().unwrap();
+        let h4 = service.db().fetch_header(4).await.unwrap().unwrap();
+
+        let t0 = h0.timestamp.as_u64();
+        let t1 = h1.timestamp.as_u64();
+        let t2 = h2.timestamp.as_u64();
+        let t4 = h4.timestamp.as_u64();
+
+        assert_eq!(service.get_height_at_time(t0.saturating_sub(1)).await.unwrap(), 0);
+        assert_eq!(service.get_height_at_time(t0).await.unwrap(), 0);
+        assert_eq!(service.get_height_at_time(t1.saturating_sub(1)).await.unwrap(), 0);
+        assert_eq!(service.get_height_at_time(t1).await.unwrap(), 1);
+        assert_eq!(service.get_height_at_time(t2.saturating_sub(1)).await.unwrap(), 1);
+        assert_eq!(service.get_height_at_time(t2).await.unwrap(), 2);
+        assert_eq!(service.get_height_at_time(t4).await.unwrap(), 4);
+        assert_eq!(service.get_height_at_time(t4 + 10_000).await.unwrap(), 4);
     }
 }

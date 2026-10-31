@@ -496,7 +496,6 @@ impl Listening {
                 "We are ahead of at least {} peers, waiting for more info",
                 state.ahead_of_peers_counter
             );
-            self.set_synced_response(shared);
         }
     }
 

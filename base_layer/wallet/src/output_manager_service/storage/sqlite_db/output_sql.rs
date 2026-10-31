@@ -478,6 +478,7 @@ impl OutputSql {
         // First, get the must-include outputs
         let mut must_include_query = outputs::table
             .into_boxed()
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
             .filter(outputs::value.gt(i64_value))
             .order_by(outputs::spending_priority.desc());
 
@@ -699,7 +700,7 @@ impl OutputSql {
                  FROM outputs WHERE status = ? AND (maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
+                 FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ?",
@@ -731,7 +732,7 @@ impl OutputSql {
                  FROM outputs WHERE status = ? AND output_type != ?\
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE (source != ? AND status = ? OR status = ? OR status = ?) AND output_type != ? \
+                 FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND output_type != ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE status = ? OR status = ? OR status = ?",
@@ -811,13 +812,13 @@ impl OutputSql {
         let balance_query_result = if let Some(current_tip) = current_tip_for_time_lock_calculation {
             let balance_query = sql_query(
                 "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-                 FROM outputs WHERE status = ? AND maturity <= ? AND maturity >= 0 AND script_lock_height <= ? AND script_lock_height >= 0 AND user_payment_id = ? \
+                 FROM outputs WHERE status = ? AND maturity <= ? AND maturity >= 0 AND script_lock_height <= ? AND script_lock_height >= 0 AND output_type != ? AND user_payment_id = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'time_locked_balance' as category \
-                 FROM outputs WHERE status = ? AND ((maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND user_payment_id = ?) \
+                 FROM outputs WHERE status = ? AND ((maturity > ? OR maturity < 0 OR script_lock_height > ? OR script_lock_height < 0) AND output_type != ? AND user_payment_id = ?) \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-                 FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND user_payment_id = ? \
+                 FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND output_type != ? AND user_payment_id = ? \
                  UNION ALL \
                  SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
                  FROM outputs WHERE (status = ? OR status = ? OR status = ?) AND user_payment_id = ?",
@@ -826,17 +827,20 @@ impl OutputSql {
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 .bind::<diesel::sql_types::Binary, _>(payment_id.clone())
                 // time_locked_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
                 .bind::<diesel::sql_types::BigInt, _>(current_tip as i64)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 .bind::<diesel::sql_types::Binary, _>(payment_id.clone())
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 .bind::<diesel::sql_types::Binary, _>(payment_id.clone())
                 // pending_outgoing_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
@@ -847,22 +851,24 @@ impl OutputSql {
         } else {
             let balance_query = sql_query(
              "SELECT coalesce(sum(value), 0) as amount, 'available_balance' as category \
-             FROM outputs WHERE status = ? AND user_payment_id = ?\
+             FROM outputs WHERE status = ? AND output_type != ? AND user_payment_id = ?\
              UNION ALL \
              SELECT coalesce(sum(value), 0) as amount, 'pending_incoming_balance' as category \
-             FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND user_payment_id = ? \
+             FROM outputs WHERE source != ? AND (status = ? OR status = ? OR status = ?) AND output_type != ? AND user_payment_id = ? \
              UNION ALL \
              SELECT coalesce(sum(value), 0) as amount, 'pending_outgoing_balance' as category \
              FROM outputs WHERE (status = ? OR status = ? OR status = ?) AND user_payment_id = ?",
             )
                 // available_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::Unspent as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 .bind::<diesel::sql_types::Binary, _>(payment_id.clone())
                 // pending_incoming_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputSource::Coinbase as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::ShortTermEncumberedToBeReceived as i32)
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::UnspentMinedUnconfirmed as i32)
+                .bind::<diesel::sql_types::Integer, _>(OutputType::Burn as i32)
                 .bind::<diesel::sql_types::Binary, _>(payment_id.clone())
                 // pending_outgoing_balance
                 .bind::<diesel::sql_types::Integer, _>(OutputStatus::EncumberedToBeSpent as i32)
