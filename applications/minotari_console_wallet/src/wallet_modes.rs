@@ -28,7 +28,7 @@ use clap::Parser;
 use futures::TryFutureExt;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ServerAuthenticationInterceptor,
+    authentication::ServerAuthenticationLayer,
     tari_rpc::{GetBalanceRequest, wallet_server::Wallet},
     tls::identity::read_identity,
 };
@@ -43,7 +43,6 @@ use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::mul
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
     Request,
-    codegen::InterceptedService,
     transport::{Identity, Server, ServerTlsConfig},
 };
 use tui::backend::CrosstermBackend;
@@ -463,13 +462,12 @@ async fn run_grpc(
 
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
+    let auth_layer = ServerAuthenticationLayer::new(auth_config)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
 
     let sized_server = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc)
         .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-    let service = InterceptedService::new(sized_server, auth);
 
     let mut server_builder = if let Some(identity) = tls_identity {
         Server::builder()
@@ -483,7 +481,7 @@ async fn run_grpc(
     // Stop serving as soon as shutdown is signalled. `Wallet::wait_until_shutdown` waits for every wallet handle to be
     // dropped, including the gRPC service's own, which are only released once the server's connections are closed.
     let serve_result = serve_with_shutdown_grace(
-        server_builder.add_service(service),
+        server_builder.layer(auth_layer).add_service(sized_server),
         listener,
         wallet.shutdown_signal,
         GRPC_SHUTDOWN_GRACE_PERIOD,

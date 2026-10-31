@@ -22,26 +22,72 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    fmt,
     net::{IpAddr, SocketAddr},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc,
+        LazyLock,
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
 
 use log::*;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
+#[cfg(feature = "metrics")]
+use tari_metrics::IntCounter;
+use tonic::{
+    Request,
+    Status,
+    codegen::{
+        BoxFuture,
+        Service,
+        http::{Extensions, HeaderMap, Request as HttpRequest, Response as HttpResponse, header::AUTHORIZATION},
+    },
+    server::NamedService,
+    service::Interceptor,
+    transport::server::{TcpConnectInfo, TlsConnectInfo},
+};
+use tower_layer::Layer;
 
 use crate::authentication::{BasicAuthCredentials, BasicAuthError, basic_auth::MAX_USERNAME_LEN};
 
 const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
+#[cfg(feature = "metrics")]
+const AUTH_FAILURE_METRIC_NAME: &str = "grpc_authentication_failures_total";
+#[cfg(feature = "metrics")]
+const AUTH_FAILURE_METRIC_HELP: &str = "Total number of failed gRPC authentication attempts";
+const FAILURE_LOG_WINDOW: Duration = Duration::from_secs(1);
+const MAX_FAILURE_WARN_LOGS_PER_WINDOW: usize = 10;
 
 pub const MAX_TRACKED_PEERS: usize = 1024;
 pub const MAX_FAILURES_BEFORE_BACKOFF: u32 = 5;
 pub const FAILURE_WINDOW: Duration = Duration::from_secs(60);
 pub const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
 pub const MAX_BACKOFF: Duration = Duration::from_secs(60);
-const AUTH_FAILURE_WARN_INTERVAL: Duration = Duration::from_secs(60);
+
+static AUTH_FAILURE_COUNT: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(feature = "metrics")]
+static AUTH_FAILURE_COUNTER: LazyLock<IntCounter> = LazyLock::new(|| {
+    tari_metrics::register_int_counter(AUTH_FAILURE_METRIC_NAME, AUTH_FAILURE_METRIC_HELP)
+        .expect("valid grpc_authentication_failures_total counter")
+});
+
+/// Returns the total number of failed gRPC authentication attempts recorded by this process.
+/// When the `metrics` feature is enabled, this counter is also exported as `grpc_authentication_failures_total`
+/// in the default [`tari_metrics::Registry`].
+pub fn grpc_authentication_failures_total() -> u64 {
+    AUTH_FAILURE_COUNT.load(Ordering::Relaxed)
+}
+
+fn is_exempt_health_check_path(method_path: &str) -> bool {
+    matches!(
+        method_path,
+        "/grpc.health.v1.Health/Check" | "/grpc.health.v1.Health/Watch"
+    )
+}
 
 fn is_loopback_ip(ip: IpAddr) -> bool {
     match ip {
@@ -50,31 +96,42 @@ fn is_loopback_ip(ip: IpAddr) -> bool {
     }
 }
 
-#[derive(Debug, Default)]
-struct WarnLimiter {
-    state: Mutex<(Option<Instant>, u64)>,
+struct FailureLogRateLimiter {
+    window_start: Instant,
+    emitted_in_window: usize,
+    suppressed_in_window: usize,
 }
 
-impl WarnLimiter {
-    fn should_warn(&self, now: Instant) -> Option<u64> {
-        let mut state = match self.state.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        let (last_warning, num_suppressed) = &mut *state;
-        let may_warn =
-            last_warning.is_none_or(|last| now.saturating_duration_since(last) >= AUTH_FAILURE_WARN_INTERVAL);
-        if may_warn {
-            *last_warning = Some(now);
-            let suppressed = *num_suppressed;
-            *num_suppressed = 0;
-            Some(suppressed)
+impl FailureLogRateLimiter {
+    fn new() -> Self {
+        Self {
+            window_start: Instant::now(),
+            emitted_in_window: 0,
+            suppressed_in_window: 0,
+        }
+    }
+
+    /// Returns `Some(suppressed_from_prior_window)` if this failure should be logged, or `None` if rate-limited.
+    fn check(&mut self, now: Instant) -> Option<usize> {
+        let mut prior_suppressed = 0;
+        if now.saturating_duration_since(self.window_start) >= FAILURE_LOG_WINDOW {
+            prior_suppressed = self.suppressed_in_window;
+            self.window_start = now;
+            self.emitted_in_window = 0;
+            self.suppressed_in_window = 0;
+        }
+        if self.emitted_in_window < MAX_FAILURE_WARN_LOGS_PER_WINDOW {
+            self.emitted_in_window = self.emitted_in_window.saturating_add(1);
+            Some(prior_suppressed)
         } else {
-            *num_suppressed = num_suppressed.saturating_add(1);
+            self.suppressed_in_window = self.suppressed_in_window.saturating_add(1);
             None
         }
     }
 }
+
+static FAILURE_LOG_LIMITER: LazyLock<Mutex<FailureLogRateLimiter>> =
+    LazyLock::new(|| Mutex::new(FailureLogRateLimiter::new()));
 
 #[derive(Debug, Clone)]
 struct PeerFailureState {
@@ -152,32 +209,46 @@ impl AuthBackoffTracker {
     }
 }
 
-fn verify_request_header(req: &Request<()>, valid_credentials: &BasicAuthCredentials) -> Result<(), String> {
-    let Some(t) = req.metadata().get(AUTHORIZATION.as_str()) else {
-        return Err("Missing authorization header".to_string());
-    };
-    let header = t.to_str().map_err(|e| e.to_string())?;
-    let (header_username, header_password) = BasicAuthCredentials::parse_header(header).map_err(|e| e.to_string())?;
-    valid_credentials
-        .constant_time_validate(&header_username, &header_password)
-        .map_err(|e| e.to_string())
+/// Authenticated caller identity inserted into request extensions when Basic authentication succeeds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthenticatedUser(pub String);
+
+impl AuthenticatedUser {
+    pub fn new(username: impl Into<String>) -> Self {
+        Self(username.into())
+    }
+
+    pub fn username(&self) -> &str {
+        &self.0
+    }
 }
 
-#[derive(Debug)]
-pub struct ServerAuthenticationInterceptor {
-    credentials: Option<Arc<BasicAuthCredentials>>,
-    reject_all: bool,
-    backoff: Arc<Mutex<AuthBackoffTracker>>,
-    warn_limiter: Arc<WarnLimiter>,
+#[derive(Debug, Clone)]
+enum PreparedServerAuth {
+    None,
+    RejectAll {
+        backoff: Arc<Mutex<AuthBackoffTracker>>,
+    },
+    Basic {
+        username: String,
+        credentials: Arc<BasicAuthCredentials>,
+        backoff: Arc<Mutex<AuthBackoffTracker>>,
+    },
 }
 
-impl ServerAuthenticationInterceptor {
-    pub fn new(auth: GrpcAuthentication) -> Option<Self> {
-        let (credentials, reject_all) = match auth {
-            GrpcAuthentication::None => (None, false),
+impl PreparedServerAuth {
+    fn from_config(auth: GrpcAuthentication) -> Option<Self> {
+        #[cfg(feature = "metrics")]
+        LazyLock::force(&AUTH_FAILURE_COUNTER);
+        match auth {
+            GrpcAuthentication::None => Some(Self::None),
             GrpcAuthentication::Basic { username, password } => {
                 match BasicAuthCredentials::new(username.clone(), password.clone()) {
-                    Ok(creds) => (Some(Arc::new(creds)), false),
+                    Ok(credentials) => Some(Self::Basic {
+                        username,
+                        credentials: Arc::new(credentials),
+                        backoff: Arc::default(),
+                    }),
                     Err(BasicAuthError::InvalidUsername)
                         if username.contains(':') &&
                             username.len() <= MAX_USERNAME_LEN &&
@@ -187,186 +258,402 @@ impl ServerAuthenticationInterceptor {
                             target: LOG_TARGET,
                             "gRPC username must not contain ':'; all gRPC requests will be rejected"
                         );
-                        (None, true)
+                        Some(Self::RejectAll {
+                            backoff: Arc::default(),
+                        })
                     },
-                    Err(_) => return None,
+                    Err(_) => None,
                 }
             },
-        };
-
-        Some(Self {
-            credentials,
-            reject_all,
-            backoff: Arc::default(),
-            warn_limiter: Arc::default(),
-        })
+        }
     }
 
     #[allow(clippy::result_large_err)]
-    fn handle_basic_auth(
+    fn verify_headers_at(
         &self,
-        req: Request<()>,
-        valid_credentials: &BasicAuthCredentials,
-    ) -> Result<Request<()>, Status> {
-        self.handle_basic_auth_at(req, valid_credentials, Instant::now())
-    }
-
-    #[allow(clippy::result_large_err)]
-    fn handle_basic_auth_at(
-        &self,
-        req: Request<()>,
-        valid_credentials: &BasicAuthCredentials,
+        headers: &HeaderMap,
+        method_path: &str,
+        peer_addr: Option<SocketAddr>,
         now: Instant,
-    ) -> Result<Request<()>, Status> {
-        let peer_addr = req.remote_addr();
-        let tracked_ip = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip));
+    ) -> Result<Option<AuthenticatedUser>, Status> {
+        let peer_display = peer_addr
+            .map(|a| a.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
 
-        if let Some(ip) = tracked_ip {
-            let mut tracker = match self.backoff.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            if tracker.is_blocked(ip, now) {
-                return Err(self.unauthenticated_at(
-                    peer_addr,
-                    "Too many failed authentication attempts; backing off",
-                    now,
-                ));
-            }
+        if is_exempt_health_check_path(method_path) {
+            debug!(
+                target: LOG_TARGET,
+                "gRPC auth decision: method={} username=none peer={} outcome=allow (health probe exempt)",
+                method_path,
+                peer_display,
+            );
+            return Ok(None);
         }
 
-        match verify_request_header(&req, valid_credentials) {
-            Ok(()) => {
-                if let Some(ip) = tracked_ip {
-                    let mut tracker = match self.backoff.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    tracker.record_success(ip);
-                }
-                Ok(req)
+        match self {
+            Self::None => {
+                debug!(
+                    target: LOG_TARGET,
+                    "gRPC auth decision: method={} username=none peer={} outcome=allow",
+                    method_path,
+                    peer_display,
+                );
+                Ok(None)
             },
-            Err(err) => {
-                if let Some(ip) = tracked_ip {
-                    let mut tracker = match self.backoff.lock() {
+            Self::RejectAll { backoff } => {
+                if let Some(ip) = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip)) {
+                    let mut tracker = match backoff.lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     tracker.record_failure(ip, now);
                 }
-                Err(self.unauthenticated_at(peer_addr, err, now))
+                record_auth_failure(
+                    method_path,
+                    "none",
+                    &peer_display,
+                    "gRPC username must not contain ':'; all gRPC requests will be rejected",
+                    now,
+                );
+                Err(Status::unauthenticated("Auth failed"))
+            },
+            Self::Basic {
+                username,
+                credentials,
+                backoff,
+            } => {
+                let tracked_ip = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip));
+                if let Some(ip) = tracked_ip {
+                    let mut tracker = match backoff.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    if tracker.is_blocked(ip, now) {
+                        record_auth_failure(
+                            method_path,
+                            "none",
+                            &peer_display,
+                            "Too many failed authentication attempts; backing off",
+                            now,
+                        );
+                        return Err(Status::unauthenticated("Auth failed"));
+                    }
+                }
+
+                let fail_peer = |attempted_user: &str, reason: &str| -> Status {
+                    if let Some(ip) = tracked_ip {
+                        let mut tracker = match backoff.lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        tracker.record_failure(ip, now);
+                    }
+                    record_auth_failure(method_path, attempted_user, &peer_display, reason, now);
+                    Status::unauthenticated("Auth failed")
+                };
+
+                let Some(raw_header) = headers.get(AUTHORIZATION) else {
+                    return Err(fail_peer("none", "Missing authorization header"));
+                };
+                let Ok(header_str) = raw_header.to_str() else {
+                    return Err(fail_peer("none", "Invalid authorization header encoding"));
+                };
+                let (header_username, header_password) = match BasicAuthCredentials::parse_header(header_str) {
+                    Ok(pair) => pair,
+                    Err(err) => {
+                        return Err(fail_peer("none", &err.to_string()));
+                    },
+                };
+                let attempted_user = sanitize_log_token(&header_username);
+                if let Err(err) = credentials.constant_time_validate(&header_username, &header_password) {
+                    return Err(fail_peer(&attempted_user, &err.to_string()));
+                }
+
+                if let Some(ip) = tracked_ip {
+                    let mut tracker = match backoff.lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    tracker.record_success(ip);
+                }
+
+                debug!(
+                    target: LOG_TARGET,
+                    "gRPC auth decision: method={} username={} peer={} outcome=allow",
+                    method_path,
+                    sanitize_log_token(username),
+                    peer_display,
+                );
+                Ok(Some(AuthenticatedUser::new(username.clone())))
             },
         }
     }
 
-    /// Standard unauthenticated response with rate-limited warning
-    fn unauthenticated_at<E: fmt::Display>(&self, peer_addr: Option<SocketAddr>, err: E, now: Instant) -> Status {
-        if let Some(suppressed) = self.warn_limiter.should_warn(now) {
-            let peer = peer_addr
-                .map(|addr| addr.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            if suppressed == 0 {
-                warn!(
-                    target: LOG_TARGET,
-                    "GRPC authentication failed for peer {peer}: {err}"
-                );
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "GRPC authentication failed for peer {peer}: {err} ({suppressed} similar warnings suppressed)"
-                );
-            }
+    #[cfg(test)]
+    fn tracked_peer_count(&self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::RejectAll { backoff } | Self::Basic { backoff, .. } => {
+                backoff.lock().unwrap_or_else(|e| e.into_inner()).states.len()
+            },
         }
-        Status::unauthenticated("Auth failed")
+    }
+}
+
+fn sanitize_log_token(value: &str) -> String {
+    if value.is_empty() {
+        return "none".to_string();
+    }
+    value
+        .chars()
+        .take(64)
+        .map(|c| if c.is_ascii_graphic() && c != '=' { c } else { '_' })
+        .collect()
+}
+
+fn peer_addr_from_extensions(extensions: &Extensions) -> Option<SocketAddr> {
+    extensions
+        .get::<TcpConnectInfo>()
+        .and_then(|info| info.remote_addr())
+        .or_else(|| {
+            extensions
+                .get::<TlsConnectInfo<TcpConnectInfo>>()
+                .and_then(|info| info.get_ref().remote_addr())
+        })
+}
+
+fn record_auth_failure(method_path: &str, username: &str, peer_display: &str, reason: &str, now: Instant) {
+    AUTH_FAILURE_COUNT.fetch_add(1, Ordering::Relaxed);
+    #[cfg(feature = "metrics")]
+    AUTH_FAILURE_COUNTER.inc();
+    let should_log = FAILURE_LOG_LIMITER
+        .lock()
+        .ok()
+        .and_then(|mut limiter| limiter.check(now));
+    if let Some(suppressed) = should_log {
+        if suppressed > 0 {
+            warn!(
+                target: LOG_TARGET,
+                "gRPC auth decision: method={} username={} peer={} outcome=deny reason={} (suppressed={} prior failures)",
+                method_path,
+                username,
+                peer_display,
+                reason,
+                suppressed,
+            );
+        } else {
+            warn!(
+                target: LOG_TARGET,
+                "gRPC auth decision: method={} username={} peer={} outcome=deny reason={}",
+                method_path,
+                username,
+                peer_display,
+                reason,
+            );
+        }
+    }
+}
+
+/// Server-wide `tower::Layer` that enforces gRPC authentication across all registered services (including health
+/// reporting), attaches [`AuthenticatedUser`] to request extensions on success, and emits an audit trail and metrics.
+#[derive(Debug, Clone)]
+pub struct ServerAuthenticationLayer {
+    auth: PreparedServerAuth,
+}
+
+impl ServerAuthenticationLayer {
+    pub fn new(auth: GrpcAuthentication) -> Option<Self> {
+        Some(Self {
+            auth: PreparedServerAuth::from_config(auth)?,
+        })
+    }
+}
+
+impl<S> Layer<S> for ServerAuthenticationLayer {
+    type Service = ServerAuthenticationService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        ServerAuthenticationService {
+            inner,
+            auth: self.auth.clone(),
+        }
+    }
+}
+
+/// `tower::Service` produced by [`ServerAuthenticationLayer`].
+#[derive(Debug, Clone)]
+pub struct ServerAuthenticationService<S> {
+    inner: S,
+    auth: PreparedServerAuth,
+}
+
+impl<S: NamedService> NamedService for ServerAuthenticationService<S> {
+    const NAME: &'static str = S::NAME;
+}
+
+impl<S, ReqBody, ResBody> Service<HttpRequest<ReqBody>> for ServerAuthenticationService<S>
+where
+    S: Service<HttpRequest<ReqBody>, Response = HttpResponse<ResBody>>,
+    S::Future: Send + 'static,
+    S::Error: Send + 'static,
+    ResBody: Default + Send + 'static,
+{
+    type Error = S::Error;
+    type Future = BoxFuture<Self::Response, Self::Error>;
+    type Response = HttpResponse<ResBody>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: HttpRequest<ReqBody>) -> Self::Future {
+        let method_path = req.uri().path().to_string();
+        let peer_addr = peer_addr_from_extensions(req.extensions());
+        match self
+            .auth
+            .verify_headers_at(req.headers(), &method_path, peer_addr, Instant::now())
+        {
+            Ok(Some(user)) => {
+                req.extensions_mut().insert(user);
+                Box::pin(self.inner.call(req))
+            },
+            Ok(None) => Box::pin(self.inner.call(req)),
+            Err(status) => Box::pin(std::future::ready(Ok(status.into_http()))),
+        }
+    }
+}
+
+/// Compatibility `tonic::service::Interceptor` shim backed by the same verification logic as
+/// [`ServerAuthenticationLayer`].
+#[derive(Debug, Clone)]
+pub struct ServerAuthenticationInterceptor {
+    auth: PreparedServerAuth,
+}
+
+impl ServerAuthenticationInterceptor {
+    pub fn new(auth: GrpcAuthentication) -> Option<Self> {
+        Some(Self {
+            auth: PreparedServerAuth::from_config(auth)?,
+        })
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::result_large_err)]
+    fn handle_request_at(&self, mut request: Request<()>, now: Instant) -> Result<Request<()>, Status> {
+        let method_path = request
+            .extensions()
+            .get::<tonic::GrpcMethod<'_>>()
+            .map(|m| format!("/{}/{}", m.service(), m.method()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let peer_addr = request.remote_addr();
+        let headers = request.metadata().clone().into_headers();
+        if let Some(user) = self.auth.verify_headers_at(&headers, &method_path, peer_addr, now)? {
+            request.extensions_mut().insert(user);
+        }
+        Ok(request)
     }
 
     #[cfg(test)]
     fn tracked_peer_count(&self) -> usize {
-        self.backoff.lock().unwrap_or_else(|e| e.into_inner()).states.len()
+        self.auth.tracked_peer_count()
     }
 }
 
 impl Interceptor for ServerAuthenticationInterceptor {
-    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        if self.reject_all {
-            let now = Instant::now();
-            let peer_addr = request.remote_addr();
-            if let Some(ip) = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip)) {
-                let mut tracker = match self.backoff.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                tracker.record_failure(ip, now);
-            }
-            return Err(self.unauthenticated_at(
-                peer_addr,
-                "gRPC username must not contain ':'; all gRPC requests will be rejected",
-                now,
-            ));
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        let method_path = request
+            .extensions()
+            .get::<tonic::GrpcMethod<'_>>()
+            .map(|m| format!("/{}/{}", m.service(), m.method()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let peer_addr = request.remote_addr();
+        let headers = request.metadata().clone().into_headers();
+        if let Some(user) = self
+            .auth
+            .verify_headers_at(&headers, &method_path, peer_addr, Instant::now())?
+        {
+            request.extensions_mut().insert(user);
         }
-        match &self.credentials {
-            None => Ok(request),
-            Some(credentials) => self.handle_basic_auth(request, credentials),
-        }
-    }
-}
-
-impl Clone for ServerAuthenticationInterceptor {
-    fn clone(&self) -> Self {
-        Self {
-            credentials: self.credentials.clone(),
-            reject_all: self.reject_all,
-            backoff: self.backoff.clone(),
-            warn_limiter: self.warn_limiter.clone(),
-        }
+        Ok(request)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::{cell::Cell, net::Ipv4Addr, sync::OnceLock};
+mod test {
+    #![allow(clippy::arithmetic_side_effects)]
+    use std::{
+        convert::Infallible,
+        net::{IpAddr, Ipv4Addr},
+        sync::{Mutex, OnceLock},
+    };
 
+    use log::{Level, LevelFilter, Log, Metadata, Record};
     use tari_utilities::SafePassword;
-    use tonic::{metadata::MetadataValue, transport::server::TcpConnectInfo};
+    use tonic::metadata::MetadataValue;
 
     use super::*;
     use crate::authentication::basic_auth::MAX_ECHOED_SCHEME_LEN;
 
-    thread_local! {
-        static CAPTURE_THREAD: Cell<bool> = const { Cell::new(false) };
+    struct TestLogSink;
+
+    fn test_logs() -> &'static Mutex<Vec<(Level, String)>> {
+        static LOGS: OnceLock<Mutex<Vec<(Level, String)>>> = OnceLock::new();
+        LOGS.get_or_init(|| Mutex::new(Vec::new()))
     }
 
-    struct CapturedLogger {
-        lines: Mutex<Vec<String>>,
+    fn test_serial_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    impl log::Log for CapturedLogger {
-        fn enabled(&self, metadata: &log::Metadata) -> bool {
-            metadata.level() <= log::Level::Warn && metadata.target() == LOG_TARGET
+    impl Log for TestLogSink {
+        fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
+            true
         }
 
-        fn log(&self, record: &log::Record) {
-            if self.enabled(record.metadata()) && CAPTURE_THREAD.with(Cell::get) {
-                self.lines
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .push(record.args().to_string());
+        fn log(&self, record: &Record<'_>) {
+            if record.target() == LOG_TARGET &&
+                let Ok(mut guard) = test_logs().lock()
+            {
+                guard.push((record.level(), format!("{}", record.args())));
             }
         }
 
         fn flush(&self) {}
     }
 
-    static TEST_LOGGER: OnceLock<CapturedLogger> = OnceLock::new();
-    static LOGGER_LOCK: Mutex<()> = Mutex::new(());
-
-    fn captured_logger() -> &'static CapturedLogger {
-        let logger = TEST_LOGGER.get_or_init(|| CapturedLogger {
-            lines: Mutex::new(Vec::new()),
+    fn init_logger() {
+        static INIT: OnceLock<()> = OnceLock::new();
+        INIT.get_or_init(|| {
+            drop(log::set_boxed_logger(Box::new(TestLogSink)));
+            log::set_max_level(LevelFilter::Debug);
         });
-        let _ = log::set_logger(logger);
-        log::set_max_level(log::LevelFilter::Warn);
-        logger
+    }
+
+    #[derive(Clone)]
+    struct EchoUserService;
+
+    impl Service<HttpRequest<()>> for EchoUserService {
+        type Error = Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        type Response = HttpResponse<()>;
+
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn call(&mut self, req: HttpRequest<()>) -> Self::Future {
+            let mut resp = HttpResponse::new(());
+            if let Some(user) = req.extensions().get::<AuthenticatedUser>() {
+                resp.extensions_mut().insert(user.clone());
+            }
+            Box::pin(std::future::ready(Ok(resp)))
+        }
+    }
+
+    fn basic_header_value(username: &str, password: &str) -> String {
+        let value: MetadataValue<_> = BasicAuthCredentials::generate_header(username, password.as_bytes()).unwrap();
+        value.to_str().unwrap().to_string()
     }
 
     fn request_with_auth_and_addr(username: &str, password: &[u8], addr: SocketAddr) -> Request<()> {
@@ -378,6 +665,133 @@ mod tests {
         let header = BasicAuthCredentials::generate_header(username, password).unwrap();
         req.metadata_mut().insert(AUTHORIZATION.as_str(), header);
         req
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn layer_inserts_authenticated_username_and_logs_decision() {
+        let _serial_guard = test_serial_lock().lock().unwrap_or_else(|e| e.into_inner());
+        init_logger();
+        let auth = GrpcAuthentication::Basic {
+            username: "miner_1".to_string(),
+            password: SafePassword::from("s3cret_pass"),
+        };
+        let layer = ServerAuthenticationLayer::new(auth).unwrap();
+        let mut svc = layer.layer(EchoUserService);
+
+        let peer = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 54321);
+        let mut req = HttpRequest::builder()
+            .uri("/tari.rpc.BaseNode/GetVersion")
+            .header(AUTHORIZATION, basic_header_value("miner_1", "s3cret_pass"))
+            .body(())
+            .unwrap();
+        req.extensions_mut().insert(TcpConnectInfo {
+            local_addr: None,
+            remote_addr: Some(peer),
+        });
+
+        let resp = svc.call(req).await.unwrap();
+        let user = resp
+            .extensions()
+            .get::<AuthenticatedUser>()
+            .expect("authenticated username must be inserted into request extensions");
+        assert_eq!(user.username(), "miner_1");
+
+        let logs = test_logs().lock().unwrap();
+        assert!(
+            logs.iter().any(|(level, msg)| {
+                *level == Level::Debug &&
+                    msg.contains("method=/tari.rpc.BaseNode/GetVersion") &&
+                    msg.contains("username=miner_1") &&
+                    msg.contains("peer=127.0.0.1:54321") &&
+                    msg.contains("outcome=allow")
+            }),
+            "expected debug audit log with method, username, peer, and outcome=allow, got: {logs:?}"
+        );
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn layer_rejects_unauthenticated_request_exports_metric_and_rate_limits_warn_logs() {
+        let _serial_guard = test_serial_lock().lock().unwrap_or_else(|e| e.into_inner());
+        init_logger();
+        let auth = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("correct_horse"),
+        };
+        let layer = ServerAuthenticationLayer::new(auth).unwrap();
+        let mut svc = layer.layer(EchoUserService);
+
+        if let Ok(mut logs) = test_logs().lock() {
+            logs.clear();
+        }
+        if let Ok(mut limiter) = FAILURE_LOG_LIMITER.lock() {
+            *limiter = FailureLogRateLimiter::new();
+        }
+        let before_count = grpc_authentication_failures_total();
+
+        // Flood 50 unauthenticated requests against a protected RPC endpoint
+        for _ in 0..50 {
+            let req = HttpRequest::builder()
+                .uri("/tari.rpc.BaseNode/GetVersion")
+                .body(())
+                .unwrap();
+            let resp = svc.call(req).await.unwrap();
+            assert_eq!(
+                resp.headers().get("grpc-status").and_then(|v| v.to_str().ok()),
+                Some("16"),
+                "expected UNAUTHENTICATED (grpc-status 16)"
+            );
+            assert!(resp.extensions().get::<AuthenticatedUser>().is_none());
+        }
+
+        let after_count = grpc_authentication_failures_total();
+        assert!(
+            after_count >= before_count + 50,
+            "expected failure counter to increase by at least 50 (before={before_count}, after={after_count})"
+        );
+
+        #[cfg(feature = "metrics")]
+        {
+            let gathered = tari_metrics::get_default_registry().gather();
+            assert!(
+                gathered.iter().any(|mf| mf.name() == AUTH_FAILURE_METRIC_NAME),
+                "expected {AUTH_FAILURE_METRIC_NAME} in default metrics registry"
+            );
+        }
+
+        let warn_logs: Vec<_> = test_logs()
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(level, msg)| *level == Level::Warn && msg.contains("method=/tari.rpc.BaseNode/GetVersion"))
+            .cloned()
+            .collect();
+        assert!(
+            !warn_logs.is_empty() && warn_logs.len() <= MAX_FAILURE_WARN_LOGS_PER_WINDOW,
+            "expected between 1 and {MAX_FAILURE_WARN_LOGS_PER_WINDOW} warn logs under flood, got {}",
+            warn_logs.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn layer_exempts_grpc_health_check_and_watch_from_basic_auth() {
+        let auth = GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: SafePassword::from("correct_horse"),
+        };
+        let layer = ServerAuthenticationLayer::new(auth).unwrap();
+        let mut svc = layer.layer(EchoUserService);
+
+        for path in ["/grpc.health.v1.Health/Check", "/grpc.health.v1.Health/Watch"] {
+            let req = HttpRequest::builder().uri(path).body(()).unwrap();
+            let resp = svc.call(req).await.unwrap();
+            assert!(
+                resp.headers().get("grpc-status").is_none(),
+                "expected unauthenticated health probe {path} to be allowed"
+            );
+            assert!(resp.extensions().get::<AuthenticatedUser>().is_none());
+        }
     }
 
     #[test]
@@ -411,13 +825,12 @@ mod tests {
             password: SafePassword::from("secret"),
         })
         .unwrap();
-        let creds = interceptor.credentials.as_ref().unwrap().clone();
         let addr: SocketAddr = "198.51.100.7:43210".parse().unwrap();
         let t0 = Instant::now();
 
         for _ in 0..MAX_FAILURES_BEFORE_BACKOFF {
             let req = request_with_auth_and_addr("admin", b"wrong", addr);
-            let err = interceptor.handle_basic_auth_at(req, &creds, t0).unwrap_err();
+            let err = interceptor.handle_request_at(req, t0).unwrap_err();
             assert_eq!(err.code(), tonic::Code::Unauthenticated);
         }
 
@@ -425,7 +838,7 @@ mod tests {
         let valid_during_backoff = request_with_auth_and_addr("admin", b"secret", addr);
         let during_backoff = t0.checked_add(Duration::from_millis(25)).unwrap();
         let err = interceptor
-            .handle_basic_auth_at(valid_during_backoff, &creds, during_backoff)
+            .handle_request_at(valid_during_backoff, during_backoff)
             .unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
 
@@ -435,11 +848,7 @@ mod tests {
             .checked_add(INITIAL_BACKOFF)
             .and_then(|t| t.checked_add(Duration::from_millis(1)))
             .unwrap();
-        assert!(
-            interceptor
-                .handle_basic_auth_at(valid_after_expiry, &creds, after_expiry)
-                .is_ok()
-        );
+        assert!(interceptor.handle_request_at(valid_after_expiry, after_expiry).is_ok());
     }
 
     #[test]
@@ -449,7 +858,6 @@ mod tests {
             password: SafePassword::from("secret"),
         })
         .unwrap();
-        let creds = interceptor.credentials.as_ref().unwrap().clone();
         let t0 = Instant::now();
 
         let loopback_addrs: [SocketAddr; 3] = [
@@ -459,16 +867,14 @@ mod tests {
         ];
 
         for addr in loopback_addrs {
-            // Misconfigured local client fails repeatedly well beyond MAX_FAILURES_BEFORE_BACKOFF.
             for _ in 0..MAX_FAILURES_BEFORE_BACKOFF.saturating_mul(3) {
                 let bad_req = request_with_auth_and_addr("admin", b"stale-password", addr);
-                let err = interceptor.handle_basic_auth_at(bad_req, &creds, t0).unwrap_err();
+                let err = interceptor.handle_request_at(bad_req, t0).unwrap_err();
                 assert_eq!(err.code(), tonic::Code::Unauthenticated);
             }
 
-            // Correctly configured local client on the same loopback IP still authenticates immediately.
             let good_req = request_with_auth_and_addr("admin", b"secret", addr);
-            assert!(interceptor.handle_basic_auth_at(good_req, &creds, t0).is_ok());
+            assert!(interceptor.handle_request_at(good_req, t0).is_ok());
         }
 
         assert_eq!(interceptor.tracked_peer_count(), 0);
@@ -495,10 +901,14 @@ mod tests {
 
     #[test]
     fn failure_log_line_contains_peer_address_and_is_rate_limited() {
-        let _guard = LOGGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let logger = captured_logger();
-        logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        CAPTURE_THREAD.with(|c| c.set(true));
+        let _serial_guard = test_serial_lock().lock().unwrap_or_else(|e| e.into_inner());
+        init_logger();
+        if let Ok(mut logs) = test_logs().lock() {
+            logs.clear();
+        }
+        if let Ok(mut limiter) = FAILURE_LOG_LIMITER.lock() {
+            *limiter = FailureLogRateLimiter::new();
+        }
 
         let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::Basic {
             username: "admin".to_string(),
@@ -512,23 +922,34 @@ mod tests {
             assert!(interceptor.call(req).is_err());
         }
 
-        CAPTURE_THREAD.with(|c| c.set(false));
-        let lines = logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let [line] = lines.as_slice() else {
-            panic!("expected 1 rate-limited log line, got {}", lines.len());
-        };
+        let warn_logs: Vec<_> = test_logs()
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(level, _)| *level == Level::Warn)
+            .map(|(_, msg)| msg.clone())
+            .collect();
         assert!(
-            line.contains("203.0.113.42:55555"),
-            "expected peer address in log line, got: {line}"
+            !warn_logs.is_empty() && warn_logs.len() <= MAX_FAILURE_WARN_LOGS_PER_WINDOW,
+            "expected between 1 and {MAX_FAILURE_WARN_LOGS_PER_WINDOW} rate-limited log lines, got {}",
+            warn_logs.len()
+        );
+        assert!(
+            warn_logs.iter().all(|line| line.contains("203.0.113.42:55555")),
+            "expected peer address in log lines, got: {warn_logs:?}"
         );
     }
 
     #[test]
     fn truncates_overlong_scheme_and_throttles_auth_failure_warnings() {
-        let _guard = LOGGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let logger = captured_logger();
-        logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        CAPTURE_THREAD.with(|c| c.set(true));
+        let _serial_guard = test_serial_lock().lock().unwrap_or_else(|e| e.into_inner());
+        init_logger();
+        if let Ok(mut logs) = test_logs().lock() {
+            logs.clear();
+        }
+        if let Ok(mut limiter) = FAILURE_LOG_LIMITER.lock() {
+            *limiter = FailureLogRateLimiter::new();
+        }
 
         let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::Basic {
             username: "admin".to_string(),
@@ -546,23 +967,34 @@ mod tests {
             assert_eq!(err.code(), tonic::Code::Unauthenticated);
         }
 
-        CAPTURE_THREAD.with(|c| c.set(false));
-        let lines = logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clone();
-        let [line] = lines.as_slice() else {
-            panic!("expected 1 log line, got {}", lines.len());
-        };
+        let warn_logs: Vec<_> = test_logs()
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(level, _)| *level == Level::Warn)
+            .map(|(_, msg)| msg.clone())
+            .collect();
+        assert!(
+            !warn_logs.is_empty() && warn_logs.len() <= MAX_FAILURE_WARN_LOGS_PER_WINDOW,
+            "expected between 1 and {MAX_FAILURE_WARN_LOGS_PER_WINDOW} log lines, got {}",
+            warn_logs.len()
+        );
         let echoed_expected = "A".repeat(MAX_ECHOED_SCHEME_LEN);
         let echoed_too_long = "A".repeat(MAX_ECHOED_SCHEME_LEN + 1);
-        assert!(line.contains(&echoed_expected));
-        assert!(!line.contains(&echoed_too_long));
+        assert!(warn_logs.iter().all(|line| line.contains(&echoed_expected)));
+        assert!(warn_logs.iter().all(|line| !line.contains(&echoed_too_long)));
     }
 
     #[test]
     fn username_containing_colon_keeps_starting_logs_error_and_rejects_requests() {
-        let _guard = LOGGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let logger = captured_logger();
-        logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clear();
-        CAPTURE_THREAD.with(|c| c.set(true));
+        let _serial_guard = test_serial_lock().lock().unwrap_or_else(|e| e.into_inner());
+        init_logger();
+        if let Ok(mut logs) = test_logs().lock() {
+            logs.clear();
+        }
+        if let Ok(mut limiter) = FAILURE_LOG_LIMITER.lock() {
+            *limiter = FailureLogRateLimiter::new();
+        }
 
         let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::Basic {
             username: "bad:user".to_string(),
@@ -570,7 +1002,13 @@ mod tests {
         })
         .expect("server interceptor should still construct when username contains ':'");
 
-        let startup_lines = logger.lines.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let startup_lines: Vec<_> = test_logs()
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(level, _)| *level == Level::Error)
+            .map(|(_, msg)| msg.clone())
+            .collect();
         assert!(
             startup_lines
                 .iter()
@@ -581,7 +1019,5 @@ mod tests {
         let req = request_with_auth_and_addr("bad:user", b"secret", "127.0.0.1:45000".parse().unwrap());
         let err = interceptor.call(req).unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
-
-        CAPTURE_THREAD.with(|c| c.set(false));
     }
 }

@@ -21,13 +21,19 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
+use minotari_app_grpc::authentication::Layer;
 use tari_shutdown::ShutdownSignal;
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::TcpStream,
     sync::watch,
 };
-use tonic::transport::server::{Connected, Router, TcpConnectInfo, TcpIncoming};
+use tonic::{
+    body::Body,
+    codegen::{Service, http},
+    service::Routes,
+    transport::server::{Connected, Router, TcpConnectInfo, TcpIncoming},
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::grpc::shutdown_grace";
 
@@ -43,12 +49,19 @@ pub fn bind_grpc_listener(address: SocketAddr) -> io::Result<TcpIncoming> {
 /// Serve `router` on `listener` until `shutdown` fires. In-flight requests and streams then get `grace` to finish
 /// (tonic's graceful shutdown); after that every open connection is cut, so no connection task outlives this call by
 /// more than [`CUT_CONNECTIONS_TIMEOUT`].
-pub async fn serve_with_shutdown_grace(
-    router: Router,
+pub async fn serve_with_shutdown_grace<L>(
+    router: Router<L>,
     listener: TcpIncoming,
     shutdown: ShutdownSignal,
     grace: Duration,
-) -> Result<(), tonic::transport::Error> {
+) -> Result<(), tonic::transport::Error>
+where
+    L: Layer<Routes>,
+    L::Service: Service<http::Request<Body>, Response = http::Response<Body>> + Clone + Send + 'static,
+    <<L as Layer<Routes>>::Service as Service<http::Request<Body>>>::Future: Send + 'static,
+    <<L as Layer<Routes>>::Service as Service<http::Request<Body>>>::Error:
+        Into<Box<dyn std::error::Error + Send + Sync>> + Send,
+{
     let (cut_tx, cut_rx) = watch::channel(false);
     // The raw TCP stream is wrapped before tonic's optional TLS layer, so cutting works for TLS connections too
     let incoming = listener.map(move |conn| conn.map(|stream| CuttableIo::new(stream, cut_rx.clone())));

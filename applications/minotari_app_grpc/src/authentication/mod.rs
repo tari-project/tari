@@ -27,4 +27,11 @@ mod basic_auth;
 pub use basic_auth::{BasicAuthCredentials, BasicAuthError};
 
 mod server_interceptor;
-pub use server_interceptor::ServerAuthenticationInterceptor;
+pub use server_interceptor::{
+    AuthenticatedUser,
+    ServerAuthenticationInterceptor,
+    ServerAuthenticationLayer,
+    ServerAuthenticationService,
+    grpc_authentication_failures_total,
+};
+pub use tower_layer::Layer;
