@@ -800,4 +800,40 @@ mod test {
         assert_eq!(data.height_deleted_at, 0);
         assert!(data.block_deleted_in.is_empty());
     }
+
+    #[tokio::test]
+    async fn sync_utxos_by_block_enforces_range_limit_and_main_chain_headers() {
+        use tari_node_components::blocks::{BlockHeader, ChainHeader};
+
+        let db = create_new_blockchain_with_network(Network::LocalNet);
+        let genesis = db.fetch_chain_header(0).unwrap();
+
+        let mut headers = Vec::with_capacity(MAX_ALLOWED_QUERY_SIZE);
+        let mut prev_header = genesis.header().clone();
+        for _ in 0..MAX_ALLOWED_QUERY_SIZE {
+            let mut next_header = BlockHeader::from_previous(&prev_header);
+            next_header.kernel_mmr_size += 1;
+            let mut accum = genesis.accumulated_data().clone();
+            accum.hash = next_header.hash();
+            let chain_header = ChainHeader::try_construct(next_header.clone(), accum).unwrap();
+            prev_header = next_header;
+            headers.push(chain_header);
+        }
+        let far_hash = *headers.last().unwrap().hash();
+        db.insert_valid_headers(headers).unwrap();
+
+        let async_db = AsyncBlockchainDb::from(db);
+        let (tx, _rx) = mpsc::channel(5);
+        let err = SyncUtxosByBlockTask::new(async_db)
+            .run(
+                SyncUtxosByBlockRequest {
+                    start_header_hash: genesis.hash().to_vec(),
+                    end_header_hash: far_hash.to_vec(),
+                },
+                tx,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::BadRequest);
+    }
 }

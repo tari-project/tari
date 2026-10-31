@@ -3112,6 +3112,14 @@ async fn replace_by_fee_fails_when_must_include_utxos_not_found() {
         "Expected OutputManagerError, got: {:?}",
         err
     );
+
+    // The original transaction must still be present as a completed (un-cancelled) transaction when replacement fails
+    let remaining_tx = alice_ts_interface
+        .transaction_service_handle
+        .get_completed_transaction(tx_id)
+        .await
+        .expect("original transaction should not be marked cancelled when replace_by_fee fails");
+    assert_eq!(remaining_tx.status, LegacyTransactionStatus::Broadcast);
 }
 
 /// Regression test for a bug where `TransactionServiceRequest::SignOneSidedWithdrawMultisigTransaction` re-derived

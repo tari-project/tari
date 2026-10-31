@@ -93,7 +93,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
 
         let user_data = uuid.as_bytes().to_vec();
         let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        let payment_id =
+        let mut payment_id =
             MemoField::new_address_and_data(recipient.clone(), fee_estimate, true, TxType::PaymentToOther, user_data)
                 .map_err(|e| TransactionError::BuilderError(format!("Failed to create MemoField: {}", e)))?;
 
@@ -108,6 +108,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized_builder = tx_builder.build()?;
+        payment_id.set_fee(finalized_builder.fee);
         let output =
             finalized_builder.spec_outputs.first().cloned().ok_or_else(|| {
                 TransactionBuilderError::Other("The multisig recipient output was not built".to_string())
@@ -312,5 +313,74 @@ mod test {
             1,
             "there must be no change output"
         );
+    }
+
+    #[test]
+    fn create_deposit_multisig_transaction_records_actual_fee_in_payment_id() {
+        use std::{
+            future::Future,
+            pin::pin,
+            task::{Context, Poll, Waker},
+        };
+
+        use uuid::Uuid;
+
+        use crate::TransactionBuilder;
+
+        let rules = create_consensus_manager();
+        let consensus_constants = rules.consensus_constants(0).clone();
+        let key_manager = KeyManager::new_random().unwrap();
+        let recipient_key_manager = KeyManager::new_random().unwrap();
+        let recipient = TariAddress::new_dual_address(
+            recipient_key_manager.get_view_key().pub_key,
+            recipient_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let input_amount = MicroMinotari(500_000);
+        let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let input = WalletOutputBuilder::new(input_amount, commitment_mask.key_id)
+            .with_script(TariScript::new(vec![Opcode::PushPubKey(Box::new(script_key.pub_key.clone()))]).unwrap())
+            .with_features(OutputFeatures::default())
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .unwrap()
+            .with_script_key(script_key.key_id)
+            .with_sender_offset_public_key(sender_offset.pub_key.clone())
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
+            .unwrap()
+            .try_build(&key_manager)
+            .unwrap();
+
+        let mut tx_builder =
+            TransactionBuilder::new(consensus_constants, key_manager.clone(), Network::LocalNet).unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(1))
+            .with_lock_height(0)
+            .with_input(input)
+            .unwrap();
+
+        let party_key = key_manager.get_random_key(None, None).unwrap();
+        let mut session = MultisigSession::new(key_manager);
+        let fut = pin!(session.create_deposit_multisig_transaction(
+            MicroMinotari(100_000),
+            1,
+            vec![party_key.pub_key],
+            recipient,
+            tx_builder,
+            Uuid::nil(),
+        ));
+        let mut cx = Context::from_waker(Waker::noop());
+        let Poll::Ready(res) = fut.poll(&mut cx) else {
+            panic!("create_deposit_multisig_transaction should complete synchronously");
+        };
+        let (tx, payment_id, _sent_hashes, _change_hashes, _change, _tx_id) = res.unwrap();
+
+        let actual_fee = tx.body.get_total_fee().unwrap();
+        assert_eq!(payment_id.get_fee(), Some(actual_fee));
     }
 }

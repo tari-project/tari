@@ -10,6 +10,7 @@ use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{
+    base_node::rpc::MAX_ALLOWED_QUERY_SIZE,
     chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
@@ -33,25 +34,25 @@ where B: BlockchainBackend + 'static
         request: SyncUtxosByBlockRequest,
         mut tx: mpsc::Sender<Result<SyncUtxosByBlockResponse, RpcStatus>>,
     ) -> Result<(), RpcStatus> {
-        let hash = request
+        let start_hash = request
             .start_header_hash
             .clone()
             .try_into()
             .rpc_status_internal_error(LOG_TARGET)?;
         let start_header = self
             .db
-            .fetch_header_by_block_hash(hash)
+            .fetch_header_by_block_hash(start_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Start header hash is was not found"))?;
-        let hash = request
+        let end_hash = request
             .end_header_hash
             .clone()
             .try_into()
             .rpc_status_internal_error(LOG_TARGET)?;
         let end_header = self
             .db
-            .fetch_header_by_block_hash(hash)
+            .fetch_header_by_block_hash(end_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
@@ -61,6 +62,33 @@ where B: BlockchainBackend + 'static
                 "start header height {} cannot be greater than the end header height ({})",
                 start_header.height, end_header.height
             )));
+        }
+
+        if end_header.height.saturating_sub(start_header.height) >= MAX_ALLOWED_QUERY_SIZE as u64 {
+            return Err(RpcStatus::bad_request(&format!(
+                "Requested block range ({}..={}) exceeds maximum allowed query size ({})",
+                start_header.height, end_header.height, MAX_ALLOWED_QUERY_SIZE
+            )));
+        }
+
+        let main_chain_start = self
+            .db
+            .fetch_header(start_header.height)
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?
+            .ok_or_else(|| RpcStatus::not_found("Start header is not on the main chain"))?;
+        if main_chain_start.hash() != start_hash {
+            return Err(RpcStatus::not_found("Start header hash is not on the main chain"));
+        }
+
+        let main_chain_end = self
+            .db
+            .fetch_header(end_header.height)
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?
+            .ok_or_else(|| RpcStatus::not_found("End header is not on the main chain"))?;
+        if main_chain_end.hash() != end_hash {
+            return Err(RpcStatus::not_found("End header hash is not on the main chain"));
         }
 
         task::spawn(async move {

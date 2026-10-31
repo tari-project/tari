@@ -750,6 +750,12 @@ where
 
                     self.resources
                         .output_manager_service
+                        .encumber_outputs(response.tx_id, vec![selected_utxo.clone()], Vec::new())
+                        .await
+                        .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
+
+                    self.resources
+                        .output_manager_service
                         .confirm_pending_transaction(response.tx_id, None, None)
                         .await
                         .map_err(|e| TransactionServiceProtocolError::new(response.tx_id, e.into()))?;
@@ -1503,6 +1509,30 @@ where
 
             TransactionServiceRequest::CreateMultisigUtxo { request } => {
                 async {
+                    self.verify_send(&request.recipient_address, TariAddressFeatures::create_one_sided_only())?;
+                    if request.party_number == 0 {
+                        return Err(TransactionError::BuilderError("party_number cannot be zero".to_string()).into());
+                    }
+                    if (request.party_number as usize) > request.public_keys.len() {
+                        return Err(TransactionError::BuilderError(
+                            "party_number cannot be larger than the number of public_keys".to_string(),
+                        )
+                        .into());
+                    }
+                    let pubkey_count = u8::try_from(request.public_keys.len()).map_err(|_| {
+                        TransactionError::BuilderError("public_keys length exceeds u8::MAX".to_string())
+                    })?;
+                    let placeholder_multisig_script = script!(
+                        CheckMultiSigVerify(
+                            request.party_number,
+                            pubkey_count,
+                            vec![CompressedPublicKey::default(); request.public_keys.len()],
+                            Box::new([0u8; 32])
+                        )
+                        PushPubKey(Box::default())
+                    )
+                    .map_err(|e| TransactionError::BuilderError(format!("Failed to create script: {e}")))?;
+
                     let fee_per_gram = MicroMinotari::from(1);
                     let selected_criteria = UtxoSelectionCriteria {
                         excluding_multisig: true,
@@ -1527,14 +1557,14 @@ where
                             selected_criteria,
                             OutputFeatures::default(),
                             fee_per_gram,
-                            push_pubkey_script(&Default::default()),
+                            placeholder_multisig_script,
                             Covenant::default(),
                             payment_id,
                         )
                         .await?;
                     let mut multisig_session =
                         MultisigSession::new(self.resources.transaction_key_manager_service.clone());
-                    let (tx, payment_id, sent_hashes, change_hashes, change, tx_id) = multisig_session
+                    let (tx, payment_id, sent_hashes, change_hashes, change, tx_id) = match multisig_session
                         .create_deposit_multisig_transaction(
                             request.amount,
                             request.party_number,
@@ -1543,7 +1573,18 @@ where
                             tx_builder,
                             uuid,
                         )
-                        .await?;
+                        .await
+                    {
+                        Ok(res) => res,
+                        Err(err) => {
+                            let _ = self
+                                .resources
+                                .output_manager_service
+                                .cancel_pending_transaction(temp_tx_id)
+                                .await;
+                            return Err(err.into());
+                        },
+                    };
 
                     let fee = tx.body.get_total_fee()?;
 
@@ -1639,6 +1680,8 @@ where
                 signatures,
             } => {
                 async {
+                    self.verify_send(&recipient_address, TariAddressFeatures::create_one_sided_only())?;
+
                     let mut query = OutputBackendQuery::default();
                     query.commitments.push(utxo_commitment.clone());
 
@@ -1679,6 +1722,14 @@ where
                             tx_outputs_to_tx_id(view_key.as_bytes(), finalized_transaction.transaction.body.outputs()),
                         ),
                     };
+                    self.resources
+                        .output_manager_service
+                        .clone()
+                        .encumber_outputs(tx_id, vec![selected_utxo.clone()], Vec::new())
+                        .await
+                        .map_err(|e| {
+                            TransactionError::BuilderError(format!("Failed to encumber multisig UTXO: {:?}", e))
+                        })?;
                     self.resources
                         .output_manager_service
                         .clone()
@@ -3242,115 +3293,132 @@ where
                 temp_payment_id,
             )
             .await?;
-        let fee = tx_builder.get_fee_estimate_without_change()?;
+        let (finalized, payment_id) = match async {
+            let fee = tx_builder.get_fee_estimate_without_change()?;
 
-        let payment_id = payment_id
-            .add_sender_address(
-                self.resources.one_sided_tari_address.clone(),
-                false,
-                fee,
-                Some(TxType::Burn),
-            )
-            .map_err(TransactionServiceError::InvalidPaymentId)?;
-        trace!(
-            target: LOG_TARGET,
-            "Burning transaction start - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, \
-            selection: {}",
-            temp_tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
-        );
+            let payment_id = payment_id
+                .add_sender_address(
+                    self.resources.one_sided_tari_address.clone(),
+                    false,
+                    fee,
+                    Some(TxType::Burn),
+                )
+                .map_err(TransactionServiceError::InvalidPaymentId)?;
+            trace!(
+                target: LOG_TARGET,
+                "Burning transaction start - TxId: {}, amount: {}, fee per gram: {}, payment id: {}, claim pk: {}, \
+                selection: {}",
+                temp_tx_id, amount, fee_per_gram, payment_id, claim_public_key.clone().unwrap_or_default(), selection_criteria
+            );
 
-        tx_builder.with_tx_type(TxType::Burn);
-        tx_builder.with_kernel_features(KernelFeatures::create_burn());
+            tx_builder.with_tx_type(TxType::Burn);
+            tx_builder.with_kernel_features(KernelFeatures::create_burn());
 
-        // Both burn shapes publish a `Nop` script and a burn output type; what differs is where the sender offset
-        // key comes from.
-        let burn_features_and_scripts_size = recipient_output_features_and_scripts_size(
-            self.resources
-                .consensus_manager
-                .consensus_constants(0)
-                .transaction_weight_params(),
-            &output_features,
-            &script!(Nop)?,
-            &Covenant::default(),
-            &payment_id,
-        )?;
+            // Both burn shapes publish a `Nop` script and a burn output type; what differs is where the sender offset
+            // key comes from.
+            let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
+            let burn_features_and_scripts_size = recipient_output_features_and_scripts_size(
+                self.resources
+                    .consensus_manager
+                    .consensus_constants(tip_height)
+                    .transaction_weight_params(),
+                &output_features,
+                &script!(Nop)?,
+                &Covenant::default(),
+                &payment_id,
+            )?;
 
-        match derived_sender_offset_key {
-            // An L2-bound burn's `r` is derived from the commitment mask so the burn proof can be rebuilt from seed
-            // alone, so it cannot come from the builder's reservation. The output is built here around that key, and
-            // what it contributes to the script offset is registered by hand. Such a burn therefore relies on its
-            // change output to fold in the input script keys, and will not build without one.
-            Some(r) => {
-                let r_private = self
-                    .resources
-                    .transaction_key_manager_service
-                    .key_manager()
-                    .get_private_key(&r.key_id)?;
-                // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
-                #[allow(clippy::arithmetic_side_effects)]
-                let negated_r = PrivateKey::default() - r_private;
-                tx_builder.with_host_derived_partial_script_offset(negated_r);
+            match derived_sender_offset_key {
+                // An L2-bound burn's `r` is derived from the commitment mask so the burn proof can be rebuilt from seed
+                // alone, so it cannot come from the builder's reservation. The output is built here around that key, and
+                // what it contributes to the script offset is registered by hand. Such a burn therefore relies on its
+                // change output to fold in the input script keys, and will not build without one.
+                Some(r) => {
+                    let r_private = self
+                        .resources
+                        .transaction_key_manager_service
+                        .key_manager()
+                        .get_private_key(&r.key_id)?;
+                    // Ristretto scalar arithmetic, not integer arithmetic: this cannot overflow.
+                    #[allow(clippy::arithmetic_side_effects)]
+                    let negated_r = PrivateKey::default() - r_private;
+                    tx_builder.with_host_derived_partial_script_offset(negated_r);
 
-                // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can decrypt with
-                // DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account secret). The L1 wallet does
-                // not rely on decrypting `encrypted_data` to recover its own burns on a seed-only rescan - it traces
-                // them via the spent input outputs it owns.
-                let recovery_key_id = TariKeyId::DHEncryptedData {
-                    public_key: claim_public_key.clone().ok_or_else(|| {
-                        TransactionServiceError::ServiceError(
-                            "An L2 bound burn must have a claim public key".to_string(),
-                        )
-                    })?,
-                    private_key: r.key_id.clone().into(),
-                };
-                let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
-                    .with_features(output_features)
-                    .with_script(script!(Nop)?)
-                    .with_input_data(Default::default())
-                    .with_sender_offset_public_key(r.pub_key.clone())
-                    .with_script_key(TariKeyId::Zero)
-                    .with_minimum_value_promise(MicroMinotari::zero())
-                    .encrypt_data_for_recovery(
-                        &self.resources.transaction_key_manager_service,
-                        Some(&recovery_key_id),
-                        payment_id.clone(),
-                    )?
-                    .sign_metadata_signature(&self.resources.transaction_key_manager_service, &r.key_id)?
-                    .try_build(&self.resources.transaction_key_manager_service)?;
-
-                tx_builder.reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
-                    amount,
-                    burn_features_and_scripts_size,
-                )])?;
-                tx_builder.add_burn_recipient(output, r.key_id.clone(), Some(recovery_key_id))?;
-            },
-            // A plain burn has no L2 to decrypt the payload, so it falls back to the L1 view key and its sender
-            // offset key comes from the builder's single reservation like any other output.
-            None => {
-                tx_builder.with_recipient_spec(
-                    RecipientSpec::burn(amount, output_features, payment_id.clone())
+                    // For L2-bound burns, encrypt the recovery payload with DH(P, r) so the L2 wallet can decrypt with
+                    // DH(R, p) (where R = sender_offset_public_key on chain, p = L2 account secret). The L1 wallet does
+                    // not rely on decrypting `encrypted_data` to recover its own burns on a seed-only rescan - it traces
+                    // them via the spent input outputs it owns.
+                    let recovery_key_id = TariKeyId::DHEncryptedData {
+                        public_key: claim_public_key.clone().ok_or_else(|| {
+                            TransactionServiceError::ServiceError(
+                                "An L2 bound burn must have a claim public key".to_string(),
+                            )
+                        })?,
+                        private_key: r.key_id.clone().into(),
+                    };
+                    let output = WalletOutputBuilder::new(amount, commitment_mask_key.key_id.clone())
+                        .with_features(output_features)
                         .with_script(script!(Nop)?)
-                        .with_script_key(RecipientScriptKey::Zero),
-                )?;
-                tx_builder.reserve_sender_offset_keys(&[])?;
+                        .with_input_data(Default::default())
+                        .with_sender_offset_public_key(r.pub_key.clone())
+                        .with_script_key(TariKeyId::Zero)
+                        .with_minimum_value_promise(MicroMinotari::zero())
+                        .encrypt_data_for_recovery(
+                            &self.resources.transaction_key_manager_service,
+                            Some(&recovery_key_id),
+                            payment_id.clone(),
+                        )?
+                        .sign_metadata_signature(&self.resources.transaction_key_manager_service, &r.key_id)?
+                        .try_build(&self.resources.transaction_key_manager_service)?;
+
+                    tx_builder.reserve_sender_offset_keys(&[PendingOutput::custom_sender_offset(
+                        amount,
+                        burn_features_and_scripts_size,
+                    )])?;
+                    tx_builder.add_burn_recipient(output, r.key_id.clone(), Some(recovery_key_id))?;
+                },
+                // A plain burn has no L2 to decrypt the payload, so it falls back to the L1 view key and its sender
+                // offset key comes from the builder's single reservation like any other output.
+                None => {
+                    tx_builder.with_recipient_spec(
+                        RecipientSpec::burn(amount, output_features, payment_id.clone())
+                            .with_script(script!(Nop)?)
+                            .with_script_key(RecipientScriptKey::Zero),
+                    )?;
+                    tx_builder.reserve_sender_offset_keys(&[])?;
+                },
+            };
+
+            let finalized = tx_builder.build()?;
+            // Either shape puts exactly one recipient output on the transaction, and this is the published version of
+            // it - the builder rewrites the encrypted data with the final fee - so it is what the wallet stores and what
+            // the burn proof is built from.
+            let burned_output = finalized
+                .sent_outputs
+                .first()
+                .ok_or_else(|| TransactionServiceError::ServiceError("The burn output was not built".to_string()))?
+                .output
+                .clone();
+
+            self.resources
+                .output_manager_service
+                .add_output_with_tx_id(temp_tx_id, burned_output, None)
+                .await?;
+
+            Ok::<_, TransactionServiceError>((finalized, payment_id))
+        }
+        .await
+        {
+            Ok(res) => res,
+            Err(err) => {
+                let _ = self
+                    .resources
+                    .output_manager_service
+                    .cancel_pending_transaction(temp_tx_id)
+                    .await;
+                return Err(err);
             },
         };
-
-        let finalized = tx_builder.build()?;
-        // Either shape puts exactly one recipient output on the transaction, and this is the published version of
-        // it - the builder rewrites the encrypted data with the final fee - so it is what the wallet stores and what
-        // the burn proof is built from.
-        let burned_output = finalized
-            .sent_outputs
-            .first()
-            .ok_or_else(|| TransactionServiceError::ServiceError("The burn output was not built".to_string()))?
-            .output
-            .clone();
-
-        self.resources
-            .output_manager_service
-            .add_output_with_tx_id(temp_tx_id, burned_output, None)
-            .await?;
 
         let change = finalized.change.map(|change| vec![change]);
         self.resources
@@ -4337,6 +4405,7 @@ where
         }
 
         let destination = original_transaction.destination_address.clone();
+        self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
         let original_amount = original_transaction.amount;
         let payment_id = original_transaction.payment_id.clone();
 
@@ -4359,11 +4428,37 @@ where
             "Replace-by-fee: Creating replacement for transaction {tx_id} with total fee {fee} (weight: {weight_in_grams} grams, fee_per_gram: {fee_per_gram})"
         );
 
-        // Cancel the original transaction to free its inputs in the output manager before creating the replacement
-        self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled)
-            .await;
+        // Snapshot the original transaction's outputs so we can restore its encumbrance if replacement creation fails.
+        let original_tx_outputs = self
+            .resources
+            .output_manager_service
+            .fetch_outputs_by_tx_id(tx_id)
+            .await
+            .unwrap_or_default();
+        let original_inputs_to_send: Vec<_> = original_tx_outputs
+            .iter()
+            .filter(|o| o.spent_in_tx_id == Some(tx_id))
+            .cloned()
+            .collect();
+        let had_inbound_outputs = original_tx_outputs
+            .iter()
+            .any(|o| o.received_in_tx_id == Some(tx_id));
 
-        let new_tx_id = self
+        // Free the original transaction's inputs in the output manager before creating the replacement,
+        // but only reject the completed transaction in the transaction database after replacement succeeds.
+        if let Err(e) = self
+            .resources
+            .output_manager_service
+            .cancel_pending_transaction(tx_id)
+            .await
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to free outputs for TxId: {tx_id} before replace-by-fee attempt with error {e:?}"
+            );
+        }
+
+        let new_tx_id = match self
             .send_one_sided_transaction(
                 destination,
                 original_amount,
@@ -4373,7 +4468,44 @@ where
                 payment_id,
                 transaction_broadcast_join_handles,
             )
-            .await?;
+            .await
+        {
+            Ok(new_tx_id) => new_tx_id,
+            Err(err) => {
+                if !original_inputs_to_send.is_empty() &&
+                    self.resources
+                        .output_manager_service
+                        .encumber_outputs(tx_id, original_inputs_to_send, Vec::new())
+                        .await
+                        .is_ok()
+                {
+                    let _ = self
+                        .resources
+                        .output_manager_service
+                        .confirm_pending_transaction(tx_id, None, None)
+                        .await;
+                }
+                if had_inbound_outputs {
+                    let _ = self
+                        .resources
+                        .output_manager_service
+                        .reinstate_cancelled_inbound_transaction_outputs(tx_id)
+                        .await;
+                }
+                return Err(err);
+            },
+        };
+
+        if let Err(e) = self
+            .resources
+            .db
+            .reject_completed_transaction(tx_id, TxCancellationReason::UserCancelled, None)
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to Cancel TxId: {tx_id} after successful replace-by-fee with error {e:?}"
+            );
+        }
 
         info!(
             target: LOG_TARGET,
@@ -4408,6 +4540,11 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<TxId, TransactionServiceError> {
+        if fee == MicroMinotari::zero() {
+            return Err(TransactionServiceError::ZeroFeeIncrease);
+        }
+        self.verify_send(&destination, TariAddressFeatures::create_one_sided_only())?;
+
         let original_transaction = self.resources.db.get_transaction_to_be_broadcast(tx_id).map_err(|_| {
             TransactionServiceError::TransactionStorageError(TransactionStorageError::ValueNotFound(
                 DbKey::CompletedTransaction(tx_id),
@@ -4423,21 +4560,45 @@ where
             .outputs()
             .iter()
             .collect::<Vec<_>>();
+        let known_tx_outputs = self
+            .resources
+            .output_manager_service
+            .fetch_outputs_by_tx_id(tx_id)
+            .await
+            .unwrap_or_default();
         let mut spendable_outputs = Vec::new();
         let mut total_amount = MicroMinotari::zero();
         let view_key = self.resources.transaction_key_manager_service.get_private_view_key();
 
-        // only those outputs that can be decrypted are spendable and can be used as inputs
+        // Include wallet-owned outputs tracked in the output manager (including DH-encrypted one-sided outputs)
+        // as well as any outputs directly decryptable with the wallet view key.
         for output in all_outputs {
-            match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
-                Ok((amount, _, _)) => {
-                    total_amount = total_amount.saturating_add(amount);
-                    spendable_outputs.push(output.commitment().clone());
-                },
-                Err(_) => {
-                    debug!(target: LOG_TARGET, "Output {:?} not decryptable; skipping.", output.commitment());
-                },
+            if let Some(known_output) = known_tx_outputs.iter().find(|db_out| {
+                &db_out.commitment == output.commitment() &&
+                    matches!(
+                        db_out.status,
+                        OutputStatus::Unspent | OutputStatus::EncumberedToBeReceived
+                    )
+            }) {
+                total_amount = total_amount.saturating_add(known_output.wallet_output.value());
+                spendable_outputs.push(output.commitment().clone());
+            } else {
+                match EncryptedData::decrypt_data(&view_key, output.commitment(), output.encrypted_data()) {
+                    Ok((amount, _, _)) => {
+                        total_amount = total_amount.saturating_add(amount);
+                        spendable_outputs.push(output.commitment().clone());
+                    },
+                    Err(_) => {
+                        debug!(target: LOG_TARGET, "Output {:?} not decryptable; skipping.", output.commitment());
+                    },
+                }
             }
+        }
+
+        if spendable_outputs.is_empty() {
+            return Err(TransactionServiceError::OutputManagerError(
+                OutputManagerError::NotEnoughFunds,
+            ));
         }
 
         debug!(
@@ -4450,30 +4611,68 @@ where
         );
 
         let num_inputs = spendable_outputs.len();
-        let num_outputs = 2; // destination + change
         let tip_height = self.db.get_last_scanned_height()?.unwrap_or(0);
-        let (weight_in_grams, fee_per_gram) = original_transaction.calculate_fee_per_gram_from_total_fee(
-            fee,
-            self.resources.consensus_manager.consensus_constants(tip_height),
-            num_inputs,
-            num_outputs,
+        let consensus_constants = self.resources.consensus_manager.consensus_constants(tip_height);
+        let output_features = OutputFeatures::default();
+        let temp_script = push_pubkey_script(&Default::default());
+        let measured_memo = addressed_output_memo(
+            original_transaction.payment_id.clone(),
+            self.resources.one_sided_tari_address.clone(),
+            MicroMinotari::zero(),
+            TxType::PaymentToOther,
         )?;
+        let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
+            consensus_constants.transaction_weight_params(),
+            &output_features,
+            &temp_script,
+            &Covenant::default(),
+            &measured_memo,
+        )?;
+        let fee_calculator = Fee::new(*consensus_constants.transaction_weight_params());
+        let weight_in_grams = fee_calculator
+            .calculate(
+                MicroMinotari::from(1),
+                1,
+                num_inputs,
+                1,
+                features_and_scripts_byte_size,
+            )
+            .as_u64();
+        let fee_per_gram = if weight_in_grams > 0 {
+            MicroMinotari::from(fee.as_u64().div_ceil(weight_in_grams).max(1))
+        } else {
+            MicroMinotari::from(1)
+        };
+        let actual_fee = fee_calculator.calculate(
+            fee_per_gram,
+            1,
+            num_inputs,
+            1,
+            features_and_scripts_byte_size,
+        );
+        let send_amount = total_amount
+            .checked_sub(actual_fee)
+            .filter(|amount| *amount > MicroMinotari::zero())
+            .ok_or(TransactionServiceError::OutputManagerError(
+                OutputManagerError::NotEnoughFunds,
+            ))?;
 
         debug!(
             target: LOG_TARGET,
-            "user-pay-for-fee: Fee calculation - target_fee: {}, weight: {} grams, fee_per_gram: {} (calculated as {:.3} rounded)",
+            "user-pay-for-fee: Fee calculation - target_fee: {}, actual_fee: {}, send_amount: {}, weight: {} grams, fee_per_gram: {}",
             fee,
+            actual_fee,
+            send_amount,
             weight_in_grams,
             fee_per_gram,
-            if weight_in_grams > 0 { fee.0 as f64 / weight_in_grams as f64 } else { 0.0 }
         );
 
         let new_tx_id = self
             .send_one_sided_transaction(
                 destination,
-                total_amount,
+                send_amount,
                 UtxoSelectionCriteria::must_include(spendable_outputs),
-                OutputFeatures::default(),
+                output_features,
                 fee_per_gram,
                 original_transaction.payment_id,
                 transaction_broadcast_join_handles,
