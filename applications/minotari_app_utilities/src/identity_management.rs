@@ -45,7 +45,18 @@ use tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "minotari_application";
 
-const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
+#[cfg(target_family = "unix")]
+const CREATED_IDENTITY_FILE_MODE: u32 = 0o600;
+#[cfg(target_family = "unix")]
+const CREATED_IDENTITY_DIR_MODE: u32 = 0o700;
+#[cfg(target_family = "unix")]
+const GROUP_OR_OTHER_MODE_MASK: u32 = 0o077;
+#[cfg(target_family = "unix")]
+const OWNER_READ_MODE_MASK: u32 = 0o400;
+
+#[cfg(target_family = "windows")]
+const WINDOWS_PERMISSION_WARNING: &str = "Identity-file permissions are not enforced on this platform; ensure the \
+                                          identity directory is restricted to the current user";
 
 /// Loads the node identity, or creates a new one if create_id is true
 ///
@@ -117,6 +128,18 @@ where
             error!(target: LOG_TARGET, "{msg}");
             Err(ExitError::new(ExitCode::ConfigError, msg))
         },
+        Err(
+            e @ (IdentityError::Symlink |
+            IdentityError::HardLink { .. } |
+            IdentityError::InvalidOwner { .. } |
+            IdentityError::UnsafeDirectory { .. }),
+        ) => Err(ExitError::new(
+            ExitCode::ConfigError,
+            format!(
+                "Identity file {} failed security check: {e}",
+                identity_file.as_ref().to_string_lossy()
+            ),
+        )),
         Err(e @ (IdentityError::NotFound | IdentityError::Malformed { .. } | IdentityError::Io(_))) => {
             recover_or_create_node_identity(
                 identity_file.as_ref(),
@@ -239,10 +262,9 @@ where
 /// ## Returns
 /// Result containing a NodeIdentity on success, string indicates the reason on failure
 fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) -> Result<NodeIdentity, IdentityError> {
-    check_identity_file(&path)?;
-
-    let id_str = fs::read_to_string(path.as_ref())?;
+    let id_str = read_identity_file(path.as_ref())?;
     let id = json5::from_str::<NodeIdentity>(&id_str)?;
+    let mut needs_save = false;
 
     let id = if transport_type == TransportType::Tcp {
         let current_addresses = id.public_addresses();
@@ -253,8 +275,9 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
         );
         // For TCP transport remove all onion addresses
         let filtered_addresses: Vec<Multiaddr> = current_addresses
-            .into_iter()
+            .iter()
             .filter(|addr| !addr.iter().any(|p| matches!(p, Protocol::Onion3(_))))
+            .cloned()
             .collect();
         debug!(
             target: LOG_TARGET,
@@ -262,7 +285,10 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
             filtered_addresses.len(),
             filtered_addresses
         );
-        id.set_public_addresses(filtered_addresses);
+        if filtered_addresses != current_addresses {
+            id.set_public_addresses(filtered_addresses);
+            needs_save = true;
+        }
         id
     } else {
         id
@@ -271,6 +297,7 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
     // Check whether the previous version has a signature and sign if necessary
     if !id.is_signed() {
         id.sign();
+        needs_save = true;
     }
     debug!(
         target: LOG_TARGET,
@@ -278,7 +305,9 @@ fn load_node_identity<P: AsRef<Path>>(path: P, transport_type: TransportType) ->
         id.public_key().to_hex(),
         id.node_id().to_hex()
     );
-    save_as_json(&path, &id)?;
+    if needs_save {
+        save_as_json(&path, &id)?;
+    }
     Ok(id)
 }
 
@@ -334,13 +363,11 @@ fn create_new_node_identity<P: AsRef<Path>>(
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
 pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Option<T>, IdentityError> {
-    if !path.as_ref().exists() {
-        return Ok(None);
-    }
-
-    check_identity_file(&path)?;
-
-    let contents = fs::read_to_string(path)?;
+    let contents = match read_identity_file(path.as_ref()) {
+        Ok(contents) => contents,
+        Err(IdentityError::NotFound) => return Ok(None),
+        Err(e) => return Err(e),
+    };
     let object = json5::from_str(&contents)?;
     Ok(Some(object))
 }
@@ -428,14 +455,14 @@ fn move_file_no_overwrite(src: &Path, dst: &Path) -> io::Result<()> {
     fs::rename(src, dst)
 }
 
-/// The error returned when an identity file has permissions other than 0600, telling the user how to fix it.
+/// The error returned when an identity file is accessible to group or other users, telling the user how to fix it.
 /// `recreated` describes what happens if the user moves the file aside instead.
 fn invalid_permissions_error(path: &Path, recreated: &str) -> ExitError {
     ExitError::new(
         ExitCode::ConfigError,
         format!(
-            "{path} has incorrect permissions. You can update the identity file with the correct permissions using \
-             'chmod 600 {path}', or move the identity file aside and {recreated}",
+            "{path} must be readable only by its owner; run `chmod 600` or `chmod 400` (e.g. 'chmod 600 {path}'), or \
+             move the identity file aside and {recreated}",
             path = path.to_string_lossy()
         ),
     )
@@ -452,10 +479,18 @@ fn invalid_permissions_error(path: &Path, recreated: &str) -> ExitError {
 /// Result to check if successful or not, string will indicate reason on error
 pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), IdentityError> {
     let json = json5::to_string(object)?;
-    if let Some(p) = path.as_ref().parent() &&
-        !p.exists()
+    #[cfg(target_family = "unix")]
     {
-        fs::create_dir_all(p)?;
+        // Validate any pre-existing symlink at `path` before `ensure_identity_dir` tightens parent permissions, so a
+        // symlink planted in a group- or world-writable directory (or a dangling symlink) is still rejected.
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        let euid = unsafe { libc::geteuid() };
+        let _ = resolve_identity_file_path(path.as_ref(), euid)?;
+    }
+    if let Some(p) = path.as_ref().parent() &&
+        !p.as_os_str().is_empty()
+    {
+        ensure_identity_dir(p)?;
     }
     let json_with_comment =
         format!("// This file is generated by the Minotari base node. Any changes will be overwritten.\n{json}");
@@ -463,68 +498,358 @@ pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result
     Ok(())
 }
 
-/// Writes the identity file. On unix the permissions are applied before any contents are written, so that there is
-/// never a window (as there would be with `fs::write` followed by a chmod) during which the identity is readable by
-/// other users.
+/// Ensures the parent directory for an identity file exists and has safe ownership and permissions (`0700` on Unix).
 #[cfg(target_family = "unix")]
-fn write_identity_file<P: AsRef<Path>>(path: P, contents: &[u8]) -> io::Result<()> {
-    use std::{
-        io::Write,
-        os::unix::fs::{OpenOptionsExt, PermissionsExt},
-    };
-    // `mode()` and `chmod` only take the permission bits, so mask off the file type bits.
-    let mode = REQUIRED_IDENTITY_PERMS & 0o7777;
-    // `mode()` covers a newly created file (the process umask does not apply to it) ...
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(mode)
-        .open(path)?;
-    // ... and it is ignored when the file already exists, so also `fchmod` an existing file that was created with
-    // wider permissions. Both happen while the file is still empty.
-    file.set_permissions(fs::Permissions::from_mode(mode))?;
-    file.write_all(contents)?;
+fn ensure_identity_dir(dir: &Path) -> Result<(), IdentityError> {
+    use std::{fs::DirBuilder, os::unix::fs::DirBuilderExt};
+
+    // SAFETY: `geteuid` has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+
+    match fs::symlink_metadata(dir) {
+        Ok(metadata) => validate_identity_dir_metadata(dir, &metadata, euid),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            DirBuilder::new()
+                .recursive(true)
+                .mode(CREATED_IDENTITY_DIR_MODE)
+                .create(dir)?;
+            let metadata = fs::symlink_metadata(dir)?;
+            validate_identity_dir_metadata(dir, &metadata, euid)
+        },
+        Err(err) => Err(IdentityError::Io(err)),
+    }
+}
+
+#[cfg(target_family = "unix")]
+fn validate_identity_dir_metadata(dir: &Path, metadata: &fs::Metadata, euid: u32) -> Result<(), IdentityError> {
+    use std::os::unix::fs::MetadataExt;
+
+    if metadata.file_type().is_symlink() {
+        let resolved = fs::canonicalize(dir).map_err(|err| IdentityError::UnsafeDirectory {
+            path: dir.to_path_buf(),
+            reason: format!("is a symbolic link whose target could not be resolved: {err}"),
+        })?;
+        let target_metadata = fs::symlink_metadata(&resolved).map_err(|err| IdentityError::UnsafeDirectory {
+            path: dir.to_path_buf(),
+            reason: format!("is a symbolic link whose target could not be inspected: {err}"),
+        })?;
+        return validate_identity_dir_metadata(&resolved, &target_metadata, euid);
+    }
+    if !metadata.is_dir() {
+        return Err(IdentityError::UnsafeDirectory {
+            path: dir.to_path_buf(),
+            reason: "is not a directory".to_string(),
+        });
+    }
+    if metadata.uid() != euid {
+        return Err(IdentityError::UnsafeDirectory {
+            path: dir.to_path_buf(),
+            reason: format!("is owned by uid {}, expected current uid {}", metadata.uid(), euid),
+        });
+    }
+    let mode = metadata.mode() & 0o7777;
+    if mode & GROUP_OR_OTHER_MODE_MASK != 0 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir, fs::Permissions::from_mode(CREATED_IDENTITY_DIR_MODE))?;
+        warn!(
+            target: LOG_TARGET,
+            "Tightened permissions on identity directory '{}' from {:04o} to {:04o}",
+            dir.display(),
+            mode,
+            CREATED_IDENTITY_DIR_MODE
+        );
+    }
     Ok(())
 }
 
 #[cfg(target_family = "windows")]
-fn write_identity_file<P: AsRef<Path>>(path: P, contents: &[u8]) -> io::Result<()> {
-    fs::write(path, contents)
+fn ensure_identity_dir(dir: &Path) -> Result<(), IdentityError> {
+    if !dir.exists() {
+        fs::create_dir_all(dir)?;
+    }
+    Ok(())
 }
 
-/// Check that the given path exists, is a file and has the correct file permissions (mac/linux only)
-fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
-    if !path.as_ref().exists() {
-        return Err(IdentityError::NotFound);
+#[cfg(target_family = "unix")]
+fn is_nofollow_symlink_error(err: &io::Error) -> bool {
+    #[cfg(target_os = "freebsd")]
+    if err.raw_os_error() == Some(libc::EMLINK) {
+        return true;
     }
+    #[cfg(target_os = "netbsd")]
+    if err.raw_os_error() == Some(libc::EFTYPE) {
+        return true;
+    }
+    err.raw_os_error() == Some(libc::ELOOP)
+}
 
-    if !path.as_ref().metadata()?.is_file() {
+#[cfg(target_family = "unix")]
+fn resolve_identity_file_path(path: &Path, euid: u32) -> Result<(PathBuf, bool), IdentityError> {
+    use std::os::unix::fs::MetadataExt;
+
+    let link_meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok((path.to_path_buf(), false)),
+        Err(err) => return Err(IdentityError::Io(err)),
+    };
+    if !link_meta.file_type().is_symlink() {
+        return Ok((path.to_path_buf(), false));
+    }
+    if link_meta.uid() != euid && link_meta.uid() != 0 {
+        return Err(IdentityError::Symlink);
+    }
+    let parent = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    let canonical_parent = fs::canonicalize(parent).map_err(|_| IdentityError::Symlink)?;
+    let parent_meta = fs::symlink_metadata(&canonical_parent).map_err(|_| IdentityError::Symlink)?;
+    // A symlink inside a directory owned by `euid` that is not group- or other-writable (`mode & 0o022 == 0`)
+    // was placed by the owner (or a root-mounted volume), not planted by another user in a shared directory.
+    if !parent_meta.is_dir() || parent_meta.uid() != euid || (parent_meta.mode() & 0o022 != 0) {
+        return Err(IdentityError::Symlink);
+    }
+    let resolved = fs::canonicalize(path).map_err(|_| IdentityError::Symlink)?;
+    Ok((resolved, true))
+}
+
+#[cfg(target_family = "unix")]
+fn map_unix_open_error(err: io::Error, path: &Path, allow_root_owner: bool) -> IdentityError {
+    if err.kind() == io::ErrorKind::NotFound {
+        return IdentityError::NotFound;
+    }
+    if is_nofollow_symlink_error(&err) {
+        return IdentityError::Symlink;
+    }
+    if err.raw_os_error() == Some(libc::EISDIR) || err.raw_os_error() == Some(libc::ENXIO) {
+        return IdentityError::NotFile;
+    }
+    if let Ok(meta) = fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() {
+            return IdentityError::Symlink;
+        }
+        if !meta.is_file() {
+            return IdentityError::NotFile;
+        }
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        let euid = unsafe { libc::geteuid() };
+        if let Err(meta_err) = validate_identity_descriptor_metadata(&meta, euid, true, allow_root_owner) {
+            return meta_err;
+        }
+    }
+    if err.kind() == io::ErrorKind::PermissionDenied {
+        return IdentityError::InvalidPermissions;
+    }
+    IdentityError::Io(err)
+}
+
+#[cfg(target_family = "unix")]
+fn validate_identity_descriptor_metadata(
+    metadata: &fs::Metadata,
+    euid: u32,
+    check_mode: bool,
+    allow_root_owner: bool,
+) -> Result<(), IdentityError> {
+    use std::os::unix::fs::MetadataExt;
+
+    if metadata.file_type().is_symlink() {
+        return Err(IdentityError::Symlink);
+    }
+    if !metadata.is_file() {
         return Err(IdentityError::NotFile);
     }
-
-    if !has_permissions(&path, REQUIRED_IDENTITY_PERMS)? {
+    if metadata.uid() != euid && !(allow_root_owner && metadata.uid() == 0) {
+        return Err(IdentityError::InvalidOwner {
+            expected_uid: euid,
+            actual_uid: metadata.uid(),
+        });
+    }
+    if metadata.nlink() != 1 {
+        return Err(IdentityError::HardLink {
+            nlink: metadata.nlink(),
+        });
+    }
+    if check_mode &&
+        ((metadata.mode() & GROUP_OR_OTHER_MODE_MASK != 0) || (metadata.mode() & OWNER_READ_MODE_MASK == 0))
+    {
         return Err(IdentityError::InvalidPermissions);
     }
     Ok(())
 }
 
 #[cfg(target_family = "unix")]
-fn has_permissions<P: AsRef<Path>>(path: P, perms: u32) -> io::Result<bool> {
-    use std::os::unix::fs::PermissionsExt;
-    let metadata = fs::metadata(path)?;
-    Ok(metadata.permissions().mode() == perms)
+fn open_and_validate_identity_file(path: &Path) -> Result<fs::File, IdentityError> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    // SAFETY: `geteuid` has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    let (target_path, is_followed_symlink) = resolve_identity_file_path(path, euid)?;
+
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(&target_path)
+        .map_err(|err| map_unix_open_error(err, &target_path, is_followed_symlink))?;
+
+    let metadata = file.metadata()?;
+    validate_identity_descriptor_metadata(&metadata, euid, true, is_followed_symlink)?;
+    Ok(file)
+}
+
+#[cfg(target_family = "unix")]
+fn read_identity_file(path: &Path) -> Result<String, IdentityError> {
+    use std::io::Read;
+
+    let mut file = open_and_validate_identity_file(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    Ok(contents)
 }
 
 #[cfg(target_family = "windows")]
-fn has_permissions<P: AsRef<Path>>(_: P, _: u32) -> io::Result<bool> {
-    Ok(true)
+fn warn_windows_permissions_unforced_once() {
+    use std::sync::Once;
+    static WARN_ONCE: Once = Once::new();
+    WARN_ONCE.call_once(|| {
+        warn!(target: LOG_TARGET, "{WINDOWS_PERMISSION_WARNING}");
+    });
+}
+
+#[cfg(target_family = "windows")]
+fn read_identity_file(path: &Path) -> Result<String, IdentityError> {
+    check_identity_file(path)?;
+    Ok(fs::read_to_string(path)?)
+}
+
+/// Returns `true` when `path` already exists with valid identity permissions and either has identical byte contents
+/// or represents a signed `NodeIdentity` with the same `public_key`, `features`, and `public_addresses`.
+///
+/// Treating two signed identities with identical (`public_key`, `features`, `public_addresses`) as unchanged —
+/// skipping a rewrite when only the signature timestamp changed — is intentional and is what keeps read-only `0400`
+/// identity files working across `TcpTor` bootstrap re-saves.
+#[cfg(target_family = "unix")]
+fn is_unchanged_identity_file(path: &Path, contents: &[u8]) -> Result<bool, IdentityError> {
+    let existing = match read_identity_file(path) {
+        Ok(existing) => existing,
+        Err(IdentityError::NotFound | IdentityError::InvalidPermissions) => return Ok(false),
+        Err(err) => return Err(err),
+    };
+    if existing.as_bytes() == contents {
+        return Ok(true);
+    }
+    if let Ok(new_str) = std::str::from_utf8(contents) &&
+        let (Ok(old_id), Ok(new_id)) = (
+            json5::from_str::<NodeIdentity>(&existing),
+            json5::from_str::<NodeIdentity>(new_str),
+        ) &&
+        old_id.is_signed() &&
+        new_id.is_signed() &&
+        old_id.public_key() == new_id.public_key() &&
+        old_id.features() == new_id.features() &&
+        old_id.public_addresses() == new_id.public_addresses()
+    {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+/// Writes the identity file. On unix the file is opened with `O_NOFOLLOW | O_NONBLOCK` and validated via `fstat` on
+/// the open descriptor (regular file, owned by `geteuid()`, `st_nlink == 1`) before permissions are tightened and
+/// contents are truncated and written.
+#[cfg(target_family = "unix")]
+fn write_identity_file<P: AsRef<Path>>(path: P, contents: &[u8]) -> Result<(), IdentityError> {
+    use std::{
+        io::Write,
+        os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    };
+
+    let path = path.as_ref();
+    if is_unchanged_identity_file(path, contents)? {
+        return Ok(());
+    }
+    // SAFETY: `geteuid` has no preconditions and cannot fail.
+    let euid = unsafe { libc::geteuid() };
+    let (target_path, is_followed_symlink) = resolve_identity_file_path(path, euid)?;
+
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(CREATED_IDENTITY_FILE_MODE)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(&target_path)
+        .map_err(|err| map_unix_open_error(err, &target_path, is_followed_symlink))?;
+
+    let metadata = file.metadata()?;
+    validate_identity_descriptor_metadata(&metadata, euid, false, is_followed_symlink)?;
+
+    // Tighten permissions and truncate on the validated descriptor before writing any secret material.
+    file.set_permissions(fs::Permissions::from_mode(CREATED_IDENTITY_FILE_MODE))?;
+    file.set_len(0)?;
+    file.write_all(contents)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+#[cfg(target_family = "windows")]
+fn write_identity_file<P: AsRef<Path>>(path: P, contents: &[u8]) -> Result<(), IdentityError> {
+    warn_windows_permissions_unforced_once();
+    let path = path.as_ref();
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(IdentityError::Symlink);
+            }
+            if !metadata.is_file() {
+                return Err(IdentityError::NotFile);
+            }
+        },
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {},
+        Err(err) => return Err(IdentityError::Io(err)),
+    }
+    fs::write(path, contents)?;
+    Ok(())
+}
+
+/// Check that the given path exists, is a regular file (not a symlink or hard link), is owned by the current effective
+/// user, and has no group or other permissions (`mode & 0o077 == 0` on Unix).
+#[cfg(any(test, target_family = "windows"))]
+fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
+    #[cfg(target_family = "unix")]
+    {
+        let _file = open_and_validate_identity_file(path.as_ref())?;
+        Ok(())
+    }
+    #[cfg(target_family = "windows")]
+    {
+        warn_windows_permissions_unforced_once();
+        let metadata = match fs::symlink_metadata(path.as_ref()) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Err(IdentityError::NotFound),
+            Err(err) => return Err(IdentityError::Io(err)),
+        };
+        if metadata.file_type().is_symlink() {
+            return Err(IdentityError::Symlink);
+        }
+        if !metadata.is_file() {
+            return Err(IdentityError::NotFile);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum IdentityError {
     #[error("Identity file has invalid permissions")]
     InvalidPermissions,
+    #[error("Identity path is a symbolic link")]
+    Symlink,
+    #[error("Identity file has multiple hard links (nlink = {nlink})")]
+    HardLink { nlink: u64 },
+    #[error("Identity file is owned by uid {actual_uid}, expected current uid {expected_uid}")]
+    InvalidOwner { expected_uid: u32, actual_uid: u32 },
+    #[error("Identity directory '{path}' is unsafe: {reason}")]
+    UnsafeDirectory { path: PathBuf, reason: String },
     #[error("Identity file was not found")]
     NotFound,
     #[error("Path is not a file")]
@@ -551,14 +876,28 @@ impl From<json5::Error> for IdentityError {
 
 #[cfg(all(test, target_family = "unix"))]
 mod test {
-    use std::{os::unix::fs::PermissionsExt, path::PathBuf};
+    use std::{
+        ffi::CString,
+        fs::DirBuilder,
+        os::unix::{
+            ffi::OsStrExt,
+            fs::{DirBuilderExt, MetadataExt, PermissionsExt, symlink},
+        },
+        path::PathBuf,
+    };
 
     use super::*;
 
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("identity_management_test_{}_{name}", std::process::id()));
+        let _unused = fs::remove_dir_all(&dir);
+        DirBuilder::new().recursive(true).mode(0o700).create(&dir).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+        dir
+    }
+
     fn temp_path(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("identity_management_test_{name}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir.join("identity.json")
+        temp_dir(name).join("identity.json")
     }
 
     #[test]
@@ -568,7 +907,8 @@ mod test {
 
         save_as_json(&path, &"identity").unwrap();
 
-        assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
+        let mode = fs::symlink_metadata(&path).unwrap().mode() & 0o7777;
+        assert_eq!(mode, 0o600);
         check_identity_file(&path).unwrap();
     }
 
@@ -580,7 +920,8 @@ mod test {
 
         save_as_json(&path, &"identity").unwrap();
 
-        assert!(has_permissions(&path, REQUIRED_IDENTITY_PERMS).unwrap());
+        let mode = fs::symlink_metadata(&path).unwrap().mode() & 0o7777;
+        assert_eq!(mode, 0o600);
         let contents = fs::read_to_string(&path).unwrap();
         assert!(contents.ends_with("\"identity\""), "unexpected contents: {contents}");
     }
@@ -637,17 +978,12 @@ mod test {
         assert!(matches!(err.exit_code, ExitCode::ConfigError));
         let details = err.details.unwrap();
         assert!(
+            details.contains("must be readable only by its owner; run `chmod 600` or `chmod 400`"),
+            "expected owner-only chmod 600/400 hint, got: {details}"
+        );
+        assert!(
             details.contains(&format!("chmod 600 {}", path.to_string_lossy())),
             "expected path and chmod hint, got: {details}"
-        );
-
-        assert!(
-            !details.to_lowercase().contains("delete"),
-            "permission error message must not advise deleting the identity file: {details}"
-        );
-        assert!(
-            details.contains("or move the identity file aside"),
-            "permission error message must advise moving the identity file aside: {details}"
         );
 
         // File with strict permissions (0600) succeeds to pass permission gate
@@ -657,6 +993,360 @@ mod test {
             load_from_json::<_, TorIdentity>(&path),
             Err(IdentityError::Malformed { .. })
         ));
+    }
+
+    #[test]
+    fn permissions_0400_and_0600_pass_while_0200_0640_and_0644_fail() {
+        let path = temp_path("modes_0400_0600_0640_0644");
+        let created = create_new_node_identity(&path, vec![], PeerFeatures::COMMUNICATION_NODE).unwrap();
+        let original_contents = fs::read_to_string(&path).unwrap();
+
+        // 0600 passes
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        check_identity_file(&path).unwrap();
+        let loaded = load_node_identity(&path, TransportType::Tcp).unwrap();
+        assert_eq!(loaded.public_key(), created.public_key());
+
+        // 0400 read-only passes end-to-end when no address/signature update is needed
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        check_identity_file(&path).unwrap();
+        let loaded_ro = load_node_identity(&path, TransportType::Tcp).unwrap();
+        assert_eq!(loaded_ro.public_key(), created.public_key());
+        let setup_ro = setup_node_identity(
+            &path,
+            vec![],
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .unwrap();
+        assert_eq!(setup_ro.public_key(), created.public_key());
+
+        // 0200 write-only is rejected as InvalidPermissions and never overwritten by setup_node_identity
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o200)).unwrap();
+        assert!(matches!(
+            check_identity_file(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+        assert!(matches!(
+            load_from_json::<_, NodeIdentity>(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+        // 0400 read-only also succeeds when re-saved on TcpTor startup if the identity is unchanged
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        let setup_tor_ro = setup_node_identity(
+            &path,
+            vec![],
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::TcpTor,
+        )
+        .unwrap();
+        save_as_json(&path, setup_tor_ro.as_ref()).unwrap();
+
+        // 0200 write-only is rejected as InvalidPermissions and never overwritten by setup_node_identity
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o200)).unwrap();
+        let err = setup_node_identity(
+            &path,
+            vec![],
+            true,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .unwrap_err();
+        assert!(matches!(err.exit_code, ExitCode::ConfigError));
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), original_contents);
+
+        // 0640 and 0644 are rejected
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        assert!(matches!(
+            check_identity_file(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+        assert!(matches!(
+            load_from_json::<_, NodeIdentity>(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(matches!(
+            check_identity_file(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+        assert!(matches!(
+            load_from_json::<_, NodeIdentity>(&path),
+            Err(IdentityError::InvalidPermissions)
+        ));
+    }
+
+    #[test]
+    fn fifo_at_identity_path_is_rejected_without_blocking() {
+        let dir = temp_dir("fifo");
+        let fifo_path = dir.join("identity.fifo");
+        let c_path = CString::new(fifo_path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `c_path` is a valid NUL-terminated path string.
+        let rc = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) };
+        assert_eq!(rc, 0, "mkfifo failed");
+
+        assert!(matches!(check_identity_file(&fifo_path), Err(IdentityError::NotFile)));
+        assert!(matches!(
+            load_from_json::<_, String>(&fifo_path),
+            Err(IdentityError::NotFile)
+        ));
+        assert!(matches!(
+            load_node_identity(&fifo_path, TransportType::Tcp),
+            Err(IdentityError::NotFile)
+        ));
+        assert!(matches!(
+            save_as_json(&fifo_path, &"identity"),
+            Err(IdentityError::NotFile)
+        ));
+    }
+
+    #[test]
+    fn symlink_at_identity_path_is_rejected_in_writable_dir_or_when_dangling_and_followed_in_safe_dir() {
+        let dir = temp_dir("symlink");
+        let target = dir.join("target.json");
+        save_as_json(&target, &"original").unwrap();
+        let original_contents = fs::read_to_string(&target).unwrap();
+
+        // In a group- or world-writable directory (0777), a symlink could have been planted by another user and must be
+        // rejected on both load and save without modifying the target.
+        let writable_dir = temp_dir("symlink_writable");
+        fs::set_permissions(&writable_dir, fs::Permissions::from_mode(0o777)).unwrap();
+        let link_path = writable_dir.join("identity_link.json");
+        symlink(&target, &link_path).unwrap();
+
+        assert!(matches!(check_identity_file(&link_path), Err(IdentityError::Symlink)));
+        assert!(matches!(
+            load_from_json::<_, String>(&link_path),
+            Err(IdentityError::Symlink)
+        ));
+        assert!(matches!(
+            load_node_identity(&link_path, TransportType::Tcp),
+            Err(IdentityError::Symlink)
+        ));
+        assert!(matches!(
+            save_as_json(&link_path, &"overwritten"),
+            Err(IdentityError::Symlink)
+        ));
+        assert_eq!(fs::read_to_string(&target).unwrap(), original_contents);
+
+        // Dangling symlink (even inside a 0700 directory) is rejected on both load and save without creating the target
+        let dangling_target = dir.join("nonexistent_target.json");
+        let dangling_link = dir.join("dangling_link.json");
+        symlink(&dangling_target, &dangling_link).unwrap();
+
+        assert!(matches!(
+            load_from_json::<_, String>(&dangling_link),
+            Err(IdentityError::Symlink)
+        ));
+        assert!(matches!(
+            save_as_json(&dangling_link, &"planted"),
+            Err(IdentityError::Symlink)
+        ));
+        assert!(!dangling_target.exists());
+
+        // Upgrade case: a symlink inside a validated euid-owned directory (0755 or 0700) pointing to a valid identity
+        // file succeeds on both Tcp and TcpTor load and re-save, while still validating the target's mode and nlink.
+        let safe_dir = temp_dir("symlink_safe_upgrade");
+        fs::set_permissions(&safe_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let shared_dir = temp_dir("symlink_shared_target");
+        let real_id_path = shared_dir.join("real_base_node_id.json");
+        let created = create_new_node_identity(&real_id_path, vec![], PeerFeatures::COMMUNICATION_NODE).unwrap();
+
+        let id_link = safe_dir.join("base_node_id.json");
+        symlink(&real_id_path, &id_link).unwrap();
+
+        let loaded_tcp = setup_node_identity(
+            &id_link,
+            vec![],
+            false,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::Tcp,
+        )
+        .unwrap();
+        assert_eq!(loaded_tcp.public_key(), created.public_key());
+
+        let loaded_tor = setup_node_identity(
+            &id_link,
+            vec![],
+            false,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::TcpTor,
+        )
+        .unwrap();
+        assert_eq!(loaded_tor.public_key(), created.public_key());
+        save_as_json(&id_link, loaded_tor.as_ref()).unwrap();
+
+        // Target validation still applies through the symlink: loose target permissions (0644) fail
+        fs::set_permissions(&real_id_path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(matches!(
+            check_identity_file(&id_link),
+            Err(IdentityError::InvalidPermissions)
+        ));
+    }
+
+    #[test]
+    fn hard_link_to_identity_file_is_rejected() {
+        let dir = temp_dir("hard_link");
+        let path = dir.join("identity.json");
+        let hard_link = dir.join("identity_hardlink.json");
+
+        save_as_json(&path, &"identity").unwrap();
+        fs::hard_link(&path, &hard_link).unwrap();
+
+        assert!(matches!(
+            check_identity_file(&path),
+            Err(IdentityError::HardLink { nlink: 2 })
+        ));
+        assert!(matches!(
+            load_from_json::<_, String>(&path),
+            Err(IdentityError::HardLink { nlink: 2 })
+        ));
+        assert!(matches!(
+            save_as_json(&path, &"updated"),
+            Err(IdentityError::HardLink { nlink: 2 })
+        ));
+    }
+
+    #[test]
+    fn file_owned_by_different_uid_is_rejected() {
+        let path = temp_path("different_uid");
+        save_as_json(&path, &"identity").unwrap();
+
+        // Direct unit check on the descriptor metadata validator for uid mismatch
+        let meta = fs::symlink_metadata(&path).unwrap();
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        let euid = unsafe { libc::geteuid() };
+        let other_uid = if euid == 0 { 65534 } else { euid.wrapping_add(1) };
+        assert!(matches!(
+            validate_identity_descriptor_metadata(&meta, other_uid, true, false),
+            Err(IdentityError::InvalidOwner { .. })
+        ));
+
+        // End-to-end filesystem check: skipped unless running with the ability to chown
+        let c_path = CString::new(path.as_os_str().as_bytes()).unwrap();
+        // SAFETY: `c_path` is a valid NUL-terminated path string; `-1` (`gid_t::MAX`) leaves gid unchanged.
+        let rc = unsafe { libc::chown(c_path.as_ptr(), other_uid, libc::gid_t::MAX) };
+        if rc != 0 {
+            return;
+        }
+
+        assert!(matches!(
+            check_identity_file(&path),
+            Err(IdentityError::InvalidOwner {
+                expected_uid,
+                actual_uid,
+            }) if expected_uid == euid && actual_uid == other_uid
+        ));
+        assert!(matches!(
+            load_from_json::<_, String>(&path),
+            Err(IdentityError::InvalidOwner { .. })
+        ));
+        assert!(matches!(
+            save_as_json(&path, &"updated"),
+            Err(IdentityError::InvalidOwner { .. })
+        ));
+    }
+
+    #[test]
+    fn fresh_identity_directory_is_created_0700() {
+        let base = temp_dir("fresh_dir_base");
+        let fresh_dir = base.join("nested").join("config");
+        let path = fresh_dir.join("identity.json");
+
+        save_as_json(&path, &"identity").unwrap();
+
+        let dir_mode = fs::symlink_metadata(&fresh_dir).unwrap().mode() & 0o7777;
+        assert_eq!(dir_mode, 0o700);
+    }
+
+    #[test]
+    fn symlinked_identity_directory_resolves_target_while_dangling_or_foreign_owner_fails() {
+        let base = temp_dir("unsafe_dir_base");
+        let real_dir = base.join("real_dir");
+        fs::create_dir_all(&real_dir).unwrap();
+        fs::set_permissions(&real_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let symlink_dir = base.join("symlink_dir");
+        symlink(&real_dir, &symlink_dir).unwrap();
+
+        // Upgrade case: symlinked config directory pointing to an euid-owned 0755 directory succeeds on load and
+        // TcpTor re-save, tightening the resolved target directory to 0700.
+        let path = symlink_dir.join("base_node_id.json");
+        let created = create_new_node_identity(&path, vec![], PeerFeatures::COMMUNICATION_NODE).unwrap();
+        fs::set_permissions(&real_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let loaded = setup_node_identity(
+            &path,
+            vec![],
+            false,
+            PeerFeatures::COMMUNICATION_NODE,
+            TransportType::TcpTor,
+        )
+        .unwrap();
+        assert_eq!(loaded.public_key(), created.public_key());
+        save_as_json(&path, loaded.as_ref()).unwrap();
+        let target_mode = fs::symlink_metadata(&real_dir).unwrap().mode() & 0o7777;
+        assert_eq!(target_mode, 0o700);
+
+        // Dangling symlink directory fails naming the directory
+        let dangling_dir = base.join("dangling_dir");
+        symlink(base.join("missing_dir_target"), &dangling_dir).unwrap();
+        let dangling_path = dangling_dir.join("identity.json");
+        let err = save_as_json(&dangling_path, &"identity").unwrap_err();
+        assert!(
+            matches!(err, IdentityError::UnsafeDirectory { .. }),
+            "expected UnsafeDirectory for dangling symlinked parent dir, got: {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains(&dangling_dir.to_string_lossy().to_string()),
+            "expected error message to name directory '{}', got: {msg}",
+            dangling_dir.display()
+        );
+
+        // Also verify foreign uid rejection on directory metadata
+        let meta = fs::symlink_metadata(&real_dir).unwrap();
+        // SAFETY: `geteuid` has no preconditions and cannot fail.
+        let euid = unsafe { libc::geteuid() };
+        let other_uid = if euid == 0 { 65534 } else { euid.wrapping_add(1) };
+        let uid_err = validate_identity_dir_metadata(&real_dir, &meta, other_uid).unwrap_err();
+        assert!(matches!(uid_err, IdentityError::UnsafeDirectory { .. }));
+        assert!(uid_err.to_string().contains(&real_dir.to_string_lossy().to_string()));
+    }
+
+    #[test]
+    fn upgrade_existing_0755_0775_and_0777_directory_and_0600_identity_succeeds_and_tightens_dir() {
+        for initial_mode in [0o755, 0o775, 0o777] {
+            let base = temp_dir(&format!("upgrade_{initial_mode:04o}_base"));
+            let upgrade_dir = base.join("config");
+            fs::create_dir_all(&upgrade_dir).unwrap();
+            let path = upgrade_dir.join("base_node_id.json");
+
+            // Simulate an identity written before the upgrade inside a 0755/0775/0777 config directory
+            let created = create_new_node_identity(&path, vec![], PeerFeatures::COMMUNICATION_NODE).unwrap();
+            fs::set_permissions(&upgrade_dir, fs::Permissions::from_mode(initial_mode)).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+            // Simulate default TcpTor startup: load followed by bootstrap re-save
+            let loaded = setup_node_identity(
+                &path,
+                vec![],
+                false,
+                PeerFeatures::COMMUNICATION_NODE,
+                TransportType::TcpTor,
+            )
+            .unwrap();
+            assert_eq!(loaded.public_key(), created.public_key());
+            save_as_json(&path, loaded.as_ref()).unwrap();
+
+            let dir_mode = fs::symlink_metadata(&upgrade_dir).unwrap().mode() & 0o7777;
+            assert_eq!(
+                dir_mode, 0o700,
+                "expected mode 0700 after tightening {initial_mode:04o}"
+            );
+        }
     }
 
     struct ThreadLocalLogger;
@@ -698,9 +1388,7 @@ mod test {
 
     #[test]
     fn truncated_identity_file_is_backed_up_and_regenerated_with_error_log() {
-        let dir = std::env::temp_dir().join("identity_management_test_truncated_backup");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("truncated_backup");
         let path = dir.join("identity.json");
 
         let original_bytes = b"// truncated identity\n{\"node_id\":\"deadbeef\"";
@@ -718,7 +1406,6 @@ mod test {
         });
         let new_id = res.expect("setup_node_identity should back up and create a new identity");
 
-        // Find the .bak file in `dir`
         let bak_files: Vec<PathBuf> = fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -732,12 +1419,10 @@ mod test {
         let bak_path = bak_files.first().unwrap();
         assert_eq!(fs::read(bak_path).unwrap(), original_bytes);
 
-        // New identity file exists and loads cleanly into the newly generated identity
         let reloaded = load_node_identity(&path, TransportType::Tcp).unwrap();
         assert_eq!(reloaded.node_id(), new_id.node_id());
         assert_eq!(reloaded.public_key(), new_id.public_key());
 
-        // Exactly one error log line naming the backup path, new node_id, and new public_key, and no warn log line
         let error_logs: Vec<&String> = logs
             .iter()
             .filter_map(|(lvl, msg)| (*lvl == Level::Error).then_some(msg))
@@ -767,9 +1452,7 @@ mod test {
 
     #[test]
     fn directory_at_identity_path_returns_exit_error_and_creates_nothing() {
-        let dir = std::env::temp_dir().join("identity_management_test_dir_at_path");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("dir_at_path");
         let identity_dir = dir.join("identity.json");
         fs::create_dir_all(&identity_dir).unwrap();
 
@@ -796,9 +1479,7 @@ mod test {
 
     #[test]
     fn missing_identity_file_creates_new_without_backup() {
-        let dir = std::env::temp_dir().join("identity_management_test_missing_creates_new");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("missing_creates_new");
         let path = dir.join("identity.json");
 
         let id = setup_node_identity(
@@ -826,25 +1507,18 @@ mod test {
 
     #[test]
     fn failed_backup_rename_in_unwritable_parent_dir_aborts_without_overwriting() {
-        let dir = std::env::temp_dir().join("identity_management_test_unwritable_parent");
-        let _unused = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("unwritable_parent");
         let path = dir.join("identity.json");
 
         let original_bytes = b"// corrupt identity\n{broken";
         fs::write(&path, original_bytes).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
 
-        unsafe extern "C" {
-            fn geteuid() -> u32;
-        }
         // SAFETY: `geteuid` has no preconditions and cannot fail.
-        if unsafe { geteuid() } == 0 {
+        if unsafe { libc::geteuid() } == 0 {
             return;
         }
 
-        // Make parent directory read+search only (0500) so renaming to .bak fails.
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o500)).unwrap();
 
         let res = setup_node_identity(
@@ -855,7 +1529,6 @@ mod test {
             TransportType::Tcp,
         );
 
-        // Restore parent directory permissions before asserting so cleanup always succeeds.
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
 
         let err = res.expect_err("must fail when renaming to .bak fails");
@@ -869,9 +1542,7 @@ mod test {
 
     #[test]
     fn multiple_backups_in_same_second_do_not_overwrite_each_other() {
-        let dir = std::env::temp_dir().join("identity_management_test_same_second_backups");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("same_second_backups");
         let path = dir.join("identity.json");
 
         let first_corrupt = b"// first corrupt identity\n{first";
@@ -916,13 +1587,9 @@ mod test {
 
     #[test]
     fn missing_identity_with_eof_on_stdin_creates_identity_while_corrupt_aborts() {
-        let dir = std::env::temp_dir().join("identity_management_test_eof_stdin_split");
-        let _unused = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("eof_stdin_split");
         let path = dir.join("identity.json");
 
-        // Missing file + create_id == false + EOF on stdin (simulated via prompt_default_yes_on_eof -> true)
-        // creates the identity on first start without a terminal.
         let created = setup_node_identity_with_prompts(
             &path,
             Vec::new(),
@@ -939,8 +1606,6 @@ mod test {
             created.node_id()
         );
 
-        // Corrupt file + create_id == false + EOF on stdin (simulated via prompt -> false)
-        // refuses to replace the corrupt identity.
         let corrupt_bytes = b"// corrupt identity\n{broken";
         fs::write(&path, corrupt_bytes).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
@@ -957,5 +1622,77 @@ mod test {
         .expect_err("corrupt identity with EOF-means-no must abort");
         assert!(matches!(err.exit_code, ExitCode::ConfigError));
         assert_eq!(fs::read(&path).unwrap(), corrupt_bytes);
+    }
+}
+
+#[cfg(all(test, target_family = "windows"))]
+mod windows_test {
+    use std::{
+        path::PathBuf,
+        sync::{Mutex, Once},
+    };
+
+    use super::*;
+
+    struct RecordingLogger {
+        warnings: Mutex<Vec<String>>,
+    }
+
+    impl log::Log for RecordingLogger {
+        fn enabled(&self, metadata: &log::Metadata) -> bool {
+            metadata.level() <= log::Level::Warn
+        }
+
+        fn log(&self, record: &log::Record) {
+            if self.enabled(record.metadata()) && record.target() == LOG_TARGET && record.level() == log::Level::Warn {
+                self.warnings.lock().unwrap().push(record.args().to_string());
+            }
+        }
+
+        fn flush(&self) {}
+    }
+
+    static TEST_LOGGER: RecordingLogger = RecordingLogger {
+        warnings: Mutex::new(Vec::new()),
+    };
+    static INIT_LOGGER: Once = Once::new();
+
+    fn init_logger() {
+        INIT_LOGGER.call_once(|| {
+            let _unused = log::set_logger(&TEST_LOGGER);
+            log::set_max_level(log::LevelFilter::Warn);
+        });
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("identity_management_win_test_{}_{name}", std::process::id()));
+        let _unused = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir.join("identity.json")
+    }
+
+    #[test]
+    fn windows_logs_permission_warning_exactly_once() {
+        init_logger();
+        let path = temp_path("warn_once");
+
+        save_as_json(&path, &"identity").unwrap();
+        save_as_json(&path, &"identity_2").unwrap();
+        check_identity_file(&path).unwrap();
+        let loaded: Option<String> = load_from_json(&path).unwrap();
+        assert_eq!(loaded.as_deref(), Some("identity_2"));
+        let loaded_again: Option<String> = load_from_json(&path).unwrap();
+        assert_eq!(loaded_again.as_deref(), Some("identity_2"));
+
+        let warnings = TEST_LOGGER.warnings.lock().unwrap();
+        let matching: Vec<&String> = warnings
+            .iter()
+            .filter(|w| w.contains(WINDOWS_PERMISSION_WARNING))
+            .collect();
+        assert_eq!(
+            matching.len(),
+            1,
+            "expected Windows permission warning to be logged exactly once, got: {warnings:?}"
+        );
     }
 }
