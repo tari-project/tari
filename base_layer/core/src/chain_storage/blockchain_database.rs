@@ -3433,7 +3433,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         if prune_past_horizon && is_last_step {
             txn.set_pruned_height(0);
         }
-        if h == 0 {
+        if !prune_past_horizon && h == 0 {
             // insert the new orphan chain tip
             debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {block_hash}");
             txn.insert_orphan_chain_tip(block_hash, chain_header.accumulated_data().total_accumulated_difficulty);
@@ -3451,6 +3451,20 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     }
 
     if prune_past_horizon {
+        if steps_back == 0 {
+            let genesis_header = db.fetch_chain_header_by_height(0)?;
+            let metadata = db.fetch_chain_metadata()?;
+            let mut txn = DbTransaction::new();
+            txn.set_best_block(
+                genesis_header.height(),
+                genesis_header.accumulated_data().hash,
+                genesis_header.accumulated_data().total_accumulated_difficulty,
+                *metadata.best_block_hash(),
+                genesis_header.timestamp(),
+            );
+            txn.set_pruned_height(0);
+            db.write(txn)?;
+        }
         // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them.
         // We also delete headers above the target height since they belong to the old chain and will be
         // replaced during re-sync. The header at target_height is preserved as it is the chain split point.
@@ -4048,6 +4062,23 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
     // `prune_past_horizon` rewind has not been reached. The header sync path does not come through here and is
     // anchored separately, in `HeaderSynchronizer::determine_sync_status`.
     if refuse_reorg_below_ghsa_activation(db, consensus_manager, &tip_header, &best_fork_header, &reorg_chain)? {
+        remove_non_canonical_headers(db)?;
+        return Ok(SwapAttempt::Refused);
+    }
+
+    let metadata = db.fetch_chain_metadata()?;
+    if metadata.is_pruned_node() && lowest_new_block.header().height <= metadata.pruned_height() {
+        warn!(
+            target: LOG_TARGET,
+            "Refusing orphan chain swap with fork at height {} below pruned height {}; state sync is required.",
+            lowest_new_block.header().height.saturating_sub(1),
+            metadata.pruned_height()
+        );
+        let mut txn = DbTransaction::new();
+        for hash in orphan_subtree_hashes(db, *lowest_new_block.hash())?.iter().rev() {
+            txn.delete_orphan(*hash);
+        }
+        db.write(txn)?;
         remove_non_canonical_headers(db)?;
         return Ok(SwapAttempt::Refused);
     }
@@ -9480,6 +9511,27 @@ mod test {
                     .unwrap()
                     .is_empty(),
                 "a refused rewind must not leave an orphan chain tip behind"
+            );
+        }
+
+        #[tokio::test]
+        async fn pruned_node_rewind_past_horizon_leaves_no_dangling_orphan_tip() {
+            let path = tari_test_utils::paths::create_temporary_data_path();
+            build_pre_fork_chain(&path, None);
+            let db = create_custom_blockchain_at_path(&path, rules_unscheduled(), true);
+
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(5);
+            txn.set_pruned_height(CHAIN_LEN - 5);
+            db.write(txn).unwrap();
+
+            db.rewind_to_height(10).unwrap();
+            let access = db.db_read_access().unwrap();
+            assert_eq!(access.fetch_chain_metadata().unwrap().best_block_height(), 0);
+            assert_eq!(access.fetch_chain_metadata().unwrap().pruned_height(), 0);
+            assert!(
+                access.fetch_strongest_orphan_chain_tips().unwrap().is_empty(),
+                "rewinding past pruning horizon must not leave a dangling orphan chain tip"
             );
         }
 

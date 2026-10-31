@@ -291,6 +291,25 @@ async fn handle_request(
     submission_permits: Arc<Semaphore>,
 ) -> Result<(), Result<MempoolResponse, MempoolServiceError>> {
     let MempoolRequest::SubmitTransaction(tx) = request else {
+        if matches!(request, MempoolRequest::GetState) {
+            let _state_permit = tokio::select! {
+                biased;
+                () = reply.closed() => {
+                    debug!(target: LOG_TARGET, "Dropping an abandoned mempool state request");
+                    return Ok(());
+                },
+                permit = submission_permits.acquire_owned() => match permit {
+                    Ok(permit) => permit,
+                    Err(e) => {
+                        return reply.send(Err(MempoolServiceError::MempoolError(MempoolError::InternalError(format!(
+                            "Submission semaphore closed: {e}"
+                        )))));
+                    },
+                },
+            };
+            let result = inbound_handlers.handle_request(request).await;
+            return reply.send(result);
+        }
         let result = tokio::select! {
             biased;
             () = reply.closed() => {

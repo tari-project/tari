@@ -80,6 +80,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
         check_blockchain_version(constants, header.version)?;
         check_height(header, prev_header)?;
         check_prev_hash(header, prev_header)?;
+        check_kernel_mmr_size(header, prev_header, constants)?;
 
         sanity_check_timestamp_count(header, prev_timestamps, constants)?;
         check_header_timestamp_greater_than_median(header, prev_timestamps)?;
@@ -165,6 +166,32 @@ fn check_prev_hash(header: &BlockHeader, prev_header: &BlockHeader) -> Result<()
         ));
     }
 
+    Ok(())
+}
+
+fn check_kernel_mmr_size(
+    header: &BlockHeader,
+    prev_header: &BlockHeader,
+    constants: &ConsensusConstants,
+) -> Result<(), ValidationError> {
+    if header.kernel_mmr_size < prev_header.kernel_mmr_size {
+        return Err(ValidationError::ConsensusError(format!(
+            "Header #{} kernel_mmr_size ({}) cannot be less than previous header kernel_mmr_size ({})",
+            header.height, header.kernel_mmr_size, prev_header.kernel_mmr_size
+        )));
+    }
+    let max_kernels = constants
+        .max_block_transaction_weight()
+        .checked_div(constants.transaction_weight_params().params().kernel_weight)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let block_kernels = header.kernel_mmr_size.saturating_sub(prev_header.kernel_mmr_size);
+    if block_kernels > max_kernels {
+        return Err(ValidationError::ConsensusError(format!(
+            "Header #{} kernel count ({}) exceeds maximum possible kernels in a block ({})",
+            header.height, block_kernels, max_kernels
+        )));
+    }
     Ok(())
 }
 
@@ -861,5 +888,40 @@ mod test {
         };
         let res = check_pow_data_inner(&pow, 0, 9, 9, false);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn check_kernel_mmr_size_rejects_shrinking_or_excessive_kernel_counts() {
+        use tari_common::configuration::Network;
+
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let constants = rules.consensus_constants(1);
+
+        let mut prev = BlockHeader::new(0);
+        prev.height = 0;
+        prev.kernel_mmr_size = 10;
+
+        let mut valid = BlockHeader::from_previous(&prev);
+        valid.kernel_mmr_size = 12;
+        assert!(check_kernel_mmr_size(&valid, &prev, constants).is_ok());
+
+        let mut shrinking = BlockHeader::from_previous(&prev);
+        shrinking.kernel_mmr_size = 9;
+        assert!(matches!(
+            check_kernel_mmr_size(&shrinking, &prev, constants),
+            Err(ValidationError::ConsensusError(_))
+        ));
+
+        let max_kernels = constants
+            .max_block_transaction_weight()
+            .checked_div(constants.transaction_weight_params().params().kernel_weight)
+            .unwrap()
+            .saturating_add(1);
+        let mut excessive = BlockHeader::from_previous(&prev);
+        excessive.kernel_mmr_size = prev.kernel_mmr_size.saturating_add(max_kernels).saturating_add(1);
+        assert!(matches!(
+            check_kernel_mmr_size(&excessive, &prev, constants),
+            Err(ValidationError::ConsensusError(_))
+        ));
     }
 }

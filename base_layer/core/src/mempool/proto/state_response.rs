@@ -29,10 +29,29 @@ use crate::mempool::{StateResponse, proto::mempool::StateResponse as ProtoStateR
 
 //--------------------------------- StateResponse -------------------------------------------//
 
+/// Maximum number of full transactions serialized or deserialized in a single P2P `StateResponse`.
+pub const MAX_STATE_RESPONSE_TXS: usize = 1_000;
+/// Maximum number of excess signatures serialized or deserialized in a single P2P `StateResponse`.
+pub const MAX_STATE_RESPONSE_SIGS: usize = 5_000;
+
 impl TryFrom<ProtoStateResponse> for StateResponse {
     type Error = String;
 
     fn try_from(state: ProtoStateResponse) -> Result<Self, Self::Error> {
+        if state.unconfirmed_pool.len() > MAX_STATE_RESPONSE_TXS {
+            return Err(format!(
+                "StateResponse unconfirmed_pool length ({}) exceeds maximum ({})",
+                state.unconfirmed_pool.len(),
+                MAX_STATE_RESPONSE_TXS
+            ));
+        }
+        if state.reorg_pool.len() > MAX_STATE_RESPONSE_SIGS {
+            return Err(format!(
+                "StateResponse reorg_pool length ({}) exceeds maximum ({})",
+                state.reorg_pool.len(),
+                MAX_STATE_RESPONSE_SIGS
+            ));
+        }
         Ok(Self {
             unconfirmed_pool: state
                 .unconfirmed_pool
@@ -57,9 +76,35 @@ impl TryFrom<StateResponse> for ProtoStateResponse {
             unconfirmed_pool: state
                 .unconfirmed_pool
                 .into_iter()
+                .take(MAX_STATE_RESPONSE_TXS)
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()?,
-            reorg_pool: state.reorg_pool.into_iter().map(Into::into).collect::<Vec<_>>(),
+            reorg_pool: state
+                .reorg_pool
+                .into_iter()
+                .take(MAX_STATE_RESPONSE_SIGS)
+                .map(Into::into)
+                .collect::<Vec<_>>(),
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn state_response_rejects_oversized_proto_pools() {
+        let oversized_sigs = ProtoStateResponse {
+            unconfirmed_pool: vec![],
+            reorg_pool: vec![Default::default(); MAX_STATE_RESPONSE_SIGS + 1],
+        };
+        assert!(StateResponse::try_from(oversized_sigs).is_err());
+
+        let oversized_txs = ProtoStateResponse {
+            unconfirmed_pool: vec![Default::default(); MAX_STATE_RESPONSE_TXS + 1],
+            reorg_pool: vec![],
+        };
+        assert!(StateResponse::try_from(oversized_txs).is_err());
     }
 }
