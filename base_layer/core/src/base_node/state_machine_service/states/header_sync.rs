@@ -189,6 +189,7 @@ impl HeaderSyncState {
                     randomx_vm_cnt,
                     randomx_vm_flags,
                 });
+                super::block_sync::swap_to_highest_pow_chain_and_publish(shared).await;
                 match err {
                     BlockHeaderSyncError::SyncFailedAllPeers => {
                         error!(target: LOG_TARGET, "Header sync failed with all peers. Error: {err}");

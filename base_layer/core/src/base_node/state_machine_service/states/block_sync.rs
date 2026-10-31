@@ -149,8 +149,29 @@ impl BlockSync {
 }
 
 /// After a failed sync, swap to the strongest chain we hold, and publish a chain change as `handle_block` does, so that
-/// the mempool and other listeners follow it
-async fn swap_to_highest_pow_chain_and_publish<B: BlockchainBackend + 'static>(shared: &BaseNodeStateMachine<B>) {
+/// the mempool and other listeners follow it. Defer the swap while a horizon sync output checkpoint remains so that
+/// held full blocks are not validated against checkpointed output state above `best_block`.
+pub(super) async fn swap_to_highest_pow_chain_and_publish<B: BlockchainBackend + 'static>(
+    shared: &BaseNodeStateMachine<B>,
+) {
+    match shared.db.fetch_horizon_sync_output_checkpoint().await {
+        Ok(Some(checkpoint)) => {
+            debug!(
+                target: LOG_TARGET,
+                "Deferring swap to highest proof-of-work chain while horizon sync output checkpoint at height {} remains active",
+                checkpoint.checkpoint_height
+            );
+            return;
+        },
+        Ok(None) => {},
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Failed to check horizon sync output checkpoint before resetting chain to highest proof of work: {e}"
+            );
+            return;
+        },
+    }
     match shared.db.swap_to_highest_pow_chain().await {
         Ok(outcome) => {
             let tip_block = match &outcome.result {
