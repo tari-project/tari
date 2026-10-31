@@ -961,6 +961,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             kernel_hashes.push(kernel.hash());
 
             txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position);
+            if mmr_position >= current_header.header().kernel_mmr_size {
+                return Err(HorizonSyncError::IncorrectResponse(format!(
+                    "Header #{} has non-increasing kernel_mmr_size {} at mmr_position {}",
+                    current_header.height(),
+                    current_header.header().kernel_mmr_size,
+                    mmr_position
+                )));
+            }
             if mmr_position == current_header.header().kernel_mmr_size.saturating_sub(1) {
                 let num_kernels = kernel_hashes.len();
                 debug!(
@@ -1046,6 +1054,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         if mmr_position < end {
             return Err(HorizonSyncError::IncompleteKernelStream(format!(
                 "received up to kernel {mmr_position} of {end}"
+            )));
+        }
+        if !kernel_hashes.is_empty() {
+            return Err(HorizonSyncError::IncorrectResponse(format!(
+                "Header #{} ended with {} uncommitted kernel(s) at mmr_position {}",
+                current_header.height(),
+                kernel_hashes.len(),
+                mmr_position
             )));
         }
         Ok(())
