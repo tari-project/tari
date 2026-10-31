@@ -1553,11 +1553,6 @@ where
                         .await
                         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
-                    drop(
-                        self.event_publisher
-                            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id))),
-                    );
-
                     self.submit_transaction(
                         transaction_broadcast_join_handles,
                         CompletedTransaction::new_with_output_hashes(
@@ -1580,6 +1575,11 @@ where
                         )?,
                     )
                     .await?;
+
+                    drop(
+                        self.event_publisher
+                            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id))),
+                    );
 
                     Ok(TransactionServiceResponse::CreateMultisigUtxo(tx_id))
                 }
@@ -1689,12 +1689,6 @@ where
                         })?;
 
                     let fee = finalized_transaction.transaction.body.get_total_fee()?;
-
-                    // This event being sent is important, but not critical to the protocol being successful. Send only
-                    // fails if there are no subscribers.
-                    let _result = self
-                        .event_publisher
-                        .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
                     let sent_hashes = finalized_transaction.sent_output_hashes.clone();
                     self.submit_transaction(
                         transaction_broadcast_join_handles,
@@ -1718,6 +1712,11 @@ where
                         )?,
                     )
                     .await?;
+                    // This event being sent is important, but not critical to the protocol being successful. Send only
+                    // fails if there are no subscribers.
+                    let _result = self
+                        .event_publisher
+                        .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
                     Ok(TransactionServiceResponse::SendMultisigUtxo(tx_id))
                 }
                 .await
@@ -2294,14 +2293,6 @@ where
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _size = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
-
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
@@ -2341,6 +2332,14 @@ where
             )?,
         )
         .await?;
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         let tx_output = output.to_transaction_output()?;
 
@@ -2436,14 +2435,6 @@ where
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
-
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
@@ -2478,6 +2469,14 @@ where
             )?,
         )
         .await?;
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         Ok(finalized.tx_id)
     }
@@ -2606,14 +2605,6 @@ where
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
-
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
@@ -2650,6 +2641,14 @@ where
             )?,
         )
         .await?;
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         Ok(finalized.tx_id)
     }
@@ -2835,6 +2834,9 @@ where
 
                 info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {finalized_tx_id}");
 
+                self.submit_transaction(transaction_broadcast_join_handles, completed_tx)
+                    .await?;
+
                 // This event being sent is important, but not critical to the protocol being successful. Send only
                 // fails if there are no subscribers.
                 let _result = self
@@ -2842,9 +2844,6 @@ where
                     .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
                         finalized_tx_id,
                     )));
-
-                self.submit_transaction(transaction_broadcast_join_handles, completed_tx)
-                    .await?;
 
                 Ok(finalized_tx_id)
             }
@@ -3051,14 +3050,6 @@ where
 
         info!(target: LOG_TARGET, "Finalized one-side transaction TxId: {}", finalized.tx_id);
 
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
-
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
@@ -3133,6 +3124,14 @@ where
                 "Created transaction for ({}).", finalized.tx_id
             );
         }
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         Ok(tx_ids)
     }
@@ -3361,13 +3360,6 @@ where
 
         info!(target: LOG_TARGET, "Finalized burning transaction - TxId: {}", finalized.tx_id);
 
-        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
-        // there are no subscribers.
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
-                finalized.tx_id,
-            )));
         let mut final_payment_id = payment_id.clone();
         final_payment_id.set_fee(finalized.fee);
         let completed_transaction = CompletedTransaction::new_with_output_hashes(
@@ -3403,6 +3395,14 @@ where
         self.submit_transaction(transaction_broadcast_join_handles, completed_transaction)
             .await?;
         info!(target: LOG_TARGET, "Submitted burning transaction - TxId: {}", finalized.tx_id);
+
+        // This event being sent is important, but not critical to the protocol being successful. Send only fails if
+        // there are no subscribers.
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(
+                finalized.tx_id,
+            )));
 
         // Generate claim proof if needed
         let mut burn_proof = None;
@@ -3511,10 +3511,6 @@ where
             )
             .await?;
 
-        // Notify that the transaction was successfully resolved.
-        let _size = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
         let all_outputs = transaction
             .body
             .outputs()
@@ -3546,6 +3542,11 @@ where
             )?,
         )
         .await?;
+
+        // Notify that the transaction was successfully resolved.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
         Ok(tx_id)
     }
@@ -3599,10 +3600,6 @@ where
             )
             .await?;
 
-        // Notify that the transaction was successfully resolved.
-        let _size = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
         let all_outputs = transaction
             .body
             .outputs()
@@ -3634,6 +3631,11 @@ where
             )?,
         )
         .await?;
+
+        // Notify that the transaction was successfully resolved.
+        let _size = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
         Ok(tx_id)
     }
@@ -4688,10 +4690,6 @@ where
         // Use original keys generated in this wallet (they correspond to keys with the same values)
         let change = request.signed_transaction.change_output.map(|v| vec![v.clone()]);
 
-        let _result = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
-
         let fee = request.signed_transaction.transaction.body.get_total_fee()?;
 
         self.resources
@@ -4759,6 +4757,10 @@ where
         for completed_tx in completed_txs {
             self.db.insert_completed_transaction(completed_tx.tx_id, completed_tx)?;
         }
+
+        let _result = self
+            .event_publisher
+            .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(new_tx_id)));
 
         Ok(tx_ids)
     }
