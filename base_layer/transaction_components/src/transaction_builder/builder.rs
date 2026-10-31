@@ -1427,6 +1427,17 @@ where KM: TransactionKeyManagerInterface
         // derived from the outputs.
         let spec_outputs = self.build_spec_outputs(total_fee)?;
 
+        // Update recipient outputs with the final fee and metadata signature before building the change output so
+        // `create_change_memo` records the final on-chain output hashes in `sent_output_hashes`.
+        for recipient in &mut self.recipient_outputs {
+            Self::update_encrypted_data_and_metadata_sig(
+                &self.key_manager,
+                &mut recipient.output,
+                total_fee,
+                recipient.recipient_address.as_ref(),
+            )?;
+        }
+
         let mut change_output = match (change_amount, self.change_sender_offset_key.take()) {
             (Some(amount), Some(sender_offset)) => Some(self.build_change(amount, sender_offset)?),
             (None, None) => None,
@@ -1453,14 +1464,7 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager)?.clone());
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &mut self.recipient_outputs {
-            Self::update_encrypted_data_and_metadata_sig(
-                &self.key_manager,
-                &mut recipient.output,
-                total_fee,
-                recipient.recipient_address.as_ref(),
-            )?;
-
+        for recipient in &self.recipient_outputs {
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {

@@ -222,7 +222,7 @@ impl DhtDiscoveryService {
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
-                            if !reply_tx.is_closed() {
+                            if !request.reply_tx.is_closed() {
                                 let _result = request.reply_tx.send(Ok(peer.clone()));
                             }
                         }

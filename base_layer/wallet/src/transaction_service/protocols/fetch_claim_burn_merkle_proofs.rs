@@ -104,6 +104,7 @@ where
         timer.elapsed()
     );
 
+    let mut failed_outputs = 0usize;
     for output_hash in confirmed_burns {
         let Some(burn) = db.fetch_burn_proof(output_hash)? else {
             warn!(
@@ -152,6 +153,7 @@ where
                             output_hash,
                             err
                         );
+                        failed_outputs = failed_outputs.saturating_add(1);
                         continue;
                     },
                 };
@@ -162,6 +164,7 @@ where
                         proof_output_hash,
                         output_hash
                     );
+                    failed_outputs = failed_outputs.saturating_add(1);
                     continue;
                 }
 
@@ -186,9 +189,16 @@ where
                     output_hash,
                     err
                 );
+                failed_outputs = failed_outputs.saturating_add(1);
                 continue;
             },
         }
+    }
+
+    if failed_outputs > 0 {
+        return Err(anyhow::anyhow!(
+            "Failed to fetch or validate burn output proofs for {failed_outputs} burn output(s)"
+        ));
     }
 
     debug!(
