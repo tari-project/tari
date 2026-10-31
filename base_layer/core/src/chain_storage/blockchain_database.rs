@@ -4074,6 +4074,11 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
             lowest_new_block.header().height.saturating_sub(1),
             metadata.pruned_height()
         );
+        let mut txn = DbTransaction::new();
+        for hash in orphan_subtree_hashes(db, *lowest_new_block.hash())?.iter().rev() {
+            txn.delete_orphan(*hash);
+        }
+        db.write(txn)?;
         remove_non_canonical_headers(db)?;
         return Ok(SwapAttempt::Refused);
     }
