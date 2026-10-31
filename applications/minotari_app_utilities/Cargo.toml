@@ -29,6 +29,9 @@ dialoguer = { version = "0.10" }
 tonic = "0.13.1"
 tari_p2p.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [build-dependencies]
 tari_common = { workspace = true, features = [
     "build",

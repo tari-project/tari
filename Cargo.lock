@@ -4332,6 +4332,7 @@ dependencies = [
  "dialoguer 0.10.4",
  "futures 0.3.32",
  "json5",
+ "libc",
  "log",
  "minotari_app_grpc",
  "rand 0.10.3",
