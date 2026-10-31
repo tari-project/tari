@@ -1002,10 +1002,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 split_info.chain_split_hash.to_hex()
             );
             let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
-            self.local_cached_metadata = self.db.get_chain_metadata().await?;
             if !blocks.is_empty() {
                 self.hooks.call_on_rewind_hooks(blocks);
             }
+            self.local_cached_metadata = self.db.get_chain_metadata().await?;
         }
 
         // Commit the forked chain. At this point

@@ -60,9 +60,10 @@ async fn execute_with_retries<TBackend, TConnectivity>(
         "Starting sync_claim_burn_merkle_proofs with {} confirmed burns",
         confirmed_burns.len()
     );
+    let mut pending_burns = confirmed_burns.to_vec();
     let mut attempt = 0usize;
     loop {
-        if let Err(err) = execute_inner(db, connectivity, confirmed_burns, event_publisher).await {
+        if let Err(err) = execute_inner(db, connectivity, &mut pending_burns, event_publisher).await {
             // TODO: not very robust, some burnt outputs may never be updated (save it for the rewrite ;).
             error!(target: LOG_TARGET, "Error in sync_claim_burn_merkle_proofs: {}", err);
             tokio::time::sleep(RETRY_DELAY).await;
@@ -84,7 +85,7 @@ async fn execute_with_retries<TBackend, TConnectivity>(
 async fn execute_inner<TBackend, TConnectivity>(
     db: &TransactionDatabase<TBackend>,
     connectivity: &TConnectivity,
-    confirmed_burns: &[FixedHash],
+    pending_burns: &mut Vec<FixedHash>,
     event_publisher: &broadcast::Sender<Arc<TransactionEvent>>,
 ) -> anyhow::Result<()>
 where
@@ -95,7 +96,7 @@ where
     debug!(
         target: LOG_TARGET,
         "Syncing claim burn merkle proofs for {} confirmed burns. Waiting for client connection...",
-        confirmed_burns.len()
+        pending_burns.len()
     );
     let client = connectivity.obtain_base_node_wallet_rpc_client().await;
     debug!(
@@ -104,14 +105,16 @@ where
         timer.elapsed()
     );
 
-    let mut failed_outputs = 0usize;
-    for output_hash in confirmed_burns {
-        let Some(burn) = db.fetch_burn_proof(output_hash)? else {
+    let mut idx = 0usize;
+    while idx < pending_burns.len() {
+        let output_hash = pending_burns[idx];
+        let Some(burn) = db.fetch_burn_proof(&output_hash)? else {
             warn!(
                 target: LOG_TARGET,
                 "No burn proof found in database for output {}, skipping",
                 output_hash
             );
+            pending_burns.remove(idx);
             continue;
         };
 
@@ -153,22 +156,22 @@ where
                             output_hash,
                             err
                         );
-                        failed_outputs = failed_outputs.saturating_add(1);
+                        idx += 1;
                         continue;
                     },
                 };
-                if proof_output_hash != *output_hash {
+                if proof_output_hash != output_hash {
                     error!(
                         target: LOG_TARGET,
                         "Base node returned a burn output proof for output {} instead of {}",
                         proof_output_hash,
                         output_hash
                     );
-                    failed_outputs = failed_outputs.saturating_add(1);
+                    idx += 1;
                     continue;
                 }
 
-                db.update_burn_proof_set_burn_output_proof(output_hash, &proof)?;
+                db.update_burn_proof_set_burn_output_proof(&output_hash, &proof)?;
 
                 info!(
                     target: LOG_TARGET,
@@ -178,9 +181,10 @@ where
                 );
 
                 let _ignore = event_publisher.send(Arc::new(TransactionEvent::TransactionBurnConfirmed {
-                    output_hash: *output_hash,
+                    output_hash,
                     commitment: Box::new(burn.burn_proof.commitment),
                 }));
+                pending_burns.remove(idx);
             },
             Err(err) => {
                 error!(
@@ -189,15 +193,16 @@ where
                     output_hash,
                     err
                 );
-                failed_outputs = failed_outputs.saturating_add(1);
+                idx += 1;
                 continue;
             },
         }
     }
 
-    if failed_outputs > 0 {
+    if !pending_burns.is_empty() {
         return Err(anyhow::anyhow!(
-            "Failed to fetch or validate burn output proofs for {failed_outputs} burn output(s)"
+            "Failed to fetch or validate burn output proofs for {} burn output(s)",
+            pending_burns.len()
         ));
     }
 
