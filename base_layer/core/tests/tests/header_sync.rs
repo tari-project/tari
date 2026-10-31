@@ -829,21 +829,33 @@ async fn test_header_sync_long_overclaimed_fork_rolls_back_and_falls_back() {
         5,
         &consensus_manager,
         &key_manager,
-        &[3; 5],
+        &[1; 5],
         &None,
     );
-    // Alice has blocks 1..=2; Eve only shares block 1 so her fork requires a 1-block rewind on Alice.
+    // Alice has blocks 1..=2 and header 3 stored ahead of best_block; Eve only shares block 1 so her fork requires
+    // a 2-step rewind from Alice's header tip (rewinding header 3 and block 2).
     sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+    alice_node
+        .blockchain_db
+        .insert_valid_headers(vec![blocks[3].to_chain_header()])
+        .unwrap();
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 3);
     sync::add_some_existing_blocks(&blocks[1..=1], &eve_node);
 
     // Build 1000 fork headers on top of block 1 (heights 2..=1001) so `find_chain_split` returns a full batch of
-    // `HEADER_SYNC_INITIAL_MAX_HEADERS` headers with higher PoW than Alice, triggering `switch_to_pending_chain`.
+    // `HEADER_SYNC_INITIAL_MAX_HEADERS` valid headers with higher PoW than Alice, triggering `switch_to_pending_chain`.
     let mut eve_headers = Vec::with_capacity(1000);
     let mut prev_header = blocks[1].to_chain_header();
-    for _ in 0..1000 {
+    let mut current_timestamp = prev_header.header().timestamp;
+    for i in 0..1000 {
+        if i < 11 || i % 5 == 0 {
+            current_timestamp = current_timestamp.checked_add(EpochTime::from(1)).unwrap();
+        }
         let mut header = BlockHeader::from_previous(prev_header.header());
-        header.timestamp = prev_header.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
+        header.timestamp = current_timestamp;
         header.kernel_mmr_size = prev_header.header().kernel_mmr_size + 1;
+        header.output_smt_size = prev_header.header().output_smt_size + 1;
         find_header_with_achieved_difficulty(&mut header, Difficulty::from_u64(1).unwrap());
         let chain_header = create_chain_header(
             header,
@@ -859,8 +871,7 @@ async fn test_header_sync_long_overclaimed_fork_rolls_back_and_falls_back() {
     eve_node.blockchain_db.insert_valid_headers(eve_headers).unwrap();
     assert_eq!(eve_node.blockchain_db.fetch_last_header().unwrap().height, 1001);
 
-    // Eve over-claims difficulty beyond height 1001 so she is tried before Bob and fails after `sync_headers` ends.
-    let mut sync_peers = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node).into_sync_peers();
+    // First run Eve alone to verify the rollback restores both block 2 and header 3.
     let eve_overclaimed_metadata = ChainMetadata::new(
         1002,
         *eve_tip_header.hash(),
@@ -873,24 +884,18 @@ async fn test_header_sync_long_overclaimed_fork_rolls_back_and_falls_back() {
         eve_tip_header.timestamp(),
     )
     .unwrap();
-    sync_peers.push(SyncPeer::from(PeerChainMetadata::new(
-        eve_node.node_identity.node_id().clone(),
-        eve_overclaimed_metadata,
-        None,
-    )));
     let alice_metadata = alice_node.blockchain_db.get_chain_metadata().unwrap();
-    let mut header_sync = HeaderSyncState::new(sync_peers, alice_metadata);
-    let sorted_peers = header_sync.clone().into_sync_peers();
-    assert_eq!(sorted_peers[0].node_id(), eve_node.node_identity.node_id());
-    assert_eq!(sorted_peers[1].node_id(), bob_node.node_identity.node_id());
-
-    let header_event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
-    let mut block_sync = BlockSync::from(header_sync.into_sync_peers());
-    let block_event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
-
+    let mut eve_only_sync = HeaderSyncState::new(
+        vec![SyncPeer::from(PeerChainMetadata::new(
+            eve_node.node_identity.node_id().clone(),
+            eve_overclaimed_metadata.clone(),
+            None,
+        ))],
+        alice_metadata.clone(),
+    );
+    let eve_event = sync::sync_headers_execute(&mut alice_state_machine, &mut eve_only_sync).await;
+    assert!(matches!(eve_event, StateEvent::HeaderSyncFailed(_)), "{eve_event:?}");
     assert!(sync::wait_for_is_peer_banned(&alice_node, eve_node.node_identity.node_id(), 1).await);
-    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
-    assert!(matches!(block_event, StateEvent::BlocksSynchronized), "{block_event:?}");
     assert!(
         alice_node
             .blockchain_db
@@ -898,9 +903,25 @@ async fn test_header_sync_long_overclaimed_fork_rolls_back_and_falls_back() {
             .unwrap()
             .is_none()
     );
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 2);
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 3);
+    assert_eq!(
+        alice_node.blockchain_db.fetch_last_header().unwrap().hash(),
+        *blocks[3].hash()
+    );
+
+    // Honest Bob then completes header and block sync from Alice's restored header tip at height 3.
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let header_event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    let mut block_sync = BlockSync::from(header_sync.into_sync_peers());
+    let block_event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+    assert!(matches!(block_event, StateEvent::BlocksSynchronized), "{block_event:?}");
     match header_event {
-        StateEvent::HeadersSynchronized(peer, _) => {
+        StateEvent::HeadersSynchronized(peer, sync_result) => {
             assert_eq!(peer.node_id(), bob_node.node_identity.node_id());
+            assert_eq!(sync_result.headers_returned, 2);
         },
         event => panic!("Expected HeadersSynchronized with Bob, got {event:?}"),
     }
@@ -908,4 +929,122 @@ async fn test_header_sync_long_overclaimed_fork_rolls_back_and_falls_back() {
     assert_eq!(alice_header_tip.height, 5);
     assert_eq!(alice_header_tip.hash(), *blocks[5].hash());
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 5);
+}
+
+/// When a forward header sync (`reorg_steps_back == 0`) fails after switching (`has_switched_to_new_chain == true`),
+/// the valid headers already committed during that sync attempt must be preserved so the next sync attempt resumes
+/// from the committed header tip rather than restarting from `best_block_height`.
+#[allow(clippy::too_many_lines)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_interrupted_after_switching_keeps_committed_headers() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let eve_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        2,
+        &consensus_manager,
+        &key_manager,
+        &[1; 2],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+    sync::add_some_existing_blocks(&blocks[1..=2], &eve_node);
+
+    // Build 1003 valid headers extending block 2 (heights 3..=1005).
+    // Eve holds the first 1000 headers (3..=1002) and Bob holds all 1003 headers (3..=1005).
+    let mut extra_headers = Vec::with_capacity(1003);
+    let mut prev_header = blocks[2].to_chain_header();
+    let mut current_timestamp = prev_header.header().timestamp;
+    for i in 0..1003 {
+        if i < 11 || i % 5 == 0 {
+            current_timestamp = current_timestamp.checked_add(EpochTime::from(1)).unwrap();
+        }
+        let mut header = BlockHeader::from_previous(prev_header.header());
+        header.timestamp = current_timestamp;
+        header.kernel_mmr_size = prev_header.header().kernel_mmr_size + 1;
+        header.output_smt_size = prev_header.header().output_smt_size + 1;
+        find_header_with_achieved_difficulty(&mut header, Difficulty::from_u64(1).unwrap());
+        let chain_header = create_chain_header(
+            header,
+            prev_header.accumulated_data(),
+            consensus_manager.consensus_constants(prev_header.height() + 1),
+        );
+        prev_header = chain_header.clone();
+        extra_headers.push(chain_header);
+    }
+    let eve_headers = extra_headers[..1000].to_vec();
+    let eve_tip_header = eve_headers.last().unwrap().clone();
+    let bob_tip_header = extra_headers.last().unwrap().clone();
+    eve_node.blockchain_db.insert_valid_headers(eve_headers).unwrap();
+    bob_node.blockchain_db.insert_valid_headers(extra_headers).unwrap();
+
+    // Eve claims more difficulty than her 1000 headers provide, so `switch_to_pending_chain` commits headers 3..=1002
+    // with `reorg_steps_back == 0` and then fails when the `sync_headers` stream finishes short.
+    let eve_overclaimed_metadata = ChainMetadata::new(
+        1005,
+        *bob_tip_header.hash(),
+        0,
+        0,
+        bob_tip_header.accumulated_data().total_accumulated_difficulty,
+        bob_tip_header.timestamp(),
+    )
+    .unwrap();
+    let alice_metadata = alice_node.blockchain_db.get_chain_metadata().unwrap();
+    let mut eve_sync = HeaderSyncState::new(
+        vec![SyncPeer::from(PeerChainMetadata::new(
+            eve_node.node_identity.node_id().clone(),
+            eve_overclaimed_metadata,
+            None,
+        ))],
+        alice_metadata.clone(),
+    );
+    let eve_event = sync::sync_headers_execute(&mut alice_state_machine, &mut eve_sync).await;
+    assert!(matches!(eve_event, StateEvent::HeaderSyncFailed(_)), "{eve_event:?}");
+
+    // Alice must retain the 1000 valid headers committed before the stream failed.
+    let alice_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
+    assert_eq!(alice_header_tip.height, 1002);
+    assert_eq!(alice_header_tip.hash(), *eve_tip_header.hash());
+
+    // Honest Bob then resumes from height 1002 and only needs to supply the remaining 3 headers (1003..=1005).
+    let bob_metadata = ChainMetadata::new(
+        1005,
+        *bob_tip_header.hash(),
+        0,
+        0,
+        bob_tip_header.accumulated_data().total_accumulated_difficulty,
+        bob_tip_header.timestamp(),
+    )
+    .unwrap();
+    let mut bob_sync = HeaderSyncState::new(
+        vec![SyncPeer::from(PeerChainMetadata::new(
+            bob_node.node_identity.node_id().clone(),
+            bob_metadata,
+            None,
+        ))],
+        alice_metadata,
+    );
+    let bob_event = sync::sync_headers_execute(&mut alice_state_machine, &mut bob_sync).await;
+    match bob_event {
+        StateEvent::HeadersSynchronized(peer, sync_result) => {
+            assert_eq!(peer.node_id(), bob_node.node_identity.node_id());
+            assert_eq!(sync_result.headers_returned, 3);
+        },
+        event => panic!("Expected HeadersSynchronized with Bob, got {event:?}"),
+    }
+    let alice_final_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
+    assert_eq!(alice_final_header_tip.height, 1005);
+    assert_eq!(alice_final_header_tip.hash(), *bob_tip_header.hash());
 }

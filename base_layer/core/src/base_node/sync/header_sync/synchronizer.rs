@@ -730,6 +730,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ) -> Result<(), BlockHeaderSyncError> {
         let mut has_switched_to_new_chain = false;
         let reorg_steps_back = split_info.reorg_steps_back;
+        let previous_best_block_hash = *split_info.best_block_header.hash();
+        let previous_headers_above_best_block =
+            if reorg_steps_back > 0 && split_info.best_block_header.height() < previous_best_header.height() {
+                self.db
+                    .fetch_chain_headers(
+                        split_info.best_block_header.height().saturating_add(1)..=previous_best_header.height(),
+                    )
+                    .await?
+            } else {
+                Vec::new()
+            };
         let result = self
             .synchronize_headers_inner(
                 sync_peer,
@@ -739,10 +750,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 &mut has_switched_to_new_chain,
             )
             .await;
-        if let Err(ref err) = result &&
-            has_switched_to_new_chain
-        {
-            self.rollback_failed_header_sync(reorg_steps_back, &previous_best_header, err)
+        if result.is_err() && has_switched_to_new_chain && reorg_steps_back > 0 {
+            self.rollback_failed_header_sync(previous_best_block_hash, previous_headers_above_best_block)
                 .await;
         }
         result
@@ -750,23 +759,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     async fn rollback_failed_header_sync(
         &self,
-        reorg_steps_back: u64,
-        previous_best_header: &ChainHeader,
-        err: &BlockHeaderSyncError,
+        previous_best_block_hash: HashOutput,
+        previous_headers_above_best_block: Vec<ChainHeader>,
     ) {
-        if reorg_steps_back == 0 {
-            if err.get_ban_reason().is_some() &&
-                let Err(e) = self.db.rewind_to_height(previous_best_header.height()).await
-            {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to rewind headers to previous header tip height {} after failed header sync: {e}",
-                    previous_best_header.height()
-                );
-            }
-            return;
-        }
-
         match self.db.fetch_horizon_sync_output_checkpoint().await {
             Ok(Some(checkpoint)) => {
                 debug!(
@@ -799,6 +794,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         "Failed to rewind uncommitted headers to height {} after failed header sync: {e}",
                         metadata.best_block_height()
                     );
+                    return;
+                }
+                if !previous_headers_above_best_block.is_empty() &&
+                    *metadata.best_block_hash() == previous_best_block_hash
+                {
+                    let mut txn = self.db.write_transaction();
+                    for chain_header in previous_headers_above_best_block {
+                        txn.insert_chain_header(chain_header);
+                    }
+                    if let Err(e) = txn.commit().await {
+                        error!(
+                            target: LOG_TARGET,
+                            "Failed to restore previous headers above best block after failed header sync: {e}"
+                        );
+                    }
                 }
             },
             Err(e) => {
