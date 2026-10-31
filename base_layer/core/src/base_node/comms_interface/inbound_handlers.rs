@@ -779,9 +779,13 @@ where B: BlockchainBackend + 'static
         // blocks are not free to make, and that they are more expensive to make then they are to validate. As
         // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        self.check_min_block_difficulty(&new_block)
+        if !self
+            .check_min_block_difficulty(&new_block)
             .await
-            .inspect_err(log_pow_rejection)?;
+            .inspect_err(log_pow_rejection)?
+        {
+            return Ok(());
+        }
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -861,7 +865,7 @@ where B: BlockchainBackend + 'static
     /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
     /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives
     /// through header and block sync, which do not come through this gate.
-    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<bool, CommsInterfaceError> {
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
         let tip_height = header.height();
         let rules_height = max(tip_height, new_block.header.height);
@@ -876,13 +880,16 @@ where B: BlockchainBackend + 'static
             check_randomxt_pow_data(&new_block.header.pow, constants.require_canonical_randomxt_pow_data()).map_err(
                 |e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)),
             )?;
-            if tari_rx_vm_key_height(new_block.header.height) > tip_height {
-                return Err(CommsInterfaceError::InvalidBlockHeader(
-                    BlockHeaderValidationError::InvalidHeight {
-                        expected: tip_height.saturating_add(1),
-                        actual: new_block.header.height,
-                    },
-                ));
+            let vm_key_height = tari_rx_vm_key_height(new_block.header.height);
+            if vm_key_height > tip_height {
+                debug!(
+                    target: LOG_TARGET,
+                    "Ignoring RandomXT block announcement at height {} because its VM key height {} is above local tip {}",
+                    new_block.header.height,
+                    vm_key_height,
+                    tip_height
+                );
+                return Ok(false);
             }
         }
         let gen_hash = *self.consensus_manager.get_genesis_block().hash();
@@ -983,7 +990,7 @@ where B: BlockchainBackend + 'static
                 }),
             ));
         }
-        Ok(())
+        Ok(true)
     }
 
     async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {
