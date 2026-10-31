@@ -3307,11 +3307,11 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
-        let output = self
+        let db_output = self
             .resources
             .db
-            .get_unspent_output(output_hash, &self.resources.key_manager)?
-            .wallet_output;
+            .get_unspent_output(output_hash, &self.resources.key_manager)?;
+        let output = db_output.wallet_output.clone();
 
         let amount = output.value();
 
@@ -3328,6 +3328,7 @@ where
                 MemoField::new_open_from_string("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund)
                     .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
             )
+            .with_tx_type(TxType::HtlcAtomicSwapRefund)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)?;
@@ -3354,7 +3355,7 @@ where
 
         self.resources
             .db
-            .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
+            .encumber_outputs(finalized.tx_id, vec![db_output], outputs)?;
         self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
         Ok((finalized.tx_id, fee, amount.saturating_sub(fee), finalized.transaction))
     }

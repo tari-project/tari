@@ -1109,6 +1109,63 @@ async fn the_initiator_rejects_more_indexes_than_it_sent_items() {
     assert!(sent.is_empty());
 }
 
+/// A reply asking for an index outside `0..num_inventory_items` is rejected, even when the number of requested
+/// indexes is within `num_inventory_items`.
+#[tokio::test]
+async fn the_initiator_rejects_an_out_of_range_inventory_index() {
+    let (result, sent) = initiator_answering_indexes(2, vec![2]).await;
+    assert!(
+        matches!(
+            result,
+            Err(MempoolProtocolError::InventoryIndexOutOfRange { index: 2, max: 2, .. })
+        ),
+        "unexpected result: {result:?}"
+    );
+    assert!(sent.is_empty());
+}
+
+/// A responder accepts an inventory from a peer with a larger `initial_sync_max_transactions` and caps the missing
+/// indexes it requests to its own `initial_sync_max_transactions`.
+#[tokio::test]
+async fn responder_caps_requested_missing_indexes_to_initial_sync_max_transactions() {
+    let (mempool, _) = new_mempool_with_transactions(0).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (sock_in, sock_out) = MemorySocket::new_pair();
+    let config = MempoolServiceConfig {
+        initial_sync_max_transactions: 2,
+        ..Default::default()
+    };
+    let responder = task::spawn(async move {
+        MempoolPeerProtocol::new(
+            config,
+            framing::canonical(sock_in, MAX_FRAME_SIZE),
+            peer.node_id().clone(),
+            mempool,
+        )
+        .start_responder()
+        .await
+    });
+
+    let mut framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
+    let inventory = proto::TransactionInventory {
+        items: vec![vec![0xAA; 32], vec![0xBB; 32], vec![0xCC; 32]],
+    };
+    write_message(&mut framed, inventory).await;
+
+    // Empty terminator for responder's own unmatched transactions
+    let terminator: proto::TransactionItem = read_message(&mut framed).await;
+    assert!(terminator.transaction.is_none());
+
+    // Responder requests at most `initial_sync_max_transactions` (2) missing indexes
+    let indexes: proto::InventoryIndexes = read_message(&mut framed).await;
+    assert_eq!(indexes.indexes, vec![0, 1]);
+
+    // Send terminator to finish cleanly
+    write_message(&mut framed, proto::TransactionItem { transaction: None }).await;
+    let _ = framed.close().await;
+    responder.await.unwrap().unwrap();
+}
+
 /// A peer that answers the request for its announced transaction with one whose covenant is over the token limit is
 /// cut off with `MessageConversionFailed` before the mempool sees it, and is not banned
 #[tokio::test]
