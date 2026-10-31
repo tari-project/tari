@@ -78,6 +78,11 @@ pub enum OutputManagerRequest {
         tx_id_update: Option<TxId>,
         change_outputs: Option<Vec<WalletOutput>>,
     },
+    EncumberOutputs {
+        tx_id: TxId,
+        outputs_to_send: Vec<DbWalletOutput>,
+        outputs_to_receive: Vec<DbWalletOutput>,
+    },
     EncumberAggregateUtxo {
         fee_per_gram: MicroMinotari,
         expected_commitment: CompressedCommitment,
@@ -248,6 +253,18 @@ impl fmt::Display for OutputManagerRequest {
                 tx_id, tx_id_update, ..
             } => {
                 write!(f, "ConfirmPendingTransaction ({tx_id} replace with {:?})", tx_id_update)
+            },
+            EncumberOutputs {
+                tx_id,
+                outputs_to_send,
+                outputs_to_receive,
+            } => {
+                write!(
+                    f,
+                    "EncumberOutputs ({tx_id}, send: {}, receive: {})",
+                    outputs_to_send.len(),
+                    outputs_to_receive.len()
+                )
             },
             GetTransactionBuilder { .. } => write!(f, "GetTransactionBuilder "),
             GetTransactionBuilderRangeLimitedCoinJoin { .. } => write!(f, "GetTransactionBuilderRangeLimitedCoinJoin "),
@@ -789,6 +806,29 @@ where KM: LegacyTransactionKeyManagerInterface
             OutputManagerResponse::PendingTransactionConfirmed => Ok(()),
             _ => Err(OutputManagerError::UnexpectedApiResponse(
                 "OutputManagerRequest::ConfirmPendingTransaction".to_string(),
+            )),
+        }
+    }
+
+    pub async fn encumber_outputs(
+        &mut self,
+        tx_id: TxId,
+        outputs_to_send: Vec<DbWalletOutput>,
+        outputs_to_receive: Vec<DbWalletOutput>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::EncumberOutputs {
+                tx_id,
+                outputs_to_send,
+                outputs_to_receive,
+            })
+            .await
+            .inspect_err(|e| warn!(target: LOG_TARGET, "OutputManagerRequest::EncumberOutputs({e})"))??
+        {
+            OutputManagerResponse::ConfirmEncumberance => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse(
+                "OutputManagerRequest::EncumberOutputs".to_string(),
             )),
         }
     }

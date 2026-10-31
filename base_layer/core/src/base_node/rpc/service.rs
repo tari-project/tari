@@ -800,4 +800,576 @@ mod test {
         assert_eq!(data.height_deleted_at, 0);
         assert!(data.block_deleted_in.is_empty());
     }
+
+    #[tokio::test]
+    async fn sync_utxos_by_block_enforces_range_limit_and_main_chain_headers() {
+        use tari_common_types::{
+            chain_metadata::ChainMetadata,
+            epoch::VnEpoch,
+            types::{BadBlock, CompressedCommitment, CompressedPublicKey, CompressedSignature, HashOutput},
+        };
+        use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
+        use tari_transaction_components::transaction_components::{
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        };
+
+        use crate::{
+            blocks::BlockAccumulatedData,
+            chain_storage::{
+                AccumulatedDataRebuildStatus,
+                BlockchainCheckRequest,
+                BlockchainCheckStatus,
+                BlockchainDatabase,
+                BlockchainDatabaseConfig,
+                BurnCommitmentRebuildStatus,
+                ChainStorageError,
+                DbBasicStats,
+                DbKey,
+                DbTotalSizeStats,
+                DbTransaction,
+                DbValue,
+                HorizonData,
+                HorizonSyncOutputCheckpoint,
+                InputMinedInfo,
+                MinedInfo,
+                MmrTree,
+                OutputMinedInfo,
+                OwnedLmdbTreeReader,
+                PayrefRebuildStatus,
+                Reorg,
+                ValidatorNodeEntry,
+                ValidatorNodeRegistrationInfo,
+                Validators,
+            },
+            test_helpers::{blockchain::TempDatabase, create_consensus_rules},
+            validation::{DifficultyCalculator, mocks::MockValidator},
+        };
+
+        struct ForkHeaderBackend {
+            inner: TempDatabase,
+            fork_header: BlockHeader,
+        }
+
+        impl BlockchainBackend for ForkHeaderBackend {
+            fn write(&mut self, tx: DbTransaction) -> Result<(), ChainStorageError> {
+                self.inner.write(tx)
+            }
+
+            fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ChainStorageError> {
+                if key == &DbKey::HeaderHash(self.fork_header.hash()) {
+                    return Ok(Some(DbValue::HeaderHash(Box::new(self.fork_header.clone()))));
+                }
+                self.inner.fetch(key)
+            }
+
+            fn contains(&self, key: &DbKey) -> Result<bool, ChainStorageError> {
+                self.inner.contains(key)
+            }
+
+            fn fetch_chain_header_by_height(&self, height: u64) -> Result<ChainHeader, ChainStorageError> {
+                self.inner.fetch_chain_header_by_height(height)
+            }
+
+            fn fetch_header_accumulated_data(
+                &self,
+                hash: &HashOutput,
+            ) -> Result<Option<BlockHeaderAccumulatedData>, ChainStorageError> {
+                self.inner.fetch_header_accumulated_data(hash)
+            }
+
+            fn fetch_chain_header_in_all_chains(&self, hash: &HashOutput) -> Result<ChainHeader, ChainStorageError> {
+                self.inner.fetch_chain_header_in_all_chains(hash)
+            }
+
+            fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
+                self.inner.fetch_header_containing_kernel_mmr(mmr_position)
+            }
+
+            fn is_empty(&self) -> Result<bool, ChainStorageError> {
+                self.inner.is_empty()
+            }
+
+            fn fetch_block_accumulated_data(
+                &self,
+                header_hash: &HashOutput,
+            ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
+                self.inner.fetch_block_accumulated_data(header_hash)
+            }
+
+            fn fetch_block_accumulated_data_by_height(
+                &self,
+                height: u64,
+            ) -> Result<Option<BlockAccumulatedData>, ChainStorageError> {
+                self.inner.fetch_block_accumulated_data_by_height(height)
+            }
+
+            fn fetch_kernels_in_block(
+                &self,
+                header_hash: &HashOutput,
+            ) -> Result<Vec<TransactionKernel>, ChainStorageError> {
+                self.inner.fetch_kernels_in_block(header_hash)
+            }
+
+            fn fetch_bad_blocks(&self) -> Result<Vec<BadBlock>, ChainStorageError> {
+                self.inner.fetch_bad_blocks()
+            }
+
+            fn clear_all_bad_blocks(&mut self) -> Result<(), ChainStorageError> {
+                self.inner.clear_all_bad_blocks()
+            }
+
+            fn fetch_kernel_by_excess_sig(
+                &self,
+                excess_sig: &CompressedSignature,
+            ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+                self.inner.fetch_kernel_by_excess_sig(excess_sig)
+            }
+
+            fn fetch_kernel_by_excess(
+                &self,
+                excess: &CompressedCommitment,
+            ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+                self.inner.fetch_kernel_by_excess(excess)
+            }
+
+            fn fetch_kernel_by_burn_commitment(
+                &self,
+                burn_commitment: &CompressedCommitment,
+            ) -> Result<Option<(TransactionKernel, HashOutput)>, ChainStorageError> {
+                self.inner.fetch_kernel_by_burn_commitment(burn_commitment)
+            }
+
+            fn fetch_outputs_in_block_with_spend_state(
+                &self,
+                header_hash: &HashOutput,
+                spend_status_at_header: Option<&HashOutput>,
+            ) -> Result<Vec<(TransactionOutput, bool)>, ChainStorageError> {
+                self.inner
+                    .fetch_outputs_in_block_with_spend_state(header_hash, spend_status_at_header)
+            }
+
+            fn fetch_outputs(&self, output_hash: &HashOutput) -> Result<Vec<OutputMinedInfo>, ChainStorageError> {
+                self.inner.fetch_outputs(output_hash)
+            }
+
+            fn contains_output_hash(&self, output_hash: &HashOutput) -> Result<bool, ChainStorageError> {
+                self.inner.contains_output_hash(output_hash)
+            }
+
+            fn fetch_inputs(&self, output_hash: &HashOutput) -> Result<Vec<InputMinedInfo>, ChainStorageError> {
+                self.inner.fetch_inputs(output_hash)
+            }
+
+            fn fetch_unspent_output_hash_by_commitment(
+                &self,
+                commitment: &CompressedCommitment,
+            ) -> Result<Option<HashOutput>, ChainStorageError> {
+                self.inner.fetch_unspent_output_hash_by_commitment(commitment)
+            }
+
+            fn fetch_mined_info_by_payref(&self, payref: &FixedHash) -> Result<MinedInfo, ChainStorageError> {
+                self.inner.fetch_mined_info_by_payref(payref)
+            }
+
+            fn fetch_mined_info_by_output_hash(
+                &self,
+                output_hash: &HashOutput,
+            ) -> Result<Vec<MinedInfo>, ChainStorageError> {
+                self.inner.fetch_mined_info_by_output_hash(output_hash)
+            }
+
+            fn fetch_outputs_in_block(
+                &self,
+                header_hash: &HashOutput,
+            ) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+                self.inner.fetch_outputs_in_block(header_hash)
+            }
+
+            fn fetch_inputs_in_block(
+                &self,
+                header_hash: &HashOutput,
+            ) -> Result<Vec<TransactionInput>, ChainStorageError> {
+                self.inner.fetch_inputs_in_block(header_hash)
+            }
+
+            fn fetch_mmr_size(&self, tree: MmrTree) -> Result<u64, ChainStorageError> {
+                self.inner.fetch_mmr_size(tree)
+            }
+
+            fn orphan_count(&self) -> Result<usize, ChainStorageError> {
+                self.inner.orphan_count()
+            }
+
+            fn fetch_last_header(&self) -> Result<BlockHeader, ChainStorageError> {
+                self.inner.fetch_last_header()
+            }
+
+            fn clear_all_pending_headers(&self) -> Result<usize, ChainStorageError> {
+                self.inner.clear_all_pending_headers()
+            }
+
+            fn fetch_last_chain_header(&self) -> Result<ChainHeader, ChainStorageError> {
+                self.inner.fetch_last_chain_header()
+            }
+
+            fn fetch_tip_header(&self) -> Result<ChainHeader, ChainStorageError> {
+                self.inner.fetch_tip_header()
+            }
+
+            fn fetch_chain_metadata(&self) -> Result<ChainMetadata, ChainStorageError> {
+                self.inner.fetch_chain_metadata()
+            }
+
+            fn fetch_payref_rebuild_status(&self) -> Result<PayrefRebuildStatus, ChainStorageError> {
+                self.inner.fetch_payref_rebuild_status()
+            }
+
+            fn fetch_accumulated_data_rebuild_status(&self) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+                self.inner.fetch_accumulated_data_rebuild_status()
+            }
+
+            fn set_accumulated_data_rebuild_status(
+                &self,
+                status: AccumulatedDataRebuildStatus,
+            ) -> Result<(), ChainStorageError> {
+                self.inner.set_accumulated_data_rebuild_status(status)
+            }
+
+            fn fetch_burn_commitment_rebuild_status(&self) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+                self.inner.fetch_burn_commitment_rebuild_status()
+            }
+
+            fn update_accumulated_data_check_status(
+                &self,
+                request: BlockchainCheckRequest,
+            ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+                self.inner.update_accumulated_data_check_status(request)
+            }
+
+            fn update_blockchain_consistency_check_status(
+                &self,
+                request: BlockchainCheckRequest,
+            ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+                self.inner.update_blockchain_consistency_check_status(request)
+            }
+
+            fn fetch_accumulated_data_check_status(
+                &self,
+            ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+                self.inner.fetch_accumulated_data_check_status()
+            }
+
+            fn fetch_blockchain_consistency_check_status(
+                &self,
+            ) -> Result<Option<BlockchainCheckStatus>, ChainStorageError> {
+                self.inner.fetch_blockchain_consistency_check_status()
+            }
+
+            fn build_payref_indexes_for_height(
+                &self,
+                height: u64,
+                metadata_at_start: ChainMetadata,
+                initialize_stats: Option<u64>,
+                finalize: bool,
+            ) -> Result<PayrefRebuildStatus, ChainStorageError> {
+                self.inner
+                    .build_payref_indexes_for_height(height, metadata_at_start, initialize_stats, finalize)
+            }
+
+            fn build_burn_commitment_index_for_height(
+                &self,
+                height: u64,
+                finalize: bool,
+            ) -> Result<BurnCommitmentRebuildStatus, ChainStorageError> {
+                self.inner.build_burn_commitment_index_for_height(height, finalize)
+            }
+
+            fn update_accumulated_difficulty(
+                &self,
+                height: u64,
+                header_accum_data: BlockHeaderAccumulatedData,
+                last_chain_header: ChainHeader,
+                update_meta_data_db: bool,
+            ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError> {
+                self.inner.update_accumulated_difficulty(
+                    height,
+                    header_accum_data,
+                    last_chain_header,
+                    update_meta_data_db,
+                )
+            }
+
+            fn utxo_count(&self) -> Result<usize, ChainStorageError> {
+                self.inner.utxo_count()
+            }
+
+            fn kernel_count(&self) -> Result<usize, ChainStorageError> {
+                self.inner.kernel_count()
+            }
+
+            fn fetch_orphan_chain_tip_by_hash(
+                &self,
+                hash: &HashOutput,
+            ) -> Result<Option<ChainHeader>, ChainStorageError> {
+                self.inner.fetch_orphan_chain_tip_by_hash(hash)
+            }
+
+            fn fetch_strongest_orphan_chain_tips(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+                self.inner.fetch_strongest_orphan_chain_tips()
+            }
+
+            fn fetch_orphan_children_of(&self, hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
+                self.inner.fetch_orphan_children_of(hash)
+            }
+
+            fn fetch_orphan_hashes_at_or_above(&self, height: u64) -> Result<Vec<HashOutput>, ChainStorageError> {
+                self.inner.fetch_orphan_hashes_at_or_above(height)
+            }
+
+            fn fetch_orphan_chain_block(&self, hash: HashOutput) -> Result<Option<ChainBlock>, ChainStorageError> {
+                self.inner.fetch_orphan_chain_block(hash)
+            }
+
+            fn delete_oldest_orphans(
+                &mut self,
+                horizon_height: u64,
+                orphan_storage_capacity: usize,
+            ) -> Result<(), ChainStorageError> {
+                self.inner
+                    .delete_oldest_orphans(horizon_height, orphan_storage_capacity)
+            }
+
+            fn fetch_monero_seed_first_seen_height(&self, seed: &[u8]) -> Result<u64, ChainStorageError> {
+                self.inner.fetch_monero_seed_first_seen_height(seed)
+            }
+
+            fn fetch_horizon_data(&self) -> Result<Option<HorizonData>, ChainStorageError> {
+                self.inner.fetch_horizon_data()
+            }
+
+            fn fetch_horizon_sync_output_checkpoint(
+                &self,
+            ) -> Result<Option<HorizonSyncOutputCheckpoint>, ChainStorageError> {
+                self.inner.fetch_horizon_sync_output_checkpoint()
+            }
+
+            fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError> {
+                self.inner.verify_horizon_sync_output_root(expected_root)
+            }
+
+            fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
+                self.inner.get_stats()
+            }
+
+            fn fetch_total_size_stats(&self) -> Result<DbTotalSizeStats, ChainStorageError> {
+                self.inner.fetch_total_size_stats()
+            }
+
+            fn bad_block_exists(&self, block_hash: HashOutput) -> Result<(bool, String), ChainStorageError> {
+                self.inner.bad_block_exists(block_hash)
+            }
+
+            fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
+                self.inner.fetch_all_reorgs()
+            }
+
+            fn fetch_all_active_validator_nodes(
+                &self,
+                height: u64,
+            ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+                self.inner.fetch_all_active_validator_nodes(height)
+            }
+
+            fn fetch_active_validator_nodes(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                height: u64,
+            ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+                self.inner.fetch_active_validator_nodes(sidechain_pk, height)
+            }
+
+            fn fetch_validators_activating_in_epoch(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                epoch: VnEpoch,
+            ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+                self.inner.fetch_validators_activating_in_epoch(sidechain_pk, epoch)
+            }
+
+            fn fetch_validators_exiting_in_epoch(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                epoch: VnEpoch,
+            ) -> Result<Vec<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+                self.inner.fetch_validators_exiting_in_epoch(sidechain_pk, epoch)
+            }
+
+            fn validator_node_exists(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                end_epoch: VnEpoch,
+                validator_node_pk: &CompressedPublicKey,
+            ) -> Result<bool, ChainStorageError> {
+                self.inner
+                    .validator_node_exists(sidechain_pk, end_epoch, validator_node_pk)
+            }
+
+            fn validator_node_is_active(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                end_epoch: VnEpoch,
+                validator_node_pk: &CompressedPublicKey,
+            ) -> Result<bool, ChainStorageError> {
+                self.inner
+                    .validator_node_is_active(sidechain_pk, end_epoch, validator_node_pk)
+            }
+
+            fn fetch_validator_node_entry(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                public_key: &CompressedPublicKey,
+            ) -> Result<Option<ValidatorNodeEntry>, ChainStorageError> {
+                self.inner.fetch_validator_node_entry(sidechain_pk, public_key)
+            }
+
+            fn validator_node_has_pending_exit(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                public_key: &CompressedPublicKey,
+                commitment: &CompressedCommitment,
+                epoch: VnEpoch,
+            ) -> Result<bool, ChainStorageError> {
+                self.inner
+                    .validator_node_has_pending_exit(sidechain_pk, public_key, commitment, epoch)
+            }
+
+            fn get_validator_node(
+                &self,
+                sidechain_pk: Option<&CompressedPublicKey>,
+                public_key: CompressedPublicKey,
+            ) -> Result<Option<ValidatorNodeRegistrationInfo>, ChainStorageError> {
+                self.inner.get_validator_node(sidechain_pk, public_key)
+            }
+
+            fn create_smt_reader(&self) -> Result<(OwnedLmdbTreeReader<'_>, u64), ChainStorageError> {
+                self.inner.create_smt_reader()
+            }
+
+            fn fetch_all_orphans(&self) -> Result<Vec<ChainHeader>, ChainStorageError> {
+                self.inner.fetch_all_orphans()
+            }
+
+            fn set_stats_total_height(&self, total: u64) {
+                self.inner.set_stats_total_height(total)
+            }
+
+            fn update_stats_progress(&self, current: u64) {
+                self.inner.update_stats_progress(current)
+            }
+        }
+
+        let mut fork_header = BlockHeader::from_previous(
+            &create_new_blockchain_with_network(Network::LocalNet)
+                .fetch_chain_header(0)
+                .unwrap()
+                .into_header(),
+        );
+        fork_header.nonce = 999_999;
+        let fork_hash = fork_header.hash();
+
+        let rules = create_consensus_rules();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        let db = BlockchainDatabase::start_new(
+            ForkHeaderBackend {
+                inner: TempDatabase::new(),
+                fork_header,
+            },
+            rules.clone(),
+            validators,
+            BlockchainDatabaseConfig::default(),
+            DifficultyCalculator::new(rules, Default::default()),
+        )
+        .unwrap();
+        let genesis = db.fetch_chain_header(0).unwrap();
+
+        let mut headers = Vec::with_capacity(MAX_ALLOWED_QUERY_SIZE);
+        let mut prev_header = genesis.header().clone();
+        for _ in 0..MAX_ALLOWED_QUERY_SIZE {
+            let mut next_header = BlockHeader::from_previous(&prev_header);
+            next_header.kernel_mmr_size += 1;
+            let mut accum = genesis.accumulated_data().clone();
+            accum.hash = next_header.hash();
+            let chain_header = ChainHeader::try_construct(next_header.clone(), accum).unwrap();
+            prev_header = next_header;
+            headers.push(chain_header);
+        }
+        let max_valid_end_hash = *headers[MAX_ALLOWED_QUERY_SIZE - 2].hash();
+        let far_hash = *headers.last().unwrap().hash();
+        db.insert_valid_headers(headers).unwrap();
+
+        let async_db = AsyncBlockchainDb::from(db);
+
+        // 1. Span of MAX_ALLOWED_QUERY_SIZE + 1 blocks (0..=MAX_ALLOWED_QUERY_SIZE) is rejected with BadRequest.
+        let (tx, _rx) = mpsc::channel(5);
+        let err = SyncUtxosByBlockTask::new(async_db.clone())
+            .run(
+                SyncUtxosByBlockRequest {
+                    start_header_hash: genesis.hash().to_vec(),
+                    end_header_hash: far_hash.to_vec(),
+                },
+                tx,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::BadRequest);
+
+        // 2. Largest allowed span (0..=(MAX_ALLOWED_QUERY_SIZE - 1), i.e. MAX_ALLOWED_QUERY_SIZE blocks) succeeds.
+        let (tx, mut rx) = mpsc::channel(5);
+        SyncUtxosByBlockTask::new(async_db.clone())
+            .run(
+                SyncUtxosByBlockRequest {
+                    start_header_hash: genesis.hash().to_vec(),
+                    end_header_hash: max_valid_end_hash.to_vec(),
+                },
+                tx,
+            )
+            .await
+            .unwrap();
+        let first_msg = rx.recv().await.unwrap().unwrap();
+        assert_eq!(first_msg.height, 0);
+
+        // 3. Off-main-chain start_header_hash is rejected with NotFound.
+        let (tx, _rx) = mpsc::channel(5);
+        let err = SyncUtxosByBlockTask::new(async_db.clone())
+            .run(
+                SyncUtxosByBlockRequest {
+                    start_header_hash: fork_hash.to_vec(),
+                    end_header_hash: max_valid_end_hash.to_vec(),
+                },
+                tx,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::NotFound);
+
+        // 4. Off-main-chain end_header_hash is rejected with NotFound.
+        let (tx, _rx) = mpsc::channel(5);
+        let err = SyncUtxosByBlockTask::new(async_db)
+            .run(
+                SyncUtxosByBlockRequest {
+                    start_header_hash: genesis.hash().to_vec(),
+                    end_header_hash: fork_hash.to_vec(),
+                },
+                tx,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::NotFound);
+    }
 }

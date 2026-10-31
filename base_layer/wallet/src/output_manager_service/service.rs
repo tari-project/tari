@@ -524,6 +524,16 @@ where
                 .map(|(fee, input_count_selected, change)| {
                     OutputManagerResponse::FeeEstimate(fee, input_count_selected, change)
                 }),
+            OutputManagerRequest::EncumberOutputs {
+                tx_id,
+                outputs_to_send,
+                outputs_to_receive,
+            } => self
+                .resources
+                .db
+                .encumber_outputs(tx_id, outputs_to_send, outputs_to_receive)
+                .map(|_| OutputManagerResponse::ConfirmEncumberance)
+                .map_err(OutputManagerError::from),
             OutputManagerRequest::ConfirmPendingTransaction {
                 tx_id,
                 tx_id_update,
@@ -1573,6 +1583,20 @@ where
 
         // Finalize
         let finalized = builder.build()?;
+        if let Ok(db_output) = self
+            .resources
+            .db
+            .fetch_by_commitment(expected_commitment, &self.resources.key_manager)
+        {
+            if matches!(
+                db_output.status,
+                OutputStatus::Unspent | OutputStatus::EncumberedToBeReceived
+            ) {
+                self.resources
+                    .db
+                    .encumber_outputs(finalized.tx_id, vec![db_output], Vec::new())?;
+            }
+        }
         self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
 
         let total_metadata_ephemeral_public_key = aggregated_metadata_ephemeral_public_key_shares +
@@ -1765,6 +1789,20 @@ where
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
+        if let Ok(db_output) = self
+            .resources
+            .db
+            .fetch_by_commitment(expected_commitment, &self.resources.key_manager)
+        {
+            if matches!(
+                db_output.status,
+                OutputStatus::Unspent | OutputStatus::EncumberedToBeReceived
+            ) {
+                self.resources
+                    .db
+                    .encumber_outputs(finalized.tx_id, vec![db_output], Vec::new())?;
+            }
+        }
         self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
         info!(target: LOG_TARGET, "Finalized partial one-side transaction TxId: {} (Trace TxId: 0)", finalized.tx_id);
         let fee = finalized.fee;
