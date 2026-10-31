@@ -49,7 +49,7 @@ pub use grpc_method::GrpcMethod;
 pub use http::HttpCacheConfig;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ServerAuthenticationInterceptor,
+    authentication::ServerAuthenticationLayer,
     tari_rpc::{
         self,
         base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
@@ -71,10 +71,7 @@ use tokio::{
     task::{self, JoinHandle},
     time::timeout,
 };
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Identity, Server, ServerTlsConfig},
-};
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tonic_health::{ServingStatus, server::HealthReporter};
 
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
@@ -361,13 +358,12 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
+    let auth_layer = ServerAuthenticationLayer::new(auth_config)
         .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
 
     let sized_server = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc)
         .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-    let service = InterceptedService::new(sized_server, auth);
 
     let mut server_builder = grpc_server_builder(
         GRPC_HTTP2_KEEPALIVE_INTERVAL,
@@ -378,6 +374,8 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         server_builder = server_builder.tls_config(ServerTlsConfig::new().identity(identity))?;
     }
 
+    let router = server_builder.layer(auth_layer).add_service(sized_server);
+
     if let Some(state_machine_handle) = health_state_machine {
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         let mut status_watch = state_machine_handle.get_status_info_watch();
@@ -385,14 +383,12 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         update_grpc_health_status(&mut health_reporter, is_serving).await;
         spawn_grpc_health_updater(health_reporter, status_watch, is_serving);
 
-        server_builder
-            .add_service(service)
+        router
             .add_service(health_service)
             .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
             .await
     } else {
-        server_builder
-            .add_service(service)
+        router
             .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
             .await
     }
@@ -487,7 +483,11 @@ mod tests {
     use std::{net::SocketAddr, time::Duration};
 
     use futures::FutureExt;
-    use minotari_app_grpc::tari_rpc::base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME;
+    use minotari_app_grpc::{
+        authentication::ServerAuthenticationLayer,
+        tari_rpc::base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
+    };
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
     use tari_core::base_node::state_machine_service::states::{
         StateInfo,
         StatusInfo,
@@ -499,10 +499,15 @@ mod tests {
         net::{TcpListener, TcpStream},
         time::Instant,
     };
-    use tonic::{Code, Request, transport::server::TcpIncoming};
+    use tonic::{
+        Code,
+        Request,
+        metadata::MetadataValue,
+        transport::{Endpoint, server::TcpIncoming},
+    };
     use tonic_health::{
         ServingStatus,
-        pb::{HealthCheckRequest, health_check_response, health_server::Health},
+        pb::{HealthCheckRequest, health_check_response, health_client::HealthClient, health_server::Health},
         server::HealthService,
     };
 
@@ -723,5 +728,60 @@ mod tests {
             !outcome.closed_by_server,
             "server closed a connection that acks keepalive PINGs"
         );
+    }
+
+    #[tokio::test]
+    async fn grpc_health_service_is_exempt_when_basic_auth_configured() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+        super::update_grpc_health_status(&mut health_reporter, true).await;
+
+        let auth_layer = ServerAuthenticationLayer::new(GrpcAuthentication::Basic {
+            username: "admin".to_string(),
+            password: "secret".to_string().into(),
+        })
+        .unwrap();
+
+        let shutdown = Shutdown::new();
+        let signal = shutdown.to_signal();
+        tokio::spawn(async move {
+            super::grpc_server_builder(
+                Duration::from_secs(30),
+                Duration::from_secs(20),
+                Duration::from_secs(60),
+            )
+            .layer(auth_layer)
+            .add_service(health_service)
+            .serve_with_incoming_shutdown(TcpIncoming::from(listener), signal.map(|_| ()))
+            .await
+            .unwrap();
+        });
+
+        let channel = Endpoint::from_shared(format!("http://{address}"))
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client = HealthClient::new(channel);
+
+        let unauth_resp = client
+            .check(Request::new(HealthCheckRequest {
+                service: super::GRPC_HEALTH_OVERALL_SERVICE_NAME.to_string(),
+            }))
+            .await
+            .expect("unauthenticated health check probe must succeed when Basic auth is enabled")
+            .into_inner();
+        assert_eq!(unauth_resp.status, expected_wire_status(ServingStatus::Serving));
+
+        let mut auth_req = Request::new(HealthCheckRequest {
+            service: super::GRPC_HEALTH_OVERALL_SERVICE_NAME.to_string(),
+        });
+        auth_req.metadata_mut().insert(
+            "authorization",
+            MetadataValue::try_from("Basic YWRtaW46c2VjcmV0").unwrap(),
+        );
+        let auth_resp = client.check(auth_req).await.unwrap().into_inner();
+        assert_eq!(auth_resp.status, expected_wire_status(ServingStatus::Serving));
     }
 }

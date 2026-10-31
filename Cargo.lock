@@ -4312,6 +4312,7 @@ dependencies = [
  "tari_crypto",
  "tari_features",
  "tari_max_size",
+ "tari_metrics",
  "tari_node_components",
  "tari_script",
  "tari_sidechain",
@@ -4321,6 +4322,7 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "tonic-build",
+ "tower-layer",
  "zeroize",
 ]
 
