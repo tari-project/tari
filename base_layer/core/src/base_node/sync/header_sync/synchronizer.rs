@@ -74,7 +74,7 @@ pub struct HeaderSynchronizer<'a, B> {
     connectivity: ConnectivityRequester,
     sync_peers: &'a mut Vec<SyncPeer>,
     hooks: Hooks,
-    local_cached_metadata: &'a ChainMetadata,
+    local_cached_metadata: ChainMetadata,
     peer_ban_manager: PeerBanManager,
     consensus_rules: BaseNodeConsensusManager,
 }
@@ -97,7 +97,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             connectivity,
             sync_peers,
             hooks: Default::default(),
-            local_cached_metadata: local_metadata,
+            local_cached_metadata: local_metadata.clone(),
             peer_ban_manager,
             consensus_rules,
         }
@@ -1005,6 +1005,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             if !blocks.is_empty() {
                 self.hooks.call_on_rewind_hooks(blocks);
             }
+            self.local_cached_metadata = self.db.get_chain_metadata().await?;
         }
 
         // Commit the forked chain. At this point
