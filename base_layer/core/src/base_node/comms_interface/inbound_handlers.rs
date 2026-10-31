@@ -779,9 +779,13 @@ where B: BlockchainBackend + 'static
         // blocks are not free to make, and that they are more expensive to make then they are to validate. As
         // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        self.check_min_block_difficulty(&new_block)
+        if !self
+            .check_min_block_difficulty(&new_block)
             .await
-            .inspect_err(log_pow_rejection)?;
+            .inspect_err(log_pow_rejection)?
+        {
+            return Ok(());
+        }
 
         {
             // we use a double lock to make sure we can only reconcile one unique block at a time. We may receive the
@@ -861,12 +865,40 @@ where B: BlockchainBackend + 'static
     /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
     /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives
     /// through header and block sync, which do not come through this gate.
-    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<bool, CommsInterfaceError> {
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
-        let rules_height = max(header.height(), new_block.header.height);
+        let tip_height = header.height();
+        let rules_height = max(tip_height, new_block.header.height);
         let constants = self.consensus_manager.consensus_constants(rules_height);
+        let permitted_algos = constants.current_permitted_pow_algos();
+        if !permitted_algos.contains(&new_block.header.pow_algo()) {
+            return Err(CommsInterfaceError::InvalidBlockHeader(
+                BlockHeaderValidationError::InvalidPowAlgorithm(new_block.header.pow_algo().to_string()),
+            ));
+        }
+        if new_block.header.pow_algo() == PowAlgorithm::RandomXT {
+            check_randomxt_pow_data(&new_block.header.pow, constants.require_canonical_randomxt_pow_data()).map_err(
+                |e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)),
+            )?;
+            let vm_key_height = tari_rx_vm_key_height(new_block.header.height);
+            if vm_key_height > tip_height {
+                debug!(
+                    target: LOG_TARGET,
+                    "Ignoring RandomXT block announcement at height {} because its VM key height {} is above local tip {}",
+                    new_block.header.height,
+                    vm_key_height,
+                    tip_height
+                );
+                return Ok(false);
+            }
+        }
         let gen_hash = *self.consensus_manager.get_genesis_block().hash();
         let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let max_lookback = constants
+            .difficulty_block_window()
+            .saturating_mul(permitted_algos.len() as u64)
+            .max(1);
+        let min_search_height = tip_height.saturating_sub(max_lookback);
         loop {
             if new_block.header.pow_algo() == header.header().pow_algo() {
                 min_difficulty = max(
@@ -879,10 +911,10 @@ where B: BlockchainBackend + 'static
                 );
                 break;
             }
-            if header.height() == 0 {
+            if header.height() <= min_search_height {
                 break;
             }
-            // we have not reached gen block, and the pow algo does not match, so lets go further back
+            // we have not reached the lookback bound, and the pow algo does not match, so lets go further back
             header = self
                 .blockchain_db
                 .fetch_chain_header(header.height().saturating_sub(1))
@@ -958,7 +990,7 @@ where B: BlockchainBackend + 'static
                 }),
             ));
         }
-        Ok(())
+        Ok(true)
     }
 
     async fn check_exists_and_not_bad_block(&self, block: FixedHash) -> Result<bool, CommsInterfaceError> {

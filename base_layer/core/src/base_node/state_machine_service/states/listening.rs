@@ -354,7 +354,9 @@ impl Listening {
 
         state.chain_status_log.record(&local_metadata, peer_metadata);
 
-        self.update_initial_sync_status(shared, state, &sync_mode);
+        if self.update_initial_sync_status(shared.config.initial_sync_peer_count, state, &sync_mode) {
+            self.publish_status_info(shared);
+        }
 
         // If we have already reached initial sync before, as indicated by the `is_synced` flagged we can
         // immediately return fallen behind with the peer that has a higher pow than us
@@ -476,27 +478,29 @@ impl Listening {
         }
     }
 
-    fn update_initial_sync_status<B: BlockchainBackend + 'static>(
+    fn update_initial_sync_status(
         &mut self,
-        shared: &mut BaseNodeStateMachine<B>,
+        initial_sync_peer_count: u64,
         state: &mut ListeningLoopState,
         sync_mode: &SyncStatus,
-    ) {
+    ) -> bool {
         if self.is_synced || !sync_mode.is_up_to_date() {
-            return;
+            return false;
         }
 
         state.ahead_of_peers_counter = state.ahead_of_peers_counter.saturating_add(1);
-        if state.ahead_of_peers_counter >= shared.config.initial_sync_peer_count {
-            self.set_synced_response(shared);
+        if state.ahead_of_peers_counter >= initial_sync_peer_count {
+            self.is_synced = true;
+            self.initial_delay_count = 0;
             info!(target: LOG_TARGET, "Initial sync achieved");
+            true
         } else {
             info!(
                 target: LOG_TARGET,
                 "We are ahead of at least {} peers, waiting for more info",
                 state.ahead_of_peers_counter
             );
-            self.set_synced_response(shared);
+            false
         }
     }
 
@@ -870,5 +874,30 @@ mod test {
         let message = chain_status_log.summary_message().unwrap();
         assert!(message.contains("We are behind the network"));
         assert!(message.contains(&ahead_peer_id));
+    }
+
+    #[test]
+    fn test_update_initial_sync_status_waits_for_peer_threshold() {
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        let initial_sync_peer_count = 3;
+
+        // First two UpToDate updates are below threshold and must leave the node unsynced
+        assert!(!listening.update_initial_sync_status(initial_sync_peer_count, &mut state, &SyncStatus::UpToDate));
+        assert!(!listening.is_synced);
+        assert_eq!(state.ahead_of_peers_counter, 1);
+
+        assert!(!listening.update_initial_sync_status(initial_sync_peer_count, &mut state, &SyncStatus::UpToDate));
+        assert!(!listening.is_synced);
+        assert_eq!(state.ahead_of_peers_counter, 2);
+
+        // Reaching initial_sync_peer_count marks the node synced
+        assert!(listening.update_initial_sync_status(initial_sync_peer_count, &mut state, &SyncStatus::UpToDate));
+        assert!(listening.is_synced);
+        assert_eq!(state.ahead_of_peers_counter, 3);
+
+        // Subsequent updates are no-ops once synced
+        assert!(!listening.update_initial_sync_status(initial_sync_peer_count, &mut state, &SyncStatus::UpToDate));
+        assert_eq!(state.ahead_of_peers_counter, 3);
     }
 }

@@ -590,6 +590,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         let mut left_height = 0u64;
         let mut right_height = tip_header.height();
+        let mut best_height = 0u64;
         trace!(
             target: LOG_TARGET,
             "requested_epoch_time: {}, left: {}, right: {}",
@@ -599,16 +600,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         );
 
         while left_height <= right_height {
-            let mut mid_height = left_height.saturating_add(right_height) / 2;
-
-            if mid_height == 0 {
-                return Ok(Response::new(0u64));
-            }
-            // If the two bounds are adjacent then perform the test between the right and left sides
-            if left_height == mid_height {
-                mid_height = right_height;
-            }
-
+            let mid_height = left_height + (right_height - left_height) / 2;
             let mid_header = self
                 .db()
                 .fetch_header(mid_height)
@@ -617,51 +609,35 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .ok_or_else(|| {
                     RpcStatus::not_found(&format!("Header not found during search at height {mid_height}"))
                 })?;
-            let before_mid_header = self
-                .db()
-                .fetch_header(mid_height.saturating_sub(1))
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?
-                .ok_or_else(|| {
-                    RpcStatus::not_found(&format!(
-                        "Header not found during search at height {}",
-                        mid_height.saturating_sub(1)
-                    ))
-                })?;
+            let mid_timestamp = mid_header.timestamp.as_u64();
             trace!(
                 target: LOG_TARGET,
-                "requested_epoch_time: {}, left: {}, mid: {}/{} ({}/{}), right: {}",
+                "requested_epoch_time: {}, left: {}, mid: {} ({}), right: {}",
                 requested_epoch_time,
                 left_height,
                 mid_height,
-                mid_height.saturating_sub(1),
-                mid_header.timestamp.as_u64(),
-                before_mid_header.timestamp.as_u64(),
+                mid_timestamp,
                 right_height
             );
-            if requested_epoch_time < mid_header.timestamp.as_u64() &&
-                requested_epoch_time >= before_mid_header.timestamp.as_u64()
-            {
-                trace!(
-                    target: LOG_TARGET,
-                    "requested_epoch_time: {}, selected height: {}",
-                    requested_epoch_time, before_mid_header.height
-                );
-                return Ok(Response::new(before_mid_header.height));
-            } else if mid_height == right_height {
-                trace!(
-                    target: LOG_TARGET,
-                    "requested_epoch_time: {requested_epoch_time}, selected height: {right_height}"
-                );
-                return Ok(Response::new(right_height));
-            } else if requested_epoch_time <= mid_header.timestamp.as_u64() {
-                right_height = mid_height;
+            if mid_timestamp <= requested_epoch_time {
+                best_height = mid_height;
+                if let Some(next_left) = mid_height.checked_add(1) {
+                    left_height = next_left;
+                } else {
+                    break;
+                }
+            } else if let Some(next_right) = mid_height.checked_sub(1) {
+                right_height = next_right;
             } else {
-                left_height = mid_height;
+                break;
             }
         }
 
-        Ok(Response::new(0u64))
+        trace!(
+            target: LOG_TARGET,
+            "requested_epoch_time: {requested_epoch_time}, selected height: {best_height}"
+        );
+        Ok(Response::new(best_height))
     }
 
     async fn sync_utxos_by_block(
