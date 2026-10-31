@@ -2455,33 +2455,47 @@ where
                 payment_id.clone(),
             )
             .await?;
-        if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
-            let inputs = tx_builder.inputs();
-            for commitment in commitments {
-                if !inputs.iter().any(|input| input.output.commitment() == &commitment) {
-                    return Err(TransactionServiceError::OutputManagerError(
-                        OutputManagerError::BuildError(format!(
-                            "The required UTXO with commitment {} was not selected",
-                            commitment.to_hex()
-                        )),
-                    ));
+        let finalized = match async {
+            if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
+                let inputs = tx_builder.inputs();
+                for commitment in commitments {
+                    if !inputs.iter().any(|input| input.output.commitment() == &commitment) {
+                        return Err(TransactionServiceError::OutputManagerError(
+                            OutputManagerError::BuildError(format!(
+                                "The required UTXO with commitment {} was not selected",
+                                commitment.to_hex()
+                            )),
+                        ));
+                    }
                 }
             }
+            let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
+            payment_id.set_fee(fee_estimate);
+
+            trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
+
+            tx_builder.add_stealth_recipient(
+                dest_address.clone(),
+                amount,
+                output_features.clone(),
+                payment_id.clone(),
+            )?;
+            tx_builder.with_memo(payment_id.clone());
+            tx_builder.reserve_sender_offset_keys(&[])?;
+            Ok::<_, TransactionServiceError>(tx_builder.build()?)
         }
-        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        payment_id.set_fee(fee_estimate);
-
-        trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
-
-        tx_builder.add_stealth_recipient(
-            dest_address.clone(),
-            amount,
-            output_features.clone(),
-            payment_id.clone(),
-        )?;
-        tx_builder.with_memo(payment_id.clone());
-        tx_builder.reserve_sender_offset_keys(&[])?;
-        let finalized = tx_builder.build()?;
+        .await
+        {
+            Ok(finalized) => finalized,
+            Err(err) => {
+                let _ = self
+                    .resources
+                    .output_manager_service
+                    .cancel_pending_transaction(temp_tx_id)
+                    .await;
+                return Err(err);
+            },
+        };
 
         // Finalize
 
@@ -2500,35 +2514,60 @@ where
         let tx = finalized.transaction.clone();
         let fee = finalized.fee;
         let change = finalized.change.clone().map(|change| vec![change]);
-        self.resources
+        if let Err(e) = self
+            .resources
             .output_manager_service
             .confirm_pending_transaction(temp_tx_id, Some(finalized.tx_id), change)
             .await
-            .map_err(|e| TransactionServiceProtocolError::new(finalized.tx_id, e.into()))?;
+        {
+            let _ = self
+                .resources
+                .output_manager_service
+                .cancel_pending_transaction(temp_tx_id)
+                .await;
+            return Err(TransactionServiceProtocolError::new(finalized.tx_id, e.into()).into());
+        }
         let sent_hashes = finalized.sent_output_hashes.clone();
         let change_hashes = finalized.change_output_hashes.clone();
-        self.submit_transaction(
-            transaction_broadcast_join_handles,
-            CompletedTransaction::new_with_output_hashes(
-                finalized.tx_id,
-                self.resources.one_sided_tari_address.clone(),
-                dest_address.clone(),
-                amount,
-                fee,
-                tx.clone(),
-                LegacyTransactionStatus::Completed,
-                Utc::now(),
-                TransactionDirection::Outbound,
-                None,
-                None,
-                finalized.payment_id.clone(),
-                sent_hashes,
-                vec![],
-                change_hashes,
-                0,
-            )?,
-        )
-        .await?;
+        let completed_tx = match CompletedTransaction::new_with_output_hashes(
+            finalized.tx_id,
+            self.resources.one_sided_tari_address.clone(),
+            dest_address.clone(),
+            amount,
+            fee,
+            tx.clone(),
+            LegacyTransactionStatus::Completed,
+            Utc::now(),
+            TransactionDirection::Outbound,
+            None,
+            None,
+            finalized.payment_id.clone(),
+            sent_hashes,
+            vec![],
+            change_hashes,
+            0,
+        ) {
+            Ok(tx) => tx,
+            Err(err) => {
+                let _ = self
+                    .resources
+                    .output_manager_service
+                    .cancel_pending_transaction(finalized.tx_id)
+                    .await;
+                return Err(err.into());
+            },
+        };
+        if let Err(err) = self
+            .submit_transaction(transaction_broadcast_join_handles, completed_tx)
+            .await
+        {
+            let _ = self
+                .resources
+                .output_manager_service
+                .cancel_pending_transaction(finalized.tx_id)
+                .await;
+            return Err(err);
+        }
 
         Ok(finalized.tx_id)
     }
@@ -4615,11 +4654,22 @@ where
         let consensus_constants = self.resources.consensus_manager.consensus_constants(tip_height);
         let output_features = OutputFeatures::default();
         let temp_script = push_pubkey_script(&Default::default());
+        let effective_payment_id = if let Some(address_payment_id) = address_payment_id(&destination) {
+            MemoField::new_open(address_payment_id, TxType::PaymentToOther)
+                .map_err(OutputManagerError::InvalidPaymentIdFormat)?
+        } else {
+            original_transaction.payment_id.clone()
+        };
+        let tx_type = if destination == self.resources.one_sided_tari_address {
+            TxType::PaymentToSelf
+        } else {
+            TxType::PaymentToOther
+        };
         let measured_memo = addressed_output_memo(
-            original_transaction.payment_id.clone(),
+            effective_payment_id.clone(),
             self.resources.one_sided_tari_address.clone(),
             MicroMinotari::zero(),
-            TxType::PaymentToOther,
+            tx_type,
         )?;
         let features_and_scripts_byte_size = recipient_output_features_and_scripts_size(
             consensus_constants.transaction_weight_params(),
@@ -4674,7 +4724,7 @@ where
                 UtxoSelectionCriteria::must_include(spendable_outputs),
                 output_features,
                 fee_per_gram,
-                original_transaction.payment_id,
+                effective_payment_id,
                 transaction_broadcast_join_handles,
             )
             .await?;
