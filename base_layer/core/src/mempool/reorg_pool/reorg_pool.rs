@@ -194,10 +194,9 @@ impl ReorgPool {
                 block.header.hash().to_hex(),
             );
             for kernel in block.body.kernels() {
-                if let Some(removed_tx_ids) = self.txs_by_signature.remove(kernel.excess_sig.get_signature()) {
+                if let Some(removed_tx_ids) = self.txs_by_signature.get(kernel.excess_sig.get_signature()).cloned() {
                     for tx_id in removed_tx_ids {
-                        if let Some(tx) = self.tx_by_key.remove(&tx_id) {
-                            self.remove_from_height_index(tx_id);
+                        if let Some(tx) = self.remove(tx_id) {
                             trace!(target: LOG_TARGET, "Removed tx from reorg pool: {tx_id:?}");
                             removed_txs.push(tx);
                         }
@@ -229,12 +228,21 @@ impl ReorgPool {
     /// block. Check if any of the transactions in the ReorgPool has inputs that was spent by the provided
     /// published block.
     fn discard_double_spends(&mut self, published_block: &Block) {
+        let published_input_hashes = published_block
+            .body
+            .inputs()
+            .iter()
+            .map(|input| input.output_hash())
+            .collect::<HashSet<_>>();
         let mut to_remove = Vec::new();
         for (id, tx) in &self.tx_by_key {
-            for input in tx.body.inputs() {
-                if published_block.body.inputs().contains(input) {
-                    to_remove.push(*id);
-                }
+            if tx
+                .body
+                .inputs()
+                .iter()
+                .any(|input| published_input_hashes.contains(&input.output_hash()))
+            {
+                to_remove.push(*id);
             }
         }
 
@@ -249,11 +257,13 @@ impl ReorgPool {
 
         for kernel in tx.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
-            let ids = self.txs_by_signature.get_mut(sig).expect("reorg pool out of sync");
-            let pos = ids.iter().position(|k| *k == tx_id).expect("reorg mempool out of sync");
-            ids.remove(pos);
-            if ids.is_empty() {
-                self.txs_by_signature.remove(sig);
+            if let Some(ids) = self.txs_by_signature.get_mut(sig) {
+                if let Some(pos) = ids.iter().position(|k| *k == tx_id) {
+                    ids.remove(pos);
+                }
+                if ids.is_empty() {
+                    self.txs_by_signature.remove(sig);
+                }
             }
         }
 
@@ -279,31 +289,37 @@ impl ReorgPool {
     }
 
     fn cleanup_expired(&mut self, height: u64) {
-        let height = match height.checked_sub(self.config.expiry_height) {
-            Some(h) => h,
-            None => return,
+        let Some(cutoff_height) = height.checked_sub(self.config.expiry_height) else {
+            return;
         };
 
-        if let Some(tx_ids) = self.txs_by_height.remove(&height) {
-            debug!(
-                target: LOG_TARGET,
-                "Clearing {} transactions from mempool for height {}",
-                tx_ids.len(),
-                height
-            );
-            for tx_id in tx_ids {
-                let tx = self.tx_by_key.remove(&tx_id).expect("reorg mempool out of sync");
+        let expired_heights = self
+            .txs_by_height
+            .keys()
+            .copied()
+            .filter(|h| *h <= cutoff_height)
+            .collect::<Vec<_>>();
 
-                for kernel in tx.body.kernels() {
-                    let sig = kernel.excess_sig.get_signature();
-                    if let Some(keys) = self.txs_by_signature.get_mut(sig) {
-                        let pos = keys
-                            .iter()
-                            .position(|k| *k == tx_id)
-                            .expect("reorg mempool out of sync");
-                        keys.remove(pos);
-                        if keys.is_empty() {
-                            self.txs_by_signature.remove(sig);
+        for expired_height in expired_heights {
+            if let Some(tx_ids) = self.txs_by_height.remove(&expired_height) {
+                debug!(
+                    target: LOG_TARGET,
+                    "Clearing {} transactions from mempool for height {}",
+                    tx_ids.len(),
+                    expired_height
+                );
+                for tx_id in tx_ids {
+                    if let Some(tx) = self.tx_by_key.remove(&tx_id) {
+                        for kernel in tx.body.kernels() {
+                            let sig = kernel.excess_sig.get_signature();
+                            if let Some(keys) = self.txs_by_signature.get_mut(sig) {
+                                if let Some(pos) = keys.iter().position(|k| *k == tx_id) {
+                                    keys.remove(pos);
+                                }
+                                if keys.is_empty() {
+                                    self.txs_by_signature.remove(sig);
+                                }
+                            }
                         }
                     }
                 }
@@ -508,5 +524,36 @@ mod test {
         assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+    }
+
+    #[tokio::test]
+    async fn cleanup_expired_removes_all_heights_at_or_below_cutoff_when_heights_are_skipped() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx1 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 1000, inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx2 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 2000, inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+        let tx3 = Arc::new(
+            tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 3000, inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0,
+        );
+
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 2 });
+        reorg_pool.insert_all(1, vec![tx1.clone()]);
+        reorg_pool.insert_all(2, vec![tx2.clone()]);
+        // Jump straight to height 5 (skipping height 3 and 4): both height 1 and height 2 are <= 5 - 2 = 3
+        reorg_pool.insert_all(5, vec![tx3.clone()]);
+
+        assert_eq!(reorg_pool.len(), 1);
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
     }
 }

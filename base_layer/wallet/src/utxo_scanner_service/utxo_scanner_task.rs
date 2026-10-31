@@ -145,6 +145,10 @@ where
                         retry_limit: self.retry_limit,
                         error: e.to_string(),
                     });
+                    if self.retry_limit > 0 && self.num_retries >= self.retry_limit {
+                        return Err(e);
+                    }
+                    self.num_retries = self.num_retries.saturating_add(1);
                     // Wait a bit of time otherwise we spam the node with requests, but do not hold the shutdown drain
                     // for it
                     tokio::select! {
@@ -217,19 +221,28 @@ where
                 next_header = wallet_service_client
                     .get_header_by_height(height.saturating_add(1))
                     .await?;
-                if next_header.is_some() {
+                if next_header.is_some() || height == 0 {
                     break;
                 }
                 height = height.saturating_sub(1);
             }
-            let next_header = next_header.expect("we check this above");
-            let next_header_hash = next_header.hash;
-
-            Ok(ScannedBlock {
-                height: next_header.height,
-                header_hash: next_header_hash,
-                timestamp: Utc::now().naive_utc(),
-            })
+            if let Some(next_header) = next_header {
+                return Ok(ScannedBlock {
+                    height: next_header.height,
+                    header_hash: next_header.hash,
+                    timestamp: Utc::now().naive_utc(),
+                });
+            }
+            if let Some(genesis_header) = wallet_service_client.get_header_by_height(0).await? {
+                return Ok(ScannedBlock {
+                    height: genesis_header.height,
+                    header_hash: genesis_header.hash,
+                    timestamp: Utc::now().naive_utc(),
+                });
+            }
+            Err(anyhow!(
+                "Could not find any known block header on the base node while determining next block to scan"
+            ))
         } else {
             // The node does not know of any of our cached headers so we will start the scan anew from the
             // wallet birthday

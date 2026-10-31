@@ -162,6 +162,8 @@ const PROTOCOL_TIMEOUT: Duration = Duration::from_secs(300);
 /// `Mempool` clones those tasks hold — and through them the blockchain database and its LMDB file
 /// lock — could still be alive after this service has returned.
 const TASK_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+/// Maximum number of concurrent inbound mempool sync responder tasks.
+const MAX_CONCURRENT_INBOUND_SYNCS: usize = 8;
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
 /// Report the outcome of a bounded `close()`. Closing is always best effort — the exchange is over
@@ -202,6 +204,7 @@ pub struct MempoolSyncProtocol<TSubstream> {
     mempool: Mempool,
     num_synched: Arc<AtomicUsize>,
     permits: Arc<Semaphore>,
+    inbound_permits: Arc<Semaphore>,
     connectivity: ConnectivityRequester,
     block_event_stream: BlockEventReceiver,
     shutdown_signal: ShutdownSignal,
@@ -229,6 +232,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
             mempool,
             num_synched: Arc::new(AtomicUsize::new(0)),
             permits: Arc::new(Semaphore::new(1)),
+            inbound_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_INBOUND_SYNCS)),
             connectivity,
             block_event_stream,
             shutdown_signal,
@@ -485,13 +489,22 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
     }
 
     fn spawn_inbound_handler(&mut self, node_id: NodeId, substream: TSubstream) {
+        let Ok(permit) = self.inbound_permits.clone().try_acquire_owned() else {
+            debug!(
+                target: LOG_TARGET,
+                "Maximum concurrent inbound mempool syncs ({MAX_CONCURRENT_INBOUND_SYNCS}) reached; declining peer `{}`",
+                node_id.short_str()
+            );
+            return;
+        };
         let mempool = self.mempool.clone();
         let config = self.config.clone();
         self.tasks.spawn(async move {
+            let _permit = permit;
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
             let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);
-            // Aggregate deadline, as for the initiator: a responder holds no permit, but an
-            // unbounded exchange still keeps a `Mempool` clone alive indefinitely.
+            // Aggregate deadline, as for the initiator: an unbounded exchange keeps a `Mempool`
+            // clone and an inbound sync permit alive indefinitely.
             match time::timeout(PROTOCOL_TIMEOUT, protocol.start_responder()).await {
                 Err(_elapsed) => {
                     warn!(
@@ -572,12 +585,17 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         );
 
         let transactions = self.mempool.snapshot().await?;
-        let items = transactions
-            .iter()
+        let mut advertised_txns = Vec::new();
+        let mut items = Vec::new();
+        for txn in transactions
+            .into_iter()
             .take(self.config.initial_sync_max_transactions)
-            .filter_map(|txn| txn.first_kernel_excess_sig())
-            .map(|excess| excess.get_signature().to_vec())
-            .collect();
+        {
+            if let Some(excess) = txn.first_kernel_excess_sig() {
+                items.push(excess.get_signature().to_vec());
+                advertised_txns.push(txn);
+            }
+        }
         let inventory = proto::TransactionInventory { items };
         let num_inventory_items = inventory.items.len();
 
@@ -609,12 +627,23 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                 max: num_inventory_items,
             });
         }
+        if let Some(&index) = missing_items
+            .indexes
+            .iter()
+            .find(|&&idx| (idx as usize) >= num_inventory_items)
+        {
+            return Err(MempoolProtocolError::InventoryIndexOutOfRange {
+                peer: self.peer_node_id.clone(),
+                index,
+                max: num_inventory_items,
+            });
+        }
         let mut requested = HashSet::with_capacity(missing_items.indexes.len());
         let missing_txns = missing_items
             .indexes
             .iter()
             .filter(|idx| requested.insert(**idx))
-            .filter_map(|idx| transactions.get(*idx as usize).cloned())
+            .filter_map(|idx| advertised_txns.get(*idx as usize).cloned())
             .collect::<Vec<_>>();
         debug!(
             target: LOG_TARGET,
@@ -713,28 +742,35 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                 .collect::<HashMap<_, _>>();
 
             let mut duplicate_inventory_items = HashSet::new();
-            let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
-                let excess_sig = transaction
-                    .first_kernel_excess_sig()
-                    .expect("transaction stored in mempool did not have any kernels");
+            let mut unmatched_transactions = Vec::new();
+            for transaction in transactions {
+                let Some(excess_sig) = transaction.first_kernel_excess_sig() else {
+                    continue;
+                };
 
                 match inventory_index.get(excess_sig.get_signature().as_bytes()) {
                     Some(&pos) => {
                         duplicate_inventory_items.insert(pos);
-                        false
                     },
-                    None => true,
+                    None => {
+                        if unmatched_transactions.len() < self.config.initial_sync_max_transactions {
+                            unmatched_transactions.push(transaction);
+                        }
+                    },
                 }
-            });
+            }
 
-            // Generate an index list of inventory indexes that this node does not have
+            // Generate an index list of inventory indexes that this node does not have, capped to
+            // `initial_sync_max_transactions` so a peer with a larger local limit does not stream
+            // more missing transactions than `read_and_insert_transactions_until_complete` accepts.
             #[allow(clippy::cast_possible_truncation)]
             let missing_items = (0..items.len())
                 .filter(|i| !duplicate_inventory_items.contains(i))
+                .take(self.config.initial_sync_max_transactions)
                 .map(|i| i as u32)
                 .collect::<Vec<_>>();
 
-            (transactions, missing_items)
+            (unmatched_transactions, missing_items)
         };
 
         debug!(

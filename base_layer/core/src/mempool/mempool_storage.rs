@@ -458,13 +458,14 @@ impl MempoolStorage {
         );
         let timer = Instant::now();
         // Move published txs to ReOrgPool and discard double spends
-        let removed_transactions = self
+        let (published_transactions, discarded_transactions) = self
             .unconfirmed_pool
-            .remove_published_and_discard_deprecated_transactions(published_block)?;
+            .remove_published_and_discard_deprecated_transactions_split(published_block)?;
         debug!(
             target: LOG_TARGET,
-            "{} transactions removed from unconfirmed pool in {:.2?}, moving them to reorg pool for block #{} ({}) {}",
-            removed_transactions.len(),
+            "{} published and {} conflicting/deprecated transactions removed from unconfirmed pool in {:.2?}, moving published transactions to reorg pool for block #{} ({}) {}",
+            published_transactions.len(),
+            discarded_transactions.len(),
             timer.elapsed(),
             published_block.header.height,
             published_block.header.hash().to_hex(),
@@ -472,7 +473,7 @@ impl MempoolStorage {
         );
         let timer = Instant::now();
         self.reorg_pool
-            .insert_all(published_block.header.height, removed_transactions);
+            .insert_all(published_block.header.height, published_transactions);
         debug!(
             target: LOG_TARGET,
             "Transactions added to reorg pool in {:.2?} for block #{} ({}) {}",
@@ -1636,5 +1637,51 @@ mod test {
         let response = MempoolStorage::insert_unlocked(&storage, child).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         assert_eq!(pool_len(&storage), 2);
+    }
+
+    #[test]
+    fn process_published_block_moves_only_published_transactions_to_reorg_pool_and_discards_double_spends() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let (mined, _) = create_tx_with_outputs(&key_manager);
+        let (_, _, shared_outputs) =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx");
+        let mined_spending_shared = spending(&mined, &shared_outputs[0], &key_manager);
+        let conflicting_double_spend = spending(&create_tx(&key_manager), &shared_outputs[0], &key_manager);
+
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, mined_spending_shared.clone()).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, conflicting_double_spend.clone()).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(pool_len(&storage), 2);
+
+        let consensus = create_consensus_rules();
+        let published_block =
+            crate::test_helpers::create_orphan_block(1, vec![(*mined_spending_shared).clone()], &consensus);
+        storage
+            .write()
+            .unwrap()
+            .process_published_block(&published_block)
+            .unwrap();
+
+        let guard = storage.read().unwrap();
+        assert_eq!(guard.unconfirmed_pool.len(), 0);
+        assert_eq!(guard.reorg_pool.len(), 1);
+        assert!(
+            guard
+                .reorg_pool
+                .has_tx_with_excess_sig(&mined_spending_shared.body.kernels()[0].excess_sig)
+        );
+        assert!(
+            !guard
+                .reorg_pool
+                .has_tx_with_excess_sig(&conflicting_double_spend.body.kernels()[0].excess_sig)
+        );
     }
 }

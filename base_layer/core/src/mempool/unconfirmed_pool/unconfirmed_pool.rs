@@ -1930,6 +1930,19 @@ impl UnconfirmedPool {
         &mut self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
+        let (mut published, discarded) =
+            self.remove_published_and_discard_deprecated_transactions_split(published_block)?;
+        published.extend(discarded);
+        Ok(published)
+    }
+
+    /// Remove all published transactions and conflicting/deprecated transactions from the `UnconfirmedPool`,
+    /// returning `(published_transactions, discarded_transactions)` separately so that only transactions actually
+    /// included in `published_block` are moved into the `ReorgPool`.
+    pub fn remove_published_and_discard_deprecated_transactions_split(
+        &mut self,
+        published_block: &Block,
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<Arc<Transaction>>), UnconfirmedPoolError> {
         trace!(
             target: LOG_TARGET,
             "Searching for transactions to remove from unconfirmed pool in block {} ({})",
@@ -1937,8 +1950,28 @@ impl UnconfirmedPool {
             published_block.header.hash()
         );
 
+        let published_kernel_sigs = published_block
+            .body
+            .kernels()
+            .iter()
+            .map(|k| k.excess_sig.get_signature())
+            .collect::<HashSet<_>>();
+        let published_block_hash_set = published_block
+            .body
+            .inputs()
+            .iter()
+            .map(|i| i.output_hash())
+            .collect::<HashSet<_>>();
+        let published_output_hashes = published_block
+            .body
+            .outputs()
+            .iter()
+            .map(|o| o.hash())
+            .collect::<HashSet<_>>();
+
         let mut to_remove;
-        let mut removed_transactions;
+        let mut published_transactions = Vec::new();
+        let mut discarded_transactions = Vec::new();
         {
             // Remove all transactions that contain the kernels found in this block
             let timer = Instant::now();
@@ -1952,7 +1985,7 @@ impl UnconfirmedPool {
                 .copied()
                 .collect::<Vec<_>>();
 
-            removed_transactions = to_remove
+            let kernel_matched = to_remove
                 .iter()
                 .filter_map(|key| match self.remove_transaction(*key) {
                     Err(e) => Some(Err(e)),
@@ -1960,6 +1993,26 @@ impl UnconfirmedPool {
                     Ok(None) => None,
                 })
                 .collect::<Result<Vec<_>, _>>()?;
+            for tx in kernel_matched {
+                let is_fully_published = !tx.body.kernels().is_empty() &&
+                    tx.body
+                        .kernels()
+                        .iter()
+                        .all(|k| published_kernel_sigs.contains(k.excess_sig.get_signature())) &&
+                    tx.body
+                        .inputs()
+                        .iter()
+                        .all(|i| published_block_hash_set.contains(&i.output_hash())) &&
+                    tx.body
+                        .outputs()
+                        .iter()
+                        .all(|o| published_output_hashes.contains(&o.hash()));
+                if is_fully_published {
+                    published_transactions.push(tx);
+                } else {
+                    discarded_transactions.push(tx);
+                }
+            }
             debug!(
                 target: LOG_TARGET,
                 "Found {} transactions with matching kernel sigs from unconfirmed pool in {:.2?}",
@@ -1973,12 +2026,6 @@ impl UnconfirmedPool {
         {
             // Remove all transactions that contain the inputs found in this block
             let timer = Instant::now();
-            let published_block_hash_set = published_block
-                .body
-                .inputs()
-                .iter()
-                .map(|i| i.output_hash())
-                .collect::<HashSet<_>>();
 
             to_remove.extend(
                 self.tx_by_key
@@ -1987,7 +2034,7 @@ impl UnconfirmedPool {
                     .map(|(key, _)| *key),
             );
 
-            removed_transactions.extend(
+            discarded_transactions.extend(
                 to_remove
                     .iter()
                     .filter_map(|key| match self.remove_transaction(*key) {
@@ -2020,7 +2067,7 @@ impl UnconfirmedPool {
                     .copied(),
             );
 
-            removed_transactions.extend(
+            discarded_transactions.extend(
                 to_remove
                     .iter()
                     .filter_map(|key| match self.remove_transaction(*key) {
@@ -2038,10 +2085,10 @@ impl UnconfirmedPool {
             );
         }
 
-        removed_transactions.extend(self.remove_by_commitments_and_kernel_excesses(published_block)?);
-        removed_transactions.extend(self.remove_by_validator_node_keys(published_block)?);
+        discarded_transactions.extend(self.remove_by_commitments_and_kernel_excesses(published_block)?);
+        discarded_transactions.extend(self.remove_by_validator_node_keys(published_block)?);
 
-        Ok(removed_transactions)
+        Ok((published_transactions, discarded_transactions))
     }
 
     /// Removes every pool transaction that registers or exits a validator node `published_block` registers or exits
