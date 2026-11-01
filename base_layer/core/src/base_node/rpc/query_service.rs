@@ -244,8 +244,8 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     .saturating_sub(SYNC_UTXOS_SPEND_TIP_SAFETY_LIMIT),
             })?
             .hash();
-        let next_header_to_request;
-        let mut has_next_page = true;
+        let mut next_header_to_request;
+        let has_next_page;
         loop {
             let current_header_hash = current_header.hash();
             trace!(
@@ -350,6 +350,14 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 {
                     // special edge case where the first block is also the last block we can send, so we just send it as
                     // is, partial
+                    let next_height = current_header.height.saturating_add(1);
+                    let next_header = self
+                        .db
+                        .fetch_header(next_height)
+                        .await?
+                        .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
+                    next_header_to_request = next_header.hash().to_vec();
+                    has_next_page = false;
                     break;
                 }
                 while !utxos.is_empty() &&
@@ -364,8 +372,13 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             }
             let next_height = current_header.height.saturating_add(1);
             if next_height > end_height {
-                next_header_to_request = current_header.hash().to_vec();
-                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                let next_header = self
+                    .db
+                    .fetch_header(next_height)
+                    .await?
+                    .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
+                next_header_to_request = next_header.hash().to_vec();
+                has_next_page = false;
                 break; // Stop if we reach the end height
             }
             current_header = self

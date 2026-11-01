@@ -145,6 +145,10 @@ where
                         retry_limit: self.retry_limit,
                         error: e.to_string(),
                     });
+                    if self.retry_limit > 0 && self.num_retries >= self.retry_limit {
+                        return Err(e);
+                    }
+                    self.num_retries = self.num_retries.saturating_add(1);
                     // Wait a bit of time otherwise we spam the node with requests, but do not hold the shutdown drain
                     // for it
                     tokio::select! {
@@ -631,6 +635,10 @@ where
                 }
                 starting_header_vec = response.next_header_to_scan;
             }
+            if stopped_by_shutdown {
+                break;
+            }
+
             // We need to update the last one
             if let Some(scanned_block) = prev_scanned_block.clone() {
                 self.resources
@@ -639,10 +647,6 @@ where
                 if last_saved_hash != Some(scanned_block.header_hash) {
                     self.resources.db.save_scanned_block(scanned_block)?;
                 }
-            }
-
-            if stopped_by_shutdown {
-                break;
             }
 
             if starting_header_vec.is_empty() {

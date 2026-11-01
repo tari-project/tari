@@ -191,6 +191,12 @@ impl DhtDiscoveryService {
                          '{public_key:#.5}'",
                         discovery_msg.public_key.to_hex()
                     );
+                    self.inflight_discoveries
+                        .insert(discovery_msg.nonce, DiscoveryRequestState {
+                            public_key,
+                            reply_tx,
+                            start_ts,
+                        });
                     if let Ok(responder) = CommsPublicKey::from_canonical_bytes(&discovery_msg.public_key) {
                         self.dht
                             .ban_peer(
@@ -222,7 +228,7 @@ impl DhtDiscoveryService {
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
-                            if !reply_tx.is_closed() {
+                            if !request.reply_tx.is_closed() {
                                 let _result = request.reply_tx.send(Ok(peer.clone()));
                             }
                         }
@@ -472,5 +478,9 @@ mod test {
             request => panic!("unexpected request {request}"),
         }
         assert!(dht_rx.try_recv().is_err());
+        assert!(
+            service.inflight_discoveries.contains_key(&123),
+            "legitimate inflight request must be preserved when a mismatched response arrives"
+        );
     }
 }
