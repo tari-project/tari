@@ -141,10 +141,7 @@ impl InnerService {
         let tip = self.get_chain_tip().await?;
         json_response(
             StatusCode::OK,
-            &json_rpc_success(
-                req["id"].get("id").map(|v| v.as_i64()).unwrap_or_default(),
-                json!({ "count": tip.height, "status": "OK" }),
-            ),
+            &json_rpc_success(req["id"].as_i64(), json!({ "count": tip.height, "status": "OK" })),
         )
     }
 
@@ -228,7 +225,7 @@ impl InnerService {
             &key_manager,
             &script_key_id,
             &self.wallet_payment_address,
-            false, // stealth_payment
+            true, // stealth_payment
             constants,
             self.range_proof_type,
             MemoField::new_open(vec![], TxType::Coinbase).expect("empty user-data should always be valid"),
@@ -415,31 +412,29 @@ impl InnerService {
             .map_err(|_| XmrigProxyError::InvalidRequest("bad nonce slice".to_string()))?;
         let nonce = u64::from_be_bytes(nonce_bytes);
 
-        // Look up the stored block template
-        let mut block = match self.block_templates.take(&mining_hash).await {
-            Some(b) => b,
-            None => {
-                let hash_hex = hex::encode(mining_hash);
-                warn!(
-                    target: LOG_TARGET,
-                    "No block template found for mining hash {hash_hex} - possible duplicate submission"
-                );
-                return json_response(
-                    StatusCode::OK,
-                    &json_rpc_error(req["id"].as_i64(), -1, "Block template not found or already submitted"),
-                );
-            },
+        // Look up the stored block template and submit to the base node without evicting until submission succeeds
+        let mut handler = self.node_service.clone();
+        let Some((block_height, submit_res)) = self
+            .block_templates
+            .submit_with(&mining_hash, nonce, |block| async move {
+                let block_height = block.header.height;
+                info!(target: LOG_TARGET, "Submitting block #{block_height} with nonce={nonce} to base node");
+                handler.submit_block(block).await
+            })
+            .await
+        else {
+            let hash_hex = hex::encode(mining_hash);
+            warn!(
+                target: LOG_TARGET,
+                "No block template found for mining hash {hash_hex} - possible duplicate submission"
+            );
+            return json_response(
+                StatusCode::OK,
+                &json_rpc_error(req["id"].as_i64(), -1, "Block template not found or already submitted"),
+            );
         };
 
-        // Update the nonce in the block header
-        block.header.nonce = nonce;
-
-        let block_height = block.header.height;
-        info!(target: LOG_TARGET, "Submitting block #{block_height} with nonce={nonce} to base node");
-
-        // Submit to the base node via LocalNodeCommsInterface
-        let mut handler = self.node_service.clone();
-        match handler.submit_block(block).await {
+        match submit_res {
             Ok(block_hash) => {
                 let block_hash_hex = hex::encode(block_hash);
                 info!(target: LOG_TARGET, "Block #{block_height} accepted, hash={block_hash_hex}");
