@@ -259,7 +259,9 @@ use tari_transaction_components::transaction_components::memo_field::TxType;
 /// merge mined with Monero. It needs to be replaced with a more general solution in the future.
 pub fn calculate_aux_chain_merkle_root(hashes: AuxChainHashes) -> Result<(monero::Hash, u32), MmProxyError> {
     if hashes.len() > 1 {
-        unimplemented!("Multiple aux chains for Monero is not supported yet, only Tari.");
+        return Err(MmProxyError::ConversionError(
+            "Multiple aux chains for Monero is not supported yet, only Tari.".to_string(),
+        ));
     }
     Ok((
         *hashes.first().ok_or(MmProxyError::MissingDataError(
