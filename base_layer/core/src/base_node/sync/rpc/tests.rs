@@ -604,6 +604,46 @@ mod sync_utxos {
             .collect::<Vec<_>>();
         assert_eq!(streamed, expected);
     }
+
+    #[tokio::test]
+    async fn it_sends_conflict_when_reorg_replaces_end_header_mid_stream() {
+        let (service, db, rpc_request_mock) = setup();
+        let (names, chain) = create_chain_longer_than_a_header_chunk(&db);
+        let first_block = chain.get(names.first().unwrap()).unwrap().clone();
+        let last_block = chain.get(names.last().unwrap()).unwrap().clone();
+        let fork_anchor = chain.get("B100").unwrap().clone();
+
+        let msg = SyncUtxosRequest {
+            start_header_hash: first_block.hash().to_vec(),
+            end_header_hash: last_block.hash().to_vec(),
+        };
+        let req = rpc_request_mock.request_with_context(Default::default(), msg);
+        let mut streaming = service.sync_utxos(req).await.unwrap().into_inner();
+
+        let first_item = streaming.recv().await.unwrap().unwrap();
+        assert!(first_item.txo.is_some());
+
+        let (fork_names, fork) = create_chained_blocks(
+            &db,
+            block_specs!(
+                ["F101->GB"],
+                ["F102->F101"],
+                ["F103->F102"],
+                ["F104->F103"],
+                ["F105->F104"],
+                ["F106->F105"]
+            ),
+            fork_anchor,
+        );
+        for name in &fork_names {
+            db.add_block(fork.get(name).unwrap().to_arc_block()).unwrap();
+        }
+
+        let remaining = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+        let last_result = remaining.last().expect("stream must emit conflict error");
+        let err = last_result.as_ref().unwrap_err();
+        unpack_enum!(RpcStatusCode::Conflict = err.as_status_code());
+    }
 }
 
 mod sync_kernels {
