@@ -153,6 +153,15 @@ impl OnConnect {
 
         match self.sync_peers(conn.clone()).await {
             Ok(_) => {},
+            Err(NetworkDiscoveryError::RpcError(err)) if err.is_handshake_unavailable() => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to peer sync from `{}` (handshake unavailable): {}",
+                    conn.peer_node_id(),
+                    err
+                );
+                self.mark_sync_failed(conn.peer_node_id().clone(), Instant::now());
+            },
             Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
                 warn!(target: LOG_TARGET, "{err}. Banning peer.");
                 if let Err(err) = self

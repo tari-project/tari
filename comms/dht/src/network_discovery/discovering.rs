@@ -513,7 +513,11 @@ pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSev
         NetworkDiscoveryError::DuplicatePeerReceived |
         NetworkDiscoveryError::TooManyPeersReceived |
         NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
-        NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcError(rpc_err)
+            if !rpc_err.is_handshake_unavailable() && rpc_err.is_caused_by_server() =>
+        {
+            Some(OffenceSeverity::High)
+        },
         NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
         // Other errors - no banning needed
         NetworkDiscoveryError::RpcStatus(_) |
