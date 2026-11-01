@@ -71,6 +71,9 @@ impl FromStr for DnsNameServer {
             .next()
             .ok_or_else(|| anyhow!("failed to parse DNS name server 'addr'"))?;
         if addr == "system" {
+            if split.next().is_some() {
+                return Err(anyhow!("system DNS name server cannot include a dns_name suffix"));
+            }
             return Ok(Self::System);
         }
         let dns_name = split.next().unwrap_or("");
@@ -121,5 +124,6 @@ mod test {
 
         let parsed = DnsNameServer::System.to_string().parse::<DnsNameServer>().unwrap();
         assert_eq!(parsed, DnsNameServer::System);
+        assert!("system/cloudflare-dns.com".parse::<DnsNameServer>().is_err());
     }
 }
