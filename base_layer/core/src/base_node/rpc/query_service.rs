@@ -1149,4 +1149,130 @@ mod tests {
         assert_eq!(response.utxos[0].spent_in_header, None);
         assert_eq!(response.utxos[0].spent_timestamp, None);
     }
+
+    #[tokio::test]
+    async fn fetch_utxos_oversized_first_block_advances_next_header_and_stops_paging() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        // Block "2" contains both a coinbase output and transaction outputs/inputs, so with max_utxo_chunk_size = 1
+        // it spans multiple chunks and exceeds limit = 1 on the very first block of the page.
+        let block_2 = chain.get_block_and_smt_by_name("2").unwrap();
+        let block_3 = chain.get_block_and_smt_by_name("3").unwrap();
+        let mut service = Service::new(
+            chain.db().clone().into(),
+            make_state_machine_handle(),
+            make_mempool_handle(),
+        );
+        service.max_utxo_chunk_size = 1;
+
+        let resp = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: block_2.hash().to_vec(),
+                limit: 1,
+                page: 0,
+                exclude_spent: false,
+                exclude_inputs: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos on oversized first block should succeed");
+
+        assert!(
+            resp.blocks.len() > 1,
+            "expected all chunks of oversized first block to be returned"
+        );
+        assert!(
+            resp.blocks
+                .iter()
+                .all(|b| b.height == block_2.height() && b.header_hash == block_2.hash().to_vec()),
+            "all returned chunks must belong to block 2"
+        );
+        assert_eq!(
+            resp.next_header_to_scan,
+            block_3.hash().to_vec(),
+            "next_header_to_scan must advance to block 3 instead of repeating block 2"
+        );
+        assert!(
+            !resp.has_next_page,
+            "has_next_page must be false so the client starts a fresh request at next_header_to_scan"
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_utxos_at_hundred_block_boundary_sets_next_header_and_stops_paging() {
+        use tari_transaction_components::transaction_components::RangeProofType;
+
+        use crate::test_helpers::{BlockSpec, blockchain::TestBlockchain, create_consensus_rules};
+
+        // Build a 101-block chain (heights 0..=101) so the 100-block batch boundary (end_height = 100) lies strictly
+        // below the tip (height 101).
+        let mut chain = TestBlockchain::create(create_consensus_rules())
+            .with_coinbase_range_proof_type(RangeProofType::RevealedValue);
+        for i in 1..=101 {
+            let name: &'static str = Box::leak(format!("B{i}").into_boxed_str());
+            chain
+                .add_next_tip(BlockSpec::new().with_name(name).finish())
+                .expect("append block");
+        }
+
+        let service = Service::new(
+            chain.db().clone().into(),
+            make_state_machine_handle(),
+            make_mempool_handle(),
+        );
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+        let header_95 = service.db().fetch_header(95).await.unwrap().unwrap();
+        let header_101 = service.db().fetch_header(101).await.unwrap().unwrap();
+
+        // Case 1: Starting at height 95 with limit 10, page 0 reaches height 100 where next_height (101) > end_height
+        // (100).
+        let resp_from_95 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: header_95.hash().to_vec(),
+                limit: 10,
+                page: 0,
+                exclude_spent: false,
+                exclude_inputs: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos crossing height 100 should succeed");
+
+        let heights_from_95: Vec<u64> = resp_from_95.blocks.iter().map(|b| b.height).collect();
+        assert_eq!(heights_from_95, (95..=100).collect::<Vec<_>>());
+        assert_eq!(
+            resp_from_95.next_header_to_scan,
+            header_101.hash().to_vec(),
+            "next_header_to_scan must point to height 101 at the 100-block boundary"
+        );
+        assert!(
+            !resp_from_95.has_next_page,
+            "has_next_page must be false when stopping at end_height = 100"
+        );
+
+        // Case 2: Paginating from genesis with limit 10 on page 10 starts at height 100 and immediately hits
+        // next_height (101) > end_height (100).
+        let resp_page_10 = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: genesis.hash().to_vec(),
+                limit: 10,
+                page: 10,
+                exclude_spent: false,
+                exclude_inputs: false,
+                version: 0,
+            })
+            .await
+            .expect("fetch_utxos page 10 at height 100 should succeed");
+
+        assert_eq!(resp_page_10.blocks.len(), 1);
+        assert_eq!(resp_page_10.blocks[0].height, 100);
+        assert_eq!(
+            resp_page_10.next_header_to_scan,
+            header_101.hash().to_vec(),
+            "next_header_to_scan must point to height 101"
+        );
+        assert!(
+            !resp_page_10.has_next_page,
+            "has_next_page must be false on the final page of the 100-block window"
+        );
+    }
 }

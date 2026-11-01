@@ -1005,12 +1005,68 @@ where F: Future<Output = Result<T, anyhow::Error>> {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::seeds::{
-        cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
-        seed_words::get_birthday_from_unix_epoch_in_seconds,
+    #![allow(clippy::indexing_slicing)]
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
     };
 
-    use super::is_birthday_in_the_future;
+    use async_trait::async_trait;
+    use futures::StreamExt;
+    use minotari_node_wallet_client::BaseNodeWalletClient;
+    use tari_common_types::{
+        seeds::{cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH, seed_words::get_birthday_from_unix_epoch_in_seconds},
+        tari_address::TariAddress,
+        transaction::TxId,
+        types::{CompressedCommitment, FixedHash},
+    };
+    use tari_service_framework::reply_channel;
+    use tari_shutdown::{Shutdown, ShutdownSignal};
+    use tari_transaction_components::{
+        MicroMinotari,
+        key_manager::RecoveryProvenance,
+        rpc::models::{
+            self,
+            BlockHeader,
+            BlockUtxoInfo,
+            FeePerGramStat,
+            GenerateBurnOutputProofResponse,
+            GetUtxosByBlockResponse,
+            GetUtxosDeletedInfoResponse,
+            GetUtxosMinedInfoResponse,
+            MinimalUtxoSyncInfo,
+            SyncUtxosByBlockResponseV0,
+            TxSubmissionResponse,
+        },
+        test_helpers::{TestParams, UtxoTestParams},
+        transaction_components::{Transaction, TransactionOutput, WalletOutput},
+    };
+    use tari_transaction_key_manager::legacy_key_manager::{MemoryKeyManager, create_new_random_key_manager};
+    use tari_utilities::{ByteArray, SafePassword};
+    use tokio::sync::{broadcast, mpsc};
+    use url::Url;
+
+    use super::{UtxoScannerTask, is_birthday_in_the_future};
+    use crate::{
+        client::http_client_factory::HttpClientFactory,
+        output_manager_service::handle::{
+            OutputManagerHandle,
+            OutputManagerRequest,
+            OutputManagerResponse,
+            RecoveredOutput,
+        },
+        storage::{
+            database::WalletDatabase,
+            sqlite_db::wallet::WalletSqliteDatabase,
+            sqlite_utilities::run_migration_and_create_sqlite_memory_connection,
+        },
+        transaction_service::handle::{
+            TransactionServiceHandle,
+            TransactionServiceRequest,
+            TransactionServiceResponse,
+        },
+        utxo_scanner_service::{service::UtxoScannerResources, uxto_scanner_service_builder::UtxoScannerMode},
+    };
 
     #[test]
     fn a_birthday_after_now_is_in_the_future() {
@@ -1020,5 +1076,335 @@ mod test {
         assert!(is_birthday_in_the_future(101, now));
         assert!(is_birthday_in_the_future(u16::MAX, now));
         assert_eq!(get_birthday_from_unix_epoch_in_seconds(100, 0), now);
+    }
+
+    #[derive(Clone)]
+    struct MockMultiChunkClient {
+        block_1_hash: FixedHash,
+        chunk_1_output: MinimalUtxoSyncInfo,
+        chunk_2_output: MinimalUtxoSyncInfo,
+        full_block_outputs: Vec<TransactionOutput>,
+        trigger_shutdown_after_chunk_1: Arc<AtomicBool>,
+        shutdown_trigger: Arc<std::sync::Mutex<Option<Shutdown>>>,
+    }
+
+    #[async_trait]
+    impl BaseNodeWalletClient for MockMultiChunkClient {
+        async fn get_address(&self) -> String {
+            "mock://node".to_string()
+        }
+
+        async fn is_online(&self) -> bool {
+            true
+        }
+
+        async fn get_tip_info(&self) -> Result<models::TipInfoResponse, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn get_header_by_height(&self, _height: u64) -> Result<Option<BlockHeader>, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn get_height_at_time(&self, _epoch_time: u64) -> Result<u64, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn get_utxos_by_block(&self, header_hash: Vec<u8>) -> Result<GetUtxosByBlockResponse, anyhow::Error> {
+            Ok(GetUtxosByBlockResponse {
+                header_hash,
+                height: 1,
+                outputs: self.full_block_outputs.clone(),
+                mined_timestamp: 1_700_000_000,
+            })
+        }
+
+        async fn sync_utxos_by_block(
+            &self,
+            start_header_hash: Vec<u8>,
+            _shutdown: ShutdownSignal,
+        ) -> Result<mpsc::Receiver<Result<SyncUtxosByBlockResponseV0, anyhow::Error>>, anyhow::Error> {
+            assert_eq!(start_header_hash, self.block_1_hash.to_vec());
+            let (tx, rx) = mpsc::channel(1);
+            let block_hash_vec = self.block_1_hash.to_vec();
+            let chunk_1 = BlockUtxoInfo {
+                height: 1,
+                header_hash: block_hash_vec.clone(),
+                outputs: vec![self.chunk_1_output.clone()],
+                inputs: vec![],
+                mined_timestamp: 1_700_000_000,
+            };
+            let chunk_2 = BlockUtxoInfo {
+                height: 1,
+                header_hash: block_hash_vec,
+                outputs: vec![self.chunk_2_output.clone()],
+                inputs: vec![],
+                mined_timestamp: 1_700_000_000,
+            };
+            let interrupt = self.trigger_shutdown_after_chunk_1.swap(false, Ordering::SeqCst);
+            let shutdown_trigger = self.shutdown_trigger.clone();
+
+            tokio::spawn(async move {
+                if interrupt {
+                    // Send the first chunk of block 1, then trigger shutdown before the second chunk is delivered.
+                    let _ = tx
+                        .send(Ok(SyncUtxosByBlockResponseV0 {
+                            blocks: vec![chunk_1],
+                            has_next_page: true,
+                            next_header_to_scan: vec![],
+                        }))
+                        .await;
+                    if let Some(shutdown) = shutdown_trigger.lock().unwrap().take() {
+                        shutdown.trigger();
+                    }
+                    // Keep the sender open briefly until scan_utxos_to_tip observes the shutdown signal on its next
+                    // page recv.
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                } else {
+                    // Deliver both chunks of block 1 cleanly.
+                    let _ = tx
+                        .send(Ok(SyncUtxosByBlockResponseV0 {
+                            blocks: vec![chunk_1],
+                            has_next_page: true,
+                            next_header_to_scan: vec![],
+                        }))
+                        .await;
+                    let _ = tx
+                        .send(Ok(SyncUtxosByBlockResponseV0 {
+                            blocks: vec![chunk_2],
+                            has_next_page: false,
+                            next_header_to_scan: vec![],
+                        }))
+                        .await;
+                }
+            });
+
+            Ok(rx)
+        }
+
+        async fn get_last_request_latency(&self) -> Option<std::time::Duration> {
+            None
+        }
+
+        async fn get_utxos_mined_info(
+            &self,
+            _hashes: Vec<Vec<u8>>,
+            _version: u32,
+        ) -> Result<GetUtxosMinedInfoResponse, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn query_deleted_utxos(
+            &self,
+            _hashes: Vec<Vec<u8>>,
+            _must_include_header: Vec<u8>,
+        ) -> Result<GetUtxosDeletedInfoResponse, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn transaction_query(
+            &self,
+            _excess_sig_nonce: Vec<u8>,
+            _excess_sig_sig: Vec<u8>,
+        ) -> Result<models::TxQueryResponse, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn get_mempool_fee_per_gram_stats(&self, _count: u64) -> Result<FeePerGramStat, anyhow::Error> {
+            unimplemented!()
+        }
+
+        async fn get_burn_output_proof(
+            &self,
+            _commitment: &CompressedCommitment,
+        ) -> Result<GenerateBurnOutputProofResponse, anyhow::Error> {
+            unimplemented!()
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockClientFactory {
+        client: MockMultiChunkClient,
+    }
+
+    impl HttpClientFactory for MockClientFactory {
+        type Client = MockMultiChunkClient;
+
+        fn new(_node_url: Url, _seed_url: Url) -> Self {
+            unimplemented!()
+        }
+
+        fn create_http_client(&self) -> Self::Client {
+            self.client.clone()
+        }
+    }
+
+    fn minimal_sync_info(output: &TransactionOutput) -> MinimalUtxoSyncInfo {
+        MinimalUtxoSyncInfo {
+            output_hash: output.hash().to_vec(),
+            commitment: output.commitment.as_bytes().to_vec(),
+            encrypted_data: output.encrypted_data.as_bytes().to_vec(),
+            sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
+        }
+    }
+
+    fn spawn_mock_wallet_services(
+        owned_wallet_output: WalletOutput,
+        owned_tx_output: TransactionOutput,
+    ) -> (OutputManagerHandle<MemoryKeyManager>, TransactionServiceHandle) {
+        let (oms_tx, mut oms_rx) = reply_channel::unbounded();
+        let (oms_event_tx, _) = broadcast::channel(16);
+        let oms_handle = OutputManagerHandle::new(oms_tx, oms_event_tx);
+
+        let owned_hash = owned_tx_output.hash();
+        tokio::spawn(async move {
+            while let Some(req_ctx) = oms_rx.next().await {
+                let (req, reply_tx) = req_ctx.split();
+                let res = match req {
+                    OutputManagerRequest::ScanOutputs(_) | OutputManagerRequest::ScanOutputsForMultisig(_) => {
+                        Ok(OutputManagerResponse::ScanOutputs(vec![]))
+                    },
+                    OutputManagerRequest::ScanForRecoverableOutputs(outputs) => {
+                        let recovered = outputs
+                            .iter()
+                            .filter(|o| o.hash() == owned_hash)
+                            .map(|_| RecoveredOutput {
+                                output: owned_wallet_output.clone(),
+                                hash: owned_hash,
+                                provenance: RecoveryProvenance::DiffieHellman,
+                            })
+                            .collect();
+                        Ok(OutputManagerResponse::RewoundOutputs(recovered))
+                    },
+                    other => panic!("unexpected OutputManagerRequest: {other}"),
+                };
+                let _ = reply_tx.send(res);
+            }
+        });
+
+        let (ts_tx, mut ts_rx) = reply_channel::unbounded();
+        let (ts_event_tx, _) = broadcast::channel(16);
+        let ts_handle = TransactionServiceHandle::new(ts_tx, ts_event_tx);
+
+        tokio::spawn(async move {
+            while let Some(req_ctx) = ts_rx.next().await {
+                let (req, reply_tx) = req_ctx.split();
+                let res = match req {
+                    TransactionServiceRequest::ImportUtxoWithStatus { .. } => {
+                        Ok(TransactionServiceResponse::UtxoImported(TxId::from(1u64)))
+                    },
+                    other => panic!("unexpected TransactionServiceRequest: {other}"),
+                };
+                let _ = reply_tx.send(res);
+            }
+        });
+
+        (oms_handle, ts_handle)
+    }
+
+    #[tokio::test]
+    async fn shutdown_mid_multi_chunk_block_does_not_persist_partial_block_and_recovers_on_restart() {
+        let connection = run_migration_and_create_sqlite_memory_connection().unwrap();
+        let db =
+            WalletDatabase::new(WalletSqliteDatabase::new(connection, SafePassword::from("test-passphrase")).unwrap());
+
+        let key_manager = create_new_random_key_manager().await.unwrap();
+        let other_key_manager = create_new_random_key_manager().await.unwrap();
+
+        // Chunk 1 contains an output belonging to another wallet; chunk 2 contains an output belonging to our wallet.
+        let unowned_wallet_output = TestParams::new(&other_key_manager)
+            .create_output(
+                UtxoTestParams::with_value(MicroMinotari::from(1_000)),
+                &other_key_manager,
+            )
+            .unwrap();
+        let unowned_tx_output = unowned_wallet_output.to_transaction_output().unwrap();
+
+        let expected_amount = MicroMinotari::from(42_000);
+        let owned_wallet_output = TestParams::new(&key_manager)
+            .create_output(UtxoTestParams::with_value(expected_amount), &key_manager)
+            .unwrap();
+        let owned_tx_output = owned_wallet_output.to_transaction_output().unwrap();
+
+        let block_1_hash = FixedHash::from([0x11u8; 32]);
+        let shutdown_run_1 = Shutdown::new();
+        let shutdown_signal_run_1 = shutdown_run_1.to_signal();
+
+        let client = MockMultiChunkClient {
+            block_1_hash,
+            chunk_1_output: minimal_sync_info(&unowned_tx_output),
+            chunk_2_output: minimal_sync_info(&owned_tx_output),
+            full_block_outputs: vec![unowned_tx_output.clone(), owned_tx_output.clone()],
+            trigger_shutdown_after_chunk_1: Arc::new(AtomicBool::new(true)),
+            shutdown_trigger: Arc::new(std::sync::Mutex::new(Some(shutdown_run_1))),
+        };
+        let (oms_handle, ts_handle) = spawn_mock_wallet_services(owned_wallet_output, owned_tx_output);
+        let resources = UtxoScannerResources {
+            db: db.clone(),
+            output_manager_service: oms_handle,
+            transaction_service: ts_handle,
+            one_sided_tari_address: TariAddress::default(),
+            birthday_offset: 0,
+            client_factory: MockClientFactory { client: client.clone() },
+        };
+        let (event_tx, _) = broadcast::channel(16);
+
+        // Run 1: Shutdown triggers right after chunk 1 of block 1 is processed.
+        let mut task_run_1 = UtxoScannerTask {
+            resources: resources.clone(),
+            event_sender: event_tx.clone(),
+            retry_limit: 0,
+            num_retries: 0,
+            mode: UtxoScannerMode::Scanning,
+            shutdown_signal: shutdown_signal_run_1,
+            birthday_offset: 0,
+            key_manager: key_manager.clone(),
+        };
+        let res_run_1 = task_run_1
+            .scan_utxos_to_tip(&client, block_1_hash, 1, block_1_hash)
+            .await
+            .expect("interrupted scan_utxos_to_tip should return Ok");
+
+        assert_eq!(res_run_1.total_num_recovered, 0);
+        assert!(
+            db.get_scanned_blocks().unwrap().is_empty(),
+            "partially scanned multi-chunk block must not be saved as scanned on shutdown"
+        );
+
+        // Run 2: Restart with a fresh shutdown signal; block 1 is rescanned from the beginning and the owned output in
+        // chunk 2 is recovered and imported.
+        let shutdown_run_2 = Shutdown::new();
+        let mut task_run_2 = UtxoScannerTask {
+            resources,
+            event_sender: event_tx,
+            retry_limit: 0,
+            num_retries: 0,
+            mode: UtxoScannerMode::Scanning,
+            shutdown_signal: shutdown_run_2.to_signal(),
+            birthday_offset: 0,
+            key_manager,
+        };
+        let res_run_2 = task_run_2
+            .scan_utxos_to_tip(&client, block_1_hash, 1, block_1_hash)
+            .await
+            .expect("restarted scan_utxos_to_tip should succeed");
+
+        assert_eq!(
+            res_run_2.total_num_recovered, 1,
+            "owned output in chunk 2 must be recovered on restart"
+        );
+        assert_eq!(res_run_2.total_value_recovered, expected_amount);
+        let scanned_blocks = db.get_scanned_blocks().unwrap();
+        assert_eq!(scanned_blocks.len(), 1);
+        assert_eq!(scanned_blocks[0].height, 1);
+        assert_eq!(scanned_blocks[0].header_hash, block_1_hash);
     }
 }
