@@ -63,7 +63,6 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
     shutdown_signal: ShutdownSignal,
 }
 
-#[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
     TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity, TKeyManagerInterface>
 where
@@ -209,11 +208,22 @@ where
                 state_changed = true;
             }
             for unmined_tx in &unmined {
-                debug!(
-                    target: LOG_TARGET,
-                    "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
-                );
-                self.update_transaction_as_unmined(unmined_tx.tx_id, unmined_tx.status)?;
+                if matches!(
+                    unmined_tx.status,
+                    LegacyTransactionStatus::MinedUnconfirmed |
+                        LegacyTransactionStatus::MinedConfirmed |
+                        LegacyTransactionStatus::OneSidedUnconfirmed |
+                        LegacyTransactionStatus::OneSidedConfirmed |
+                        LegacyTransactionStatus::CoinbaseUnconfirmed |
+                        LegacyTransactionStatus::CoinbaseConfirmed
+                ) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
+                    );
+                    self.update_transaction_as_unmined(unmined_tx.tx_id, unmined_tx.status)?;
+                    state_changed = true;
+                }
             }
         }
 
@@ -345,7 +355,7 @@ where
             self.operation_id
         );
 
-        let tip_mined_timestamp = 0;
+        let _tip_mined_timestamp = 0;
         for (sig, unconfirmed_tx) in batch_signatures {
             let response = base_node_client
                 .transaction_query(
@@ -467,11 +477,19 @@ where
         tx_id: TxId,
         status: LegacyTransactionStatus,
     ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
+        // `set_transaction_as_unmined` atomically updates the status in a single DB transaction (preserving
+        // `OneSidedUnconfirmed`, `CoinbaseNotInBlockChain` along with its `mined_height`, `Imported`, `Broadcast`, or
+        // `Completed`).
         self.db
             .set_transaction_as_unmined(tx_id)
             .for_protocol(self.operation_id)?;
 
-        self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
+        if !status.is_faux() &&
+            !status.is_coinbase() &&
+            !matches!(status, LegacyTransactionStatus::Imported | LegacyTransactionStatus::Completed)
+        {
+            self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
+        }
         Ok(())
     }
 }

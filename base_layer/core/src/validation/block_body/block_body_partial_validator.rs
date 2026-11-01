@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use log::error;
 use tari_common_types::types::FixedHash;
@@ -29,7 +29,16 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::ConsensusConstants,
     transaction_components::{TransactionInput, TransactionOutput},
-    validation::helpers::{check_tari_encrypted_data_byte_size, check_tari_script_byte_size},
+    validation::helpers::{
+        check_burn_claim_script,
+        check_covenant_length,
+        check_permitted_output_types,
+        check_permitted_range_proof_types,
+        check_range_proof_presence,
+        check_sidechain_data_rules,
+        check_tari_encrypted_data_byte_size,
+        check_tari_script_byte_size,
+    },
 };
 use tari_utilities::hex::Hex;
 
@@ -142,7 +151,14 @@ fn validate_kernels_in_db<B: BlockchainBackend>(
     db: &B,
     header_hash: FixedHash,
 ) -> Result<(), ValidationError> {
+    let mut seen_excess_sigs = HashSet::with_capacity(body.kernels().len());
     for kernel in body.kernels() {
+        if !seen_excess_sigs.insert(&kernel.excess_sig) {
+            return Err(ValidationError::DuplicateKernelError(format!(
+                "Duplicate kernel excess {} in block body",
+                kernel.excess.to_hex(),
+            )));
+        }
         match db.fetch_kernel_by_excess_sig(&kernel.excess_sig)? {
             Some((_kernel, hash)) if hash != header_hash => {
                 let msg = format!(
@@ -286,9 +302,16 @@ fn validate_output_hashes_in_db<B: BlockchainBackend>(
 fn check_outputs(constants: &ConsensusConstants, body: &AggregateBody, height: u64) -> Result<(), ValidationError> {
     let max_script_size = constants.max_script_byte_size();
     let max_encrypted_data_size = constants.max_extra_encrypted_data_byte_size();
+    let max_covenant_len = constants.max_covenant_length();
     for output in body.outputs() {
+        check_permitted_output_types(constants, output)?;
         check_tari_script_byte_size(&output.script, max_script_size)?;
         check_tari_encrypted_data_byte_size(&output.encrypted_data, max_encrypted_data_size)?;
+        check_covenant_length(&output.covenant, max_covenant_len)?;
+        check_permitted_range_proof_types(constants, output)?;
+        check_range_proof_presence(output)?;
+        check_sidechain_data_rules(output)?;
+        check_burn_claim_script(output)?;
 
         // Ootle checks
         if let Some(sidechain_features) = output.features.sidechain_feature.as_ref() {
