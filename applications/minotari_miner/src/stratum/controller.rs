@@ -309,6 +309,12 @@ impl Controller {
         debug!(target: LOG_TARGET_FILE, "Received response with id: {}", loggable(&res.id));
         match res.result {
             Some(result) => {
+                if let Some(error) = res.error {
+                    self.pool_errors = self.pool_errors.saturating_add(1);
+                    self.submits.answered(true);
+                    self.handle_error(error);
+                    return Ok(());
+                }
                 let login_response = types::login_response::LoginResponse::deserialize(&result);
                 if let Ok(st) = login_response {
                     let fits = request_id_fits(&st.id);
@@ -343,11 +349,16 @@ impl Controller {
                 };
                 let submit_response = types::submit_response::SubmitResponse::deserialize(&result);
                 if let Ok(st) = submit_response {
-                    self.submits.answered(st.error.is_some());
-                    if let Some(error) = st.error {
-                        self.handle_error(error);
+                    if st.status.as_deref() == Some("KEEPALIVED") {
+                        return Ok(());
                     }
-                    return Ok(());
+                    if st.error.is_some() || st.status.as_deref() == Some("OK") {
+                        self.submits.answered(st.error.is_some());
+                        if let Some(error) = st.error {
+                            self.handle_error(error);
+                        }
+                        return Ok(());
+                    }
                 }
                 let rpc_response = types::rpc_response::RpcResponse::deserialize(&result);
                 if let Ok(st) = rpc_response {
@@ -366,6 +377,9 @@ impl Controller {
                 }
                 self.pool_errors = self.pool_errors.saturating_add(1);
                 self.submits.answered(true);
+                if let Some(error) = res.error {
+                    self.handle_error(error);
+                }
             },
         }
         Ok(())
@@ -900,5 +914,69 @@ mod tests {
     fn job_method_is_a_request() {
         let v = json!({"id": "3", "jsonrpc": "2.0", "method": "job", "params": {}});
         assert_eq!(classify_message(&v), MessageKind::Request);
+    }
+
+    #[test]
+    fn keepalive_response_does_not_consume_pending_submit() {
+        let (miner_tx, _miner_rx) = mpsc::sync_channel(1);
+        let mut controller = Controller::new("127.0.0.1:1", None, None, None, miner_tx).unwrap();
+        controller.submits.submitted();
+        assert_eq!(controller.submits.pending, 1);
+
+        let keepalive_res = types::rpc_response::RpcResponse {
+            id: "1".to_string(),
+            result: Some(json!({"status": "KEEPALIVED"})),
+            error: None,
+        };
+        controller.handle_response(keepalive_res).unwrap();
+        assert_eq!(
+            (
+                controller.submits.pending,
+                controller.submits.accepted,
+                controller.submits.rejected
+            ),
+            (1, 0, 0)
+        );
+
+        let submit_ok_res = types::rpc_response::RpcResponse {
+            id: "1".to_string(),
+            result: Some(json!({"status": "OK"})),
+            error: None,
+        };
+        controller.handle_response(submit_ok_res).unwrap();
+        assert_eq!(
+            (
+                controller.submits.pending,
+                controller.submits.accepted,
+                controller.submits.rejected
+            ),
+            (0, 1, 0)
+        );
+    }
+
+    #[test]
+    fn top_level_rpc_error_marks_pending_submit_rejected() {
+        let (miner_tx, _miner_rx) = mpsc::sync_channel(1);
+        let mut controller = Controller::new("127.0.0.1:1", Some("user".to_string()), None, None, miner_tx).unwrap();
+        controller.submits.submitted();
+
+        let err_res = types::rpc_response::RpcResponse {
+            id: "1".to_string(),
+            result: None,
+            error: Some(types::rpc_error::RpcError {
+                code: 21,
+                message: "Low difficulty share".to_string(),
+            }),
+        };
+        controller.handle_response(err_res).unwrap();
+        assert_eq!(
+            (
+                controller.submits.pending,
+                controller.submits.accepted,
+                controller.submits.rejected,
+                controller.pool_errors
+            ),
+            (0, 0, 1, 1)
+        );
     }
 }
