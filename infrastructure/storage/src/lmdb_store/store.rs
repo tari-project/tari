@@ -227,7 +227,10 @@ impl LMDBBuilder {
             builder.set_mapsize(self.env_config.init_size_bytes)?;
             builder.set_maxdbs(max_dbs)?;
             // Always include NOTLS flag since we know that we're using this with tokio
-            let flags = self.env_flags | open::NOTLS;
+            let mut flags = self.env_flags | open::NOTLS;
+            if self.env_config.no_read_ahead() {
+                flags |= open::NOREADAHEAD;
+            }
             let env = builder.open(&path, flags, 0o600)?;
             // SAFETY: no transactions can be open at this point
             LMDBStore::resize_if_required(&env, &self.env_config, None)?;
@@ -658,7 +661,7 @@ impl LMDBDatabase {
 
     /// Returns if the database is empty.
     pub fn is_empty(&self) -> Result<bool, LMDBError> {
-        self.get_stats().map(|s| s.entries > 0)
+        self.get_stats().map(|s| s.entries == 0)
     }
 
     /// Returns the total number of entries in this database.
@@ -876,5 +879,7 @@ mod test {
             .build()
             .unwrap();
         assert_eq!(store.databases.len(), 2);
+        let db1 = store.get_handle("db1").unwrap();
+        assert!(db1.is_empty().unwrap());
     }
 }
