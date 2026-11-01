@@ -92,7 +92,7 @@ impl MessageSendStates {
 
     /// Wait for a certain percentage of successful sends
     pub async fn wait_percentage_success(self, threshold_perc: f32) -> (Vec<MessageTag>, Vec<MessageTag>) {
-        if self.is_empty() {
+        if self.is_empty() || threshold_perc <= 0.0 {
             return (Vec::new(), Vec::new());
         }
         let total = self.len();
@@ -135,13 +135,13 @@ impl MessageSendStates {
     /// Wait function that accepts a predicate related to the count of successful sends
     async fn wait_timeout_if_count<P>(
         self,
-        mut timeout: Duration,
+        timeout: Duration,
         predicate: P,
     ) -> TimeoutResult<(Vec<MessageTag>, Vec<MessageTag>)>
     where
         P: Fn(usize) -> bool,
     {
-        if self.is_empty() {
+        if self.is_empty() || (predicate)(0) {
             return TimeoutResult::Ok((Vec::new(), Vec::new()));
         }
 
@@ -151,7 +151,10 @@ impl MessageSendStates {
         let mut succeeded = Vec::new();
         let mut failed = Vec::new();
         loop {
-            match time::timeout(timeout, unordered.next()).await {
+            let Some(remaining) = timeout.checked_sub(start.elapsed()) else {
+                break TimeoutResult::Timeout((succeeded, failed));
+            };
+            match time::timeout(remaining, unordered.next()).await {
                 Ok(Some((tag, result))) => {
                     match result {
                         Ok(_) => {
@@ -163,7 +166,7 @@ impl MessageSendStates {
                         },
                     }
                     if (predicate)(count) {
-                        break TimeoutResult::Timeout((succeeded, failed));
+                        break TimeoutResult::Ok((succeeded, failed));
                     }
                 },
                 Ok(None) => {
@@ -172,13 +175,6 @@ impl MessageSendStates {
                 Err(_) => {
                     break TimeoutResult::Timeout((succeeded, failed));
                 },
-            }
-
-            match timeout.checked_sub(start.elapsed()) {
-                Some(ts) => {
-                    timeout = ts;
-                },
-                None => break TimeoutResult::Timeout((succeeded, failed)),
             }
         }
     }
@@ -207,10 +203,7 @@ impl MessageSendStates {
             "MessageSendStates::wait_single called with multiple message send states"
         );
 
-        state
-            .reply_rx
-            .await
-            .expect("oneshot should never be canceled before sending")
+        state.reply_rx.await.unwrap_or(Err(SendFailReason::Dropped))
     }
 
     pub fn into_futures_unordered(
@@ -221,9 +214,7 @@ impl MessageSendStates {
             unordered.push(async move {
                 match state.reply_rx.await {
                     Ok(result) => (state.tag, result),
-                    // Somewhere the reply sender was dropped without first sending a reply
-                    // This should never happen because we if the wrapped oneshot is dropped it sends an Err(())
-                    Err(_) => unreachable!(),
+                    Err(_) => (state.tag, Err(SendFailReason::Dropped)),
                 }
             });
         });
@@ -362,5 +353,65 @@ mod test {
         let (success, failed) = states.wait_all().await;
         assert_eq!(success.len(), 6);
         assert_eq!(failed.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn wait_timeout_if_count_returns_ok_and_tracks_remaining_budget_from_start() {
+        let (state1, mut tx1) = create_send_state();
+        let (state2, mut tx2) = create_send_state();
+        let (state3, mut tx3) = create_send_state();
+        let states = MessageSendStates::from(vec![state1, state2, state3]);
+
+        tokio::spawn(async move {
+            time::sleep(Duration::from_millis(60)).await;
+            tx1.reply_success();
+            time::sleep(Duration::from_millis(60)).await;
+            tx2.reply_success();
+            time::sleep(Duration::from_millis(60)).await;
+            tx3.reply_success();
+        });
+
+        // Total elapsed is ~180ms; with a 250ms budget this succeeds, whereas subtracting cumulative
+        // start.elapsed() from the remaining timeout on each step (250 - 60 - 120 - 180 < 0) would time out.
+        let res = states
+            .wait_timeout_if_count(Duration::from_millis(250), |count| count >= 3)
+            .await;
+        match res {
+            TimeoutResult::Ok((succeeded, failed)) => {
+                assert_eq!(succeeded.len(), 3);
+                assert!(failed.is_empty());
+            },
+            TimeoutResult::Timeout((succeeded, _)) => {
+                panic!("expected TimeoutResult::Ok with 3 successes, got Timeout with {succeeded:?}");
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn zero_thresholds_and_dropped_raw_senders_do_not_block_or_panic() {
+        let (state, _tx) = create_send_state();
+        let states = MessageSendStates::from(vec![state]);
+        let (succeeded, failed) = states.wait_n_timeout(Duration::from_millis(50), 0).await;
+        assert!(succeeded.is_empty());
+        assert!(failed.is_empty());
+
+        let (state, _tx) = create_send_state();
+        let states = MessageSendStates::from(vec![state]);
+        let (succeeded, failed) = states.wait_percentage_success(0.0).await;
+        assert!(succeeded.is_empty());
+        assert!(failed.is_empty());
+
+        // Raw oneshot::Sender dropped without sending should map to SendFailReason::Dropped instead of panicking
+        let (raw_tx, raw_rx) = oneshot::channel();
+        drop(raw_tx);
+        let single = MessageSendStates::from(vec![MessageSendState::new(MessageTag::new(), raw_rx)]);
+        assert_eq!(single.wait_single_result().await, Err(SendFailReason::Dropped));
+
+        let (raw_tx, raw_rx) = oneshot::channel();
+        drop(raw_tx);
+        let multi = MessageSendStates::from(vec![MessageSendState::new(MessageTag::new(), raw_rx)]);
+        let (succeeded, failed) = multi.wait_all().await;
+        assert!(succeeded.is_empty());
+        assert_eq!(failed.len(), 1);
     }
 }
