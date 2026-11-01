@@ -3180,6 +3180,24 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Overwrites the excess signature index row of a kernel with bytes that do not decode.
+    #[cfg(test)]
+    pub(crate) fn write_undecodable_kernel_index_for_test(&self, excess_sig: &CompressedSignature) {
+        let txn = self.create_write_txn();
+        let mut key = Vec::<u8>::new();
+        key.extend(excess_sig.get_compressed_public_nonce().as_bytes());
+        key.extend(excess_sig.get_signature().as_bytes());
+        txn.access()
+            .put(
+                &self.kernel_excess_sig_index,
+                key.as_slice(),
+                &[0xffu8],
+                lmdb_zero::put::Flags::empty(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
         LmdbTreeWriter::new(

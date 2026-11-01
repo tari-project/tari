@@ -545,8 +545,8 @@ fn print_failure_message(last_check_height: u64, current_height: u64, mode: Mode
         },
         Mode::LightAutocorrect | Mode::FullAutocorrect => {
             println!(
-                "[check-db] {mode}, blockchain was rewound to {last_check_height}. Node should automatically resync \
-                 from there."
+                "[check-db] {mode}, the autocorrect outcome is shown above. If the blockchain was rewound, the node \
+                 should automatically resync from there."
             );
         },
         Mode::AccDiff => {
