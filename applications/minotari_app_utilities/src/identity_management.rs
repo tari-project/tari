@@ -453,6 +453,7 @@ fn invalid_permissions_error(path: &Path, recreated: &str) -> ExitError {
 pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), IdentityError> {
     let json = json5::to_string(object)?;
     if let Some(p) = path.as_ref().parent() &&
+        !p.as_os_str().is_empty() &&
         !p.exists()
     {
         fs::create_dir_all(p)?;

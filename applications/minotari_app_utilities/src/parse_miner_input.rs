@@ -85,6 +85,8 @@ pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> 
             .with_prompt("Please enter 'base-node-grpc-address' ('quit' or 'exit' to quit) ")
             .default(default_address.clone())
             .interact()?;
+        // Remove leading and trailing whitespace before quit check and URI validation
+        address = address.trim().to_string();
         process_quit(&address)?;
         if address == default_address {
             info!(target: LOG_TARGET, "Assumed default base node address '{default_address}'");
@@ -93,8 +95,6 @@ pub fn prompt_for_base_node_address(network: Network, non_interactive: bool) -> 
             println!("  Error - base node address '{address}' not valid");
             continue;
         }
-        // Remove leading and trailing whitespace
-        address = address.trim().to_string();
         return Ok(address);
     }
 }
@@ -113,6 +113,8 @@ pub fn prompt_for_p2pool_address(non_interactive: bool) -> Result<String, ParseI
             .with_prompt("Please enter 'p2pool-grpc-address' ('quit' or 'exit' to quit) ")
             .default(default_address.clone())
             .interact()?;
+        // Remove leading and trailing whitespace before quit check and URI validation
+        address = address.trim().to_string();
         process_quit(&address)?;
         if address == default_address {
             info!(target: LOG_TARGET, "Assumed default p2pool address '{default_address}'");
@@ -121,8 +123,6 @@ pub fn prompt_for_p2pool_address(non_interactive: bool) -> Result<String, ParseI
             println!("  Error - p2pool address '{address}' not valid");
             continue;
         }
-        // Remove leading and trailing whitespace
-        address = address.trim().to_string();
         return Ok(address);
     }
 }
@@ -134,7 +134,7 @@ pub fn wallet_payment_address(
     non_interactive: bool,
 ) -> Result<TariAddress, ParseInputError> {
     // Verify config setting
-    match TariAddress::from_str(&config_wallet_payment_address) {
+    match TariAddress::from_str(config_wallet_payment_address.trim()) {
         Ok(address) => {
             if address == TariAddress::default() {
                 if non_interactive || !Term::stderr().is_term() {
@@ -180,7 +180,8 @@ pub fn wallet_payment_address(
 
 /// User requested quit
 pub fn process_quit(command: &str) -> Result<(), UserQuit> {
-    if command.to_uppercase() == "QUIT" || command.to_uppercase() == "EXIT" {
+    let trimmed = command.trim();
+    if trimmed.eq_ignore_ascii_case("quit") || trimmed.eq_ignore_ascii_case("exit") {
         return Err(UserQuit);
     }
     Ok(())
@@ -236,8 +237,10 @@ mod test {
     fn test_process_quit_returns_user_quit() {
         assert!(matches!(process_quit("quit"), Err(UserQuit)));
         assert!(matches!(process_quit("QUIT"), Err(UserQuit)));
+        assert!(matches!(process_quit("  quit  "), Err(UserQuit)));
         assert!(matches!(process_quit("exit"), Err(UserQuit)));
         assert!(matches!(process_quit("EXIT"), Err(UserQuit)));
+        assert!(matches!(process_quit(" exit\n"), Err(UserQuit)));
         assert!(process_quit("continue").is_ok());
         assert!(process_quit("").is_ok());
     }
