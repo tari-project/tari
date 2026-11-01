@@ -116,7 +116,9 @@ impl SqliteConnectionPool {
 
     /// True for `:memory:` and for shared-cache in-memory URIs (`file:NAME?mode=memory&cache=shared`).
     fn is_in_memory(&self) -> bool {
-        self.db_path == ":memory:" || self.db_path.contains("mode=memory")
+        self.db_path == ":memory:" ||
+            (self.db_path.starts_with("file:") &&
+                (self.db_path.contains("mode=memory") || self.db_path.starts_with("file::memory:")))
     }
 
     /// Create an sqlite connection pool managed by the pool connection manager
