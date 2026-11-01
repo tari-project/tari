@@ -27,24 +27,41 @@ use quote::quote;
 pub fn create_hashable_ordering(tokens: TokenStream) -> TokenStream {
     // Parse TokenStream into AST
     let ast: syn::DeriveInput = syn::parse(tokens).unwrap();
+    create_derive_hashable_ordering(ast).into()
+}
+
+pub fn create_derive_hashable_ordering(ast: syn::DeriveInput) -> proc_macro2::TokenStream {
     let name = &ast.ident;
-    let gen = quote! {
-         impl Ord for #name {
-            fn cmp(&self, other: &#name) -> Ordering {
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+    quote! {
+        impl #impl_generics ::std::cmp::Ord for #name #ty_generics #where_clause {
+            fn cmp(&self, other: &#name #ty_generics) -> ::std::cmp::Ordering {
                 self.hash().cmp(&other.hash())
             }
         }
-        impl PartialOrd for #name {
-            fn partial_cmp(&self, other: &#name) -> Option<Ordering> {
-                Some(self.cmp(other))
+        impl #impl_generics ::std::cmp::PartialOrd for #name #ty_generics #where_clause {
+            fn partial_cmp(&self, other: &#name #ty_generics) -> ::std::option::Option<::std::cmp::Ordering> {
+                ::std::option::Option::Some(self.cmp(other))
             }
         }
-        impl PartialEq for #name {
-            fn eq(&self, other: &#name) -> bool {
+        impl #impl_generics ::std::cmp::PartialEq for #name #ty_generics #where_clause {
+            fn eq(&self, other: &#name #ty_generics) -> bool {
                 self.hash() == other.hash()
             }
         }
-        impl Eq for #name {}
-    };
-    gen.into()
+        impl #impl_generics ::std::cmp::Eq for #name #ty_generics #where_clause {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hashable_ordering_uses_fully_qualified_ordering_and_generics() {
+        let input: syn::DeriveInput = syn::parse_str("struct Item<T>(T);").unwrap();
+        let tokens = create_derive_hashable_ordering(input).to_string();
+        assert!(tokens.contains(":: std :: cmp :: Ordering"));
+        assert!(tokens.contains("Item < T >"));
+    }
 }
