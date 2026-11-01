@@ -24,6 +24,7 @@ use std::fmt::Display;
 
 use crate::{FEATURE_LIST, Feature};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
     TestNet,
     NextNet,
@@ -43,7 +44,7 @@ impl Target {
         // The duplication of network names here isn't great but we're being lazy and non-exhaustive
         // regarding the endless testnet possibilities. This minor MainNet, StageNet, and NextNet
         // duplication allows us to leave the crate dependency free.
-        match value.to_lowercase().as_str() {
+        match value.trim().to_lowercase().as_str() {
             "mainnet" | "stagenet" => Target::MainNet,
             "nextnet" => Target::NextNet,
             _ => Target::TestNet,
@@ -63,17 +64,18 @@ impl Display for Target {
 
 // Identify the target network by
 // 1. Checking whether --config tari-network=xxx was passed in as a config flag to cargo (or from Cargo.toml)
-// 2. Checking the environment variable TARI_NETWORK is set
+// 2. Checking the environment variable TARI_TARGET_NETWORK or TARI_NETWORK is set
 // 3. default to testnet (should be mainnet after launch)
 pub fn identify_target() -> Target {
     check_envar("CARGO_CFG_TARI_TARGET_NETWORK")
         .or_else(|| check_envar("TARI_TARGET_NETWORK"))
+        .or_else(|| check_envar("TARI_NETWORK"))
         .unwrap_or(Target::TestNet)
 }
 
 pub fn check_envar(envar: &str) -> Option<Target> {
     match std::env::var(envar) {
-        Ok(s) => Some(Target::from_network_str(s.to_lowercase().as_str())),
+        Ok(s) if !s.trim().is_empty() => Some(Target::from_network_str(&s)),
         _ => None,
     }
 }
@@ -118,7 +120,9 @@ pub fn activate_feature(feature: &Feature) {
 
 pub fn build_features() {
     // Make sure to rebuild when the network changes
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARI_TARGET_NETWORK");
     println!("cargo:rerun-if-env-changed=TARI_TARGET_NETWORK");
+    println!("cargo:rerun-if-env-changed=TARI_NETWORK");
 
     let target = identify_target();
     println!("cargo:rustc-cfg=tari_target_network_{}", target.as_key_str());
@@ -128,5 +132,47 @@ pub fn build_features() {
     if let Err(e) = resolve_features(target) {
         eprintln!("Could not build Tari due to issues with the feature flag set.\n{e}");
         panic!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Status;
+
+    #[test]
+    fn from_network_str_trims_and_matches_case_insensitively() {
+        assert_eq!(Target::from_network_str("  MainNet "), Target::MainNet);
+        assert_eq!(Target::from_network_str("STAGENET"), Target::MainNet);
+        assert_eq!(Target::from_network_str(" nextnet\n"), Target::NextNet);
+        assert_eq!(Target::from_network_str("esmeralda"), Target::TestNet);
+    }
+
+    #[test]
+    fn check_envar_ignores_empty_or_whitespace_values() {
+        let key = "TARI_FEATURES_TEST_EMPTY_ENV";
+        // SAFETY: test-scoped unique environment variable name
+        unsafe {
+            std::env::set_var(key, "   ");
+        }
+        assert_eq!(check_envar(key), None);
+        // SAFETY: test-scoped unique environment variable name
+        unsafe {
+            std::env::set_var(key, " mainnet ");
+        }
+        assert_eq!(check_envar(key), Some(Target::MainNet));
+        // SAFETY: test-scoped unique environment variable name
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn feature_attr_name_normalizes_non_identifier_chars() {
+        let feature = Feature::new("my-experimental feature", "desc", Some(42), Status::Testing);
+        assert_eq!(feature.attr_name(), "tari_feature_my_experimental_feature");
+        assert!(feature.is_active_in_testnet());
+        assert!(feature.is_active_in_nextnet());
+        assert!(!feature.is_active());
     }
 }
