@@ -134,7 +134,31 @@ impl FromStr for SeedPeer {
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
             .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{e}"))?];
+        let addresses = match Multiaddr::from_str(part_b) {
+            Ok(addr) => {
+                if addr.is_empty() {
+                    return Err(anyhow!("Empty address in seed peer string"));
+                }
+                vec![addr]
+            },
+            Err(first_err) => {
+                let addrs = part_b
+                    .split("::")
+                    .map(|part| {
+                        let addr =
+                            Multiaddr::from_str(part).map_err(|_| anyhow!("Invalid address string:{first_err}"))?;
+                        if addr.is_empty() {
+                            return Err(anyhow!("Empty address in seed peer string"));
+                        }
+                        Ok(addr)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                if addrs.is_empty() {
+                    return Err(anyhow!("Empty address in seed peer string"));
+                }
+                addrs
+            },
+        };
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -219,6 +243,22 @@ mod test {
         fn it_errors_invalid_address() {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/invalid/tcp/8000";
             SeedPeer::from_str(sample).unwrap_err();
+            let empty_addr = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::";
+            SeedPeer::from_str(empty_addr).unwrap_err();
+        }
+
+        #[test]
+        fn it_parses_multiple_addresses_and_ipv6() {
+            let multi = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
+                         ip4/127.0.0.1/tcp/8001";
+            let seed = SeedPeer::from_str(multi).unwrap();
+            assert_eq!(seed.addresses.len(), 2);
+            assert_eq!(seed.to_string(), multi);
+
+            let ipv6 = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip6/::1/tcp/8000";
+            let seed_v6 = SeedPeer::from_str(ipv6).unwrap();
+            assert_eq!(seed_v6.addresses.len(), 1);
+            assert_eq!(seed_v6.addresses[0].to_string(), "/ip6/::1/tcp/8000");
         }
     }
 
