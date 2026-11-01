@@ -220,12 +220,16 @@ impl MempoolStorage {
                     Err(AttemptFailure {
                         response,
                         tip_dependent,
+                        covenant_height_dependent,
                         ban_reason,
                     }) => {
                         // A failure that depends on the tip (e.g. a mempool parent that was mined and removed from the
                         // pool, or a height check) may be due to the chain changing during validation, so it is only
                         // final if the chain did not change. Any other failure is final.
-                        if tip_dependent && chain_changed(storage, validator.as_ref(), generation, tip.as_ref())? {
+                        if tip_dependent &&
+                            chain_changed(storage, validator.as_ref(), generation, tip.as_ref())? &&
+                            (!covenant_height_dependent || covenants_pass_at_current_tip(validator.as_ref(), &tx))
+                        {
                             debug!(
                                 target: LOG_TARGET,
                                 "Chain changed while validating transaction {} (attempt {}/{}), which failed with {}, \
@@ -604,23 +608,33 @@ impl MempoolStorage {
     }
 
     /// Records the outcome of re-checking height-reading transactions for a block on top of `prev_hash` (see
-    /// [height_check]): the ones that `passed` are not checked again for that block, and the ones that `failed` are
-    /// dropped with every pool transaction that spends their outputs (not moved to the reorg pool, and not banned).
-    /// Returns the number of transactions dropped.
+    /// [height_check]), read from the pool when the mempool was at `generation` (see
+    /// [`MempoolStorage::chain_generation`]). If the mempool has processed a chain change since, nothing is recorded:
+    /// the pool may have been revalidated in the meantime. Otherwise the ones that `passed` are not checked again for
+    /// that block, and if `prev_hash` is the block the mempool last processed, the ones that `failed` are dropped with
+    /// every pool transaction that spends their outputs (not moved to the reorg pool, and not banned). Returns the
+    /// number of transactions dropped, or `None` if the failures were not dropped.
     pub fn record_height_checks(
         &mut self,
+        generation: u64,
         passed: &[TransactionKey],
         failed: &[TransactionKey],
         prev_hash: HashOutput,
-    ) -> Result<usize, MempoolError> {
+    ) -> Result<Option<usize>, MempoolError> {
+        if self.chain_generation != generation {
+            return Ok(None);
+        }
         for key in passed {
             self.unconfirmed_pool.record_height_check_passed(*key, prev_hash);
+        }
+        if self.last_seen_hash != prev_hash {
+            return Ok(None);
         }
         let mut removed = 0usize;
         for key in failed {
             removed = removed.saturating_add(self.unconfirmed_pool.remove_transaction_and_descendants(*key)?);
         }
-        Ok(removed)
+        Ok(Some(removed))
     }
 
     pub fn clear_transactions_for_failed_block(&mut self, failed_block: &Block) -> Result<(), MempoolError> {
@@ -934,6 +948,9 @@ struct AttemptFailure {
     /// Whether the failure may be due to the chain tip the transaction was validated against, so that it may be
     /// retried if the chain changed during validation
     tip_dependent: bool,
+    /// Whether it is a failure of covenants that read the height: it is only retried if they pass at the new tip (see
+    /// `covenants_pass_at_current_tip`)
+    covenant_height_dependent: bool,
     /// Set if the failure is a final internal consistency failure
     ban_reason: Option<BanReason>,
 }
@@ -950,6 +967,18 @@ fn validate_attempt(
 ) -> Result<Result<ValidatedTransaction, AttemptFailure>, MempoolError> {
     let failure = |error: ValidationError| AttemptFailure {
         tip_dependent: is_tip_dependent(&error),
+        covenant_height_dependent: matches!(
+            error,
+            ValidationError::AggregatedBodyValidationError(
+                AggregatedBodyValidationError::Covenant {
+                    height_dependent: true,
+                    ..
+                } | AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                    height_dependent: true,
+                    ..
+                },
+            )
+        ),
         response: validation_error_to_response(error),
         ban_reason: None,
     };
@@ -964,6 +993,7 @@ fn validate_attempt(
             return Ok(Err(AttemptFailure {
                 response,
                 tip_dependent: true,
+                covenant_height_dependent: false,
                 ban_reason: None,
             }));
         }
@@ -980,6 +1010,7 @@ fn validate_attempt(
         Err(response) => Ok(Err(AttemptFailure {
             response,
             tip_dependent: false,
+            covenant_height_dependent: false,
             ban_reason: None,
         })),
     }
@@ -1048,6 +1079,16 @@ fn is_tip_dependent(error: &ValidationError) -> bool {
 /// Script errors only arrive wrapped in `AggregatedBodyValidationError::InputScript`, so they are not handled here
 fn is_tip_dependent_transaction_error(error: &TransactionError) -> bool {
     matches!(error, TransactionError::InputMaturity)
+}
+
+/// Whether the covenants of `tx` pass for the block after the current chain tip. Covenants are checked before scripts,
+/// so anyone can spend another's output whose covenant reads the height with made-up script data; such a covenant
+/// failure is only worth validating again if the covenants now pass. No crypto, and bounded by the covenant work limit.
+fn covenants_pass_at_current_tip(validator: &dyn TransactionValidator, tx: &Transaction) -> bool {
+    match validator.chain_metadata() {
+        Ok(Some(tip)) => validate_covenants(&tx.body, tip.best_block_height().saturating_add(1)).is_ok(),
+        _ => false,
+    }
 }
 
 /// Returns true if the chain may have changed since an attempt started with the mempool at `generation` and the
@@ -1177,8 +1218,13 @@ mod test {
     use tari_script::{ScriptError, TariScript, script};
     use tari_transaction_components::{
         MicroMinotari,
+        covenant,
         key_manager::KeyManager,
-        transaction_components::{SpentOutput, WalletOutput},
+        transaction_components::{
+            SpentOutput,
+            WalletOutput,
+            covenants::{Covenant, CovenantError},
+        },
         tx,
     };
 
@@ -1579,6 +1625,99 @@ mod test {
         });
     }
 
+    /// A copy of `tx` whose first input's covenant is replaced by `covenant`
+    fn with_input_covenant(tx: &Transaction, covenant: Covenant) -> Arc<Transaction> {
+        let mut inputs = tx.body.inputs().clone();
+        match &mut inputs[0].spent_output {
+            SpentOutput::OutputData { covenant: c, .. } => *c = covenant,
+            SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+        }
+        Arc::new(Transaction::new(
+            inputs,
+            tx.body.outputs().clone(),
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ))
+    }
+
+    #[test]
+    fn height_dependent_covenant_failure_is_retried_only_if_the_covenants_pass_at_the_new_tip() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validated_at = FixedHash::from([1u8; 32]);
+        let new_tip = FixedHash::from([2u8; 32]);
+        let covenant_error = || -> ValidationError {
+            AggregatedBodyValidationError::Covenant {
+                error: CovenantError::NoMatchingOutputs,
+                height_dependent: true,
+            }
+            .into()
+        };
+        // The scripted tips are at height 1, so the new tip's next block is at height 2
+        for (covenant, retried) in [
+            (covenant!(absolute_height(@uint(100))).unwrap(), false),
+            (covenant!(absolute_height(@uint(2))).unwrap(), true),
+        ] {
+            let tx = with_input_covenant(&create_tx(&key_manager), covenant);
+            let validator = ScriptedValidator::new(vec![], vec![validated_at, new_tip]);
+            validator.chain_changes.store(1, Ordering::SeqCst);
+            *validator.internal_results.lock().unwrap() = vec![Err(covenant_error()), Ok(())].into();
+            let storage = create_storage(&validator);
+            let response = MempoolStorage::insert_unlocked(&storage, tx).unwrap();
+            if retried {
+                assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+                assert_eq!(validator.internal_calls(), 2);
+            } else {
+                assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+                assert_eq!(validator.internal_calls(), 1);
+            }
+        }
+    }
+
+    #[test]
+    fn height_check_results_are_recorded_only_if_the_chain_did_not_change() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![]);
+        let storage = create_storage(&validator);
+        let tx = with_input_script(&create_tx(&key_manager), script!(CheckHeightVerify(2) Nop).unwrap());
+        let tip = FixedHash::from([1u8; 32]);
+        let mut lock = storage.write().unwrap();
+        lock.unconfirmed_pool
+            .insert(tx.clone(), None, &TransactionWeight::latest())
+            .unwrap();
+        lock.last_seen_hash = tip;
+        let generation = lock.chain_generation;
+        let (key, ..) = lock
+            .unconfirmed_pool
+            .height_reading_to_check(std::slice::from_ref(&tx), &tip)[0]
+            .clone();
+
+        // A chain change since the check was read: nothing is recorded
+        lock.chain_generation = generation.wrapping_add(1);
+        assert_eq!(lock.record_height_checks(generation, &[key], &[], tip).unwrap(), None);
+        assert_eq!(
+            lock.unconfirmed_pool
+                .height_reading_to_check(std::slice::from_ref(&tx), &tip)
+                .len(),
+            1
+        );
+        assert_eq!(lock.record_height_checks(generation, &[], &[key], tip).unwrap(), None);
+        assert_eq!(lock.unconfirmed_pool.len(), 1);
+        let generation = lock.chain_generation;
+
+        // Not on top of the mempool's tip: a failure is kept
+        let other = FixedHash::from([2u8; 32]);
+        assert_eq!(lock.record_height_checks(generation, &[], &[key], other).unwrap(), None);
+        assert_eq!(lock.unconfirmed_pool.len(), 1);
+
+        // Otherwise it is dropped
+        assert_eq!(
+            lock.record_height_checks(generation, &[], &[key], tip).unwrap(),
+            Some(1)
+        );
+        assert_eq!(lock.unconfirmed_pool.len(), 0);
+    }
+
     #[test]
     fn height_reading_transaction_is_rejected_if_its_validation_tip_is_unknown() {
         let key_manager = KeyManager::new_random().unwrap();
@@ -1666,8 +1805,6 @@ mod test {
 
     #[test]
     fn covenant_failure_is_tip_dependent_only_if_a_covenant_reads_the_height() {
-        use tari_transaction_components::transaction_components::covenants::CovenantError;
-
         let covenant = |height_dependent| -> ValidationError {
             AggregatedBodyValidationError::Covenant {
                 error: CovenantError::NoMatchingOutputs,

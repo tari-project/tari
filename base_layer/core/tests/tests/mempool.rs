@@ -2529,15 +2529,12 @@ async fn template_is_filled_after_selected_spends_fail_their_height_re_check() {
     assert!(ordinary_tx.calculate_weight(weighting).unwrap() <= spend_weight);
     let txs = mempool.retrieve(spend_weight, h + 1, *block_2.hash()).await.unwrap();
 
-    // Two selections dropped a spend each; the last left out the third, unchecked, and is filled
+    // Two selections left out a failing spend each; the last left out the third, unchecked, and is filled. The spends
+    // are kept, since the template is not on top of the block the mempool last processed.
     assert_eq!(txs, vec![Arc::new(ordinary_tx.clone())]);
-    let mut still_stored = 0;
     for spend in &spends {
-        if pool_status(&mempool, spend).await == TxStorageResponse::UnconfirmedPool {
-            still_stored += 1;
-        }
+        assert_eq!(pool_status(&mempool, spend).await, TxStorageResponse::UnconfirmedPool);
     }
-    assert_eq!(still_stored, 1);
     let block_3 = mine_block(&db, &rules, &key_manager, &block_2, vec![ordinary_tx]);
     assert_eq!(block_3.height(), h + 1);
 }
