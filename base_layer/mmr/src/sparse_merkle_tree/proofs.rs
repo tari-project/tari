@@ -14,7 +14,7 @@ use crate::sparse_merkle_tree::{
     SMTError,
     SparseMerkleTree,
     ValueHash,
-    bit_utils::{TraverseDirection, height_key},
+    bit_utils::{TraverseDirection, count_common_prefix, height_key},
 };
 
 /// An inclusion proof for a key-value pair in a sparse Merkle& tree.
@@ -205,7 +205,13 @@ impl<H: Digest<OutputSize = U32>> ExclusionProof<H> {
     /// empty, or the existing leaf node has a different key to the expected key.
     pub fn validate(&self, expected_key: &NodeKey, expected_root: &NodeHash) -> bool {
         let leaf_hash = match &self.leaf {
-            Some(leaf) => leaf.hash().clone(),
+            Some(leaf) => {
+                let computed = LeafNode::<H>::hash_value(leaf.key(), leaf.value());
+                if leaf.hash() != &computed || count_common_prefix(leaf.key(), expected_key) < self.siblings.len() {
+                    return false;
+                }
+                computed
+            },
             None => (EmptyNode {}).hash().clone(),
         };
         // If the proof is malformed, a root cannot be calculated and the proof cannot be valid
@@ -378,5 +384,10 @@ mod test {
         assert!(proof.validate(&NodeKey::from([0b0111_0001; 32]), tree.hash()));
         // The key 96 does exist..
         assert!(!proof.validate(&NodeKey::from([0b0110_0000; 32]), tree.hash()));
+
+        // A forged leaf whose key does not share the sibling-path prefix with expected_key must be rejected
+        let forged_branch_leaf = LeafNode::<Blake2b<U32>>::new(NodeKey::from([64u8; 32]), ValueHash::from([42u8; 32]));
+        let forged_proof = ExclusionProof::<Blake2b<U32>>::new(proof.siblings.clone(), Some(forged_branch_leaf));
+        assert!(!forged_proof.validate(&NodeKey::from([99u8; 32]), tree.hash()));
     }
 }
