@@ -189,15 +189,77 @@ where B: BlockchainBackend + 'static
                 break;
             }
 
-            let outputs_with_statuses = self
+            let end_header_hash = end_header.hash();
+            let outputs_with_statuses_res = self
                 .db
-                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_header.hash()))
+                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_header_hash))
                 .await
-                .rpc_status_internal_error(LOG_TARGET)?;
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET));
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
             }
+
+            let inputs_in_block_res = self
+                .db
+                .fetch_inputs_in_block(current_header_hash)
+                .await
+                .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+            if tx.is_closed() {
+                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
+                break;
+            }
+
+            // Look up all the spent outputs for this block in one call. Each entry is the instance this block's input
+            // spent, which is not necessarily the latest one. Blocks without inputs skip the call.
+            let mined_infos_res = match &inputs_in_block_res {
+                Ok(inputs_in_block) if !inputs_in_block.is_empty() => {
+                    let input_hashes = inputs_in_block
+                        .iter()
+                        .map(|input| input.output_hash())
+                        .collect::<Vec<_>>();
+                    let res = self
+                        .db
+                        .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
+                        .await
+                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                    if tx.is_closed() {
+                        debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
+                        break;
+                    }
+                    res
+                },
+                Ok(_) => Ok(Vec::new()),
+                Err(err) => Err(err.clone()),
+            };
+
+            let (header_at_height, latest_end_header) = self
+                .db
+                .fetch_header_pair(current_header.height, end_header.height)
+                .await
+                .rpc_status_internal_error(LOG_TARGET)?;
+            if !super::service::is_on_requested_chain(
+                &current_header_hash,
+                header_at_height.as_ref(),
+                latest_end_header.as_ref(),
+                &end_header_hash,
+            ) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Header #{} is no longer an ancestor of the requested end header #{} during TXO sync, \
+                     letting the sync peer '{}' know that the chain has changed.",
+                    current_header.height,
+                    end_header.height,
+                    self.peer_node_id
+                );
+                return Err(RpcStatus::conflict(
+                    "Reorg detected: the requested end block is no longer on the chain",
+                ));
+            }
+
+            let outputs_with_statuses = outputs_with_statuses_res?;
+            let inputs_in_block = inputs_in_block_res?;
+            let mined_infos = mined_infos_res?;
 
             let mut outputs = Vec::with_capacity(outputs_with_statuses.len());
             for (output, spent) in outputs_with_statuses {
@@ -235,37 +297,6 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 current_header_hash
             );
-
-            let inputs_in_block = self
-                .db
-                .fetch_inputs_in_block(current_header_hash)
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
-            if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                break;
-            }
-
-            // Look up all the spent outputs for this block in one call. Each entry is the instance this block's input
-            // spent, which is not necessarily the latest one. Blocks without inputs skip the call.
-            let mined_infos = if inputs_in_block.is_empty() {
-                Vec::new()
-            } else {
-                let input_hashes = inputs_in_block
-                    .iter()
-                    .map(|input| input.output_hash())
-                    .collect::<Vec<_>>();
-                let mined_infos = self
-                    .db
-                    .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
-                    .await
-                    .rpc_status_internal_error(LOG_TARGET)?;
-                if tx.is_closed() {
-                    debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                    break;
-                }
-                mined_infos
-            };
 
             let mut inputs = Vec::with_capacity(inputs_in_block.len());
             for (input, mined_info) in inputs_in_block.iter().zip(mined_infos) {

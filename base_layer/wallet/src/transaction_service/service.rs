@@ -2404,33 +2404,53 @@ where
                 payment_id.clone(),
             )
             .await?;
-        if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
-            let inputs = tx_builder.inputs();
-            for commitment in commitments {
-                if !inputs.iter().any(|input| input.output.commitment() == &commitment) {
-                    return Err(TransactionServiceError::OutputManagerError(
-                        OutputManagerError::BuildError(format!(
-                            "The required UTXO with commitment {} was not selected",
-                            commitment.to_hex()
-                        )),
-                    ));
+        let build_result: Result<_, TransactionServiceError> = async {
+            if let UtxoSelectionFilter::MustInclude { commitments } = selection_criteria.filter {
+                let inputs = tx_builder.inputs();
+                for commitment in commitments {
+                    if !inputs.iter().any(|input| input.output.commitment() == &commitment) {
+                        return Err(TransactionServiceError::OutputManagerError(
+                            OutputManagerError::BuildError(format!(
+                                "The required UTXO with commitment {} was not selected",
+                                commitment.to_hex()
+                            )),
+                        ));
+                    }
                 }
             }
+            let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
+            payment_id.set_fee(fee_estimate);
+
+            trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
+
+            tx_builder.add_stealth_recipient(
+                dest_address.clone(),
+                amount,
+                output_features.clone(),
+                payment_id.clone(),
+            )?;
+            tx_builder.with_memo(payment_id.clone());
+            tx_builder.reserve_sender_offset_keys(&[])?;
+            Ok(tx_builder.build()?)
         }
-        let fee_estimate = tx_builder.get_fee_estimate_without_change()?;
-        payment_id.set_fee(fee_estimate);
-
-        trace!(target: LOG_TARGET, "Finalized payment_id: {payment_id}");
-
-        tx_builder.add_stealth_recipient(
-            dest_address.clone(),
-            amount,
-            output_features.clone(),
-            payment_id.clone(),
-        )?;
-        tx_builder.with_memo(payment_id.clone());
-        tx_builder.reserve_sender_offset_keys(&[])?;
-        let finalized = tx_builder.build()?;
+        .await;
+        let finalized = match build_result {
+            Ok(finalized) => finalized,
+            Err(err) => {
+                if let Err(cancel_err) = self
+                    .resources
+                    .output_manager_service
+                    .cancel_pending_transaction(temp_tx_id)
+                    .await
+                {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to cancel encumbered outputs for temp_tx_id {temp_tx_id} after build error: {cancel_err:?}"
+                    );
+                }
+                return Err(err);
+            },
+        };
 
         // Finalize
 
@@ -4359,21 +4379,42 @@ where
             "Replace-by-fee: Creating replacement for transaction {tx_id} with total fee {fee} (weight: {weight_in_grams} grams, fee_per_gram: {fee_per_gram})"
         );
 
-        // Cancel the original transaction to free its inputs in the output manager before creating the replacement
-        self.cancel_transaction(tx_id, TxCancellationReason::UserCancelled)
-            .await;
+        // Release the original completed transaction's outputs in the output manager so its inputs can be re-selected
+        self.resources
+            .output_manager_service
+            .cancel_completed_transaction(tx_id)
+            .await?;
 
-        let new_tx_id = self
+        let new_tx_id = match self
             .send_one_sided_transaction(
                 destination,
                 original_amount,
-                UtxoSelectionCriteria::must_include(original_inputs),
+                UtxoSelectionCriteria::must_include(original_inputs.clone()),
                 OutputFeatures::default(),
                 fee_per_gram,
                 payment_id,
                 transaction_broadcast_join_handles,
             )
-            .await?;
+            .await
+        {
+            Ok(new_tx_id) => new_tx_id,
+            Err(err) => {
+                self.restore_cancelled_completed_transaction_outputs(tx_id, original_amount, original_inputs)
+                    .await;
+                return Err(err);
+            },
+        };
+
+        if let Err(e) = self
+            .resources
+            .db
+            .reject_completed_transaction(tx_id, TxCancellationReason::UserCancelled, None)
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to mark replaced transaction {tx_id} as cancelled after creating replacement {new_tx_id}: {e:?}"
+            );
+        }
 
         info!(
             target: LOG_TARGET,
@@ -4381,6 +4422,65 @@ where
         );
 
         Ok(new_tx_id)
+    }
+
+    async fn restore_cancelled_completed_transaction_outputs(
+        &mut self,
+        tx_id: TxId,
+        original_amount: MicroMinotari,
+        original_inputs: Vec<CompressedCommitment>,
+    ) {
+        if !original_inputs.is_empty() {
+            let restore_criteria = UtxoSelectionCriteria::specific(original_inputs);
+            let restore_amount = original_amount.max(MicroMinotari::from(1));
+            match self
+                .resources
+                .output_manager_service
+                .prepare_transaction_to_send(
+                    tx_id,
+                    restore_amount,
+                    restore_criteria,
+                    OutputFeatures::default(),
+                    MicroMinotari::zero(),
+                    push_pubkey_script(&Default::default()),
+                    Covenant::default(),
+                    MemoField::new_empty(),
+                )
+                .await
+            {
+                Ok(_) => {
+                    if let Err(confirm_err) = self
+                        .resources
+                        .output_manager_service
+                        .confirm_pending_transaction(tx_id, None, None)
+                        .await
+                    {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Failed to confirm restored input encumbrances for transaction {tx_id} after replace-by-fee failure: {confirm_err:?}"
+                        );
+                    }
+                },
+                Err(prepare_err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Failed to re-encumber inputs for transaction {tx_id} after replace-by-fee failure: {prepare_err:?}"
+                    );
+                },
+            }
+        }
+
+        if let Err(reinstate_err) = self
+            .resources
+            .output_manager_service
+            .reinstate_cancelled_inbound_transaction_outputs(tx_id)
+            .await
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Failed to reinstate cancelled change outputs for transaction {tx_id} after replace-by-fee failure: {reinstate_err:?}"
+            );
+        }
     }
 
     /// Spend all outputs from an unmined transaction to a given destination address    ///

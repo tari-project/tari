@@ -537,7 +537,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let mut current_height = start_header.height;
         let end_height = end_header.height;
-        let mut current_mmr_position = start_header.kernel_mmr_size;
+        let prev_kernel_mmr_size = if start_header.height == 0 {
+            0
+        } else {
+            db.fetch_header(start_header.height - 1)
+                .await
+                .rpc_status_internal_error(LOG_TARGET)?
+                .ok_or_else(|| RpcStatus::not_found("Previous header not found"))?
+                .kernel_mmr_size
+        };
+        let mut skip_in_first_block = usize::try_from(req.start.saturating_sub(prev_kernel_mmr_size)).unwrap_or(0);
+        let mut current_mmr_position = prev_kernel_mmr_size.saturating_add(skip_in_first_block as u64);
         let mut current_header_hash = start_header.hash();
 
         if current_height > end_height {
@@ -566,6 +576,33 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     break;
                 }
 
+                let (header_at_height, latest_end_header) = match db.fetch_header_pair(current_height, end_height).await
+                {
+                    Ok(headers) => headers,
+                    Err(err) => {
+                        let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
+                        break;
+                    },
+                };
+                if !is_on_requested_chain(
+                    &current_header_hash,
+                    header_at_height.as_ref(),
+                    latest_end_header.as_ref(),
+                    &hash,
+                ) {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Header #{current_height} is no longer an ancestor of the requested end header #{end_height} \
+                         during kernel sync, letting the sync peer {peer_node_id} know that the chain has changed."
+                    );
+                    let _result = tx
+                        .send(Err(RpcStatus::conflict(
+                            "Reorg detected: the requested end block is no longer on the chain",
+                        )))
+                        .await;
+                    break;
+                }
+
                 match res {
                     Ok(kernels) if kernels.is_empty() => {
                         let _result = tx
@@ -577,6 +614,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         break;
                     },
                     Ok(kernels) => {
+                        let skip = std::mem::take(&mut skip_in_first_block);
+                        let kernels: Vec<_> = kernels.into_iter().skip(skip).collect();
                         debug!(
                             target: LOG_TARGET,
                             "Streaming kernels {} to {}",

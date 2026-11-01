@@ -237,48 +237,53 @@ impl ValidatorNodeStore<'_, WriteTransaction<'_>> {
         min_epoch: VnEpoch,
         exit_node: &CompressedPublicKey,
     ) -> Result<(), ChainStorageError> {
-        let mut epoch = min_epoch;
         let sidechain_pk_bytes = sid_as_slice(sidechain_pk);
-        // Search through the epochs, from the min until we have no more records
-        let (exit_key, vn) = loop {
-            {
-                // This is to check if there are possibly more records for the next epoch - if not we exit early with an
-                // error. If we didnt do this, the loop would be endless if min_epoch/exit_node do not
-                // exist.
-                let mut cursor = self.exit_queue_read_cursor()?;
-                let epoch_prefix = create_exit_queue_prefix_key(sidechain_pk, epoch);
-                cursor.seek_range(&epoch_prefix)?;
+        let mut cursor = self.exit_queue_read_cursor()?;
+        let epoch_prefix = create_exit_queue_prefix_key(sidechain_pk, min_epoch);
+        cursor.seek_range(&epoch_prefix)?;
 
-                let key = cursor.next_key()?.ok_or_else(||
-                    // Not in this epoch, and nothing in subsequent recs
-                    ChainStorageError::ValueNotFound {
-                        entity: "Validator node (undo exit)",
-                        field: "public key (undo exit)",
-                        value: exit_node.to_string(),
-                    })?;
-                let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
-                let sidechain = sections
-                    .next()
+        let mut found = None;
+        while let Some(key) = cursor.next_key()? {
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let sidechain = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::undo_exit",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if sidechain != sidechain_pk_bytes {
+                break;
+            }
+            let _key_epoch = sections
+                .next_be_u64()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::undo_exit",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            let pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::undo_exit",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if pk == exit_node.as_bytes() {
+                let (_, vn) = cursor
+                    .current()?
                     .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
                         function: "ValidatorNodeStore::undo_exit",
-                        details: "Malformed exit queue key".to_string(),
+                        details: "Cursor is not at a valid position in undo_exit".to_string(),
                     })?;
-                if sidechain != sidechain_pk_bytes {
-                    return Err(ChainStorageError::ValueNotFound {
-                        entity: "Validator node (undo exit)",
-                        field: "public key (undo exit)",
-                        value: exit_node.to_string(),
-                    });
-                }
+                found = Some((key, vn));
+                break;
             }
+        }
+        drop(cursor);
 
-            let exit_key = create_exit_queue_key(sidechain_pk, epoch, exit_node);
-            let vn = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes_exit, &exit_key)?;
-            if let Some(vn) = vn {
-                break (exit_key, vn);
-            }
-            epoch = epoch.saturating_add(VnEpoch(1));
-        };
+        let (exit_key, vn) = found.ok_or_else(|| ChainStorageError::ValueNotFound {
+            entity: "Validator node (undo exit)",
+            field: "public key (undo exit)",
+            value: exit_node.to_string(),
+        })?;
 
         lmdb_delete(
             self.txn,
@@ -373,11 +378,52 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         end_epoch: VnEpoch,
     ) -> Result<bool, ChainStorageError> {
         let key = create_vn_key(sidechain_id, public_key);
-        let Some(vn) = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? else {
-            return Ok(false);
-        };
+        if let Some(vn) = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? &&
+            vn.registration_epoch <= end_epoch
+        {
+            return Ok(true);
+        }
 
-        Ok(vn.registration_epoch <= end_epoch)
+        let key = create_exit_queue_prefix_key(sidechain_id, end_epoch);
+        let mut cursor = self.exit_queue_read_cursor()?;
+        cursor.seek_range(&key)?;
+        let sidechain_bytes = sid_as_slice(sidechain_id);
+        while let Some(key) = cursor.next_key()? {
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let sidechain_pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::vn_exists",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if sidechain_pk != sidechain_bytes {
+                break;
+            }
+            let key_epoch = sections
+                .next_be_u64()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::vn_exists",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            let pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::vn_exists",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if pk != public_key.as_bytes() {
+                continue;
+            }
+            if key_epoch <= end_epoch.as_u64() {
+                return Ok(false);
+            }
+            let (_, v) = cursor
+                .current()?
+                .expect("Cursor is not at a valid position in vn_exists");
+            return Ok(v.registration_epoch <= end_epoch);
+        }
+
+        Ok(false)
     }
 
     /// Checks if the given validator node (by its public key and side chain ID)
@@ -389,65 +435,64 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
         end_epoch: VnEpoch,
     ) -> Result<bool, ChainStorageError> {
         let key = create_vn_key(sidechain_id, public_key);
-        match lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? {
-            Some(vn) => {
-                debug!(target: LOG_TARGET, "Found validator node in store: {} (activated: {}, end: {})", public_key, vn.activation_epoch, end_epoch);
-                Ok(vn.activation_epoch <= end_epoch)
-            },
-            None => {
-                debug!(target: LOG_TARGET, "Validator node not found in store: {public_key}, checking exit queue");
-                let key = create_exit_queue_prefix_key(sidechain_id, end_epoch);
-                let mut cursor = self.exit_queue_read_cursor()?;
-                cursor.seek_range(&key)?;
-                let sidechain_bytes = sid_as_slice(sidechain_id);
-                // TODO: This is O(n) where n is the number of validators in the exit queue for the sid at or after
-                // end_epoch.
-                while let Some(key) = cursor.next_key()? {
-                    let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
-                    let sidechain_pk = sections
-                        .next()
-                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                            function: "ValidatorNodeStore::is_vn_active",
-                            details: "Malformed exit queue key".to_string(),
-                        })?;
-                    if sidechain_pk != sidechain_bytes {
-                        break;
-                    }
-
-                    let key_epoch =
-                        sections
-                            .next_be_u64()
-                            .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                                function: "ValidatorNodeStore::is_vn_active",
-                                details: "Malformed exit queue key".to_string(),
-                            })?;
-
-                    let pk = sections
-                        .next()
-                        .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
-                            function: "ValidatorNodeStore::is_vn_active",
-                            details: "Malformed exit queue key".to_string(),
-                        })?;
-                    if pk != public_key.as_bytes() {
-                        continue;
-                    }
-                    if key_epoch <= end_epoch.as_u64() {
-                        debug!(target: LOG_TARGET, "Found validator node in exit queue (exit applied): {public_key} (exit: {key_epoch}, end: {end_epoch})");
-                        return Ok(false);
-                    }
-
-                    let (_, v) = cursor
-                        .current()?
-                        .expect("Cursor is not at a valid position in is_vn_active");
-
-                    debug!(target: LOG_TARGET, "Found validator node in exit queue: {public_key} (exit: {key_epoch}, end: {end_epoch})");
-                    return Ok(v.activation_epoch <= end_epoch);
-                }
-
-                debug!(target: LOG_TARGET, "Validator node not found in exit queue: {public_key}");
-                Ok(false)
-            },
+        if let Some(vn) = lmdb_get::<_, ValidatorNodeEntry>(self.txn, &self.db_validator_nodes, &key)? {
+            debug!(target: LOG_TARGET, "Found validator node in store: {} (activated: {}, end: {})", public_key, vn.activation_epoch, end_epoch);
+            if vn.activation_epoch <= end_epoch {
+                return Ok(true);
+            }
         }
+
+        debug!(target: LOG_TARGET, "Validator node not active in current store at {end_epoch}: {public_key}, checking exit queue");
+        let key = create_exit_queue_prefix_key(sidechain_id, end_epoch);
+        let mut cursor = self.exit_queue_read_cursor()?;
+        cursor.seek_range(&key)?;
+        let sidechain_bytes = sid_as_slice(sidechain_id);
+        // TODO: This is O(n) where n is the number of validators in the exit queue for the sid at or after
+        // end_epoch.
+        while let Some(key) = cursor.next_key()? {
+            let mut sections = key.section_iter(EXIT_QUEUE_KEY_SECTIONS);
+            let sidechain_pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::is_vn_active",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if sidechain_pk != sidechain_bytes {
+                break;
+            }
+
+            let key_epoch =
+                sections
+                    .next_be_u64()
+                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                        function: "ValidatorNodeStore::is_vn_active",
+                        details: "Malformed exit queue key".to_string(),
+                    })?;
+
+            let pk = sections
+                .next()
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::is_vn_active",
+                    details: "Malformed exit queue key".to_string(),
+                })?;
+            if pk != public_key.as_bytes() {
+                continue;
+            }
+            if key_epoch <= end_epoch.as_u64() {
+                debug!(target: LOG_TARGET, "Found validator node in exit queue (exit applied): {public_key} (exit: {key_epoch}, end: {end_epoch})");
+                return Ok(false);
+            }
+
+            let (_, v) = cursor
+                .current()?
+                .expect("Cursor is not at a valid position in is_vn_active");
+
+            debug!(target: LOG_TARGET, "Found validator node in exit queue: {public_key} (exit: {key_epoch}, end: {end_epoch})");
+            return Ok(v.activation_epoch <= end_epoch);
+        }
+
+        debug!(target: LOG_TARGET, "Validator node not found in exit queue: {public_key}");
+        Ok(false)
     }
 
     /// Returns true if the exit queue holds an exit for validator node `public_key` (in `sidechain_id`), created by the
@@ -1735,6 +1780,33 @@ mod tests {
 
             // let set = store.get_entire_vn_set(VnEpoch(210)).unwrap();
             // assert_eq!(set.len(), 6);
+        }
+
+        #[test]
+        fn re_registered_vn_is_active_and_exists_in_historical_epoch_and_undo_exit_skips_gap() {
+            let db = TempLmdbDatabase::with_dbs(DBS);
+            let txn = db.write_transaction();
+            let store = create_store(&db, &txn);
+            let vn = insert_n_vns(&store, 1, 0, 1, None).remove(0);
+
+            store.exit(None, &vn.public_key, VnEpoch(10)).unwrap();
+            let re_registered = ValidatorNodeEntry {
+                commitment: CompressedCommitment::from_compressed_key(new_public_key()),
+                registration_epoch: VnEpoch(20),
+                activation_epoch: VnEpoch(20),
+                ..vn.clone()
+            };
+            store.insert(&re_registered).unwrap();
+
+            assert!(store.is_vn_active(None, &vn.public_key, VnEpoch(5)).unwrap());
+            assert!(store.vn_exists(None, &vn.public_key, VnEpoch(5)).unwrap());
+            assert!(!store.is_vn_active(None, &vn.public_key, VnEpoch(12)).unwrap());
+            assert!(store.is_vn_active(None, &vn.public_key, VnEpoch(20)).unwrap());
+
+            let vn_high = insert_n_vns(&store, 1, 0, 1, None).remove(0);
+            store.exit(None, &vn_high.public_key, VnEpoch(10_000_000)).unwrap();
+            store.undo_exit(None, VnEpoch(0), &vn_high.public_key).unwrap();
+            assert!(store.is_vn_active(None, &vn_high.public_key, VnEpoch(1)).unwrap());
         }
     }
 }

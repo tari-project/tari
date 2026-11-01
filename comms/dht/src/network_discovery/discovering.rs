@@ -69,7 +69,7 @@ pub(super) const MAX_HOSTILE_RELAYED_CLAIMS: usize = 5;
 /// Returns `None` when the failure is not about the relayed claim at all (storage, connectivity) and
 /// the round therefore cannot continue. Otherwise the round continues without this peer, and the
 /// boolean says whether the sync peer relayed something only a broken or hostile node would produce.
-fn classify_relay_failure(err: &NetworkDiscoveryError) -> Option<bool> {
+pub(super) fn classify_relay_failure(err: &NetworkDiscoveryError) -> Option<bool> {
     match err {
         NetworkDiscoveryError::PeerValidationError(err) => Some(err.is_ban_offence()),
         _ => None,
@@ -513,7 +513,11 @@ pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSev
         NetworkDiscoveryError::DuplicatePeerReceived |
         NetworkDiscoveryError::TooManyPeersReceived |
         NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
-        NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcError(rpc_err)
+            if !rpc_err.is_handshake_unavailable() && rpc_err.is_caused_by_server() =>
+        {
+            Some(OffenceSeverity::High)
+        },
         NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
         // Other errors - no banning needed
         NetworkDiscoveryError::RpcStatus(_) |

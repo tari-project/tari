@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryInto,
     time::{Duration, Instant},
 };
@@ -30,6 +30,7 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_comms::{PeerConnection, connectivity::ConnectivityEvent, peer_manager::NodeId};
+use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 
 use crate::{
@@ -38,6 +39,7 @@ use crate::{
     network_discovery::{
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
+        discovering::{MAX_HOSTILE_RELAYED_CLAIMS, classify_relay_failure, offence_severity},
         state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
     },
     peer_validator::PeerValidator,
@@ -151,12 +153,34 @@ impl OnConnect {
 
         match self.sync_peers(conn.clone()).await {
             Ok(_) => {},
+            Err(NetworkDiscoveryError::RpcError(err)) if err.is_handshake_unavailable() => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to peer sync from `{}` (handshake unavailable): {}",
+                    conn.peer_node_id(),
+                    err
+                );
+                self.mark_sync_failed(conn.peer_node_id().clone(), Instant::now());
+            },
             Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
                 warn!(target: LOG_TARGET, "{err}. Banning peer.");
                 if let Err(err) = self
                     .context
                     .connectivity
                     .ban_peer_until(conn.peer_node_id().clone(), self.config().ban_duration, err.to_string())
+                    .await
+                {
+                    return Some(err.into());
+                }
+            },
+            Err(err) if offence_severity(&err).is_some() => {
+                let severity = offence_severity(&err).expect("checked is_some");
+                let ban_duration = self.config().ban_duration_from_severity(severity);
+                warn!(target: LOG_TARGET, "{err}. Banning peer for {ban_duration:.2?}.");
+                if let Err(err) = self
+                    .context
+                    .connectivity
+                    .ban_peer_until(conn.peer_node_id().clone(), ban_duration, err.to_string())
                     .await
                 {
                     return Some(err.into());
@@ -176,9 +200,20 @@ impl OnConnect {
     }
 
     async fn sync_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
-        let mut client = conn.connect_rpc::<rpc::DhtClient>().await?;
-        let peer_stream = client
-            .get_peers(GetPeersRequest {
+        let sync_peer = conn.peer_node_id().clone();
+        let rpc_connect_timeout = self.config().network_discovery.bootstrap_rpc_connect_timeout;
+        let mut client = tokio::time::timeout(rpc_connect_timeout, conn.connect_rpc::<rpc::DhtClient>())
+            .await
+            .map_err(|_| NetworkDiscoveryError::Timeout {
+                operation: "connect_rpc".to_string(),
+                peer: sync_peer.to_hex(),
+                duration: format!("{rpc_connect_timeout:.2?}"),
+            })??;
+
+        let rpc_get_peers_stream_timeout = self.config().network_discovery.bootstrap_rpc_get_peers_stream_timeout;
+        let peer_stream = tokio::time::timeout(
+            rpc_get_peers_stream_timeout,
+            client.get_peers(GetPeersRequest {
                 n: NUM_FETCH_PEERS,
                 include_clients: false,
                 max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
@@ -194,37 +229,70 @@ impl OnConnect {
                         error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
                         u32::MAX
                     }),
-            })
-            .await?;
+            }),
+        )
+        .await
+        .map_err(|_| NetworkDiscoveryError::Timeout {
+            operation: "get_peers".to_string(),
+            peer: sync_peer.to_hex(),
+            duration: format!("{rpc_get_peers_stream_timeout:.2?}"),
+        })??;
 
         // Take up to `NUM_FETCH_PEERS` then close the stream.
         let mut peer_stream = peer_stream.take(NUM_FETCH_PEERS as usize);
 
-        let sync_peer = conn.peer_node_id();
+        let rpc_streaming_timeout = self.config().network_discovery.bootstrap_rpc_streaming_timeout;
         let mut num_added = 0usize;
-        while let Some(resp) = peer_stream.next().await {
-            match resp {
-                Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
-                    Some(peer) => {
-                        let pub_key = peer.public_key.clone();
-                        match self.validate_and_add_peer(peer).await {
-                            Ok(new_peer) => {
-                                if new_peer {
-                                    debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
-                                    num_added = num_added.saturating_add(1);
-                                }
-                            },
-                            Err(e) => {
-                                debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
-                            },
+        let mut hostile_claims = 0usize;
+        #[allow(clippy::mutable_key_type)]
+        let mut peers_received = HashSet::new();
+        while let Some(resp) = tokio::time::timeout(rpc_streaming_timeout, peer_stream.next())
+            .await
+            .map_err(|_| NetworkDiscoveryError::Timeout {
+                operation: "get_peer_response".to_string(),
+                peer: sync_peer.to_hex(),
+                duration: format!("{rpc_streaming_timeout:.2?}"),
+            })?
+        {
+            let resp = resp.map_err(NetworkDiscoveryError::from_stream_error)?;
+            let peer = resp.peer.ok_or(NetworkDiscoveryError::EmptyPeerMessageReceived)?;
+            let peer: UnvalidatedPeerInfo = match peer.try_into() {
+                Ok(peer) => peer,
+                Err(err) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Skipping peer relayed by `{sync_peer}` that does not convert: {err:?}"
+                    );
+                    continue;
+                },
+            };
+
+            let pub_key = peer.public_key.clone();
+            if !peers_received.insert(pub_key.clone()) {
+                return Err(NetworkDiscoveryError::DuplicatePeerReceived);
+            }
+
+            match self.validate_and_add_peer(peer).await {
+                Ok(new_peer) => {
+                    if new_peer {
+                        debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
+                        num_added = num_added.saturating_add(1);
+                    }
+                },
+                Err(e) => match classify_relay_failure(&e) {
+                    Some(is_offence) => {
+                        if is_offence {
+                            hostile_claims = hostile_claims.saturating_add(1);
+                        }
+                        debug!(
+                            target: LOG_TARGET,
+                            "Failed to validate peer `{pub_key}` from `{sync_peer}` (hostile: {is_offence}): {e}"
+                        );
+                        if hostile_claims > MAX_HOSTILE_RELAYED_CLAIMS {
+                            return Err(NetworkDiscoveryError::TooManyInvalidPeersReceived);
                         }
                     },
-                    None => {
-                        debug!(target: LOG_TARGET, "Invalid response from peer `{sync_peer}`");
-                    },
-                },
-                Err(err) => {
-                    debug!(target: LOG_TARGET, "Error response from peer `{sync_peer}`: {err}");
+                    None => return Err(e),
                 },
             }
         }
@@ -249,6 +317,12 @@ impl OnConnect {
 
     /// Returns true if the peer is a new peer
     async fn validate_and_add_peer(&self, peer: UnvalidatedPeerInfo) -> Result<bool, NetworkDiscoveryError> {
+        let node_id = NodeId::from_public_key(&peer.public_key);
+        if self.context.node_identity.node_id() == &node_id {
+            debug!(target: LOG_TARGET, "Received our own node from peer sync. Ignoring.");
+            return Ok(false);
+        }
+
         let peer_validator = PeerValidator::new(self.config());
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
