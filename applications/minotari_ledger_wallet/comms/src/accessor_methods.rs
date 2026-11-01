@@ -472,7 +472,22 @@ pub fn ledger_get_script_offset(
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
     check_script_key_count(script_key_indexes.len() as u64, derived_script_keys.len() as u64)
         .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e:?}")))?;
-    for (_, index) in script_key_indexes {
+    let total_chunks = 2usize
+        .saturating_add(script_key_indexes.len())
+        .saturating_add(derived_script_keys.len());
+    if total_chunks > usize::from(u8::MAX) + 1 {
+        return Err(LedgerDeviceError::Processing(format!(
+            "GetScriptOffset: total chunks ({total_chunks}) exceeds maximum APDU chunk count ({})",
+            usize::from(u8::MAX) + 1
+        )));
+    }
+    for (branch, index) in script_key_indexes {
+        if *branch != LedgerKeyBranch::PreMine {
+            return Err(LedgerDeviceError::Processing(format!(
+                "GetScriptOffset: script key branch '{branch}' is not PreMine ({:?})",
+                AppSW::ScriptOffsetInvalidScriptBranch
+            )));
+        }
         check_indexed_script_key_index(*index)
             .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: script key index {index}: {e:?}")))?;
     }
@@ -496,10 +511,17 @@ pub fn ledger_get_script_offset(
 
     let mut result = None;
     for chunk in request.chunks() {
-        match Command::from_request(&chunk).execute() {
-            Ok(r) => result = Some(r),
-            Err(e) => return Err(LedgerDeviceError::Processing(format!("GetScriptOffset: {e}"))),
+        let answer = Command::from_request(&chunk)
+            .execute()
+            .map_err(|e| LedgerDeviceError::Processing(format!("GetScriptOffset: {e}")))?;
+        if chunk.more && answer.retcode() != AppSW::Ok as u16 {
+            return Err(LedgerDeviceError::Processing(format!(
+                "GetScriptOffset: chunk {} refused ({:?})",
+                chunk.chunk_number,
+                AppSW::try_from(answer.retcode())?
+            )));
         }
+        result = Some(answer);
     }
 
     match result {
@@ -1055,6 +1077,97 @@ mod test {
                 "unexpected message: {message}"
             ),
             other => panic!("expected the host's branch refusal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn script_offset_rejects_non_premine_indexed_script_key_on_the_host() {
+        for branch in [
+            LedgerKeyBranch::Random,
+            LedgerKeyBranch::Spend,
+            LedgerKeyBranch::OneSidedSenderOffset,
+        ] {
+            let error = ledger_get_script_offset(1, &PrivateKey::default(), &[], &[(branch, 0)], 1).unwrap_err();
+            match error {
+                LedgerDeviceError::Processing(message) => assert!(
+                    message.contains("ScriptOffsetInvalidScriptBranch"),
+                    "branch {branch}: unexpected message: {message}"
+                ),
+                other => panic!("branch {branch}: expected the host's branch refusal, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn script_offset_rejects_chunk_count_exceeding_u8_on_the_host() {
+        let derived_keys = vec![PrivateKey::from(1u64); usize::from(u8::MAX)];
+        let error = ledger_get_script_offset(1, &PrivateKey::default(), &derived_keys, &[], 1).unwrap_err();
+        match error {
+            LedgerDeviceError::Processing(message) => assert!(
+                message.contains("exceeds maximum APDU chunk count"),
+                "unexpected message: {message}"
+            ),
+            other => panic!("expected the host's chunk count refusal, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "test_transport")]
+    #[test]
+    fn script_offset_aborts_immediately_when_intermediate_chunk_is_refused() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        use ledger_transport::{APDUAnswer, APDUCommand};
+        use minotari_ledger_wallet_common::common_types::Instruction;
+
+        use crate::ledger_wallet::{LedgerTransport, clear_registered_transport, register_transport};
+
+        struct RefusingChunkTransport {
+            get_script_offset_chunks_seen: AtomicUsize,
+        }
+
+        impl LedgerTransport for RefusingChunkTransport {
+            fn exchange(&self, command: &APDUCommand<Vec<u8>>) -> Result<APDUAnswer<Vec<u8>>, LedgerDeviceError> {
+                if command.ins == Instruction::GetScriptOffset.as_byte() {
+                    let seen = self.get_script_offset_chunks_seen.fetch_add(1, Ordering::SeqCst);
+                    // Refuse chunk 2 (the pre-mine script key chunk, `more == true`) with
+                    // `ScriptOffsetInvalidScriptBranch`, before chunk 3 (the derived key chunk, `more == false`).
+                    let code = match seen {
+                        0 | 1 => AppSW::Ok as u16,
+                        2 => AppSW::ScriptOffsetInvalidScriptBranch as u16,
+                        _ => AppSW::ScriptOffsetNoSenderOffsets as u16,
+                    };
+                    return Ok(APDUAnswer::from_answer(code.to_be_bytes().to_vec()).unwrap());
+                }
+                Err(LedgerDeviceError::Instruction("unexpected instruction".to_string()))
+            }
+        }
+
+        let transport = Arc::new(RefusingChunkTransport {
+            get_script_offset_chunks_seen: AtomicUsize::new(0),
+        });
+        *VERIFIED.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        register_transport(transport.clone());
+        let result = ledger_get_script_offset(
+            1,
+            &PrivateKey::default(),
+            &[PrivateKey::from(1u64)],
+            &[(LedgerKeyBranch::PreMine, 0)],
+            1,
+        );
+        clear_registered_transport();
+        *VERIFIED.lock().unwrap_or_else(|e| e.into_inner()) = false;
+
+        let err = result.unwrap_err();
+        assert_eq!(transport.get_script_offset_chunks_seen.load(Ordering::SeqCst), 3);
+        match err {
+            LedgerDeviceError::Processing(msg) => assert!(
+                msg.contains("ScriptOffsetInvalidScriptBranch"),
+                "expected chunk 2 status word, got: {msg}"
+            ),
+            other => panic!("expected Processing error, got {other:?}"),
         }
     }
 }
