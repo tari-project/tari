@@ -166,8 +166,14 @@ impl McpTool for GetTransactionInfoTool {
             .collect();
 
         // Calculate summary statistics
-        let total_amount: u64 = transactions.iter().filter_map(|tx| tx["amount"].as_u64()).sum();
-        let total_fees: u64 = transactions.iter().filter_map(|tx| tx["fee"].as_u64()).sum();
+        let total_amount: u64 = transactions
+            .iter()
+            .filter_map(|tx| tx["amount"].as_u64())
+            .fold(0u64, u64::saturating_add);
+        let total_fees: u64 = transactions
+            .iter()
+            .filter_map(|tx| tx["fee"].as_u64())
+            .fold(0u64, u64::saturating_add);
         let confirmed_count = transactions
             .iter()
             .filter(|tx| tx["status"].as_str() == Some("MINED_CONFIRMED"))
@@ -343,31 +349,8 @@ impl McpTool for GetCompletedTransactionsTool {
         }
 
         // Analyze transaction patterns
-        let inbound_count = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("INBOUND"))
-            .count();
-        let outbound_count = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
-            .count();
-
-        let total_inbound: u64 = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("INBOUND"))
-            .filter_map(|tx| tx["amount"].as_u64())
-            .sum();
-        let total_outbound: u64 = transactions
-            .iter()
-            .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
-            .filter_map(|tx| tx["amount"].as_u64())
-            .sum();
-        let total_fees: u64 = transactions.iter().filter_map(|tx| tx["fee"].as_u64()).sum();
-        #[allow(clippy::cast_possible_wrap)]
-        let net_balance_change = (total_inbound as i64)
-            .saturating_sub(total_outbound as i64)
-            .saturating_sub(total_fees as i64);
-        #[allow(clippy::cast_possible_wrap)]
+        let (inbound_count, outbound_count, total_inbound, total_outbound, total_fees, net_balance_change) =
+            summarize_completed_transactions(&transactions);
         Ok(json!({
             "transactions": transactions,
             "summary": {
@@ -398,11 +381,52 @@ impl McpTool for GetCompletedTransactionsTool {
     }
 }
 
+fn summarize_completed_transactions(transactions: &[Value]) -> (usize, usize, u64, u64, u64, i64) {
+    let inbound_count = transactions
+        .iter()
+        .filter(|tx| tx["direction"].as_str() == Some("INBOUND"))
+        .count();
+    let outbound_count = transactions
+        .iter()
+        .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
+        .count();
+
+    let total_inbound: u64 = transactions
+        .iter()
+        .filter(|tx| tx["direction"].as_str() == Some("INBOUND"))
+        .filter_map(|tx| tx["amount"].as_u64())
+        .fold(0u64, u64::saturating_add);
+    let total_outbound: u64 = transactions
+        .iter()
+        .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
+        .filter_map(|tx| tx["amount"].as_u64())
+        .fold(0u64, u64::saturating_add);
+    let total_fees: u64 = transactions
+        .iter()
+        .filter(|tx| tx["direction"].as_str() == Some("OUTBOUND"))
+        .filter_map(|tx| tx["fee"].as_u64())
+        .fold(0u64, u64::saturating_add);
+
+    let net_i128 = i128::from(total_inbound) - i128::from(total_outbound) - i128::from(total_fees);
+    let net_balance_change = net_i128.clamp(i128::from(i64::MIN), i128::from(i64::MAX)) as i64;
+
+    (
+        inbound_count,
+        outbound_count,
+        total_inbound,
+        total_outbound,
+        total_fees,
+        net_balance_change,
+    )
+}
+
 /// Parse a single `PaymentRecipient` out of the JSON supplied to the `transfer` tool.
 fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<PaymentRecipient> {
     let address = recipient_data
         .get("address")
         .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| McpError::invalid_request(format!("address is required for recipient {index}")))?;
 
     let amount = recipient_data
@@ -421,22 +445,26 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
         .and_then(|v| v.as_u64())
         .ok_or_else(|| McpError::invalid_request(format!("fee_per_gram is required for recipient {index}")))?;
 
+    if fee_per_gram == 0 {
+        return Err(McpError::invalid_request(format!(
+            "fee_per_gram must be greater than 0 for recipient {index}"
+        )));
+    }
+
     let payment_type = recipient_data.get("payment_type").and_then(|v| v.as_u64()).unwrap_or(0); // Default to standard payment
 
-    let raw_payment_id = recipient_data
+    let payment_id_str = recipient_data
         .get("payment_id")
-        .and_then(|v| v.as_str())
-        .map(|s| s.as_bytes().to_vec())
-        .unwrap_or_default();
+        .or_else(|| recipient_data.get("message"))
+        .and_then(|v| v.as_str());
 
-    let user_payment_id = recipient_data
-        .get("payment_id")
-        .and_then(|v| v.as_str())
-        .map(|payment_id_str| UserPaymentId {
-            utf8_string: payment_id_str.to_string(),
-            u256: vec![],
-            user_bytes: vec![],
-        });
+    let raw_payment_id = payment_id_str.map(|s| s.as_bytes().to_vec()).unwrap_or_default();
+
+    let user_payment_id = payment_id_str.map(|s| UserPaymentId {
+        utf8_string: s.to_string(),
+        u256: vec![],
+        user_bytes: vec![],
+    });
 
     #[allow(clippy::cast_possible_truncation)]
     Ok(PaymentRecipient {
@@ -905,9 +933,9 @@ impl McpTool for TransactionAnalysisTool {
         let inbound_txs: Vec<_> = transactions.iter().filter(|tx| tx.direction == 1).collect();
         let outbound_txs: Vec<_> = transactions.iter().filter(|tx| tx.direction == 2).collect();
 
-        let total_inbound: u64 = inbound_txs.iter().map(|tx| tx.amount).sum();
-        let total_outbound: u64 = outbound_txs.iter().map(|tx| tx.amount).sum();
-        let total_fees: u64 = outbound_txs.iter().map(|tx| tx.fee).sum();
+        let total_inbound: u64 = inbound_txs.iter().map(|tx| tx.amount).fold(0u64, u64::saturating_add);
+        let total_outbound: u64 = outbound_txs.iter().map(|tx| tx.amount).fold(0u64, u64::saturating_add);
+        let total_fees: u64 = outbound_txs.iter().map(|tx| tx.fee).fold(0u64, u64::saturating_add);
 
         // Calculate averages
         let avg_inbound = if inbound_txs.is_empty() {
@@ -1017,5 +1045,57 @@ impl McpTool for TransactionAnalysisTool {
                 },
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_payment_recipient_validates_address_amount_fee_and_message_fallback() {
+        assert!(
+            parse_payment_recipient(0, &json!({"address": "   ", "amount": 1000, "fee_per_gram": 5})).is_err(),
+            "whitespace-only address must be rejected"
+        );
+        assert!(
+            parse_payment_recipient(0, &json!({"address": "dest_addr", "amount": 0, "fee_per_gram": 5})).is_err(),
+            "zero amount must be rejected"
+        );
+        assert!(
+            parse_payment_recipient(0, &json!({"address": "dest_addr", "amount": 1000, "fee_per_gram": 0})).is_err(),
+            "zero fee_per_gram must be rejected"
+        );
+
+        let recipient = parse_payment_recipient(
+            0,
+            &json!({
+                "address": "  dest_addr  ",
+                "amount": 1000,
+                "fee_per_gram": 25,
+                "message": "invoice-42"
+            }),
+        )
+        .unwrap();
+        assert_eq!(recipient.address, "dest_addr");
+        assert_eq!(recipient.amount, 1000);
+        assert_eq!(recipient.fee_per_gram, 25);
+        assert_eq!(recipient.raw_payment_id, b"invoice-42".to_vec());
+        assert_eq!(recipient.user_payment_id.unwrap().utf8_string, "invoice-42");
+    }
+
+    #[test]
+    fn summarize_completed_transactions_excludes_inbound_fees_and_saturates() {
+        let txs = vec![
+            json!({"direction": "INBOUND", "amount": 1_000_000u64, "fee": 500u64}),
+            json!({"direction": "OUTBOUND", "amount": 400_000u64, "fee": 250u64}),
+        ];
+        let (in_count, out_count, total_in, total_out, total_fees, net_change) = summarize_completed_transactions(&txs);
+        assert_eq!(in_count, 1);
+        assert_eq!(out_count, 1);
+        assert_eq!(total_in, 1_000_000);
+        assert_eq!(total_out, 400_000);
+        assert_eq!(total_fees, 250);
+        assert_eq!(net_change, 599_750);
     }
 }
