@@ -230,12 +230,13 @@ impl AggregateBody {
     }
 
     pub fn contains_duplicated_outputs(&self) -> bool {
-        // If the body is sorted, can do a linear check instead of n^2
+        // Outputs are ordered by commitment (`TransactionOutput::cmp`), so when sorted, any two outputs sharing a
+        // commitment (or identical output hash) are guaranteed to be adjacent.
         if self.sorted {
             for i in 1..self.outputs().len() {
-                if self.outputs().get(i).expect("Already checked") ==
-                    self.outputs().get(i.saturating_sub(1)).expect("Already checked")
-                {
+                let curr = self.outputs().get(i).expect("Already checked");
+                let prev = self.outputs().get(i.saturating_sub(1)).expect("Already checked");
+                if curr.commitment() == prev.commitment() || curr.hash() == prev.hash() || curr == prev {
                     return true;
                 }
             }
@@ -243,7 +244,9 @@ impl AggregateBody {
         }
         for i in 0..self.outputs().len() {
             for j in i.saturating_add(1)..self.outputs().len() {
-                if self.outputs().get(i).expect("Already checked") == self.outputs().get(j).expect("Already checked") {
+                let a = self.outputs().get(i).expect("Already checked");
+                let b = self.outputs().get(j).expect("Already checked");
+                if a.commitment() == b.commitment() || a.hash() == b.hash() || a == b {
                     return true;
                 }
             }
@@ -696,5 +699,21 @@ mod test {
 
         body.add_output(output);
         assert!(!body.is_sorted())
+    }
+
+    #[test]
+    fn contains_duplicated_outputs_detects_duplicate_commitments_with_distinct_metadata() {
+        let out1 = TransactionOutput::default();
+        let mut out2 = out1.clone();
+        out2.minimum_value_promise = 42.into();
+        assert_ne!(out1, out2);
+        assert_eq!(out1.commitment(), out2.commitment());
+
+        let unsorted = AggregateBody::new_unsorted(vec![], vec![out1.clone(), out2.clone()], vec![]);
+        assert!(unsorted.contains_duplicated_outputs());
+
+        let mut sorted = AggregateBody::new_unsorted(vec![], vec![out1, out2], vec![]);
+        sorted.sort();
+        assert!(sorted.contains_duplicated_outputs());
     }
 }

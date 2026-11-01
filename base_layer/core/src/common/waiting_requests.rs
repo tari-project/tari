@@ -22,6 +22,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
+use tari_comms::peer_manager::NodeId;
 use tokio::sync::{RwLock, oneshot::Sender as OneshotSender};
 
 use crate::common::RequestKey;
@@ -31,10 +32,12 @@ where R: rand::Rng {
     rng.next_u64()
 }
 
+type WaitingEntry<T> = (OneshotSender<T>, Instant, Option<NodeId>);
+
 /// WaitingRequests is used to keep track of a set of WaitingRequests.
 #[allow(clippy::type_complexity)]
 pub struct WaitingRequests<T> {
-    requests: Arc<RwLock<HashMap<RequestKey, Option<(OneshotSender<T>, Instant)>>>>,
+    requests: Arc<RwLock<HashMap<RequestKey, Option<WaitingEntry<T>>>>>,
 }
 
 impl<T> WaitingRequests<T> {
@@ -45,17 +48,41 @@ impl<T> WaitingRequests<T> {
         }
     }
 
-    /// Insert a new waiting request.
+    /// Insert a new waiting request without peer binding.
     pub async fn insert(&self, key: RequestKey, reply_tx: OneshotSender<T>) {
+        self.insert_for_peer(key, None, reply_tx).await;
+    }
+
+    /// Insert a new waiting request optionally bound to a specific expected peer `NodeId`.
+    pub async fn insert_for_peer(&self, key: RequestKey, expected_peer: Option<NodeId>, reply_tx: OneshotSender<T>) {
         self.requests
             .write()
             .await
-            .insert(key, Some((reply_tx, Instant::now())));
+            .insert(key, Some((reply_tx, Instant::now(), expected_peer)));
     }
 
-    /// Remove the waiting request corresponding to the provided key.
+    /// Remove the waiting request corresponding to the provided key regardless of peer.
     pub async fn remove(&self, key: RequestKey) -> Option<(OneshotSender<T>, Instant)> {
-        self.requests.write().await.remove(&key).unwrap_or(None)
+        self.requests
+            .write()
+            .await
+            .remove(&key)
+            .flatten()
+            .map(|(tx, started, _)| (tx, started))
+    }
+
+    /// Remove the waiting request only if the responder matches the expected peer (when one was specified).
+    pub async fn remove_for_peer(&self, key: RequestKey, responder: &NodeId) -> Option<(OneshotSender<T>, Instant)> {
+        let mut guard = self.requests.write().await;
+        let matches_peer = match guard.get(&key) {
+            Some(Some((_, _, Some(expected_peer)))) => expected_peer == responder,
+            Some(Some((_, _, None))) => true,
+            _ => false,
+        };
+        if !matches_peer {
+            return None;
+        }
+        guard.remove(&key).flatten().map(|(tx, started, _)| (tx, started))
     }
 }
 
@@ -70,5 +97,23 @@ impl<T> Clone for WaitingRequests<T> {
 impl<T> Default for WaitingRequests<T> {
     fn default() -> Self {
         WaitingRequests::new()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tokio::sync::oneshot;
+
+    #[tokio::test]
+    async fn remove_for_peer_rejects_mismatched_peer_and_preserves_entry() {
+        let waiting = WaitingRequests::<u64>::new();
+        let (tx, _rx) = oneshot::channel();
+        let target_peer = NodeId::default();
+        let other_peer = NodeId::from_key(&[1u8; 32]).unwrap();
+
+        waiting.insert_for_peer(42, Some(target_peer.clone()), tx).await;
+        assert!(waiting.remove_for_peer(42, &other_peer).await.is_none());
+        assert!(waiting.remove_for_peer(42, &target_peer).await.is_some());
     }
 }

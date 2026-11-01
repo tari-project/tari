@@ -363,6 +363,17 @@ where B: BlockchainBackend + 'static
         &self,
         domain_msg: DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>,
     ) {
+        if let Some(origin) = &domain_msg.authenticated_origin &&
+            *origin != domain_msg.source_peer.public_key
+        {
+            debug!(
+                target: LOG_TARGET,
+                "Dropping base node response from peer '{}' signed by another identity ({})",
+                domain_msg.source_peer.node_id.short_str(),
+                origin
+            );
+            return;
+        }
         let waiting_requests = self.waiting_requests.clone();
         let mut connectivity_requester = self.connectivity.clone();
 
@@ -671,7 +682,10 @@ async fn handle_incoming_response(
         .and_then(|r| r.try_into().ok())
         .ok_or_else(|| BaseNodeServiceError::InvalidResponse("Received an invalid base node response".to_string()))?;
 
-    if let Some((reply_tx, started)) = waiting_requests.remove(request_key).await {
+    if let Some((reply_tx, started)) = waiting_requests
+        .remove_for_peer(request_key, &domain_msg.source_peer.node_id)
+        .await
+    {
         trace!(
             target: LOG_TARGET,
             "Response for {} (request key: {}) received after {}ms and is_synced: {}",
@@ -717,34 +731,45 @@ async fn handle_outbound_request(
 
     let mut send_msg_params = SendMessageParams::new();
     send_msg_params.with_debug_info(debug_info);
-    match node_id {
+    match node_id.clone() {
         Some(node_id) => send_msg_params.direct_node_id(node_id),
         None => send_msg_params.random(1),
     };
 
+    // Register in waiting_requests BEFORE dispatching the outbound message so a fast response arriving before
+    // `send_result.resolve()` completes is never dropped as unsolicited.
+    waiting_requests.insert_for_peer(request_key, node_id, reply_tx).await;
+
     trace!(target: LOG_TARGET, "Attempting outbound request ({request_key})");
-    let send_result = outbound_message_service
+    let send_result = match outbound_message_service
         .send_message(
             send_msg_params.finish(),
             OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
         )
-        .await?;
+        .await
+    {
+        Ok(send_result) => send_result,
+        Err(err) => {
+            if let Some((reply_tx, _)) = waiting_requests.remove(request_key).await {
+                let _result = reply_tx.send(Err(CommsInterfaceError::BroadcastFailed));
+            }
+            return Err(err.into());
+        },
+    };
 
     match send_result.resolve().await {
         Ok(send_states) if send_states.is_empty() => {
-            let result = reply_tx.send(Err(CommsInterfaceError::NoBootstrapNodesConfigured));
-
-            if let Err(_e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to send outbound request as no bootstrap nodes were configured"
-                );
+            if let Some((reply_tx, _)) = waiting_requests.remove(request_key).await {
+                let result = reply_tx.send(Err(CommsInterfaceError::NoBootstrapNodesConfigured));
+                if let Err(_e) = result {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send outbound request as no bootstrap nodes were configured"
+                    );
+                }
             }
         },
         Ok(send_states) => {
-            // Wait for matching responses to arrive. Inserted before the send completes, so a response that arrives
-            // before we hear the send succeeded is still matched.
-            waiting_requests.insert(request_key, reply_tx).await;
             // Log messages
             let msg_tag = send_states[0].tag;
             debug!(
@@ -784,13 +809,15 @@ async fn handle_outbound_request(
         },
         Err(err) => {
             debug!(target: LOG_TARGET, "Failed to send outbound request: {err}");
-            let result = reply_tx.send(Err(CommsInterfaceError::BroadcastFailed));
+            if let Some((reply_tx, _)) = waiting_requests.remove(request_key).await {
+                let result = reply_tx.send(Err(CommsInterfaceError::BroadcastFailed));
 
-            if let Err(_e) = result {
-                error!(
-                    target: LOG_TARGET,
-                    "Failed to send outbound request ({request_key}) because DHT outbound broadcast failed"
-                );
+                if let Err(_e) = result {
+                    error!(
+                        target: LOG_TARGET,
+                        "Failed to send outbound request ({request_key}) because DHT outbound broadcast failed"
+                    );
+                }
             }
         },
     }
