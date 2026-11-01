@@ -69,7 +69,7 @@ pub(super) const MAX_HOSTILE_RELAYED_CLAIMS: usize = 5;
 /// Returns `None` when the failure is not about the relayed claim at all (storage, connectivity) and
 /// the round therefore cannot continue. Otherwise the round continues without this peer, and the
 /// boolean says whether the sync peer relayed something only a broken or hostile node would produce.
-fn classify_relay_failure(err: &NetworkDiscoveryError) -> Option<bool> {
+pub(super) fn classify_relay_failure(err: &NetworkDiscoveryError) -> Option<bool> {
     match err {
         NetworkDiscoveryError::PeerValidationError(err) => Some(err.is_ban_offence()),
         _ => None,

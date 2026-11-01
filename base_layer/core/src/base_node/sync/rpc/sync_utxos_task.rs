@@ -267,6 +267,31 @@ where B: BlockchainBackend + 'static
                 mined_infos
             };
 
+            let end_header_hash = end_header.hash();
+            let (header_at_height, latest_end_header) = self
+                .db
+                .fetch_header_pair(current_header.height, end_header.height)
+                .await
+                .rpc_status_internal_error(LOG_TARGET)?;
+            if !super::service::is_on_requested_chain(
+                &current_header_hash,
+                header_at_height.as_ref(),
+                latest_end_header.as_ref(),
+                &end_header_hash,
+            ) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Header #{} is no longer an ancestor of the requested end header #{} during TXO sync, \
+                     letting the sync peer '{}' know that the chain has changed.",
+                    current_header.height,
+                    end_header.height,
+                    self.peer_node_id
+                );
+                return Err(RpcStatus::conflict(
+                    "Reorg detected: the requested end block is no longer on the chain",
+                ));
+            }
+
             let mut inputs = Vec::with_capacity(inputs_in_block.len());
             for (input, mined_info) in inputs_in_block.iter().zip(mined_infos) {
                 if let Some(info) = &mined_info &&

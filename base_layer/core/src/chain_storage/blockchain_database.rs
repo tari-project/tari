@@ -3326,6 +3326,12 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     let last_header_height = last_header.height;
     let metadata = db.fetch_chain_metadata()?;
     let last_block_height = metadata.best_block_height();
+    if metadata.is_pruned_node() && target_height < metadata.pruned_height() {
+        return Err(ChainStorageError::InvalidQuery(format!(
+            "Cannot rewind to height ({target_height}) that is less than the pruned height {}.",
+            metadata.pruned_height()
+        )));
+    }
     // We use the cmp::max value here because we'll only delete headers here and leave remaining headers to be deleted
     // with the whole block
     let steps_back = last_header_height
@@ -4543,13 +4549,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         );
 
         // we need to validate the header here because it may never have been validated.
-        // TODO: this takes the Tari RandomX VM key from the main chain, while `fork_height` next to it is derived
-        // from the candidate's own chain. For an orphan that forks below its VM key band boundary the two disagree,
-        // which can fail a legitimate deep fork. Pre-existing behaviour, tracked separately; fixing it means
-        // reworking orphan path VM key derivation.
-        let vm_key = *db
-            .fetch_chain_header_by_height(tari_rx_vm_key_height(child.header.height))?
-            .hash();
+        let (vm_key, _) = get_vm_key_for_candidate_header(db, child.header.clone())?;
         match validator.validate(
             db,
             &child.header,
