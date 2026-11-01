@@ -142,8 +142,10 @@ pub async fn check_detected_transactions<
             "TxId: {}, {:?} ",
             tx.tx_id, output_info_for_tx_id
         );
-        if tx.mined_height.unwrap_or_default() != output_info_for_tx_id.mined_height.unwrap_or_default() {
-            // If the mined height has changed, we need to update the transaction
+        let block_changed = tx.mined_height != output_info_for_tx_id.mined_height ||
+            tx.mined_in_block != output_info_for_tx_id.block_hash;
+        if block_changed {
+            // If the mined height or block hash has changed, we need to update the transaction
             state_changed = true;
         }
         trace!(
@@ -175,7 +177,7 @@ pub async fn check_detected_transactions<
         let previously_locked = tx.status.is_locked();
         let must_be_unlocked = tip_height >= tx.lock_height;
 
-        if !(previously_confirmed && must_be_confirmed) || (previously_locked && must_be_unlocked) {
+        if !(previously_confirmed && must_be_confirmed) || (previously_locked && must_be_unlocked) || block_changed {
             let log_msg = format!(
                 "Updating faux transaction: TxId({}), mined_height({mined_height}), \
                  must_be_confirmed({must_be_confirmed}), output_status({output_status}), is_valid({is_valid})",
