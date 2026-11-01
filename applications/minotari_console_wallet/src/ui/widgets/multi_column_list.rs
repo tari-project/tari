@@ -85,7 +85,9 @@ where T: Into<Vec<ListItem<'a>>>
                 constraints.push(Constraint::Length(w));
                 sum_width = sum_width.saturating_add(w);
             } else {
-                constraints.push(Constraint::Length(self.columns[i].heading.unwrap_or(" ").len() as u16));
+                let heading_width = self.columns[i].heading.unwrap_or(" ").len() as u16;
+                constraints.push(Constraint::Length(heading_width));
+                sum_width = sum_width.saturating_add(heading_width);
             }
         }
 

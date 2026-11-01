@@ -80,15 +80,20 @@ impl Prompt {
 
                 io::stdout().flush()?;
                 let mut line_buf = String::new();
-                io::stdin().read_line(&mut line_buf)?;
+                let bytes_read = io::stdin().read_line(&mut line_buf)?;
+                if bytes_read == 0 {
+                    return Err(CommandError::InvalidArgument(
+                        "Unexpected EOF while reading prompt input".to_string(),
+                    ));
+                }
                 println!();
 
                 let trimmed = line_buf.trim().to_lowercase();
                 match trimmed.as_str() {
-                    "n" => {
+                    "n" | "no" => {
                         return Ok(collection);
                     },
-                    "y" => break,
+                    "y" | "yes" => break,
                     _ => continue,
                 }
             }
@@ -111,7 +116,15 @@ impl Prompt {
             print!("> ");
             io::stdout().flush()?;
             let mut line_buf = String::new();
-            io::stdin().read_line(&mut line_buf)?;
+            let bytes_read = io::stdin().read_line(&mut line_buf)?;
+            if bytes_read == 0 {
+                return match self.default {
+                    Some(default) => Ok(default),
+                    None => Err(CommandError::InvalidArgument(
+                        "Unexpected EOF while reading prompt input".to_string(),
+                    )),
+                };
+            }
             println!();
             let trimmed = line_buf.trim();
             if trimmed.is_empty() {
