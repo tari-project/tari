@@ -67,8 +67,12 @@ impl TryFrom<KeyManagerStateSql> for KeyManagerState {
     type Error = KeyManagerStorageError;
 
     fn try_from(km: KeyManagerStateSql) -> Result<Self, Self::Error> {
-        let mut bytes: [u8; 8] = [0u8; 8];
-        bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Cannot fail"));
+        let bytes: [u8; 8] = km.primary_key_index.as_slice().try_into().map_err(|_| {
+            KeyManagerStorageError::UnexpectedResult(format!(
+                "Invalid primary_key_index length: expected 8 bytes, got {}",
+                km.primary_key_index.len()
+            ))
+        })?;
         Ok(Self {
             branch_seed: km.branch_seed,
             primary_key_index: u64::from_le_bytes(bytes),
@@ -102,7 +106,10 @@ impl KeyManagerStateSql {
         key_manager_states::table
             .filter(key_manager_states::branch_seed.eq(branch.to_string()))
             .first::<KeyManagerStateSql>(conn)
-            .map_err(|_| KeyManagerStorageError::KeyManagerNotInitialized)
+            .map_err(|e| match e {
+                diesel::result::Error::NotFound => KeyManagerStorageError::KeyManagerNotInitialized,
+                other => KeyManagerStorageError::StorageError(other.to_string()),
+            })
     }
 
     /// Creates or updates the database with the key manager state in this instance.
@@ -120,7 +127,7 @@ impl KeyManagerStateSql {
                     .num_rows_affected_or_not_found(1)
                     .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
             },
-            Err(_) => {
+            Err(KeyManagerStorageError::KeyManagerNotInitialized) => {
                 let inserter = NewKeyManagerStateSql {
                     branch_seed: self.branch_seed.clone(),
                     primary_key_index: self.primary_key_index.clone(),
@@ -128,6 +135,7 @@ impl KeyManagerStateSql {
                 };
                 inserter.commit(conn)?;
             },
+            Err(e) => return Err(e),
         }
         Ok(())
     }
@@ -213,4 +221,45 @@ impl Encryptable<XChaCha20Poly1305> for NewKeyManagerStateSql {
 pub struct KeyManagerStateUpdateSql {
     branch_seed: Option<String>,
     primary_key_index: Option<Vec<u8>>,
+}
+
+#[cfg(test)]
+mod test {
+    use chrono::Utc;
+
+    use super::*;
+
+    #[test]
+    fn try_from_rejects_non_8_byte_primary_key_index_without_panicking() {
+        let short_row = KeyManagerStateSql {
+            id: 1,
+            branch_seed: "branch".to_string(),
+            primary_key_index: vec![1, 2, 3],
+            timestamp: Utc::now().naive_utc(),
+        };
+        assert!(matches!(
+            KeyManagerState::try_from(short_row),
+            Err(KeyManagerStorageError::UnexpectedResult(_))
+        ));
+
+        let long_row = KeyManagerStateSql {
+            id: 1,
+            branch_seed: "branch".to_string(),
+            primary_key_index: vec![0u8; 9],
+            timestamp: Utc::now().naive_utc(),
+        };
+        assert!(matches!(
+            KeyManagerState::try_from(long_row),
+            Err(KeyManagerStorageError::UnexpectedResult(_))
+        ));
+
+        let valid_row = KeyManagerStateSql {
+            id: 1,
+            branch_seed: "branch".to_string(),
+            primary_key_index: 42u64.to_le_bytes().to_vec(),
+            timestamp: Utc::now().naive_utc(),
+        };
+        let state = KeyManagerState::try_from(valid_row).unwrap();
+        assert_eq!(state.primary_key_index, 42);
+    }
 }
