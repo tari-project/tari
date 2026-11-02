@@ -487,6 +487,10 @@ impl MempoolStorage {
 
     // Insert a set of new transactions into the UTxPool.
     fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
+        // Fetching the tip reads the database, which is not worth doing under the write lock for nothing
+        if txs.is_empty() {
+            return Ok(());
+        }
         let tip = self.chain_tip();
         for tx in txs {
             self.insert(tx, tip.as_ref())?;

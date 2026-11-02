@@ -2541,6 +2541,60 @@ async fn template_is_filled_after_selected_spends_fail_their_height_re_check() {
 
 #[tokio::test]
 #[allow(clippy::identity_op)]
+#[allow(clippy::arithmetic_side_effects)]
+async fn valid_height_reading_spend_is_selected_after_failing_spends_use_up_the_selections() {
+    let key_manager = KeyManager::new_random().unwrap();
+    let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
+    let h = 2;
+    let mut schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 1 * T, 1 * T]);
+    schema.script = script_passing_only_at(h);
+    let (height_limited_tx, height_limited_outputs) = spend_utxos(schema, &key_manager);
+    let mut schema = txn_schema!(from: vec![outputs[2].clone()], to: vec![1 * T]);
+    schema.script = script!(CheckHeightVerify(h)).unwrap();
+    let (height_locked_tx, height_locked_outputs) = spend_utxos(schema, &key_manager);
+    let block_1 = mine_block(&db, &rules, &key_manager, &genesis, vec![
+        height_limited_tx,
+        height_locked_tx,
+    ]);
+
+    let mempool = create_fully_validating_mempool(&db, &rules);
+    // Three high-fee spends valid only at height `h`, and a lower-fee spend valid from `h` on
+    let mut decoys = Vec::new();
+    for output in &height_limited_outputs[..3] {
+        let (decoy, _) = spend_utxos(
+            txn_schema!(from: vec![output.clone()], to: vec![500_000 * uT], fee: 100.into(), lock: 0, features: OutputFeatures::default()),
+            &key_manager,
+        );
+        assert_eq!(
+            mempool.insert(Arc::new(decoy.clone())).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        decoys.push(decoy);
+    }
+    let (valid_spend, _) = spend_utxos(
+        txn_schema!(from: vec![height_locked_outputs[0].clone()], to: vec![500_000 * uT], fee: 50.into(), lock: 0, features: OutputFeatures::default()),
+        &key_manager,
+    );
+    assert_eq!(
+        mempool.insert(Arc::new(valid_spend.clone())).await.unwrap(),
+        TxStorageResponse::UnconfirmedPool
+    );
+
+    // Room for one transaction: the first two selections each pick a failing spend, and the last only allows checked
+    // height-reading transactions
+    let block_2 = mine_block(&db, &rules, &key_manager, &block_1, vec![]);
+    let weighting = rules.consensus_constants(h + 1).transaction_weight_params();
+    let decoy_weight = decoys[0].calculate_weight(weighting).unwrap();
+    assert!(valid_spend.calculate_weight(weighting).unwrap() <= decoy_weight);
+    let txs = mempool.retrieve(decoy_weight, h + 1, *block_2.hash()).await.unwrap();
+
+    assert_eq!(txs, vec![Arc::new(valid_spend.clone())]);
+    let block_3 = mine_block(&db, &rules, &key_manager, &block_2, vec![valid_spend]);
+    assert_eq!(block_3.height(), h + 1);
+}
+
+#[tokio::test]
+#[allow(clippy::identity_op)]
 async fn transactions_valid_from_their_validation_height_are_left_out_of_an_older_template_but_kept() {
     let key_manager = KeyManager::new_random().unwrap();
     let (db, rules, genesis, outputs) = create_fully_validated_chain(&key_manager);
