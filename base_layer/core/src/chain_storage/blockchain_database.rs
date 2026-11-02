@@ -8374,6 +8374,25 @@ mod test {
             assert!(h.is_orphan(&w));
         }
 
+        /// An orphan's chain header is read without decoding its body, and is the one read with it
+        #[tokio::test]
+        async fn an_orphan_chain_header_is_read_without_its_body() {
+            let h = Harness::new();
+            let a = h.build("A");
+            h.add(&a);
+            let f1 = h.build("F1");
+            let b = h.build_with_difficulty("B", 2);
+            h.add(&b);
+            h.add(&f1).result.assert_orphaned();
+            assert!(!f1.block().body.outputs().is_empty());
+
+            let access = h.db.db_read_access().unwrap();
+            let with_body = access.fetch_orphan_chain_block(*f1.hash()).unwrap().unwrap();
+            let header_only = access.fetch_chain_header_in_all_chains(f1.hash()).unwrap();
+
+            assert_eq!(header_only, with_body.to_chain_header());
+        }
+
         /// Our chain A <- B <- B2, and on A an orphan F1 <- X <- X2, where X2 is not built. F1 is added to the main
         /// chain while X is built on it, then everything above A is forgotten. Returns F1, X and X2.
         fn with_a_fork_and_ours(

@@ -3498,15 +3498,17 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(chain_header);
         }
 
-        if let Some(orphan) = lmdb_get_typed(&txn, &self.orphans_typed, hash.deref())? {
+        // A stored orphan is a bincode `Block`, whose header comes first, so the header is decoded on its own and the
+        // body is never read
+        if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &self.orphans_db, hash.deref())? {
             let orphan_accum = self
-                .fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.deref())?
+                .fetch_orphan_header_accumulated_data(&txn, header.version, hash.deref())?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "orphan header accumulated data",
                     field: "hash",
                     value: hash.to_hex(),
                 })?;
-            let chain_header = ChainHeader::try_construct(orphan.header, orphan_accum).ok_or_else(|| {
+            let chain_header = ChainHeader::try_construct(header, orphan_accum).ok_or_else(|| {
                 ChainStorageError::DataInconsistencyDetected {
                     function: "fetch_chain_header_in_all_chains",
                     details: format!("accumulated data mismatch for orphan header {}", hash.to_hex()),
