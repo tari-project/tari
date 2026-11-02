@@ -950,14 +950,33 @@ where B: BlockchainBackend
                                         "[Blockchain check] Corruption at height {height} no longer reproduces under \
                                         the write lock; the chain changed under the check. Not rewinding.",
                                     );
-                                    (Some("it no longer reproduces".to_string()), String::new())
+                                    (
+                                        Some(format!(
+                                            "corruption reported at height {height} ({e}) did not hold under the \
+                                             write lock"
+                                        )),
+                                        String::new(),
+                                    )
                                 },
                                 Ok(Ok(RewindOutcome::RecheckFailed(recheck_error))) => {
                                     warn!(target: LOG_TARGET,
                                         "[Blockchain check] Re-checking height {height} under the write lock before \
                                         rewinding failed: {recheck_error}. Not rewinding.",
                                     );
-                                    (Some(format!("re-checking it failed: {recheck_error}")), String::new())
+                                    (
+                                        Some(format!(
+                                            "corruption reported at height {height} ({e}) could not be re-checked \
+                                             under the write lock: {recheck_error}"
+                                        )),
+                                        String::new(),
+                                    )
+                                },
+                                Ok(Ok(RewindOutcome::NotRewound(reason))) => {
+                                    error!(target: LOG_TARGET,
+                                        "[Blockchain check] Corruption at height {height} is confirmed, but the rewind \
+                                        could not start: {reason}",
+                                    );
+                                    (None, format!("corruption confirmed but not rewound: {reason}"))
                                 },
                                 Ok(Err(rewind_error)) => {
                                     error!(target: LOG_TARGET,
@@ -991,11 +1010,8 @@ where B: BlockchainBackend
                             );
                             (None, "autocorrect disabled, not rewound".to_string())
                         };
-                        if let Some(reason) = not_reproduced {
-                            Some(format!(
-                                "corruption reported at height {height} ({e}) did not hold under the write lock; last \
-                                 re-check: {reason}"
-                            ))
+                        if not_reproduced.is_some() {
+                            not_reproduced
                         } else {
                             clear_flags(
                                 db_rw_lock.clone(),
@@ -6035,6 +6051,8 @@ enum RewindOutcome {
     NotReproduced,
     // The re-check failed with a non-corruption error, so nothing was rewound.
     RecheckFailed(ChainStorageError),
+    // The corruption is confirmed, but the rewind could not start.
+    NotRewound(String),
 }
 
 // Re-checks a height reported as corrupt under the caller's write lock and rewinds to just below the checked height
@@ -6048,7 +6066,8 @@ fn rewind_if_still_corrupt<B: BlockchainBackend>(
 ) -> Result<RewindOutcome, ChainStorageError> {
     let checked_height = match db.fetch_last_header() {
         Ok(header) => min(height, header.height),
-        Err(e) => return Ok(RewindOutcome::RecheckFailed(e)),
+        Err(e) if e.is_storage_access_failure() => return Ok(RewindOutcome::RecheckFailed(e)),
+        Err(e) => return Ok(RewindOutcome::NotRewound(format!("could not read the header tip: {e}"))),
     };
     let recheck = match check_linkage_at_height(&*db, checked_height) {
         Ok(Some(block)) => {
@@ -6072,7 +6091,7 @@ fn rewind_if_still_corrupt<B: BlockchainBackend>(
     }
     let rewind_to = checked_height.saturating_sub(1);
     if let Err(e) = warn_before_consistency_rewind(&*db, rewind_to) {
-        return Ok(RewindOutcome::RecheckFailed(e));
+        return Ok(RewindOutcome::NotRewound(format!("could not read chain metadata: {e}")));
     }
     // Only an error from the rewind itself is returned as `Err`, since it may have left the chain partly rewound.
     rewind_to_height(db, rewind_to)?;
@@ -10654,6 +10673,27 @@ mod test {
 
             let err = check(&blockchain, 7, false).unwrap_err();
             assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+        }
+
+        #[test]
+        fn undecodable_tip_header_is_confirmed_but_not_rewound() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .write_undecodable_header_for_test(7);
+
+            let err = check(&blockchain, 7, false).unwrap_err();
+            assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+            let outcome = rewind(&blockchain, 7, None);
+            assert!(matches!(outcome, RewindOutcome::NotRewound(_)), "{outcome:?}");
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
         }
 
         #[test]

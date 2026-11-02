@@ -3180,6 +3180,16 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Overwrites the header row at `height` with bytes that do not decode.
+    #[cfg(test)]
+    pub(crate) fn write_undecodable_header_for_test(&self, height: u64) {
+        let txn = self.create_write_txn();
+        txn.access()
+            .put(&self.headers_db, &height, &[0xffu8], lmdb_zero::put::Flags::empty())
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
     /// Overwrites the excess signature index row of a kernel with bytes that do not decode.
     #[cfg(test)]
     pub(crate) fn write_undecodable_kernel_index_for_test(&self, excess_sig: &CompressedSignature) {
