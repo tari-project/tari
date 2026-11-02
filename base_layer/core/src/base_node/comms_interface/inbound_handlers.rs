@@ -875,6 +875,26 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    /// Use one of `peer`'s checks of Tari RandomX blocks whose ancestry we do not hold, or drop the block unhashed,
+    /// without a ban, if it has none left
+    fn take_unknown_ancestry_randomx_check(
+        &self,
+        header: &BlockHeader,
+        peer: &NodeId,
+    ) -> Result<(), CommsInterfaceError> {
+        let mut checks = self
+            .unknown_ancestry_randomx_checks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if checks.try_take(peer, Instant::now()) {
+            return Ok(());
+        }
+        Err(CommsInterfaceError::UnknownRandomXKey {
+            hash: header.hash(),
+            details: "the peer has no checks against the main chain key left".to_string(),
+        })
+    }
+
     /// Pre-validation anti-spam gate for a gossiped block announcement.
     ///
     /// This runs on an *unlinked* header: nothing here has checked that `new_block.header.height` follows from
@@ -974,17 +994,8 @@ where B: BlockchainBackend + 'static
                     })?;
                 let (vm_key, ancestry_held) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
                 own_chain_checked = ancestry_held;
-                if !ancestry_held &&
-                    !self
-                        .unknown_ancestry_randomx_checks
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .try_take(source_peer, Instant::now())
-                {
-                    return Err(CommsInterfaceError::UnknownRandomXKey {
-                        hash: new_block.header.hash(),
-                        details: "the peer has no checks against the main chain key left".to_string(),
-                    });
+                if !ancestry_held {
+                    self.take_unknown_ancestry_randomx_check(&new_block.header, source_peer)?;
                 }
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
