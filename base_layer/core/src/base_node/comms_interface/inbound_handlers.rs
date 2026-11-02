@@ -867,6 +867,8 @@ where B: BlockchainBackend + 'static
         let constants = self.consensus_manager.consensus_constants(rules_height);
         let gen_hash = *self.consensus_manager.get_genesis_block().hash();
         let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        // Whether the proof of work is checked against the block's own chain
+        let mut own_chain_checked = true;
         loop {
             if new_block.header.pow_algo() == header.header().pow_algo() {
                 min_difficulty = max(
@@ -921,7 +923,8 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| {
                         CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e))
                     })?;
-                let vm_key = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
+                let (vm_key, ancestry_held) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
+                own_chain_checked = ancestry_held;
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
                 task::spawn_blocking(move || tari_randomx_difficulty(&header, &randomx_factory, &vm_key))
@@ -947,6 +950,16 @@ where B: BlockchainBackend + 'static
                 target: LOG_TARGET,
                 "Block failed with invalid pow: {new_block}"
             );
+            // Checked against the main chain's key, a block on a fork whose ancestry we do not hold fails whatever
+            // its sender did, so it is dropped without a ban
+            if !own_chain_checked {
+                return Err(CommsInterfaceError::UnknownRandomXKey {
+                    hash: new_block.header.hash(),
+                    details: format!(
+                        "achieved difficulty {achieved} is below {min_difficulty} under the main chain key"
+                    ),
+                });
+            }
             return Err(CommsInterfaceError::InvalidBlockHeader(
                 BlockHeaderValidationError::ProofOfWorkError(PowError::AchievedDifficultyBelowMin {
                     minimum: min_difficulty,
@@ -1674,18 +1687,21 @@ fn retain_requested_transactions(
     (retained, dropped)
 }
 
-/// The Tari RandomX VM key to check `header` against. A block whose ancestry we hold takes the key of its own chain,
-/// which for a fork below the key block is not the main chain's; any other block takes the main chain's.
+/// The Tari RandomX VM key to check `header` against, and whether we hold the block's ancestry. A block whose ancestry
+/// we hold takes the key of its own chain, which for a fork below the key block is not the main chain's; any other
+/// block takes the main chain's.
 async fn fetch_tari_rx_vm_key<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     header: &BlockHeader,
-) -> Result<FixedHash, CommsInterfaceError> {
+) -> Result<(FixedHash, bool), CommsInterfaceError> {
     match db.fetch_vm_key_for_held_ancestry(header.clone()).await? {
-        Some(vm_key) => Ok(vm_key),
-        None => Ok(*db
-            .fetch_chain_header(tari_rx_vm_key_height(header.height))
-            .await?
-            .hash()),
+        Some(vm_key) => Ok((vm_key, true)),
+        None => Ok((
+            *db.fetch_chain_header(tari_rx_vm_key_height(header.height))
+                .await?
+                .hash(),
+            false,
+        )),
     }
 }
 
@@ -1760,10 +1776,92 @@ mod test {
 
         let header = BlockHeader::from_previous(parent.header());
         assert_eq!(tari_rx_vm_key_height(header.height), 2048);
-        assert_eq!(fetch_tari_rx_vm_key(&db, &header).await.unwrap(), fork_key);
+        assert_eq!(fetch_tari_rx_vm_key(&db, &header).await.unwrap(), (fork_key, true));
         let mut unknown = header;
         unknown.prev_hash = FixedHash::from([7u8; 32]);
-        assert_eq!(fetch_tari_rx_vm_key(&db, &unknown).await.unwrap(), main_key);
+        assert_eq!(fetch_tari_rx_vm_key(&db, &unknown).await.unwrap(), (main_key, false));
+    }
+
+    /// A Tari RandomX block below the minimum difficulty costs its sender a ban only when it was checked against its
+    /// own chain's key, which needs its ancestry; with the ancestry unknown it is dropped without one
+    #[tokio::test]
+    async fn a_randomx_block_with_an_unknown_ancestry_below_the_minimum_is_dropped_without_a_ban() {
+        use tari_common::configuration::Network;
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tari_transaction_components::{
+            BanPeriod,
+            aggregated_body::AggregateBody,
+            consensus::{ConsensusConstantsBuilder, consensus_constants::PowAlgorithmConstants},
+            tari_proof_of_work::{Difficulty, ProofOfWork},
+        };
+        use tari_utilities::epoch_time::EpochTime;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            consensus::BaseNodeConsensusManager,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::blockchain::create_custom_blockchain,
+            validation::mocks::MockValidator,
+        };
+
+        // No RandomX hash clears this minimum, under any key
+        let unreachable = Difficulty::from_u64(u64::MAX).unwrap();
+        let constants = ConsensusConstantsBuilder::new(Network::LocalNet)
+            .add_proof_of_work(PowAlgorithm::RandomXT, PowAlgorithmConstants {
+                min_difficulty: unreachable,
+                max_difficulty: unreachable,
+                target_time: 120,
+            })
+            .build();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(constants)
+            .build()
+            .unwrap();
+        let db = create_custom_blockchain(rules.clone());
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let mut header = BlockHeader::from_previous(genesis.header());
+        header.timestamp = genesis.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+        header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+
+        let held = NewBlock::from(&Block::new(header.clone(), AggregateBody::empty()));
+        let err = handlers.check_min_block_difficulty(&held).await.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(
+                    PowError::AchievedDifficultyBelowMin { .. }
+                ))
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+
+        header.prev_hash = FixedHash::from([7u8; 32]);
+        let unknown = NewBlock::from(&Block::new(header, AggregateBody::empty()));
+        let err = handlers.check_min_block_difficulty(&unknown).await.unwrap_err();
+        assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
+        assert!(err.get_ban_reason().is_none());
     }
 
     fn create_tx(key_manager: &KeyManager) -> Arc<Transaction> {
