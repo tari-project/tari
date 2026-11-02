@@ -23,9 +23,9 @@
 #[cfg(feature = "metrics")]
 use std::convert::{TryFrom, TryInto};
 use std::{
-    cmp::max,
+    cmp::{max, min},
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -244,6 +244,49 @@ pub enum BlockEvent {
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
 }
 
+/// How many Tari RandomX blocks of unknown ancestry a peer may have checked against the main chain key in a burst. An
+/// honest peer relays about one Tari RandomX block per block interval, which is minutes, so it never runs out.
+const UNKNOWN_ANCESTRY_RANDOMX_CHECKS: u32 = 4;
+/// How often a peer gets one such check back
+const UNKNOWN_ANCESTRY_RANDOMX_CHECK_REFILL: Duration = Duration::from_secs(30);
+
+/// Each peer's budget of RandomX checks against the main chain key, for blocks whose ancestry we do not hold. Such a
+/// block is dropped without a ban, so without a budget a peer could have us hash them for free.
+#[derive(Default)]
+struct UnknownAncestryRandomXChecks {
+    /// Checks left and when the last one was given back, by peer. A peer whose budget is full again is not kept.
+    by_peer: HashMap<NodeId, (u32, Instant)>,
+}
+
+impl UnknownAncestryRandomXChecks {
+    /// Take one of `peer`'s checks at `now`, or return false if it has none left
+    fn try_take(&mut self, peer: &NodeId, now: Instant) -> bool {
+        let refill_secs = UNKNOWN_ANCESTRY_RANDOMX_CHECK_REFILL.as_secs();
+        let full_after_secs = refill_secs.saturating_mul(u64::from(UNKNOWN_ANCESTRY_RANDOMX_CHECKS));
+        self.by_peer
+            .retain(|_, (_, refilled)| now.saturating_duration_since(*refilled).as_secs() < full_after_secs);
+        let (checks, refilled) = self
+            .by_peer
+            .entry(peer.clone())
+            .or_insert((UNKNOWN_ANCESTRY_RANDOMX_CHECKS, now));
+        let refills = now
+            .saturating_duration_since(*refilled)
+            .as_secs()
+            .checked_div(refill_secs)
+            .unwrap_or(0);
+        if refills > 0 {
+            let refills = u32::try_from(refills).unwrap_or(u32::MAX);
+            *checks = min(UNKNOWN_ANCESTRY_RANDOMX_CHECKS, checks.saturating_add(refills));
+            *refilled = now;
+        }
+        if *checks == 0 {
+            return false;
+        }
+        *checks = checks.saturating_sub(1);
+        true
+    }
+}
+
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsHandlers<B> {
     block_event_sender: BlockEventSender,
@@ -260,6 +303,7 @@ pub struct InboundNodeCommsHandlers<B> {
     // Maximum time to wait for the mempool to catch up to the chain tip when building a new block template. Defaults
     // to MAX_MEMPOOL_TIMEOUT; overridable (mainly for tests) via `with_mempool_sync_timeout`.
     mempool_sync_timeout: Duration,
+    unknown_ancestry_randomx_checks: Arc<Mutex<UnknownAncestryRandomXChecks>>,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -287,6 +331,7 @@ where B: BlockchainBackend + 'static
             randomx_factory,
             mempool_last_seen,
             mempool_sync_timeout: Duration::from_millis(MAX_MEMPOOL_TIMEOUT),
+            unknown_ancestry_randomx_checks: Arc::new(Mutex::new(UnknownAncestryRandomXChecks::default())),
         }
     }
 
@@ -779,7 +824,7 @@ where B: BlockchainBackend + 'static
         // blocks are not free to make, and that they are more expensive to make then they are to validate. As
         // soon as a block can be linked to the main chain, a proper full proof of work check will
         // be done before any other validation.
-        self.check_min_block_difficulty(&new_block)
+        self.check_min_block_difficulty(&new_block, &source_peer)
             .await
             .inspect_err(log_pow_rejection)?;
 
@@ -861,7 +906,11 @@ where B: BlockchainBackend + 'static
     /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
     /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives
     /// through header and block sync, which do not come through this gate.
-    async fn check_min_block_difficulty(&self, new_block: &NewBlock) -> Result<(), CommsInterfaceError> {
+    async fn check_min_block_difficulty(
+        &self,
+        new_block: &NewBlock,
+        source_peer: &NodeId,
+    ) -> Result<(), CommsInterfaceError> {
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
         let rules_height = max(header.height(), new_block.header.height);
         let constants = self.consensus_manager.consensus_constants(rules_height);
@@ -925,6 +974,18 @@ where B: BlockchainBackend + 'static
                     })?;
                 let (vm_key, ancestry_held) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
                 own_chain_checked = ancestry_held;
+                if !ancestry_held &&
+                    !self
+                        .unknown_ancestry_randomx_checks
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .try_take(source_peer, Instant::now())
+                {
+                    return Err(CommsInterfaceError::UnknownRandomXKey {
+                        hash: new_block.header.hash(),
+                        details: "the peer has no checks against the main chain key left".to_string(),
+                    });
+                }
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
                 task::spawn_blocking(move || tari_randomx_difficulty(&header, &randomx_factory, &vm_key))
@@ -1718,6 +1779,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             randomx_factory: self.randomx_factory.clone(),
             mempool_last_seen: self.mempool_last_seen.clone(),
             mempool_sync_timeout: self.mempool_sync_timeout,
+            unknown_ancestry_randomx_checks: self.unknown_ancestry_randomx_checks.clone(),
         }
     }
 }
@@ -1845,7 +1907,8 @@ mod test {
         header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
 
         let held = NewBlock::from(&Block::new(header.clone(), AggregateBody::empty()));
-        let err = handlers.check_min_block_difficulty(&held).await.unwrap_err();
+        let peer = NodeId::default();
+        let err = handlers.check_min_block_difficulty(&held, &peer).await.unwrap_err();
         assert!(
             matches!(
                 err,
@@ -1859,9 +1922,99 @@ mod test {
 
         header.prev_hash = FixedHash::from([7u8; 32]);
         let unknown = NewBlock::from(&Block::new(header, AggregateBody::empty()));
-        let err = handlers.check_min_block_difficulty(&unknown).await.unwrap_err();
+        let err = handlers.check_min_block_difficulty(&unknown, &peer).await.unwrap_err();
         assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
         assert!(err.get_ban_reason().is_none());
+    }
+
+    /// Once a peer has used up its checks of unknown-ancestry RandomX blocks, the next one is dropped before it is
+    /// hashed, without a ban. Blocks whose ancestry is held do not use the budget, and other peers keep theirs.
+    #[tokio::test]
+    async fn a_peer_out_of_unknown_ancestry_randomx_checks_has_its_block_dropped_unhashed() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tari_transaction_components::{aggregated_body::AggregateBody, tari_proof_of_work::ProofOfWork};
+        use tari_utilities::epoch_time::EpochTime;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules},
+            validation::mocks::MockValidator,
+        };
+
+        // LocalNet's minimum Tari RandomX difficulty is the lowest there is, so every block that is hashed passes
+        let db = create_new_blockchain();
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let rules = create_consensus_rules();
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let mut header = BlockHeader::from_previous(genesis.header());
+        header.timestamp = genesis.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+        header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+        let held = NewBlock::from(&Block::new(header.clone(), AggregateBody::empty()));
+        header.prev_hash = FixedHash::from([7u8; 32]);
+        let unknown = NewBlock::from(&Block::new(header, AggregateBody::empty()));
+        let peer = NodeId::from_key(&vec![1u8; 32]);
+        let other_peer = NodeId::from_key(&vec![2u8; 32]);
+
+        for _ in 0..=UNKNOWN_ANCESTRY_RANDOMX_CHECKS {
+            handlers.check_min_block_difficulty(&held, &peer).await.unwrap();
+        }
+        for _ in 0..UNKNOWN_ANCESTRY_RANDOMX_CHECKS {
+            handlers.check_min_block_difficulty(&unknown, &peer).await.unwrap();
+        }
+        let err = handlers.check_min_block_difficulty(&unknown, &peer).await.unwrap_err();
+
+        assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
+        assert!(err.get_ban_reason().is_none());
+        handlers.check_min_block_difficulty(&held, &peer).await.unwrap();
+        handlers
+            .check_min_block_difficulty(&unknown, &other_peer)
+            .await
+            .unwrap();
+    }
+
+    /// A peer gets one check back every refill interval, up to the burst, and a peer whose budget is full again is
+    /// forgotten
+    #[test]
+    fn unknown_ancestry_randomx_checks_refill_over_time() {
+        let mut checks = UnknownAncestryRandomXChecks::default();
+        let peer = NodeId::from_key(&vec![1u8; 32]);
+        let start = Instant::now();
+        for _ in 0..UNKNOWN_ANCESTRY_RANDOMX_CHECKS {
+            assert!(checks.try_take(&peer, start));
+        }
+        assert!(!checks.try_take(&peer, start));
+
+        let one_refill = start.checked_add(UNKNOWN_ANCESTRY_RANDOMX_CHECK_REFILL).unwrap();
+        assert!(checks.try_take(&peer, one_refill));
+        assert!(!checks.try_take(&peer, one_refill));
+
+        let full_again = one_refill
+            .checked_add(UNKNOWN_ANCESTRY_RANDOMX_CHECK_REFILL * UNKNOWN_ANCESTRY_RANDOMX_CHECKS)
+            .unwrap();
+        let other_peer = NodeId::from_key(&vec![2u8; 32]);
+        assert!(checks.try_take(&other_peer, full_again));
+        assert!(!checks.by_peer.contains_key(&peer));
     }
 
     fn create_tx(key_manager: &KeyManager) -> Arc<Transaction> {
