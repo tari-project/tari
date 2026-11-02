@@ -118,8 +118,16 @@ pub const MAX_FOLLOWED_LINKS_PER_PASS: usize = 2_000_000;
 /// walk does not charge the pass again for the candidate's own links (the pre-walk bound already did), so a candidate
 /// is charged at most about this much, and exhausting [MAX_FOLLOWED_LINKS_PER_PASS] takes about as many candidates as
 /// exhausting [MAX_WALKED_FRAMES_PER_PASS] with [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE]-deep ancestries (~2,000).
+/// Producers of an output examined beyond the highest priority one (see [MAX_EXTRA_PRODUCERS_PER_LOOKUP]) count as
+/// links too, in both.
 pub const MAX_LINKS_PER_CANDIDATE: usize =
     MAX_FOLLOWED_LINKS_PER_PASS / (MAX_WALKED_FRAMES_PER_PASS / MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE);
+
+/// The most producers of an output, beyond the highest priority one, that a selection pass examines to find one the
+/// block template allows (see [UnconfirmedPool::find_template_producer]). An honest output has one producer, or a few
+/// when a transaction was sent again with other kernels; any number can be added by conflicting transactions, so past
+/// this the branch is left out instead.
+pub const MAX_EXTRA_PRODUCERS_PER_LOOKUP: usize = 8;
 
 /// The outcome of a branch's internal-duplicate check
 enum DuplicateCheck {
@@ -2086,7 +2094,11 @@ impl UnconfirmedPool {
                 frame.next_dependency = frame.next_dependency.saturating_add(1);
                 match self.txs_by_output.get(dependent_output) {
                     Some(keys) => {
-                        let dependency = self.find_template_producer(keys, filter, links_left)?;
+                        let (dependency, extra_producers) = self.find_template_producer(keys, filter, links_left)?;
+                        *candidate_links = candidate_links.saturating_add(extra_producers);
+                        if *candidate_links > MAX_LINKS_PER_CANDIDATE {
+                            return Ok(WalkOutcome::TooManyAncestors);
+                        }
                         if selected_txs.contains_key(&dependency.key) {
                             // Already in the block: adds nothing
                         } else if !visited.insert(dependency.key) {
@@ -2166,7 +2178,8 @@ impl UnconfirmedPool {
         links_left: &mut usize,
         filter: &TemplateFilter,
     ) -> Result<BoundOutcome, UnconfirmedPoolError> {
-        if transaction.dependent_output_hashes.len() > MAX_LINKS_PER_CANDIDATE {
+        let mut links = transaction.dependent_output_hashes.len();
+        if links > MAX_LINKS_PER_CANDIDATE {
             return Ok(BoundOutcome::TooManyLinks);
         }
         let mut dependencies = 0u64;
@@ -2176,7 +2189,11 @@ impl UnconfirmedPool {
             }
             *links_left = links_left.saturating_sub(1);
             if let Some(keys) = self.txs_by_output.get(dependent_output) {
-                let dependency = self.find_template_producer(keys, filter, links_left)?;
+                let (dependency, extra_producers) = self.find_template_producer(keys, filter, links_left)?;
+                links = links.saturating_add(extra_producers);
+                if links > MAX_LINKS_PER_CANDIDATE {
+                    return Ok(BoundOutcome::TooManyLinks);
+                }
                 if !selected_txs.contains_key(&dependency.key) &&
                     let Some(bound) = ancestor_weight_bounds.get(&dependency.key)
                 {
@@ -2188,30 +2205,33 @@ impl UnconfirmedPool {
     }
 
     /// The highest priority pool transaction producing an output (from `keys`, its `txs_by_output` entry) that `filter`
-    /// lets into the template, so that a child is not left out because its preferred parent is. Every producer examined
-    /// after the first is charged to `links_left`; if none is allowed, or `links_left` runs out, the highest priority
-    /// one is returned (and its branch is left out).
+    /// lets into the template, so that a child is not left out because its preferred parent is, with the number of
+    /// producers examined after the first. At most [MAX_EXTRA_PRODUCERS_PER_LOOKUP] are, each charged to `links_left`;
+    /// if none of them is allowed, or `links_left` runs out, the highest priority one is returned (and its branch is
+    /// left out).
     fn find_template_producer(
         &self,
         keys: &[TransactionKey],
         filter: &TemplateFilter,
         links_left: &mut usize,
-    ) -> Result<&PrioritizedTransaction, UnconfirmedPoolError> {
+    ) -> Result<(&PrioritizedTransaction, usize), UnconfirmedPoolError> {
         let first = self.find_highest_priority_transaction(keys)?;
         if self.template_allows(filter, first.key, first) {
-            return Ok(first);
+            return Ok((first, 0));
         }
-        for key in keys.iter().skip(1) {
+        let mut examined = 0usize;
+        for key in keys.iter().skip(1).take(MAX_EXTRA_PRODUCERS_PER_LOOKUP) {
             if *links_left == 0 {
                 break;
             }
             *links_left = links_left.saturating_sub(1);
+            examined = examined.saturating_add(1);
             let producer = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
             if self.template_allows(filter, *key, producer) {
-                return Ok(producer);
+                return Ok((producer, examined));
             }
         }
-        Ok(first)
+        Ok((first, examined))
     }
 
     /// The highest priority of the pool transactions producing an output. `txs_by_output` keeps each entry ordered by
@@ -6169,6 +6189,46 @@ mod test {
             assert_eq!(selected.len(), 2);
             assert!(selected.contains(&allowed));
             assert!(selected.contains(&child));
+        }
+
+        #[test]
+        fn looking_for_an_allowed_producer_stops_after_a_few() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            // Producers of the same output in priority order, all left out of the template but the last, which comes
+            // after the cap
+            let first = synthetic_tx(&base, 0, 100);
+            pool.insert(first.clone(), None, &weight).unwrap();
+            let mut filter = TemplateFilter::unrestricted();
+            filter.excluded.insert(key_of(&pool, &first));
+            for n in 1..=u64::try_from(MAX_EXTRA_PRODUCERS_PER_LOOKUP).unwrap() {
+                let producer = same_outputs_as(&base, &first, n, 100 - n);
+                pool.insert(producer.clone(), None, &weight).unwrap();
+                filter.excluded.insert(key_of(&pool, &producer));
+            }
+            let allowed = same_outputs_as(&base, &first, 50, 5);
+            pool.insert(allowed.clone(), None, &weight).unwrap();
+            let child = child_of(&base, &first, 51);
+            pool.insert(child.clone(), Some(vec![first.body.outputs()[0].hash()]), &weight)
+                .unwrap();
+
+            let keys = pool.txs_by_output[&first.body.outputs()[0].hash()].clone();
+            let mut links_left = 1_000;
+            let (producer, examined) = pool.find_template_producer(&keys, &filter, &mut links_left).unwrap();
+            assert_eq!(producer.key, key_of(&pool, &first));
+            assert_eq!(examined, MAX_EXTRA_PRODUCERS_PER_LOOKUP);
+            assert_eq!(links_left, 1_000 - MAX_EXTRA_PRODUCERS_PER_LOOKUP);
+
+            // So the child is left out, and the allowed producer is selected on its own
+            let selected = pool
+                .fetch_template_txs(u64::MAX, max_weight(), &filter)
+                .unwrap()
+                .retrieved_transactions;
+            assert_eq!(selected, vec![allowed]);
         }
     }
 }
