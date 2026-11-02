@@ -905,6 +905,8 @@ pub(crate) fn height_check(
         Ok(_) if has_height_reading_covenant(tx) => validate_covenants(&tx.body, height).err().map(|e| e.to_string()),
         Ok(_) => None,
     };
+    // A failure at or above the validation height is treated as final, assuming it does not revert at a later height:
+    // a spend whose script passes again later is dropped, and must be broadcast again then
     match failure {
         None => HeightCheck::Passed,
         Some(reason) if height < validation.height => HeightCheck::NotYetValid(reason),
