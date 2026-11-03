@@ -75,8 +75,13 @@ pub enum AggregatedBodyValidationError {
     },
     #[error("Consensus Error: {0}")]
     ConsensusError(String),
-    #[error("Covenant failed to validate: {0}")]
-    CovenantError(#[from] CovenantError),
+    /// An input covenant failed. `height_dependent` is set if the failing input's covenant reads the block height, so
+    /// that the outcome can depend on it.
+    #[error("Covenant failed to validate: {error}")]
+    Covenant {
+        error: CovenantError,
+        height_dependent: bool,
+    },
     #[error("Contains Invalid Burn: {0}")]
     InvalidBurnError(String),
     #[error("Output type '{output_type}' is not permitted")]
@@ -114,8 +119,14 @@ pub enum AggregatedBodyValidationError {
     CovenantTooLarge { max_size: usize, actual_size: usize },
     #[error("Covenant evaluation exceeded the work limit of {limit}")]
     CovenantWorkLimitExceeded { limit: u64 },
+    /// `height_dependent` is set if any input covenant reads the block height, so that the outputs it admits can
+    /// depend on it.
     #[error("Covenants of {inputs} inputs need distinct outputs, but at most {matched} can be satisfied")]
-    CovenantOutputsClaimedTwice { inputs: usize, matched: usize },
+    CovenantOutputsClaimedTwice {
+        inputs: usize,
+        matched: usize,
+        height_dependent: bool,
+    },
     #[error("Invalid Serialized Public key: {0}")]
     InvalidSerializedPublicKey(String),
 }

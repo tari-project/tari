@@ -29,7 +29,7 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
     epoch::VnEpoch,
-    types::{CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    types::{CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
 };
 use tari_comms::protocol::rpc::RPC_MAX_FRAME_SIZE;
 use tari_node_components::blocks::Block;
@@ -38,7 +38,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::consensus_constants::MAX_BLOCK_BODY_BYTES,
     rpc::models::FeePerGramStat,
-    transaction_components::{Transaction, TransactionError},
+    transaction_components::{Transaction, TransactionError, covenants::MAX_COVENANT_WORK_PER_BODY},
     weight::TransactionWeight,
 };
 use tari_utilities::ByteArray;
@@ -118,8 +118,16 @@ pub const MAX_FOLLOWED_LINKS_PER_PASS: usize = 2_000_000;
 /// walk does not charge the pass again for the candidate's own links (the pre-walk bound already did), so a candidate
 /// is charged at most about this much, and exhausting [MAX_FOLLOWED_LINKS_PER_PASS] takes about as many candidates as
 /// exhausting [MAX_WALKED_FRAMES_PER_PASS] with [MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE]-deep ancestries (~2,000).
+/// Producers of an output examined beyond the highest priority one (see [MAX_EXTRA_PRODUCERS_PER_LOOKUP]) count as
+/// links too, in both.
 pub const MAX_LINKS_PER_CANDIDATE: usize =
     MAX_FOLLOWED_LINKS_PER_PASS / (MAX_WALKED_FRAMES_PER_PASS / MAX_UNSELECTED_ANCESTORS_PER_CANDIDATE);
+
+/// The most producers of an output, beyond the highest priority one, that a selection pass examines to find one the
+/// block template allows (see [UnconfirmedPool::find_template_producer]). An honest output has one producer, or a few
+/// when a transaction was sent again with other kernels; any number can be added by conflicting transactions, so past
+/// this the branch is left out instead.
+pub const MAX_EXTRA_PRODUCERS_PER_LOOKUP: usize = 8;
 
 /// The outcome of a branch's internal-duplicate check
 enum DuplicateCheck {
@@ -164,7 +172,7 @@ enum WalkOutcome {
 /// prune), so under byte pressure a byte-heavy transaction could otherwise take the byte budget while paying for only a
 /// few percent of the block's weight. When the byte budget binds, selection is also run ordered by fee per effective
 /// weight, so that a byte-heavy transaction must pay for the share of the byte budget it consumes (see
-/// [UnconfirmedPool::fetch_highest_priority_txs]). Without byte pressure, and for the stored priority, only the real
+/// [UnconfirmedPool::fetch_template_txs]). Without byte pressure, and for the stored priority, only the real
 /// weight is used. This is miner policy only: the block is always filled by real weight.
 pub fn effective_weight(
     weight: u64,
@@ -237,12 +245,99 @@ pub struct UnconfirmedPool {
     /// validated, so two such transactions in the pool would make every block template fail (see
     /// [UnconfirmedPool::validator_node_conflict_holders]).
     txs_by_validator_node: HashMap<ValidatorNodeKey, TransactionKey>,
+    /// The pool transactions with an input script or covenant that reads the block height (see [reads_block_height]).
+    /// Unlike every other check, these can stop being valid as the chain grows, so they are re-checked when they are
+    /// selected for a block template, and in bounded batches after each block.
+    txs_reading_height: BTreeMap<TransactionKey, HeightReadingEntry>,
+    /// The key in `txs_reading_height` the next background re-check starts at (see
+    /// [UnconfirmedPool::height_reading_sweep_batch])
+    sweep_cursor: TransactionKey,
     /// The template byte budget used for selection and for effective weights (see [effective_weight])
     max_body_bytes: usize,
 }
 
+/// The block a transaction with an input script or covenant that reads the height was validated for
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HeightValidation {
+    /// The height of the block
+    pub height: u64,
+    /// The keys its height-reading input scripts returned there, in input order
+    pub script_keys: Vec<CompressedPublicKey>,
+}
+
+/// A pool transaction whose input scripts or covenants read the block height
+#[derive(Debug, Clone)]
+struct HeightReadingEntry {
+    validation: HeightValidation,
+    /// A bound on the work of re-checking it (see [height_check_work])
+    work: u64,
+    /// The previous block hash of the last block it was re-checked for and passed
+    passed_at: Option<HashOutput>,
+}
+
+/// Which pool transactions a block template may contain, beyond fitting in the block. A transaction that is left out
+/// leaves out the transactions that depend on it too.
+#[derive(Debug, Clone)]
+pub struct TemplateFilter {
+    /// The height of the block: a transaction with an input that is not yet mature there, or a kernel locked above
+    /// it, is left out
+    pub height: u64,
+    /// Transactions to leave out
+    pub excluded: HashSet<TransactionKey>,
+    /// If set, a transaction with an input script or covenant that reads the height is left out unless it passed a
+    /// re-check for a block on top of this one
+    pub only_checked_at: Option<HashOutput>,
+}
+
+impl TemplateFilter {
+    /// A filter that leaves nothing out
+    #[cfg(test)]
+    pub fn unrestricted() -> Self {
+        Self {
+            height: u64::MAX,
+            excluded: HashSet::new(),
+            only_checked_at: None,
+        }
+    }
+}
+
 /// A validator node registered or exited by a transaction: (sidechain public key, validator node public key), as bytes
 type ValidatorNodeKey = (Option<Vec<u8>>, Vec<u8>);
+
+/// Whether any input of `body` has a script or covenant that reads the block height, so that whether `body` is valid
+/// can change from one block to the next
+pub(crate) fn reads_block_height(body: &AggregateBody) -> bool {
+    body.inputs().iter().any(|input| {
+        input.script().is_ok_and(|script| script.is_context_sensitive()) ||
+            input.covenant().is_ok_and(|covenant| covenant.reads_block_height())
+    })
+}
+
+/// The cost of running one input script, in covenant work units (see [MAX_COVENANT_WORK_PER_BODY]). A script at the
+/// size limit, packed with signature checks, runs in about 0.8 ms. A covenant work unit costs about 60 ns for typical
+/// outputs, and up to a few microseconds when it hashes a field at its size limit, so a script is charged as 200 units.
+pub const SCRIPT_INPUT_WORK: u64 = 200;
+
+/// A bound, in covenant work units, on the work of re-checking `body` for another height (see `height_check` in the
+/// mempool storage): [SCRIPT_INPUT_WORK] for each input script that reads the height, and if any covenant reads the
+/// height, the limit on evaluating all of them, [MAX_COVENANT_WORK_PER_BODY] (each is evaluated again, and the
+/// outputs a height filter admits can change with the height, so the work seen at admission is no bound).
+fn height_check_work(body: &AggregateBody) -> u64 {
+    let mut work = 0u64;
+    let mut covenant_reads_height = false;
+    for input in body.inputs() {
+        if input.script().is_ok_and(|script| script.is_context_sensitive()) {
+            work = work.saturating_add(SCRIPT_INPUT_WORK);
+        }
+        if input.covenant().is_ok_and(|covenant| covenant.reads_block_height()) {
+            covenant_reads_height = true;
+        }
+    }
+    if covenant_reads_height {
+        work = work.saturating_add(MAX_COVENANT_WORK_PER_BODY);
+    }
+    work
+}
 
 /// The validator nodes `body` registers or exits. A registration and an exit for the same validator node share a key:
 /// they can never both be valid against the same chain state.
@@ -599,6 +694,8 @@ impl UnconfirmedPool {
             txs_by_kernel_excess: HashMap::new(),
             txs_by_unique_id: HashMap::new(),
             txs_by_validator_node: HashMap::new(),
+            txs_reading_height: BTreeMap::new(),
+            sweep_cursor: 0,
             max_body_bytes: MAX_BLOCK_TEMPLATE_BODY_BYTES,
         }
     }
@@ -610,14 +707,33 @@ impl UnconfirmedPool {
         self
     }
 
-    /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
-    /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
-    /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
+    /// Insert a new transaction into the UnconfirmedPool, as validated for height 0 with no script keys (see
+    /// [UnconfirmedPool::insert_with_height_validation])
+    #[cfg(test)]
     pub fn insert(
         &mut self,
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
+    ) -> Result<(), UnconfirmedPoolError> {
+        self.insert_with_height_validation(
+            tx,
+            dependent_outputs,
+            transaction_weighting,
+            HeightValidation::default(),
+        )
+    }
+
+    /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
+    /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
+    /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
+    /// `height_validation` is the block the transaction was validated for, if it reads the height.
+    pub fn insert_with_height_validation(
+        &mut self,
+        tx: Arc<Transaction>,
+        dependent_outputs: Option<Vec<HashOutput>>,
+        transaction_weighting: &TransactionWeight,
+        height_validation: HeightValidation,
     ) -> Result<(), UnconfirmedPoolError> {
         if tx
             .body
@@ -668,6 +784,13 @@ impl UnconfirmedPool {
 
         for vn_key in validator_node_keys(&prioritized_tx.transaction.body) {
             self.txs_by_validator_node.entry(vn_key).or_insert(new_key);
+        }
+        if reads_block_height(&prioritized_tx.transaction.body) {
+            self.txs_reading_height.insert(new_key, HeightReadingEntry {
+                validation: height_validation,
+                work: height_check_work(&prioritized_tx.transaction.body),
+                passed_at: None,
+            });
         }
 
         debug!(
@@ -756,6 +879,165 @@ impl UnconfirmedPool {
             .collect()
     }
 
+    /// The transactions of `selected` (as returned by [UnconfirmedPool::fetch_template_txs]) whose input
+    /// scripts or covenants read the block height and that have not yet passed a re-check for a block on top of
+    /// `prev_hash`, each with its key and the block it was validated for
+    pub fn height_reading_to_check(
+        &self,
+        selected: &[Arc<Transaction>],
+        prev_hash: &HashOutput,
+    ) -> Vec<(TransactionKey, Arc<Transaction>, HeightValidation)> {
+        let mut to_check = Vec::new();
+        for tx in selected {
+            let Some(kernel) = tx.body.kernels().first() else {
+                continue;
+            };
+            for key in self
+                .txs_by_signature
+                .get(kernel.excess_sig.get_signature())
+                .into_iter()
+                .flatten()
+            {
+                let Some(entry) = self.txs_reading_height.get(key) else {
+                    continue;
+                };
+                let is_selected = self.tx_by_key.get(key).is_some_and(|stored| stored.transaction == *tx);
+                if is_selected && entry.passed_at.as_ref() != Some(prev_hash) {
+                    to_check.push((*key, tx.clone(), entry.validation.clone()));
+                }
+            }
+        }
+        to_check
+    }
+
+    /// Records that the pool transaction `key` passed its re-check for a block on top of `prev_hash`, so that it is not
+    /// checked again for that block
+    pub fn record_height_check_passed(&mut self, key: TransactionKey, prev_hash: HashOutput) {
+        if let Some(entry) = self.txs_reading_height.get_mut(&key) {
+            entry.passed_at = Some(prev_hash);
+        }
+    }
+
+    /// The transactions whose input scripts or covenants read the block height to re-check next for the block at
+    /// `height` on top of `prev_hash` in the background, starting at the sweep cursor and wrapping around, so that
+    /// successive batches visit every one of them. At most `max_entries` are visited, and those returned cost at most
+    /// `max_work` to re-check in total (see [height_check_work]), except that the first one to re-check is always
+    /// returned, so that every batch makes progress (its work is bounded by its block weight and covenant work limit).
+    /// Transactions validated for
+    /// a higher height (they may only become valid there) and those that already passed for this block are visited but
+    /// not returned. Also returns the key to move the sweep cursor to (see [UnconfirmedPool::set_sweep_cursor]).
+    pub fn height_reading_sweep_batch(
+        &self,
+        max_entries: usize,
+        max_work: u64,
+        height: u64,
+        prev_hash: &HashOutput,
+    ) -> (
+        Vec<(TransactionKey, Arc<Transaction>, HeightValidation)>,
+        TransactionKey,
+    ) {
+        let mut batch = Vec::new();
+        let mut work = 0u64;
+        let mut next_cursor = self.sweep_cursor;
+        let visited = self
+            .txs_reading_height
+            .range(self.sweep_cursor..)
+            .chain(self.txs_reading_height.range(..self.sweep_cursor))
+            .take(max_entries);
+        for (key, entry) in visited {
+            let skip = entry.validation.height > height || entry.passed_at.as_ref() == Some(prev_hash);
+            if !skip && !batch.is_empty() && work.saturating_add(entry.work) > max_work {
+                // Left for the next batch
+                break;
+            }
+            next_cursor = key.wrapping_add(1);
+            if skip {
+                continue;
+            }
+            if let Some(tx) = self.tx_by_key.get(key) {
+                work = work.saturating_add(entry.work);
+                batch.push((*key, tx.transaction.clone(), entry.validation.clone()));
+            }
+        }
+        (batch, next_cursor)
+    }
+
+    /// The transactions whose input scripts or covenants read the height that `filter` would leave out of a template
+    /// only because they have not passed a re-check for a block on top of `prev_hash`, highest priority first, costing
+    /// at most `max_work` to re-check in total (see [height_check_work]; the first one is always included). This sorts
+    /// the height-reading transactions, so it is linear-logarithmic in their number.
+    pub fn height_reading_unchecked(
+        &self,
+        filter: &TemplateFilter,
+        prev_hash: &HashOutput,
+        max_work: u64,
+    ) -> Vec<(TransactionKey, Arc<Transaction>, HeightValidation)> {
+        let mut candidates = Vec::new();
+        for (key, entry) in &self.txs_reading_height {
+            if entry.passed_at.as_ref() == Some(prev_hash) || filter.excluded.contains(key) {
+                continue;
+            }
+            if let Some(tx) = self.tx_by_key.get(key) &&
+                tx.min_height <= filter.height
+            {
+                candidates.push((tx, entry));
+            }
+        }
+        candidates.sort_by(|(a, _), (b, _)| b.priority.cmp(&a.priority));
+        let mut batch = Vec::new();
+        let mut work = 0u64;
+        for (tx, entry) in candidates {
+            if !batch.is_empty() && work.saturating_add(entry.work) > max_work {
+                break;
+            }
+            work = work.saturating_add(entry.work);
+            batch.push((tx.key, tx.transaction.clone(), entry.validation.clone()));
+        }
+        batch
+    }
+
+    /// Moves the sweep cursor (see [UnconfirmedPool::height_reading_sweep_batch])
+    pub fn set_sweep_cursor(&mut self, cursor: TransactionKey) {
+        self.sweep_cursor = cursor;
+    }
+
+    /// Removes the pool transaction `key` and every pool transaction that spends one of its outputs, directly or
+    /// through others: none of them can be valid without it. An output that another pool transaction also produces is
+    /// still available, so its spenders are kept. Each is found through the spent-output index and removed once, so
+    /// this is linear in the transactions removed. Returns the number removed.
+    pub fn remove_transaction_and_descendants(&mut self, key: TransactionKey) -> Result<usize, UnconfirmedPoolError> {
+        let mut to_remove = vec![key];
+        let mut removed = 0usize;
+        while let Some(key) = to_remove.pop() {
+            let Some(tx) = self.remove_transaction(key)? else {
+                continue;
+            };
+            removed = removed.saturating_add(1);
+            for output in tx.body.outputs() {
+                let hash = output.hash();
+                if self.txs_by_output.contains_key(&hash) {
+                    continue;
+                }
+                // Every spender is removed, so the whole entry is taken here rather than searched once per spender
+                if let Some(spenders) = self.txs_by_spent_output.remove(&hash) {
+                    to_remove.extend(spenders);
+                }
+            }
+        }
+        Ok(removed)
+    }
+
+    /// Whether `filter` lets the pool transaction `key` into a block template
+    fn template_allows(&self, filter: &TemplateFilter, key: TransactionKey, tx: &PrioritizedTransaction) -> bool {
+        if tx.min_height > filter.height || filter.excluded.contains(&key) {
+            return false;
+        }
+        match (&filter.only_checked_at, self.txs_reading_height.get(&key)) {
+            (Some(prev_hash), Some(entry)) => entry.passed_at.as_ref() == Some(prev_hash),
+            _ => true,
+        }
+    }
+
     /// Whether `body` registers, exits or cancels any validator node, i.e. whether mining it can change the validator
     /// node set
     pub fn body_touches_validator_nodes(body: &AggregateBody) -> bool {
@@ -794,6 +1076,20 @@ impl UnconfirmedPool {
             .collect()
     }
 
+    /// As [UnconfirmedPool::fetch_template_txs], leaving nothing out
+    #[cfg(test)]
+    pub fn fetch_highest_priority_txs(
+        &self,
+        total_weight: u64,
+        max_block_transaction_weight: u64,
+    ) -> Result<RetrieveResults, UnconfirmedPoolError> {
+        self.fetch_template_txs(
+            total_weight,
+            max_block_transaction_weight,
+            &TemplateFilter::unrestricted(),
+        )
+    }
+
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block. The selection
     /// is limited by `total_weight` (real weight) and by the template byte budget ([MAX_BLOCK_TEMPLATE_BODY_BYTES]).
     ///
@@ -802,18 +1098,20 @@ impl UnconfirmedPool {
     /// [effective_weight]), and whichever selection earns the higher total fee is returned (the first on a tie). Under
     /// byte pressure a byte-heavy transaction must therefore pay for the share of the byte budget it consumes.
     /// `max_block_transaction_weight` is the consensus maximum, used only for that byte-to-weight ratio.
-    pub fn fetch_highest_priority_txs(
+    ///
+    /// A transaction that `filter` does not allow is left out, with every transaction that depends on it.
+    pub fn fetch_template_txs(
         &self,
         total_weight: u64,
         max_block_transaction_weight: u64,
+        filter: &TemplateFilter,
     ) -> Result<RetrieveResults, UnconfirmedPoolError> {
-        self.fetch_highest_priority_txs_with_byte_budget(
-            total_weight,
-            self.max_body_bytes,
-            max_block_transaction_weight,
-        )
+        Ok(self
+            .fetch_selection(total_weight, self.max_body_bytes, max_block_transaction_weight, filter)?
+            .results)
     }
 
+    #[cfg(test)]
     fn fetch_highest_priority_txs_with_byte_budget(
         &self,
         total_weight: u64,
@@ -821,16 +1119,22 @@ impl UnconfirmedPool {
         max_block_transaction_weight: u64,
     ) -> Result<RetrieveResults, UnconfirmedPoolError> {
         Ok(self
-            .fetch_selection(total_weight, max_body_bytes, max_block_transaction_weight)?
+            .fetch_selection(
+                total_weight,
+                max_body_bytes,
+                max_block_transaction_weight,
+                &TemplateFilter::unrestricted(),
+            )?
             .results)
     }
 
-    /// Runs the selection described in [UnconfirmedPool::fetch_highest_priority_txs] and returns the chosen pass
+    /// Runs the selection described in [UnconfirmedPool::fetch_template_txs] and returns the chosen pass
     fn fetch_selection(
         &self,
         total_weight: u64,
         max_body_bytes: usize,
         max_block_transaction_weight: u64,
+        filter: &TemplateFilter,
     ) -> Result<Selection, UnconfirmedPoolError> {
         let by_weight = self.select_txs_with(
             total_weight,
@@ -838,6 +1142,7 @@ impl UnconfirmedPool {
             Ranking::Weight,
             max_block_transaction_weight,
             HashSet::new(),
+            filter,
         )?;
         if !by_weight.byte_bound {
             return Ok(by_weight);
@@ -852,6 +1157,7 @@ impl UnconfirmedPool {
             },
             max_block_transaction_weight,
             excluded,
+            filter,
         )?;
         let (mut chosen, other) = if by_effective_weight.total_fees > by_weight.total_fees {
             (by_effective_weight, by_weight)
@@ -943,6 +1249,7 @@ impl UnconfirmedPool {
             ranking,
             max_block_transaction_weight,
             HashSet::new(),
+            &TemplateFilter::unrestricted(),
         )
     }
 
@@ -954,6 +1261,7 @@ impl UnconfirmedPool {
         ranking: Ranking,
         max_block_transaction_weight: u64,
         excluded: HashSet<TransactionKey>,
+        filter: &TemplateFilter,
     ) -> Result<Selection, UnconfirmedPoolError> {
         // The process of selection is as follows:
         // Assume that all transaction have the same weight for simplicity. A(20)->B(2) means A depends on B and A has
@@ -1004,6 +1312,11 @@ impl UnconfirmedPool {
             if state.selected_txs.contains_key(tx_key) {
                 continue;
             }
+            // Not allowed in this template (for this pass: the filter is the same for the next one)
+            if !self.template_allows(filter, *tx_key, prioritized_transaction) {
+                state.walked_dropped.insert(*tx_key);
+                continue;
+            }
             // Cheap checks before walking the transaction's ancestors. If it spends an input that is already spent, it
             // can never be mined with the selection: drop it without counting it.
             // If it cannot fit on its own, neither can its branch
@@ -1025,6 +1338,7 @@ impl UnconfirmedPool {
                 &state.selected_txs,
                 &state.ancestor_weight_bounds,
                 &mut state.links_left,
+                filter,
             )? {
                 BoundOutcome::Bound(bound) => bound,
                 BoundOutcome::TooManyLinks => {
@@ -1068,9 +1382,21 @@ impl UnconfirmedPool {
                 &mut state.links_left,
                 &mut candidate_links,
                 &mut state.ancestor_weight_bounds,
+                filter,
             )?;
             match outcome {
-                WalkOutcome::Complete => {},
+                WalkOutcome::Complete => {
+                    // An ancestor that is not allowed in this template leaves the branch out too
+                    let allowed = candidate_transactions_to_select.keys().all(|key| {
+                        self.tx_by_key
+                            .get(key)
+                            .is_some_and(|tx| self.template_allows(filter, *key, tx))
+                    });
+                    if !allowed {
+                        state.walked_dropped.insert(*tx_key);
+                        continue;
+                    }
+                },
                 WalkOutcome::TooManyAncestors => {
                     // Junk-shaped: drop it without counting it towards anything
                     state.too_many_ancestors_drops = state.too_many_ancestors_drops.saturating_add(1);
@@ -1727,6 +2053,7 @@ impl UnconfirmedPool {
         links_left: &mut usize,
         candidate_links: &mut usize,
         ancestor_weight_bounds: &mut HashMap<TransactionKey, u64>,
+        filter: &TemplateFilter,
     ) -> Result<WalkOutcome, UnconfirmedPoolError> {
         struct Frame<'b> {
             transaction: &'b PrioritizedTransaction,
@@ -1768,7 +2095,11 @@ impl UnconfirmedPool {
                 frame.next_dependency = frame.next_dependency.saturating_add(1);
                 match self.txs_by_output.get(dependent_output) {
                     Some(keys) => {
-                        let dependency = self.find_highest_priority_transaction(keys)?;
+                        let (dependency, extra_producers) = self.find_template_producer(keys, filter, links_left)?;
+                        *candidate_links = candidate_links.saturating_add(extra_producers);
+                        if *candidate_links > MAX_LINKS_PER_CANDIDATE {
+                            return Ok(WalkOutcome::TooManyAncestors);
+                        }
                         if selected_txs.contains_key(&dependency.key) {
                             // Already in the block: adds nothing
                         } else if !visited.insert(dependency.key) {
@@ -1846,8 +2177,10 @@ impl UnconfirmedPool {
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         ancestor_weight_bounds: &HashMap<TransactionKey, u64>,
         links_left: &mut usize,
+        filter: &TemplateFilter,
     ) -> Result<BoundOutcome, UnconfirmedPoolError> {
-        if transaction.dependent_output_hashes.len() > MAX_LINKS_PER_CANDIDATE {
+        let mut links = transaction.dependent_output_hashes.len();
+        if links > MAX_LINKS_PER_CANDIDATE {
             return Ok(BoundOutcome::TooManyLinks);
         }
         let mut dependencies = 0u64;
@@ -1857,7 +2190,11 @@ impl UnconfirmedPool {
             }
             *links_left = links_left.saturating_sub(1);
             if let Some(keys) = self.txs_by_output.get(dependent_output) {
-                let dependency = self.find_highest_priority_transaction(keys)?;
+                let (dependency, extra_producers) = self.find_template_producer(keys, filter, links_left)?;
+                links = links.saturating_add(extra_producers);
+                if links > MAX_LINKS_PER_CANDIDATE {
+                    return Ok(BoundOutcome::TooManyLinks);
+                }
                 if !selected_txs.contains_key(&dependency.key) &&
                     let Some(bound) = ancestor_weight_bounds.get(&dependency.key)
                 {
@@ -1866,6 +2203,36 @@ impl UnconfirmedPool {
             }
         }
         Ok(BoundOutcome::Bound(transaction.weight.saturating_add(dependencies)))
+    }
+
+    /// The highest priority pool transaction producing an output (from `keys`, its `txs_by_output` entry) that `filter`
+    /// lets into the template, so that a child is not left out because its preferred parent is, with the number of
+    /// producers examined after the first. At most [MAX_EXTRA_PRODUCERS_PER_LOOKUP] are, each charged to `links_left`;
+    /// if none of them is allowed, or `links_left` runs out, the highest priority one is returned (and its branch is
+    /// left out).
+    fn find_template_producer(
+        &self,
+        keys: &[TransactionKey],
+        filter: &TemplateFilter,
+        links_left: &mut usize,
+    ) -> Result<(&PrioritizedTransaction, usize), UnconfirmedPoolError> {
+        let first = self.find_highest_priority_transaction(keys)?;
+        if self.template_allows(filter, first.key, first) {
+            return Ok((first, 0));
+        }
+        let mut examined = 0usize;
+        for key in keys.iter().skip(1).take(MAX_EXTRA_PRODUCERS_PER_LOOKUP) {
+            if *links_left == 0 {
+                break;
+            }
+            *links_left = links_left.saturating_sub(1);
+            examined = examined.saturating_add(1);
+            let producer = self.tx_by_key.get(key).ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            if self.template_allows(filter, *key, producer) {
+                return Ok((producer, examined));
+            }
+        }
+        Ok((first, examined))
     }
 
     /// The highest priority of the pool transactions producing an output. `txs_by_output` keeps each entry ordered by
@@ -1922,6 +2289,7 @@ impl UnconfirmedPool {
         self.txs_by_output_commitment.clear();
         self.txs_by_kernel_excess.clear();
         self.txs_by_validator_node.clear();
+        self.txs_reading_height.clear();
         self.tx_by_key.drain().map(|(_, val)| val.transaction).collect()
     }
 
@@ -2226,6 +2594,7 @@ impl UnconfirmedPool {
                 self.txs_by_validator_node.remove(&vn_key);
             }
         }
+        self.txs_reading_height.remove(&tx_key);
 
         trace!(
             target: LOG_TARGET,
@@ -2368,7 +2737,13 @@ impl UnconfirmedPool {
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
             self.txs_by_validator_node
                 .values()
-                .all(|tx_key| self.tx_by_key.contains_key(tx_key))
+                .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
+            self.txs_reading_height
+                .keys()
+                .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
+            self.tx_by_key.iter().all(|(key, tx)| {
+                reads_block_height(&tx.transaction.body) == self.txs_reading_height.contains_key(key)
+            })
     }
 
     fn get_next_key(&mut self) -> usize {
@@ -2805,7 +3180,7 @@ mod test {
 
         // Under byte pressure, the effective-weight ordering selects all of the normal transactions, for more fees
         let chosen = unconfirmed_pool
-            .fetch_selection(u64::MAX, budget, max_weight())
+            .fetch_selection(u64::MAX, budget, max_weight(), &TemplateFilter::unrestricted())
             .unwrap();
         assert_eq!(chosen.results.retrieved_transactions.len(), normal.len());
         for tx in &normal {
@@ -2853,7 +3228,12 @@ mod test {
             .sum();
 
         let chosen = unconfirmed_pool
-            .fetch_selection(desired_weight, MAX_BLOCK_TEMPLATE_BODY_BYTES, max_weight())
+            .fetch_selection(
+                desired_weight,
+                MAX_BLOCK_TEMPLATE_BODY_BYTES,
+                max_weight(),
+                &TemplateFilter::unrestricted(),
+            )
             .unwrap();
         assert!(!chosen.byte_bound);
         let by_weight = unconfirmed_pool
@@ -3142,6 +3522,7 @@ mod test {
                 Ranking::Weight,
                 max_block_weight,
                 HashSet::new(),
+                &TemplateFilter::unrestricted(),
             )
             .unwrap();
         let selected = &selection.results.retrieved_transactions;
@@ -3313,7 +3694,14 @@ mod test {
             max_body_bytes: usize::MAX / 2,
         }] {
             let selection = unconfirmed_pool
-                .select_txs_with(total_weight, usize::MAX / 2, ranking, max_weight(), HashSet::new())
+                .select_txs_with(
+                    total_weight,
+                    usize::MAX / 2,
+                    ranking,
+                    max_weight(),
+                    HashSet::new(),
+                    &TemplateFilter::unrestricted(),
+                )
                 .unwrap();
             let selected = &selection.results.retrieved_transactions;
             for tx in &normal {
@@ -3760,6 +4148,7 @@ mod test {
                 },
                 max_weight(),
                 UnconfirmedPool::second_pass_exclusions(&by_weight),
+                &TemplateFilter::unrestricted(),
             )
             .unwrap();
         assert!(by_effective_weight.results.retrieved_transactions.contains(&target));
@@ -4588,7 +4977,7 @@ mod test {
 
         // So the second pass can select B, and does so for more fees
         let chosen = unconfirmed_pool
-            .fetch_selection(u64::MAX, budget, max_weight())
+            .fetch_selection(u64::MAX, budget, max_weight(), &TemplateFilter::unrestricted())
             .unwrap();
         assert!(chosen.results.retrieved_transactions.contains(&b));
         assert!(!chosen.results.retrieved_transactions.contains(&a));
@@ -4723,7 +5112,7 @@ mod test {
         // So the effective-weight pass runs, and the normal-sized transactions win (the sentinel is one of them in this
         // pass, since nothing it conflicts with is selected)
         let chosen = unconfirmed_pool
-            .fetch_selection(u64::MAX, budget, max_weight())
+            .fetch_selection(u64::MAX, budget, max_weight(), &TemplateFilter::unrestricted())
             .unwrap();
         assert!(chosen.total_fees > by_weight.total_fees);
         let selected = &chosen.results.retrieved_transactions;
@@ -5347,6 +5736,526 @@ mod test {
             assert_eq!(results.retrieved_transactions.len(), 1);
             // The higher fee one is selected first
             assert!(results.retrieved_transactions.contains(&exit2));
+        }
+    }
+
+    mod height_reading_index {
+        use tari_script::{TariScript, script};
+        use tari_transaction_components::{
+            covenant,
+            transaction_components::{SpentOutput, covenants::Covenant},
+        };
+
+        use super::*;
+
+        /// A fresh transaction whose first input has the given script and covenant
+        fn tx_with_input(script: TariScript, covenant: Covenant, key_manager: &KeyManager) -> Arc<Transaction> {
+            let tx = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, key_manager)
+                .expect("Failed to get tx")
+                .0;
+            let mut inputs = tx.body.inputs().clone();
+            match &mut inputs[0].spent_output {
+                SpentOutput::OutputData {
+                    script: s, covenant: c, ..
+                } => {
+                    *s = script;
+                    *c = covenant;
+                },
+                SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+            }
+            Arc::new(Transaction::new(
+                inputs,
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                tx.offset.clone(),
+                tx.script_offset.clone(),
+            ))
+        }
+
+        fn indexed(pool: &UnconfirmedPool) -> Vec<Arc<Transaction>> {
+            pool.txs_reading_height
+                .keys()
+                .map(|key| pool.tx_by_key[key].transaction.clone())
+                .collect()
+        }
+
+        #[test]
+        fn it_indexes_transactions_whose_input_script_or_covenant_reads_the_height() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let plain = tx_with_input(script!(Nop).unwrap(), Covenant::default(), &key_manager);
+            let script_reads = tx_with_input(
+                script!(CheckHeightVerify(10)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            let covenant_reads = tx_with_input(
+                script!(Nop).unwrap(),
+                covenant!(not(absolute_height(@uint(10)))).unwrap(),
+                &key_manager,
+            );
+
+            let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                storage_capacity: 10,
+                weight_tx_skip_count: 3,
+                min_fee: 0,
+            });
+            let weight = TransactionWeight::latest();
+            for tx in [&plain, &script_reads, &covenant_reads] {
+                pool.insert(tx.clone(), None, &weight).unwrap();
+            }
+            assert_eq!(indexed(&pool), vec![script_reads.clone(), covenant_reads.clone()]);
+            assert!(pool.check_data_consistency());
+
+            // Remove
+            let key = *pool.txs_reading_height.keys().next().unwrap();
+            pool.remove_transaction(key).unwrap();
+            assert_eq!(indexed(&pool), vec![covenant_reads.clone()]);
+            assert!(pool.check_data_consistency());
+
+            // Compact
+            pool.compact();
+            assert_eq!(indexed(&pool), vec![covenant_reads.clone()]);
+            assert!(pool.check_data_consistency());
+
+            // The consistency check covers the index
+            let key = *pool.txs_reading_height.keys().next().unwrap();
+            let entry = pool.txs_reading_height.remove(&key).unwrap();
+            assert!(!pool.check_data_consistency());
+            pool.txs_reading_height.insert(key, entry);
+            assert!(pool.check_data_consistency());
+
+            // Drain
+            assert_eq!(pool.drain_all_mempool_transactions().len(), 2);
+            assert!(indexed(&pool).is_empty());
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn only_selected_height_reading_transactions_not_yet_passed_at_the_tip_are_checked() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let plain = tx_with_input(script!(Nop).unwrap(), Covenant::default(), &key_manager);
+            let selected = tx_with_input(
+                script!(CheckHeightVerify(10)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            let not_selected = tx_with_input(
+                script!(CheckHeightVerify(10)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                storage_capacity: 10,
+                weight_tx_skip_count: 3,
+                min_fee: 0,
+            });
+            let weight = TransactionWeight::latest();
+            for tx in [&plain, &selected, &not_selected] {
+                pool.insert(tx.clone(), None, &weight).unwrap();
+            }
+            let tip = FixedHash::from([1u8; 32]);
+            let to_check = pool.height_reading_to_check(&[plain.clone(), selected.clone()], &tip);
+            assert_eq!(to_check.len(), 1);
+            let (key, tx, _) = to_check[0].clone();
+            assert_eq!(tx, selected);
+            // An equal copy of the stored transaction is checked too
+            let copy = Arc::new((*selected).clone());
+            assert_eq!(pool.height_reading_to_check(&[copy], &tip).len(), 1);
+
+            // Once passed at a tip, it is not checked again at that tip, only at another
+            pool.record_height_check_passed(key, tip);
+            assert!(
+                pool.height_reading_to_check(std::slice::from_ref(&selected), &tip)
+                    .is_empty()
+            );
+            let next_tip = FixedHash::from([2u8; 32]);
+            assert_eq!(
+                pool.height_reading_to_check(std::slice::from_ref(&selected), &next_tip)
+                    .len(),
+                1
+            );
+            assert!(pool.check_data_consistency());
+        }
+
+        fn pool() -> UnconfirmedPool {
+            UnconfirmedPool::new(UnconfirmedPoolConfig {
+                storage_capacity: 10_000,
+                weight_tx_skip_count: 3,
+                min_fee: 0,
+            })
+        }
+
+        /// A synthetic transaction (see `synthetic_tx`) spending the first output of `parent`
+        fn child_of(base: &Transaction, parent: &Transaction, n: u64) -> Arc<Transaction> {
+            use tari_script::ExecutionStack;
+            use tari_transaction_components::transaction_components::TransactionInput;
+            let tx = synthetic_tx(base, n, 5);
+            let input = TransactionInput::new_current_version(
+                SpentOutput::create_from_output(parent.body.outputs()[0].clone()),
+                ExecutionStack::default(),
+                Default::default(),
+            );
+            Arc::new(Transaction::new(
+                vec![input],
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        }
+
+        #[test]
+        fn removing_a_transaction_removes_its_descendants_in_linear_time() {
+            const DEPTH: u64 = 2_000;
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let root = synthetic_tx(&base, 0, 5);
+            pool.insert(root.clone(), None, &weight).unwrap();
+            let mut parent = root.clone();
+            for n in 1..DEPTH {
+                let child = child_of(&base, &parent, n);
+                let dependent_outputs = Some(vec![parent.body.outputs()[0].hash()]);
+                pool.insert(child.clone(), dependent_outputs, &weight).unwrap();
+                parent = child;
+            }
+            // A second child of the root, and an unrelated transaction
+            let sibling = child_of(&base, &root, DEPTH);
+            pool.insert(sibling, None, &weight).unwrap();
+            let unrelated = synthetic_tx(&base, DEPTH + 1, 5);
+            pool.insert(unrelated.clone(), None, &weight).unwrap();
+            let root_key = *pool.txs_by_signature[root.body.kernels()[0].excess_sig.get_signature()]
+                .first()
+                .unwrap();
+
+            let timer = std::time::Instant::now();
+            let removed = pool.remove_transaction_and_descendants(root_key).unwrap();
+            println!("Removed a chain of {DEPTH} transactions in {:.2?}", timer.elapsed());
+            assert_eq!(removed, usize::try_from(DEPTH + 1).unwrap());
+            assert_eq!(pool.len(), 1);
+            assert!(pool.has_tx_with_excess_sig(&unrelated.body.kernels()[0].excess_sig));
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn removing_a_transaction_removes_many_spenders_of_one_output_in_linear_time() {
+            const SPENDERS: u64 = 9_000;
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let root = synthetic_tx(&base, 0, 5);
+            pool.insert(root.clone(), None, &weight).unwrap();
+            for n in 1..=SPENDERS {
+                pool.insert(child_of(&base, &root, n), None, &weight).unwrap();
+            }
+            let root_key = *pool.txs_by_signature[root.body.kernels()[0].excess_sig.get_signature()]
+                .first()
+                .unwrap();
+
+            let timer = std::time::Instant::now();
+            let removed = pool.remove_transaction_and_descendants(root_key).unwrap();
+            println!("Removed {SPENDERS} spenders of one output in {:.2?}", timer.elapsed());
+            assert_eq!(removed, usize::try_from(SPENDERS + 1).unwrap());
+            assert_eq!(pool.len(), 0);
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn the_sweep_visits_every_height_reading_transaction_in_bounded_batches() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            pool.insert(
+                tx_with_input(script!(Nop).unwrap(), Covenant::default(), &key_manager),
+                None,
+                &weight,
+            )
+            .unwrap();
+            for _ in 0..5 {
+                let tx = tx_with_input(
+                    script!(CheckHeightVerify(1)).unwrap(),
+                    Covenant::default(),
+                    &key_manager,
+                );
+                pool.insert(tx, None, &weight).unwrap();
+            }
+            let all = pool.txs_reading_height.keys().copied().collect::<Vec<_>>();
+            let tip = FixedHash::from([1u8; 32]);
+
+            // Batches of 2 visit every one of the 5, then wrap around
+            let mut visited = Vec::new();
+            for _ in 0..3 {
+                let (batch, cursor) = pool.height_reading_sweep_batch(2, u64::MAX, 10, &tip);
+                visited.extend(batch.iter().map(|(key, ..)| *key));
+                pool.set_sweep_cursor(cursor);
+            }
+            assert_eq!(visited.len(), 6);
+            assert_eq!(visited[..5], all[..]);
+            assert_eq!(visited[5], all[0]);
+
+            // One that passed for this block, and one validated for a later height, are visited but not returned
+            pool.record_height_check_passed(all[0], tip);
+            let later = tx_with_input(
+                script!(CheckHeightVerify(1)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            pool.insert_with_height_validation(later, None, &weight, HeightValidation {
+                height: 11,
+                script_keys: Vec::new(),
+            })
+            .unwrap();
+            pool.set_sweep_cursor(0);
+            let (batch, _) = pool.height_reading_sweep_batch(100, u64::MAX, 10, &tip);
+            assert_eq!(batch.iter().map(|(key, ..)| *key).collect::<Vec<_>>(), all[1..]);
+        }
+
+        #[test]
+        fn a_sweep_batch_is_bounded_by_re_check_work() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            // A transaction with 3 height-reading input scripts, then 3 with one each, then one with a height-reading
+            // covenant
+            let tx = tx!(MicroMinotari(15_000), fee: MicroMinotari(5), inputs: 3, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let mut inputs = tx.body.inputs().clone();
+            for input in &mut inputs {
+                match &mut input.spent_output {
+                    SpentOutput::OutputData { script, .. } => *script = script!(CheckHeightVerify(1)).unwrap(),
+                    SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+                }
+            }
+            let multi = Arc::new(Transaction::new(
+                inputs,
+                tx.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                tx.offset.clone(),
+                tx.script_offset.clone(),
+            ));
+            pool.insert(multi.clone(), None, &weight).unwrap();
+            for _ in 0..3 {
+                let single = tx_with_input(
+                    script!(CheckHeightVerify(1)).unwrap(),
+                    Covenant::default(),
+                    &key_manager,
+                );
+                pool.insert(single, None, &weight).unwrap();
+            }
+            let covenant_reads = tx_with_input(
+                script!(Nop).unwrap(),
+                covenant!(not(absolute_height(@uint(10)))).unwrap(),
+                &key_manager,
+            );
+            pool.insert(covenant_reads, None, &weight).unwrap();
+            let all = pool.txs_reading_height.keys().copied().collect::<Vec<_>>();
+            assert_eq!(pool.txs_reading_height[&all[0]].work, 3 * SCRIPT_INPUT_WORK);
+            assert_eq!(pool.txs_reading_height[&all[1]].work, SCRIPT_INPUT_WORK);
+            assert_eq!(pool.txs_reading_height[&all[4]].work, MAX_COVENANT_WORK_PER_BODY);
+            let tip = FixedHash::from([1u8; 32]);
+            let next = |pool: &mut UnconfirmedPool, max_work| {
+                let (batch, cursor) = pool.height_reading_sweep_batch(100, max_work, 10, &tip);
+                pool.set_sweep_cursor(cursor);
+                batch.iter().map(|(key, ..)| *key).collect::<Vec<_>>()
+            };
+
+            // The 3 scripts and one more fit a budget of 4 scripts, the next one does not
+            assert_eq!(next(&mut pool, 4 * SCRIPT_INPUT_WORK), all[..2]);
+            assert_eq!(next(&mut pool, 4 * SCRIPT_INPUT_WORK), all[2..4]);
+            // The covenant evaluation takes a whole budget, alone
+            assert_eq!(next(&mut pool, 4 * SCRIPT_INPUT_WORK), all[4..]);
+            // Over the budget on its own, a transaction is still taken, alone
+            assert_eq!(next(&mut pool, 2 * SCRIPT_INPUT_WORK), all[..1]);
+            assert_eq!(next(&mut pool, 2 * SCRIPT_INPUT_WORK), all[1..3]);
+            assert_eq!(next(&mut pool, MAX_COVENANT_WORK_PER_BODY + SCRIPT_INPUT_WORK), vec![
+                all[3], all[4]
+            ]);
+        }
+
+        #[test]
+        fn the_template_filter_leaves_out_transactions_and_their_descendants() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            // A parent whose kernel is locked until height 5, and its child
+            let mut locked = (*synthetic_tx(&base, 0, 5)).clone();
+            let mut kernel = locked.body.kernels()[0].clone();
+            kernel.lock_height = 5;
+            locked = Transaction::new(
+                vec![],
+                locked.body.outputs().clone(),
+                vec![kernel],
+                Default::default(),
+                Default::default(),
+            );
+            let locked = Arc::new(locked);
+            let child = child_of(&base, &locked, 1);
+            pool.insert(locked.clone(), None, &weight).unwrap();
+            pool.insert(child.clone(), Some(vec![locked.body.outputs()[0].hash()]), &weight)
+                .unwrap();
+            // A transaction whose input script reads the height
+            let height_reading = tx_with_input(
+                script!(CheckHeightVerify(1)).unwrap(),
+                Covenant::default(),
+                &key_manager,
+            );
+            pool.insert(height_reading.clone(), None, &weight).unwrap();
+            let height_reading_key = *pool.txs_reading_height.keys().next().unwrap();
+            let select = |pool: &UnconfirmedPool, filter: &TemplateFilter| {
+                pool.fetch_template_txs(u64::MAX, max_weight(), filter)
+                    .unwrap()
+                    .retrieved_transactions
+            };
+
+            let mut filter = TemplateFilter::unrestricted();
+            filter.height = 4;
+            assert_eq!(select(&pool, &filter), vec![height_reading.clone()]);
+            filter.height = 5;
+            assert_eq!(select(&pool, &filter).len(), 3);
+
+            // An excluded parent leaves out its child
+            let locked_key = *pool.txs_by_signature[locked.body.kernels()[0].excess_sig.get_signature()]
+                .first()
+                .unwrap();
+            filter.excluded.insert(locked_key);
+            assert_eq!(select(&pool, &filter), vec![height_reading.clone()]);
+            filter.excluded.clear();
+
+            // Only checked height-reading transactions, once it passed for this block
+            let tip = FixedHash::from([1u8; 32]);
+            filter.only_checked_at = Some(tip);
+            assert_eq!(select(&pool, &filter).len(), 2);
+            pool.record_height_check_passed(height_reading_key, tip);
+            assert_eq!(select(&pool, &filter).len(), 3);
+        }
+
+        /// A transaction producing the same outputs as `tx`, with the kernel of another synthetic transaction with fee
+        /// `fee`
+        fn same_outputs_as(base: &Transaction, tx: &Transaction, n: u64, fee: u64) -> Arc<Transaction> {
+            let other = synthetic_tx(base, n, fee);
+            Arc::new(Transaction::new(
+                vec![],
+                tx.body.outputs().clone(),
+                other.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        }
+
+        fn key_of(pool: &UnconfirmedPool, tx: &Transaction) -> TransactionKey {
+            *pool.txs_by_signature[tx.body.kernels()[0].excess_sig.get_signature()]
+                .first()
+                .unwrap()
+        }
+
+        #[test]
+        fn removing_one_producer_of_an_output_keeps_its_spenders() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let parent = synthetic_tx(&base, 0, 5);
+            let duplicate = same_outputs_as(&base, &parent, 1, 5);
+            let child = child_of(&base, &parent, 2);
+            pool.insert(parent.clone(), None, &weight).unwrap();
+            pool.insert(duplicate.clone(), None, &weight).unwrap();
+            pool.insert(child.clone(), Some(vec![parent.body.outputs()[0].hash()]), &weight)
+                .unwrap();
+
+            // The parent still produces the child's input
+            let removed = pool
+                .remove_transaction_and_descendants(key_of(&pool, &duplicate))
+                .unwrap();
+            assert_eq!(removed, 1);
+            assert!(pool.has_tx_with_excess_sig(&parent.body.kernels()[0].excess_sig));
+            assert!(pool.has_tx_with_excess_sig(&child.body.kernels()[0].excess_sig));
+            assert!(pool.check_data_consistency());
+
+            // Its last producer gone, the child goes too
+            let removed = pool.remove_transaction_and_descendants(key_of(&pool, &parent)).unwrap();
+            assert_eq!(removed, 2);
+            assert_eq!(pool.len(), 0);
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn a_child_is_selected_through_a_producer_the_template_allows() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            // Two producers of the same output; the higher priority one is left out of the template
+            let preferred = synthetic_tx(&base, 0, 50);
+            let allowed = same_outputs_as(&base, &preferred, 1, 5);
+            let child = child_of(&base, &preferred, 2);
+            pool.insert(preferred.clone(), None, &weight).unwrap();
+            pool.insert(allowed.clone(), None, &weight).unwrap();
+            pool.insert(child.clone(), Some(vec![preferred.body.outputs()[0].hash()]), &weight)
+                .unwrap();
+            let mut filter = TemplateFilter::unrestricted();
+            filter.excluded.insert(key_of(&pool, &preferred));
+
+            let selected = pool
+                .fetch_template_txs(u64::MAX, max_weight(), &filter)
+                .unwrap()
+                .retrieved_transactions;
+            assert_eq!(selected.len(), 2);
+            assert!(selected.contains(&allowed));
+            assert!(selected.contains(&child));
+        }
+
+        #[test]
+        fn looking_for_an_allowed_producer_stops_after_a_few() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            // Producers of the same output in priority order, all left out of the template but the last, which comes
+            // after the cap
+            let first = synthetic_tx(&base, 0, 100);
+            pool.insert(first.clone(), None, &weight).unwrap();
+            let mut filter = TemplateFilter::unrestricted();
+            filter.excluded.insert(key_of(&pool, &first));
+            for n in 1..=u64::try_from(MAX_EXTRA_PRODUCERS_PER_LOOKUP).unwrap() {
+                let producer = same_outputs_as(&base, &first, n, 100 - n);
+                pool.insert(producer.clone(), None, &weight).unwrap();
+                filter.excluded.insert(key_of(&pool, &producer));
+            }
+            let allowed = same_outputs_as(&base, &first, 50, 5);
+            pool.insert(allowed.clone(), None, &weight).unwrap();
+            let child = child_of(&base, &first, 51);
+            pool.insert(child.clone(), Some(vec![first.body.outputs()[0].hash()]), &weight)
+                .unwrap();
+
+            let keys = pool.txs_by_output[&first.body.outputs()[0].hash()].clone();
+            let mut links_left = 1_000;
+            let (producer, examined) = pool.find_template_producer(&keys, &filter, &mut links_left).unwrap();
+            assert_eq!(producer.key, key_of(&pool, &first));
+            assert_eq!(examined, MAX_EXTRA_PRODUCERS_PER_LOOKUP);
+            assert_eq!(links_left, 1_000 - MAX_EXTRA_PRODUCERS_PER_LOOKUP);
+
+            // So the child is left out, and the allowed producer is selected on its own
+            let selected = pool
+                .fetch_template_txs(u64::MAX, max_weight(), &filter)
+                .unwrap()
+                .retrieved_transactions;
+            assert_eq!(selected, vec![allowed]);
         }
     }
 }

@@ -27,9 +27,12 @@ mod unconfirmed_pool;
 // Public re-exports
 pub use error::UnconfirmedPoolError;
 use tari_crypto::hash_domain;
+pub(crate) use unconfirmed_pool::reads_block_height;
 pub use unconfirmed_pool::{
+    HeightValidation,
     MAX_BLOCK_TEMPLATE_BODY_BYTES,
     RetrieveResults,
+    TemplateFilter,
     TransactionKey,
     UnconfirmedPool,
     UnconfirmedPoolConfig,

@@ -38,7 +38,7 @@ use crate::transaction_components::{
         context::CovenantContext,
         decoder::CovenantTokenDecoder,
         error::CovenantError,
-        filters::Filter,
+        filters::{CovenantFilter, Filter},
         output_set::OutputSet,
         scan::scan,
         token::{CovenantToken, CovenantTokenCollection},
@@ -258,6 +258,16 @@ impl Covenant {
     pub fn is_empty(&self) -> bool {
         self.bytes.is_empty()
     }
+
+    /// Returns true if evaluating this covenant reads the block height, i.e. it has an `absolute_height` filter. A
+    /// nested covenant argument is data that is never executed, so its filters do not count.
+    pub fn reads_block_height(&self) -> bool {
+        self.tokens().is_ok_and(|tokens| {
+            tokens
+                .iter()
+                .any(|token| matches!(token.as_filter(), Some(CovenantFilter::AbsoluteHeight(_))))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -287,6 +297,26 @@ mod test {
         let covenant = covenant!().unwrap();
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 10);
+    }
+
+    #[test]
+    fn it_reads_the_block_height_only_with_an_absolute_height_filter() {
+        assert!(covenant!(absolute_height(@uint(42))).unwrap().reads_block_height());
+        assert!(covenant!(not(absolute_height(@uint(42)))).unwrap().reads_block_height());
+        assert!(
+            covenant!(or(identity(), absolute_height(@uint(42))))
+                .unwrap()
+                .reads_block_height()
+        );
+        assert!(!covenant!().unwrap().reads_block_height());
+        assert!(!covenant!(identity()).unwrap().reads_block_height());
+        // A nested covenant is an argument compared against output fields, and is never executed
+        let nested = covenant!(absolute_height(@uint(42))).unwrap();
+        assert!(
+            !covenant!(field_eq(@field::covenant, @covenant(nested)))
+                .unwrap()
+                .reads_block_height()
+        );
     }
 
     #[test]
