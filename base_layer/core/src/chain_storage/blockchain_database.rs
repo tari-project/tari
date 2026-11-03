@@ -2215,11 +2215,14 @@ where B: BlockchainBackend
     }
 
     /// The Tari RandomX VM key for `header`, resolved along its own chain when its ancestry is held (on the main chain
-    /// or in the orphan pool), or `None` when an ancestor is unknown.
-    pub fn fetch_vm_key_for_held_ancestry(&self, header: BlockHeader) -> Result<Option<FixedHash>, ChainStorageError> {
+    /// or in the orphan pool), with the height of its parent, or `None` when an ancestor is unknown.
+    pub fn fetch_vm_key_for_held_ancestry(
+        &self,
+        header: BlockHeader,
+    ) -> Result<Option<(FixedHash, u64)>, ChainStorageError> {
         let db = self.db_read_access()?;
         match get_vm_key_for_candidate_header(&*db, header) {
-            Ok((vm_key, _)) => Ok(Some(vm_key)),
+            Ok((vm_key, _, parent_height)) => Ok(Some((vm_key, parent_height))),
             Err(ChainStorageError::ValueNotFound { .. }) => Ok(None),
             Err(e) => Err(e),
         }
@@ -4376,7 +4379,8 @@ fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
     db: &mut T,
     candidate_block: Arc<Block>,
 ) -> Result<(FixedHash, u64), ChainStorageError> {
-    get_vm_key_for_candidate_header(db, candidate_block.header.clone())
+    let (vm_key, fork_height, _) = get_vm_key_for_candidate_header(db, candidate_block.header.clone())?;
+    Ok((vm_key, fork_height))
 }
 
 /// Returns the Tari RandomX VM key hash for a candidate header, and the highest height at which the candidate's
@@ -4385,16 +4389,21 @@ fn get_vm_key_for_candidate_block<T: BlockchainBackend>(
 /// The candidate may be an orphan that forks below the current tip, so both answers have to be found by walking the
 /// candidate's own ancestry back until it meets the main chain. That meeting height is what any chain dependent
 /// index in the database may be trusted up to (see [`HeaderChainContext::candidate_chain`]). The walk is bounded by
-/// the orphan pool, and fails with `ValueNotFound` if an ancestor is not held.
+/// the orphan pool, and fails with `ValueNotFound` if an ancestor is not held. The third value is the height of the
+/// candidate's parent.
 fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
     db: &T,
     header: BlockHeader,
-) -> Result<(FixedHash, u64), ChainStorageError> {
+) -> Result<(FixedHash, u64, u64), ChainStorageError> {
     let vm_height = tari_rx_vm_key_height(header.height);
     let mut vm_key = None;
+    let mut parent_height = None;
     let mut current_header = header;
     loop {
         let h = db.fetch_chain_header_in_all_chains(&current_header.prev_hash)?;
+        if parent_height.is_none() {
+            parent_height = Some(h.height());
+        }
         let chain_header = db.fetch_chain_header_by_height(h.height()).optional()?;
         if chain_header.is_some_and(|c| *h.header() == *c.header()) {
             // The candidate's chain links back to the main chain here
@@ -4402,7 +4411,7 @@ fn get_vm_key_for_candidate_header<T: BlockchainBackend>(
                 Some(vm_key) => vm_key,
                 None => *db.fetch_chain_header_by_height(vm_height)?.hash(),
             };
-            return Ok((vm_key, h.height()));
+            return Ok((vm_key, h.height(), parent_height.unwrap_or(h.height())));
         }
         // The key block is below the candidate but above the fork, so it is the candidate's own chain's block
         if h.height() == vm_height {
@@ -4624,7 +4633,7 @@ fn find_orphan_descendant_tips_of<T: BlockchainBackend>(
         let mut child_vm_key = (vm_key_height, vm_key);
         let child_vm_key_height = tari_rx_vm_key_height(child.header.height);
         if child_vm_key_height != vm_key_height && child.header.height == prev_chain_header.height().saturating_add(1) {
-            let (key, _) = get_vm_key_for_candidate_header(db, child.header.clone())?;
+            let (key, _, _) = get_vm_key_for_candidate_header(db, child.header.clone())?;
             child_vm_key = (child_vm_key_height, key);
         }
         match validator.validate(
@@ -5601,7 +5610,7 @@ fn strict_validate_header<B: BlockchainBackend>(
     prev_chain_header: &ChainHeader,
 ) -> Result<AchievedTargetDifficulty, ValidationError> {
     let prev_timestamps = get_previous_timestamps(db, header, rules)?;
-    let (vm_key, fork_height) = get_vm_key_for_candidate_header(db, header.clone())?;
+    let (vm_key, fork_height, _) = get_vm_key_for_candidate_header(db, header.clone())?;
     let chain_context = HeaderChainContext::candidate_chain(vm_key, fork_height, None);
     let validated = header_validator.validate(
         db,
@@ -6157,7 +6166,7 @@ mod test {
             let candidate = next.get("C").unwrap().clone();
 
             let access = db.db_write_access().unwrap();
-            let (_, fork_height) = get_vm_key_for_candidate_header(&*access, candidate.header().clone()).unwrap();
+            let (_, fork_height, _) = get_vm_key_for_candidate_header(&*access, candidate.header().clone()).unwrap();
             assert_eq!(candidate.height(), 3);
             assert_eq!(fork_height, 2);
         }
@@ -6181,7 +6190,7 @@ mod test {
 
             let orphan_tip = orphan_chain.get("C2").unwrap().clone();
             assert_eq!(orphan_tip.height(), 3);
-            let (_, fork_height) = get_vm_key_for_candidate_header(&*access, orphan_tip.header().clone()).unwrap();
+            let (_, fork_height, _) = get_vm_key_for_candidate_header(&*access, orphan_tip.header().clone()).unwrap();
             assert_eq!(fork_height, 1, "the orphan forks at A, not at its own parent");
         }
 
@@ -6712,14 +6721,16 @@ mod test {
                     let block = Arc::new(header.clone().into_builder().build());
                     insert_orphan_and_find_new_tips(&mut *access, block, &validator, &db.consensus_manager).unwrap();
                 }
-                let (vm_key, fork_height) = get_vm_key_for_candidate_header(&*access, candidate.clone()).unwrap();
+                let (vm_key, fork_height, parent_height) =
+                    get_vm_key_for_candidate_header(&*access, candidate.clone()).unwrap();
                 assert_eq!(vm_key, fork_key);
                 assert_eq!(fork_height, 2040);
+                assert_eq!(parent_height, 2120);
             }
 
             assert_eq!(
                 db.fetch_vm_key_for_held_ancestry(candidate.clone()).unwrap(),
-                Some(fork_key)
+                Some((fork_key, 2120))
             );
             let mut unknown = candidate;
             unknown.prev_hash = FixedHash::from([7u8; 32]);

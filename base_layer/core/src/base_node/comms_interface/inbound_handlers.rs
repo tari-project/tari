@@ -875,14 +875,29 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    /// Use one of `peer`'s checks of Tari RandomX blocks whose ancestry we do not hold, or drop the block unhashed,
-    /// without a ban, if it has none left or its key is older than the one a block on our tip at `tip_height` uses
-    fn take_unknown_ancestry_randomx_check(
+    /// Whether `header` may be hashed with the Tari RandomX VM key its claimed height picks. With its parent held at
+    /// `parent_height`, that height has to follow the parent. Otherwise a check of `peer`'s is used, and the block is
+    /// dropped unhashed, without a ban, if it has none left or its key is older than the one a block on our tip at
+    /// `tip_height` uses.
+    fn check_tari_rx_vm_key_source(
         &self,
         header: &BlockHeader,
+        parent_height: Option<u64>,
         peer: &NodeId,
         tip_height: u64,
     ) -> Result<(), CommsInterfaceError> {
+        if let Some(parent_height) = parent_height {
+            let expected = parent_height.saturating_add(1);
+            if header.height != expected {
+                return Err(CommsInterfaceError::InvalidBlockHeader(
+                    BlockHeaderValidationError::InvalidHeight {
+                        expected,
+                        actual: header.height,
+                    },
+                ));
+            }
+            return Ok(());
+        }
         // An older key could cost us a RandomX VM build, and a block whose ancestry we do not hold says nothing to make
         // that worth it
         let tip_key_height = tari_rx_vm_key_height(tip_height.saturating_add(1));
@@ -1004,11 +1019,9 @@ where B: BlockchainBackend + 'static
                     .map_err(|e| {
                         CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e))
                     })?;
-                let (vm_key, ancestry_held) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
-                own_chain_checked = ancestry_held;
-                if !ancestry_held {
-                    self.take_unknown_ancestry_randomx_check(&new_block.header, source_peer, tip_height)?;
-                }
+                let (vm_key, parent_height) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
+                own_chain_checked = parent_height.is_some();
+                self.check_tari_rx_vm_key_source(&new_block.header, parent_height, source_peer, tip_height)?;
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
                 task::spawn_blocking(move || tari_randomx_difficulty(&header, &randomx_factory, &vm_key))
@@ -1771,20 +1784,20 @@ fn retain_requested_transactions(
     (retained, dropped)
 }
 
-/// The Tari RandomX VM key to check `header` against, and whether we hold the block's ancestry. A block whose ancestry
-/// we hold takes the key of its own chain, which for a fork below the key block is not the main chain's; any other
-/// block takes the main chain's.
+/// The Tari RandomX VM key to check `header` against, and the height of its parent if we hold the block's ancestry. A
+/// block whose ancestry we hold takes the key of its own chain, which for a fork below the key block is not the main
+/// chain's; any other block takes the main chain's.
 async fn fetch_tari_rx_vm_key<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     header: &BlockHeader,
-) -> Result<(FixedHash, bool), CommsInterfaceError> {
+) -> Result<(FixedHash, Option<u64>), CommsInterfaceError> {
     match db.fetch_vm_key_for_held_ancestry(header.clone()).await? {
-        Some(vm_key) => Ok((vm_key, true)),
+        Some((vm_key, parent_height)) => Ok((vm_key, Some(parent_height))),
         None => Ok((
             *db.fetch_chain_header(tari_rx_vm_key_height(header.height))
                 .await?
                 .hash(),
-            false,
+            None,
         )),
     }
 }
@@ -1861,10 +1874,13 @@ mod test {
 
         let header = BlockHeader::from_previous(parent.header());
         assert_eq!(tari_rx_vm_key_height(header.height), 2048);
-        assert_eq!(fetch_tari_rx_vm_key(&db, &header).await.unwrap(), (fork_key, true));
+        assert_eq!(
+            fetch_tari_rx_vm_key(&db, &header).await.unwrap(),
+            (fork_key, Some(2120))
+        );
         let mut unknown = header;
         unknown.prev_hash = FixedHash::from([7u8; 32]);
-        assert_eq!(fetch_tari_rx_vm_key(&db, &unknown).await.unwrap(), (main_key, false));
+        assert_eq!(fetch_tari_rx_vm_key(&db, &unknown).await.unwrap(), (main_key, None));
     }
 
     /// A Tari RandomX block below the minimum difficulty costs its sender a ban only when it was checked against its
@@ -2014,6 +2030,86 @@ mod test {
             .check_min_block_difficulty(&unknown, &other_peer)
             .await
             .unwrap();
+    }
+
+    /// A Tari RandomX block on a parent we hold, whose claimed height does not follow it, would pick its RandomX key by
+    /// that height, so it is rejected, with a ban, before it is hashed
+    #[tokio::test]
+    async fn a_randomx_block_on_a_held_parent_at_the_wrong_height_is_rejected_unhashed() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody, tari_proof_of_work::ProofOfWork};
+        use tari_utilities::epoch_time::EpochTime;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_chain_header, create_consensus_rules},
+            validation::mocks::MockValidator,
+        };
+
+        // Our chain reaches 2200, so a block on it uses the key at 2048 while one claiming height 1000 would use the
+        // key at 0. LocalNet's minimum Tari RandomX difficulty is the lowest there is, so every block that is
+        // hashed passes.
+        let db = create_new_blockchain();
+        let mut main_chain = vec![db.fetch_chain_header(0).unwrap()];
+        while main_chain.len() <= 2200 {
+            let prev = main_chain.last().unwrap();
+            let mut header = BlockHeader::from_previous(prev.header());
+            header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+            // The MMR size indexes need a unique key per header
+            header.kernel_mmr_size += 1;
+            header.output_smt_size += 1;
+            main_chain.push(create_chain_header(header, prev.accumulated_data()));
+        }
+        db.insert_valid_headers(main_chain[1..].to_vec()).unwrap();
+        let rules = create_consensus_rules();
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let mut header = BlockHeader::from_previous(main_chain[2200].header());
+        header.timestamp = main_chain[2200]
+            .header()
+            .timestamp
+            .checked_add(EpochTime::from(120))
+            .unwrap();
+        header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+        let peer = NodeId::default();
+
+        let on_tip = NewBlock::from(&Block::new(header.clone(), AggregateBody::empty()));
+        handlers.check_min_block_difficulty(&on_tip, &peer).await.unwrap();
+
+        header.height = 1000;
+        let low = NewBlock::from(&Block::new(header, AggregateBody::empty()));
+        let err = handlers.check_min_block_difficulty(&low, &peer).await.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::InvalidHeight {
+                    expected: 2201,
+                    actual: 1000
+                })
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
     }
 
     /// A Tari RandomX block of unknown ancestry whose key is older than the one a block on our tip uses is dropped
