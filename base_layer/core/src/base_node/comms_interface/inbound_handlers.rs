@@ -876,12 +876,23 @@ where B: BlockchainBackend + 'static
     }
 
     /// Use one of `peer`'s checks of Tari RandomX blocks whose ancestry we do not hold, or drop the block unhashed,
-    /// without a ban, if it has none left
+    /// without a ban, if it has none left or its key is older than the one a block on our tip at `tip_height` uses
     fn take_unknown_ancestry_randomx_check(
         &self,
         header: &BlockHeader,
         peer: &NodeId,
+        tip_height: u64,
     ) -> Result<(), CommsInterfaceError> {
+        // An older key could cost us a RandomX VM build, and a block whose ancestry we do not hold says nothing to make
+        // that worth it
+        let tip_key_height = tari_rx_vm_key_height(tip_height.saturating_add(1));
+        let key_height = tari_rx_vm_key_height(header.height);
+        if key_height < tip_key_height {
+            return Err(CommsInterfaceError::UnknownRandomXKey {
+                hash: header.hash(),
+                details: format!("its RandomX key at height {key_height} is older than our tip's at {tip_key_height}"),
+            });
+        }
         let mut checks = self
             .unknown_ancestry_randomx_checks
             .lock()
@@ -996,19 +1007,7 @@ where B: BlockchainBackend + 'static
                 let (vm_key, ancestry_held) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
                 own_chain_checked = ancestry_held;
                 if !ancestry_held {
-                    // A key older than the one a block on our tip uses could cost us a RandomX VM build, and a block
-                    // whose ancestry we do not hold says nothing to make that worth it
-                    let tip_key_height = tari_rx_vm_key_height(tip_height.saturating_add(1));
-                    if tari_rx_vm_key_height(new_block.header.height) < tip_key_height {
-                        return Err(CommsInterfaceError::UnknownRandomXKey {
-                            hash: new_block.header.hash(),
-                            details: format!(
-                                "its RandomX key at height {} is older than our tip's at height {tip_key_height}",
-                                tari_rx_vm_key_height(new_block.header.height)
-                            ),
-                        });
-                    }
-                    self.take_unknown_ancestry_randomx_check(&new_block.header, source_peer)?;
+                    self.take_unknown_ancestry_randomx_check(&new_block.header, source_peer, tip_height)?;
                 }
                 let header = new_block.header.clone();
                 let randomx_factory = self.randomx_factory.clone();
