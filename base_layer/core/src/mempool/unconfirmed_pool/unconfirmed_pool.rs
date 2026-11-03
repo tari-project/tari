@@ -1018,8 +1018,9 @@ impl UnconfirmedPool {
                 if self.txs_by_output.contains_key(&hash) {
                     continue;
                 }
-                if let Some(spenders) = self.txs_by_spent_output.get(&hash) {
-                    to_remove.extend(spenders.iter().copied());
+                // Every spender is removed, so the whole entry is taken here rather than searched once per spender
+                if let Some(spenders) = self.txs_by_spent_output.remove(&hash) {
+                    to_remove.extend(spenders);
                 }
             }
         }
@@ -5936,6 +5937,32 @@ mod test {
             assert_eq!(removed, usize::try_from(DEPTH + 1).unwrap());
             assert_eq!(pool.len(), 1);
             assert!(pool.has_tx_with_excess_sig(&unrelated.body.kernels()[0].excess_sig));
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn removing_a_transaction_removes_many_spenders_of_one_output_in_linear_time() {
+            const SPENDERS: u64 = 9_000;
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let root = synthetic_tx(&base, 0, 5);
+            pool.insert(root.clone(), None, &weight).unwrap();
+            for n in 1..=SPENDERS {
+                pool.insert(child_of(&base, &root, n), None, &weight).unwrap();
+            }
+            let root_key = *pool.txs_by_signature[root.body.kernels()[0].excess_sig.get_signature()]
+                .first()
+                .unwrap();
+
+            let timer = std::time::Instant::now();
+            let removed = pool.remove_transaction_and_descendants(root_key).unwrap();
+            println!("Removed {SPENDERS} spenders of one output in {:.2?}", timer.elapsed());
+            assert_eq!(removed, usize::try_from(SPENDERS + 1).unwrap());
+            assert_eq!(pool.len(), 0);
             assert!(pool.check_data_consistency());
         }
 
