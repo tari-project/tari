@@ -1755,9 +1755,10 @@ fn retain_requested_transactions(
 /// hold. A block whose ancestry we do not hold takes the main chain's key and uses one of `peer`'s `checks`.
 ///
 /// A key could cost us a RandomX VM build, so a block is dropped unhashed, without a ban, when nothing about it makes
-/// that worth it: its key is above our tip at `tip_height`, older than our tip's with its ancestry unknown, or more
-/// than one epoch older with it held (an honest fork at an epoch boundary is one epoch behind), or `peer` has no checks
-/// left. A held parent the block's height does not follow is a ban.
+/// that worth it: its key is above our header chain's tip at `tip_height` (also when it extends a held fork taller
+/// than that chain; header sync brings such a fork if it gains work), older than our tip's with its ancestry unknown,
+/// or more than one epoch older with it held (an honest fork at an epoch boundary is one epoch behind), or `peer` has
+/// no checks left. A held parent the block's height does not follow is a ban.
 async fn fetch_tari_rx_vm_key<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     checks: &Mutex<UnknownAncestryRandomXChecks>,
