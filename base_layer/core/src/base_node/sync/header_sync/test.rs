@@ -375,3 +375,36 @@ async fn a_header_that_landed_during_sync_is_not_banned() {
     assert_eq!(db.get_height().unwrap(), 1);
     assert!(!db.is_add_block_disabled());
 }
+
+#[tokio::test]
+async fn a_weaker_local_block_that_landed_during_sync_is_rewound() {
+    let db = create_new_blockchain();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let genesis = Arc::new(db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+    let (_, mut chain) = create_chained_blocks(&db, block_specs!(["P1->GB"], ["P2->P1"], ["L->GB"]), genesis.clone());
+    let peer_block_1 = chain.remove("P1").unwrap();
+    let peer_block_2 = chain.remove("P2").unwrap();
+    let local_block = chain.remove("L").unwrap();
+    let reply = FindChainSplitResponse {
+        headers: vec![
+            peer_block_1.header().clone().into(),
+            peer_block_2.header().clone().into(),
+        ],
+        fork_hash_index: 0,
+    };
+    let mut service = MockSyncPeer::new(&db, Some(reply));
+    service.block_to_add = Some(local_block.clone());
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, service, claim_for(&peer_block_2)).await;
+
+    let (_, result) = sync_headers(&db, connectivity.clone(), BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap();
+
+    assert!(matches!(result.header_sync_status, HeaderSyncStatus::Lagging(_)));
+    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+    assert!(db.is_add_block_disabled());
+    assert_eq!(db.fetch_last_header().unwrap().hash(), *peer_block_2.hash());
+    assert_eq!(db.get_chain_metadata().unwrap().best_block_hash(), genesis.hash());
+    assert!(db.fetch_header_by_block_hash(*local_block.hash()).unwrap().is_none());
+}

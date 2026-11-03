@@ -1047,13 +1047,22 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             return Err(BlockHeaderSyncError::NotInSync);
         }
-        // Reorg if required
-        if split_info.reorg_steps_back > 0 {
+        // Decide the rewind from the current header tip, which may have moved since the split was found
+        let split_hash = split_info.chain_split_hash;
+        if self.db.fetch_header_by_block_hash(split_hash).await?.is_none() {
+            self.db.inner().clear_disable_add_block_flag();
             debug!(
                 target: LOG_TARGET,
-                "Reorg: Rewinding the chain by {} block(s) (split hash = {})",
-                split_info.reorg_steps_back,
-                split_info.chain_split_hash.to_hex()
+                "Not switching to the peer's chain: the split point {} is no longer on our chain",
+                split_hash.to_hex()
+            );
+            return Err(BlockHeaderSyncError::NotInSync);
+        }
+        if *self.db.fetch_last_chain_header().await?.hash() != split_hash {
+            debug!(
+                target: LOG_TARGET,
+                "Reorg: Rewinding the chain to the split at {}",
+                split_hash.to_hex()
             );
             let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
             if !blocks.is_empty() {
