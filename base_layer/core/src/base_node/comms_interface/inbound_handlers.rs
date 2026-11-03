@@ -2240,8 +2240,8 @@ mod test {
             let mut header = BlockHeader::from_previous(prev.header());
             header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
             // The MMR size indexes need a unique key per header
-            header.kernel_mmr_size += 1;
-            header.output_smt_size += 1;
+            header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
+            header.output_smt_size = header.output_smt_size.saturating_add(1);
             chain.push(create_chain_header(header, prev.accumulated_data()));
         }
         db.insert_valid_headers(chain[1..].to_vec()).unwrap();
