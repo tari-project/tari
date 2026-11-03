@@ -222,6 +222,24 @@ impl CommandContext {
                 Mode::AllFullAutocorrect
         );
 
+        let chain_autocorrect = matches!(
+            args.mode,
+            Mode::LightAutocorrect | Mode::FullAutocorrect | Mode::AllLightAutocorrect | Mode::AllFullAutocorrect
+        );
+        if chain_autocorrect {
+            let metadata = self.node_service.get_metadata().await?;
+            if metadata.is_pruned_node() {
+                println!(
+                    "\n[check-db] WARNING: this is a pruned node (pruned height #{}, tip #{}). If '{}' finds \
+                     corruption and has to rewind past the pruned height, the chain is wiped to height 0 and the node \
+                     has to resync from scratch.",
+                    metadata.pruned_height(),
+                    metadata.best_block_height(),
+                    args.mode,
+                );
+            }
+        }
+
         match args.mode {
             Mode::AccDiff | Mode::AccDiffAutocorrect => {
                 self.blockchain_db
@@ -527,8 +545,8 @@ fn print_failure_message(last_check_height: u64, current_height: u64, mode: Mode
         },
         Mode::LightAutocorrect | Mode::FullAutocorrect => {
             println!(
-                "[check-db] {mode}, blockchain was rewound to {last_check_height}. Node should automatically resync \
-                 from there."
+                "[check-db] {mode}, the autocorrect outcome is shown above. If the blockchain was rewound, the node \
+                 should automatically resync from there."
             );
         },
         Mode::AccDiff => {

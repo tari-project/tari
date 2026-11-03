@@ -167,6 +167,9 @@ const REBUILD_THROTTLE_MS: u64 = 100;
 /// has to be repaired before the node can be trusted to compare chain strength, and it is short in practice - but
 /// not zero, because each strict height runs a RandomX-backed validation and takes the backend write lock.
 const STRICT_REBUILD_THROTTLE_MS: u64 = 10;
+/// How many times the consistency check re-checks a height whose corruption does not hold under the rewind's write
+/// lock before it gives up on that height.
+const MAX_CONSISTENCY_RECHECKS: u32 = 3;
 /// Configuration for the BlockchainDatabase.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -884,6 +887,7 @@ where B: BlockchainBackend
             );
 
             let mut height = start_height;
+            let mut retry_count = 0u32;
             let sleep_ms = last_status
                 .breathing_time_ms
                 .clamp(BREATHING_TIME_MS_MIN, BREATHING_TIME_MS_MAX);
@@ -891,75 +895,177 @@ where B: BlockchainBackend
                 // Add a small tokio sleep to allow other tasks to run more freely - this will push out the check a bit.
                 tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
                 let db = db_rw_lock.clone();
-                let validators = validators.clone();
+                let check_validators = validators.clone();
                 let full_validation = initial_status.full_validation_enabled();
                 // We use `spawn_blocking` with `.await` here to ensure that the async spawned task will be able to
                 // shut down when base node shutdown is triggered
                 let res = tokio::task::spawn_blocking(move || {
-                    verify_blockchain_consistency_for_height(db, &validators, height, full_validation)
+                    verify_blockchain_consistency_for_height(db, &check_validators, height, full_validation)
                 })
                 .await;
-                match res {
-                    Ok(Ok(current_status)) => {
+                // `Some(reason)` when the height has to be checked again.
+                let retry = match res {
+                    Ok(Ok(Some(current_status))) => {
                         last_status = current_status;
+                        retry_count = 0;
+                        None
                     },
-                    Ok(ref _err @ Err(ChainStorageError::CorruptedDatabase(ref e))) => {
+                    Ok(Ok(None)) => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "[Blockchain check] The header at height {height} changed while it was checked; checking \
+                            it again."
+                        );
+                        Some(format!("the header at height {height} changed while it was checked"))
+                    },
+                    Ok(Err((ChainStorageError::CorruptedDatabase(e), mut verdict_height, failed_body))) => {
                         error!(
                             target: LOG_TARGET,
                             "[Blockchain check] Blockchain consistency check found unrecoverable corruption. Initial \
                             status: {initial_status:?}. Last updated status: {last_status:?}. ({e})"
                         );
-                        if initial_status.autocorrect_enabled() {
-                            let db_rw_lock = db_rw_lock.clone();
+                        let (not_reproduced, outcome) = if initial_status.autocorrect_enabled() {
+                            let rewind_db = db_rw_lock.clone();
+                            let rewind_validators = validators.clone();
                             let res = tokio::task::spawn_blocking(move || {
-                                if let Ok(mut db) = db_rw_lock.write() {
-                                    rewind_to_height(&mut *db, height.saturating_sub(1))
+                                if let Ok(mut db) = rewind_db.write() {
+                                    rewind_if_still_corrupt(&mut *db, &rewind_validators, height, failed_body)
                                 } else {
-                                    Err(ChainStorageError::AccessError(
+                                    Ok(RewindOutcome::RecheckFailed(ChainStorageError::AccessError(
                                         "Write lock on blockchain backend failed".into(),
-                                    ))
+                                    )))
                                 }
                             })
                             .await;
                             match res {
-                                Ok(Ok(_)) => {
+                                Ok(Ok(RewindOutcome::Rewound {
+                                    corrupt_height,
+                                    best_block_height,
+                                })) => {
+                                    verdict_height = corrupt_height;
+                                    let best_block =
+                                        best_block_height.map_or_else(|| "unknown".to_string(), |h| h.to_string());
                                     info!(target: LOG_TARGET,
-                                        "[Blockchain check] Rewound the blockchain to height {} after unrecoverable \
-                                        corruption at height {}.",
-                                        height.saturating_sub(1), height
+                                        "[Blockchain check] Rewound the blockchain below height {corrupt_height} after \
+                                        unrecoverable corruption; the best block is now at height {best_block}.",
                                     );
+                                    (
+                                        None,
+                                        format!(
+                                            "rewound below height {corrupt_height}; the best block is now at height \
+                                             {best_block}"
+                                        ),
+                                    )
                                 },
-                                Ok(Err(e)) => {
+                                Ok(Ok(RewindOutcome::NotReproduced)) => {
+                                    warn!(target: LOG_TARGET,
+                                        "[Blockchain check] Corruption at height {height} no longer reproduces under \
+                                        the write lock; the chain changed under the check. Not rewinding.",
+                                    );
+                                    (
+                                        Some(format!(
+                                            "corruption reported at height {height} ({e}) did not hold under the \
+                                             write lock"
+                                        )),
+                                        String::new(),
+                                    )
+                                },
+                                Ok(Ok(RewindOutcome::RecheckFailed(recheck_error))) => {
+                                    warn!(target: LOG_TARGET,
+                                        "[Blockchain check] Re-checking height {height} under the write lock before \
+                                        rewinding failed: {recheck_error}. Not rewinding.",
+                                    );
+                                    (
+                                        Some(format!(
+                                            "corruption reported at height {height} ({e}) could not be re-checked \
+                                             under the write lock: {recheck_error}"
+                                        )),
+                                        String::new(),
+                                    )
+                                },
+                                Ok(Ok(RewindOutcome::NotRewound(reason))) => {
+                                    error!(target: LOG_TARGET,
+                                        "[Blockchain check] Corruption at height {height} was not rewound: {reason}",
+                                    );
+                                    (None, format!("corruption not rewound: {reason}"))
+                                },
+                                Ok(Err(rewind_error)) => {
                                     error!(target: LOG_TARGET,
                                         "[Blockchain check] Rewind after unrecoverable corruption at height {height} \
-                                        failed: {e}",
+                                        failed: {rewind_error}",
                                     );
+                                    (
+                                        None,
+                                        format!("rewind failed: {rewind_error} (the chain may be partly rewound)"),
+                                    )
                                 },
-                                Err(e) => {
+                                Err(join_error) => {
                                     error!(target: LOG_TARGET,
                                         "[Blockchain check] Rewind task join error after unrecoverable corruption at \
-                                        height {height}: {e}",
+                                        height {height}: {join_error}",
                                     );
+                                    (
+                                        None,
+                                        format!(
+                                            "rewind task failed: {join_error} (whether the chain was rewound is \
+                                             unknown)"
+                                        ),
+                                    )
                                 },
                             }
                         } else {
                             info!(
                                 target: LOG_TARGET,
                                 "[Blockchain check] Autocorrect flag is disabled - manually rewind to height {}",
-                                height.saturating_sub(1),
+                                verdict_height.saturating_sub(1),
                             );
+                            (None, "autocorrect disabled, not rewound".to_string())
+                        };
+                        if not_reproduced.is_some() {
+                            not_reproduced
+                        } else {
+                            // Leaves `last_check_height` just below the corrupt height, which is what the status
+                            // report and a resumed check work from.
+                            match db_rw_lock.write() {
+                                Ok(db) => {
+                                    let current_height = db
+                                        .fetch_last_header()
+                                        .map(|header| header.height)
+                                        .unwrap_or(verdict_height);
+                                    let res = db.update_blockchain_consistency_check_status(
+                                        BlockchainCheckRequest::SetCheckResult {
+                                            has_concluded: false,
+                                            last_check_height: verdict_height.saturating_sub(1),
+                                            current_height,
+                                        },
+                                    );
+                                    if let Err(e) = res {
+                                        error!(
+                                            target: LOG_TARGET,
+                                            "[Blockchain check] Failed to record the corrupt height {verdict_height}: \
+                                            {e:?}"
+                                        );
+                                    }
+                                },
+                                Err(e) => {
+                                    error!(
+                                        target: LOG_TARGET,
+                                        "[Blockchain check] Write lock on blockchain db failed: {e:?}"
+                                    );
+                                },
+                            }
+                            clear_flags(
+                                db_rw_lock.clone(),
+                                true,
+                                Some(CheckFailure {
+                                    corrupt_db: true,
+                                    error: format!("{e}; {outcome}"),
+                                }),
+                            );
+                            break;
                         }
-                        clear_flags(
-                            db_rw_lock.clone(),
-                            true,
-                            Some(CheckFailure {
-                                corrupt_db: true,
-                                error: e.to_string(),
-                            }),
-                        );
-                        break;
                     },
-                    Ok(Err(e)) => {
+                    Ok(Err((e, _, _))) => {
                         error!(
                             target: LOG_TARGET,
                             "[Blockchain check] Checking blockchain consistency failed. Initial status: \
@@ -991,6 +1097,33 @@ where B: BlockchainBackend
                         );
                         break;
                     },
+                };
+
+                if let Some(reason) = retry {
+                    retry_count = retry_count.saturating_add(1);
+                    let stop_requested = match db_rw_lock.read() {
+                        Ok(db) => matches!(
+                            db.fetch_blockchain_consistency_check_status(),
+                            Ok(Some(status)) if status.stop_if_running
+                        ),
+                        Err(_) => false,
+                    };
+                    let error = if stop_requested {
+                        format!("Stopped before height {height} was resolved: {reason}")
+                    } else if retry_count >= MAX_CONSISTENCY_RECHECKS {
+                        format!("Gave up on height {height} after {retry_count} attempts: {reason}")
+                    } else {
+                        continue;
+                    };
+                    clear_flags(
+                        db_rw_lock.clone(),
+                        false,
+                        Some(CheckFailure {
+                            corrupt_db: false,
+                            error,
+                        }),
+                    );
+                    break;
                 }
 
                 if last_status.checked_status().0 || last_status.stop_if_running {
@@ -4443,6 +4576,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         // example a failed cache allocation), which says nothing about the block
         Err(
             e @ ValidationError::FatalStorageError(_) |
+            e @ ValidationError::StoredDataError(_) |
             e @ ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             e @ ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(_)),
         ) |
@@ -5464,8 +5598,9 @@ impl ChainTips {
 /// on every recent header, and `OldSeedHash` is measured against the chain the header is on.
 ///
 /// Everything else defers to `ValidationError::get_ban_reason`, whose `None` arm is precisely the set of verdicts
-/// that are not the block's fault: `FatalStorageError` (which is what *any* `ChainStorageError` becomes when it
-/// crosses into validation, so a transient LMDB read failure lands here), `IncorrectNumberOfTimestampsProvided`,
+/// that are not the block's fault: `FatalStorageError` and `StoredDataError` (which are what *any*
+/// `ChainStorageError` becomes when it crosses into validation, so a transient LMDB read failure lands here),
+/// `IncorrectNumberOfTimestampsProvided`,
 /// the missing-row errors, the hash/height mismatches that describe the query rather than the block, and a local
 /// RandomX VM build failure (`MergeMineError::RandomXVMFactoryError`).
 fn verdict_can_change(err: &ValidationError) -> bool {
@@ -5763,44 +5898,158 @@ fn verify_accumulated_data_for_height<B: BlockchainBackend>(
     Ok(status)
 }
 
-// Verify blockchain consistency for the given height
+// Log the rewind the consistency check is about to do, and call out a pruned node rewinding past its horizon,
+// which `rewind_to_height` turns into a wipe to height 0.
+fn warn_before_consistency_rewind<B: BlockchainBackend>(db: &B, rewind_to: u64) -> Result<(), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let tip = metadata.best_block_height();
+    let steps_back = tip.saturating_sub(rewind_to);
+    let effective_pruning_horizon = tip.saturating_sub(metadata.pruned_height());
+    if metadata.is_pruned_node() && steps_back > effective_pruning_horizon {
+        error!(
+            target: LOG_TARGET,
+            "[Blockchain check] Autocorrect is rewinding this chain to height {rewind_to} ({steps_back} blocks), past \
+            this pruned node's effective pruning horizon of {effective_pruning_horizon}. This wipes the chain to \
+            height 0 and the node has to resync from scratch."
+        );
+    } else {
+        warn!(
+            target: LOG_TARGET,
+            "[Blockchain check] Autocorrect is rewinding this chain to height {rewind_to} ({steps_back} blocks)."
+        );
+    }
+    Ok(())
+}
+
+// A full-validation corruption verdict: the block whose body failed, so a later re-check can tell whether the
+// verdict still applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FailedBody {
+    height: u64,
+    hash: HashOutput,
+}
+
+// Verify blockchain consistency for the given height. An error also carries the height it is about (clamped to the
+// header tip once that is known) and, for a body validation failure, the block that failed. Returns `None`, without
+// recording progress, when the header at the height changed before the result could be recorded, so the caller checks
+// it again.
 fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
     db: Arc<RwLock<B>>,
     validators: &Validators<B>,
     height: u64,
     full_validation: bool,
-) -> Result<BlockchainCheckStatus, ChainStorageError> {
+) -> Result<Option<BlockchainCheckStatus>, (ChainStorageError, u64, Option<FailedBody>)> {
     debug!(target: LOG_TARGET, "[Blockchain check] Checking blockchain data for height {height} with full_validation({full_validation})");
 
-    let read_lock = db
-        .read()
-        .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
-    let last_chain_header = read_lock.fetch_last_chain_header()?;
-    // Safety check to ensure we do not check accumulated data for a height that has been reorged out.
-    let height = min(height, last_chain_header.height());
-
-    let block_data = {
-        let metadata = read_lock.fetch_chain_metadata()?;
-        let horizon_height = metadata.pruned_height_at_given_chain_tip(height);
-        if height > horizon_height {
-            let historical_block = fetch_block(&*read_lock, height, false).map_err(|e| {
-                ChainStorageError::CorruptedDatabase(format!("Could not fetch block for height {height}: {e}"))
+    let (height, checked_hash) = {
+        let read_lock = db.read().map_err(|_e| {
+            (
+                ChainStorageError::AccessError("Read lock on blockchain backend failed".into()),
+                height,
+                None,
+            )
+        })?;
+        let header_tip = read_lock
+            .fetch_last_header()
+            .map_err(|e| {
+                (
+                    corruption_unless_storage_error(e, "Could not fetch the header tip".into()),
+                    height,
+                    None,
+                )
+            })?
+            .height;
+        let height = min(height, header_tip);
+        let block = check_linkage_at_height(&*read_lock, height).map_err(|e| (e, height, None))?;
+        if full_validation && let Some(block) = block {
+            validate_body_for_consistency(&*read_lock, validators, &block).map_err(|e| {
+                let failed_body = FailedBody {
+                    height,
+                    hash: *block.hash(),
+                };
+                (e, height, Some(failed_body))
             })?;
-            Some((
-                historical_block.block().clone(),
-                historical_block.accumulated_data().clone(),
-            ))
-        } else {
-            None
         }
+        let checked_hash = fetch_header(&*read_lock, height).map_err(|e| (e, height, None))?.hash();
+        (height, checked_hash)
     };
-    let prev_chain_header = read_lock.fetch_chain_header_by_height(height.saturating_sub(1))?;
-    let this_block_header = if let Some((ref block, ref _accumulated_data)) = block_data {
-        block.header.clone()
+
+    let write_lock = db.write().map_err(|_e| {
+        (
+            ChainStorageError::AccessError("Write lock on blockchain backend failed".into()),
+            height,
+            None,
+        )
+    })?;
+    // A reorg between the check and here would record a height that was never checked.
+    if fetch_header(&*write_lock, height).ok().map(|header| header.hash()) != Some(checked_hash) {
+        return Ok(None);
+    }
+    let header_tip = write_lock.fetch_last_header().map_err(|e| (e, height, None))?.height;
+    let status = write_lock
+        .update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
+            has_concluded: height == header_tip,
+            last_check_height: height,
+            current_height: header_tip,
+        })
+        .map_err(|e| (e, height, None))?;
+
+    Ok(Some(status))
+}
+
+// Storage and access failures say nothing about the stored data, so they are passed through and end the check without
+// a rewind; anything else is reported as corruption.
+fn corruption_unless_storage_error(e: ChainStorageError, context: String) -> ChainStorageError {
+    if e.is_storage_access_failure() {
+        e
     } else {
-        read_lock.fetch_chain_header_by_height(height)?.header().clone()
+        ChainStorageError::CorruptedDatabase(format!("{context}: {e}"))
+    }
+}
+
+// The light check at an already clamped height: header linkage, plus the block itself when its body should be
+// stored. Returns that block.
+fn check_linkage_at_height<B: BlockchainBackend>(db: &B, height: u64) -> Result<Option<ChainBlock>, ChainStorageError> {
+    // Genesis has no parent to link to.
+    if height == 0 {
+        return Ok(None);
+    }
+
+    let metadata = db
+        .fetch_chain_metadata()
+        .map_err(|e| corruption_unless_storage_error(e, "Could not fetch chain metadata".into()))?;
+    // Bodies only exist above the pruned height and up to the block tip; other heights are header-only.
+    let block = if metadata.pruned_height() < height && height <= metadata.best_block_height() {
+        let historical_block = fetch_block(db, height, false)
+            .map_err(|e| corruption_unless_storage_error(e, format!("Could not fetch block for height {height}")))?;
+        let block_hash = historical_block.block().hash();
+        let accumulated_data_hash = historical_block.accumulated_data().hash;
+        let chain_block = ChainBlock::try_construct(
+            Arc::new(historical_block.block().clone()),
+            historical_block.accumulated_data().clone(),
+        )
+        .ok_or_else(|| {
+            ChainStorageError::CorruptedDatabase(format!(
+                "Inconsistent hash in historical block: block hash {} vs. acc_data hash {}",
+                block_hash, accumulated_data_hash
+            ))
+        })?;
+        Some(chain_block)
+    } else {
+        None
     };
-    drop(read_lock);
+    let prev_height = height.saturating_sub(1);
+    let prev_chain_header = db
+        .fetch_chain_header_by_height(prev_height)
+        .map_err(|e| corruption_unless_storage_error(e, format!("Could not fetch header for height {prev_height}")))?;
+    let this_block_header = if let Some(ref block) = block {
+        block.header().clone()
+    } else {
+        db.fetch_chain_header_by_height(height)
+            .map_err(|e| corruption_unless_storage_error(e, format!("Could not fetch header for height {height}")))?
+            .header()
+            .clone()
+    };
 
     // Simple consistency checks
     if &this_block_header.prev_hash != prev_chain_header.hash() {
@@ -5814,47 +6063,99 @@ fn verify_blockchain_consistency_for_height<B: BlockchainBackend>(
         )));
     }
 
-    // Full validation of block body and internal consistency if requested
-    if full_validation && let Some((block, accumulated_data)) = block_data {
-        let read_lock = db
-            .read()
-            .map_err(|_e| ChainStorageError::AccessError("Read lock on blockchain backend failed".into()))?;
-        let block_hash = block.hash();
-        let accumulated_data_hash = accumulated_data.hash;
-        let chain_block = ChainBlock::try_construct(Arc::new(block), accumulated_data).ok_or_else(|| {
-            ChainStorageError::CorruptedDatabase(format!(
-                "Inconsistent hash in historical block: block hash {} vs. acc_data hash {}",
-                block_hash, accumulated_data_hash
-            ))
-        })?;
-        let block_validator = validators.block.clone();
-        block_validator
-            .validate_body_at_height(&read_lock, &chain_block)
-            .map_err(|e| {
-                ChainStorageError::CorruptedDatabase(format!("Block body validation failed for height {height}: {e}"))
-            })?;
+    Ok(block)
+}
 
-        let orphan_validator = validators.orphan.clone();
-        orphan_validator
-            .validate_internal_consistency(chain_block.block())
-            .map_err(|e| {
-                ChainStorageError::CorruptedDatabase(format!(
-                    "Block internal consistency validation failed for height {height}: {e}"
-                ))
-            })?;
+// Full validation of a stored block body and its internal consistency.
+fn validate_body_for_consistency<B: BlockchainBackend>(
+    db: &B,
+    validators: &Validators<B>,
+    block: &ChainBlock,
+) -> Result<(), ChainStorageError> {
+    let height = block.height();
+    let as_corruption = |e: ValidationError, what: &str| match e {
+        ValidationError::FatalStorageError(_) => ChainStorageError::ValidationError { source: e },
+        e => ChainStorageError::CorruptedDatabase(format!("{what} failed for height {height}: {e}")),
+    };
+    validators
+        .block
+        .validate_body_at_height(db, block)
+        .map_err(|e| as_corruption(e, "Block body validation"))?;
+    validators
+        .orphan
+        .validate_internal_consistency(block.block())
+        .map_err(|e| as_corruption(e, "Block internal consistency validation"))?;
+    Ok(())
+}
+
+// What the write-lock re-check before an autocorrect rewind found.
+#[derive(Debug)]
+enum RewindOutcome {
+    // Still corrupt and rewound to just below `corrupt_height`. `best_block_height` is read back after the rewind,
+    // because a pruned node rewinding past its horizon ends up at height 0.
+    Rewound {
+        corrupt_height: u64,
+        best_block_height: Option<u64>,
+    },
+    // The corruption no longer reproduces.
+    NotReproduced,
+    // The re-check failed with a non-corruption error, so nothing was rewound.
+    RecheckFailed(ChainStorageError),
+    // The rewind could not start because of a further data error.
+    NotRewound(String),
+}
+
+// Re-checks a height reported as corrupt under the caller's write lock and rewinds to just below the checked height
+// only if it is still corrupt. The block body is only validated again when the earlier verdict came from body
+// validation of the same block.
+fn rewind_if_still_corrupt<B: BlockchainBackend>(
+    db: &mut B,
+    validators: &Validators<B>,
+    height: u64,
+    failed_body: Option<FailedBody>,
+) -> Result<RewindOutcome, ChainStorageError> {
+    let checked_height = match db.fetch_last_header() {
+        Ok(header) => min(height, header.height),
+        Err(e) if e.is_storage_access_failure() => return Ok(RewindOutcome::RecheckFailed(e)),
+        Err(e) => return Ok(RewindOutcome::NotRewound(format!("the header tip is unreadable: {e}"))),
+    };
+    let recheck = match check_linkage_at_height(&*db, checked_height) {
+        Ok(Some(block)) => {
+            let same_block = Some(FailedBody {
+                height: checked_height,
+                hash: *block.hash(),
+            });
+            if failed_body == same_block {
+                validate_body_for_consistency(&*db, validators, &block)
+            } else {
+                Ok(())
+            }
+        },
+        Ok(None) => Ok(()),
+        Err(e) => Err(e),
+    };
+    match recheck {
+        Err(ChainStorageError::CorruptedDatabase(_)) => {},
+        Err(e) => return Ok(RewindOutcome::RecheckFailed(e)),
+        Ok(()) => return Ok(RewindOutcome::NotReproduced),
     }
-
-    let write_lock = db
-        .write()
-        .map_err(|_e| ChainStorageError::AccessError("Write lock on blockchain backend failed".into()))?;
-    let last_chain_header = write_lock.fetch_last_chain_header()?;
-    let status = write_lock.update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
-        has_concluded: height == last_chain_header.height(),
-        last_check_height: height,
-        current_height: last_chain_header.height(),
-    })?;
-
-    Ok(status)
+    let rewind_to = checked_height.saturating_sub(1);
+    match warn_before_consistency_rewind(&*db, rewind_to) {
+        Ok(()) => {},
+        Err(e) if e.is_storage_access_failure() => return Ok(RewindOutcome::RecheckFailed(e)),
+        Err(e) => {
+            return Ok(RewindOutcome::NotRewound(format!(
+                "corruption confirmed under the write lock, but could not read chain metadata: {e}"
+            )));
+        },
+    }
+    // Only an error from the rewind itself is returned as `Err`, since it may have left the chain partly rewound.
+    rewind_to_height(db, rewind_to)?;
+    let best_block_height = db.fetch_chain_metadata().ok().map(|m| m.best_block_height());
+    Ok(RewindOutcome::Rewound {
+        corrupt_height: checked_height,
+        best_block_height,
+    })
 }
 
 #[cfg(test)]
@@ -10332,6 +10633,336 @@ mod test {
                 access.fetch_orphan_chain_tip_by_hash(&below_hash).unwrap().is_some(),
                 "the pre-fork orphan chain tip must be left alone"
             );
+        }
+    }
+
+    mod blockchain_consistency_check {
+        use tari_transaction_components::{
+            tari_amount::MicroMinotari,
+            test_helpers::schema_to_transaction,
+            txn_schema,
+        };
+
+        use super::*;
+        use crate::{
+            block_spec,
+            test_helpers::blockchain::{TestBlockchain, create_store_with_consensus},
+        };
+
+        /// B1..B6, where B3 spends the B1 coinbase.
+        fn create_chain_with_spend() -> TestBlockchain {
+            let rules = create_consensus_rules();
+            let db = create_store_with_consensus(rules.clone());
+            let mut blockchain = TestBlockchain::new(db, rules);
+            let (_, coinbase_1) = blockchain.add_next_tip(block_spec!("B1")).unwrap();
+            blockchain.add_next_tip(block_spec!("B2")).unwrap();
+            let (txs, _) = schema_to_transaction(
+                &[txn_schema!(from: vec![coinbase_1], to: vec![MicroMinotari(500_000)])],
+                &blockchain.km,
+            );
+            let txs = txs.iter().map(|t| (**t).clone()).collect();
+            blockchain.add_next_tip(block_spec!("B3", transactions: txs)).unwrap();
+            blockchain.add_next_tip(block_spec!("B4")).unwrap();
+            blockchain.add_next_tip(block_spec!("B5")).unwrap();
+            blockchain.add_next_tip(block_spec!("B6")).unwrap();
+            blockchain
+        }
+
+        fn check(
+            blockchain: &TestBlockchain,
+            height: u64,
+            full_validation: bool,
+        ) -> Result<BlockchainCheckStatus, ChainStorageError> {
+            verify_blockchain_consistency_for_height(
+                blockchain.db().db.clone(),
+                &blockchain.db().validators,
+                height,
+                full_validation,
+            )
+            .map_err(|(e, _, _)| e)
+            .map(|status| status.expect("the header did not change during the check"))
+        }
+
+        fn rewind(blockchain: &TestBlockchain, height: u64, failed_body: Option<FailedBody>) -> RewindOutcome {
+            let db = blockchain.db();
+            rewind_if_still_corrupt(&mut *db.db_write_access().unwrap(), &db.validators, height, failed_body).unwrap()
+        }
+
+        /// Makes the stored body of `name` fail full validation by damaging its kernel's index row.
+        fn damage_kernel_index(blockchain: &TestBlockchain, name: &'static str) -> FailedBody {
+            let block = blockchain.get_block_and_smt_by_name(name).unwrap();
+            let excess_sig = &block.block().body.kernels()[0].excess_sig;
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .write_undecodable_kernel_index_for_test(excess_sig);
+            FailedBody {
+                height: block.height(),
+                hash: *block.hash(),
+            }
+        }
+
+        #[test]
+        fn archival_chain_passes_full_check() {
+            let blockchain = create_chain_with_spend();
+            for height in 1..=6 {
+                check(&blockchain, height, true).unwrap();
+            }
+        }
+
+        #[test]
+        fn pruned_bodies_pass_full_check() {
+            let blockchain = create_chain_with_spend();
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(2);
+            blockchain.db().write(txn).unwrap();
+            blockchain.db().prune_to_height(4).unwrap();
+            assert!(blockchain.db().get_chain_metadata().unwrap().is_pruned_node());
+
+            for height in 1..=6 {
+                check(&blockchain, height, true).unwrap();
+            }
+        }
+
+        #[test]
+        fn headers_ahead_of_block_tip_pass_check() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+
+            for full_validation in [false, true] {
+                let status = check(&blockchain, 7, full_validation).unwrap();
+                let (has_concluded, last_check_height, current_height) = status.checked_status();
+                assert!(has_concluded);
+                assert_eq!(last_check_height, 7);
+                assert_eq!(current_height, 7);
+            }
+        }
+
+        #[test]
+        fn header_not_linked_to_previous_is_corruption() {
+            let mut blockchain = create_chain_with_spend();
+            let b1 = blockchain.get_block_and_smt_by_name("B1").unwrap();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            let mut header = b7.header().clone();
+            header.prev_hash = *b1.hash();
+            let mut accumulated_data = b7.accumulated_data().clone();
+            accumulated_data.hash = header.hash();
+            let unlinked = ChainHeader::try_construct(header, accumulated_data).unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .insert_unlinked_header_for_test(&unlinked);
+
+            for full_validation in [false, true] {
+                let err = check(&blockchain, 7, full_validation).unwrap_err();
+                assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+            }
+
+            // Asked past the header tip, the re-check clamps to height 7 and rewinds to just below it.
+            let outcome = rewind(&blockchain, 9, None);
+            assert!(
+                matches!(outcome, RewindOutcome::Rewound {
+                    corrupt_height: 7,
+                    best_block_height: Some(6)
+                }),
+                "{outcome:?}"
+            );
+            assert_eq!(blockchain.db().fetch_last_header().unwrap().height, 6);
+            check(&blockchain, 6, true).unwrap();
+        }
+
+        #[test]
+        fn missing_header_accumulated_data_is_corruption() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .delete_header_accumulated_data_for_test(b7.header());
+
+            let err = check(&blockchain, 7, false).unwrap_err();
+            assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+        }
+
+        #[test]
+        fn undecodable_header_accumulated_data_is_corruption() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .write_undecodable_header_accumulated_data_for_test(b7.header());
+
+            let err = check(&blockchain, 7, false).unwrap_err();
+            assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+        }
+
+        #[test]
+        fn undecodable_tip_header_is_confirmed_but_not_rewound() {
+            let mut blockchain = create_chain_with_spend();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            blockchain
+                .db()
+                .insert_valid_headers(vec![b7.to_chain_header()])
+                .unwrap();
+            blockchain
+                .db()
+                .db_read_access()
+                .unwrap()
+                .write_undecodable_header_for_test(7);
+
+            let err = check(&blockchain, 7, false).unwrap_err();
+            assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+            let outcome = rewind(&blockchain, 7, None);
+            assert!(matches!(outcome, RewindOutcome::NotRewound(_)), "{outcome:?}");
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+        }
+
+        #[test]
+        fn undecodable_kernel_index_row_is_corruption_in_full_check() {
+            let blockchain = create_chain_with_spend();
+            damage_kernel_index(&blockchain, "B3");
+
+            check(&blockchain, 3, false).unwrap();
+            let err = check(&blockchain, 3, true).unwrap_err();
+            assert!(matches!(err, ChainStorageError::CorruptedDatabase(_)), "{err:?}");
+        }
+
+        #[test]
+        fn body_verdict_rewinds_only_while_the_same_block_is_still_bad() {
+            let blockchain = create_chain_with_spend();
+            let b5 = blockchain.get_block_and_smt_by_name("B5").unwrap();
+            let b6 = blockchain.get_block_and_smt_by_name("B6").unwrap();
+
+            // A different block is stored at the height now.
+            let other_block = FailedBody {
+                height: 6,
+                hash: *b5.hash(),
+            };
+            let outcome = rewind(&blockchain, 6, Some(other_block));
+            assert!(matches!(outcome, RewindOutcome::NotReproduced), "{outcome:?}");
+
+            // The same block is stored, but its body validates now.
+            let same_block = FailedBody {
+                height: 6,
+                hash: *b6.hash(),
+            };
+            let outcome = rewind(&blockchain, 6, Some(same_block));
+            assert!(matches!(outcome, RewindOutcome::NotReproduced), "{outcome:?}");
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+
+            // The same block is stored and its body is still bad.
+            let failed_body = damage_kernel_index(&blockchain, "B6");
+            let outcome = rewind(&blockchain, 6, Some(failed_body));
+            assert!(
+                matches!(outcome, RewindOutcome::Rewound {
+                    corrupt_height: 6,
+                    best_block_height: Some(5)
+                }),
+                "{outcome:?}"
+            );
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 5);
+        }
+
+        #[test]
+        fn body_verdict_at_a_now_pruned_height_does_not_rewind() {
+            let blockchain = create_chain_with_spend();
+            let b4 = blockchain.get_block_and_smt_by_name("B4").unwrap();
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(2);
+            blockchain.db().write(txn).unwrap();
+            blockchain.db().prune_to_height(4).unwrap();
+            assert!(blockchain.db().get_chain_metadata().unwrap().pruned_height() >= 4);
+
+            let failed_body = FailedBody {
+                height: 4,
+                hash: *b4.hash(),
+            };
+            let outcome = rewind(&blockchain, 4, Some(failed_body));
+            assert!(matches!(outcome, RewindOutcome::NotReproduced), "{outcome:?}");
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+        }
+
+        #[tokio::test]
+        async fn corruption_at_the_resume_height_is_recorded_below_it() {
+            let mut blockchain = create_chain_with_spend();
+            let b1 = blockchain.get_block_and_smt_by_name("B1").unwrap();
+            let (b7, _) = blockchain.create_chained_block(block_spec!("B7", parent: "B6"));
+            let mut header = b7.header().clone();
+            header.prev_hash = *b1.hash();
+            let mut accumulated_data = b7.accumulated_data().clone();
+            accumulated_data.hash = header.hash();
+            let unlinked = ChainHeader::try_construct(header, accumulated_data).unwrap();
+            let db = blockchain.db();
+            db.db_read_access().unwrap().insert_unlinked_header_for_test(&unlinked);
+            // A previous run got as far as height 7, so this one resumes there.
+            db.db_write_access()
+                .unwrap()
+                .update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
+                    has_concluded: false,
+                    last_check_height: 7,
+                    current_height: 7,
+                })
+                .unwrap();
+
+            db.request_blockchain_consistency_check(false, false, 1).unwrap();
+            let mut status = db.fetch_blockchain_consistency_check_status().unwrap().unwrap();
+            for _ in 0..500 {
+                if !status.is_running() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                status = db.fetch_blockchain_consistency_check_status().unwrap().unwrap();
+            }
+
+            assert!(!status.is_running());
+            assert!(status.last_failure.as_ref().unwrap().corrupt_db, "{status:?}");
+            assert_eq!(status.last_check_height, Some(6));
+        }
+
+        #[test]
+        fn genesis_only_database_passes_check() {
+            let db = create_store_with_consensus(create_consensus_rules());
+            for full_validation in [false, true] {
+                let status =
+                    verify_blockchain_consistency_for_height(db.db.clone(), &db.validators, 1, full_validation)
+                        .map_err(|(e, _, _)| e)
+                        .unwrap()
+                        .unwrap();
+                let (has_concluded, last_check_height, current_height) = status.checked_status();
+                assert!(has_concluded);
+                assert_eq!(last_check_height, 0);
+                assert_eq!(current_height, 0);
+            }
+            let outcome =
+                rewind_if_still_corrupt(&mut *db.db_write_access().unwrap(), &db.validators, 1, None).unwrap();
+            assert!(matches!(outcome, RewindOutcome::NotReproduced), "{outcome:?}");
+        }
+
+        #[test]
+        fn stale_corruption_verdict_does_not_rewind() {
+            let blockchain = create_chain_with_spend();
+            let outcome = rewind(&blockchain, 6, None);
+            assert!(matches!(outcome, RewindOutcome::NotReproduced), "{outcome:?}");
+            assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 6);
+            assert_eq!(blockchain.db().fetch_last_header().unwrap().height, 6);
         }
     }
 

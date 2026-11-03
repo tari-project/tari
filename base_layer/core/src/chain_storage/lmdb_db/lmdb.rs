@@ -272,16 +272,7 @@ where
             error!(target: LOG_TARGET, "Could not get value from lmdb: {e:?}");
             Err(ChainStorageError::AccessError(e.to_string()))
         },
-        Ok(Some(v)) => match deserialize(v) {
-            Ok(val) => Ok(Some(val)),
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not could not deserialize value from lmdb: {e:?}"
-                );
-                Err(ChainStorageError::AccessError(e.to_string()))
-            },
-        },
+        Ok(Some(v)) => deserialize(v).map(Some),
     }
 }
 
@@ -298,16 +289,7 @@ where
             error!(target: LOG_TARGET, "Could not get value from lmdb: {e:?}");
             Err(ChainStorageError::AccessError(e.to_string()))
         },
-        Ok(Some(v)) => match deserialize(v) {
-            Ok(val) => Ok(Some(val)),
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not could not deserialize value from lmdb: {e:?}"
-                );
-                Err(ChainStorageError::AccessError(e.to_string()))
-            },
-        },
+        Ok(Some(v)) => deserialize(v).map(Some),
     }
 }
 
@@ -376,10 +358,7 @@ where
         return Ok(entries);
     }
     // Legacy format: a single entry stored directly.
-    let entry = deserialize::<V>(bytes).map_err(|e| {
-        error!(target: LOG_TARGET, "Could not deserialize single-or-vec value from lmdb: {e:?}");
-        ChainStorageError::AccessError(e.to_string())
-    })?;
+    let entry = deserialize::<V>(bytes)?;
     Ok(vec![entry])
 }
 
@@ -443,13 +422,7 @@ where V: DeserializeOwned {
             Err(ChainStorageError::AccessError(e.to_string()))
         },
         Ok(None) => Ok(None),
-        Ok(Some((_k, v))) => deserialize(v).map(Some).map_err(|e| {
-            error!(
-                target: LOG_TARGET,
-                "Could not could not deserialize value from lmdb: {e:?}"
-            );
-            ChainStorageError::AccessError(e.to_string())
-        }),
+        Ok(Some((_k, v))) => deserialize(v).map(Some),
     }
 }
 
@@ -637,23 +610,14 @@ where
     let mut access = txn.access();
     let mut num_deleted = 0usize;
     while let Some((k, v)) = cursor.next::<K, [u8]>(&access).to_opt()? {
-        match deserialize(v) {
-            Ok(v) => match predicate(k, v) {
-                Some(true) => {
-                    cursor.del(&mut access, del::Flags::empty())?;
-                    num_deleted = num_deleted.saturating_add(1);
-                },
-                Some(false) => continue,
-                None => {
-                    break;
-                },
+        match predicate(k, deserialize(v)?) {
+            Some(true) => {
+                cursor.del(&mut access, del::Flags::empty())?;
+                num_deleted = num_deleted.saturating_add(1);
             },
-            Err(e) => {
-                error!(
-                    target: LOG_TARGET,
-                    "Could not could not deserialize value from lmdb: {e:?}"
-                );
-                return Err(ChainStorageError::AccessError(e.to_string()));
+            Some(false) => continue,
+            None => {
+                break;
             },
         }
     }

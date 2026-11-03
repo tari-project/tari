@@ -65,6 +65,10 @@ pub enum ValidationError {
     TransactionError(#[from] TransactionError),
     #[error("Fatal storage error during validation: {0}")]
     FatalStorageError(String),
+    /// A storage error about the stored data itself (a missing or undecodable row) rather than access to the store.
+    /// Treated exactly like `FatalStorageError` everywhere except the database consistency check.
+    #[error("Fatal storage error during validation: {0}")]
+    StoredDataError(String),
     #[error(
         "The total expected supply plus the total accumulated (offset) excess does not equal the sum of all UTXO \
          commitments."
@@ -163,7 +167,11 @@ pub enum ValidationError {
 // for storage errors that cause validation failures.
 impl From<ChainStorageError> for ValidationError {
     fn from(err: ChainStorageError) -> Self {
-        Self::FatalStorageError(err.to_string())
+        if err.is_storage_access_failure() {
+            Self::FatalStorageError(err.to_string())
+        } else {
+            Self::StoredDataError(err.to_string())
+        }
     }
 }
 
@@ -226,6 +234,7 @@ impl ValidationError {
             // Only returned for a transaction, which may be valid once its parents are in the mempool
             ValidationError::SpentInputs { .. } |
             ValidationError::FatalStorageError(_) |
+            ValidationError::StoredDataError(_) |
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             ValidationError::MissingKernelError(_) |
             ValidationError::MissingOutputError(_) |

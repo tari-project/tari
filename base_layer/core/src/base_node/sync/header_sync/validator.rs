@@ -196,6 +196,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
             // We dont want to mark a block as bad for internal failures, including a local RandomX VM build failure
             // (for example a failed cache allocation), which says nothing about the header
             ValidationError::FatalStorageError(_) |
+            ValidationError::StoredDataError(_) |
             ValidationError::IncorrectNumberOfTimestampsProvided { .. } |
             ValidationError::MergeMineError(MergeMineError::RandomXVMFactoryError(_)) |
             // We dont have to mark the block twice

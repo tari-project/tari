@@ -190,6 +190,19 @@ pub enum ChainStorageError {
 }
 
 impl ChainStorageError {
+    /// True when the store itself could not be read or written, as opposed to the stored data being wrong.
+    pub fn is_storage_access_failure(&self) -> bool {
+        matches!(
+            self,
+            ChainStorageError::AccessError(_) |
+                ChainStorageError::LmdbError { .. } |
+                ChainStorageError::IoError(_) |
+                ChainStorageError::DbResizeRequired(_) |
+                ChainStorageError::CriticalError(_) |
+                ChainStorageError::BlockingTaskSpawnError(_)
+        )
+    }
+
     pub fn is_value_not_found(&self) -> bool {
         matches!(self, ChainStorageError::ValueNotFound { .. })
     }
