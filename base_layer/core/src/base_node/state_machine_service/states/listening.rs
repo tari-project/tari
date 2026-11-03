@@ -694,7 +694,7 @@ fn determine_sync_mode(
             // Otherwise, only wait when the tip is above us, otherwise
             // chains with a lower height will never be reorged to.
             if network_tip_height > local_tip_height &&
-                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) > network_tip_height
+                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) >= network_tip_height
             {
                 trace!(
                     target: LOG_TARGET,
@@ -798,11 +798,108 @@ mod test {
         let sync_mode = determine_sync_mode(0, archival_node.claimed_chain_metadata(), &behind_node);
         assert!(sync_mode.is_up_to_date());
 
-        let sync_mode = determine_sync_mode(1, behind_node.claimed_chain_metadata(), &archival_node);
+        let sync_mode = determine_sync_mode(0, behind_node.claimed_chain_metadata(), &archival_node);
         assert!(sync_mode.is_lagging());
+
+        let sync_mode = determine_sync_mode(1, behind_node.claimed_chain_metadata(), &archival_node);
+        assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
 
         let sync_mode = determine_sync_mode(2, behind_node.claimed_chain_metadata(), &archival_node);
         assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
+    }
+
+    #[test]
+    fn one_block_behind_waits_for_propagation_with_the_default_setting() {
+        const LOCAL_TIP_HEIGHT: u64 = 100;
+        let local = chain_metadata(LOCAL_TIP_HEIGHT, U512::from(1000));
+        let one_ahead = peer_chain_metadata(LOCAL_TIP_HEIGHT + 1, U512::from(1010));
+        let two_ahead = peer_chain_metadata(LOCAL_TIP_HEIGHT + 2, U512::from(1020));
+
+        let sync_mode = determine_sync_mode(1, &local, &one_ahead);
+        assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
+
+        let sync_mode = determine_sync_mode(1, &local, &two_ahead);
+        assert!(sync_mode.is_lagging());
+
+        // 0 turns the wait off
+        let sync_mode = determine_sync_mode(0, &local, &one_ahead);
+        assert!(sync_mode.is_lagging());
+        let sync_mode = determine_sync_mode(0, &local, &two_ahead);
+        assert!(sync_mode.is_lagging());
+    }
+
+    #[tokio::test]
+    async fn a_stronger_claim_enters_header_sync_without_disabling_add_block() {
+        use tari_comms::{
+            peer_manager::PeerFeatures,
+            test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
+        };
+        use tari_service_framework::reply_channel;
+        use tari_shutdown::Shutdown;
+        use tokio::sync::watch;
+
+        use crate::{
+            base_node::{
+                BaseNodeStateMachineConfig,
+                LocalNodeCommsInterface,
+                state_machine_service::states::{BaseNodeState, StatusInfo},
+                sync::SyncValidators,
+            },
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules, create_peer_manager},
+            validation::mocks::MockValidator,
+        };
+
+        let db = create_new_blockchain();
+        let peer_manager = create_peer_manager();
+        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+        let (connectivity, _connectivity_mock) = create_connectivity_mock();
+        let (metadata_tx, metadata_rx) = broadcast::channel(10);
+        let (_dht_tx, dht_rx) = broadcast::channel(10);
+        let (req_tx, _) = reply_channel::unbounded();
+        let (block_tx, _) = reply_channel::unbounded();
+        let (block_event_tx, _) = broadcast::channel(1);
+        let (status_tx, _status_rx) = watch::channel(StatusInfo::new());
+        let (event_tx, _event_rx) = broadcast::channel(10);
+        let shutdown = Shutdown::new();
+        let mut state_machine = BaseNodeStateMachine::new(
+            db.clone().into(),
+            LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+            connectivity,
+            metadata_rx,
+            peer_manager,
+            dht_rx,
+            BaseNodeStateMachineConfig::default(),
+            SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
+            status_tx,
+            event_tx,
+            RandomXFactory::default(),
+            create_consensus_rules(),
+            shutdown.to_signal(),
+        );
+
+        let local = db.get_chain_metadata().unwrap();
+        let claim = chain_metadata(
+            local.best_block_height() + 2,
+            local.accumulated_difficulty() + U512::from(1000),
+        );
+        metadata_tx
+            .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(
+                PeerChainMetadata::new(peer.node_id().clone(), claim, None),
+            )))
+            .unwrap();
+
+        let mut listening = Listening {
+            is_synced: true,
+            ..Default::default()
+        };
+        let event = listening.next_event(&mut state_machine, false).await;
+        assert!(matches!(event, StateEvent::FallenBehind(SyncStatus::Lagging { .. })));
+
+        let next_state = state_machine.transition(BaseNodeState::Listening(listening, false), event);
+        assert!(matches!(next_state, BaseNodeState::HeaderSync(_)));
+        assert!(!db.is_add_block_disabled());
     }
 
     #[test]

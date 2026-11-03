@@ -159,10 +159,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                     sync_peers,
                     ..
                 }),
-            ) => {
-                db.set_disable_add_block_flag();
-                HeaderSync(HeaderSyncState::new(sync_peers, local_metadata))
-            },
+            ) => HeaderSync(HeaderSyncState::new(sync_peers, local_metadata)),
             (HeaderSync(s), HeaderSyncFailed(_err)) => {
                 db.clear_disable_add_block_flag();
                 Waiting(s.into())

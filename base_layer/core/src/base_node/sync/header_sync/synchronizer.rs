@@ -201,8 +201,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
+        // Bounds a whole attempt against one peer; each RPC request keeps its own `rpc_deadline`.
+        let budget = self.config.rpc_deadline.saturating_mul(2);
         for node_id in sync_peer_node_ids {
-            match self.connect_and_attempt_sync(&node_id, max_latency).await {
+            let attempt = tokio::time::timeout(budget, self.connect_and_attempt_sync(&node_id, max_latency)).await;
+            let attempt = match attempt {
+                Ok(result) => result,
+                Err(_) => Err(BlockHeaderSyncError::SyncAttemptTimedOut { budget }),
+            };
+            match attempt {
                 Ok((peer, sync_result)) => return Ok((peer, sync_result)),
                 Err(err) => {
                     let ban_reason = BlockHeaderSyncError::get_ban_reason(&err);
@@ -579,6 +586,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             // peer did not supply any headers and we know we are behind based on the peer's claimed metadata, then
             // we can ban the peer.
             if best_header.height() == best_block_header.height() {
+                let claimed_hash = *sync_peer.claimed_chain_metadata().best_block_hash();
+                if self.local_chain_has_caught_up(sync_peer, claimed_hash).await? {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer `{}` sent no headers, but our chain has reached their claim since sync started",
+                        sync_peer.node_id()
+                    );
+                    return Err(BlockHeaderSyncError::NotInSync);
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Peer `{}` did not provide any headers although they have a better chain and more headers: their \
@@ -608,12 +624,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // Do a cheap check to verify that we do not have these series of headers in the db already - if the 1st one is
         // not there most probably the rest are not either - the peer could still have returned old headers later on in
         // the list
-        if self
-            .db
-            .fetch_header_by_block_hash(headers.first().expect("Already checked").hash())
-            .await?
-            .is_some()
-        {
+        let first_hash = headers.first().expect("Already checked").hash();
+        if self.db.fetch_header_by_block_hash(first_hash).await?.is_some() {
+            if self.local_chain_has_caught_up(sync_peer, first_hash).await? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` sent a header we added since sync started", sync_peer.node_id()
+                );
+                return Err(BlockHeaderSyncError::NotInSync);
+            }
             return Err(BlockHeaderSyncError::ReceivedInvalidHeader(
                 "Header already in database".to_string(),
             ));
@@ -637,6 +656,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             target: LOG_TARGET,
             "Peer `{}` has submitted {} valid header(s)", sync_peer.node_id(), num_new_headers
         );
+
+        // The peer has proven a stronger chain: stop accepting propagated blocks while we switch to it.
+        if self.pending_chain_has_higher_pow(&best_block_header) {
+            self.db.inner().set_disable_add_block_flag();
+        }
 
         let chain_split_info = ChainSplitInfo {
             best_block_header,
@@ -844,6 +868,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             if let Some(h) = existing_header {
+                if self.local_chain_has_caught_up(&sync_peer, h.hash()).await? {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer `{}` sent header #{} that we added since sync started", sync_peer.node_id(), h.height
+                    );
+                    return Err(BlockHeaderSyncError::NotInSync);
+                }
                 warn!(
                     target: LOG_TARGET,
                     "Received header #{} `{}` that we already have.",
@@ -1010,6 +1041,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<(), BlockHeaderSyncError> {
+        // Only called once the pending chain is stronger; covers a chain that only becomes stronger mid-stream.
+        self.db.inner().set_disable_add_block_flag();
         // Reorg if required
         if split_info.reorg_steps_back > 0 {
             debug!(
@@ -1032,6 +1065,21 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.commit_pending_headers().await?;
 
         Ok(())
+    }
+
+    /// Whether our chain has reached the peer's claimed accumulated difficulty since sync started, or `header_hash`
+    /// is a main chain header at or below our tip. Either means a propagated block landed during the sync attempt.
+    async fn local_chain_has_caught_up(
+        &self,
+        sync_peer: &SyncPeer,
+        header_hash: HashOutput,
+    ) -> Result<bool, BlockHeaderSyncError> {
+        let local_metadata = self.db.get_chain_metadata().await?;
+        if sync_peer.claimed_chain_metadata().accumulated_difficulty() <= local_metadata.accumulated_difficulty() {
+            return Ok(true);
+        }
+        let header = self.db.fetch_header_by_block_hash(header_hash).await?;
+        Ok(header.is_some_and(|h| h.height <= local_metadata.best_block_height()))
     }
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.

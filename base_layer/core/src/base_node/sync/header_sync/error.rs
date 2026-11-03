@@ -98,6 +98,8 @@ pub enum BlockHeaderSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
+    #[error("Header sync attempt with the peer did not complete within {budget:.2?}")]
+    SyncAttemptTimedOut { budget: Duration },
     #[error("Unable to get TargetDifficulties: ({0})")]
     TargetDifficultiesError(String),
     #[error(
@@ -141,7 +143,8 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::RpcError { .. } |
             err @ BlockHeaderSyncError::RpcRequestError { .. } |
             err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
-            err @ BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. } |
+            err @ BlockHeaderSyncError::SyncAttemptTimedOut { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),
