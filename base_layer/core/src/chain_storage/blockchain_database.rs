@@ -938,13 +938,24 @@ where B: BlockchainBackend
                             })
                             .await;
                             match res {
-                                Ok(Ok(RewindOutcome::Rewound(rewind_to))) => {
-                                    verdict_height = rewind_to.saturating_add(1);
+                                Ok(Ok(RewindOutcome::Rewound {
+                                    corrupt_height,
+                                    best_block_height,
+                                })) => {
+                                    verdict_height = corrupt_height;
+                                    let best_block =
+                                        best_block_height.map_or_else(|| "unknown".to_string(), |h| h.to_string());
                                     info!(target: LOG_TARGET,
-                                        "[Blockchain check] Rewound the blockchain to height {rewind_to} after \
-                                        unrecoverable corruption at height {height}.",
+                                        "[Blockchain check] Rewound the blockchain below height {corrupt_height} after \
+                                        unrecoverable corruption; the best block is now at height {best_block}.",
                                     );
-                                    (None, format!("rewound to height {rewind_to}"))
+                                    (
+                                        None,
+                                        format!(
+                                            "rewound below height {corrupt_height}; the best block is now at height \
+                                             {best_block}"
+                                        ),
+                                    )
                                 },
                                 Ok(Ok(RewindOutcome::NotReproduced)) => {
                                     warn!(target: LOG_TARGET,
@@ -6079,8 +6090,12 @@ fn validate_body_for_consistency<B: BlockchainBackend>(
 // What the write-lock re-check before an autocorrect rewind found.
 #[derive(Debug)]
 enum RewindOutcome {
-    // Still corrupt; rewound to this height.
-    Rewound(u64),
+    // Still corrupt and rewound to just below `corrupt_height`. `best_block_height` is read back after the rewind,
+    // because a pruned node rewinding past its horizon ends up at height 0.
+    Rewound {
+        corrupt_height: u64,
+        best_block_height: Option<u64>,
+    },
     // The corruption no longer reproduces.
     NotReproduced,
     // The re-check failed with a non-corruption error, so nothing was rewound.
@@ -6135,7 +6150,11 @@ fn rewind_if_still_corrupt<B: BlockchainBackend>(
     }
     // Only an error from the rewind itself is returned as `Err`, since it may have left the chain partly rewound.
     rewind_to_height(db, rewind_to)?;
-    Ok(RewindOutcome::Rewound(rewind_to))
+    let best_block_height = db.fetch_chain_metadata().ok().map(|m| m.best_block_height());
+    Ok(RewindOutcome::Rewound {
+        corrupt_height: checked_height,
+        best_block_height,
+    })
 }
 
 #[cfg(test)]
@@ -10674,7 +10693,13 @@ mod test {
 
             // Asked past the header tip, the re-check clamps to height 7 and rewinds to just below it.
             let outcome = rewind(&blockchain, 9, None);
-            assert!(matches!(outcome, RewindOutcome::Rewound(6)), "{outcome:?}");
+            assert!(
+                matches!(outcome, RewindOutcome::Rewound {
+                    corrupt_height: 7,
+                    best_block_height: Some(6)
+                }),
+                "{outcome:?}"
+            );
             assert_eq!(blockchain.db().fetch_last_header().unwrap().height, 6);
             check(&blockchain, 6, true).unwrap();
         }
@@ -10772,7 +10797,13 @@ mod test {
             // The same block is stored and its body is still bad.
             let failed_body = damage_kernel_index(&blockchain, "B6");
             let outcome = rewind(&blockchain, 6, Some(failed_body));
-            assert!(matches!(outcome, RewindOutcome::Rewound(5)), "{outcome:?}");
+            assert!(
+                matches!(outcome, RewindOutcome::Rewound {
+                    corrupt_height: 6,
+                    best_block_height: Some(5)
+                }),
+                "{outcome:?}"
+            );
             assert_eq!(blockchain.db().get_chain_metadata().unwrap().best_block_height(), 5);
         }
 
