@@ -329,7 +329,7 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        fetch_vm_key_for_held_ancestry(header: BlockHeader) -> CandidateVmKey,
+        fetch_vm_key_for_held_ancestry(header: BlockHeader, oldest_key_height: u64) -> CandidateVmKey,
         "fetch_vm_key_for_held_ancestry"
     );
 

@@ -1757,8 +1757,9 @@ fn retain_requested_transactions(
 /// A key could cost us a RandomX VM build, so a block is dropped unhashed, without a ban, when nothing about it makes
 /// that worth it: its key is above our header chain's tip at `tip_height` (also when it extends a held fork taller
 /// than that chain; header sync brings such a fork if it gains work), older than our tip's with its ancestry unknown,
-/// or more than one epoch older with it held (an honest fork at an epoch boundary is one epoch behind), or `peer` has
-/// no checks left. A held parent the block's height does not follow is a ban.
+/// or more than one epoch older with it held (an honest fork at an epoch boundary is one epoch behind; checked at the
+/// parent, before the rest of the ancestry is walked), or `peer` has no checks left. A held parent the block's height
+/// does not follow is a ban.
 async fn fetch_tari_rx_vm_key<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     checks: &Mutex<UnknownAncestryRandomXChecks>,
@@ -1777,22 +1778,22 @@ async fn fetch_tari_rx_vm_key<B: BlockchainBackend + 'static>(
             "its RandomX key at height {key_height} is above our tip at {tip_height}"
         )));
     }
-    match db.fetch_vm_key_for_held_ancestry(header.clone()).await? {
+    // An honest fork at an epoch boundary is keyed one epoch behind our tip, not more
+    let oldest_held_key_height = tip_key_height.saturating_sub(TARI_RX_VM_KEY_BLOCK_SWAP);
+    match db
+        .fetch_vm_key_for_held_ancestry(header.clone(), oldest_held_key_height)
+        .await?
+    {
         CandidateVmKey::WrongHeight { parent_height } => Err(CommsInterfaceError::InvalidBlockHeader(
             BlockHeaderValidationError::InvalidHeight {
                 expected: parent_height.saturating_add(1),
                 actual: header.height,
             },
         )),
-        CandidateVmKey::Held(vm_key) => {
-            if key_height.saturating_add(TARI_RX_VM_KEY_BLOCK_SWAP) < tip_key_height {
-                return Err(drop_unhashed(format!(
-                    "its RandomX key at height {key_height} is more than an epoch older than our tip's at \
-                     {tip_key_height}"
-                )));
-            }
-            Ok((vm_key, true))
-        },
+        CandidateVmKey::KeyTooOld => Err(drop_unhashed(format!(
+            "its RandomX key at height {key_height} is more than an epoch older than our tip's at {tip_key_height}"
+        ))),
+        CandidateVmKey::Held(vm_key) => Ok((vm_key, true)),
         CandidateVmKey::UnknownAncestry => {
             if key_height < tip_key_height {
                 return Err(drop_unhashed(format!(
@@ -2384,6 +2385,43 @@ mod test {
         assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
         assert!(err.get_ban_reason().is_none());
 
+        handlers
+            .check_min_block_difficulty(&randomx_block_on(chain[2199].header(), 2200), &peer)
+            .await
+            .unwrap();
+        assert_whole_budget(&handlers, &peer, 4200).await;
+    }
+
+    /// A block on a held parent keyed more than one epoch before our tip is dropped at the parent, before the rest of
+    /// its ancestry is walked. Here the parent P is an orphan whose own parent we do not hold: had the walk gone on, it
+    /// would have found the ancestry not held and dropped the block for that instead.
+    #[tokio::test]
+    async fn a_randomx_block_two_epochs_behind_is_dropped_at_its_held_parent() {
+        use tari_transaction_components::aggregated_body::AggregateBody;
+
+        use crate::{chain_storage::DbTransaction, test_helpers::create_chain_header};
+
+        let (handlers, chain, db) = handlers_on_a_header_chain(4200);
+        let mut header = BlockHeader::from_previous(chain[999].header());
+        header.prev_hash = FixedHash::from([9u8; 32]);
+        let p = create_chain_header(header, chain[999].accumulated_data());
+        let block = Block::new(p.header().clone(), AggregateBody::empty());
+        let block = ChainBlock::try_construct(Arc::new(block), p.accumulated_data().clone()).unwrap();
+        let mut txn = DbTransaction::new();
+        txn.insert_chained_orphan(Arc::new(block));
+        db.write(txn).await.unwrap();
+        let peer = NodeId::default();
+
+        let err = handlers
+            .check_min_block_difficulty(&randomx_block_on(p.header(), 1001), &peer)
+            .await
+            .unwrap_err();
+
+        let CommsInterfaceError::UnknownRandomXKey { details, .. } = &err else {
+            panic!("expected UnknownRandomXKey, got {err:?}");
+        };
+        assert!(details.contains("more than an epoch older"), "{details}");
+        assert!(err.get_ban_reason().is_none());
         handlers
             .check_min_block_difficulty(&randomx_block_on(chain[2199].header(), 2200), &peer)
             .await

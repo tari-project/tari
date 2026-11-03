@@ -199,6 +199,8 @@ pub enum CandidateVmKey {
     Held(FixedHash),
     /// We hold the header's parent, but the header's height does not follow it
     WrongHeight { parent_height: u64 },
+    /// We hold the header's parent, but the header's key is older than the oldest key asked for
+    KeyTooOld,
     /// An ancestor of the header is not held
     UnknownAncestry,
 }
@@ -2226,8 +2228,13 @@ where B: BlockchainBackend
     }
 
     /// The Tari RandomX VM key for `header`, resolved along its own chain when its ancestry is held (on the main chain
-    /// or in the orphan pool). Nothing past the parent is read when `header`'s height does not follow it.
-    pub fn fetch_vm_key_for_held_ancestry(&self, header: BlockHeader) -> Result<CandidateVmKey, ChainStorageError> {
+    /// or in the orphan pool). Nothing past the parent is read when `header`'s height does not follow it, or its key
+    /// height is below `oldest_key_height`.
+    pub fn fetch_vm_key_for_held_ancestry(
+        &self,
+        header: BlockHeader,
+        oldest_key_height: u64,
+    ) -> Result<CandidateVmKey, ChainStorageError> {
         let db = self.db_read_access()?;
         let parent = match db.fetch_chain_header_in_all_chains(&header.prev_hash) {
             Ok(parent) => parent,
@@ -2238,6 +2245,9 @@ where B: BlockchainBackend
             return Ok(CandidateVmKey::WrongHeight {
                 parent_height: parent.height(),
             });
+        }
+        if tari_rx_vm_key_height(header.height) < oldest_key_height {
+            return Ok(CandidateVmKey::KeyTooOld);
         }
         match get_vm_key_above_parent(&*db, header.height, parent) {
             Ok((vm_key, _)) => Ok(CandidateVmKey::Held(vm_key)),
@@ -6749,13 +6759,13 @@ mod test {
             }
 
             assert_eq!(
-                db.fetch_vm_key_for_held_ancestry(candidate.clone()).unwrap(),
+                db.fetch_vm_key_for_held_ancestry(candidate.clone(), 0).unwrap(),
                 CandidateVmKey::Held(fork_key)
             );
             let mut unknown = candidate;
             unknown.prev_hash = FixedHash::from([7u8; 32]);
             assert_eq!(
-                db.fetch_vm_key_for_held_ancestry(unknown).unwrap(),
+                db.fetch_vm_key_for_held_ancestry(unknown, 0).unwrap(),
                 CandidateVmKey::UnknownAncestry
             );
         }
