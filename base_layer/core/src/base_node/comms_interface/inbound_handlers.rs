@@ -932,6 +932,7 @@ where B: BlockchainBackend + 'static
         source_peer: &NodeId,
     ) -> Result<(), CommsInterfaceError> {
         let mut header = self.blockchain_db.fetch_last_chain_header().await?;
+        let tip_height = header.height();
         let rules_height = max(header.height(), new_block.header.height);
         let constants = self.consensus_manager.consensus_constants(rules_height);
         let gen_hash = *self.consensus_manager.get_genesis_block().hash();
@@ -995,6 +996,18 @@ where B: BlockchainBackend + 'static
                 let (vm_key, ancestry_held) = fetch_tari_rx_vm_key(&self.blockchain_db, &new_block.header).await?;
                 own_chain_checked = ancestry_held;
                 if !ancestry_held {
+                    // A key older than the one a block on our tip uses could cost us a RandomX VM build, and a block
+                    // whose ancestry we do not hold says nothing to make that worth it
+                    let tip_key_height = tari_rx_vm_key_height(tip_height.saturating_add(1));
+                    if tari_rx_vm_key_height(new_block.header.height) < tip_key_height {
+                        return Err(CommsInterfaceError::UnknownRandomXKey {
+                            hash: new_block.header.hash(),
+                            details: format!(
+                                "its RandomX key at height {} is older than our tip's at height {tip_key_height}",
+                                tari_rx_vm_key_height(new_block.header.height)
+                            ),
+                        });
+                    }
                     self.take_unknown_ancestry_randomx_check(&new_block.header, source_peer)?;
                 }
                 let header = new_block.header.clone();
@@ -2002,6 +2015,93 @@ mod test {
             .check_min_block_difficulty(&unknown, &other_peer)
             .await
             .unwrap();
+    }
+
+    /// A Tari RandomX block of unknown ancestry whose key is older than the one a block on our tip uses is dropped
+    /// unhashed, without a ban and without using the peer's budget. Blocks in our tip's key epoch, or the next one when
+    /// its key block is already on our chain, are still checked.
+    #[tokio::test]
+    async fn a_randomx_block_of_unknown_ancestry_with_an_old_key_is_dropped_unhashed() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tari_transaction_components::{aggregated_body::AggregateBody, tari_proof_of_work::ProofOfWork};
+        use tari_utilities::epoch_time::EpochTime;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_chain_header, create_consensus_rules},
+            validation::mocks::MockValidator,
+        };
+
+        // Our tip is at 4150, whose next block uses the key at 2048; the key block of the next epoch, 4096, is ours
+        // too. LocalNet's minimum Tari RandomX difficulty is the lowest there is, so every block that is hashed
+        // passes.
+        let db = create_new_blockchain();
+        let mut main_chain = vec![db.fetch_chain_header(0).unwrap()];
+        while main_chain.len() <= 4150 {
+            let prev = main_chain.last().unwrap();
+            let mut header = BlockHeader::from_previous(prev.header());
+            header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+            // The MMR size indexes need a unique key per header
+            header.kernel_mmr_size += 1;
+            header.output_smt_size += 1;
+            main_chain.push(create_chain_header(header, prev.accumulated_data()));
+        }
+        db.insert_valid_headers(main_chain[1..].to_vec()).unwrap();
+        let rules = create_consensus_rules();
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let unknown_at = |height: u64| {
+            let mut header = BlockHeader::from_previous(main_chain[2000].header());
+            header.height = height;
+            header.prev_hash = FixedHash::from([7u8; 32]);
+            header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+            NewBlock::from(&Block::new(header, AggregateBody::empty()))
+        };
+        assert_eq!(tari_rx_vm_key_height(2000), 0);
+        assert_eq!(tari_rx_vm_key_height(4151), 2048);
+        assert_eq!(tari_rx_vm_key_height(4170), 4096);
+        let peer = NodeId::from_key(&vec![1u8; 32]);
+
+        for _ in 0..=UNKNOWN_ANCESTRY_RANDOMX_CHECKS {
+            let err = handlers
+                .check_min_block_difficulty(&unknown_at(2000), &peer)
+                .await
+                .unwrap_err();
+            assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
+            assert!(err.get_ban_reason().is_none());
+        }
+        // The whole budget is still there
+        for height in [4151, 4151, 4170, 4170] {
+            handlers
+                .check_min_block_difficulty(&unknown_at(height), &peer)
+                .await
+                .unwrap();
+        }
+        let err = handlers
+            .check_min_block_difficulty(&unknown_at(4151), &peer)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
     }
 
     /// A peer gets one check back every refill interval, up to the burst, and a peer whose budget is full again is
