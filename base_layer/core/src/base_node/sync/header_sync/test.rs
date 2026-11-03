@@ -39,6 +39,7 @@ use tari_comms::{
     },
 };
 use tari_node_components::blocks::{BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
+use tari_transaction_components::tari_proof_of_work::Difficulty;
 
 use crate::{
     base_node::{
@@ -211,7 +212,7 @@ fn claim_for(block: &ChainBlock) -> ChainMetadata {
 }
 
 #[tokio::test]
-async fn a_validated_stronger_batch_disables_add_block() {
+async fn switching_to_a_stronger_batch_disables_add_block() {
     let db = create_new_blockchain();
     let (connectivity, connectivity_mock) = create_connectivity_mock();
     let connectivity_mock = connectivity_mock.spawn();
@@ -229,9 +230,42 @@ async fn a_validated_stronger_batch_disables_add_block() {
         .unwrap();
 
     assert!(matches!(result.header_sync_status, HeaderSyncStatus::Lagging(_)));
+    // Not while finding the chain split, only once the peer's headers are accepted
     assert!(!saw_add_block_disabled.load(Ordering::SeqCst));
     assert!(db.is_add_block_disabled());
     assert_eq!(db.fetch_last_header().unwrap().hash(), *block.hash());
+}
+
+#[tokio::test]
+async fn a_stronger_local_block_that_landed_during_sync_is_kept() {
+    let db = create_new_blockchain();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let genesis = Arc::new(db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+    let (_, mut chain) = create_chained_blocks(
+        &db,
+        block_specs!(["peer->GB"], ["local->GB", difficulty: Difficulty::from_u64(10).unwrap()]),
+        genesis,
+    );
+    let peer_block = chain.remove("peer").unwrap();
+    let local_block = chain.remove("local").unwrap();
+    let reply = FindChainSplitResponse {
+        headers: vec![peer_block.header().clone().into()],
+        fork_hash_index: 0,
+    };
+    let mut service = MockSyncPeer::new(&db, Some(reply));
+    service.block_to_add = Some(local_block.clone());
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, service, claim_for(&peer_block)).await;
+
+    let err = sync_headers(&db, connectivity.clone(), BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, BlockHeaderSyncError::NoMoreSyncPeers(_)), "{err}");
+    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+    assert!(!db.is_add_block_disabled());
+    assert_eq!(db.get_chain_metadata().unwrap().best_block_hash(), local_block.hash());
+    assert_eq!(db.fetch_last_header().unwrap().hash(), *local_block.hash());
 }
 
 #[tokio::test]
