@@ -41,6 +41,7 @@ mod blockchain_database;
 pub use blockchain_database::{
     BlockchainDatabase,
     BlockchainDatabaseConfig,
+    CandidateVmKey,
     MmrRoots,
     Validators,
     adjusted_target_difficulties_in_range,
