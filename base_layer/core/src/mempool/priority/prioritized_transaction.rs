@@ -118,6 +118,9 @@ pub struct PrioritizedTransaction {
     /// or kernel excess (computed once on insert): it can never be in a valid block
     pub has_internal_duplicates: bool,
     pub dependent_output_hashes: Vec<HashOutput>,
+    /// The lowest height of a block this transaction can be in: the highest of its input maturities and kernel lock
+    /// heights
+    pub min_height: u64,
 }
 
 impl PrioritizedTransaction {
@@ -164,6 +167,16 @@ impl PrioritizedTransaction {
             has_duplicates(&output_commitments) ||
             has_duplicates(&kernel_signatures) ||
             has_duplicates(&kernel_excesses);
+        let mut min_height = 0;
+        for input in transaction.body.inputs() {
+            // A compact input has no features; such a transaction never passes validation
+            if let Ok(features) = input.features() {
+                min_height = min_height.max(features.maturity);
+            }
+        }
+        for kernel in transaction.body.kernels() {
+            min_height = min_height.max(kernel.lock_height);
+        }
         let insert_epoch = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(n) => n.as_secs(),
             Err(_) => 0,
@@ -188,6 +201,7 @@ impl PrioritizedTransaction {
             has_internal_duplicates,
             transaction,
             dependent_output_hashes: dependent_outputs.unwrap_or_default(),
+            min_height,
         })
     }
 }

@@ -70,14 +70,13 @@ where T: Serialize + ?Sized {
     Ok(buf)
 }
 
-pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, error::Error>
+/// A value that cannot be decoded is bad data, not a failure to reach the store, so it is a `ConversionError`.
+pub fn deserialize<T>(buf_bytes: &[u8]) -> Result<T, ChainStorageError>
 where T: DeserializeOwned {
-    bincode::deserialize(buf_bytes)
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Could not deserialize lmdb: {e:?}");
-            e
-        })
-        .map_err(|e| error::Error::ValRejected(e.to_string()))
+    bincode::deserialize(buf_bytes).map_err(|e| {
+        error!(target: LOG_TARGET, "Could not deserialize lmdb: {e:?}");
+        ChainStorageError::ConversionError(e.to_string())
+    })
 }
 
 /// As [`deserialize`], but does not log on failure. Use this where a decode failure is an expected,

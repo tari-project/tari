@@ -20,12 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, RwLock};
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        RwLock,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use log::debug;
+use log::{debug, info};
 use tari_common_types::types::{CompressedSignature, FixedHash, HashOutput, PrivateKey};
 use tari_node_components::blocks::Block;
-use tari_transaction_components::{BanReason, rpc::models::FeePerGramStat, transaction_components::Transaction};
+use tari_transaction_components::{
+    BanReason,
+    rpc::models::FeePerGramStat,
+    transaction_components::{Transaction, covenants::MAX_COVENANT_WORK_PER_BODY},
+};
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, watch},
     task,
@@ -39,12 +51,60 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
         error::MempoolError,
-        mempool_storage::MempoolStorage,
+        mempool_storage::{HeightCheck, MempoolStorage, height_check},
+        unconfirmed_pool::{HeightValidation, TemplateFilter, TransactionKey},
     },
     validation::TransactionValidator,
 };
 
 pub const LOG_TARGET: &str = "c::mp::mempool";
+
+/// The most times a block template is selected from the pool (see [Mempool::retrieve])
+const MAX_TEMPLATE_SELECTION_PASSES: usize = 3;
+
+/// The most pool transactions with an input script or covenant that reads the height that the background re-check
+/// after each block visits (see [Mempool::sweep_height_reading]), which bounds its walk of the pool's index
+const HEIGHT_READING_SWEEP_BATCH: usize = 500;
+
+/// The most work the background re-check after each block does (see [Mempool::sweep_height_reading]), in covenant
+/// work units: input scripts that read the height are charged `SCRIPT_INPUT_WORK` each (about 0.8 ms at most), and a
+/// transaction with a covenant that reads the height is charged its covenant work limit, `MAX_COVENANT_WORK_PER_BODY`
+/// (at most about a second, if every unit hashes a field at its size limit). So a re-check runs at most about a second
+/// of scripts and covenants, without holding the storage lock, and only one runs at a time. A single transaction over
+/// the budget is still re-checked, alone: about a second for its covenants, plus its height-reading scripts, of which
+/// the block weight allows a few thousand.
+const HEIGHT_READING_SWEEP_WORK: u64 = MAX_COVENANT_WORK_PER_BODY;
+
+/// Clears the flag of a running background re-check when dropped, however the re-check ends
+struct SweepRunning(Arc<AtomicBool>);
+
+impl Drop for SweepRunning {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+/// The most work, in covenant work units (see [HEIGHT_READING_SWEEP_WORK]), a block template request spends re-checking
+/// unchecked height-reading transactions before its last selection (see [Mempool::retrieve]): at most about a second,
+/// without holding the storage lock
+const TEMPLATE_PRE_CHECK_WORK: u64 = MAX_COVENANT_WORK_PER_BODY;
+
+/// The height-reading transactions a block template request dropped from the pool so far
+#[derive(Default)]
+struct TemplateChecks {
+    /// Those that failed their re-check
+    dropped: usize,
+    /// Those and their descendants
+    removed: usize,
+}
+
+/// The outcome of re-checking transactions whose input scripts or covenants read the height (see [height_check])
+#[derive(Default)]
+struct HeightChecks {
+    passed: Vec<TransactionKey>,
+    failed: Vec<TransactionKey>,
+    not_yet_valid: Vec<TransactionKey>,
+}
 
 /// A snapshot of the last block the mempool has processed. Broadcast over a watch channel so consumers can wait for
 /// the mempool to reach a given tip - and detect when the mempool has moved *past* it - without busy-polling.
@@ -71,6 +131,15 @@ pub struct Mempool {
     // reconstruction never waits behind a flood of inbound transactions. That work is triggered by block propagation
     // and bounded by the block size, but still bounded here, since several peers can announce blocks at once.
     reconciliation_permits: Arc<Semaphore>,
+    // Set while a background re-check of height-reading transactions runs (see `Mempool::sweep_height_reading`)
+    sweep_running: Arc<AtomicBool>,
+    // Held by a block template request (see `Mempool::retrieve`), so that concurrent requests for the same tip do not
+    // re-check the same transactions: a request waiting for it sees the results of the one before. Never taken while
+    // holding the storage lock.
+    template_checks: Arc<tokio::sync::Mutex<()>>,
+    // The number of height-reading transactions block template requests re-checked
+    #[cfg(test)]
+    height_checks_run: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 /// The maximum number of compact block reconciliations (`Mempool::insert_all`) validated concurrently
@@ -114,6 +183,10 @@ impl Mempool {
             last_seen_tx,
             validation_permits: Arc::new(Semaphore::new(max_concurrent_validations())),
             reconciliation_permits: Arc::new(Semaphore::new(MAX_CONCURRENT_RECONCILIATIONS)),
+            sweep_running: Arc::new(AtomicBool::new(false)),
+            template_checks: Arc::new(tokio::sync::Mutex::new(())),
+            #[cfg(test)]
+            height_checks_run: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -221,6 +294,56 @@ impl Mempool {
             .await?;
         // Notify any subscribers (e.g. new-block-template requests) that the mempool has advanced.
         self.last_seen_tx.send_replace(last_seen);
+        self.sweep_height_reading(last_seen.height.saturating_add(1), last_seen.hash)
+            .await
+    }
+
+    /// Re-checks the next batch of pool transactions with an input script or covenant that reads the height (see
+    /// [HEIGHT_READING_SWEEP_BATCH] and [HEIGHT_READING_SWEEP_WORK]) for the block at `height` on top of `prev_hash`,
+    /// and drops the ones that are not valid there with their descendants, so that they do not stay in the pool of a
+    /// node that never builds block templates. The scripts run without holding the storage lock. If the re-check for
+    /// an earlier block is still running, this one is skipped: the next one continues where the running one stops.
+    async fn sweep_height_reading(&self, height: u64, prev_hash: HashOutput) -> Result<(), MempoolError> {
+        if self.sweep_running.swap(true, Ordering::SeqCst) {
+            debug!(
+                target: LOG_TARGET,
+                "A re-check of height-reading transactions is still running, skipping the one for height {height}"
+            );
+            return Ok(());
+        }
+        let _running = SweepRunning(self.sweep_running.clone());
+        let (batch, next_cursor, generation) = self
+            .with_read_access(move |storage| {
+                let (batch, next_cursor) = storage.unconfirmed_pool.height_reading_sweep_batch(
+                    HEIGHT_READING_SWEEP_BATCH,
+                    HEIGHT_READING_SWEEP_WORK,
+                    height,
+                    &prev_hash,
+                );
+                Ok((batch, next_cursor, storage.chain_generation))
+            })
+            .await?;
+        let checks = run_height_checks(batch, height, prev_hash).await?;
+        let dropped = checks.failed.len();
+        // Nothing is recorded, and the cursor stays, if the mempool processed a chain change in the meantime
+        let removed = self
+            .with_write_access(move |storage| {
+                let removed = storage.record_height_checks(generation, &checks.passed, &checks.failed, prev_hash)?;
+                if removed.is_some() {
+                    storage.unconfirmed_pool.set_sweep_cursor(next_cursor);
+                }
+                Ok(removed)
+            })
+            .await?;
+        if let Some(removed) = removed &&
+            dropped > 0
+        {
+            info!(
+                target: LOG_TARGET,
+                "Dropped {dropped} transaction(s) that are not valid at height {height}, with {} descendant(s)",
+                removed.saturating_sub(dropped)
+            );
+        }
         Ok(())
     }
 
@@ -260,36 +383,150 @@ impl Mempool {
         self.with_read_access(|storage| Ok(storage.snapshot())).await
     }
 
-    /// Returns a list of transaction ranked by transaction priority up to a given weight.
-    /// Only transactions that fit into a block will be returned
-    pub async fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        let start = std::time::Instant::now();
-        let retrieved = self
-            .with_read_access(move |storage| storage.retrieve(total_weight))
-            .await?;
-        debug!(
-            target: LOG_TARGET,
-            "Retrieved {} highest priority transaction(s) from the mempool in {:.0?} ms",
-            retrieved.retrieved_transactions.len(),
-            start.elapsed()
-        );
-
-        if !retrieved.transactions_to_remove_and_insert.is_empty() {
-            // we need to remove all transactions that need to be rechecked.
+    /// Returns a list of transaction ranked by transaction priority up to a given weight, for a block template at
+    /// `height` on top of the block `prev_hash`. Only transactions that fit into a block will be returned, and none
+    /// with an input that is not mature at `height` or a kernel locked above it.
+    ///
+    /// A selected transaction with an input script or covenant that reads the block height is re-checked at the
+    /// template's height (see `height_check`), without holding the storage lock. The ones that fail are dropped from
+    /// the pool with their descendants, and the template is selected again. One that fails only below the height it
+    /// was validated for (the template is built on an older block) is left out of the template but kept. The last of
+    /// at most [MAX_TEMPLATE_SELECTION_PASSES] selections leaves out every such transaction that has not passed for
+    /// this block, so it checks nothing; before it, the highest priority of those are re-checked, up to
+    /// [TEMPLATE_PRE_CHECK_WORK]. Per request, the re-checks cost at most what the first selections pick, plus that
+    /// budget. A transaction that passed is not checked again for a block on top of the same
+    /// one, so the work per tip is bounded by the height-reading transactions that get selected, each failing one being
+    /// dropped once; concurrent requests run one after the other, so they do not repeat each other's checks. A failure
+    /// is only dropped from the pool if the mempool processed no chain change during the check and `prev_hash` is the
+    /// block it last processed; otherwise it is only left out of this template.
+    pub async fn retrieve(
+        &self,
+        total_weight: u64,
+        height: u64,
+        prev_hash: HashOutput,
+    ) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+        let _checks = self.template_checks.lock().await;
+        let mut filter = TemplateFilter {
+            height,
+            excluded: HashSet::new(),
+            only_checked_at: None,
+        };
+        let mut totals = TemplateChecks::default();
+        let mut passes = 0usize;
+        loop {
+            passes = passes.saturating_add(1);
+            let last_pass = passes >= MAX_TEMPLATE_SELECTION_PASSES;
+            if last_pass {
+                // The last selection leaves out height-reading transactions that have not passed for this block. Check
+                // the highest priority of them first, so that transactions that failed in the selections before (e.g.
+                // many that stopped being valid at once) do not keep valid ones out.
+                let pre_check_filter = filter.clone();
+                let (to_check, generation) = self
+                    .with_read_access(move |storage| {
+                        let to_check = storage.unconfirmed_pool.height_reading_unchecked(
+                            &pre_check_filter,
+                            &prev_hash,
+                            TEMPLATE_PRE_CHECK_WORK,
+                        );
+                        Ok((to_check, storage.chain_generation))
+                    })
+                    .await?;
+                #[cfg(test)]
+                self.height_checks_run.fetch_add(to_check.len(), Ordering::SeqCst);
+                let checks = run_height_checks(to_check, height, prev_hash).await?;
+                self.record_template_checks(generation, checks, prev_hash, Vec::new(), &mut filter, &mut totals)
+                    .await?;
+                filter.only_checked_at = Some(prev_hash);
+            }
+            let start = std::time::Instant::now();
+            let pass_filter = filter.clone();
+            let (retrieved, to_check, generation) = self
+                .with_read_access(move |storage| {
+                    let retrieved = storage.retrieve(total_weight, &pass_filter)?;
+                    let to_check = storage
+                        .unconfirmed_pool
+                        .height_reading_to_check(&retrieved.retrieved_transactions, &prev_hash);
+                    Ok((retrieved, to_check, storage.chain_generation))
+                })
+                .await?;
             debug!(
                 target: LOG_TARGET,
-                "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
-                retrieved.transactions_to_remove_and_insert.len()
+                "Retrieved {} highest priority transaction(s) from the mempool in {:.0?} ms",
+                retrieved.retrieved_transactions.len(),
+                start.elapsed()
             );
 
-            let transactions_to_remove_and_insert = retrieved.transactions_to_remove_and_insert.clone();
-            self.with_write_access(move |storage| {
-                storage.remove_and_reinsert_transactions(transactions_to_remove_and_insert)
-            })
-            .await?;
-        }
+            // Nothing is left to check on the last pass
+            #[cfg(test)]
+            self.height_checks_run.fetch_add(to_check.len(), Ordering::SeqCst);
+            let checks = run_height_checks(to_check, height, prev_hash).await?;
+            let found = checks.failed.len().saturating_add(checks.not_yet_valid.len());
+            let to_reinsert = retrieved.transactions_to_remove_and_insert.clone();
+            self.record_template_checks(generation, checks, prev_hash, to_reinsert, &mut filter, &mut totals)
+                .await?;
 
-        Ok(retrieved.retrieved_transactions)
+            if last_pass || found == 0 {
+                if totals.dropped > 0 || !filter.excluded.is_empty() {
+                    info!(
+                        target: LOG_TARGET,
+                        "Block template at height {height}: dropped {} transaction(s) that failed a height re-check, \
+                         with {} descendant(s), and left out {} not valid at this height, in {passes} selection \
+                         pass(es){}",
+                        totals.dropped,
+                        totals.removed.saturating_sub(totals.dropped),
+                        filter.excluded.len(),
+                        if last_pass {
+                            ", the last leaving out unchecked height-reading transactions"
+                        } else {
+                            ""
+                        }
+                    );
+                }
+                return Ok(retrieved.retrieved_transactions);
+            }
+        }
+    }
+
+    /// Records the height re-checks of a block template request, read from the pool at `generation` (see
+    /// `MempoolStorage::record_height_checks`), and re-inserts `to_reinsert` (transactions whose pool parents are
+    /// gone). Failures that were not dropped (the chain changed, or the template is not on top of the mempool's
+    /// tip) and transactions not valid until a later height are left out of the rest of the request through
+    /// `filter`.
+    async fn record_template_checks(
+        &self,
+        generation: u64,
+        checks: HeightChecks,
+        prev_hash: HashOutput,
+        to_reinsert: Vec<(TransactionKey, Arc<Transaction>)>,
+        filter: &mut TemplateFilter,
+        totals: &mut TemplateChecks,
+    ) -> Result<(), MempoolError> {
+        let failed = checks.failed.len();
+        if !checks.passed.is_empty() || failed > 0 || !to_reinsert.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "Removing {failed} transaction(s) that failed a height re-check and {} that need re-evaluation from the \
+                 unconfirmed pool",
+                to_reinsert.len()
+            );
+            let (passed, failed_keys) = (checks.passed, checks.failed.clone());
+            let recorded = self
+                .with_write_access(move |storage| {
+                    let removed = storage.record_height_checks(generation, &passed, &failed_keys, prev_hash)?;
+                    storage.remove_and_reinsert_transactions(to_reinsert)?;
+                    Ok(removed)
+                })
+                .await?;
+            match recorded {
+                Some(count) => {
+                    totals.removed = totals.removed.saturating_add(count);
+                    totals.dropped = totals.dropped.saturating_add(failed);
+                },
+                None => filter.excluded.extend(checks.failed),
+            }
+        }
+        filter.excluded.extend(checks.not_yet_valid);
+        Ok(())
     }
 
     pub async fn retrieve_by_excess_sigs(
@@ -372,6 +609,51 @@ impl Mempool {
     pub async fn get_last_seen_hash(&self) -> Result<FixedHash, MempoolError> {
         self.with_read_access(|storage| Ok(storage.last_seen_hash)).await
     }
+}
+
+/// Re-checks `to_check` for the block at `height` on top of `prev_hash` (see [height_check]), without holding the
+/// storage lock
+async fn run_height_checks(
+    to_check: Vec<(TransactionKey, Arc<Transaction>, HeightValidation)>,
+    height: u64,
+    prev_hash: HashOutput,
+) -> Result<HeightChecks, MempoolError> {
+    if to_check.is_empty() {
+        return Ok(HeightChecks::default());
+    }
+    let checks = task::spawn_blocking(move || {
+        let mut checks = HeightChecks::default();
+        for (key, tx, validation) in to_check {
+            match height_check(&tx, &validation, height, &prev_hash) {
+                HeightCheck::Passed => checks.passed.push(key),
+                HeightCheck::Failed(reason) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tx: ({}) is not valid at height {height}: {reason}, dropping",
+                        tx_id(&tx)
+                    );
+                    checks.failed.push(key);
+                },
+                HeightCheck::NotYetValid(reason) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Tx: ({}) is not valid at height {height}, below the height it was validated for: {reason}",
+                        tx_id(&tx)
+                    );
+                    checks.not_yet_valid.push(key);
+                },
+            }
+        }
+        checks
+    })
+    .await?;
+    Ok(checks)
+}
+
+fn tx_id(tx: &Transaction) -> String {
+    tx.first_kernel_excess_sig()
+        .map(|sig| sig.get_signature().to_hex())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -631,7 +913,7 @@ mod test {
                 TxStorageResponse::UnconfirmedPool
             );
         }
-        let retrieved = mempool.retrieve(u64::MAX).await.unwrap();
+        let retrieved = mempool.retrieve(u64::MAX, 1, FixedHash::zero()).await.unwrap();
         assert_eq!(retrieved.len(), normal.len());
         for tx in &normal {
             assert!(retrieved.contains(tx));
@@ -661,5 +943,97 @@ mod test {
             "{response:?}"
         );
         assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_background_re_check_is_skipped_while_one_runs() {
+        use tari_script::script;
+        use tari_transaction_components::{transaction_components::SpentOutput, weight::TransactionWeight};
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        // Its input script only passes from height 100 on
+        let tx = create_tx(&key_manager);
+        let mut inputs = tx.body.inputs().clone();
+        match &mut inputs.first_mut().unwrap().spent_output {
+            SpentOutput::OutputData { script, .. } => *script = script!(CheckHeightVerify(100)).unwrap(),
+            SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+        }
+        let tx = Arc::new(Transaction::new(
+            inputs,
+            tx.body.outputs().clone(),
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ));
+        mempool
+            .pool_storage
+            .write()
+            .unwrap()
+            .unconfirmed_pool
+            .insert(tx.clone(), None, &TransactionWeight::latest())
+            .unwrap();
+        let excess_sig = tx.first_kernel_excess_sig().unwrap().clone();
+
+        // While a re-check runs, another one does nothing
+        mempool.sweep_running.store(true, Ordering::SeqCst);
+        mempool.sweep_height_reading(2, FixedHash::zero()).await.unwrap();
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(excess_sig.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        // Otherwise it drops the transaction, and is no longer running when it returns
+        mempool.sweep_running.store(false, Ordering::SeqCst);
+        mempool.sweep_height_reading(2, FixedHash::zero()).await.unwrap();
+        assert_eq!(
+            mempool.has_tx_with_excess_sig(excess_sig).await.unwrap(),
+            TxStorageResponse::NotStored(None)
+        );
+        assert!(!mempool.sweep_running.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_template_requests_do_not_repeat_height_checks() {
+        use tari_script::script;
+        use tari_transaction_components::{
+            transaction_components::SpentOutput,
+            validation::aggregate_body::run_height_reading_scripts,
+            weight::TransactionWeight,
+        };
+
+        let key_manager = KeyManager::new_random().unwrap();
+        let mempool = create_mempool(Arc::new(SlowValidator::default()));
+        // Its input script passes from height 1 on
+        let tx = create_tx(&key_manager);
+        let mut inputs = tx.body.inputs().clone();
+        match &mut inputs.first_mut().unwrap().spent_output {
+            SpentOutput::OutputData { script, .. } => *script = script!(CheckHeightVerify(1) Nop).unwrap(),
+            SpentOutput::OutputHash(_) => panic!("Expected a full input"),
+        }
+        let tx = Arc::new(Transaction::new(
+            inputs,
+            tx.body.outputs().clone(),
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ));
+        let tip = FixedHash::zero();
+        let validation = HeightValidation {
+            height: 2,
+            script_keys: run_height_reading_scripts(&tx.body, 2, &tip).unwrap(),
+        };
+        mempool
+            .pool_storage
+            .write()
+            .unwrap()
+            .unconfirmed_pool
+            .insert_with_height_validation(tx.clone(), None, &TransactionWeight::latest(), validation)
+            .unwrap();
+
+        let (first, second) = tokio::join!(mempool.retrieve(u64::MAX, 2, tip), mempool.retrieve(u64::MAX, 2, tip));
+        assert_eq!(first.unwrap(), vec![tx.clone()]);
+        assert_eq!(second.unwrap(), vec![tx]);
+        assert_eq!(mempool.height_checks_run.load(Ordering::SeqCst), 1);
     }
 }

@@ -769,12 +769,40 @@ mod test {
 
         #[tokio::test]
         async fn gossiped_transaction_with_tip_dependent_failure_does_not_ban() {
-            let errors: [fn() -> ValidationError; 4] = [
+            let errors: [fn() -> ValidationError; 6] = [
                 || AggregatedBodyValidationError::MaturityError.into(),
                 // Covenants can read the block height
-                || AggregatedBodyValidationError::CovenantError(CovenantError::NoMatchingOutputs).into(),
+                || {
+                    AggregatedBodyValidationError::Covenant {
+                        error: CovenantError::NoMatchingOutputs,
+                        height_dependent: true,
+                    }
+                    .into()
+                },
+                || {
+                    AggregatedBodyValidationError::Covenant {
+                        error: CovenantError::NoMatchingOutputs,
+                        height_dependent: false,
+                    }
+                    .into()
+                },
                 || AggregatedBodyValidationError::CovenantWorkLimitExceeded { limit: 1 }.into(),
-                || AggregatedBodyValidationError::CovenantOutputsClaimedTwice { inputs: 2, matched: 1 }.into(),
+                || {
+                    AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                        inputs: 2,
+                        matched: 1,
+                        height_dependent: true,
+                    }
+                    .into()
+                },
+                || {
+                    AggregatedBodyValidationError::CovenantOutputsClaimedTwice {
+                        inputs: 2,
+                        matched: 1,
+                        height_dependent: false,
+                    }
+                    .into()
+                },
             ];
             for error in errors {
                 let (mut handlers, mempool, _propagated, mut bans) =
@@ -1162,7 +1190,10 @@ mod test {
             );
 
             // So a template never carries two transactions for one validator node
-            let template = mempool.retrieve(1_000_000).await.unwrap();
+            let template = mempool
+                .retrieve(1_000_000, 1, tari_common_types::types::FixedHash::zero())
+                .await
+                .unwrap();
             assert_eq!(template.len(), 2);
             assert!(template.contains(&exit2));
             assert!(template.contains(&other));

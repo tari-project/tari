@@ -447,6 +447,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 // A hydration failure depends on our database as well as the block, so it is not memoised either
                 Err(err @ ValidationError::BadBlockFound { .. }) |
                 Err(err @ ValidationError::FatalStorageError(_)) |
+                Err(err @ ValidationError::StoredDataError(_)) |
                 Err(err @ ValidationError::UnknownInput) |
                 Err(err @ ValidationError::UnknownInputs(_)) => {
                     return Err(err.into());

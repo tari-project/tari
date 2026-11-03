@@ -3228,6 +3228,99 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Stores a header and its accumulated data at the next header height without checking that it links to the
+    /// header below, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn insert_unlinked_header_for_test(&self, chain_header: &ChainHeader) {
+        let txn = self.create_write_txn();
+        let header = chain_header.header();
+        match BlockVersion::try_from(header.version).unwrap() {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                let row: LmdbRowBlockHeaderAccumulatedDataV1 = chain_header.accumulated_data().into();
+                lmdb_insert_typed(&txn, &self.header_accumulated_data_db, &header.height, &row).unwrap();
+            },
+            BlockVersion::V2 => {
+                let row: LmdbRowBlockHeaderAccumulatedDataV2 = chain_header.accumulated_data().into();
+                lmdb_insert_typed(&txn, &self.header_accumulated_data_v2_db, &header.height, &row).unwrap();
+            },
+        }
+        lmdb_insert(&txn, &self.headers_db, &header.height, header, "headers_db").unwrap();
+        lmdb_insert(
+            &txn,
+            &self.block_hashes_db,
+            header.hash().as_slice(),
+            &header.height,
+            "block_hashes_db",
+        )
+        .unwrap();
+        lmdb_insert(
+            &txn,
+            &self.kernel_mmr_size_index,
+            &header.kernel_mmr_size.to_be_bytes(),
+            &header.height,
+            "kernel_mmr_size_index",
+        )
+        .unwrap();
+        txn.commit().unwrap();
+    }
+
+    /// Deletes the accumulated data row of a stored header, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn delete_header_accumulated_data_for_test(&self, header: &BlockHeader) {
+        let txn = self.create_write_txn();
+        match BlockVersion::try_from(header.version).unwrap() {
+            BlockVersion::V0 | BlockVersion::V1 => {
+                lmdb_delete_typed(&txn, &self.header_accumulated_data_db, &header.height).unwrap();
+            },
+            BlockVersion::V2 => {
+                lmdb_delete_typed(&txn, &self.header_accumulated_data_v2_db, &header.height).unwrap();
+            },
+        }
+        txn.commit().unwrap();
+    }
+
+    /// Overwrites the accumulated data row of a stored header with bytes that do not decode.
+    #[cfg(test)]
+    pub(crate) fn write_undecodable_header_accumulated_data_for_test(&self, header: &BlockHeader) {
+        let txn = self.create_write_txn();
+        let db = match BlockVersion::try_from(header.version).unwrap() {
+            BlockVersion::V0 | BlockVersion::V1 => &self.header_accumulated_data_db.db,
+            BlockVersion::V2 => &self.header_accumulated_data_v2_db.db,
+        };
+        txn.access()
+            .put(db, &header.height, &[0xffu8], lmdb_zero::put::Flags::empty())
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
+    /// Overwrites the header row at `height` with bytes that do not decode.
+    #[cfg(test)]
+    pub(crate) fn write_undecodable_header_for_test(&self, height: u64) {
+        let txn = self.create_write_txn();
+        txn.access()
+            .put(&self.headers_db, &height, &[0xffu8], lmdb_zero::put::Flags::empty())
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
+    /// Overwrites the excess signature index row of a kernel with bytes that do not decode.
+    #[cfg(test)]
+    pub(crate) fn write_undecodable_kernel_index_for_test(&self, excess_sig: &CompressedSignature) {
+        let txn = self.create_write_txn();
+        let mut key = Vec::<u8>::new();
+        key.extend(excess_sig.get_compressed_public_nonce().as_bytes());
+        key.extend(excess_sig.get_signature().as_bytes());
+        txn.access()
+            .put(
+                &self.kernel_excess_sig_index,
+                key.as_slice(),
+                &[0xffu8],
+                lmdb_zero::put::Flags::empty(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
     #[cfg(test)]
     pub(crate) fn create_lmdb_tree_writer<'a: 'b, 'b>(&self, txn: &'a WriteTransaction<'b>) -> LmdbTreeWriter<'a> {
         LmdbTreeWriter::new(
@@ -4432,11 +4525,11 @@ impl BlockchainBackend for LMDBDatabase {
                 Ok((true, reason))
             },
             Ok(None) => Ok((false, "".to_string())),
-            Err(ChainStorageError::AccessError(e)) => {
+            Err(e @ (ChainStorageError::AccessError(_) | ChainStorageError::ConversionError(_))) => {
                 if exist {
                     Ok((true, "No reason recorded".to_string()))
                 } else {
-                    Err(ChainStorageError::AccessError(e))
+                    Err(e)
                 }
             },
             Err(e) => Err(e),
@@ -6062,7 +6155,7 @@ fn collect_jmt_migration_entries(db: &LMDBDatabase) -> Result<Vec<(KeyHash, Vec<
                 let mut commitment_bytes = [0u8; 32];
                 commitment_bytes.copy_from_slice(commitment);
                 let output_hash: HashOutput = deserialize(output_hash_bytes).map_err(|e| {
-                    ChainStorageError::AccessError(format!(
+                    ChainStorageError::ConversionError(format!(
                         "Failed to deserialize HashOutput from utxo_commitment_index: {e}"
                     ))
                 })?;
@@ -6622,6 +6715,33 @@ fn summarize_value(v: &MetadataValue) -> String {
         },
         MetadataValue::JMTVersion(v) => format!("{v}"),
         MetadataValue::BurnCommitmentRebuildStatus(s) => format!("{s:?}"),
+    }
+}
+
+#[cfg(test)]
+mod bad_block_test {
+    use lmdb_zero::put;
+
+    use super::*;
+    use crate::test_helpers::{blockchain::TempDatabase, create_consensus_rules};
+
+    #[test]
+    fn undecodable_legacy_bad_block_row_has_no_reason() {
+        let temp = TempDatabase::from_path_with_rules(
+            tari_test_utils::paths::create_temporary_data_path(),
+            create_consensus_rules(),
+        );
+        let db = temp.db();
+        let hash = HashOutput::from([7u8; 32]);
+        let txn = db.write_transaction().unwrap();
+        txn.access()
+            .put(&db.bad_blocks, hash.deref(), &[0xffu8], put::Flags::empty())
+            .unwrap();
+        txn.commit().unwrap();
+
+        let (exists, reason) = db.bad_block_exists(hash).unwrap();
+        assert!(exists);
+        assert_eq!(reason, "No reason recorded");
     }
 }
 

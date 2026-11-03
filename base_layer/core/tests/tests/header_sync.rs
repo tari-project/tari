@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::indexing_slicing)]
+use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
         state_machine_service::states::{BlockSync, HeaderSyncState, StateEvent},
@@ -28,8 +29,13 @@ use tari_core::{
     },
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
 };
+use tempfile::tempdir;
 
-use crate::helpers::{sync, sync::WhatToDelete};
+use crate::helpers::{
+    nodes::{BaseNodeBuilder, random_node_identity, wait_until_online},
+    sync,
+    sync::WhatToDelete,
+};
 
 #[allow(clippy::too_many_lines)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -715,5 +721,78 @@ async fn test_header_sync_short_honest_batch_no_ban() {
     let alice_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
     assert_eq!(alice_header_tip.height, 5);
     assert_eq!(alice_header_tip.hash(), *blocks[5].hash());
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A peer whose headers skip a height is banned, but the headers themselves are not marked as bad blocks: they are
+/// valid on their own chain, and an honest peer serving that chain must still be able to sync it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_peer_skips_a_header_with_ban_and_no_bad_block() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        15,
+        &consensus_manager,
+        &key_manager,
+        &[3; 15],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=12], &alice_node);
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 12);
+
+    // Mallory has Bob's chain and serves headers 13 and 15 as the first two after the chain split
+    let (mallory_node, _) = BaseNodeBuilder::new(Network::LocalNet.into())
+        .with_node_identity(random_node_identity())
+        .with_peers(vec![alice_node.node_identity.clone()])
+        .with_consensus_manager(consensus_manager.clone())
+        .with_a_header_skipped_in_chain_split()
+        .start(
+            tempdir().unwrap().keep().to_str().unwrap(),
+            BlockchainDatabaseConfig::default(),
+        )
+        .await;
+    wait_until_online(&[&mallory_node]).await;
+    sync::add_some_existing_blocks(&blocks[1..=15], &mallory_node);
+
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &mallory_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeaderSyncFailed(_)), "{event:?}");
+    let mallory_id = mallory_node.node_identity.node_id();
+    assert!(sync::wait_for_is_peer_banned(&alice_node, mallory_id, 1).await);
+    let mallory = alice_node
+        .comms
+        .peer_manager()
+        .find_by_node_id(mallory_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        mallory.banned_reason.contains("Expected header height 14 got 15"),
+        "{}",
+        mallory.banned_reason
+    );
+    for block in &blocks[13..=15] {
+        assert!(!alice_node.blockchain_db.bad_block_exists(*block.hash()).unwrap().0);
+    }
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 12);
+
+    // Bob serves the same chain honestly
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeadersSynchronized(..)), "{event:?}");
+    let alice_header_tip = alice_node.blockchain_db.fetch_last_header().unwrap();
+    assert_eq!(alice_header_tip.height, 15);
+    assert_eq!(alice_header_tip.hash(), *blocks[15].hash());
     assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
