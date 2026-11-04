@@ -22,6 +22,7 @@
 
 use std::{
     convert::{TryFrom, TryInto},
+    future::Future,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -63,6 +64,7 @@ pub struct BlockSynchronizer<'a, B> {
     block_validator: Arc<dyn BlockBodyValidator<B>>,
     hooks: Hooks,
     peer_ban_manager: PeerBanManager,
+    attempt_started: Instant,
 }
 
 impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
@@ -82,6 +84,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             block_validator,
             hooks: Default::default(),
             peer_ban_manager,
+            attempt_started: Instant::now(),
         }
     }
 
@@ -199,6 +202,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         );
         let mut latency_counter = 0usize;
         for node_id in sync_peer_node_ids {
+            self.attempt_started = Instant::now();
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
             let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
             self.hooks.call_on_starting_hook(sync_peer);
@@ -211,13 +215,21 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .map(|c| c.clone_weak());
             let mut conn = match stored_conn {
                 Some(c) => c,
-                None => match self.connect_to_sync_peer(node_id.clone()).await {
-                    Ok(val) => val,
-                    Err(e) => {
+                None => match self
+                    .before_first_block(self.connect_to_sync_peer(node_id.clone()))
+                    .await
+                {
+                    Ok(Ok(val)) => val,
+                    Ok(Err(e)) => {
                         warn!(
                             target: LOG_TARGET,
                             "Failed to connect to sync peer `{node_id}`: {e}"
                         );
+                        self.remove_sync_peer(&node_id);
+                        continue;
+                    },
+                    Err(err) => {
+                        self.ban_sync_peer(&node_id, &err).await;
                         self.remove_sync_peer(&node_id);
                         continue;
                     },
@@ -243,14 +255,15 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .with_stream_buffer_size(20);
             // Bound RPC negotiation: without this the negotiation itself (as opposed to
             // individual RPC requests) has no timeout and can wedge the sync loop indefinitely.
-            let mut client = match tokio::time::timeout(
-                self.config.rpc_deadline,
-                conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
-            )
-            .await
+            let mut client = match self
+                .before_first_block(tokio::time::timeout(
+                    self.config.rpc_deadline,
+                    conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
+                ))
+                .await
             {
-                Ok(Ok(val)) => val,
-                Ok(Err(e)) => {
+                Ok(Ok(Ok(val))) => val,
+                Ok(Ok(Err(e))) => {
                     warn!(
                         target: LOG_TARGET,
                         "Failed to obtain RPC connection from sync peer `{node_id}`: {e}"
@@ -258,12 +271,17 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     self.remove_sync_peer(&node_id);
                     continue;
                 },
-                Err(_) => {
+                Ok(Err(_)) => {
                     warn!(
                         target: LOG_TARGET,
                         "Timed out establishing RPC connection with sync peer `{node_id}` after {:.2?}",
                         self.config.rpc_deadline,
                     );
+                    self.remove_sync_peer(&node_id);
+                    continue;
+                },
+                Err(err) => {
+                    self.ban_sync_peer(&node_id, &err).await;
                     self.remove_sync_peer(&node_id);
                     continue;
                 },
@@ -283,17 +301,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => return Ok(()),
                 Err(err) => {
-                    warn!(target: LOG_TARGET, "{err}");
-                    let ban_reason = BlockSyncError::get_ban_reason(&err);
-                    if let Some(reason) = ban_reason {
-                        let duration = match reason.ban_duration {
-                            BanPeriod::Short => self.config.short_ban_period,
-                            BanPeriod::Long => self.config.ban_period,
-                        };
-                        self.peer_ban_manager
-                            .ban_peer_if_required(&node_id, reason.reason, duration)
-                            .await;
-                    }
+                    self.ban_sync_peer(&node_id, &err).await;
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter = latency_counter.saturating_add(1);
                     } else {
@@ -310,6 +318,29 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         } else {
             Err(BlockSyncError::SyncRoundFailed)
         }
+    }
+
+    async fn ban_sync_peer(&mut self, node_id: &NodeId, err: &BlockSyncError) {
+        warn!(target: LOG_TARGET, "{err}");
+        if let Some(reason) = err.get_ban_reason() {
+            let duration = match reason.ban_duration {
+                BanPeriod::Short => self.config.short_ban_period,
+                BanPeriod::Long => self.config.ban_period,
+            };
+            self.peer_ban_manager
+                .ban_peer_if_required(node_id, reason.reason, duration)
+                .await;
+        }
+    }
+
+    /// Waits on a network call until the attempt's budget runs out. The budget only applies until the peer has sent a
+    /// valid block, and never to local database work.
+    async fn before_first_block<F: Future>(&self, fut: F) -> Result<F::Output, BlockSyncError> {
+        let budget = self.config.rpc_deadline.saturating_mul(2);
+        let remaining = budget.saturating_sub(self.attempt_started.elapsed());
+        tokio::time::timeout(remaining, fut)
+            .await
+            .map_err(|_| BlockSyncError::NoValidBlockWithinBudget { budget })
     }
 
     async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
@@ -361,7 +392,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             end_hash: tip_hash.to_vec(),
         };
 
-        let mut block_stream = match client.sync_blocks(request).await {
+        let mut block_stream = match self.before_first_block(client.sync_blocks(request)).await? {
             Ok(stream) => stream,
             Err(err) => return Err(self.not_found_before_first_block(err, &sync_peer, &tip_hash)),
         };
@@ -370,7 +401,16 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
         let mut received_block = false;
-        while let Some(block_result) = block_stream.next().await {
+        let mut received_valid_block = false;
+        loop {
+            let next = if received_valid_block {
+                block_stream.next().await
+            } else {
+                self.before_first_block(block_stream.next()).await?
+            };
+            let Some(block_result) = next else {
+                break;
+            };
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let block_body_response = match block_result {
@@ -498,6 +538,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 )
                 .commit()
                 .await?;
+            received_valid_block = true;
 
             // Average time between receiving blocks from the peer - used to detect a slow sync peer
             let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);

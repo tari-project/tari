@@ -114,6 +114,7 @@ impl HeaderSyncState {
             Err(e) => return StateEvent::FatalError(format!("{e}")),
         }
 
+        let mut chain_changes = std::mem::take(&mut shared.header_sync_chain_changes);
         let mut synchronizer = HeaderSynchronizer::new(
             shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
@@ -122,6 +123,7 @@ impl HeaderSyncState {
             &mut self.sync_peers,
             shared.randomx_factory.clone(),
             &self.local_metadata,
+            &mut chain_changes,
         );
 
         let status_event_sender = shared.status_event_sender.clone();
@@ -164,7 +166,10 @@ impl HeaderSyncState {
         });
 
         let timer = Instant::now();
-        match synchronizer.synchronize().await {
+        let result = synchronizer.synchronize().await;
+        drop(synchronizer);
+        shared.header_sync_chain_changes = chain_changes;
+        match result {
             Ok((sync_peer, sync_result)) => {
                 info!(
                     target: LOG_TARGET,

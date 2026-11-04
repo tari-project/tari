@@ -19,14 +19,19 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use futures::{future, future::Either};
 use log::*;
 use randomx_rs::RandomXFlag;
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::serializers;
-use tari_comms::{PeerManager, connectivity::ConnectivityRequester};
+use tari_comms::{PeerManager, connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_comms_dht::event::DhtEventReceiver;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -100,6 +105,8 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) consensus_rules: BaseNodeConsensusManager,
     pub(super) status_event_sender: Arc<watch::Sender<StatusInfo>>,
     pub(super) randomx_factory: RandomXFactory,
+    /// When header sync attempts with each peer ended because our chain changed, kept across sync rounds
+    pub(super) header_sync_chain_changes: HashMap<NodeId, Vec<Instant>>,
     is_bootstrapped: bool,
     pub(super) is_primary_bootstrap_complete: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
@@ -137,6 +144,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             status_event_sender: Arc::new(status_event_sender),
             sync_validators,
             randomx_factory,
+            header_sync_chain_changes: HashMap::new(),
             is_bootstrapped: false,
             is_primary_bootstrap_complete: false,
             consensus_rules,

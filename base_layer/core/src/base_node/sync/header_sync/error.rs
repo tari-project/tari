@@ -59,6 +59,10 @@ pub enum BlockHeaderSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
+    #[error("Our chain changed during the sync attempt. Sync will be retried with another peer if possible.")]
+    ChainChangedDuringSync,
+    #[error("Sync attempts with the peer ended {count} times because our chain changed")]
+    RepeatedChainChangesDuringSync { count: usize },
     #[error("The sync peer could not take an RPC session ({0}). Sync will be retried with another peer if possible.")]
     SyncPeerUnavailable(RpcError),
     #[error("Unable to locate start hash `{0}`")]
@@ -133,6 +137,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
+            BlockHeaderSyncError::ChainChangedDuringSync |
             BlockHeaderSyncError::SyncPeerUnavailable(_) |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,
@@ -144,7 +149,8 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::RpcRequestError { .. } |
             err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
             err @ BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. } |
-            err @ BlockHeaderSyncError::SyncAttemptTimedOut { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::SyncAttemptTimedOut { .. } |
+            err @ BlockHeaderSyncError::RepeatedChainChangesDuringSync { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),

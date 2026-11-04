@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
+    collections::HashMap,
     future::Future,
     sync::Arc,
     time::{Duration, Instant},
@@ -68,6 +69,12 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 
 const MAX_LATENCY_INCREASES: usize = 5;
 
+/// A peer whose attempts end because our chain changed this many times within the window is banned.
+const MAX_CHAIN_CHANGES_PER_PEER: usize = 3;
+const CHAIN_CHANGE_WINDOW: Duration = Duration::from_secs(30 * 60);
+/// Bounds the memory used to track chain changes per peer.
+const MAX_CHAIN_CHANGE_PEERS: usize = 1000;
+
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
     db: AsyncBlockchainDb<B>,
@@ -79,7 +86,8 @@ pub struct HeaderSynchronizer<'a, B> {
     peer_ban_manager: PeerBanManager,
     consensus_rules: BaseNodeConsensusManager,
     attempt_started: Instant,
-    attempt_start_block_height: u64,
+    attempt_start_block_hash: HashOutput,
+    chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -91,6 +99,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,
         local_metadata: &'a ChainMetadata,
+        chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         Self {
@@ -104,7 +113,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             peer_ban_manager,
             consensus_rules,
             attempt_started: Instant::now(),
-            attempt_start_block_height: 0,
+            attempt_start_block_hash: HashOutput::zero(),
+            chain_changes,
         }
     }
 
@@ -209,8 +219,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         for node_id in sync_peer_node_ids {
             self.attempt_started = Instant::now();
             match self.connect_and_attempt_sync(&node_id, max_latency).await {
-                Ok((peer, sync_result)) => return Ok((peer, sync_result)),
+                Ok((peer, sync_result)) => {
+                    self.chain_changes.remove(&node_id);
+                    return Ok((peer, sync_result));
+                },
                 Err(err) => {
+                    let err = match err {
+                        BlockHeaderSyncError::ChainChangedDuringSync => self.record_chain_change(&node_id),
+                        err => err,
+                    };
                     let ban_reason = BlockHeaderSyncError::get_ban_reason(&err);
                     if let Some(reason) = ban_reason {
                         warn!(target: LOG_TARGET, "{err}");
@@ -357,7 +374,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .await?;
         let best_header_height = best_header.height();
         let best_block_height = best_block_header.height();
-        self.attempt_start_block_height = best_block_height;
+        self.attempt_start_block_hash = *best_block_header.hash();
 
         if best_header_height < best_block_height || best_block_height < self.local_cached_metadata.best_block_height()
         {
@@ -427,6 +444,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let max_chain_split_iters = max_reorg_depth_allowed.saturating_div(NUM_CHAIN_SPLIT_HEADERS);
 
         let mut offset = 0;
+        let mut sent_hashes = Vec::new();
         let mut iter_count = 0usize;
         loop {
             iter_count = iter_count.saturating_add(1);
@@ -464,6 +482,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 return Err(BlockHeaderSyncError::ChainSplitNotFound(peer_node_id.clone()));
             }
 
+            sent_hashes.extend(block_hashes.iter().copied());
             let request = FindChainSplitRequest {
                 block_hashes: block_hashes.clone().iter().map(|v| v.to_vec()).collect(),
                 header_count,
@@ -541,6 +560,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 peer_headers: resp.headers,
                 peer_fork_hash_index: resp.fork_hash_index,
                 chain_split_hash,
+                sent_hashes,
             });
         }
     }
@@ -550,6 +570,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     ///
     /// If the local node is behind the remote chain (i.e. `HeaderSyncStatus::Lagging`), the appropriate
     /// `ChainSplitInfo` is returned, the header validator is initialized and the preliminary headers are validated.
+    #[allow(clippy::too_many_lines)]
     async fn determine_sync_status(
         &mut self,
         sync_peer: &SyncPeer,
@@ -596,7 +617,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         "Peer `{}` sent no headers, but our chain has reached their claim since sync started",
                         sync_peer.node_id()
                     );
-                    return Err(BlockHeaderSyncError::NotInSync);
+                    return Err(BlockHeaderSyncError::ChainChangedDuringSync);
                 }
                 warn!(
                     target: LOG_TARGET,
@@ -611,6 +632,27 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     actual: None,
                     local: best_block_header.accumulated_data().total_accumulated_difficulty,
                 });
+            }
+            // Our headers are ahead of our blocks, so the claim must be covered by our header chain
+            let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
+            if claimed > best_header.accumulated_data().total_accumulated_difficulty {
+                let header_tip = self.db.fetch_last_chain_header().await?;
+                let local = header_tip.accumulated_data().total_accumulated_difficulty;
+                if claimed > local {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Peer `{}` did not provide any headers although they claim more work ({}) than our header \
+                         chain ({}). Peer will be banned.",
+                        sync_peer.node_id(),
+                        claimed,
+                        local,
+                    );
+                    return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
+                        claimed,
+                        actual: None,
+                        local,
+                    });
+                }
             }
             debug!(target: LOG_TARGET, "Peer `{}` sent no headers; headers already in sync with peer.", sync_peer.node_id());
             return Ok((HeaderSyncStatus::InSyncOrAhead, chain_split_result));
@@ -628,13 +670,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // not there most probably the rest are not either - the peer could still have returned old headers later on in
         // the list
         let first_hash = headers.first().expect("Already checked").hash();
-        if let Some(existing_header) = self.db.fetch_header_by_block_hash(first_hash).await? {
-            if self.landed_during_attempt(existing_header.height).await? {
+        if self.db.fetch_header_by_block_hash(first_hash).await?.is_some() {
+            // It follows a hash we sent, so if we did not send it too it joined our chain after we sent them
+            if !chain_split_result.sent_hashes.contains(&first_hash) {
                 debug!(
                     target: LOG_TARGET,
                     "Peer `{}` sent a header we added since sync started", sync_peer.node_id()
                 );
-                return Err(BlockHeaderSyncError::NotInSync);
+                return Err(BlockHeaderSyncError::ChainChangedDuringSync);
             }
             return Err(BlockHeaderSyncError::ReceivedInvalidHeader(
                 "Header already in database".to_string(),
@@ -835,6 +878,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let mut last_total_accumulated_difficulty = total_accumulated_difficulty;
         let mut avg_latency = RollingAverageTime::new(20);
         let mut prev_height: Option<u64> = None;
+        let mut prev_hash = start_header_hash;
         while let Some(header) = header_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
@@ -866,12 +910,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             if let Some(h) = existing_header {
-                if self.landed_during_attempt(h.height).await? {
+                let local_tip_hash = *self.db.get_chain_metadata().await?.best_block_hash();
+                if header.prev_hash == prev_hash && local_tip_hash != self.attempt_start_block_hash {
                     debug!(
                         target: LOG_TARGET,
                         "Peer `{}` sent header #{} that we added since sync started", sync_peer.node_id(), h.height
                     );
-                    return Err(BlockHeaderSyncError::NotInSync);
+                    return Err(BlockHeaderSyncError::ChainChangedDuringSync);
                 }
                 warn!(
                     target: LOG_TARGET,
@@ -884,6 +929,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 ));
             }
             let current_height = header.height;
+            prev_hash = header.hash();
             last_total_accumulated_difficulty = self.header_validator.validate(header).await?;
 
             if has_switched_to_new_chain {
@@ -1050,7 +1096,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Not switching to the peer's chain: our chain became stronger during the sync attempt"
             );
-            return Err(BlockHeaderSyncError::NotInSync);
+            return Err(BlockHeaderSyncError::ChainChangedDuringSync);
         }
         // Decide the rewind from the current header tip, which may have moved since the split was found
         let split_hash = split_info.chain_split_hash;
@@ -1061,7 +1107,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Not switching to the peer's chain: the split point {} is no longer on our chain",
                 split_hash.to_hex()
             );
-            return Err(BlockHeaderSyncError::NotInSync);
+            return Err(BlockHeaderSyncError::ChainChangedDuringSync);
         }
         if *self.db.fetch_last_chain_header().await?.hash() != split_hash {
             debug!(
@@ -1099,10 +1145,30 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .map_err(|_| BlockHeaderSyncError::SyncAttemptTimedOut { budget })
     }
 
-    /// Whether a main chain header at `height` was added by a propagated block during this attempt.
-    async fn landed_during_attempt(&self, height: u64) -> Result<bool, BlockHeaderSyncError> {
-        let local_metadata = self.db.get_chain_metadata().await?;
-        Ok(height > self.attempt_start_block_height && height <= local_metadata.best_block_height())
+    /// Records that an attempt with the peer ended because our chain changed, and returns the error to act on: a
+    /// ban once the peer has done this too often.
+    fn record_chain_change(&mut self, node_id: &NodeId) -> BlockHeaderSyncError {
+        let now = Instant::now();
+        self.chain_changes.retain(|_, times| {
+            times.retain(|time| now.duration_since(*time) < CHAIN_CHANGE_WINDOW);
+            !times.is_empty()
+        });
+        if !self.chain_changes.contains_key(node_id) && self.chain_changes.len() >= MAX_CHAIN_CHANGE_PEERS {
+            return BlockHeaderSyncError::ChainChangedDuringSync;
+        }
+        let times = self.chain_changes.entry(node_id.clone()).or_default();
+        times.push(now);
+        if times.len() >= MAX_CHAIN_CHANGES_PER_PEER {
+            warn!(
+                target: LOG_TARGET,
+                "Sync attempts with peer `{}` ended {} times in {:.0?} because our chain changed. Peer will be banned.",
+                node_id,
+                times.len(),
+                CHAIN_CHANGE_WINDOW,
+            );
+            return BlockHeaderSyncError::RepeatedChainChangesDuringSync { count: times.len() };
+        }
+        BlockHeaderSyncError::ChainChangedDuringSync
     }
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.
@@ -1124,6 +1190,8 @@ struct FindChainSplitResult {
     peer_headers: Vec<ProtoBlockHeader>,
     peer_fork_hash_index: u64,
     chain_split_hash: HashOutput,
+    /// Every hash we sent the peer while looking for the split
+    sent_hashes: Vec<HashOutput>,
 }
 
 /// Information about the chain split from the remote node.

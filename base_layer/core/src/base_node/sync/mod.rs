@@ -40,6 +40,9 @@ pub use horizon_state_sync::{HorizonStateSynchronization, HorizonSyncError, Hori
 
 mod hooks;
 
+#[cfg(test)]
+pub(crate) mod mock_sync_peer;
+
 pub mod rpc;
 
 mod sync_peer;
