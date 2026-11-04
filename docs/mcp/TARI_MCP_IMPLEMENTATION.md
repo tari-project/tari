@@ -85,7 +85,7 @@ minotari_mcp_wallet --mcp-enabled
 
 **With control operations (use with caution):**
 ```bash
-minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --require-confirmation
+minotari_mcp_wallet --mcp-enabled --mcp-control-enabled
 ```
 
 ### Starting the Node MCP Server

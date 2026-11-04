@@ -141,8 +141,43 @@ impl WalletMcpServer {
         // Check if already running using proper health monitor
         let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
         if health_monitor.is_service_ready().await {
-            log::info!("Wallet already running and healthy on port {port}");
-            return Ok(None); // No process launched by us
+            // Verify if the running service can be authenticated with current credentials
+            let wallet_grpc_url = if config.wallet_grpc.address.starts_with("http://") ||
+                config.wallet_grpc.address.starts_with("https://")
+            {
+                config.wallet_grpc.address.clone()
+            } else {
+                format!("http://{}", config.wallet_grpc.address)
+            };
+
+            match WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.authentication).await {
+                Ok(mut test_client) => {
+                    match test_client
+                        .identify(minotari_wallet_grpc_client::grpc::GetIdentityRequest {})
+                        .await
+                    {
+                        Ok(_) => {
+                            log::info!("Wallet already running and authenticated on port {port}");
+                            return Ok(None);
+                        },
+                        Err(status) if status.code() == tonic::Code::Unauthenticated => {
+                            return Err(McpError::service_unavailable(format!(
+                                "An orphaned or existing wallet is listening on port {port} with different \
+                                 authentication credentials. Please stop the existing wallet process or provide \
+                                 matching credentials via --wallet-grpc-username/--wallet-grpc-password."
+                            )));
+                        },
+                        Err(e) => {
+                            log::warn!("Wallet responded to probe with: {e}");
+                            return Ok(None);
+                        },
+                    }
+                },
+                Err(e) => {
+                    log::warn!("Could not connect client to probe running wallet: {e}");
+                    return Ok(None);
+                },
+            }
         }
 
         log::info!("Wallet not detected, auto-launching...");
@@ -205,6 +240,7 @@ impl WalletMcpServer {
             // Check if the service is ready using proper health check
             if launched_health_monitor.is_service_ready().await {
                 log::info!("Wallet is now running and healthy on port {available_port}");
+                config.wallet_grpc.address = format!("127.0.0.1:{available_port}");
                 return Ok(Some(launcher));
             }
 
