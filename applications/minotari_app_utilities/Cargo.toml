@@ -38,3 +38,9 @@ tari_features = { workspace = true }
 
 [features]
 miner_input = ["minotari_app_grpc"]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+serde_json = { workspace = true }
