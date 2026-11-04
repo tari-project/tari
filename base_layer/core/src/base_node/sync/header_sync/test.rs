@@ -66,7 +66,7 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    test_helpers::blockchain::{TempDatabase, create_chained_blocks, create_new_blockchain},
+    test_helpers::blockchain::{TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain},
 };
 
 /// A sync peer that only answers `find_chain_split`.
@@ -407,4 +407,77 @@ async fn a_weaker_local_block_that_landed_during_sync_is_rewound() {
     assert_eq!(db.fetch_last_header().unwrap().hash(), *peer_block_2.hash());
     assert_eq!(db.get_chain_metadata().unwrap().best_block_hash(), genesis.hash());
     assert!(db.fetch_header_by_block_hash(*local_block.hash()).unwrap().is_none());
+}
+
+/// A local chain of genesis and one block, and a claim that is stronger than it naming that block as the tip.
+fn chain_with_one_block_and_an_inflated_claim() -> (BlockchainDatabase<TempDatabase>, Arc<ChainBlock>, ChainMetadata) {
+    let db = create_new_blockchain();
+    let (_, mut chain) = create_main_chain(&db, block_specs!(["A->GB"]));
+    let tip = chain.remove("A").unwrap();
+    let tip_metadata = claim_for(&tip);
+    let claim = ChainMetadata::new(
+        tip_metadata.best_block_height().saturating_add(5),
+        *tip_metadata.best_block_hash(),
+        0,
+        0,
+        tip_metadata.accumulated_difficulty().saturating_mul(100.into()),
+        tip_metadata.timestamp(),
+    )
+    .unwrap();
+    (db, tip, claim)
+}
+
+#[tokio::test]
+async fn no_headers_for_an_inflated_claim_naming_our_tip_is_banned() {
+    let (db, _tip, claim) = chain_with_one_block_and_an_inflated_claim();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let no_headers = FindChainSplitResponse {
+        headers: vec![],
+        fork_hash_index: 0,
+    };
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, MockSyncPeer::new(&db, Some(no_headers)), claim).await;
+    let config = BlockchainSyncConfig::default();
+    let short_ban_period = config.short_ban_period;
+
+    let err = sync_headers(&db, connectivity.clone(), config, vec![peer.clone()])
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, BlockHeaderSyncError::NoMoreSyncPeers(_)), "{err}");
+    let banned = banned_peers(connectivity, &connectivity_mock).await;
+    let [(banned_peer, ban_duration, ban_reason)] = banned.as_slice() else {
+        panic!("expected one ban, got {banned:?}");
+    };
+    assert_eq!(banned_peer, peer.node_id());
+    assert_eq!(*ban_duration, short_ban_period);
+    assert!(ban_reason.contains("claimed a stronger chain"), "{ban_reason}");
+}
+
+#[tokio::test]
+async fn our_own_tip_header_sent_back_is_banned() {
+    let (db, tip, claim) = chain_with_one_block_and_an_inflated_claim();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    // Index 1 of the hashes we send (tip, genesis) is genesis, the parent of our tip
+    let our_tip = FindChainSplitResponse {
+        headers: vec![tip.header().clone().into()],
+        fork_hash_index: 1,
+    };
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, MockSyncPeer::new(&db, Some(our_tip)), claim).await;
+    let config = BlockchainSyncConfig::default();
+    let ban_period = config.ban_period;
+
+    let err = sync_headers(&db, connectivity.clone(), config, vec![peer.clone()])
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, BlockHeaderSyncError::NoMoreSyncPeers(_)), "{err}");
+    let banned = banned_peers(connectivity, &connectivity_mock).await;
+    let [(banned_peer, ban_duration, ban_reason)] = banned.as_slice() else {
+        panic!("expected one ban, got {banned:?}");
+    };
+    assert_eq!(banned_peer, peer.node_id());
+    assert_eq!(*ban_duration, ban_period);
+    assert!(ban_reason.contains("Header already in database"), "{ban_reason}");
 }

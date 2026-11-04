@@ -79,6 +79,7 @@ pub struct HeaderSynchronizer<'a, B> {
     peer_ban_manager: PeerBanManager,
     consensus_rules: BaseNodeConsensusManager,
     attempt_started: Instant,
+    attempt_start_block_height: u64,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -103,6 +104,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             peer_ban_manager,
             consensus_rules,
             attempt_started: Instant::now(),
+            attempt_start_block_height: 0,
         }
     }
 
@@ -355,6 +357,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .await?;
         let best_header_height = best_header.height();
         let best_block_height = best_block_header.height();
+        self.attempt_start_block_height = best_block_height;
 
         if best_header_height < best_block_height || best_block_height < self.local_cached_metadata.best_block_height()
         {
@@ -584,8 +587,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             // peer did not supply any headers and we know we are behind based on the peer's claimed metadata, then
             // we can ban the peer.
             if best_header.height() == best_block_header.height() {
-                let claimed_hash = *sync_peer.claimed_chain_metadata().best_block_hash();
-                if self.local_chain_has_caught_up(sync_peer, claimed_hash).await? {
+                let local_metadata = self.db.get_chain_metadata().await?;
+                if sync_peer.claimed_chain_metadata().accumulated_difficulty() <=
+                    local_metadata.accumulated_difficulty()
+                {
                     debug!(
                         target: LOG_TARGET,
                         "Peer `{}` sent no headers, but our chain has reached their claim since sync started",
@@ -623,8 +628,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // not there most probably the rest are not either - the peer could still have returned old headers later on in
         // the list
         let first_hash = headers.first().expect("Already checked").hash();
-        if self.db.fetch_header_by_block_hash(first_hash).await?.is_some() {
-            if self.local_chain_has_caught_up(sync_peer, first_hash).await? {
+        if let Some(existing_header) = self.db.fetch_header_by_block_hash(first_hash).await? {
+            if self.landed_during_attempt(existing_header.height).await? {
                 debug!(
                     target: LOG_TARGET,
                     "Peer `{}` sent a header we added since sync started", sync_peer.node_id()
@@ -818,7 +823,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             count: 0,
         };
 
-        let mut header_stream = self.within_attempt_budget(client.sync_headers(request)).await??;
+        let mut header_stream = client.sync_headers(request).await?;
         debug!(
             target: LOG_TARGET,
             "Reading headers from peer `{}`",
@@ -830,7 +835,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let mut last_total_accumulated_difficulty = total_accumulated_difficulty;
         let mut avg_latency = RollingAverageTime::new(20);
         let mut prev_height: Option<u64> = None;
-        while let Some(header) = self.within_attempt_budget(header_stream.next()).await? {
+        while let Some(header) = header_stream.next().await {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
@@ -861,7 +866,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
             let existing_header = self.db.fetch_header_by_block_hash(header.hash()).await?;
             if let Some(h) = existing_header {
-                if self.local_chain_has_caught_up(&sync_peer, h.hash()).await? {
+                if self.landed_during_attempt(h.height).await? {
                     debug!(
                         target: LOG_TARGET,
                         "Peer `{}` sent header #{} that we added since sync started", sync_peer.node_id(), h.height
@@ -1084,8 +1089,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.config.rpc_deadline.saturating_mul(2)
     }
 
-    /// Waits on a network call until the current attempt's budget runs out. Local database work is never wrapped,
-    /// so running out of budget cannot interrupt a rewind or a commit.
+    /// Waits on the dial, RPC setup or a chain-split request until the current attempt's budget runs out. The
+    /// header stream and local database work are not bounded by it.
     async fn within_attempt_budget<F: Future>(&self, fut: F) -> Result<F::Output, BlockHeaderSyncError> {
         let budget = self.attempt_budget();
         let remaining = budget.saturating_sub(self.attempt_started.elapsed());
@@ -1094,19 +1099,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .map_err(|_| BlockHeaderSyncError::SyncAttemptTimedOut { budget })
     }
 
-    /// Whether our chain has reached the peer's claimed accumulated difficulty since sync started, or `header_hash`
-    /// is a main chain header at or below our tip. Either means a propagated block landed during the sync attempt.
-    async fn local_chain_has_caught_up(
-        &self,
-        sync_peer: &SyncPeer,
-        header_hash: HashOutput,
-    ) -> Result<bool, BlockHeaderSyncError> {
+    /// Whether a main chain header at `height` was added by a propagated block during this attempt.
+    async fn landed_during_attempt(&self, height: u64) -> Result<bool, BlockHeaderSyncError> {
         let local_metadata = self.db.get_chain_metadata().await?;
-        if sync_peer.claimed_chain_metadata().accumulated_difficulty() <= local_metadata.accumulated_difficulty() {
-            return Ok(true);
-        }
-        let header = self.db.fetch_header_by_block_hash(header_hash).await?;
-        Ok(header.is_some_and(|h| h.height <= local_metadata.best_block_height()))
+        Ok(height > self.attempt_start_block_height && height <= local_metadata.best_block_height())
     }
 
     // Sync peers are also removed from the list of sync peers if the ban duration is longer than the short ban period.

@@ -829,7 +829,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn a_stronger_claim_enters_header_sync_without_disabling_add_block() {
+    async fn add_block_is_disabled_once_headers_are_synchronized_not_on_a_claim() {
         use tari_comms::{
             peer_manager::PeerFeatures,
             test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
@@ -843,7 +843,7 @@ mod test {
                 BaseNodeStateMachineConfig,
                 LocalNodeCommsInterface,
                 state_machine_service::states::{BaseNodeState, StatusInfo},
-                sync::SyncValidators,
+                sync::{AttemptSyncResult, HeaderSyncStatus, SyncValidators},
             },
             proof_of_work::randomx_factory::RandomXFactory,
             test_helpers::{blockchain::create_new_blockchain, create_consensus_rules, create_peer_manager},
@@ -884,9 +884,10 @@ mod test {
             local.best_block_height() + 2,
             local.accumulated_difficulty() + U512::from(1000),
         );
+        let peer_metadata = PeerChainMetadata::new(peer.node_id().clone(), claim, None);
         metadata_tx
             .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(
-                PeerChainMetadata::new(peer.node_id().clone(), claim, None),
+                peer_metadata.clone(),
             )))
             .unwrap();
 
@@ -900,6 +901,15 @@ mod test {
         let next_state = state_machine.transition(BaseNodeState::Listening(listening, false), event);
         assert!(matches!(next_state, BaseNodeState::HeaderSync(_)));
         assert!(!db.is_add_block_disabled());
+
+        let synchronized = StateEvent::HeadersSynchronized(peer_metadata.into(), AttemptSyncResult {
+            headers_returned: 0,
+            peer_fork_hash_index: 0,
+            header_sync_status: HeaderSyncStatus::InSyncOrAhead,
+        });
+        let next_state = state_machine.transition(next_state, synchronized);
+        assert!(matches!(next_state, BaseNodeState::DecideNextSync(_)));
+        assert!(db.is_add_block_disabled());
     }
 
     #[test]
