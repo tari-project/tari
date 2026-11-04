@@ -52,6 +52,8 @@ pub struct MinerConfig {
     pub base_node_grpc_tls_domain_name: Option<String>,
     /// GRPC ca cert name for TLS
     pub base_node_grpc_ca_cert_filename: String,
+    #[serde(default)]
+    pub base_node_grpc_allow_insecure_auth: bool,
     /// Number of mining threads
     pub num_mining_threads: usize,
     /// Start mining only when base node is bootstrapped and current block height is on the tip of network
@@ -99,6 +101,7 @@ impl Default for MinerConfig {
             base_node_grpc_authentication: GrpcAuthentication::default(),
             base_node_grpc_tls_domain_name: None,
             base_node_grpc_ca_cert_filename: "node_ca.pem".to_string(),
+            base_node_grpc_allow_insecure_auth: false,
             num_mining_threads: num_cpus::get(),
             mine_on_tip_only: true,
             proof_of_work_algo: PowAlgorithm::Sha3x,

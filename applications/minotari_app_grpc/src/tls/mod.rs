@@ -24,6 +24,116 @@ pub mod certs;
 pub mod error;
 pub mod identity;
 
-pub fn protocol_string(tls_enabled: bool) -> String {
-    format!("http{}://", if tls_enabled { "s" } else { "" })
+use log::warn;
+use tari_common_types::grpc_authentication::GrpcAuthentication;
+
+pub fn is_host_loopback(host: &str) -> bool {
+    let clean = host.trim_matches(|c| c == '[' || c == ']');
+    if clean.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    if let Ok(ip) = clean.parse::<std::net::IpAddr>() {
+        return ip.is_loopback();
+    }
+    false
+}
+
+pub fn validate_client_transport(
+    address: &str,
+    tls_domain_name: Option<&str>,
+    auth: &GrpcAuthentication,
+    allow_insecure_auth: bool,
+) -> Result<(), String> {
+    let uri: tonic::codegen::http::Uri = address
+        .parse()
+        .map_err(|e| format!("invalid gRPC address scheme: {e}"))?;
+    let scheme = uri
+        .scheme_str()
+        .ok_or_else(|| "gRPC address is missing a scheme; use http:// or https://".to_string())?;
+    match scheme {
+        "https" | "http" => {},
+        _ => {
+            return Err(format!(
+                "unsupported gRPC address scheme '{scheme}', use http:// or https://"
+            ));
+        },
+    }
+    if tls_domain_name.is_some() && scheme != "https" {
+        warn!(
+            "gRPC TLS domain is configured for '{address}' but the address scheme is http://; TLS will not be used \
+             unless https:// is specified"
+        );
+    }
+    if matches!(auth, GrpcAuthentication::Basic { .. }) && scheme == "http" && !allow_insecure_auth {
+        let is_loopback = uri.host().is_some_and(is_host_loopback);
+        if !is_loopback {
+            return Err(
+                "Basic gRPC authentication over http:// is disabled; use https://, remove authentication, or set \
+                 allow_insecure_auth=true"
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+
+    use super::*;
+
+    fn basic() -> GrpcAuthentication {
+        GrpcAuthentication::Basic {
+            username: "user".to_string(),
+            password: "password".into(),
+        }
+    }
+
+    #[test]
+    fn https_with_tls_domain_succeeds() {
+        assert!(validate_client_transport("https://node:18142", Some("node"), &basic(), false).is_ok());
+    }
+
+    #[test]
+    fn tls_domain_warns_on_http() {
+        assert!(validate_client_transport("http://node:18142", Some("node"), &GrpcAuthentication::None, false).is_ok());
+    }
+
+    #[test]
+    fn basic_http_requires_override_for_remote() {
+        assert!(
+            validate_client_transport("http://node:18142", None, &basic(), false)
+                .unwrap_err()
+                .contains("allow_insecure_auth")
+        );
+    }
+
+    #[test]
+    fn basic_http_exempts_loopback() {
+        assert!(validate_client_transport("http://127.0.0.1:18142", None, &basic(), false).is_ok());
+        assert!(validate_client_transport("http://127.0.0.2:18142", None, &basic(), false).is_ok());
+        assert!(validate_client_transport("http://[::1]:18142", None, &basic(), false).is_ok());
+        assert!(validate_client_transport("http://localhost:18142", None, &basic(), false).is_ok());
+    }
+
+    #[test]
+    fn basic_http_override_and_no_auth_succeed() {
+        assert!(validate_client_transport("http://node:18142", None, &basic(), true).is_ok());
+        assert!(validate_client_transport("http://node:18142", None, &GrpcAuthentication::None, false).is_ok());
+    }
+
+    #[test]
+    fn malformed_schemes_are_rejected() {
+        assert!(
+            validate_client_transport("node:18142", None, &GrpcAuthentication::None, false)
+                .unwrap_err()
+                .contains("missing a scheme")
+        );
+        assert!(
+            validate_client_transport("ftp://node:18142", None, &GrpcAuthentication::None, false)
+                .unwrap_err()
+                .contains("unsupported")
+        );
+    }
 }
