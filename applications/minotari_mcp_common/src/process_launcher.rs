@@ -155,6 +155,7 @@ impl ProcessLauncher {
         let mut command = Command::new(&executable_path);
         command
             .args(&self.config.args)
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);

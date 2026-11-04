@@ -72,6 +72,10 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_GRPC_TIMEOUT", default_value = "10")]
     pub wallet_grpc_timeout: u64,
 
+    /// Deprecated no-op retained for backwards compatibility
+    #[clap(long, hide = true, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
+    pub require_confirmation: bool,
+
     /// Wallet gRPC authentication username
     #[clap(long, env = "MINOTARI_WALLET_GRPC_USERNAME")]
     pub wallet_grpc_username: Option<String>,
@@ -173,6 +177,13 @@ impl Cli {
         if self.mcp_control_enabled {
             log::warn!("WALLET MCP control operations are ENABLED - this allows AI agents to spend funds");
             log::warn!("Only enable control operations in fully trusted environments");
+        }
+
+        if self.require_confirmation {
+            log::warn!(
+                "--require-confirmation is deprecated and has no effect; control actions are scoped via \
+                 --mcp-control-enabled"
+            );
         }
 
         Ok(())
