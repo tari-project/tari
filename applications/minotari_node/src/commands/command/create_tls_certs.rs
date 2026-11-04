@@ -23,30 +23,54 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
+use minotari_app_grpc::tls::certs::{
+    default_sans,
+    generate_self_signed_certs,
+    print_warning,
+    renew_leaf,
+    write_cert_to_disk,
+    write_key_to_disk,
+};
 
 use super::{CommandContext, HandleCommand};
 
 /// Create self signed TLS certificates for use with gRPC
 #[derive(Debug, Parser)]
-pub struct Args {}
+pub struct Args {
+    /// Renew the leaf certificate while retaining the existing CA.
+    #[clap(long)]
+    pub renew_leaf: bool,
+    /// DNS names or IP addresses for the leaf certificate.
+    #[clap(long = "san")]
+    pub sans: Vec<String>,
+}
+
+fn sans_or_default(sans: Vec<String>) -> Vec<String> {
+    if sans.is_empty() { default_sans() } else { sans }
+}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.create_tls_certs()
+    async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
+        self.create_tls_certs(args)
     }
 }
 
 impl CommandContext {
-    pub fn create_tls_certs(&self) -> Result<(), Error> {
-        match generate_self_signed_certs() {
-            Ok((cacert, cert, private_key)) => {
+    pub fn create_tls_certs(&self, args: Args) -> Result<(), Error> {
+        let sans = sans_or_default(args.sans);
+        if args.renew_leaf {
+            renew_leaf(self.config.base_node.config_dir.clone(), sans)?;
+            return Ok(());
+        }
+        match generate_self_signed_certs(sans) {
+            Ok((cacert, ca_key, cert, private_key)) => {
                 print_warning();
 
                 write_cert_to_disk(self.config.base_node.config_dir.clone(), "node_ca.pem", &cacert)?;
+                write_key_to_disk(self.config.base_node.config_dir.clone(), "node_ca.key", &ca_key)?;
                 write_cert_to_disk(self.config.base_node.config_dir.clone(), "server.pem", &cert)?;
-                write_cert_to_disk(self.config.base_node.config_dir.clone(), "server.key", &private_key)?;
+                write_key_to_disk(self.config.base_node.config_dir.clone(), "server.key", &private_key)?;
 
                 println!();
                 println!("Certificates generated successfully.");
@@ -56,8 +80,26 @@ impl CommandContext {
                 );
                 println!();
             },
-            Err(err) => eprintln!("Error generating certificates: {err}"),
+            Err(err) => return Err(err.into()),
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_repeated_sans_and_renewal() {
+        let args = Args::try_parse_from(["create-tls-certs", "--renew-leaf", "--san", "one", "--san", "two"]).unwrap();
+        assert!(args.renew_leaf);
+        assert_eq!(args.sans, ["one", "two"]);
+    }
+
+    #[test]
+    fn san_defaults_are_applied_only_when_empty() {
+        assert_eq!(sans_or_default(Vec::new()), default_sans());
+        assert_eq!(sans_or_default(vec!["custom".into()]), vec!["custom"]);
     }
 }
