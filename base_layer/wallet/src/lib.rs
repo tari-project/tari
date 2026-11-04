@@ -12,6 +12,7 @@ pub mod base_node_service;
 pub mod client;
 pub mod connectivity_service;
 pub mod error;
+pub mod grpc_method;
 pub mod legacy_transaction_protocol;
 mod operation_id;
 pub mod output_manager_service;
@@ -33,6 +34,7 @@ mod config;
 pub mod schema;
 pub mod utxo_scanner_service;
 pub use config::{TransactionStage, WalletConfig};
+pub use grpc_method::WalletGrpcMethod;
 use tari_transaction_key_manager::{
     legacy_key_manager::LegacyTransactionKeyManagerWrapper,
     storage::sqlite_db::TransactionKeyManagerSqliteDatabase,
