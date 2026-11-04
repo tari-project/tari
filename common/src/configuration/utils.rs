@@ -446,6 +446,7 @@ const SECRET_WORDS: &[&str] = &[
     "cookie",
     "mnemonic",
     "private",
+    "credential",
 ];
 
 /// Returns true if the last segment of a config key names a secret (contains one of [`SECRET_WORDS`]).
