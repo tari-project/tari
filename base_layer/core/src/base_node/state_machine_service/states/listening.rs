@@ -902,13 +902,29 @@ mod test {
         assert!(matches!(next_state, BaseNodeState::HeaderSync(_)));
         assert!(!db.is_add_block_disabled());
 
-        let synchronized = StateEvent::HeadersSynchronized(peer_metadata.into(), AttemptSyncResult {
+        let sync_peer = SyncPeer::from(peer_metadata);
+        let synchronized = StateEvent::HeadersSynchronized(sync_peer.clone(), AttemptSyncResult {
             headers_returned: 0,
             peer_fork_hash_index: 0,
             header_sync_status: HeaderSyncStatus::InSyncOrAhead,
         });
-        let next_state = state_machine.transition(next_state, synchronized);
-        assert!(matches!(next_state, BaseNodeState::DecideNextSync(_)));
+        let decide = state_machine.transition(next_state, synchronized.clone());
+        assert!(matches!(decide, BaseNodeState::DecideNextSync(_)));
+        assert!(db.is_add_block_disabled());
+
+        // Block sync straight after header sync re-enables propagated blocks until it stores its first block
+        let block_sync = state_machine.transition(decide, StateEvent::ProceedToBlockSync(vec![sync_peer.clone()]));
+        assert!(matches!(block_sync, BaseNodeState::BlockSync(_)));
+        assert!(!db.is_add_block_disabled());
+
+        // Horizon sync, and block sync after it, keep them refused
+        let header_sync = BaseNodeState::HeaderSync(HeaderSyncState::new(vec![sync_peer.clone()], local));
+        let decide = state_machine.transition(header_sync, synchronized);
+        let horizon_sync = state_machine.transition(decide, StateEvent::ProceedToHorizonSync(vec![sync_peer]));
+        assert!(matches!(horizon_sync, BaseNodeState::HorizonStateSync(_)));
+        assert!(db.is_add_block_disabled());
+        let block_sync = state_machine.transition(horizon_sync, StateEvent::HorizonStateSynchronized);
+        assert!(matches!(block_sync, BaseNodeState::BlockSync(_)));
         assert!(db.is_add_block_disabled());
     }
 

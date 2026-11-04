@@ -177,7 +177,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 Listening(s.into(), false)
             },
             (HeaderSync(s), HeadersSynchronized(..)) => {
-                // Block and horizon sync build on the synced headers, so propagated blocks must not rewind them
+                // Horizon sync builds on the synced headers, so propagated blocks must not rewind them
                 db.set_disable_add_block_flag();
                 DecideNextSync(s.into())
             },
@@ -193,7 +193,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 Waiting(s.into())
             },
 
-            (DecideNextSync(_), ProceedToBlockSync(peers)) => BlockSync(peers.into()),
+            (DecideNextSync(_), ProceedToBlockSync(peers)) => {
+                // Block sync refuses propagated blocks itself, once it has stored its first block
+                db.clear_disable_add_block_flag();
+                BlockSync(peers.into())
+            },
             (BlockSync(s), BlocksSynchronized) => {
                 db.clear_disable_add_block_flag();
                 Listening(s.into(), false)

@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashMap,
     convert::{TryFrom, TryInto},
     future::Future,
     sync::Arc,
@@ -65,6 +66,12 @@ pub struct BlockSynchronizer<'a, B> {
     hooks: Hooks,
     peer_ban_manager: PeerBanManager,
     attempt_started: Instant,
+    /// Time already spent on each peer by the strong dial before its attempt
+    predial_time: HashMap<NodeId, Duration>,
+    attempt_spent_before: Duration,
+    received_valid_block: bool,
+    /// Our header tip hash and best block hash when the current attempt started
+    attempt_start_chain: Option<(HashOutput, HashOutput)>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
@@ -85,6 +92,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             hooks: Default::default(),
             peer_ban_manager,
             attempt_started: Instant::now(),
+            predial_time: HashMap::new(),
+            attempt_spent_before: Duration::ZERO,
+            received_valid_block: false,
+            attempt_start_chain: None,
         }
     }
 
@@ -122,12 +133,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             // dial the peer itself if no connection is attached. Blocking here would park the state
             // machine before block sync has logged anything at all, which is exactly what a wedged
             // ConnectivityManager used to do to the chain tip.
-            match tokio::time::timeout(
+            let dial_started = Instant::now();
+            let dial_result = tokio::time::timeout(
                 self.config.rpc_deadline,
                 self.connectivity.dial_peer(peer.node_id().clone(), RefKind::Strong),
             )
-            .await
-            {
+            .await;
+            self.predial_time.insert(peer.node_id().clone(), dial_started.elapsed());
+            match dial_result {
                 Ok(Ok(conn)) => peer.set_connection(conn),
                 Ok(Err(e)) => debug!(
                     target: LOG_TARGET,
@@ -201,8 +214,22 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
+        let round_started = Instant::now();
+        let round_budget = self.attempt_budget().saturating_mul(2);
+        let mut round_received_block = false;
         for node_id in sync_peer_node_ids {
+            // Stop trying further peers once the round has run this long without a block
+            if !round_received_block && round_started.elapsed() >= round_budget {
+                warn!(
+                    target: LOG_TARGET,
+                    "No block was synced within {round_budget:.2?}, ending this block sync round"
+                );
+                return Err(BlockSyncError::RoundWithoutBlock { budget: round_budget });
+            }
             self.attempt_started = Instant::now();
+            self.attempt_spent_before = self.predial_time.remove(&node_id).unwrap_or_default();
+            self.received_valid_block = false;
+            self.attempt_start_chain = None;
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
             let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
             self.hooks.call_on_starting_hook(sync_peer);
@@ -298,9 +325,23 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Attempting to synchronize blocks with `{node_id}` latency: {latency:.2?}"
             );
-            match self.synchronize_blocks(sync_peer, client, max_latency).await {
+            let result = self.synchronize_blocks(sync_peer, client, max_latency).await;
+            round_received_block = round_received_block || self.received_valid_block;
+            match result {
                 Ok(_) => return Ok(()),
                 Err(err) => {
+                    let chain_change_error = matches!(
+                        err,
+                        BlockSyncError::UnknownHeaderHash(_) |
+                            BlockSyncError::BlockWithoutParent { .. } |
+                            BlockSyncError::ChainStorageError(_) |
+                            BlockSyncError::ValidationError(_)
+                    );
+                    let err = if chain_change_error && self.chain_changed_before_first_block().await? {
+                        BlockSyncError::ChainChangedDuringSync
+                    } else {
+                        err
+                    };
                     self.ban_sync_peer(&node_id, &err).await;
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter = latency_counter.saturating_add(1);
@@ -333,14 +374,33 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         }
     }
 
+    fn attempt_budget(&self) -> Duration {
+        self.config.rpc_deadline.saturating_mul(2)
+    }
+
     /// Waits on a network call until the attempt's budget runs out. The budget only applies until the peer has sent a
     /// valid block, and never to local database work.
     async fn before_first_block<F: Future>(&self, fut: F) -> Result<F::Output, BlockSyncError> {
-        let budget = self.config.rpc_deadline.saturating_mul(2);
-        let remaining = budget.saturating_sub(self.attempt_started.elapsed());
+        let budget = self.attempt_budget();
+        let spent = self.attempt_spent_before.saturating_add(self.attempt_started.elapsed());
+        let remaining = budget.saturating_sub(spent);
         tokio::time::timeout(remaining, fut)
             .await
             .map_err(|_| BlockSyncError::NoValidBlockWithinBudget { budget })
+    }
+
+    /// Whether a propagated block has changed our chain since the attempt started, before the peer sent a valid
+    /// block. Propagated blocks are only refused once block sync has stored its first block.
+    async fn chain_changed_before_first_block(&self) -> Result<bool, BlockSyncError> {
+        if self.received_valid_block {
+            return Ok(false);
+        }
+        let Some((start_header_tip, start_best_block)) = self.attempt_start_chain else {
+            return Ok(false);
+        };
+        let best_block = *self.db.get_chain_metadata().await?.best_block_hash();
+        let header_tip_on_chain = self.db.fetch_header_by_block_hash(start_header_tip).await?.is_some();
+        Ok(best_block != start_best_block || !header_tip_on_chain)
     }
 
     async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
@@ -373,6 +433,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
         let tip_hash = tip_header.hash();
         let tip_height = tip_header.height;
+        self.attempt_start_chain = Some((tip_hash, *local_metadata.best_block_hash()));
         let best_height = local_metadata.best_block_height();
         let chain_header = self.db.fetch_chain_header(best_height).await?;
 
@@ -401,9 +462,8 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
         let mut received_block = false;
-        let mut received_valid_block = false;
         loop {
-            let next = if received_valid_block {
+            let next = if self.received_valid_block {
                 block_stream.next().await
             } else {
                 self.before_first_block(block_stream.next()).await?
@@ -411,6 +471,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let Some(block_result) = next else {
                 break;
             };
+            // Our chain may have moved under the synced headers; do not judge the peer's block against it
+            if self.chain_changed_before_first_block().await? {
+                return Err(BlockSyncError::ChainChangedDuringSync);
+            }
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let block_body_response = match block_result {
@@ -525,6 +589,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 "{block}"
             );
 
+            if !self.received_valid_block {
+                // From the first stored block on, propagated blocks wait until block sync is done
+                self.db.inner().set_disable_add_block_flag();
+            }
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)
@@ -538,7 +606,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 )
                 .commit()
                 .await?;
-            received_valid_block = true;
+            self.received_valid_block = true;
 
             // Average time between receiving blocks from the peer - used to detect a slow sync peer
             let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);
