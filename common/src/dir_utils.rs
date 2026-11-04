@@ -22,13 +22,17 @@
 
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use path_clean::PathClean;
 
-/// Guard to ensure the unset home directory warning is logged at most once per process.
+/// Guard to ensure the unset home directory warning is recorded at most once per process.
 static WARNED_NO_HOME_DIR: AtomicBool = AtomicBool::new(false);
+static FALLBACK_HOME_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Create the default data directory (`~/.tari` on OSx and Linux, for example) if it doesn't already exist
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
@@ -64,11 +68,11 @@ pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
     let mut home = base_path.cloned().unwrap_or_else(|| {
         let home_dir = home_fn().unwrap_or_else(|| {
             let fallback = PathBuf::from(".");
+            let fallback_abs = absolute_path(&fallback);
             if !WARNED_NO_HOME_DIR.swap(true, Ordering::Relaxed) {
-                log::warn!(
-                    "Could not determine user home directory; falling back to current working directory: {}",
-                    absolute_path(&fallback).display()
-                );
+                if let Ok(mut slot) = FALLBACK_HOME_DIR.lock() {
+                    *slot = Some(fallback_abs);
+                }
             }
             fallback
         });
@@ -80,9 +84,17 @@ pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
     home
 }
 
+/// Returns the absolute path of the fallback directory if an unset home directory fallback occurred.
+pub fn get_fallback_home_dir() -> Option<PathBuf> {
+    FALLBACK_HOME_DIR.lock().ok().and_then(|guard| guard.clone())
+}
+
 #[cfg(test)]
 pub(crate) fn reset_warned_no_home_dir() {
     WARNED_NO_HOME_DIR.store(false, Ordering::Relaxed);
+    if let Ok(mut slot) = FALLBACK_HOME_DIR.lock() {
+        *slot = None;
+    }
 }
 
 pub fn absolute_path<P>(path: P) -> PathBuf
@@ -134,38 +146,20 @@ mod test {
     }
 
     #[test]
-    fn test_default_path_unset_home_warns_exactly_once() {
-        crate::test_logger::init();
+    fn test_default_path_unset_home_records_fallback_once() {
         dir_utils::reset_warned_no_home_dir();
+        assert_eq!(dir_utils::get_fallback_home_dir(), None);
 
-        let fallback_abs = dir_utils::absolute_path(".").display().to_string();
-        let count_before = crate::test_logger::get_logs()
-            .iter()
-            .filter(|(level, msg)| *level == log::Level::Warn && msg.contains(&fallback_abs))
-            .count();
+        let fallback_abs = dir_utils::absolute_path(".");
 
         let path1 = dir_utils::default_path_with_home_fn("test_file", None, || None);
         assert_eq!(path1, PathBuf::from("./.tari/test_file"));
+        assert_eq!(dir_utils::get_fallback_home_dir(), Some(fallback_abs.clone()));
 
-        let count_after_first = crate::test_logger::get_logs()
-            .iter()
-            .filter(|(level, msg)| *level == log::Level::Warn && msg.contains(&fallback_abs))
-            .count();
-        assert_eq!(count_after_first, count_before + 1, "Expected exactly 1 new warn log");
-
-        // Second call should NOT log another warning
+        // Second call should preserve the recorded fallback
         let path2 = dir_utils::default_path_with_home_fn("another_file", None, || None);
         assert_eq!(path2, PathBuf::from("./.tari/another_file"));
-
-        let count_after_second = crate::test_logger::get_logs()
-            .iter()
-            .filter(|(level, msg)| *level == log::Level::Warn && msg.contains(&fallback_abs))
-            .count();
-        assert_eq!(
-            count_after_second,
-            count_before + 1,
-            "Should still be exactly 1 new warn log after second call"
-        );
+        assert_eq!(dir_utils::get_fallback_home_dir(), Some(fallback_abs));
     }
 
     #[test]

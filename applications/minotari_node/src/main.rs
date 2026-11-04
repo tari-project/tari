@@ -196,6 +196,17 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
+    if let Some(fallback_dir) = tari_common::dir_utils::get_fallback_home_dir() {
+        let effective_base_path = absolute_path(cli.common.get_base_path());
+        if effective_base_path.starts_with(&fallback_dir) {
+            warn!(
+                target: LOG_TARGET,
+                "Could not determine user home directory; falling back to current working directory: {}",
+                fallback_dir.display()
+            );
+        }
+    }
+
     info!(
         target: LOG_TARGET,
         "Starting Minotari Base Node version: {}",

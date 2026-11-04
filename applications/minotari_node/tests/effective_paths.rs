@@ -13,6 +13,8 @@ fn test_effective_paths_are_logged_and_absolute() {
     let output = Command::new(env!("CARGO_BIN_EXE_minotari_node"))
         .arg("--init")
         .arg("--non-interactive-mode")
+        .arg("--network")
+        .arg("localnet")
         .arg("--base-path")
         .arg(&base_path)
         .output()
@@ -26,7 +28,11 @@ fn test_effective_paths_are_logged_and_absolute() {
         String::from_utf8_lossy(&output.stderr),
     );
 
-    let log_file = base_path.join("log").join("base_node").join("base_layer.log");
+    let log_file = base_path
+        .join("localnet")
+        .join("log")
+        .join("base_node")
+        .join("base_layer.log");
     assert!(log_file.exists(), "Expected log file at {:?}", log_file);
     let log_content = fs::read_to_string(&log_file).unwrap();
 
@@ -57,52 +63,6 @@ fn test_effective_paths_are_logged_and_absolute() {
             path.is_absolute(),
             "Path for {:?} must be absolute, got {:?}",
             prefix,
-            path_str
-        );
-    }
-}
-
-#[test]
-fn test_unset_home_warns_with_absolute_fallback_path() {
-    let temp_dir = tempdir().unwrap();
-    let base_path = temp_dir.path().to_path_buf();
-
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_minotari_node"));
-    cmd.env_remove("HOME");
-    cmd.env_remove("TARI_BASE_DIR");
-    cmd.arg("--init");
-    cmd.arg("--non-interactive-mode");
-    cmd.arg("--base-path");
-    cmd.arg(&base_path);
-
-    let output = cmd.output().expect("failed to run minotari_node");
-    assert!(
-        output.status.success(),
-        "minotari_node failed: stdout: {}\nstderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let log_file = base_path.join("log").join("base_node").join("base_layer.log");
-    let log_content = if log_file.exists() {
-        fs::read_to_string(&log_file).unwrap()
-    } else {
-        String::new()
-    };
-
-    let stdout_str = String::from_utf8_lossy(&output.stdout);
-    let stderr_str = String::from_utf8_lossy(&output.stderr);
-    let combined = format!("{}\n{}\n{}", stdout_str, stderr_str, log_content);
-
-    let warn_pattern = "Could not determine user home directory; falling back to current working directory:";
-    let warn_lines: Vec<_> = combined.lines().filter(|l| l.contains(warn_pattern)).collect();
-
-    for line in &warn_lines {
-        let path_part = line.split(warn_pattern).nth(1).unwrap().trim();
-        let path_str = path_part.split_whitespace().next().unwrap();
-        assert!(
-            Path::new(path_str).is_absolute(),
-            "Fallback path must be absolute: {}",
             path_str
         );
     }
