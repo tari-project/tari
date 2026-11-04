@@ -466,6 +466,7 @@ where B: BlockchainBackend + 'static
                         BaseNodeServiceError::CommsInterfaceError(
                             CommsInterfaceError::UnknownSpentOutputs { .. } |
                                 CommsInterfaceError::KnownBadBlock { .. } |
+                                CommsInterfaceError::UnknownRandomXKey { .. } |
                                 CommsInterfaceError::ChainStorageError(ChainStorageError::HeldBlockInvalid { .. })
                         )
                     );

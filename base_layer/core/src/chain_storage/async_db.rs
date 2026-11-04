@@ -60,6 +60,7 @@ use crate::{
         AddBlockOutcome,
         BlockchainBackend,
         BlockchainDatabase,
+        CandidateVmKey,
         ChainStorageError,
         DbBasicStats,
         DbTotalSizeStats,
@@ -325,6 +326,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(
         chain_header_or_orphan_exists(block_hash: BlockHash) -> bool,
         "header_exists"
+    );
+
+    make_async_fn!(
+        fetch_vm_key_for_held_ancestry(header: BlockHeader, oldest_key_height: u64) -> CandidateVmKey,
+        "fetch_vm_key_for_held_ancestry"
     );
 
     make_async_fn!(

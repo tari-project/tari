@@ -86,13 +86,14 @@
 #![allow(clippy::mutable_key_type)]
 
 use std::{
-    cmp::{max, min},
+    cmp::{Reverse, max, min},
+    collections::HashSet,
     convert::TryFrom,
     fmt,
     fs::{self, File},
     ops::Deref,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Instant,
 };
 
@@ -179,6 +180,7 @@ use crate::{
         Reorg,
         ValidatorNodeEntry,
         ValidatorNodeRegistrationInfo,
+        blockchain_database::orphan_subtree_hashes,
         db_transaction::{
             DbKey,
             DbTransaction,
@@ -894,6 +896,8 @@ pub struct LMDBDatabase {
     _file_lock: Arc<File>,
     consensus_manager: BaseNodeConsensusManager,
     stats_collector: LMDBStatsCollector,
+    /// Orphan chain tips found broken by a read, to be repaired by the next write
+    orphan_tip_repairs: Mutex<Vec<HashOutput>>,
 }
 
 impl LMDBDatabase {
@@ -958,6 +962,7 @@ impl LMDBDatabase {
             _file_lock: Arc::new(file_lock),
             consensus_manager,
             stats_collector: LMDBStatsCollector::new(),
+            orphan_tip_repairs: Mutex::new(Vec::new()),
         };
 
         // If a stats sender was provided, add it to the collector
@@ -1579,6 +1584,42 @@ impl LMDBDatabase {
         lmdb_insert(txn, &self.orphans_db, k.as_slice(), &block, "orphans_db")?;
 
         Ok(())
+    }
+
+    /// Queue an orphan chain tip that a read found broken, for the next write to repair
+    fn queue_orphan_tip_repair(&self, hash: HashOutput) {
+        if let Ok(mut repairs) = self.orphan_tip_repairs.lock() {
+            repairs.push(hash);
+        }
+    }
+
+    /// The writes that make each of the orphan chain tips `hashes` agree with its accumulated data: a tip whose
+    /// orphan or accumulated data is gone is dropped, and one indexed with other work is re-indexed.
+    fn orphan_chain_tip_repairs(&self, hashes: &[HashOutput]) -> Result<DbTransaction, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let mut repairs = DbTransaction::new();
+        for hash in hashes {
+            let Some(tip) = lmdb_get::<_, ChainTipData>(&txn, &self.orphan_chain_tips_db, hash.as_slice())? else {
+                continue;
+            };
+            let accumulated_data = match lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? {
+                Some(orphan) => self.fetch_orphan_header_accumulated_data(&txn, orphan.version(), hash.as_slice())?,
+                None => None,
+            };
+            match accumulated_data {
+                None => {
+                    warn!(target: LOG_TARGET, "Dropping orphan chain tip {hash}, its orphan block is gone");
+                    repairs.remove_orphan_chain_tip_if_exists(*hash);
+                },
+                Some(data) if data.total_accumulated_difficulty != tip.total_accumulated_difficulty => {
+                    info!(target: LOG_TARGET, "Re-indexing orphan chain tip {hash} with its own accumulated difficulty");
+                    repairs.remove_orphan_chain_tip_if_exists(*hash);
+                    repairs.insert_orphan_chain_tip(*hash, data.total_accumulated_difficulty);
+                },
+                Some(_) => {},
+            }
+        }
+        Ok(repairs)
     }
 
     fn set_accumulated_data_for_orphan(
@@ -3334,6 +3375,16 @@ impl BlockchainBackend for LMDBDatabase {
     }
 
     fn write(&mut self, txn: DbTransaction) -> Result<(), ChainStorageError> {
+        let tip_repairs = std::mem::take(self.orphan_tip_repairs.get_mut().unwrap_or_else(|e| e.into_inner()));
+        if !tip_repairs.is_empty() {
+            // Best effort: a tip that is still broken is found again by the next read
+            if let Err(e) = self
+                .orphan_chain_tip_repairs(&tip_repairs)
+                .and_then(|repairs| self.write(repairs))
+            {
+                warn!(target: LOG_TARGET, "Failed to repair orphan chain tips: {e}");
+            }
+        }
         if txn.operations().is_empty() {
             return Ok(());
         }
@@ -3540,15 +3591,17 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(chain_header);
         }
 
-        if let Some(orphan) = lmdb_get_typed(&txn, &self.orphans_typed, hash.deref())? {
+        // A stored orphan is a bincode `Block`, whose header comes first, so the header is decoded on its own and the
+        // body is never read
+        if let Some(header) = lmdb_get::<_, BlockHeader>(&txn, &self.orphans_db, hash.deref())? {
             let orphan_accum = self
-                .fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.deref())?
+                .fetch_orphan_header_accumulated_data(&txn, header.version, hash.deref())?
                 .ok_or_else(|| ChainStorageError::ValueNotFound {
                     entity: "orphan header accumulated data",
                     field: "hash",
                     value: hash.to_hex(),
                 })?;
-            let chain_header = ChainHeader::try_construct(orphan.header, orphan_accum).ok_or_else(|| {
+            let chain_header = ChainHeader::try_construct(header, orphan_accum).ok_or_else(|| {
                 ChainStorageError::DataInconsistencyDetected {
                     function: "fetch_chain_header_in_all_chains",
                     details: format!("accumulated data mismatch for orphan header {}", hash.to_hex()),
@@ -4184,20 +4237,17 @@ impl BlockchainBackend for LMDBDatabase {
             return Ok(None);
         }
 
-        let orphan: Block =
-            lmdb_get(&txn, &self.orphans_db, hash.as_slice())?.ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "Orphan",
-                field: "hash",
-                value: hash.to_hex(),
-            })?;
-
-        let accumulated_data = self
-            .fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.as_slice())?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "Orphan accumulated data",
-                field: "hash",
-                value: hash.to_hex(),
-            })?;
+        // A tip whose orphan or accumulated data is gone is no tip, and is dropped by the next write
+        let Some(orphan) = lmdb_get::<_, Block>(&txn, &self.orphans_db, hash.as_slice())? else {
+            self.queue_orphan_tip_repair(*hash);
+            return Ok(None);
+        };
+        let Some(accumulated_data) =
+            self.fetch_orphan_header_accumulated_data(&txn, orphan.header.version, hash.as_slice())?
+        else {
+            self.queue_orphan_tip_repair(*hash);
+            return Ok(None);
+        };
 
         let height = orphan.header.height;
         let chain_header = ChainHeader::try_construct(orphan.header, accumulated_data).ok_or_else(|| {
@@ -4213,49 +4263,58 @@ impl BlockchainBackend for LMDBDatabase {
         trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ...");
         let timer = Instant::now();
         let txn = self.read_transaction()?;
-        let tips: Vec<ChainTipData> = lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, Some)?;
-        if tips.is_empty() {
-            return Ok(Vec::new());
-        }
-        let max_value = tips.iter().map(|tip| tip.total_accumulated_difficulty).max();
-        let strongest_tips = if let Some(val) = max_value {
-            tips.iter()
-                .filter(|tip| tip.total_accumulated_difficulty == val)
-                .collect::<Vec<_>>()
-        } else {
-            // This branch should not be possible
-            return Ok(Vec::new());
-        };
-
-        let tips_len = strongest_tips.len();
+        let mut tips: Vec<ChainTipData> = lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, Some)?;
+        // Strongest first. A tip whose orphan or accumulated data is gone is skipped, and the next strongest are
+        // returned if all of the strongest are; a tip indexed with other work than its own is returned with its own.
+        // Either is repaired by the next write.
+        tips.sort_by_key(|tip| Reverse(tip.total_accumulated_difficulty));
         let mut chain_tips = Vec::new();
-        for chain_tip in strongest_tips {
-            let orphan: Block = lmdb_get(&txn, &self.orphans_db, chain_tip.hash.as_slice())?.ok_or_else(|| {
-                ChainStorageError::ValueNotFound {
-                    entity: "Orphan",
-                    field: "hash",
-                    value: chain_tip.hash.to_hex(),
-                }
-            })?;
-            let accumulated_data = self
-                .fetch_orphan_header_accumulated_data(&txn, orphan.version(), chain_tip.hash.as_slice())?
-                .ok_or_else(|| ChainStorageError::ValueNotFound {
-                    entity: "Orphan accumulated data",
-                    field: "hash",
-                    value: chain_tip.hash.to_hex(),
-                })?;
+        let mut strongest = None;
+        for chain_tip in &tips {
+            if strongest.is_some_and(|strongest| chain_tip.total_accumulated_difficulty < strongest) {
+                break;
+            }
+            let Some(orphan) = lmdb_get::<_, Block>(&txn, &self.orphans_db, chain_tip.hash.as_slice())? else {
+                self.queue_orphan_tip_repair(chain_tip.hash);
+                continue;
+            };
+            let Some(accumulated_data) =
+                self.fetch_orphan_header_accumulated_data(&txn, orphan.version(), chain_tip.hash.as_slice())?
+            else {
+                self.queue_orphan_tip_repair(chain_tip.hash);
+                continue;
+            };
+            if accumulated_data.total_accumulated_difficulty != chain_tip.total_accumulated_difficulty {
+                self.queue_orphan_tip_repair(chain_tip.hash);
+            }
 
             let height = orphan.header.height;
             let chain_header = ChainHeader::try_construct(orphan.header, accumulated_data).ok_or_else(|| {
                 ChainStorageError::DataInconsistencyDetected {
-                    function: "fetch_orphan_chain_tip_by_hash",
+                    function: "fetch_strongest_orphan_chain_tips",
                     details: format!("Accumulated data mismatch at height #{height}"),
                 }
             })?;
             chain_tips.push(chain_header);
+            strongest = Some(chain_tip.total_accumulated_difficulty);
         }
-        trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ({}) completed in {:.2?}", tips_len, timer.elapsed());
+        trace!(target: LOG_TARGET, "Call to fetch_strongest_orphan_chain_tips() ({}) completed in {:.2?}", chain_tips.len(), timer.elapsed());
         Ok(chain_tips)
+    }
+
+    fn repair_orphan_chain_tips(&mut self) -> Result<usize, ChainStorageError> {
+        let hashes = {
+            let txn = self.read_transaction()?;
+            lmdb_filter_map_values(&txn, &self.orphan_chain_tips_db, |tip: ChainTipData| Some(tip.hash))?
+        };
+        let repairs = self.orphan_chain_tip_repairs(&hashes)?;
+        let repaired = repairs
+            .operations()
+            .iter()
+            .filter(|op| matches!(op, WriteOperation::DeleteOrphanChainTipIfExists(_)))
+            .count();
+        self.write(repairs)?;
+        Ok(repaired)
     }
 
     fn fetch_orphan_children_of(&self, parent_hash: HashOutput) -> Result<Vec<Block>, ChainStorageError> {
@@ -4338,18 +4397,29 @@ impl BlockchainBackend for LMDBDatabase {
 
         // Sort the orphans by age, oldest first
         orphans.sort_by_key(|a| a.0);
+        // Each orphan goes with everything built on it, children first, so no chain is left without its parent
+        let mut evicted = HashSet::new();
         let mut txn = DbTransaction::new();
-        for (removed_count, (height, block_hash)) in orphans.into_iter().enumerate() {
-            if height > horizon_height && removed_count >= num_over_limit {
+        for (height, block_hash) in orphans {
+            if evicted.contains(&block_hash) {
+                continue;
+            }
+            if height > horizon_height && evicted.len() >= num_over_limit {
                 break;
             }
+            let subtree = orphan_subtree_hashes(self, block_hash)?;
             debug!(
                 target: LOG_TARGET,
-                "Discarding orphan block #{} ({}).",
+                "Discarding orphan block #{} ({}) with {} orphan(s) built on it.",
                 height,
-                block_hash.to_hex()
+                block_hash.to_hex(),
+                subtree.len().saturating_sub(1)
             );
-            txn.delete_orphan(block_hash);
+            for hash in subtree.iter().rev() {
+                if evicted.insert(*hash) {
+                    txn.delete_orphan(*hash);
+                }
+            }
         }
         self.write(txn)?;
 

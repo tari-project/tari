@@ -99,7 +99,7 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
             )?
         } else {
             self.difficulty_calculator
-                .check_achieved_and_target_difficulty(db, header)?
+                .check_achieved_and_target_difficulty_with_vm_key(db, header, chain_context.vm_key())?
         };
 
         // Deliberately last, and deliberately after the proof of work has been checked: the seed age is a chain
@@ -851,6 +851,53 @@ mod test {
         // The ban record carries the same error, which is what ties the two together
         assert!(message.contains(&ban_reason), "{message}");
         assert!(message.len() < 512, "{} bytes: {message}", message.len());
+    }
+
+    /// With no target given, the proof of work is checked under the VM key of the chain context, which is the key of
+    /// the header's own chain, not under the main chain's
+    #[test]
+    fn the_vm_key_of_the_chain_context_is_used_without_a_target() {
+        use tari_common::configuration::Network;
+
+        use crate::{
+            proof_of_work::{randomx_factory::RandomXFactory, tari_randomx_difficulty},
+            test_helpers::blockchain::create_custom_blockchain,
+        };
+
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let factory = RandomXFactory::default();
+        let validator =
+            HeaderFullValidator::new(rules.clone(), DifficultyCalculator::new(rules.clone(), factory.clone()));
+        let db = create_custom_blockchain(rules);
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let main_key = *genesis.hash();
+        let fork_key = FixedHash::from([1u8; 32]);
+        let mut header = BlockHeader::from_previous(genesis.header());
+        header.timestamp = genesis.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+        header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
+        // Most keys give the lowest difficulty, so find a nonce for which the two keys do not
+        while tari_randomx_difficulty(&header, &factory, &fork_key).unwrap() ==
+            tari_randomx_difficulty(&header, &factory, &main_key).unwrap()
+        {
+            header.nonce += 1;
+        }
+
+        let access = db.db_read_access().unwrap();
+        let validated = validator
+            .validate(
+                &*access,
+                &header,
+                genesis.header(),
+                &[genesis.header().timestamp],
+                None,
+                HeaderChainContext::candidate_chain(fork_key, 0, None),
+            )
+            .unwrap();
+
+        assert_eq!(
+            validated.achieved_target.achieved(),
+            tari_randomx_difficulty(&header, &factory, &fork_key).unwrap()
+        );
     }
 
     #[test]
