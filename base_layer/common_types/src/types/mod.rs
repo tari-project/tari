@@ -77,10 +77,19 @@ pub type HashOutput = FixedHash;
 
 pub const RANGE_PROOF_BIT_LENGTH: usize = 64; // 2^64
 pub const RANGE_PROOF_AGGREGATION_FACTOR: usize = 1;
+
+/// The expected serialized size of a BulletProofPlus range proof computed from bit length and aggregation factor.
+pub const fn expected_range_proof_size(bit_length: usize, aggregation_factor: usize) -> usize {
+    let mn = bit_length * aggregation_factor;
+    let log2_mn = mn.ilog2() as usize;
+    1 + 32 * (1 + 5 + 2 * log2_mn)
+}
+
 /// The serialized size of a BulletProofPlus range proof for `RANGE_PROOF_BIT_LENGTH` bits, aggregation factor
 /// `RANGE_PROOF_AGGREGATION_FACTOR` and default Pedersen commitments:
 /// 1 + 32 * (1 + 5 + 2 * log2(64 * 1)). No valid proof is longer, so decoders reject anything that is.
-pub const MAX_RANGE_PROOF_BYTES: usize = 577;
+pub const MAX_RANGE_PROOF_BYTES: usize =
+    expected_range_proof_size(RANGE_PROOF_BIT_LENGTH, RANGE_PROOF_AGGREGATION_FACTOR);
 
 /// Specify the range proof type
 pub type RangeProofService = BulletproofsPlusService;
