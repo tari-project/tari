@@ -21,7 +21,6 @@ echo "executable: ${APP_EXEC}"
 echo "WAIT_FOR_TOR: $WAIT_FOR_TOR"
 echo "base folder (in container): ${TARI_BASE}"
 echo "config file (in container): ${TARI_CONFIG}"
-echo "arguments (in container): ${@}"
 echo "arguments count (in container): ${#}"
 
 if [[ $WAIT_FOR_TOR != 0 ]]; then
@@ -53,5 +52,5 @@ cd "${TARI_BASE}" || {
 }
 
 echo "Starting ${APP_NAME} ..."
-echo " > command: ${APP_EXEC} --config ${TARI_CONFIG} --base-path ${TARI_BASE} \"$@\" <"
+echo " > command: ${APP_EXEC} --config ${TARI_CONFIG} --base-path ${TARI_BASE} (${#} arguments) <"
 exec "${APP_EXEC}" --config "${TARI_CONFIG}" --base-path "${TARI_BASE}" "$@" || exit 1

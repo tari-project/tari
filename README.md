@@ -219,7 +219,7 @@ services:
     image: ghcr.io/tari-project/minotari_node:latest-nextnet
     restart: unless-stopped
     volumes:
-      - ./data/node:/var/tari/node
+      - ./data:/var/tari
     # Required for an interactive session
     stdin_open: true
     tty: true
@@ -229,21 +229,22 @@ services:
       - "18189:18189"
 ```
 
-The image runs with `/var/tari` as the Tari home directory. Mounting per application (`./data/node:/var/tari/node`)
-ensures application files and identity key stores remain isolated under the node base path. If custom configuration
-is needed, a config file can also be mounted at `/var/tari/config/config.toml`, or configuration overrides can be passed
-directly via command arguments (for example, `-p base_node.grpc_address=/ip4/0.0.0.0/tcp/18142`).
+The image runs with `/var/tari` as the Tari home directory. Mounting `./data:/var/tari` persists both the
+node data (`/var/tari/node`) and configuration (`/var/tari/config/config.toml`). Existing installations can continue
+using `./data:/var/tari` with no changes required. Alternatively, you may mount `./data/node:/var/tari/node`
+along with `./data/config:/var/tari/config` if you prefer separating application data and configuration directories.
+*(Note: Avoid mounting a single config file path directly if the host file does not exist yet, as Docker will create a directory in its place).*
 
-Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default, so
-publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0` (`/ip4/0.0.0.0/tcp/18142`).
+Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default. If publishing it externally, ensure gRPC authentication is enabled (`base_node.grpc_authentication_required=true`) and override `base_node.grpc_address` in your configuration or environment variables rather than passing credentials via command-line flags.
 
 On Linux, create the host directory before running `docker compose up` so Docker does not create it owned by `root`.
-The container runs as uid 1000, so the directory must be writable by that uid:
+The container runs as uid 1000, so the directory must be writable by that uid and have restrictive permissions:
 
 ```sh
-mkdir -p ./data/node
+mkdir -p ./data
+chmod 700 ./data
 # only needed if your user is not uid 1000, or Docker already created the directory as root
-sudo chown -R 1000:1000 ./data/node
+sudo chown -R 1000:1000 ./data
 ```
 
 Docker Desktop on macOS and Windows maps file ownership automatically, so these steps are not needed there.
