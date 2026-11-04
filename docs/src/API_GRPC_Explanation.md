@@ -216,6 +216,15 @@ The `GrpcAuthentication` object supports two modes:
 - **None**: No authentication is required.
 - **Basic**: Username and password are used for authentication. Note that these are distinct from your wallet's credentials and are configured separately.
 
+Basic authentication is accepted without TLS only on loopback listeners
+(`127.0.0.1`, `::1`, or `localhost`). For a non-loopback server, enable TLS or
+set the dangerous server override `grpc_allow_insecure_auth = true`. Clients
+using the miner or merge-mining proxy use the corresponding
+`base_node_grpc_allow_insecure_auth` override; it is also dangerous because
+credentials can be observed in plaintext. When TLS is configured, the client
+address must use `https://` (setting a TLS domain or CA does not rewrite an
+`http://` address).
+
 Here are step-by-step instructions for enabling and configuring basic gRPC authentication in the Tari wallet using the `config.toml` file:
 
 #### 1. **Locate the Configuration File**

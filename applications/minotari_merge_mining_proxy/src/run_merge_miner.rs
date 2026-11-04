@@ -238,6 +238,13 @@ async fn connect_base_node(
     };
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
+    minotari_app_grpc::tls::validate_client_transport(
+        &base_node_addr,
+        config.base_node_grpc_tls_domain_name.as_deref(),
+        &config.base_node_grpc_authentication,
+        config.base_node_grpc_allow_insecure_auth,
+    )
+    .map_err(MmProxyError::TlsConnectionError)?;
 
     const MAX_RETRIES: u32 = 10;
     const RETRY_DELAY: Duration = Duration::from_millis(500);
@@ -292,6 +299,13 @@ async fn connect_sha_p2pool(
         p2pool_node_addr = prompt_for_p2pool_address(non_interactive)?;
     };
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
+    minotari_app_grpc::tls::validate_client_transport(
+        &p2pool_node_addr,
+        config.base_node_grpc_tls_domain_name.as_deref(),
+        &config.base_node_grpc_authentication,
+        config.base_node_grpc_allow_insecure_auth,
+    )
+    .map_err(MmProxyError::TlsConnectionError)?;
     let mut endpoint = Endpoint::new(p2pool_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {

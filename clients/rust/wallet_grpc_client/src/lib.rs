@@ -25,7 +25,7 @@ use std::ops::{Deref, DerefMut};
 use tari_common::MAX_GRPC_MESSAGE_SIZE;
 use tonic::{
     codegen::{InterceptedService, http::uri::InvalidUri},
-    transport::Endpoint,
+    transport::{Certificate, ClientTlsConfig, Endpoint},
 };
 
 pub type Client<TTransport> = grpc::wallet_client::WalletClient<TTransport>;
@@ -42,21 +42,47 @@ pub struct WalletGrpcClient<TTransport> {
     client: Client<InterceptedService<TTransport, ClientAuthenticationInterceptor>>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct WalletGrpcClientOptions {
+    pub tls_domain_name: Option<String>,
+    pub ca_certificate: Option<Vec<u8>>,
+    pub allow_insecure_auth: bool,
+}
+
 impl WalletGrpcClient<tonic::transport::Channel> {
     pub async fn connect(addr: &str) -> Result<Self, WalletClientError> {
-        let channel = Endpoint::new(addr.to_string())?.connect().await?;
-        Ok(Self {
-            client: Client::<tonic::transport::Channel>::with_interceptor(
-                channel,
-                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None)?,
-            )
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
-        })
+        Self::connect_with_options(addr, &GrpcAuthentication::None, WalletGrpcClientOptions::default()).await
     }
 
-    pub async fn connect_with_auth(addr: &str, auth_config: &GrpcAuthentication) -> Result<Self, WalletClientError> {
-        let channel = Endpoint::new(addr.to_string())?.connect().await?;
+    pub async fn connect_with_options(
+        addr: &str,
+        auth_config: &GrpcAuthentication,
+        options: WalletGrpcClientOptions,
+    ) -> Result<Self, WalletClientError> {
+        minotari_app_grpc::tls::validate_client_transport(
+            addr,
+            options.tls_domain_name.as_deref(),
+            auth_config,
+            options.allow_insecure_auth,
+        )
+        .map_err(WalletClientError::TransportConfiguration)?;
+        if options.ca_certificate.is_some() && options.tls_domain_name.is_none() && addr.starts_with("http://") {
+            return Err(WalletClientError::TransportConfiguration(
+                "a CA certificate requires an https:// address; the address scheme is not rewritten".to_string(),
+            ));
+        }
+        let mut endpoint = Endpoint::new(addr.to_string())?;
+        if options.tls_domain_name.is_some() || options.ca_certificate.is_some() {
+            let mut tls = ClientTlsConfig::new();
+            if let Some(domain) = options.tls_domain_name {
+                tls = tls.domain_name(domain);
+            }
+            if let Some(ca) = options.ca_certificate {
+                tls = tls.ca_certificate(Certificate::from_pem(ca));
+            }
+            endpoint = endpoint.tls_config(tls)?;
+        }
+        let channel = endpoint.connect().await?;
         Ok(Self {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
@@ -65,6 +91,10 @@ impl WalletGrpcClient<tonic::transport::Channel> {
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
         })
+    }
+
+    pub async fn connect_with_auth(addr: &str, auth_config: &GrpcAuthentication) -> Result<Self, WalletClientError> {
+        Self::connect_with_options(addr, auth_config, WalletGrpcClientOptions::default()).await
     }
 }
 
@@ -90,4 +120,6 @@ pub enum WalletClientError {
     TransportError(#[from] tonic::transport::Error),
     #[error(transparent)]
     AuthenticationError(#[from] BasicAuthError),
+    #[error("invalid gRPC client transport: {0}")]
+    TransportConfiguration(String),
 }

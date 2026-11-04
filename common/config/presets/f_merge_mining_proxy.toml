@@ -80,9 +80,14 @@
 
 # The Minotari base node's GRPC address. (default = "http://127.0.0.1:18142")
 #base_node_grpc_address = "http://127.0.0.1:18142"
+# For TLS, use https://; setting the domain/CA does not rewrite the scheme.
+#base_node_grpc_address = "https://base-node.example:18142"
 
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
+#base_node_grpc_tls_domain_name = "base-node.example"
+#base_node_grpc_ca_cert_filename = "node_ca.pem"
+#base_node_grpc_allow_insecure_auth = false # dangerous; only use intentionally for plaintext Basic auth
 
 # Address of the minotari_merge_mining_proxy application. (default = "/ip4/127.0.0.1/tcp/18081")
 #listener_address = "/ip4/127.0.0.1/tcp/18081"

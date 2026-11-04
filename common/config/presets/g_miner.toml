@@ -9,10 +9,14 @@
 
 # GRPC address of base node (default = "http://127.0.0.1:18142")
 #base_node_grpc_address = "http://127.0.0.1:18142"
+# For TLS, use https://; setting the domain/CA does not rewrite the scheme.
+#base_node_grpc_address = "https://base-node.example:18142"
 # GRPC authentication for the base node (default = "none")
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 # GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
 #base_node_grpc_tls_domain_name = "localhost"
+#base_node_grpc_ca_cert_filename = "node_ca.pem"
+#base_node_grpc_allow_insecure_auth = false # dangerous; only use intentionally for plaintext Basic auth
 
 # Number of mining threads (default: number of logical CPU cores)
 #num_mining_threads = 8

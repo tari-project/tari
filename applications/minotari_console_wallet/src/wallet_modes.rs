@@ -264,6 +264,20 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
+            minotari_wallet::validate_grpc_auth_transport(
+                &address,
+                config.grpc_tls_enabled,
+                &config.grpc_authentication,
+                config.grpc_allow_insecure_auth,
+            )
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
+            if config.grpc_allow_insecure_auth &&
+                !config.grpc_tls_enabled &&
+                config.grpc_authentication.username_password().is_some() &&
+                !minotari_wallet::is_grpc_loopback(&address)
+            {
+                warn!(target: LOG_TARGET, "grpc_allow_insecure_auth=true permits Basic gRPC authentication without TLS");
+            }
             let grpc = WalletGrpcServer::new(wallet.clone());
 
             let mut tls_identity = None;
@@ -417,6 +431,20 @@ pub fn grpc_mode(
 
             let grpc = WalletGrpcServer::new(wallet.clone());
             let auth = config.grpc_authentication.clone();
+            minotari_wallet::validate_grpc_auth_transport(
+                &address,
+                config.grpc_tls_enabled,
+                &auth,
+                config.grpc_allow_insecure_auth,
+            )
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
+            if config.grpc_allow_insecure_auth &&
+                !config.grpc_tls_enabled &&
+                auth.username_password().is_some() &&
+                !minotari_wallet::is_grpc_loopback(&address)
+            {
+                warn!(target: LOG_TARGET, "grpc_allow_insecure_auth=true permits Basic gRPC authentication without TLS");
+            }
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {

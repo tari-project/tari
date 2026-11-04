@@ -32,7 +32,7 @@ extern crate diesel_migrations;
 mod config;
 pub mod schema;
 pub mod utxo_scanner_service;
-pub use config::{TransactionStage, WalletConfig};
+pub use config::{TransactionStage, WalletConfig, is_grpc_loopback, validate_grpc_auth_transport};
 use tari_transaction_key_manager::{
     legacy_key_manager::LegacyTransactionKeyManagerWrapper,
     storage::sqlite_db::TransactionKeyManagerSqliteDatabase,

@@ -13,6 +13,8 @@ grpc_readiness_enabled = false
 
 # Use gRPC over TLS (default = false)
 #grpc_tls_enabled = false
+# grpc_allow_insecure_auth is dangerous; prefer TLS for Basic authentication.
+#grpc_allow_insecure_auth = false
 
 # Uncomment all gRPC server methods that should be allowed (only active when `grpc_enabled = true`).
 # Setting `mining_enabled = true` adds the mining method set (`get_version`, `get_new_block_template`,
