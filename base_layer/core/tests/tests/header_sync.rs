@@ -750,7 +750,12 @@ async fn test_header_sync_short_batch_overclaimed_height_with_ban() {
     );
     sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
 
-    let mut header_sync = sync::initialize_sync_headers_with_claimed_height(&alice_node, &bob_node, 6);
+    let mut header_sync = sync::initialize_sync_headers_with_claimed_height(
+        &alice_node,
+        &bob_node,
+        6,
+        blocks[5].accumulated_data().total_accumulated_difficulty,
+    );
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     match event {
         StateEvent::HeaderSyncFailed(err) => {
@@ -759,6 +764,49 @@ async fn test_header_sync_short_batch_overclaimed_height_with_ban() {
         event => panic!("Expected HeaderSyncFailed event, got {event:?}"),
     }
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A stale claim (as after a reorg onto a heavier, shorter chain) is not banned: the peer delivers more difficulty
+/// than it claimed at a lower height than it claimed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_header_sync_stale_higher_claim_with_more_difficulty_no_ban() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=2], &alice_node);
+
+    let mut header_sync = sync::initialize_sync_headers_with_claimed_height(
+        &alice_node,
+        &bob_node,
+        6,
+        blocks[4].accumulated_data().total_accumulated_difficulty,
+    );
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    match event {
+        StateEvent::HeadersSynchronized(_val, sync_result) => {
+            assert_eq!(sync_result.headers_returned, 3);
+        },
+        event => panic!("Expected HeadersSynchronized event, got {event:?}"),
+    }
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 5);
+    assert!(!sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
 }
 
 /// The same height rule applies once the follow-up header stream has ended.
@@ -774,7 +822,7 @@ async fn test_header_sync_streamed_overclaimed_height_with_ban() {
     let alice_node = peer_nodes.remove(0);
     let bob_node = peer_nodes.remove(0);
 
-    let (_blocks, _coinbases) = sync::create_and_add_some_blocks(
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
         &bob_node,
         &initial_block,
         &initial_coinbase,
@@ -785,7 +833,12 @@ async fn test_header_sync_streamed_overclaimed_height_with_ban() {
         &None,
     );
 
-    let mut header_sync = sync::initialize_sync_headers_with_claimed_height(&alice_node, &bob_node, 1001);
+    let mut header_sync = sync::initialize_sync_headers_with_claimed_height(
+        &alice_node,
+        &bob_node,
+        1001,
+        blocks[1000].accumulated_data().total_accumulated_difficulty,
+    );
     let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
     match event {
         StateEvent::HeaderSyncFailed(err) => {

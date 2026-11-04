@@ -25,6 +25,7 @@
 #![allow(clippy::arithmetic_side_effects)]
 use std::{sync::Arc, time::Duration};
 
+use primitive_types::U512;
 use tari_common::configuration::Network;
 use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::peer_manager::NodeId;
@@ -86,11 +87,12 @@ pub fn initialize_sync_headers_with_ping_pong_data(
     )
 }
 
-/// Helper function to initialize header sync with a single peer whose claimed best block height is overridden
+/// Helper function to initialize header sync with a single peer whose claimed height and difficulty are overridden
 pub fn initialize_sync_headers_with_claimed_height(
     local_node_interfaces: &NodeInterfaces,
     peer_node_interfaces: &NodeInterfaces,
     claimed_height: u64,
+    claimed_difficulty: U512,
 ) -> HeaderSyncState {
     let actual = peer_node_interfaces.blockchain_db.get_chain_metadata().unwrap();
     let claimed = ChainMetadata::new(
@@ -98,7 +100,7 @@ pub fn initialize_sync_headers_with_claimed_height(
         *actual.best_block_hash(),
         actual.pruning_horizon(),
         actual.pruned_height(),
-        actual.accumulated_difficulty(),
+        claimed_difficulty,
         actual.timestamp(),
     )
     .unwrap();
