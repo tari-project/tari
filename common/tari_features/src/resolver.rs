@@ -61,14 +61,17 @@ impl Display for Target {
     }
 }
 
-// Identify the target network by
-// 1. Checking whether --config tari-network=xxx was passed in as a config flag to cargo (or from Cargo.toml)
-// 2. Checking the environment variable TARI_NETWORK is set
-// 3. default to testnet (should be mainnet after launch)
+// Identify the target network by:
+// 1. Checking whether `CARGO_CFG_TARI_TARGET_NETWORK` was passed in
+// 2. Checking the environment variable `TARI_TARGET_NETWORK`
+// 3. Default to testnet with an explicit warning so contributors and CI are aware
 pub fn identify_target() -> Target {
     check_envar("CARGO_CFG_TARI_TARGET_NETWORK")
         .or_else(|| check_envar("TARI_TARGET_NETWORK"))
-        .unwrap_or(Target::TestNet)
+        .unwrap_or_else(|| {
+            println!("cargo:warning=TARI_TARGET_NETWORK is not set; defaulting to testnet");
+            Target::TestNet
+        })
 }
 
 pub fn check_envar(envar: &str) -> Option<Target> {
@@ -117,6 +120,14 @@ pub fn activate_feature(feature: &Feature) {
 }
 
 pub fn build_features() {
+    // Declare expected cfg flags to rustc so misspelled cfg attributes produce unexpected_cfgs warnings
+    println!("cargo::rustc-check-cfg=cfg(tari_target_network_testnet)");
+    println!("cargo::rustc-check-cfg=cfg(tari_target_network_nextnet)");
+    println!("cargo::rustc-check-cfg=cfg(tari_target_network_mainnet)");
+    for feature in FEATURE_LIST.iter() {
+        println!("cargo::rustc-check-cfg=cfg({})", feature.attr_name());
+    }
+
     // Make sure to rebuild when the network changes
     println!("cargo:rerun-if-env-changed=TARI_TARGET_NETWORK");
 
@@ -128,5 +139,42 @@ pub fn build_features() {
     if let Err(e) = resolve_features(target) {
         eprintln!("Could not build Tari due to issues with the feature flag set.\n{e}");
         panic!();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_network_targets() {
+        assert!(matches!(Target::from_network_str("mainnet"), Target::MainNet));
+        assert!(matches!(Target::from_network_str("MainNet"), Target::MainNet));
+        assert!(matches!(Target::from_network_str("stagenet"), Target::MainNet));
+        assert!(matches!(Target::from_network_str("nextnet"), Target::NextNet));
+        assert!(matches!(Target::from_network_str("testnet"), Target::TestNet));
+        assert!(matches!(Target::from_network_str("unknown"), Target::TestNet));
+    }
+
+    #[test]
+    fn target_key_strings() {
+        assert_eq!(Target::MainNet.as_key_str(), "mainnet");
+        assert_eq!(Target::NextNet.as_key_str(), "nextnet");
+        assert_eq!(Target::TestNet.as_key_str(), "testnet");
+    }
+
+    #[test]
+    fn check_envar_network_detection() {
+        let var_name = "TARI_TEST_NETWORK_ENVAR_CHECK";
+        unsafe {
+            std::env::set_var(var_name, "mainnet");
+            assert!(matches!(check_envar(var_name), Some(Target::MainNet)));
+            std::env::set_var(var_name, "nextnet");
+            assert!(matches!(check_envar(var_name), Some(Target::NextNet)));
+            std::env::set_var(var_name, "testnet");
+            assert!(matches!(check_envar(var_name), Some(Target::TestNet)));
+            std::env::remove_var(var_name);
+            assert!(check_envar(var_name).is_none());
+        }
     }
 }
