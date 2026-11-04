@@ -41,7 +41,7 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredential};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
@@ -100,7 +100,10 @@ pub struct BaseNodeConfig {
     pub grpc_address: Option<Multiaddr>,
     /// GRPC server config - which methods are active and which not, only active when `grpc_enabled = true`.
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
-    /// GRPC authentication mode
+    /// GRPC server credentials list
+    #[serde(default)]
+    pub grpc_credentials: ConfigList<GrpcCredential>,
+    /// GRPC authentication mode (deprecated: use `grpc_credentials`)
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
@@ -222,6 +225,7 @@ impl Default for BaseNodeConfig {
             grpc_enabled: true,
             grpc_address: None,
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
+            grpc_credentials: Vec::new().into(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             grpc_readiness_enabled: true,
@@ -285,6 +289,22 @@ impl BaseNodeConfig {
             self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());
         }
         self.p2p.set_base_path(base_path);
+    }
+
+    /// Returns the effective gRPC credentials. If `grpc_credentials` is configured, it takes priority.
+    /// If legacy `grpc_authentication` is used, a deprecation warning is logged and the legacy credential is returned.
+    pub fn effective_grpc_credentials(&self) -> Vec<GrpcCredential> {
+        if !self.grpc_credentials.is_empty() {
+            self.grpc_credentials.as_slice().to_vec()
+        } else if let GrpcAuthentication::Basic { .. } = &self.grpc_authentication {
+            log::warn!(
+                target: "applications::minotari_node::config",
+                "'grpc_authentication' is deprecated and will be removed in a future release. Please migrate to 'grpc_credentials = [{{ username = \"...\", password = \"...\" }}]'"
+            );
+            self.grpc_authentication.to_credentials()
+        } else {
+            Vec::new()
+        }
     }
 }
 

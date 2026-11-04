@@ -40,7 +40,7 @@ use zeroize::{Zeroize, Zeroizing};
 const MAX_USERNAME_LEN: usize = 256;
 
 /// Implements [RFC 2617](https://www.ietf.org/rfc/rfc2617.txt) by allowing authentication of provided credentials
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicAuthCredentials {
     /// The username bytes length
     pub user_name_bytes_length: usize,
@@ -173,6 +173,54 @@ impl BasicAuthCredentials {
         } else {
             Err(BasicAuthError::InvalidUsernameOrPassword)
         }
+    }
+
+    /// Validates the given username and password against a list of registered credentials.
+    /// The function always iterates all credentials and performs both username and password
+    /// checks for every entry to prevent timing attacks. Returns the matched username on success.
+    pub fn constant_time_validate_multi(
+        credentials: &[BasicAuthCredentials],
+        username: &str,
+        password: &SafePassword,
+    ) -> Result<String, BasicAuthError> {
+        if credentials.is_empty() {
+            return Err(BasicAuthError::InvalidUsernameOrPassword);
+        }
+
+        let mut matched_username: Option<String> = None;
+        let mut overall_matched = Choice::from(0u8);
+
+        for cred in credentials {
+            let valid_username = cred.constant_time_verify_username(username);
+
+            let bytes = cred.phc_password_hash.reveal().to_vec();
+            let valid_password = match String::from_utf8(bytes) {
+                Ok(utf8_str) => match PasswordHash::new(&utf8_str) {
+                    Ok(header_password) => Choice::from(u8::from(
+                        Argon2::default()
+                            .verify_password(password.reveal(), &header_password)
+                            .is_ok(),
+                    )),
+                    Err(_) => Choice::from(0u8),
+                },
+                Err(_) => Choice::from(0u8),
+            };
+
+            let matched = valid_username.bitand(valid_password);
+            if bool::from(matched) {
+                let name = String::from_utf8_lossy(&cred.user_name_bytes[..cred.user_name_bytes_length]).into_owned();
+                matched_username = Some(name);
+            }
+            overall_matched = overall_matched.bitor(matched);
+        }
+
+        if bool::from(overall_matched) {
+            if let Some(name) = matched_username {
+                return Ok(name);
+            }
+        }
+
+        Err(BasicAuthError::InvalidUsernameOrPassword)
     }
 
     /// Generates a `Basic` HTTP Authorization header value from the given username and password.
@@ -642,6 +690,65 @@ mod tests {
 
             // This is to make sure we do not run performance tests on CI.
             assert!(!do_performance_testing);
+        }
+
+        #[test]
+        fn it_validates_multi_credentials_and_rejects_crossed_pairs() {
+            let hash1 = create_salted_hashed_password(b"miner_pass").unwrap();
+            let hash2 = create_salted_hashed_password(b"monitor_pass").unwrap();
+            let cred1 = BasicAuthCredentials::new("miner".to_string(), hash1.to_string().into()).unwrap();
+            let cred2 = BasicAuthCredentials::new("monitor".to_string(), hash2.to_string().into()).unwrap();
+            let creds = vec![cred1, cred2];
+
+            // Matching cred 1
+            let matched1 = BasicAuthCredentials::constant_time_validate_multi(
+                &creds,
+                "miner",
+                &SafePassword::from("miner_pass".to_string()),
+            )
+            .unwrap();
+            assert_eq!(matched1, "miner");
+
+            // Matching cred 2
+            let matched2 = BasicAuthCredentials::constant_time_validate_multi(
+                &creds,
+                "monitor",
+                &SafePassword::from("monitor_pass".to_string()),
+            )
+            .unwrap();
+            assert_eq!(matched2, "monitor");
+
+            // Crossed pair: user 1 with password 2
+            let res_cross1 = BasicAuthCredentials::constant_time_validate_multi(
+                &creds,
+                "miner",
+                &SafePassword::from("monitor_pass".to_string()),
+            );
+            assert!(res_cross1.is_err());
+
+            // Crossed pair: user 2 with password 1
+            let res_cross2 = BasicAuthCredentials::constant_time_validate_multi(
+                &creds,
+                "monitor",
+                &SafePassword::from("miner_pass".to_string()),
+            );
+            assert!(res_cross2.is_err());
+
+            // Wrong user, wrong password
+            let res_wrong = BasicAuthCredentials::constant_time_validate_multi(
+                &creds,
+                "attacker",
+                &SafePassword::from("hacked".to_string()),
+            );
+            assert!(res_wrong.is_err());
+
+            // Empty credentials list
+            let res_empty = BasicAuthCredentials::constant_time_validate_multi(
+                &[],
+                "miner",
+                &SafePassword::from("miner_pass".to_string()),
+            );
+            assert!(res_empty.is_err());
         }
     }
 

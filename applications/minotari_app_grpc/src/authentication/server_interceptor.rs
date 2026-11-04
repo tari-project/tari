@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredential};
 use tari_utilities::SafePassword;
 use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
@@ -29,32 +29,46 @@ use crate::authentication::{BasicAuthCredentials, salted_password::create_salted
 
 const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ServerAuthenticationInterceptor {
-    auth: GrpcAuthentication, // this contains a hashed PHC password in the case of basic authentication
+    /// In-memory prepared credentials for constant-time comparison. Configured passwords are provided in plaintext
+    /// and salted in-memory at startup for verification.
+    credentials: Vec<BasicAuthCredentials>,
+    is_none: bool,
 }
 
 impl ServerAuthenticationInterceptor {
-    pub fn new(auth: GrpcAuthentication) -> Option<Self> {
-        // The server password needs to be hashed for later client verification
-        let processed_auth = match auth {
-            GrpcAuthentication::None => auth,
-            GrpcAuthentication::Basic { username, password } => GrpcAuthentication::Basic {
-                username,
-                password: create_salted_hashed_password(password.reveal()).ok()?.as_str().into(),
-            },
-        };
+    /// Creates a new interceptor from a list of credentials (configured as plaintext).
+    pub fn from_credentials(credentials: Vec<GrpcCredential>) -> Option<Self> {
+        let mut prepared = Vec::with_capacity(credentials.len());
+        for cred in credentials {
+            let phc_password: SafePassword = create_salted_hashed_password(cred.password.reveal())
+                .ok()?
+                .as_str()
+                .into();
+            let basic_cred = BasicAuthCredentials::new(cred.username, phc_password).ok()?;
+            prepared.push(basic_cred);
+        }
 
-        Some(Self { auth: processed_auth })
+        Some(Self {
+            is_none: prepared.is_empty(),
+            credentials: prepared,
+        })
+    }
+
+    /// Creates a new interceptor from legacy `GrpcAuthentication`.
+    pub fn new(auth: GrpcAuthentication) -> Option<Self> {
+        match auth {
+            GrpcAuthentication::None => Some(Self {
+                credentials: Vec::new(),
+                is_none: true,
+            }),
+            GrpcAuthentication::Basic { .. } => Self::from_credentials(auth.to_credentials()),
+        }
     }
 
     #[allow(clippy::result_large_err)]
-    fn handle_basic_auth(
-        &self,
-        req: Request<()>,
-        valid_username: &str,
-        valid_phc_password: &SafePassword,
-    ) -> Result<Request<()>, Status> {
+    fn handle_basic_auth(&self, mut req: Request<()>) -> Result<Request<()>, Status> {
         match req.metadata().get(AUTHORIZATION.as_str()) {
             Some(t) => {
                 // Parse the provided header
@@ -62,14 +76,15 @@ impl ServerAuthenticationInterceptor {
                 let (header_username, header_password) =
                     BasicAuthCredentials::parse_header(header).map_err(unauthenticated)?;
 
-                // Validate the header credentials against the valid credentials
-                let valid_credentials =
-                    BasicAuthCredentials::new(valid_username.to_owned(), valid_phc_password.clone())
-                        .map_err(unauthenticated)?;
-                valid_credentials
-                    .constant_time_validate(&header_username, &header_password)
-                    .map_err(unauthenticated)?;
+                // Validate the header credentials across all configured credentials in constant time
+                let matched_username = BasicAuthCredentials::constant_time_validate_multi(
+                    &self.credentials,
+                    &header_username,
+                    &header_password,
+                )
+                .map_err(unauthenticated)?;
 
+                req.extensions_mut().insert(matched_username);
                 Ok(req)
             },
             _ => Err(unauthenticated("Missing authorization header")),
@@ -79,20 +94,10 @@ impl ServerAuthenticationInterceptor {
 
 impl Interceptor for ServerAuthenticationInterceptor {
     fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        match &self.auth {
-            GrpcAuthentication::None => Ok(request),
-            GrpcAuthentication::Basic {
-                username,
-                password: phc_password,
-            } => self.handle_basic_auth(request, username, phc_password),
-        }
-    }
-}
-
-impl Clone for ServerAuthenticationInterceptor {
-    fn clone(&self) -> Self {
-        Self {
-            auth: self.auth.clone(),
+        if self.is_none {
+            Ok(request)
+        } else {
+            self.handle_basic_auth(request)
         }
     }
 }
@@ -101,4 +106,55 @@ impl Clone for ServerAuthenticationInterceptor {
 fn unauthenticated<E: ToString>(err: E) -> Status {
     warn!(target: LOG_TARGET, "GRPC authentication failed: {}", err.to_string());
     Status::unauthenticated("Auth failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use tonic::service::Interceptor;
+
+    use super::*;
+
+    #[test]
+    fn server_interceptor_accepts_multiple_credentials_and_inserts_username() {
+        let creds = vec![
+            GrpcCredential::new("miner", "miner_pass".to_string().into()),
+            GrpcCredential::new("monitor", "monitor_pass".to_string().into()),
+        ];
+        let mut interceptor = ServerAuthenticationInterceptor::from_credentials(creds).unwrap();
+
+        // Calling with miner credentials
+        let header_miner = BasicAuthCredentials::generate_header("miner", b"miner_pass").unwrap();
+        let mut req_miner = Request::new(());
+        req_miner.metadata_mut().insert(AUTHORIZATION.as_str(), header_miner);
+
+        let validated_req = interceptor.call(req_miner).unwrap();
+        let username_ext = validated_req.extensions().get::<String>().unwrap();
+        assert_eq!(username_ext, "miner");
+
+        // Calling with monitor credentials
+        let header_monitor = BasicAuthCredentials::generate_header("monitor", b"monitor_pass").unwrap();
+        let mut req_monitor = Request::new(());
+        req_monitor
+            .metadata_mut()
+            .insert(AUTHORIZATION.as_str(), header_monitor);
+
+        let validated_req2 = interceptor.call(req_monitor).unwrap();
+        let username_ext2 = validated_req2.extensions().get::<String>().unwrap();
+        assert_eq!(username_ext2, "monitor");
+
+        // Calling with wrong password
+        let header_wrong = BasicAuthCredentials::generate_header("miner", b"wrong").unwrap();
+        let mut req_wrong = Request::new(());
+        req_wrong.metadata_mut().insert(AUTHORIZATION.as_str(), header_wrong);
+
+        let err = interceptor.call(req_wrong).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    }
+
+    #[test]
+    fn server_interceptor_none_passes_through() {
+        let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::None).unwrap();
+        let req = Request::new(());
+        assert!(interceptor.call(req).is_ok());
+    }
 }
