@@ -49,7 +49,7 @@ pub use grpc_method::GrpcMethod;
 pub use http::HttpCacheConfig;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ServerAuthenticationInterceptor,
+    authentication::GrpcAuthLayer,
     tari_rpc::{
         self,
         base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
@@ -71,10 +71,7 @@ use tokio::{
     task::{self, JoinHandle},
     time::timeout,
 };
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Identity, Server, ServerTlsConfig},
-};
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tonic_health::{ServingStatus, server::HealthReporter};
 
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
@@ -361,13 +358,12 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
-        .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
+    let auth_layer = GrpcAuthLayer::new(auth_config)
+        .ok_or_else(|| anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
 
     let sized_server = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc)
         .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-    let service = InterceptedService::new(sized_server, auth);
 
     let mut server_builder = grpc_server_builder(
         GRPC_HTTP2_KEEPALIVE_INTERVAL,
@@ -378,6 +374,8 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         server_builder = server_builder.tls_config(ServerTlsConfig::new().identity(identity))?;
     }
 
+    let router = server_builder.layer(auth_layer).add_service(sized_server);
+
     if let Some(state_machine_handle) = health_state_machine {
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         let mut status_watch = state_machine_handle.get_status_info_watch();
@@ -385,14 +383,12 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         update_grpc_health_status(&mut health_reporter, is_serving).await;
         spawn_grpc_health_updater(health_reporter, status_watch, is_serving);
 
-        server_builder
-            .add_service(service)
+        router
             .add_service(health_service)
             .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
             .await
     } else {
-        server_builder
-            .add_service(service)
+        router
             .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
             .await
     }

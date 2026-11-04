@@ -25,7 +25,11 @@ use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tari_utilities::SafePassword;
 use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
-use crate::authentication::{BasicAuthCredentials, salted_password::create_salted_hashed_password};
+use crate::authentication::{
+    BasicAuthCredentials,
+    auth_layer::{AuthenticatedUser, record_grpc_auth_failure},
+    salted_password::create_salted_hashed_password,
+};
 
 const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
 
@@ -70,6 +74,10 @@ impl ServerAuthenticationInterceptor {
                     .constant_time_validate(&header_username, &header_password)
                     .map_err(unauthenticated)?;
 
+                let mut req = req;
+                req.extensions_mut()
+                    .insert(AuthenticatedUser(valid_username.to_owned()));
+                debug!(target: LOG_TARGET, "gRPC request authenticated for user '{valid_username}'");
                 Ok(req)
             },
             _ => Err(unauthenticated("Missing authorization header")),
@@ -99,6 +107,7 @@ impl Clone for ServerAuthenticationInterceptor {
 
 /// Standard unauthenticated response
 fn unauthenticated<E: ToString>(err: E) -> Status {
+    record_grpc_auth_failure();
     warn!(target: LOG_TARGET, "GRPC authentication failed: {}", err.to_string());
     Status::unauthenticated("Auth failed")
 }

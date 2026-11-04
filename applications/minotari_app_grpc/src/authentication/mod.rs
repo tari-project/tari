@@ -30,3 +30,13 @@ pub mod salted_password;
 
 mod server_interceptor;
 pub use server_interceptor::ServerAuthenticationInterceptor;
+
+mod auth_layer;
+pub use auth_layer::{
+    AuthenticatedUser,
+    GrpcAuthLayer,
+    GrpcAuthService,
+    grpc_auth_failures,
+    record_grpc_auth_failure,
+    reset_grpc_auth_failures,
+};
