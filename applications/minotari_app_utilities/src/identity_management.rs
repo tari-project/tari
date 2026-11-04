@@ -432,13 +432,17 @@ fn create_new_node_identity<P: AsRef<Path>>(
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
 pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Option<T>, IdentityError> {
-    if !path.as_ref().exists() {
+    let p = path.as_ref();
+    if !p.exists() {
         return Ok(None);
     }
 
-    check_identity_file(&path)?;
+    let contents = match read_identity_file(p) {
+        Ok(c) => c,
+        Err(IdentityError::NotFound) => return Ok(None),
+        Err(e) => return Err(e),
+    };
 
-    let contents = fs::read_to_string(path)?;
     let object = json5::from_str(&contents)?;
     Ok(Some(object))
 }
@@ -586,7 +590,10 @@ fn ensure_secure_directory(dir: &Path) -> Result<(), IdentityError> {
 /// Result to check if successful or not, string will indicate reason on error
 pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), IdentityError> {
     let p = path.as_ref();
-    let parent = p.parent().unwrap_or_else(|| Path::new("."));
+    let parent = p
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
     ensure_secure_directory(parent)?;
 
     let json = json5::to_string(object)?;
@@ -603,7 +610,10 @@ fn write_identity_file(path: &Path, contents: &[u8]) -> Result<(), IdentityError
         os::unix::fs::{OpenOptionsExt, PermissionsExt},
     };
 
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
     let file_name = path
         .file_name()
         .map(|s| s.to_string_lossy())
@@ -614,6 +624,15 @@ fn write_identity_file(path: &Path, contents: &[u8]) -> Result<(), IdentityError
         .unwrap_or_default()
         .as_nanos();
     let tmp_path = parent.join(format!(".{file_name}.{pid}.{ts}.tmp"));
+
+    if path.exists() {
+        let meta = fs::symlink_metadata(path)?;
+        if (meta.permissions().mode() & 0o200) == 0 {
+            return Err(IdentityError::ReadOnly {
+                path: path.to_path_buf(),
+            });
+        }
+    }
 
     let write_res = (|| -> io::Result<()> {
         let mut file = fs::OpenOptions::new()
@@ -630,9 +649,8 @@ fn write_identity_file(path: &Path, contents: &[u8]) -> Result<(), IdentityError
 
         fs::rename(&tmp_path, path)?;
 
-        if let Ok(dir_file) = fs::File::open(parent) {
-            let _ = dir_file.sync_all();
-        }
+        let dir_file = fs::File::open(parent)?;
+        dir_file.sync_all()?;
         Ok(())
     })();
 
@@ -651,7 +669,10 @@ fn write_identity_file(path: &Path, contents: &[u8]) -> Result<(), IdentityError
 
 #[cfg(target_family = "windows")]
 fn write_identity_file(path: &Path, contents: &[u8]) -> Result<(), IdentityError> {
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
     let file_name = path
         .file_name()
         .map(|s| s.to_string_lossy())
@@ -691,7 +712,7 @@ fn open_and_validate_identity_file(path: &Path) -> Result<fs::File, IdentityErro
 
     let file = match fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
     {
         Ok(f) => f,
@@ -735,6 +756,7 @@ fn read_identity_file(path: &Path) -> Result<String, IdentityError> {
 }
 
 #[cfg(target_family = "unix")]
+#[allow(dead_code)]
 fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
     open_and_validate_identity_file(path.as_ref()).map(|_| ())
 }
@@ -1420,5 +1442,44 @@ mod test {
             raw_disk_after.contains("onion3"),
             "persisted identity must retain onion addresses"
         );
+    }
+
+    #[test]
+    fn readonly_file_overwrite_rejected_on_save() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = test_dir("readonly_save_test");
+        let path = dir.join("readonly_identity.json");
+
+        save_as_json(&path, &"initial_state").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+
+        let err = save_as_json(&path, &"new_state").unwrap_err();
+        assert!(matches!(err, IdentityError::ReadOnly { .. }));
+    }
+
+    #[test]
+    fn bare_filename_save_and_load_works() {
+        let dir = test_dir("bare_filename_dir");
+        let orig_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let bare = Path::new("bare_identity.json");
+        let res = save_as_json(bare, &"bare_test_data");
+        std::env::set_current_dir(orig_dir).unwrap();
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn fifo_rejected_without_blocking() {
+        use std::ffi::CString;
+        let dir = test_dir("fifo_test");
+        let fifo_path = dir.join("fifo_identity.json");
+        let c_path = CString::new(fifo_path.to_str().unwrap()).unwrap();
+        unsafe {
+            libc::mkfifo(c_path.as_ptr(), 0o600);
+        }
+
+        let err = load_node_identity(&fifo_path, TransportType::Tcp, true).unwrap_err();
+        assert!(matches!(err, IdentityError::NotFile));
     }
 }
