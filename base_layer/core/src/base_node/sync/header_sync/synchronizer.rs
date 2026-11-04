@@ -760,6 +760,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         .total_accumulated_difficulty,
                 });
             }
+            let claimed_height = sync_peer.claimed_chain_metadata().best_block_height();
+            if claimed_height > start_header_height {
+                return Err(BlockHeaderSyncError::PeerSentInaccurateChainHeight {
+                    claimed: claimed_height,
+                    actual: start_header_height,
+                });
+            }
             debug!(
                 target: LOG_TARGET,
                 "Remote chain from peer {} has higher PoW. Switching",
@@ -950,6 +957,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     .best_block_header
                     .accumulated_data()
                     .total_accumulated_difficulty,
+            });
+        }
+        // Same strict rule for the claimed height: the last validated header must reach it.
+        let claimed_height = sync_peer.claimed_chain_metadata().best_block_height();
+        let validated_height = prev_height.unwrap_or(start_header_height);
+        if claimed_height > validated_height {
+            return Err(BlockHeaderSyncError::PeerSentInaccurateChainHeight {
+                claimed: claimed_height,
+                actual: validated_height,
             });
         }
 
