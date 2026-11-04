@@ -44,6 +44,7 @@ pub struct HeaderSyncState {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
     local_metadata: ChainMetadata,
+    rewound_blocks: bool,
 }
 
 impl HeaderSyncState {
@@ -67,11 +68,17 @@ impl HeaderSyncState {
             sync_peers,
             is_synced: false,
             local_metadata,
+            rewound_blocks: false,
         }
     }
 
     pub fn is_synced(&self) -> bool {
         self.is_synced
+    }
+
+    /// Whether the header sync rewound any of our blocks to swap to a peer's chain
+    pub fn has_rewound_blocks(&self) -> bool {
+        self.rewound_blocks
     }
 
     pub fn into_sync_peers(self) -> Vec<SyncPeer> {
@@ -167,6 +174,7 @@ impl HeaderSyncState {
 
         let timer = Instant::now();
         let result = synchronizer.synchronize().await;
+        self.rewound_blocks = synchronizer.has_rewound_blocks();
         drop(synchronizer);
         shared.header_sync_chain_changes = chain_changes;
         match result {

@@ -193,9 +193,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 Waiting(s.into())
             },
 
-            (DecideNextSync(_), ProceedToBlockSync(peers)) => {
-                // Block sync refuses propagated blocks itself, once it has stored its first block
-                db.clear_disable_add_block_flag();
+            (DecideNextSync(s), ProceedToBlockSync(peers)) => {
+                // Block sync refuses propagated blocks itself, once it has stored its first block. After a rewind our
+                // old blocks are orphans that any propagated block could swap back to, so keep refusing them.
+                if !s.has_rewound_blocks() {
+                    db.clear_disable_add_block_flag();
+                }
                 BlockSync(peers.into())
             },
             (BlockSync(s), BlocksSynchronized) => {
