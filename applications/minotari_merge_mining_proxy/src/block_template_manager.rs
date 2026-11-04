@@ -287,8 +287,29 @@ fn add_monero_data(
     monero_mining_data: MoneroMiningData,
     miner_data: MinerData,
 ) -> Result<FinalBlockTemplateData, MmProxyError> {
-    let merge_mining_hash = FixedHash::try_from(tari_block_result.merge_mining_hash.clone())
+    let tari_block = tari_block_result
+        .block
+        .as_ref()
+        .ok_or(MmProxyError::GrpcResponseMissingField("block"))?;
+    let header_proto = tari_block
+        .header
+        .as_ref()
+        .ok_or(MmProxyError::GrpcResponseMissingField("header"))?;
+    let core_header = tari_node_components::blocks::BlockHeader::try_from(header_proto.clone())
         .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
+    let computed_merge_mining_hash = core_header.merge_mining_hash();
+
+    let provided_hash = FixedHash::try_from(tari_block_result.merge_mining_hash.clone())
+        .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
+
+    if provided_hash != computed_merge_mining_hash {
+        return Err(MmProxyError::FailedToGetBlockTemplate(format!(
+            "mismatched merge mining hash: p2pool provided {}, computed from header {}",
+            provided_hash, computed_merge_mining_hash
+        )));
+    }
+
+    let merge_mining_hash = computed_merge_mining_hash;
 
     let aux_chain_hashes = AuxChainHashes::try_from(vec![monero::Hash::from_slice(merge_mining_hash.as_slice())])?;
     let tari_difficulty = miner_data.target_difficulty;
@@ -533,10 +554,10 @@ mod tests {
         let block_output_mr = calculate_block_output_mr_from_grpc_outputs(std::slice::from_ref(&output))
             .unwrap()
             .to_vec();
-        let header = BlockHeader {
-            block_output_mr,
-            ..Default::default()
-        };
+        let mut core_header = tari_node_components::blocks::BlockHeader::new(0);
+        core_header.block_output_mr = FixedHash::try_from(block_output_mr.as_slice()).unwrap();
+        let merge_mining_hash = core_header.merge_mining_hash().to_vec();
+        let header = BlockHeader::from(core_header);
         let block = Block {
             header: Some(header),
             body: Some(AggregateBody {
@@ -549,7 +570,7 @@ mod tests {
             block: Some(GetNewBlockResult {
                 block_hash: vec![],
                 block: Some(block),
-                merge_mining_hash: vec![0u8; 32],
+                merge_mining_hash,
                 tari_unique_id: vec![],
                 miner_data: Some(MinerData {
                     target_difficulty: 100,
@@ -685,6 +706,56 @@ mod tests {
         assert!(result.is_err());
         if let MmProxyError::FailedToGetBlockTemplate(err) = result.unwrap_err() {
             panic!("Expected coinbase verification to succeed, but failed with: {err}");
+        }
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_proxy_rejects_mismatched_merge_mining_hash() {
+        let configured_address = make_test_address();
+        let mut p2pool_resp = make_p2pool_block(&configured_address, 1_000_000);
+        // Tamper with merge_mining_hash
+        if let Some(res) = p2pool_resp.block.as_mut() {
+            res.merge_mining_hash = vec![0xaa; 32];
+        }
+
+        let (client, server_handle) = setup_mock_client(p2pool_resp).await;
+        let config = Arc::new(MergeMiningProxyConfig::default());
+        let consensus_manager = BaseNodeConsensusManager::builder(config.network).build().unwrap();
+
+        let dummy_channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
+        let mut dummy_base_node_client =
+            minotari_app_grpc::tari_rpc::base_node_client::BaseNodeClient::with_interceptor(
+                dummy_channel,
+                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None).unwrap(),
+            );
+
+        let manager = BlockTemplateManager::try_create(
+            &mut dummy_base_node_client,
+            Some(client),
+            config,
+            consensus_manager,
+            configured_address.clone(),
+        )
+        .unwrap();
+
+        let monero_data = MoneroMiningData {
+            seed_hash: FixedByteArray::default(),
+            blocktemplate_blob: "".to_string(),
+            difficulty: 1,
+        };
+
+        let result = manager.get_next_tari_block_template(monero_data).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            MmProxyError::FailedToGetBlockTemplate(err) => {
+                assert!(
+                    err.contains("mismatched merge mining hash"),
+                    "Expected mismatched hash error, got: {err}"
+                );
+            },
+            other => panic!("Expected FailedToGetBlockTemplate with mismatched merge mining hash, got {other:?}"),
         }
 
         server_handle.abort();
