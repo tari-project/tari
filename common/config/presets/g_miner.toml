@@ -9,7 +9,7 @@
 
 # GRPC address of base node (default = "http://127.0.0.1:18142")
 #base_node_grpc_address = "http://127.0.0.1:18142"
-# GRPC authentication for the base node (default = "none")
+# GRPC authentication for the base node (default = "none", recommend 0600 file mode or environment variable injection: TARI_MINER__BASE_NODE_GRPC_AUTHENTICATION__PASSWORD)
 #base_node_grpc_authentication = { username = "miner", password = "xxxx" }
 # GRPC TLS communication is turned on by defining the domain name for the service (default = "none")
 #base_node_grpc_tls_domain_name = "localhost"

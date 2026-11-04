@@ -29,7 +29,7 @@ use std::{
 };
 
 use log::*;
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredential};
 use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
 use crate::authentication::{BasicAuthCredentials, BasicAuthError, basic_auth::MAX_USERNAME_LEN};
@@ -152,20 +152,23 @@ impl AuthBackoffTracker {
     }
 }
 
-fn verify_request_header(req: &Request<()>, valid_credentials: &BasicAuthCredentials) -> Result<(), String> {
+fn verify_request_header(req: &Request<()>, valid_credentials: &[BasicAuthCredentials]) -> Result<String, String> {
     let Some(t) = req.metadata().get(AUTHORIZATION.as_str()) else {
         return Err("Missing authorization header".to_string());
     };
     let header = t.to_str().map_err(|e| e.to_string())?;
     let (header_username, header_password) = BasicAuthCredentials::parse_header(header).map_err(|e| e.to_string())?;
-    valid_credentials
-        .constant_time_validate(&header_username, &header_password)
+    BasicAuthCredentials::constant_time_validate_multi(valid_credentials, &header_username, &header_password)
         .map_err(|e| e.to_string())
 }
 
+/// Authenticated user identity attached to request extensions on successful gRPC authentication.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthenticatedUser(pub String);
+
 #[derive(Debug)]
 pub struct ServerAuthenticationInterceptor {
-    credentials: Option<Arc<BasicAuthCredentials>>,
+    credentials: Arc<[BasicAuthCredentials]>,
     reject_all: bool,
     backoff: Arc<Mutex<AuthBackoffTracker>>,
     warn_limiter: Arc<WarnLimiter>,
@@ -173,29 +176,42 @@ pub struct ServerAuthenticationInterceptor {
 
 impl ServerAuthenticationInterceptor {
     pub fn new(auth: GrpcAuthentication) -> Option<Self> {
-        let (credentials, reject_all) = match auth {
-            GrpcAuthentication::None => (None, false),
-            GrpcAuthentication::Basic { username, password } => {
-                match BasicAuthCredentials::new(username.clone(), password.clone()) {
-                    Ok(creds) => (Some(Arc::new(creds)), false),
-                    Err(BasicAuthError::InvalidUsername)
-                        if username.contains(':') &&
-                            username.len() <= MAX_USERNAME_LEN &&
-                            std::str::from_utf8(password.reveal()).is_ok() =>
-                    {
-                        error!(
-                            target: LOG_TARGET,
-                            "gRPC username must not contain ':'; all gRPC requests will be rejected"
-                        );
-                        (None, true)
-                    },
-                    Err(_) => return None,
-                }
-            },
-        };
+        Self::from_credentials(auth.to_credentials())
+    }
+
+    pub fn from_credentials(credentials: Vec<GrpcCredential>) -> Option<Self> {
+        if credentials.is_empty() {
+            return Some(Self {
+                credentials: Arc::new([]),
+                reject_all: false,
+                backoff: Arc::default(),
+                warn_limiter: Arc::default(),
+            });
+        }
+
+        let mut parsed_creds = Vec::with_capacity(credentials.len());
+        let mut reject_all = false;
+
+        for cred in credentials {
+            match BasicAuthCredentials::new(cred.username.clone(), cred.password.clone()) {
+                Ok(c) => parsed_creds.push(c),
+                Err(BasicAuthError::InvalidUsername)
+                    if cred.username.contains(':') &&
+                        cred.username.len() <= MAX_USERNAME_LEN &&
+                        std::str::from_utf8(cred.password.reveal()).is_ok() =>
+                {
+                    error!(
+                        target: LOG_TARGET,
+                        "gRPC username must not contain ':'; all gRPC requests will be rejected"
+                    );
+                    reject_all = true;
+                },
+                Err(_) => return None,
+            }
+        }
 
         Some(Self {
-            credentials,
+            credentials: Arc::from(parsed_creds),
             reject_all,
             backoff: Arc::default(),
             warn_limiter: Arc::default(),
@@ -203,21 +219,12 @@ impl ServerAuthenticationInterceptor {
     }
 
     #[allow(clippy::result_large_err)]
-    fn handle_basic_auth(
-        &self,
-        req: Request<()>,
-        valid_credentials: &BasicAuthCredentials,
-    ) -> Result<Request<()>, Status> {
-        self.handle_basic_auth_at(req, valid_credentials, Instant::now())
+    fn handle_basic_auth(&self, req: Request<()>) -> Result<Request<()>, Status> {
+        self.handle_basic_auth_at(req, Instant::now())
     }
 
     #[allow(clippy::result_large_err)]
-    fn handle_basic_auth_at(
-        &self,
-        req: Request<()>,
-        valid_credentials: &BasicAuthCredentials,
-        now: Instant,
-    ) -> Result<Request<()>, Status> {
+    fn handle_basic_auth_at(&self, mut req: Request<()>, now: Instant) -> Result<Request<()>, Status> {
         let peer_addr = req.remote_addr();
         let tracked_ip = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip));
 
@@ -235,8 +242,8 @@ impl ServerAuthenticationInterceptor {
             }
         }
 
-        match verify_request_header(&req, valid_credentials) {
-            Ok(()) => {
+        match verify_request_header(&req, &self.credentials) {
+            Ok(matched_username) => {
                 if let Some(ip) = tracked_ip {
                     let mut tracker = match self.backoff.lock() {
                         Ok(guard) => guard,
@@ -244,6 +251,8 @@ impl ServerAuthenticationInterceptor {
                     };
                     tracker.record_success(ip);
                 }
+                req.extensions_mut().insert(AuthenticatedUser(matched_username.clone()));
+                req.extensions_mut().insert(matched_username);
                 Ok(req)
             },
             Err(err) => {
@@ -304,9 +313,10 @@ impl Interceptor for ServerAuthenticationInterceptor {
                 now,
             ));
         }
-        match &self.credentials {
-            None => Ok(request),
-            Some(credentials) => self.handle_basic_auth(request, credentials),
+        if self.credentials.is_empty() {
+            Ok(request)
+        } else {
+            self.handle_basic_auth(request)
         }
     }
 }
@@ -411,13 +421,12 @@ mod tests {
             password: SafePassword::from("secret"),
         })
         .unwrap();
-        let creds = interceptor.credentials.as_ref().unwrap().clone();
         let addr: SocketAddr = "198.51.100.7:43210".parse().unwrap();
         let t0 = Instant::now();
 
         for _ in 0..MAX_FAILURES_BEFORE_BACKOFF {
             let req = request_with_auth_and_addr("admin", b"wrong", addr);
-            let err = interceptor.handle_basic_auth_at(req, &creds, t0).unwrap_err();
+            let err = interceptor.handle_basic_auth_at(req, t0).unwrap_err();
             assert_eq!(err.code(), tonic::Code::Unauthenticated);
         }
 
@@ -425,7 +434,7 @@ mod tests {
         let valid_during_backoff = request_with_auth_and_addr("admin", b"secret", addr);
         let during_backoff = t0.checked_add(Duration::from_millis(25)).unwrap();
         let err = interceptor
-            .handle_basic_auth_at(valid_during_backoff, &creds, during_backoff)
+            .handle_basic_auth_at(valid_during_backoff, during_backoff)
             .unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
 
@@ -437,7 +446,7 @@ mod tests {
             .unwrap();
         assert!(
             interceptor
-                .handle_basic_auth_at(valid_after_expiry, &creds, after_expiry)
+                .handle_basic_auth_at(valid_after_expiry, after_expiry)
                 .is_ok()
         );
     }
@@ -449,7 +458,6 @@ mod tests {
             password: SafePassword::from("secret"),
         })
         .unwrap();
-        let creds = interceptor.credentials.as_ref().unwrap().clone();
         let t0 = Instant::now();
 
         let loopback_addrs: [SocketAddr; 3] = [
@@ -462,13 +470,13 @@ mod tests {
             // Misconfigured local client fails repeatedly well beyond MAX_FAILURES_BEFORE_BACKOFF.
             for _ in 0..MAX_FAILURES_BEFORE_BACKOFF.saturating_mul(3) {
                 let bad_req = request_with_auth_and_addr("admin", b"stale-password", addr);
-                let err = interceptor.handle_basic_auth_at(bad_req, &creds, t0).unwrap_err();
+                let err = interceptor.handle_basic_auth_at(bad_req, t0).unwrap_err();
                 assert_eq!(err.code(), tonic::Code::Unauthenticated);
             }
 
             // Correctly configured local client on the same loopback IP still authenticates immediately.
             let good_req = request_with_auth_and_addr("admin", b"secret", addr);
-            assert!(interceptor.handle_basic_auth_at(good_req, &creds, t0).is_ok());
+            assert!(interceptor.handle_basic_auth_at(good_req, t0).is_ok());
         }
 
         assert_eq!(interceptor.tracked_peer_count(), 0);
@@ -583,5 +591,57 @@ mod tests {
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
 
         CAPTURE_THREAD.with(|c| c.set(false));
+    }
+
+    #[test]
+    fn server_interceptor_accepts_multiple_credentials_and_inserts_username() {
+        let creds = vec![
+            GrpcCredential::new("miner", "miner_pass".to_string().into()),
+            GrpcCredential::new("monitor", "monitor_pass".to_string().into()),
+        ];
+        let mut interceptor = ServerAuthenticationInterceptor::from_credentials(creds).unwrap();
+
+        // Calling with miner credentials
+        let header_miner = BasicAuthCredentials::generate_header("miner", b"miner_pass").unwrap();
+        let mut req_miner = Request::new(());
+        req_miner.metadata_mut().insert(AUTHORIZATION.as_str(), header_miner);
+
+        let validated_req = interceptor.call(req_miner).unwrap();
+        assert_eq!(
+            validated_req.extensions().get::<AuthenticatedUser>(),
+            Some(&AuthenticatedUser("miner".to_string()))
+        );
+        let username_ext = validated_req.extensions().get::<String>().unwrap();
+        assert_eq!(username_ext, "miner");
+
+        // Calling with monitor credentials
+        let header_monitor = BasicAuthCredentials::generate_header("monitor", b"monitor_pass").unwrap();
+        let mut req_monitor = Request::new(());
+        req_monitor
+            .metadata_mut()
+            .insert(AUTHORIZATION.as_str(), header_monitor);
+
+        let validated_req2 = interceptor.call(req_monitor).unwrap();
+        assert_eq!(
+            validated_req2.extensions().get::<AuthenticatedUser>(),
+            Some(&AuthenticatedUser("monitor".to_string()))
+        );
+        let username_ext2 = validated_req2.extensions().get::<String>().unwrap();
+        assert_eq!(username_ext2, "monitor");
+
+        // Calling with wrong password
+        let header_wrong = BasicAuthCredentials::generate_header("miner", b"wrong").unwrap();
+        let mut req_wrong = Request::new(());
+        req_wrong.metadata_mut().insert(AUTHORIZATION.as_str(), header_wrong);
+
+        let err = interceptor.call(req_wrong).unwrap_err();
+        assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    }
+
+    #[test]
+    fn server_interceptor_none_passes_through() {
+        let mut interceptor = ServerAuthenticationInterceptor::new(GrpcAuthentication::None).unwrap();
+        let req = Request::new(());
+        assert!(interceptor.call(req).is_ok());
     }
 }

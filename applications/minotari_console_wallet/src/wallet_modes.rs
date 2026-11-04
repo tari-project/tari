@@ -38,7 +38,7 @@ use tari_common::{
     MAX_GRPC_MESSAGE_SIZE,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::GrpcCredential;
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tokio::{runtime::Handle, sync::broadcast};
 use tonic::{
@@ -277,7 +277,7 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
             handle.spawn(run_grpc(
                 grpc,
                 address,
-                config.grpc_authentication.clone(),
+                config.effective_grpc_credentials(),
                 tls_identity,
                 wallet.clone(),
             ));
@@ -416,7 +416,7 @@ pub fn grpc_mode(
             wallet.shutdown_signal = grpc_shutdown.to_signal();
 
             let grpc = WalletGrpcServer::new(wallet.clone());
-            let auth = config.grpc_authentication.clone();
+            let credentials = config.effective_grpc_credentials();
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -429,7 +429,7 @@ pub fn grpc_mode(
             handle.block_on(async { grpc.start_balance_debouncer_event_monitor().await });
 
             handle
-                .block_on(run_grpc(grpc, address, auth, tls_identity, wallet))
+                .block_on(run_grpc(grpc, address, credentials, tls_identity, wallet))
                 .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
         }
         #[cfg(not(feature = "grpc"))]
@@ -453,7 +453,7 @@ const GRPC_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(5);
 async fn run_grpc(
     grpc: WalletGrpcServer,
     grpc_listener_addr: Multiaddr,
-    auth_config: GrpcAuthentication,
+    credentials: Vec<GrpcCredential>,
     tls_identity: Option<Identity>,
     wallet: WalletSqlite,
 ) -> Result<(), String> {
@@ -463,7 +463,7 @@ async fn run_grpc(
 
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_listener_addr}");
     let address = multiaddr_to_socketaddr(&grpc_listener_addr).map_err(|e| e.to_string())?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
+    let auth = ServerAuthenticationInterceptor::from_credentials(credentials)
         .ok_or("Unable to prepare server gRPC authentication".to_string())?;
 
     let sized_server = minotari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc)

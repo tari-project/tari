@@ -41,7 +41,7 @@ use tari_common::{
         serializers,
     },
 };
-use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_common_types::grpc_authentication::{GrpcAuthentication, GrpcCredential};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
@@ -107,7 +107,10 @@ pub struct BaseNodeConfig {
     /// `get_tip_info`, `get_active_validator_nodes`, `get_validator_node_changes`, `get_shard_key`,
     /// `get_header_by_hash`, `get_side_chain_utxos`) on top of this list.
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
-    /// GRPC authentication mode
+    /// GRPC server credentials list
+    #[serde(default)]
+    pub grpc_credentials: Vec<GrpcCredential>,
+    /// GRPC authentication mode (deprecated: use `grpc_credentials`)
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
@@ -229,6 +232,7 @@ impl Default for BaseNodeConfig {
             grpc_enabled: true,
             grpc_address: None,
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
+            grpc_credentials: Vec::new(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
             grpc_readiness_enabled: true,
@@ -293,10 +297,77 @@ impl BaseNodeConfig {
         }
         self.p2p.set_base_path(base_path);
     }
+
+    /// Returns the effective gRPC credentials. If `grpc_credentials` is configured, it is used.
+    /// If deprecated `grpc_authentication` is used, a deprecation warning is logged.
+    /// If both are configured, a warning is logged and the legacy credential is appended if not present.
+    pub fn effective_grpc_credentials(&self) -> Vec<GrpcCredential> {
+        let mut creds = self.grpc_credentials.clone();
+        if let GrpcAuthentication::Basic { username, password } = &self.grpc_authentication {
+            if creds.is_empty() {
+                log::warn!(
+                    target: "applications::minotari_node::config",
+                    "'grpc_authentication' is deprecated and will be removed in a future release. Please migrate to 'grpc_credentials = [{{ username = \"...\", password = \"...\" }}]'"
+                );
+                creds.push(GrpcCredential::new(username.clone(), password.clone()));
+            } else {
+                log::warn!(
+                    target: "applications::minotari_node::config",
+                    "Both 'grpc_credentials' and deprecated 'grpc_authentication' are configured. Appending legacy credential for '{}'.",
+                    username
+                );
+                if !creds.iter().any(|c| c.username == *username) {
+                    creds.push(GrpcCredential::new(username.clone(), password.clone()));
+                }
+            }
+        }
+        creds
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseType {
     Lmdb,
+}
+
+#[cfg(test)]
+mod tests {
+    use tari_utilities::SafePassword;
+
+    use super::*;
+
+    #[test]
+    fn effective_grpc_credentials_precedence_and_fallback() {
+        let mut config = BaseNodeConfig::default();
+        assert!(config.effective_grpc_credentials().is_empty());
+
+        // Legacy fallback
+        config.grpc_authentication = GrpcAuthentication::Basic {
+            username: "legacy_user".to_string(),
+            password: SafePassword::from("legacy_pass"),
+        };
+        let effective = config.effective_grpc_credentials();
+        assert_eq!(effective.len(), 1);
+        let first = effective.first().expect("must have credential");
+        assert_eq!(first.username, "legacy_user");
+        assert_eq!(first.password.reveal(), b"legacy_pass");
+
+        // Multi-credential list configured alongside legacy appends legacy if not present
+        config.grpc_credentials = vec![GrpcCredential::new("new_user", SafePassword::from("new_pass"))];
+        let effective = config.effective_grpc_credentials();
+        assert_eq!(effective.len(), 2);
+        let mut iter = effective.iter();
+        let first = iter.next().expect("first credential");
+        let second = iter.next().expect("second credential");
+        assert_eq!(first.username, "new_user");
+        assert_eq!(second.username, "legacy_user");
+
+        // If list already contains legacy user, do not duplicate
+        config
+            .grpc_credentials
+            .push(GrpcCredential::new("legacy_user", SafePassword::from("updated_pass")));
+        let effective = config.effective_grpc_credentials();
+        assert_eq!(effective.len(), 2);
+    }
 }

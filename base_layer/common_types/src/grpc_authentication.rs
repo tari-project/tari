@@ -23,6 +23,26 @@
 use serde::{Deserialize, Serialize};
 use tari_utilities::SafePassword;
 
+/// Represents a single username/password credential for gRPC authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrpcCredential {
+    pub username: String,
+    #[serde(
+        serialize_with = "serialize_redacted_password",
+        deserialize_with = "deserialize_safe_password"
+    )]
+    pub password: SafePassword,
+}
+
+impl GrpcCredential {
+    pub fn new(username: impl Into<String>, password: SafePassword) -> Self {
+        Self {
+            username: username.into(),
+            password,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum GrpcAuthentication {
@@ -43,6 +63,15 @@ impl GrpcAuthentication {
         match self {
             GrpcAuthentication::Basic { username, password } => Some((username, password)),
             _ => None,
+        }
+    }
+
+    pub fn to_credentials(&self) -> Vec<GrpcCredential> {
+        match self {
+            GrpcAuthentication::None => Vec::new(),
+            GrpcAuthentication::Basic { username, password } => {
+                vec![GrpcCredential::new(username.clone(), password.clone())]
+            },
         }
     }
 }
@@ -90,5 +119,25 @@ mod tests {
         let (user, pass) = valid.username_password().unwrap();
         assert_eq!(user, "admin");
         assert_eq!(pass.reveal(), b"real_password");
+    }
+
+    #[test]
+    fn grpc_credential_serialization_and_to_credentials() {
+        let cred = GrpcCredential::new("user1", "pass1".to_string().into());
+        assert_eq!(cred.username, "user1");
+        assert_eq!(cred.password.reveal(), b"pass1");
+
+        let auth_basic = GrpcAuthentication::Basic {
+            username: "user2".to_string(),
+            password: "pass2".to_string().into(),
+        };
+        let creds = auth_basic.to_credentials();
+        assert_eq!(creds.len(), 1);
+        let first_cred = creds.first().expect("credential must exist");
+        assert_eq!(first_cred.username, "user2");
+        assert_eq!(first_cred.password.reveal(), b"pass2");
+
+        let auth_none = GrpcAuthentication::None;
+        assert!(auth_none.to_credentials().is_empty());
     }
 }

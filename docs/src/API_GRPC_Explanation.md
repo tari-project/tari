@@ -224,17 +224,23 @@ Here are step-by-step instructions for enabling and configuring basic gRPC authe
 
 #### 2. **Enable gRPC Authentication**
    - Open the configuration file in a text editor.
-   - Find the following commented-out section:
+   - Configure credentials using the `grpc_credentials` list (passwords are stored in plaintext and verified using constant-time comparison in-memory; ensure the file has `0600` permissions or inject via environment variables):
      ```toml
-     # gRPC authentication method (default = "none")
-     #grpc_authentication = { username = "admin", password = "xxxx" }
+     grpc_credentials = [
+         { username = "admin", password = "mysecurepassword" },
+         { username = "miner", password = "anotherpassword" },
+     ]
      ```
+     > **Note:** All credentials in `grpc_credentials` currently grant equal full access to the configured gRPC endpoints (method filtering is applied globally via `grpc_server_allow_methods`). Distinct roles or per-user permissions are not yet implemented.
+   - Alternatively, inject credentials via environment variables using JSON format:
+     - `TARI_BASE_NODE__GRPC_CREDENTIALS='[{"username":"admin","password":"mysecurepassword"}]'`
+     - Or the legacy single-credential fallback: `TARI_BASE_NODE__GRPC_AUTHENTICATION='{"username":"admin","password":"mysecurepassword"}'`
+   - *(Deprecated)* The single credential `grpc_authentication = { username = "admin", password = "mysecurepassword" }` continues to work for backwards compatibility but emits a deprecation warning at startup. If both are set, the legacy credential is appended.
 
-#### 3. **Uncomment and Configure**
-   - Uncomment the `grpc_authentication` line by removing the `#` at the beginning.
-   - Set a clear-text username and password. For example:
-     ```toml
-     grpc_authentication = { username = "admin", password = "mysecurepassword" }
+#### 3. **Secure Configuration File Permissions**
+   - Ensure your configuration file permissions are set to `0600` (read/write only by owner):
+     ```bash
+     chmod 0600 config.toml
      ```
 
 #### 4. **Save the File**
