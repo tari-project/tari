@@ -104,9 +104,9 @@ impl Serialize for BulletRangeProof {
 }
 
 fn check_range_proof_len(len: usize) -> Result<(), String> {
-    if len > MAX_RANGE_PROOF_BYTES {
+    if len != 0 && len != MAX_RANGE_PROOF_BYTES {
         return Err(format!(
-            "Range proof of {len} bytes exceeds the maximum of {MAX_RANGE_PROOF_BYTES} bytes"
+            "Range proof of {len} bytes does not match expected size of {MAX_RANGE_PROOF_BYTES} bytes"
         ));
     }
     Ok(())
@@ -173,6 +173,20 @@ mod test {
 
     fn proof_bytes(len: usize) -> Vec<u8> {
         vec![0xab; len]
+    }
+
+    #[test]
+    fn range_proof_exact_size_enforcement() {
+        use crate::types::{RANGE_PROOF_AGGREGATION_FACTOR, RANGE_PROOF_BIT_LENGTH, expected_range_proof_size};
+        let expected = expected_range_proof_size(RANGE_PROOF_BIT_LENGTH, RANGE_PROOF_AGGREGATION_FACTOR);
+        assert_eq!(expected, 577);
+        assert_eq!(MAX_RANGE_PROOF_BYTES, expected);
+
+        assert!(BulletRangeProof::from_canonical_bytes(&[]).is_ok());
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected)).is_ok());
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected - 1)).is_err());
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected + 1)).is_err());
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(1)).is_err());
     }
 
     #[test]
