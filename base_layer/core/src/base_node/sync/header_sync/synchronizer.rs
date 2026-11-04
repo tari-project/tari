@@ -88,7 +88,6 @@ pub struct HeaderSynchronizer<'a, B> {
     attempt_started: Instant,
     attempt_start_block_hash: HashOutput,
     chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
-    rewound_blocks: bool,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -116,7 +115,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             attempt_started: Instant::now(),
             attempt_start_block_hash: HashOutput::zero(),
             chain_changes,
-            rewound_blocks: false,
         }
     }
 
@@ -128,11 +126,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     pub fn on_progress<H>(&mut self, hook: H)
     where H: Fn(u64, u64, &SyncPeer) + Send + Sync + 'static {
         self.hooks.add_on_progress_header_hook(hook);
-    }
-
-    /// Whether this sync rewound any of our blocks to swap to a peer's chain
-    pub fn has_rewound_blocks(&self) -> bool {
-        self.rewound_blocks
     }
 
     pub fn on_rewind<H>(&mut self, hook: H)
@@ -1124,7 +1117,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
             if !blocks.is_empty() {
-                self.rewound_blocks = true;
                 self.hooks.call_on_rewind_hooks(blocks);
             }
         }

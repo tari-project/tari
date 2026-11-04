@@ -22,14 +22,13 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, atomic::Ordering},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{connectivity::ConnectivityRequester, test_utils::mocks::create_connectivity_mock};
 use tari_node_components::blocks::{ChainBlock, ChainHeader};
-use tari_transaction_components::tari_proof_of_work::Difficulty;
 
 use crate::{
     base_node::sync::{
@@ -108,7 +107,6 @@ async fn a_peer_that_sends_no_block_in_time_is_banned_and_the_next_peer_is_tried
     let (stalling_peer, _stalling_server) = connect_mock_peer(&connectivity_mock, stalling, claim_for(block)).await;
     let mut serving = MockSyncPeer::new(&db, None);
     serving.blocks_to_serve = vec![block.block().clone()];
-    let saw_add_block_disabled = serving.saw_add_block_disabled.clone();
     let (serving_peer, _serving_server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block)).await;
     let config = short_deadline_config();
     let short_ban_period = config.short_ban_period;
@@ -133,34 +131,6 @@ async fn a_peer_that_sends_no_block_in_time_is_banned_and_the_next_peer_is_tried
     assert_eq!(banned_peer, stalling_peer.node_id());
     assert_eq!(*ban_duration, short_ban_period);
     assert!(ban_reason.contains("did not deliver a valid block"), "{ban_reason}");
-    // Propagated blocks are accepted until the first synced block is stored, and refused after it
-    assert!(!saw_add_block_disabled.load(Ordering::SeqCst));
-    assert!(db.is_add_block_disabled());
-}
-
-#[tokio::test]
-async fn a_propagated_block_that_replaces_the_synced_headers_is_not_banned() {
-    let (db, chain) = headers_ahead_of_blocks(
-        block_specs!(["A->GB"], ["B->GB", difficulty: Difficulty::from_u64(10).unwrap()]),
-        "A",
-    );
-    let block = chain.get("A").unwrap();
-    let propagated = chain.get("B").unwrap();
-    let (connectivity, connectivity_mock) = create_connectivity_mock();
-    let connectivity_mock = connectivity_mock.spawn();
-    let mut serving = MockSyncPeer::new(&db, None);
-    serving.blocks_to_serve = vec![block.block().clone()];
-    serving.blocks_to_add = vec![propagated.clone()];
-    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block)).await;
-
-    let err = sync_blocks(&db, connectivity.clone(), BlockchainSyncConfig::default(), vec![peer])
-        .await
-        .unwrap_err();
-
-    assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
-    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
-    assert_eq!(db.get_chain_metadata().unwrap().best_block_hash(), propagated.hash());
-    assert!(!db.is_add_block_disabled());
 }
 
 #[tokio::test]
@@ -203,5 +173,4 @@ async fn a_round_without_a_block_ends_after_twice_the_peer_budget() {
         (first.node_id().clone(), short_ban_period),
         (second.node_id().clone(), short_ban_period),
     ]);
-    assert!(!db.is_add_block_disabled());
 }

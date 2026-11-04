@@ -39,17 +39,11 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::sync_decide";
 pub struct DecideNextSync {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
-    rewound_blocks: bool,
 }
 
 impl DecideNextSync {
     pub fn is_synced(&self) -> bool {
         self.is_synced
-    }
-
-    /// Whether the header sync before this rewound any of our blocks to swap to a peer's chain
-    pub fn has_rewound_blocks(&self) -> bool {
-        self.rewound_blocks
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(&mut self, shared: &BaseNodeStateMachine<B>) -> StateEvent {
@@ -157,13 +151,8 @@ impl DecideNextSync {
 impl From<HeaderSyncState> for DecideNextSync {
     fn from(sync: HeaderSyncState) -> Self {
         let is_synced = sync.is_synced();
-        let rewound_blocks = sync.has_rewound_blocks();
         let mut sync_peers = sync.into_sync_peers();
         sync_peers.sort();
-        DecideNextSync {
-            sync_peers,
-            is_synced,
-            rewound_blocks,
-        }
+        DecideNextSync { sync_peers, is_synced }
     }
 }

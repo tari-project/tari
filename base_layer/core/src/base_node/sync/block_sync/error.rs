@@ -74,8 +74,6 @@ pub enum BlockSyncError {
     PeerDidNotSupplyAllClaimedBlocks(String),
     #[error("Block sync attempt with the peer did not deliver a valid block within {budget:.2?}")]
     NoValidBlockWithinBudget { budget: Duration },
-    #[error("Our chain changed before the first block was synced. Sync will be retried with another peer.")]
-    ChainChangedDuringSync,
     #[error("No block was synced within {budget:.2?} in this block sync round")]
     RoundWithoutBlock { budget: Duration },
     #[error("Peer does not have the blocks to our header tip, which it did not claim: {0}")]
@@ -113,7 +111,6 @@ impl BlockSyncError {
             BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) => "PeerDidNotSupplyAllClaimedBlocks",
             BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) => "PeerDoesNotHaveHeaderTipBlocks",
             BlockSyncError::NoValidBlockWithinBudget { .. } => "NoValidBlockWithinBudget",
-            BlockSyncError::ChainChangedDuringSync => "ChainChangedDuringSync",
             BlockSyncError::RoundWithoutBlock { .. } => "RoundWithoutBlock",
         }
     }
@@ -130,7 +127,6 @@ impl BlockSyncError {
             BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::PeerNotFound |
             BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) |
-            BlockSyncError::ChainChangedDuringSync |
             BlockSyncError::RoundWithoutBlock { .. } |
             BlockSyncError::SyncRoundFailed => None,
             BlockSyncError::ChainStorageError(e) => e.get_ban_reason(),

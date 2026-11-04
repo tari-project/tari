@@ -70,8 +70,6 @@ pub struct BlockSynchronizer<'a, B> {
     predial_time: HashMap<NodeId, Duration>,
     attempt_spent_before: Duration,
     received_valid_block: bool,
-    /// Our header tip hash and best block hash when the current attempt started
-    attempt_start_chain: Option<(HashOutput, HashOutput)>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
@@ -95,7 +93,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             predial_time: HashMap::new(),
             attempt_spent_before: Duration::ZERO,
             received_valid_block: false,
-            attempt_start_chain: None,
         }
     }
 
@@ -229,7 +226,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.attempt_started = Instant::now();
             self.attempt_spent_before = self.predial_time.remove(&node_id).unwrap_or_default();
             self.received_valid_block = false;
-            self.attempt_start_chain = None;
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
             let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
             self.hooks.call_on_starting_hook(sync_peer);
@@ -330,18 +326,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             match result {
                 Ok(_) => return Ok(()),
                 Err(err) => {
-                    let chain_change_error = matches!(
-                        err,
-                        BlockSyncError::UnknownHeaderHash(_) |
-                            BlockSyncError::BlockWithoutParent { .. } |
-                            BlockSyncError::ChainStorageError(_) |
-                            BlockSyncError::ValidationError(_)
-                    );
-                    let err = if chain_change_error && self.chain_changed_before_first_block().await? {
-                        BlockSyncError::ChainChangedDuringSync
-                    } else {
-                        err
-                    };
                     self.ban_sync_peer(&node_id, &err).await;
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter = latency_counter.saturating_add(1);
@@ -389,20 +373,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             .map_err(|_| BlockSyncError::NoValidBlockWithinBudget { budget })
     }
 
-    /// Whether a propagated block has changed our chain since the attempt started, before the peer sent a valid
-    /// block. Propagated blocks are only refused once block sync has stored its first block.
-    async fn chain_changed_before_first_block(&self) -> Result<bool, BlockSyncError> {
-        if self.received_valid_block {
-            return Ok(false);
-        }
-        let Some((start_header_tip, start_best_block)) = self.attempt_start_chain else {
-            return Ok(false);
-        };
-        let best_block = *self.db.get_chain_metadata().await?.best_block_hash();
-        let header_tip_on_chain = self.db.fetch_header_by_block_hash(start_header_tip).await?.is_some();
-        Ok(best_block != start_best_block || !header_tip_on_chain)
-    }
-
     async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
         // `synchronize()` already holds a Strong reference to every sync peer for the duration
         // of this sync, so the per-attempt dial here can be Weak — the strong handle in the
@@ -433,7 +403,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
 
         let tip_hash = tip_header.hash();
         let tip_height = tip_header.height;
-        self.attempt_start_chain = Some((tip_hash, *local_metadata.best_block_hash()));
         let best_height = local_metadata.best_block_height();
         let chain_header = self.db.fetch_chain_header(best_height).await?;
 
@@ -471,10 +440,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let Some(block_result) = next else {
                 break;
             };
-            // Our chain may have moved under the synced headers; do not judge the peer's block against it
-            if self.chain_changed_before_first_block().await? {
-                return Err(BlockSyncError::ChainChangedDuringSync);
-            }
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let block_body_response = match block_result {
@@ -589,10 +554,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 "{block}"
             );
 
-            if !self.received_valid_block {
-                // From the first stored block on, propagated blocks wait until block sync is done
-                self.db.inner().set_disable_add_block_flag();
-            }
             self.db
                 .write_transaction()
                 .delete_orphan(header_hash)

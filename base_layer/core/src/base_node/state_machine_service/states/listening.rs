@@ -828,39 +828,42 @@ mod test {
         assert!(sync_mode.is_lagging());
     }
 
-    /// A state machine on `db`, and the shutdown that must outlive it.
-    fn state_machine_for(
-        db: &crate::chain_storage::BlockchainDatabase<crate::test_helpers::blockchain::TempDatabase>,
-        connectivity: tari_comms::connectivity::ConnectivityRequester,
-        peer_manager: Arc<tari_comms::PeerManager>,
-        metadata_rx: broadcast::Receiver<Arc<ChainMetadataEvent>>,
-    ) -> (
-        BaseNodeStateMachine<crate::test_helpers::blockchain::TempDatabase>,
-        tari_shutdown::Shutdown,
-    ) {
+    #[tokio::test]
+    async fn add_block_is_disabled_once_headers_are_synchronized_not_on_a_claim() {
+        use tari_comms::{
+            peer_manager::PeerFeatures,
+            test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
+        };
         use tari_service_framework::reply_channel;
+        use tari_shutdown::Shutdown;
         use tokio::sync::watch;
 
         use crate::{
             base_node::{
                 BaseNodeStateMachineConfig,
                 LocalNodeCommsInterface,
-                state_machine_service::states::StatusInfo,
-                sync::SyncValidators,
+                state_machine_service::states::{BaseNodeState, StatusInfo},
+                sync::{AttemptSyncResult, HeaderSyncStatus, SyncValidators},
             },
             proof_of_work::randomx_factory::RandomXFactory,
-            test_helpers::create_consensus_rules,
+            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules, create_peer_manager},
             validation::mocks::MockValidator,
         };
 
+        let db = create_new_blockchain();
+        let peer_manager = create_peer_manager();
+        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+        let (connectivity, _connectivity_mock) = create_connectivity_mock();
+        let (metadata_tx, metadata_rx) = broadcast::channel(10);
         let (_dht_tx, dht_rx) = broadcast::channel(10);
         let (req_tx, _) = reply_channel::unbounded();
         let (block_tx, _) = reply_channel::unbounded();
         let (block_event_tx, _) = broadcast::channel(1);
         let (status_tx, _status_rx) = watch::channel(StatusInfo::new());
         let (event_tx, _event_rx) = broadcast::channel(10);
-        let shutdown = tari_shutdown::Shutdown::new();
-        let state_machine = BaseNodeStateMachine::new(
+        let shutdown = Shutdown::new();
+        let mut state_machine = BaseNodeStateMachine::new(
             db.clone().into(),
             LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
             connectivity,
@@ -875,31 +878,6 @@ mod test {
             create_consensus_rules(),
             shutdown.to_signal(),
         );
-        (state_machine, shutdown)
-    }
-
-    #[tokio::test]
-    async fn add_block_is_disabled_once_headers_are_synchronized_not_on_a_claim() {
-        use tari_comms::{
-            peer_manager::PeerFeatures,
-            test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
-        };
-
-        use crate::{
-            base_node::{
-                state_machine_service::states::BaseNodeState,
-                sync::{AttemptSyncResult, HeaderSyncStatus},
-            },
-            test_helpers::{blockchain::create_new_blockchain, create_peer_manager},
-        };
-
-        let db = create_new_blockchain();
-        let peer_manager = create_peer_manager();
-        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
-        peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
-        let (connectivity, _connectivity_mock) = create_connectivity_mock();
-        let (metadata_tx, metadata_rx) = broadcast::channel(10);
-        let (mut state_machine, _shutdown) = state_machine_for(&db, connectivity, peer_manager, metadata_rx);
 
         let local = db.get_chain_metadata().unwrap();
         let claim = chain_metadata(
@@ -934,12 +912,12 @@ mod test {
         assert!(matches!(decide, BaseNodeState::DecideNextSync(_)));
         assert!(db.is_add_block_disabled());
 
-        // Block sync straight after header sync re-enables propagated blocks until it stores its first block
+        // Block sync straight after header sync keeps refusing propagated blocks
         let block_sync = state_machine.transition(decide, StateEvent::ProceedToBlockSync(vec![sync_peer.clone()]));
         assert!(matches!(block_sync, BaseNodeState::BlockSync(_)));
-        assert!(!db.is_add_block_disabled());
+        assert!(db.is_add_block_disabled());
 
-        // Horizon sync, and block sync after it, keep them refused
+        // So do horizon sync and block sync after it
         let header_sync = BaseNodeState::HeaderSync(HeaderSyncState::new(vec![sync_peer.clone()], local));
         let decide = state_machine.transition(header_sync, synchronized);
         let horizon_sync = state_machine.transition(decide, StateEvent::ProceedToHorizonSync(vec![sync_peer]));
@@ -948,74 +926,6 @@ mod test {
         let block_sync = state_machine.transition(horizon_sync, StateEvent::HorizonStateSynchronized);
         assert!(matches!(block_sync, BaseNodeState::BlockSync(_)));
         assert!(db.is_add_block_disabled());
-    }
-
-    #[tokio::test]
-    async fn a_header_sync_that_rewound_blocks_keeps_refusing_propagated_blocks_in_block_sync() {
-        use tari_comms::test_utils::mocks::create_connectivity_mock;
-
-        use crate::{
-            base_node::{
-                state_machine_service::states::BaseNodeState,
-                sync::mock_sync_peer::{MockSyncPeer, connect_mock_peer},
-            },
-            chain_storage::ChainStorageError,
-            proto::base_node::FindChainSplitResponse,
-            test_helpers::{
-                blockchain::{create_chained_blocks, create_new_blockchain},
-                create_peer_manager,
-            },
-        };
-
-        // Our chain is genesis and L; the peer's stronger chain is P1 and P2 on genesis
-        let db = create_new_blockchain();
-        let genesis = Arc::new(db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
-        let (_, mut chain) =
-            create_chained_blocks(&db, block_specs!(["L->GB"], ["P1->GB"], ["P2->P1"], ["X->GB"]), genesis);
-        let local_block = chain.remove("L").unwrap();
-        let peer_block_1 = chain.remove("P1").unwrap();
-        let peer_block_2 = chain.remove("P2").unwrap();
-        let propagated = chain.remove("X").unwrap();
-        db.add_block(local_block.to_arc_block()).unwrap();
-        let (connectivity, connectivity_mock) = create_connectivity_mock();
-        let connectivity_mock = connectivity_mock.spawn();
-        let reply = FindChainSplitResponse {
-            headers: vec![
-                peer_block_1.header().clone().into(),
-                peer_block_2.header().clone().into(),
-            ],
-            fork_hash_index: 1,
-        };
-        let peer_claim = ChainMetadata::new(
-            peer_block_2.height(),
-            *peer_block_2.hash(),
-            0,
-            0,
-            peer_block_2.accumulated_data().total_accumulated_difficulty,
-            0,
-        )
-        .unwrap();
-        let (sync_peer, _server) =
-            connect_mock_peer(&connectivity_mock, MockSyncPeer::new(&db, Some(reply)), peer_claim).await;
-        let (_metadata_tx, metadata_rx) = broadcast::channel(10);
-        let (mut state_machine, _shutdown) = state_machine_for(&db, connectivity, create_peer_manager(), metadata_rx);
-
-        let mut header_sync = HeaderSyncState::new(vec![sync_peer.clone()], db.get_chain_metadata().unwrap());
-        let synchronized = header_sync.next_event(&mut state_machine).await;
-        assert!(
-            matches!(synchronized, StateEvent::HeadersSynchronized(..)),
-            "{synchronized:?}"
-        );
-        assert!(header_sync.has_rewound_blocks());
-        let decide = state_machine.transition(BaseNodeState::HeaderSync(header_sync), synchronized);
-        let block_sync = state_machine.transition(decide, StateEvent::ProceedToBlockSync(vec![sync_peer]));
-        assert!(matches!(block_sync, BaseNodeState::BlockSync(_)));
-        assert!(db.is_add_block_disabled());
-
-        // A propagated block before block sync stores its first block cannot swap us back to L
-        let err = db.add_block(propagated.to_arc_block()).unwrap_err();
-        assert!(matches!(err, ChainStorageError::AddBlockOperationLocked), "{err}");
-        assert_eq!(db.fetch_last_header().unwrap().hash(), *peer_block_2.hash());
     }
 
     #[test]
