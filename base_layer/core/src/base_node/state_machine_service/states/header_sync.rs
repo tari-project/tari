@@ -195,6 +195,10 @@ impl HeaderSyncState {
                     randomx_vm_flags,
                 });
                 match err {
+                    BlockHeaderSyncError::ChainResetToGenesis => {
+                        warn!(target: LOG_TARGET, "{err}");
+                        StateEvent::Continue
+                    },
                     BlockHeaderSyncError::SyncFailedAllPeers => {
                         error!(target: LOG_TARGET, "Header sync failed with all peers. Error: {err}");
                         warn!(target: LOG_TARGET, "{err}. Continuing..." );

@@ -63,6 +63,8 @@ pub enum BlockHeaderSyncError {
     ChainChangedDuringSync,
     #[error("Sync attempts with the peer ended {count} times because our chain changed")]
     RepeatedChainChangesDuringSync { count: usize },
+    #[error("The rewind to the chain split reset the chain to the genesis block. Header sync starts again.")]
+    ChainResetToGenesis,
     #[error("The sync peer could not take an RPC session ({0}). Sync will be retried with another peer if possible.")]
     SyncPeerUnavailable(RpcError),
     #[error("Unable to locate start hash `{0}`")]
@@ -138,6 +140,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::ChainChangedDuringSync |
+            BlockHeaderSyncError::ChainResetToGenesis |
             BlockHeaderSyncError::SyncPeerUnavailable(_) |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,

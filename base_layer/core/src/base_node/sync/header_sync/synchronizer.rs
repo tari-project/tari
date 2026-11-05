@@ -231,6 +231,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     self.chain_changes.remove(&node_id);
                     return Ok((peer, sync_result));
                 },
+                // Not this peer's fault, and the next round starts from the new chain
+                Err(err @ BlockHeaderSyncError::ChainResetToGenesis) => return Err(err),
                 Err(err) => {
                     let err = match err {
                         BlockHeaderSyncError::ChainChangedDuringSync => self.record_chain_change(&node_id),
@@ -1151,6 +1153,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             if !blocks.is_empty() {
                 self.hooks.call_on_rewind_hooks(blocks);
             }
+            // A rewind past a pruned node's horizon resets the chain to the genesis block, so the pending headers no
+            // longer link to it and every peer in this round has a stale view of our chain
+            if self.db.fetch_last_header().await?.hash() != split_info.chain_split_hash {
+                return Err(BlockHeaderSyncError::ChainResetToGenesis);
+            }
         }
 
         // Commit the forked chain. At this point
@@ -1247,4 +1254,63 @@ pub enum HeaderSyncStatus {
     InSyncOrAhead,
     /// Local node is lagging behind remote node
     Lagging(Box<ChainSplitInfo>),
+}
+
+#[cfg(test)]
+mod test {
+    #![allow(clippy::arithmetic_side_effects)]
+    use tari_comms::test_utils::mocks::create_connectivity_mock;
+
+    use super::*;
+    use crate::{
+        chain_storage::{BlockchainDatabaseConfig, Validators},
+        test_helpers::{
+            blockchain::{create_main_chain, create_store_with_consensus_and_validators_and_config},
+            create_consensus_rules,
+        },
+        validation::mocks::MockValidator,
+    };
+
+    #[tokio::test]
+    async fn a_rewind_that_resets_the_chain_ends_header_sync() {
+        let rules = create_consensus_rules();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        let config = BlockchainDatabaseConfig {
+            pruning_horizon: 2,
+            pruning_interval: 1,
+            ..Default::default()
+        };
+        let db = create_store_with_consensus_and_validators_and_config(rules.clone(), validators, config);
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+        let metadata = db.get_chain_metadata().unwrap();
+        assert_eq!(metadata.pruned_height(), 2);
+        // The split is below the pruned height
+        let split_info = ChainSplitInfo {
+            best_block_header: db.fetch_tip_header().unwrap(),
+            reorg_steps_back: metadata.best_block_height() - 1,
+            chain_split_hash: *chain.get("A").unwrap().hash(),
+        };
+        let (connectivity, _mock) = create_connectivity_mock();
+        let mut sync_peers = vec![];
+        let mut synchronizer = HeaderSynchronizer::new(
+            BlockchainSyncConfig::default(),
+            AsyncBlockchainDb::new(db.clone()),
+            rules,
+            connectivity,
+            &mut sync_peers,
+            RandomXFactory::default(),
+            &metadata,
+        );
+
+        let err = synchronizer.switch_to_pending_chain(&split_info).await.unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::ChainResetToGenesis));
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+        assert_eq!(db.fetch_last_header().unwrap().height, 0);
+    }
 }

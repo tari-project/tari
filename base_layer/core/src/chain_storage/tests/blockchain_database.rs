@@ -1752,6 +1752,7 @@ mod rewind_past_pruning_horizon {
     use crate::{
         chain_storage::{
             AccumulatedDataRebuildStatus,
+            AddBlockOutcome,
             BlockchainBackend,
             BlockchainCheckRequest,
             BlockchainDatabaseConfig,
@@ -2029,26 +2030,31 @@ mod rewind_past_pruning_horizon {
         db.verify_horizon_sync_output_root(tip.output_mr).unwrap();
     }
 
-    #[tokio::test]
-    async fn a_stronger_fork_below_the_pruned_height_resets_the_chain() {
-        const FORK_HEIGHT: u64 = 2;
-        let db = create_db(HORIZON);
-        let key_manager = KeyManager::new_random().unwrap();
-        let blocks = add_chain(&db, &key_manager);
-        // Build a longer fork on the same first blocks in a second database
+    /// Mines a fork of `len` blocks on block `fork_height` of `blocks` in a second database, and adds it to `db`. Every
+    /// fork block but the last is weaker than the main chain. Returns the outcome of adding the last one.
+    fn add_fork(
+        db: &BlockchainDatabase<TempDatabase>,
+        blocks: &[Arc<Block>],
+        key_manager: &KeyManager,
+        fork_height: u64,
+        len: u64,
+    ) -> AddBlockOutcome {
         let fork_db = create_db(0);
-        for block in blocks.iter().take(FORK_HEIGHT as usize) {
+        for block in blocks.iter().take(fork_height as usize) {
             fork_db.add_block(block.clone()).unwrap().result.assert_added();
         }
-        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
-        let mut prev_block = blocks[FORK_HEIGHT as usize - 1].clone();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager);
+        let mut prev_block = match fork_height {
+            0 => Arc::new(fork_db.fetch_genesis_block().block().clone()),
+            height => blocks[height as usize - 1].clone(),
+        };
         let mut fork = Vec::new();
-        for _ in FORK_HEIGHT..=CHAIN_LEN {
+        for _ in 0..len {
             let (block, _) = create_next_block(
                 &fork_db,
                 &prev_block,
                 vec![],
-                &key_manager,
+                key_manager,
                 &script_key_id,
                 &wallet_payment_address,
             );
@@ -2060,15 +2066,57 @@ mod rewind_past_pruning_horizon {
         for block in weaker {
             db.add_block(block.clone()).unwrap().result.assert_orphaned();
         }
+        db.add_block(last.clone()).unwrap()
+    }
 
-        let outcome = db.add_block(last.clone()).unwrap();
-
-        outcome.result.assert_reorg(0, (CHAIN_LEN - PRUNED_HEIGHT) as usize);
+    /// The reset is reported as a reorg to the genesis block, with nothing rejected, and leaves a fresh database
+    fn assert_reset_to_genesis(db: &BlockchainDatabase<TempDatabase>, outcome: &AddBlockOutcome, num_removed: usize) {
+        outcome.result.assert_reorg(1, num_removed);
+        assert_eq!(outcome.result.added_blocks()[0].hash(), db.fetch_genesis_block().hash());
         assert!(outcome.rejected.is_empty());
         let fresh = create_db(HORIZON);
         assert_eq!(db.get_chain_metadata().unwrap(), fresh.get_chain_metadata().unwrap());
-        assert_eq!(dump(&db), dump(&fresh));
+        assert_eq!(dump(db), dump(&fresh));
         assert!(db.fetch_bad_blocks().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_stronger_fork_below_the_pruned_height_resets_the_chain() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let blocks = add_chain(&db, &key_manager);
+
+        // From height 2 to one block above the tip
+        let outcome = add_fork(&db, &blocks, &key_manager, 2, CHAIN_LEN - 1);
+
+        assert_reset_to_genesis(&db, &outcome, (CHAIN_LEN - PRUNED_HEIGHT) as usize);
+    }
+
+    #[tokio::test]
+    async fn a_stronger_fork_from_genesis_resets_the_chain() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let blocks = add_chain(&db, &key_manager);
+
+        let outcome = add_fork(&db, &blocks, &key_manager, 0, CHAIN_LEN + 1);
+
+        assert_reset_to_genesis(&db, &outcome, (CHAIN_LEN - PRUNED_HEIGHT) as usize);
+    }
+
+    #[tokio::test]
+    async fn a_reset_with_the_tip_at_the_pruned_height_is_still_a_reorg() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let blocks = add_chain(&db, &key_manager);
+        db.rewind_to_height(PRUNED_HEIGHT).unwrap();
+        db.cleanup_all_orphans().unwrap();
+        let metadata = db.get_chain_metadata().unwrap();
+        assert_eq!(metadata.best_block_height(), metadata.pruned_height());
+
+        // From height 2 to one block above the tip, so no block above the pruned height is removed
+        let outcome = add_fork(&db, &blocks, &key_manager, 2, PRUNED_HEIGHT - 1);
+
+        assert_reset_to_genesis(&db, &outcome, 0);
     }
 
     #[tokio::test]
