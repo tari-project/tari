@@ -1540,16 +1540,13 @@ where
 
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(
-                output_features,
-            )
+            .with_features(output_features)
             .with_script(script)
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
                 tx_payment_id.clone(),
-            )
-            ?
+            )?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(CompressedPublicKey::new_from_pk(sender_offset_public_key))
             .with_script_key(self.resources.key_manager.get_spend_key().key_id)
@@ -1560,9 +1557,9 @@ where
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?
             .try_build(&self.resources.key_manager)
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
 
         builder.add_recipient(
             recipient_address.clone(),
@@ -3307,11 +3304,11 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
-        let output = self
+        let db_output = self
             .resources
             .db
-            .get_unspent_output(output_hash, &self.resources.key_manager)?
-            .wallet_output;
+            .get_unspent_output(output_hash, &self.resources.key_manager)?;
+        let output = db_output.wallet_output.clone();
 
         let amount = output.value();
 
@@ -3328,6 +3325,7 @@ where
                 MemoField::new_open_from_string("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund)
                     .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
             )
+            .with_tx_type(TxType::HtlcAtomicSwapRefund)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
             .with_input(output)?;
@@ -3354,7 +3352,7 @@ where
 
         self.resources
             .db
-            .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
+            .encumber_outputs(finalized.tx_id, vec![db_output], outputs)?;
         self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
         Ok((finalized.tx_id, fee, amount.saturating_sub(fee), finalized.transaction))
     }

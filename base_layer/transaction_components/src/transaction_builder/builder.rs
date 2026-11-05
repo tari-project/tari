@@ -518,7 +518,14 @@ where KM: TransactionKeyManagerInterface
             });
         }
         if self.prevent_fee_gt_amount {
-            let sent = self.total_output_value(pending)?;
+            let sent = match self.tx_type {
+                TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund
+                    if self.total_output_value(pending)? == MicroMinotari::zero() =>
+                {
+                    fee_and_change.change.unwrap_or_default()
+                },
+                _ => self.total_output_value(pending)?,
+            };
             if fee_and_change.fee > sent {
                 return Err(TransactionBuilderError::FeeGreaterThanAmount {
                     fee: fee_and_change.fee,
@@ -805,7 +812,13 @@ where KM: TransactionKeyManagerInterface
         if self.fee_per_gram.is_none() && self.fee == MicroMinotari::zero() {
             return Err(TransactionBuilderError::FeeNotSet);
         }
-        if self.recipient_outputs.is_empty() && self.custom_outputs.is_empty() && self.recipient_specs.is_empty() {
+        let is_change_only_atomic_swap = matches!(self.tx_type, TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund) &&
+            self.fee_and_change.and_then(|fc| fc.change).is_some();
+        if self.recipient_outputs.is_empty() &&
+            self.custom_outputs.is_empty() &&
+            self.recipient_specs.is_empty() &&
+            !is_change_only_atomic_swap
+        {
             return Err(TransactionBuilderError::NoRecipients);
         }
         if self.inputs.is_empty() {
@@ -1409,7 +1422,14 @@ where KM: TransactionKeyManagerInterface
 
         self.check_conditions()?;
 
-        let total_sent = self.total_output_value(&[])?;
+        let total_sent = match self.tx_type {
+            TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund
+                if self.total_output_value(&[])? == MicroMinotari::zero() =>
+            {
+                change_amount.unwrap_or_default()
+            },
+            _ => self.total_output_value(&[])?,
+        };
         if total_fee > total_sent {
             warn!(
                 target: LOG_TARGET,
@@ -3745,5 +3765,31 @@ mod test {
             tx.body.get_total_fee().unwrap(),
             finalized.payment_id.get_fee().unwrap()
         );
+    }
+
+    #[test]
+    fn change_only_atomic_swap_claim_and_refund_build_succeeds() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let constants = create_consensus_constants(0);
+        let input = create_test_input(100_000 * uT, 0, &key_manager, vec![], None);
+
+        for tx_type in [TxType::ClaimAtomicSwap, TxType::HtlcAtomicSwapRefund] {
+            let mut builder =
+                TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+            builder
+                .with_lock_height(0)
+                .with_fee_per_gram(MicroMinotari::from(1))
+                .with_tx_type(tx_type)
+                .with_prevent_fee_gt_amount(true)
+                .with_input(input.clone())
+                .unwrap();
+            builder.check_offline_payload(&[]).unwrap();
+            builder.reserve_sender_offset_keys(&[]).unwrap();
+            let finalized = builder.build().unwrap();
+            assert!(finalized.sent_outputs.is_empty());
+            let change = finalized.change.expect("change-only atomic swap should produce change");
+            assert_eq!(change.value() + finalized.fee, input.value());
+            assert_validates(&finalized.transaction);
+        }
     }
 }
