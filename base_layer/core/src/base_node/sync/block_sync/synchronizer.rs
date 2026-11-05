@@ -30,11 +30,13 @@ use std::{
 
 use futures::StreamExt;
 use log::*;
+use primitive_types::U512;
 use tari_common_types::types::HashOutput;
 use tari_comms::{
     PeerConnection,
     RefKind,
-    connectivity::ConnectivityRequester,
+    connection_manager::ConnectionManagerError,
+    connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::NodeId,
     protocol::rpc::{RpcClient, RpcError},
 };
@@ -226,19 +228,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             sync_peer_node_ids.len()
         );
         let mut latency_counter = 0usize;
-        let round_budget = self.attempt_budget().saturating_mul(2);
-        // Only attempts that ended in a ban or a block count towards the round's budget
-        let mut round_counted = Duration::ZERO;
-        let mut round_received_block = false;
         for node_id in sync_peer_node_ids {
-            // Stop trying further peers once the round has spent this long without a block
-            if !round_received_block && round_counted >= round_budget {
-                warn!(
-                    target: LOG_TARGET,
-                    "No block was synced within {round_budget:.2?}, ending this block sync round"
-                );
-                return Err(BlockSyncError::RoundWithoutBlock { budget: round_budget });
-            }
             self.attempt_started = Instant::now();
             self.attempt_spent_before = self.predial_time.remove(&node_id).unwrap_or_default();
             self.received_valid_block = false;
@@ -264,13 +254,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                             target: LOG_TARGET,
                             "Failed to connect to sync peer `{node_id}`: {e}"
                         );
-                        round_counted = round_counted.saturating_add(self.end_attempt_without_block(&node_id).await);
+                        if dial_failure_is_peer_caused(&e) {
+                            self.end_attempt_without_block(&node_id).await;
+                        }
                         self.remove_sync_peer(&node_id);
                         continue;
                     },
                     Err(err) => {
                         self.ban_sync_peer(&node_id, &err).await;
-                        round_counted = round_counted.saturating_add(self.attempt_time());
                         self.remove_sync_peer(&node_id);
                         continue;
                     },
@@ -284,7 +275,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     target: LOG_TARGET,
                     "Sync peer `{node_id}` was disconnected before RPC negotiation could begin"
                 );
-                round_counted = round_counted.saturating_add(self.end_attempt_without_block(&node_id).await);
                 self.remove_sync_peer(&node_id);
                 continue;
             }
@@ -310,7 +300,9 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         target: LOG_TARGET,
                         "Failed to obtain RPC connection from sync peer `{node_id}`: {e}"
                     );
-                    round_counted = round_counted.saturating_add(self.end_attempt_without_block(&node_id).await);
+                    if rpc_setup_failure_is_peer_caused(&e) {
+                        self.end_attempt_without_block(&node_id).await;
+                    }
                     self.remove_sync_peer(&node_id);
                     continue;
                 },
@@ -320,13 +312,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         "Timed out establishing RPC connection with sync peer `{node_id}` after {:.2?}",
                         self.config.rpc_deadline,
                     );
-                    round_counted = round_counted.saturating_add(self.end_attempt_without_block(&node_id).await);
+                    self.end_attempt_without_block(&node_id).await;
                     self.remove_sync_peer(&node_id);
                     continue;
                 },
                 Err(err) => {
                     self.ban_sync_peer(&node_id, &err).await;
-                    round_counted = round_counted.saturating_add(self.attempt_time());
                     self.remove_sync_peer(&node_id);
                     continue;
                 },
@@ -339,13 +330,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .expect("Already checked")
                 .set_latency(latency);
             let sync_peer = self.sync_peers.get(peer_index).expect("Already checked").clone();
+            let claimed_difficulty = sync_peer.claimed_chain_metadata().accumulated_difficulty();
             info!(
                 target: LOG_TARGET,
                 "Attempting to synchronize blocks with `{node_id}` latency: {latency:.2?}"
             );
-            let result = self.synchronize_blocks(sync_peer, client, max_latency).await;
-            round_received_block = round_received_block || self.received_valid_block;
-            match result {
+            match self.synchronize_blocks(sync_peer, client, max_latency).await {
                 Ok(_) => {
                     self.attempts_without_block.remove(&node_id);
                     return Ok(());
@@ -354,13 +344,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     self.ban_sync_peer(&node_id, &err).await;
                     if self.received_valid_block {
                         self.attempts_without_block.remove(&node_id);
-                        round_counted = round_counted.saturating_add(self.attempt_time());
-                    } else if err.get_ban_reason().is_some() {
-                        round_counted = round_counted.saturating_add(self.attempt_time());
-                    } else if matches!(err, BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_)) {
-                        round_counted = round_counted.saturating_add(self.end_attempt_without_block(&node_id).await);
+                    } else if self.sync_failure_is_peer_caused(&err, claimed_difficulty).await? {
+                        self.end_attempt_without_block(&node_id).await;
                     } else {
-                        // A failure on our side, such as a storage error, is not recorded against the peer
+                        // Banned already, or a failure on our side or one the peer may not have caused
                     }
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter = latency_counter.saturating_add(1);
@@ -403,11 +390,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     /// Records that the attempt with the peer ended without a block and without a ban, and bans the peer once it has
-    /// done this too often. Returns the time to count towards the round: the attempt's time if the peer was banned.
-    async fn end_attempt_without_block(&mut self, node_id: &NodeId) -> Duration {
+    /// done this too often.
+    async fn end_attempt_without_block(&mut self, node_id: &NodeId) {
         let count = record_recent_outcome(self.attempts_without_block, node_id);
         if count < MAX_ATTEMPTS_WITHOUT_BLOCK_PER_PEER {
-            return Duration::ZERO;
+            return;
         }
         warn!(
             target: LOG_TARGET,
@@ -416,7 +403,22 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         );
         self.ban_sync_peer(node_id, &BlockSyncError::RepeatedAttemptsWithoutBlock { count })
             .await;
-        self.attempt_time()
+    }
+
+    /// Whether a block sync failure that is not banned was the peer's doing: it claimed a chain that covers our header
+    /// tip, but does not have the blocks to it.
+    async fn sync_failure_is_peer_caused(
+        &self,
+        err: &BlockSyncError,
+        claimed_difficulty: U512,
+    ) -> Result<bool, BlockSyncError> {
+        match err {
+            BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) => {
+                let header_tip = self.db.fetch_last_chain_header().await?;
+                Ok(claimed_difficulty >= header_tip.accumulated_data().total_accumulated_difficulty)
+            },
+            _ => Ok(false),
+        }
     }
 
     /// Waits on a network call until the attempt's budget runs out. The budget only applies until the peer has sent a
@@ -714,4 +716,24 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
         self.sync_peers.iter().position(|p| p.node_id() == node_id)
     }
+}
+
+/// Whether a failed dial was the peer's doing, rather than ours (for example our own ban or a cancelled dial)
+pub(super) fn dial_failure_is_peer_caused(err: &BlockSyncError) -> bool {
+    matches!(
+        err,
+        BlockSyncError::ConnectivityError(ConnectivityError::ConnectionFailed(
+            ConnectionManagerError::DialConnectFailedAllAddresses |
+                ConnectionManagerError::ConnectFailedMaximumAttemptsReached |
+                ConnectionManagerError::DialTimeout { .. } |
+                ConnectionManagerError::NoiseHandshakeError(_) |
+                ConnectionManagerError::DialedPublicKeyMismatch { .. } |
+                ConnectionManagerError::IdentityProtocolError(_)
+        ))
+    )
+}
+
+/// Whether a failed RPC setup was the peer's doing. A peer that is busy, or a refusal on our side, is not.
+pub(super) fn rpc_setup_failure_is_peer_caused(err: &RpcError) -> bool {
+    err.is_caused_by_server() && !err.is_handshake_unavailable()
 }

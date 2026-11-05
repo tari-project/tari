@@ -28,12 +28,15 @@ use std::{
 
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
+    connection_manager::ConnectionManagerError,
+    connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, PeerFeatures},
+    protocol::rpc::{HandshakeRejectReason, RpcError, RpcHandshakeError},
     test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
 };
 use tari_node_components::blocks::{ChainBlock, ChainHeader};
 
+use super::synchronizer::{dial_failure_is_peer_caused, rpc_setup_failure_is_peer_caused};
 use crate::{
     base_node::sync::{
         BlockSyncError,
@@ -124,10 +127,9 @@ fn claim_with_another_tip(block: &ChainBlock) -> ChainMetadata {
     .unwrap()
 }
 
-/// A peer that answers `sync_blocks` with NotFound after `delay`
-fn not_found_peer(db: &BlockchainDatabase<TempDatabase>, delay: Duration) -> MockSyncPeer {
+/// A peer that answers `sync_blocks` with NotFound
+fn not_found_peer(db: &BlockchainDatabase<TempDatabase>) -> MockSyncPeer {
     let mut peer = MockSyncPeer::new(db, None);
-    peer.sync_blocks_stall = delay;
     peer.sync_blocks_not_found = true;
     peer
 }
@@ -170,85 +172,6 @@ async fn a_peer_that_sends_no_block_in_time_is_banned_and_the_next_peer_is_tried
 }
 
 #[tokio::test]
-async fn a_round_without_a_block_ends_after_twice_the_peer_budget() {
-    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
-    let block = chain.get("A").unwrap();
-    let (connectivity, connectivity_mock) = create_connectivity_mock();
-    let connectivity_mock = connectivity_mock.spawn();
-    let mut peers = Vec::new();
-    let mut servers = Vec::new();
-    for _ in 0..3 {
-        let mut stalling = MockSyncPeer::new(&db, None);
-        stalling.sync_blocks_stall = Duration::from_secs(30);
-        let (peer, server) = connect_mock_peer(&connectivity_mock, stalling, claim_for(block)).await;
-        peers.push(peer);
-        servers.push(server);
-    }
-    let config = short_deadline_config();
-    let short_ban_period = config.short_ban_period;
-
-    let timer = Instant::now();
-    let err = sync_blocks(&db, connectivity.clone(), config, peers.clone())
-        .await
-        .unwrap_err();
-    let elapsed = timer.elapsed();
-
-    // Two peers use up their 2 x rpc_deadline each, then the round stops before trying the third
-    assert!(matches!(err, BlockSyncError::RoundWithoutBlock { .. }), "{err}");
-    assert!(elapsed >= Duration::from_secs(4), "{elapsed:?}");
-    assert!(elapsed < Duration::from_secs(6), "{elapsed:?}");
-    let banned = banned_peers(connectivity, &connectivity_mock).await;
-    let banned_ids = banned
-        .iter()
-        .map(|(id, duration, _)| (id.clone(), *duration))
-        .collect::<Vec<_>>();
-    let [first, second, _] = peers.as_slice() else {
-        panic!("expected three peers");
-    };
-    assert_eq!(banned_ids, vec![
-        (first.node_id().clone(), short_ban_period),
-        (second.node_id().clone(), short_ban_period),
-    ]);
-}
-
-#[tokio::test]
-async fn attempts_that_end_without_a_block_or_a_ban_do_not_use_up_the_round() {
-    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
-    let block = chain.get("A").unwrap();
-    let (connectivity, connectivity_mock) = create_connectivity_mock();
-    let connectivity_mock = connectivity_mock.spawn();
-    let mut peers = Vec::new();
-    let mut servers = Vec::new();
-    // Each answers within the server's 1s deadline, but together they take longer than the round's budget of
-    // 4 x rpc_deadline
-    for _ in 0..6 {
-        let service = not_found_peer(&db, Duration::from_millis(800));
-        let (peer, server) = connect_mock_peer(&connectivity_mock, service, claim_with_another_tip(block)).await;
-        peers.push(peer);
-        servers.push(server);
-    }
-    let mut serving = MockSyncPeer::new(&db, None);
-    serving.blocks_to_serve = vec![block.block().clone()];
-    let (serving_peer, _serving_server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block)).await;
-    peers.push(serving_peer);
-    let mut attempts_without_block = HashMap::new();
-
-    sync_blocks_with_history(
-        &db,
-        connectivity.clone(),
-        short_deadline_config(),
-        peers.clone(),
-        &mut attempts_without_block,
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(db.get_height().unwrap(), 1);
-    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
-    assert_eq!(attempts_without_block.len(), 6);
-}
-
-#[tokio::test]
 async fn a_peer_whose_attempts_keep_ending_without_a_block_is_banned() {
     let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
     let block = chain.get("A").unwrap();
@@ -260,7 +183,7 @@ async fn a_peer_whose_attempts_keep_ending_without_a_block_is_banned() {
     let mut attempts_without_block = HashMap::new();
 
     for round in 0..3 {
-        let service = not_found_peer(&db, Duration::ZERO);
+        let service = not_found_peer(&db);
         let (peer, _server) = connect_mock_peer_as(
             peer_identity.clone(),
             &connectivity_mock,
@@ -362,4 +285,56 @@ async fn a_failure_on_our_side_is_not_recorded_against_the_peer() {
     assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
     assert!(attempts_without_block.is_empty(), "{attempts_without_block:?}");
     assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+}
+
+#[tokio::test]
+async fn not_found_from_a_peer_whose_claim_is_below_our_header_tip_is_not_recorded() {
+    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
+    let block = chain.get("A").unwrap();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    // The peer claims only as much work as our best block, which is less than our header tip
+    let local = db.get_chain_metadata().unwrap();
+    assert!(local.accumulated_difficulty() < block.accumulated_data().total_accumulated_difficulty);
+    let claim = ChainMetadata::new(1, [9u8; 32].into(), 0, 0, local.accumulated_difficulty(), 0).unwrap();
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, not_found_peer(&db), claim).await;
+    let mut attempts_without_block = HashMap::new();
+
+    let err = sync_blocks_with_history(
+        &db,
+        connectivity.clone(),
+        BlockchainSyncConfig::default(),
+        vec![peer],
+        &mut attempts_without_block,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
+    assert!(attempts_without_block.is_empty(), "{attempts_without_block:?}");
+    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+}
+
+#[test]
+fn only_failures_the_peer_caused_are_recorded() {
+    let busy = [
+        RpcError::HandshakeError(RpcHandshakeError::Rejected(
+            HandshakeRejectReason::NoServerSessionsAvailable("full"),
+        )),
+        RpcError::HandshakeError(RpcHandshakeError::Rejected(
+            HandshakeRejectReason::NoClientSessionsAvailable("full"),
+        )),
+    ];
+    for err in busy {
+        assert!(!rpc_setup_failure_is_peer_caused(&err), "{err}");
+    }
+    assert!(rpc_setup_failure_is_peer_caused(&RpcError::ReplyTimeout));
+
+    let our_ban =
+        BlockSyncError::ConnectivityError(ConnectivityError::ConnectionFailed(ConnectionManagerError::PeerBanned));
+    assert!(!dial_failure_is_peer_caused(&our_ban));
+    let unreachable = BlockSyncError::ConnectivityError(ConnectivityError::ConnectionFailed(
+        ConnectionManagerError::DialConnectFailedAllAddresses,
+    ));
+    assert!(dial_failure_is_peer_caused(&unreachable));
 }

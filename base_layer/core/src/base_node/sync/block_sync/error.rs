@@ -76,8 +76,6 @@ pub enum BlockSyncError {
     NoValidBlockWithinBudget { budget: Duration },
     #[error("Block sync attempts with the peer ended {count} times without a block")]
     RepeatedAttemptsWithoutBlock { count: usize },
-    #[error("No block was synced within {budget:.2?} in this block sync round")]
-    RoundWithoutBlock { budget: Duration },
     #[error("Peer does not have the blocks to our header tip, which it did not claim: {0}")]
     PeerDoesNotHaveHeaderTipBlocks(RpcError),
 }
@@ -113,7 +111,6 @@ impl BlockSyncError {
             BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) => "PeerDidNotSupplyAllClaimedBlocks",
             BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) => "PeerDoesNotHaveHeaderTipBlocks",
             BlockSyncError::NoValidBlockWithinBudget { .. } => "NoValidBlockWithinBudget",
-            BlockSyncError::RoundWithoutBlock { .. } => "RoundWithoutBlock",
             BlockSyncError::RepeatedAttemptsWithoutBlock { .. } => "RepeatedAttemptsWithoutBlock",
         }
     }
@@ -130,7 +127,6 @@ impl BlockSyncError {
             BlockSyncError::FailedToConstructChainBlock |
             BlockSyncError::PeerNotFound |
             BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) |
-            BlockSyncError::RoundWithoutBlock { .. } |
             BlockSyncError::SyncRoundFailed => None,
             BlockSyncError::ChainStorageError(e) => e.get_ban_reason(),
             // short ban
