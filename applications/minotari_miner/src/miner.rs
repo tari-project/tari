@@ -155,33 +155,42 @@ impl Stream for Miner {
         }
 
         // Non blocking select from all miner's receiver channels
-        let mut sel = Select::new();
-        for rx in &self.channels {
-            sel.recv(rx);
-        }
-        let report = match sel.try_select() {
-            Ok(oper) => {
-                let idx = oper.index();
-                let channel = match self.channels.get(idx) {
-                    Some(channel) => channel,
-                    None => {
-                        error!(target: LOG_TARGET, "Channel index {idx} out of bounds");
-                        return Poll::Ready(None);
+        let report = loop {
+            if self.channels.is_empty() {
+                debug!(target: LOG_TARGET, "Finished mining");
+                return Poll::Ready(None);
+            }
+            let recv_result = {
+                let mut sel = Select::new();
+                for rx in &self.channels {
+                    sel.recv(rx);
+                }
+                match sel.try_select() {
+                    Ok(oper) => {
+                        let idx = oper.index();
+                        let channel = match self.channels.get(idx) {
+                            Some(channel) => channel,
+                            None => {
+                                error!(target: LOG_TARGET, "Channel index {idx} out of bounds");
+                                return Poll::Ready(None);
+                            },
+                        };
+                        oper.recv(channel).map_err(|_| idx)
                     },
-                };
-                match oper.recv(channel) {
-                    Ok(report) => report,
                     Err(_) => {
-                        // Received error would mean thread is disconnected already
-                        trace!("Thread {idx} disconnected.");
-                        return Poll::Ready(None);
+                        // No reports
+                        return Poll::Pending;
                     },
                 }
-            },
-            Err(_) => {
-                // No reports
-                return Poll::Pending;
-            },
+            };
+            match recv_result {
+                Ok(report) => break report,
+                Err(idx) => {
+                    // Remove the disconnected channel and continue polling remaining threads
+                    trace!("Thread {idx} disconnected.");
+                    self.channels.swap_remove(idx);
+                },
+            }
         };
         if report.header.is_some() && !self.share_mode {
             // Dropping recipients would stop miners next time they try to report
@@ -298,5 +307,59 @@ pub fn mining_task(
             }
         }
         hasher.inc_nonce();
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crossbeam::channel::bounded;
+    use futures::StreamExt;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn disconnected_thread_channel_is_removed_without_dropping_other_threads() {
+        let (tx_dead, rx_dead) = bounded::<MiningReport>(1);
+        drop(tx_dead);
+
+        let (tx_live, rx_live) = bounded::<MiningReport>(1);
+
+        let mut miner = Miner {
+            threads: vec![thread::spawn(|| {})],
+            channels: vec![rx_dead, rx_live],
+            num_threads: 2,
+            header: BlockHeader::default(),
+            target_difficulty: 10,
+            share_mode: true,
+            vm_key: FixedHash::zero(),
+            rx_factory: None,
+        };
+
+        // Polling while rx_dead is disconnected and rx_live is pending should remove rx_dead and return Pending,
+        // rather than terminating the stream with Poll::Ready(None).
+        let waker = futures::task::noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        assert!(matches!(Pin::new(&mut miner).poll_next(&mut cx), Poll::Pending));
+        assert_eq!(miner.channels.len(), 1);
+
+        tx_live
+            .send(MiningReport {
+                miner: 1,
+                target_difficulty: 10,
+                difficulty: 15,
+                hashes: 42,
+                elapsed: std::time::Duration::from_secs(1),
+                header: Some(BlockHeader::default()),
+                height: 100,
+            })
+            .unwrap();
+
+        let report = miner.next().await.expect("live thread report should still be received");
+        assert_eq!(report.miner, 1);
+        assert_eq!(report.hashes, 42);
+
+        drop(tx_live);
+        assert!(miner.next().await.is_none());
+        assert!(miner.channels.is_empty());
     }
 }
