@@ -41,17 +41,27 @@ impl<K: Eq + Hash, V, DS: KeyValueStore<K, V>> CachedStore<K, V, DS> {
     fn ensure_cache_is_filled(&self) -> Result<(), KeyValStoreError> {
         let empty_check_guard = self.cache.read().map_err(|_| KeyValStoreError::PoisonedAccess)?;
         if empty_check_guard.is_empty() {
-            // Drop here or we can't get a read lock
+            // Drop here or we can't get a write lock
             drop(empty_check_guard);
             let mut guard = self.cache.write().map_err(|_| KeyValStoreError::PoisonedAccess)?;
-            // fill cache
-            self.actual_store.for_each(|item| match item {
-                Ok((k, v)) => {
-                    guard.insert(k, v);
-                    IterationResult::Continue
-                },
-                Err(_) => IterationResult::Break,
-            })?;
+            if guard.is_empty() {
+                let mut iter_err = None;
+                // fill cache
+                self.actual_store.for_each(|item| match item {
+                    Ok((k, v)) => {
+                        guard.insert(k, v);
+                        IterationResult::Continue
+                    },
+                    Err(e) => {
+                        iter_err = Some(e);
+                        IterationResult::Break
+                    },
+                })?;
+                if let Some(err) = iter_err {
+                    guard.clear();
+                    return Err(err);
+                }
+            }
         }
         Ok(())
     }
@@ -63,9 +73,8 @@ where DS: KeyValueStore<K, V>
     fn insert(&self, key: K, value: V) -> Result<(), KeyValStoreError> {
         self.ensure_cache_is_filled()?;
         let mut guard = self.cache.write().map_err(|_| KeyValStoreError::PoisonedAccess)?;
-        guard.insert(key.clone(), value.clone());
-        drop(guard);
-        self.actual_store.insert(key, value)?;
+        self.actual_store.insert(key.clone(), value.clone())?;
+        guard.insert(key, value);
         Ok(())
     }
 
@@ -104,7 +113,9 @@ where DS: KeyValueStore<K, V>
             .collect::<Vec<_>>();
         drop(read_guard);
         for (k, v) in vec {
-            f(Ok((k, v)));
+            if matches!(f(Ok((k, v))), IterationResult::Break) {
+                break;
+            }
         }
         Ok(())
     }
@@ -118,8 +129,87 @@ where DS: KeyValueStore<K, V>
     fn delete(&self, key: &K) -> Result<(), KeyValStoreError> {
         self.ensure_cache_is_filled()?;
         let mut write_guard = self.cache.write().map_err(|_| KeyValStoreError::PoisonedAccess)?;
+        self.actual_store.delete(key)?;
         write_guard.remove(key);
-        drop(write_guard);
-        self.actual_store.delete(key)
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::HashmapDatabase;
+
+    #[test]
+    fn cached_store_honors_for_each_break_and_keeps_cache_consistent() {
+        let inner = HashmapDatabase::new();
+        inner.insert(1u32, "one".to_string()).unwrap();
+        inner.insert(2u32, "two".to_string()).unwrap();
+        inner.insert(3u32, "three".to_string()).unwrap();
+
+        let store = CachedStore::new(inner);
+        assert_eq!(store.size().unwrap(), 3);
+
+        let mut visited = 0usize;
+        store
+            .for_each(|res| {
+                assert!(res.is_ok());
+                visited += 1;
+                IterationResult::Break
+            })
+            .unwrap();
+        assert_eq!(visited, 1);
+
+        // Deleting a non-existent key fails in HashmapDatabase and keeps existing cache intact
+        assert!(store.delete(&99).is_err());
+        assert_eq!(store.size().unwrap(), 3);
+
+        store.delete(&2).unwrap();
+        assert!(!store.exists(&2).unwrap());
+        assert_eq!(store.size().unwrap(), 2);
+    }
+
+    struct FailingIterationStore;
+    impl KeyValueStore<u32, String> for FailingIterationStore {
+        fn insert(&self, _key: u32, _value: String) -> Result<(), KeyValStoreError> {
+            Err(KeyValStoreError::DatabaseError("insert failed".to_string()))
+        }
+
+        fn get(&self, _key: &u32) -> Result<Option<String>, KeyValStoreError> {
+            Ok(None)
+        }
+
+        fn get_many(&self, _keys: &[u32]) -> Result<Vec<String>, KeyValStoreError> {
+            Ok(Vec::new())
+        }
+
+        fn size(&self) -> Result<usize, KeyValStoreError> {
+            Ok(0)
+        }
+
+        fn for_each<F>(&self, mut f: F) -> Result<(), KeyValStoreError>
+        where
+            Self: Sized,
+            F: FnMut(Result<(u32, String), KeyValStoreError>) -> IterationResult,
+        {
+            let _ = f(Ok((1, "first".to_string())));
+            let _ = f(Err(KeyValStoreError::KeyNotFound));
+            Ok(())
+        }
+
+        fn exists(&self, _key: &u32) -> Result<bool, KeyValStoreError> {
+            Ok(false)
+        }
+
+        fn delete(&self, _key: &u32) -> Result<(), KeyValStoreError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn cached_store_propagates_for_each_item_error_and_clears_partial_cache() {
+        let store = CachedStore::new(FailingIterationStore);
+        assert!(matches!(store.get(&1), Err(KeyValStoreError::KeyNotFound)));
+        assert!(store.cache.read().unwrap().is_empty());
     }
 }
