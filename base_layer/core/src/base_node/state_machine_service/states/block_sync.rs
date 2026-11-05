@@ -51,12 +51,14 @@ impl BlockSync {
         &mut self,
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
+        let mut attempts_without_block = std::mem::take(&mut shared.block_sync_attempts_without_block);
         let mut synchronizer = BlockSynchronizer::new(
             shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
             shared.connectivity.clone(),
             &mut self.sync_peers,
             shared.sync_validators.block_body.clone(),
+            &mut attempts_without_block,
         );
 
         let status_event_sender = shared.status_event_sender.clone();
@@ -103,7 +105,10 @@ impl BlockSync {
         });
 
         let timer = Instant::now();
-        match synchronizer.synchronize().await {
+        let result = synchronizer.synchronize().await;
+        drop(synchronizer);
+        shared.block_sync_attempts_without_block = attempts_without_block;
+        match result {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
