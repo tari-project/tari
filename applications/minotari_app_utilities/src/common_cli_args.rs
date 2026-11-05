@@ -125,14 +125,16 @@ impl CommonCliArgs {
 impl ConfigOverrideProvider for CommonCliArgs {
     fn get_config_property_overrides(&self, network: &Network) -> Vec<(String, String)> {
         let mut overrides = self.config_property_overrides.clone();
-        overrides.push((
-            "common.base_path".to_string(),
-            self.get_base_path_for(network)
-                .as_os_str()
-                .to_str()
-                .expect("An os string from a path")
-                .into(),
-        ));
+        if !overrides.iter().any(|(k, _)| k == "common.base_path") {
+            overrides.push((
+                "common.base_path".to_string(),
+                self.get_base_path_for(network)
+                    .as_os_str()
+                    .to_str()
+                    .expect("An os string from a path")
+                    .into(),
+            ));
+        }
         overrides
     }
 }
@@ -210,6 +212,25 @@ mod tests {
         assert!(parse_key_val::<String, String>("=val").is_err());
         assert!(parse_key_val::<String, String>("   =val").is_err());
         assert!(parse_key_val::<String, String>("no_equals").is_err());
+    }
+
+    #[test]
+    fn common_cli_args_preserves_explicit_base_path_override() {
+        let args = CommonCliArgs {
+            base_path: "/tmp/tari".to_string(),
+            config: "config.toml".to_string(),
+            log_config: None,
+            log_path: None,
+            network: None,
+            config_property_overrides: vec![("common.base_path".to_string(), "/custom/base".to_string())],
+        };
+
+        let overrides = args.get_config_property_overrides(&Network::StageNet);
+        let base_path_overrides: Vec<_> = overrides.into_iter().filter(|(k, _)| k == "common.base_path").collect();
+        assert_eq!(base_path_overrides, vec![(
+            "common.base_path".to_string(),
+            "/custom/base".to_string()
+        )]);
     }
 }
 
