@@ -30,6 +30,7 @@ use minotari_app_grpc::{
         Block,
         NewBlockTemplate,
         NewBlockTemplateRequest,
+        OutputType,
         base_node_client::BaseNodeClient,
         sha_p2_pool_client::ShaP2PoolClient,
     },
@@ -38,7 +39,15 @@ use tari_common::configuration::{
     Network,
     bootstrap::{ApplicationType, grpc_default_port},
 };
-use tari_common_types::tari_address::TariAddress;
+use tari_common_types::{
+    tari_address::{TariAddress, TariAddressFeatures},
+    types::FixedHash,
+};
+use tari_core::{PrunedOutputMmr, block_output_mr_hash_from_pruned_mmr};
+use tari_mmr::pruned_hashset::PrunedHashSet;
+use tari_script::{Opcode, TariScript, push_pubkey_script};
+use tari_transaction_components::transaction_components::TransactionOutput as CoreTransactionOutput;
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tonic::{
     Code,
@@ -223,14 +232,294 @@ pub async fn verify_base_node_grpc_mining_responses(
     Ok(())
 }
 
+/// Recompute the `block_output_mr` committed by a block header from its body outputs.
+///
+/// Converts each gRPC output into a core `TransactionOutput`, pushes non-coinbase outputs
+/// into the normal output MMR, pushes coinbase outputs into the block output MMR,
+/// and folds the normal output MMR root into the block output MMR root.
+pub fn calculate_block_output_mr_from_grpc_outputs(
+    outputs: &[minotari_app_grpc::tari_rpc::TransactionOutput],
+) -> Result<FixedHash, String> {
+    let mut normal_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+    let mut block_output_mmr = PrunedOutputMmr::new(PrunedHashSet::default());
+
+    for output in outputs {
+        let core_output = CoreTransactionOutput::try_from(output.clone())
+            .map_err(|e| format!("Invalid output in p2pool block body: {e}"))?;
+        let output_hash = core_output.hash();
+        if core_output.features.is_coinbase() {
+            block_output_mmr
+                .push(output_hash.to_vec())
+                .map_err(|e| format!("Failed to push coinbase output to MMR: {e}"))?;
+        } else {
+            normal_output_mmr
+                .push(output_hash.to_vec())
+                .map_err(|e| format!("Failed to push normal output to MMR: {e}"))?;
+        }
+    }
+
+    let normal_output_mr = normal_output_mmr
+        .get_merkle_root()
+        .map_err(|e| format!("Failed to calculate normal output MR: {e}"))?;
+    block_output_mmr
+        .push(normal_output_mr.to_vec())
+        .map_err(|e| format!("Failed to push normal output MR into block output MMR: {e}"))?;
+
+    block_output_mr_hash_from_pruned_mmr(&block_output_mmr)
+        .map_err(|e| format!("Failed to calculate block output MR: {e}"))
+}
+
+/// Constructs a canonical revealed-value coinbase output for testing purposes.
+pub fn make_test_coinbase_output(address: &TariAddress, value: u64) -> minotari_app_grpc::tari_rpc::TransactionOutput {
+    let core_output = CoreTransactionOutput::new_current_version(
+        tari_transaction_components::transaction_components::OutputFeatures::create_coinbase(
+            10,
+            None,
+            tari_transaction_components::transaction_components::RangeProofType::RevealedValue,
+        ),
+        tari_common_types::types::CompressedCommitment::default(),
+        None,
+        push_pubkey_script(address.public_spend_key()),
+        tari_common_types::types::CompressedPublicKey::default(),
+        tari_common_types::types::ComAndPubSignature::default(),
+        tari_transaction_components::transaction_components::covenants::Covenant::default(),
+        tari_transaction_components::transaction_components::EncryptedData::default(),
+        tari_transaction_components::MicroMinotari::from(value),
+    );
+    minotari_app_grpc::conversions::transaction_output::grpc_output_with_payref(core_output, None)
+        .expect("Valid coinbase conversion")
+}
+
+fn output_matches_address(
+    output: &minotari_app_grpc::tari_rpc::TransactionOutput,
+    wallet_payment_address: &TariAddress,
+    expected_script_bytes: &[u8],
+) -> bool {
+    output.script == expected_script_bytes ||
+        TariScript::from_bytes(&output.script).is_ok_and(
+            |script| matches!(script.as_slice(), [Opcode::PushPubKey(pk)] if **pk == *wallet_payment_address.public_spend_key()),
+        )
+}
+
+fn coinbase_recipient(
+    output: &minotari_app_grpc::tari_rpc::TransactionOutput,
+    wallet_payment_address: &TariAddress,
+) -> String {
+    let Ok(script) = TariScript::from_bytes(&output.script) else {
+        return "malformed_script".to_string();
+    };
+    let [Opcode::PushPubKey(pk)] = script.as_slice() else {
+        return format!("script({script})");
+    };
+    TariAddress::new_single_address(
+        (**pk).clone(),
+        wallet_payment_address.network(),
+        TariAddressFeatures::create_one_sided_only(),
+    )
+    .map_or_else(|_| pk.to_hex(), |address| address.to_base58())
+}
+
+/// Validate that a p2pool block template commits to its aggregate outputs via `header.block_output_mr`
+/// and contains a non-stealth, revealed-value coinbase output whose script matches `wallet_payment_address`.
+///
+/// Security bounds:
+/// 1. Recomputes `block_output_mr` from the body outputs and verifies equality with `header.block_output_mr`, binding
+///    the checked coinbase set to the header PoW being mined.
+/// 2. Assumes non-stealth, revealed-value coinbases as constructed by sha-p2pool. Stealth-addressed coinbases or
+///    unrevealed BulletProofPlus coinbases fail safe.
+/// 3. Note that because a miner only holds a public payment address (and not the wallet private view key), the miner
+///    can verify the spend key script match and the revealed promise value, but cannot verify if the encrypted data was
+///    encrypted with the miner's view key or whether the value represents the miner's full proportional share versus
+///    dust.
+pub fn verify_p2pool_block_coinbase(
+    block: &Block,
+    wallet_payment_address: &TariAddress,
+    log_target: &str,
+) -> Result<u64, String> {
+    let header = block
+        .header
+        .as_ref()
+        .ok_or_else(|| "P2Pool block is missing header".to_string())?;
+
+    let body = block
+        .body
+        .as_ref()
+        .ok_or_else(|| "P2Pool block is missing aggregate body".to_string())?;
+
+    let calculated_block_output_mr = calculate_block_output_mr_from_grpc_outputs(&body.outputs)?;
+
+    if header.block_output_mr.as_slice() != calculated_block_output_mr.as_slice() {
+        let err_msg = format!(
+            "P2Pool block header block_output_mr ({}) does not commit to body outputs (calculated: {})",
+            header.block_output_mr.to_hex(),
+            calculated_block_output_mr.to_hex()
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    let expected_script = push_pubkey_script(wallet_payment_address.public_spend_key());
+    let expected_script_bytes = expected_script.to_bytes();
+
+    let mut found_recipients = Vec::new();
+    let mut total_paid_value = 0u64;
+    let mut has_matching_coinbase = false;
+    let mut coinbase_count = 0usize;
+    let mut bp_plus_coinbase_detected = false;
+
+    for output in &body.outputs {
+        let is_coinbase = output
+            .features
+            .as_ref()
+            .map(|f| f.output_type == OutputType::Coinbase as u32)
+            .unwrap_or(false);
+
+        if !is_coinbase {
+            continue;
+        }
+
+        coinbase_count = coinbase_count.saturating_add(1);
+
+        if output_matches_address(output, wallet_payment_address, &expected_script_bytes) {
+            has_matching_coinbase = true;
+            if output.minimum_value_promise == 0 {
+                let range_proof_type = output.features.as_ref().map(|f| f.range_proof_type).unwrap_or(0);
+                if range_proof_type == 0 {
+                    bp_plus_coinbase_detected = true;
+                }
+            }
+            total_paid_value = total_paid_value.saturating_add(output.minimum_value_promise);
+        } else {
+            found_recipients.push(coinbase_recipient(output, wallet_payment_address));
+        }
+    }
+
+    if coinbase_count == 0 {
+        let err_msg = format!(
+            "P2Pool block has no coinbase outputs; expected payment to wallet_payment_address '{}'",
+            wallet_payment_address.to_base58()
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    if !has_matching_coinbase {
+        let err_msg = format!(
+            "P2Pool block coinbase outputs do not pay configured wallet_payment_address '{}'. Found coinbase \
+             recipients: [{}]",
+            wallet_payment_address.to_base58(),
+            found_recipients.join(", ")
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    if bp_plus_coinbase_detected && total_paid_value == 0 {
+        let err_msg = format!(
+            "P2Pool block coinbase output pays wallet_payment_address '{}' but uses BulletProofPlus range proof with \
+             0 minimum_value_promise; p2pool coinbases must use revealed-value proofs",
+            wallet_payment_address.to_base58()
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    if total_paid_value == 0 {
+        let err_msg = format!(
+            "P2Pool block coinbase output for wallet_payment_address '{}' provides 0 payout value",
+            wallet_payment_address.to_base58()
+        );
+        log::error!(target: log_target, "{err_msg}");
+        return Err(err_msg);
+    }
+
+    log::info!(
+        target: log_target,
+        "P2Pool block coinbase candidate found for address {} with revealed value promise of {} MicroMinotari",
+        wallet_payment_address.to_base58(),
+        total_paid_value
+    );
+
+    Ok(total_paid_value)
+}
+
 #[cfg(test)]
 mod test {
     use std::process::{Command, Stdio};
+
+    use minotari_app_grpc::{
+        conversions::transaction_output::grpc_output_with_payref,
+        tari_rpc::{AggregateBody, BlockHeader, TransactionOutput},
+    };
+    use tari_common_types::types::{ComAndPubSignature, CompressedCommitment, CompressedPublicKey, PrivateKey};
+    use tari_transaction_components::{
+        MicroMinotari,
+        transaction_components::{
+            EncryptedData,
+            OutputFeatures as CoreOutputFeatures,
+            RangeProofType as CoreRangeProofType,
+            TransactionOutput as CoreTransactionOutput,
+            covenants::Covenant,
+        },
+    };
 
     use super::*;
 
     const VALID_MAINNET_ADDRESS: &str =
         "126J92Yow5y9UoRFd1DNujPmVFq9C1ZeiYWT95UKxz5Y1rzbfjtHg4SCZS1dk83ivzt3m2XRQHTaYUk9SwmyeCvy5BJ";
+
+    fn make_test_address() -> TariAddress {
+        TariAddress::default()
+    }
+
+    fn make_other_address() -> TariAddress {
+        let key = CompressedPublicKey::from_secret_key(&PrivateKey::from(42u64));
+        TariAddress::new_single_address(
+            key,
+            TariAddress::default().network(),
+            TariAddressFeatures::create_one_sided_only(),
+        )
+        .unwrap()
+    }
+
+    fn make_coinbase_output(address: &TariAddress, value: u64) -> TransactionOutput {
+        make_test_coinbase_output(address, value)
+    }
+
+    fn make_bp_plus_coinbase_output(address: &TariAddress) -> TransactionOutput {
+        let core_output = CoreTransactionOutput::new_current_version(
+            CoreOutputFeatures::create_coinbase(10, None, CoreRangeProofType::BulletProofPlus),
+            CompressedCommitment::default(),
+            None,
+            push_pubkey_script(address.public_spend_key()),
+            CompressedPublicKey::default(),
+            ComAndPubSignature::default(),
+            Covenant::default(),
+            EncryptedData::default(),
+            MicroMinotari::from(0),
+        );
+        grpc_output_with_payref(core_output, None).unwrap()
+    }
+
+    fn make_test_block(outputs: Vec<TransactionOutput>, corrupt_mr: bool) -> Block {
+        let block_output_mr = if corrupt_mr {
+            vec![0xAA; 32]
+        } else {
+            calculate_block_output_mr_from_grpc_outputs(&outputs).unwrap().to_vec()
+        };
+
+        Block {
+            header: Some(BlockHeader {
+                block_output_mr,
+                ..Default::default()
+            }),
+            body: Some(AggregateBody {
+                inputs: vec![],
+                outputs,
+                kernels: vec![],
+            }),
+        }
+    }
 
     #[test]
     fn test_process_quit_returns_user_quit() {
@@ -324,5 +613,79 @@ mod test {
             .status()
             .expect("failed to spawn child test process");
         assert!(status.success(), "non-TTY child test failed with status: {status}");
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_success() {
+        let address = make_test_address();
+        let coinbase = make_coinbase_output(&address, 1_500_000);
+        let block = make_test_block(vec![coinbase], false);
+
+        let result = verify_p2pool_block_coinbase(&block, &address, "test");
+        assert_eq!(result.unwrap(), 1_500_000);
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_header_root_mismatch() {
+        let address = make_test_address();
+        let coinbase = make_coinbase_output(&address, 1_500_000);
+        let block = make_test_block(vec![coinbase], true);
+
+        let result = verify_p2pool_block_coinbase(&block, &address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("does not commit to body outputs"));
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_wrong_address() {
+        let configured_address = make_test_address();
+        let attacker_address = make_other_address();
+        let coinbase = make_coinbase_output(&attacker_address, 1_500_000);
+        let block = make_test_block(vec![coinbase], false);
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(&configured_address.to_base58()));
+        assert!(err.contains(&attacker_address.to_base58()));
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_multiple_coinbases() {
+        let configured_address = make_test_address();
+        let other_address = make_other_address();
+        let block = make_test_block(
+            vec![
+                make_coinbase_output(&other_address, 500_000),
+                make_coinbase_output(&configured_address, 2_000_000),
+            ],
+            false,
+        );
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert_eq!(result.unwrap(), 2_000_000);
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_bp_plus_rejected() {
+        let configured_address = make_test_address();
+        let block = make_test_block(vec![make_bp_plus_coinbase_output(&configured_address)], false);
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("BulletProofPlus"));
+    }
+
+    #[test]
+    fn test_verify_p2pool_block_coinbase_no_coinbase_outputs() {
+        let configured_address = make_test_address();
+        let block = make_test_block(vec![], false);
+
+        let result = verify_p2pool_block_coinbase(&block, &configured_address, "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("no coinbase outputs"));
     }
 }
