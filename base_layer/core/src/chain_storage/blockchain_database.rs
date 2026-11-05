@@ -4274,6 +4274,20 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
             .collect::<Vec<_>>()
             .join(", ")
     );
+    // A rewind past a pruned node's horizon resets the chain to the genesis block, dropping the fork with it, so there
+    // is nothing to apply. The main chain has still changed.
+    if *db.fetch_tip_header()?.hash() != fork_hash {
+        warn!(
+            target: LOG_TARGET,
+            "The rewind to fork block {fork_hash} reset the chain to the genesis block; the fork is dropped and will \
+             be synced again."
+        );
+        log_and_track_reorg(db, config, &tip_header, &[], &removed_blocks);
+        return Ok(SwapAttempt::Reorged {
+            removed: removed_blocks,
+            added: vec![],
+        });
+    }
     match reorganize_chain(db, block_validator, &reorg_chain, validated) {
         Ok(()) => {
             let added_blocks = Vec::from(reorg_chain);

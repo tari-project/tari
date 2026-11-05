@@ -2030,6 +2030,48 @@ mod rewind_past_pruning_horizon {
     }
 
     #[tokio::test]
+    async fn a_stronger_fork_below_the_pruned_height_resets_the_chain() {
+        const FORK_HEIGHT: u64 = 2;
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let blocks = add_chain(&db, &key_manager);
+        // Build a longer fork on the same first blocks in a second database
+        let fork_db = create_db(0);
+        for block in blocks.iter().take(FORK_HEIGHT as usize) {
+            fork_db.add_block(block.clone()).unwrap().result.assert_added();
+        }
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
+        let mut prev_block = blocks[FORK_HEIGHT as usize - 1].clone();
+        let mut fork = Vec::new();
+        for _ in FORK_HEIGHT..=CHAIN_LEN {
+            let (block, _) = create_next_block(
+                &fork_db,
+                &prev_block,
+                vec![],
+                &key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
+            fork_db.add_block(block.clone()).unwrap().result.assert_added();
+            prev_block = block.clone();
+            fork.push(block);
+        }
+        let (last, weaker) = fork.split_last().unwrap();
+        for block in weaker {
+            db.add_block(block.clone()).unwrap().result.assert_orphaned();
+        }
+
+        let outcome = db.add_block(last.clone()).unwrap();
+
+        outcome.result.assert_reorg(0, (CHAIN_LEN - PRUNED_HEIGHT) as usize);
+        assert!(outcome.rejected.is_empty());
+        let fresh = create_db(HORIZON);
+        assert_eq!(db.get_chain_metadata().unwrap(), fresh.get_chain_metadata().unwrap());
+        assert_eq!(dump(&db), dump(&fresh));
+        assert!(db.fetch_bad_blocks().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn a_failed_reset_leaves_the_database_untouched() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
