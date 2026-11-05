@@ -26,6 +26,11 @@ use tonic::transport::Identity;
 
 use crate::tls::error::GrpcTlsError;
 
+#[cfg(unix)]
+pub fn private_key_is_group_or_other_readable(mode: u32) -> bool {
+    mode & 0o044 != 0
+}
+
 pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError> {
     let err = |file| move |e| GrpcTlsError::FileReadError(format!("Could not load the file `{file:?}`: {e}"));
 
@@ -33,7 +38,24 @@ pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError
     let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file))?;
 
     let key_file = config_dir.join("server.key");
+    #[cfg(unix)]
+    if let Ok(metadata) = tokio::fs::metadata(&key_file).await {
+        use std::os::unix::fs::PermissionsExt;
+        if private_key_is_group_or_other_readable(metadata.permissions().mode()) {
+            log::warn!("TLS private key {:?} is readable by group or other users", key_file);
+        }
+    }
     let key = tokio::fs::read(&key_file).await.map_err(err(key_file))?;
 
     Ok(Identity::from_pem(cert, key))
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn private_key_permission_predicate() {
+        assert!(!super::private_key_is_group_or_other_readable(0o600));
+        assert!(super::private_key_is_group_or_other_readable(0o644));
+    }
 }

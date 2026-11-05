@@ -34,7 +34,13 @@ use chrono::{DateTime, Utc};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use log::*;
-use minotari_app_grpc::tls::certs::{generate_self_signed_certs, print_warning, write_cert_to_disk};
+use minotari_app_grpc::tls::certs::{
+    default_sans,
+    generate_self_signed_certs,
+    print_warning,
+    write_cert_to_disk,
+    write_key_to_disk,
+};
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::{
@@ -2280,13 +2286,14 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "Registering VN tx_id {tx_id}");
                 tx_ids.push(tx_id);
             },
-            CreateTlsCerts => match generate_self_signed_certs() {
-                Ok((cacert, cert, private_key)) => {
+            CreateTlsCerts => match generate_self_signed_certs(default_sans()) {
+                Ok((cacert, ca_key, cert, private_key)) => {
                     print_warning();
 
                     write_cert_to_disk(config.config_dir.clone(), "wallet_ca.pem", &cacert)?;
+                    write_key_to_disk(config.config_dir.clone(), "wallet_ca.key", &ca_key)?;
                     write_cert_to_disk(config.config_dir.clone(), "server.pem", &cert)?;
-                    write_cert_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
+                    write_key_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
 
                     println!();
                     println!("Certificates generated successfully.");
@@ -2297,7 +2304,7 @@ pub async fn command_runner(
                     );
                     println!();
                 },
-                Err(err) => eprintln!("Error generating certificates: {err}"),
+                Err(err) => return Err(err.into()),
             },
             Sync(args) => {
                 let mut utxo_scanner = wallet.utxo_scanner_service.clone();
