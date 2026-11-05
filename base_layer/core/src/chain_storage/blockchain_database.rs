@@ -2406,10 +2406,32 @@ where B: BlockchainBackend
         rewind_to_hash(&mut *db, hash)
     }
 
-    /// As `rewind_to_hash`, and also returns whether the chain was reset to the genesis block
-    pub fn rewind_or_reset_to_hash(&self, hash: BlockHash) -> Result<(Vec<Arc<ChainBlock>>, bool), ChainStorageError> {
+    /// Rewinds to `split_hash` to make way for a header chain ending at `pending_tip`. A rewind that would reset this
+    /// pruned node to the genesis block is refused, and nothing written, unless the pending chain is stronger than our
+    /// header tip. Checked under the same lock as the rewind, so the pruned height cannot move in between.
+    pub fn rewind_for_pending_chain(
+        &self,
+        split_hash: BlockHash,
+        pending_tip: ChainHeader,
+    ) -> Result<PendingChainRewind, ChainStorageError> {
         let mut db = self.db_write_access()?;
-        rewind_or_reset_to_hash(&mut *db, hash)
+        if rewind_would_reset(&*db, split_hash)? {
+            let header_tip = db.fetch_last_chain_header()?;
+            if self
+                .consensus_manager
+                .chain_strength_comparer()
+                .compare(&pending_tip, &header_tip) !=
+                Ordering::Greater
+            {
+                return Ok(PendingChainRewind::RefusedReset);
+            }
+        }
+        let (blocks, was_reset) = rewind_or_reset_to_hash(&mut *db, split_hash)?;
+        if was_reset {
+            Ok(PendingChainRewind::Reset(blocks))
+        } else {
+            Ok(PendingChainRewind::Rewound(blocks))
+        }
     }
 
     /// Whether rewinding to the block `hash` would reset a pruned node's chain to the genesis block
@@ -4212,6 +4234,18 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         }
     };
     Ok(AddBlockOutcome { result, rejected })
+}
+
+/// What `BlockchainDatabase::rewind_for_pending_chain` did
+#[derive(Debug)]
+pub enum PendingChainRewind {
+    /// The chain was rewound to the split; these blocks were removed
+    Rewound(Vec<Arc<ChainBlock>>),
+    /// The rewind reset the chain to the genesis block; these blocks were removed
+    Reset(Vec<Arc<ChainBlock>>),
+    /// The rewind would have reset the chain and the pending chain is not stronger than our header tip, so nothing was
+    /// done
+    RefusedReset,
 }
 
 /// What one attempt to swap to the strongest orphan tip did

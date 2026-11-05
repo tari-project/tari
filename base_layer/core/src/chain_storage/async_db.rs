@@ -69,6 +69,7 @@ use crate::{
         HorizonStateTreeUpdate,
         HorizonSyncOutputCheckpoint,
         MmrTree,
+        PendingChainRewind,
         TargetDifficulties,
         blockchain_database::MmrRoots,
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
@@ -393,8 +394,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        rewind_or_reset_to_hash(hash: BlockHash) -> (Vec<Arc<ChainBlock>>, bool),
-        "rewind_or_reset_to_hash"
+        rewind_for_pending_chain(split_hash: BlockHash, pending_tip: ChainHeader) -> PendingChainRewind,
+        "rewind_for_pending_chain"
     );
 
     make_async_fn!(rewind_would_reset(hash: BlockHash) -> bool, "rewind_would_reset");

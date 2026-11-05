@@ -1759,6 +1759,7 @@ mod rewind_past_pruning_horizon {
             DbTransaction,
             HorizonStateTreeUpdate,
             HorizonSyncOutputCheckpoint,
+            PendingChainRewind,
             Reorg,
             Validators,
             lmdb_db::{MetadataKey, MetadataValue},
@@ -2119,17 +2120,17 @@ mod rewind_past_pruning_horizon {
         assert_reset_to_genesis(&db, &outcome, 0);
     }
 
-    /// The block tip is just above the pruned height while the validated headers are far ahead. Returns the honest
-    /// chain the headers come from.
+    /// The block tip is just above the pruned height while the validated headers are far ahead, to height 10. Returns
+    /// the honest chain the headers come from, which is 12 blocks long.
     fn create_headers_ahead_of_blocks(
         db: &BlockchainDatabase<TempDatabase>,
         key_manager: &KeyManager,
-    ) -> Vec<Arc<Block>> {
+    ) -> (Vec<Arc<Block>>, BlockchainDatabase<TempDatabase>) {
         let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager);
         let honest = create_db(0);
         let mut prev_block = Arc::new(honest.fetch_genesis_block().block().clone());
         let mut blocks = Vec::new();
-        for _ in 0..10 {
+        for _ in 0..12 {
             let (block, _) = create_next_block(
                 &honest,
                 &prev_block,
@@ -2152,14 +2153,14 @@ mod rewind_past_pruning_horizon {
         let metadata = db.get_chain_metadata().unwrap();
         assert_eq!(metadata.best_block_height(), 5);
         assert_eq!(metadata.pruned_height(), 2);
-        blocks
+        (blocks, honest)
     }
 
     #[tokio::test]
     async fn a_fork_that_would_reset_must_beat_the_header_tip() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
-        let blocks = create_headers_ahead_of_blocks(&db, &key_manager);
+        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
         let metadata = db.get_chain_metadata().unwrap();
         let before = dump(&db);
 
@@ -2178,13 +2179,52 @@ mod rewind_past_pruning_horizon {
     async fn a_fork_above_the_pruned_height_only_has_to_beat_the_block_tip() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
-        let blocks = create_headers_ahead_of_blocks(&db, &key_manager);
+        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
 
         // From height 3, stronger than the block tip but not the header tip
         let outcome = add_fork(&db, &blocks, &key_manager, 3, 3);
 
         outcome.result.assert_reorg(3, 2);
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 6);
+    }
+
+    #[tokio::test]
+    async fn a_header_sync_rewind_that_would_reset_must_beat_the_header_tip() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+        let split = blocks[0].hash();
+        let before = dump(&db);
+
+        // Weaker than the header tip at 10, and equal to it
+        for height in [9, 10] {
+            let pending_tip = honest.fetch_chain_header(height).unwrap();
+            let rewind = db.rewind_for_pending_chain(split, pending_tip).unwrap();
+            assert!(matches!(rewind, PendingChainRewind::RefusedReset), "{rewind:?}");
+            assert_eq!(dump(&db), before);
+        }
+
+        let pending_tip = honest.fetch_chain_header(12).unwrap();
+        let rewind = db.rewind_for_pending_chain(split, pending_tip).unwrap();
+
+        assert!(matches!(rewind, PendingChainRewind::Reset(_)), "{rewind:?}");
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_header_sync_rewind_above_the_pruned_height_only_has_to_beat_the_block_tip() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+
+        let pending_tip = honest.fetch_chain_header(6).unwrap();
+        let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
+
+        match rewind {
+            PendingChainRewind::Rewound(removed) => assert_eq!(removed.len(), 2),
+            rewind => panic!("{rewind:?}"),
+        }
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
     }
 
     #[tokio::test]
