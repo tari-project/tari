@@ -218,15 +218,37 @@ impl SchemaGenerator {
 
     /// Convert gRPC method name to MCP tool name
     fn method_to_tool_name(&self, method_name: &str) -> String {
-        // Convert PascalCase to snake_case
+        // Convert PascalCase to snake_case while handling acronyms and existing underscores
         let mut result = String::new();
-        let chars = method_name.chars().peekable();
+        let mut chars = method_name.chars().peekable();
+        let mut prev_was_upper = false;
+        let mut prev_was_underscore = false;
 
-        for ch in chars {
-            if ch.is_uppercase() && !result.is_empty() {
-                result.push('_');
+        while let Some(ch) = chars.next() {
+            if ch == '_' {
+                if !result.is_empty() && !prev_was_underscore {
+                    result.push('_');
+                    prev_was_underscore = true;
+                }
+                prev_was_upper = false;
+                continue;
             }
-            result.push(ch.to_lowercase().next().unwrap());
+
+            if ch.is_uppercase() {
+                let is_trailing_plural_s = chars.peek() == Some(&'s') && chars.clone().nth(1).is_none();
+                let next_starts_word = chars.peek().is_some_and(|next| next.is_lowercase()) && !is_trailing_plural_s;
+                if !result.is_empty() && !prev_was_underscore && (!prev_was_upper || next_starts_word) {
+                    result.push('_');
+                }
+                for lower in ch.to_lowercase() {
+                    result.push(lower);
+                }
+                prev_was_upper = true;
+            } else {
+                result.push(ch);
+                prev_was_upper = false;
+            }
+            prev_was_underscore = false;
         }
 
         result
@@ -248,6 +270,18 @@ impl SchemaGenerator {
             self.validate_type(value, schema_type, path)?;
         }
 
+        // Check enum values
+        if let Some(enum_val) = schema_obj.get("enum") {
+            let enum_array = enum_val
+                .as_array()
+                .ok_or_else(|| SchemaError::InvalidSchema(format!("'enum' at {path} must be an array")))?;
+            if !enum_array.contains(value) {
+                return Err(SchemaError::ValidationFailed(format!(
+                    "Value at {path} is not one of the allowed enum variants"
+                )));
+            }
+        }
+
         // Check required properties
         if let Some(required) = schema_obj.get("required") &&
             let Some(required_array) = required.as_array() &&
@@ -263,14 +297,18 @@ impl SchemaGenerator {
         }
 
         // Validate properties
-        if let Some(properties) = schema_obj.get("properties") &&
-            let Some(props_obj) = properties.as_object() &&
-            let Some(value_obj) = value.as_object()
-        {
+        if let Some(value_obj) = value.as_object() {
+            let props_obj = schema_obj.get("properties").and_then(Value::as_object);
+            let disallow_additional = schema_obj.get("additionalProperties") == Some(&Value::Bool(false));
+
             for (prop_name, prop_value) in value_obj {
-                if let Some(prop_schema) = props_obj.get(prop_name) {
-                    let prop_path = format!("{path}.{prop_name}");
+                let prop_path = format!("{path}.{prop_name}");
+                if let Some(prop_schema) = props_obj.and_then(|props| props.get(prop_name)) {
                     self.validate_value(prop_value, prop_schema, &prop_path)?;
+                } else if disallow_additional {
+                    return Err(SchemaError::ValidationFailed(format!(
+                        "Unknown property not allowed by schema: {prop_path}"
+                    )));
                 }
             }
         }
@@ -283,7 +321,7 @@ impl SchemaGenerator {
             }
         }
 
-        // Check minimum/maximum for numbers
+        // Check minimum/maximum and integer format bounds for numbers
         if let Some(num_value) = value.as_f64() {
             if let Some(minimum) = schema_obj.get("minimum") &&
                 let Some(min_val) = minimum.as_f64() &&
@@ -304,19 +342,40 @@ impl SchemaGenerator {
                     value: num_value.to_string(),
                 });
             }
+
+            if let Some(format_str) = schema_obj.get("format").and_then(Value::as_str) {
+                match format_str {
+                    "uint64" if value.as_u64().is_none() => {
+                        return Err(SchemaError::ValueOutOfRange {
+                            field: path.to_string(),
+                            value: value.to_string(),
+                        });
+                    },
+                    "uint32" if !value.as_u64().is_some_and(|v| u32::try_from(v).is_ok()) => {
+                        return Err(SchemaError::ValueOutOfRange {
+                            field: path.to_string(),
+                            value: value.to_string(),
+                        });
+                    },
+                    _ => {},
+                }
+            }
         }
 
         // Check string patterns and formats
         if let Some(str_value) = value.as_str() {
             if let Some(pattern) = schema_obj.get("pattern") &&
-                let Some(pattern_str) = pattern.as_str() &&
-                let Ok(regex) = regex::Regex::new(pattern_str) &&
-                !regex.is_match(str_value)
+                let Some(pattern_str) = pattern.as_str()
             {
-                return Err(SchemaError::InvalidFormat {
-                    field: path.to_string(),
-                    reason: format!("does not match pattern: {pattern_str}"),
-                });
+                let regex = regex::Regex::new(pattern_str).map_err(|e| {
+                    SchemaError::InvalidSchema(format!("Invalid regex pattern '{pattern_str}' at {path}: {e}"))
+                })?;
+                if !regex.is_match(str_value) {
+                    return Err(SchemaError::InvalidFormat {
+                        field: path.to_string(),
+                        reason: format!("does not match pattern: {pattern_str}"),
+                    });
+                }
             }
 
             if let Some(format) = schema_obj.get("format") &&
@@ -365,8 +424,8 @@ impl SchemaGenerator {
     fn validate_string_format(&self, value: &str, format: &str, path: &str) -> Result<(), SchemaError> {
         match format {
             "byte" => {
-                // Validate base64 or hex string
-                if !value.chars().all(|c| c.is_alphanumeric() || "=+/".contains(c)) {
+                // Validate non-empty ASCII base64/base64url or hex string
+                if value.is_empty() || !value.chars().all(|c| c.is_ascii_alphanumeric() || "=+/-_".contains(c)) {
                     return Err(SchemaError::InvalidFormat {
                         field: path.to_string(),
                         reason: "invalid byte string format".to_string(),
@@ -612,6 +671,49 @@ mod tests {
         assert_eq!(generator.method_to_tool_name("GetBalance"), "get_balance");
         assert_eq!(generator.method_to_tool_name("ListHeaders"), "list_headers");
         assert_eq!(generator.method_to_tool_name("SubmitTransaction"), "submit_transaction");
+        assert_eq!(generator.method_to_tool_name("GetUTXOs"), "get_utxos");
+        assert_eq!(generator.method_to_tool_name("get_balance"), "get_balance");
+    }
+
+    #[test]
+    fn test_enum_additional_properties_and_uint_formats() {
+        let discovery = ServiceDiscovery::new();
+        let generator = SchemaGenerator::new(&discovery);
+
+        let mut props = Map::new();
+        props.insert(
+            "version".to_string(),
+            utils::integer_schema(Some("uint32"), None, None, "version"),
+        );
+        props.insert(
+            "mode".to_string(),
+            utils::enum_schema(vec![serde_json::json!("fast"), serde_json::json!("full")], "mode"),
+        );
+        let schema = utils::object_schema(props, vec!["version".to_string()], "test schema");
+
+        assert!(
+            generator
+                .validate_value(&serde_json::json!({"version": 1, "mode": "fast"}), &schema, "root")
+                .is_ok()
+        );
+        // negative integer fails uint32 format
+        assert!(
+            generator
+                .validate_value(&serde_json::json!({"version": -1}), &schema, "root")
+                .is_err()
+        );
+        // invalid enum value fails
+        assert!(
+            generator
+                .validate_value(&serde_json::json!({"version": 1, "mode": "invalid"}), &schema, "root")
+                .is_err()
+        );
+        // unknown property rejected when additionalProperties is false
+        assert!(
+            generator
+                .validate_value(&serde_json::json!({"version": 1, "unexpected": true}), &schema, "root")
+                .is_err()
+        );
     }
 
     #[test]
