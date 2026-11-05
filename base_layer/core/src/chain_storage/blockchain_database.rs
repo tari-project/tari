@@ -2398,9 +2398,8 @@ where B: BlockchainBackend
     /// Rewind the blockchain state to the block hash making the block at that hash the new tip.
     /// Returns the removed blocks.
     ///
-    /// The operation will fail if
-    /// * The block hash does not exist
-    /// * The block hash is before the horizon block height determined by the pruning horizon
+    /// The operation will fail if the block hash does not exist. On a pruned node, a block below the pruned height
+    /// resets the chain to the genesis block instead, as `rewind_to_height` does.
     pub fn rewind_to_hash(&self, hash: BlockHash) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_hash(&mut *db, hash)
@@ -2409,7 +2408,7 @@ where B: BlockchainBackend
     /// Rewinds to `split_hash` to make way for a header chain ending at `pending_tip`. A rewind that would reset this
     /// pruned node to the genesis block is refused, and nothing written, unless the pending chain is stronger than our
     /// header tip. Checked under the same lock as the rewind, so the pruned height cannot move in between.
-    pub fn rewind_for_pending_chain(
+    pub(crate) fn rewind_for_pending_chain(
         &self,
         split_hash: BlockHash,
         pending_tip: ChainHeader,
@@ -2435,7 +2434,7 @@ where B: BlockchainBackend
     }
 
     /// Whether rewinding to the block `hash` would reset a pruned node's chain to the genesis block
-    pub fn rewind_would_reset(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+    pub(crate) fn rewind_would_reset(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
         rewind_would_reset(&*db, hash)
     }
@@ -3787,7 +3786,7 @@ pub const GHSA_DEEP_REORG_CONFIRMATION_WINDOW: u64 = 360;
 /// So an attacker forks below the activation height, re-uses one real high difficulty Monero solution to mint
 /// blocks for free under the legacy rules, ramps the LWMA target, out-accumulates the honest chain and unwinds
 /// everything above the fork point - including blocks mined after the fork under the new rules. On a pruned node
-/// the rewind additionally runs past `prune_past_horizon` and is destructive.
+/// a rewind below the pruned height additionally resets the chain to the genesis block.
 ///
 /// # The rule
 ///
@@ -4350,8 +4349,8 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
 
     // GHSA-3qmx-q9pv-f3m4 deep reorg anchor. This is the choke point for the gossip driven reorg path: it is the
     // first place where both halves of the question are known - our own tip, and the full set of blocks the swap
-    // would add - and it is still *before* `reorganize_chain`, so nothing has been rewound and the pruned-node
-    // `prune_past_horizon` rewind has not been reached. The header sync path does not come through here and is
+    // would add - and it is still *before* `reorganize_chain`, so nothing has been rewound and a pruned node has not
+    // been reset to the genesis block. The header sync path does not come through here and is
     // anchored separately, in `HeaderSynchronizer::determine_sync_status`.
     if refuse_reorg_below_ghsa_activation(db, consensus_manager, &tip_header, &best_fork_header, &reorg_chain)? {
         remove_non_canonical_headers(db)?;
@@ -5942,8 +5941,8 @@ fn refuse_if_rewind_is_impossible<B: BlockchainBackend>(db: &B, rewind_to: u64) 
             target: LOG_TARGET,
             "[AccData] The accumulated data repair needs to rewind this chain to height {rewind_to} \
             ({steps_back} blocks), which is past this pruned node's effective pruning horizon of \
-            {effective_pruning_horizon}; `rewind_to_height` would turn that into a wipe to height 0. Refusing the \
-            rewind: the chain is left as it is and the repair stops unfinished, so it is attempted again on the \
+            {effective_pruning_horizon}; `rewind_to_height` would turn that into a reset to the genesis block. Refusing \
+            the rewind: the chain is left as it is and the repair stops unfinished, so it is attempted again on the \
             next startup. The blocks it needs are genuinely gone, so this node has to be resynced to complete it."
         );
         return Err(ChainStorageError::InvalidOperation(format!(
@@ -6156,7 +6155,7 @@ fn verify_accumulated_data_for_height<B: BlockchainBackend>(
 }
 
 // Log the rewind the consistency check is about to do, and call out a pruned node rewinding past its horizon,
-// which `rewind_to_height` turns into a wipe to height 0.
+// which `rewind_to_height` turns into a reset to the genesis block.
 fn warn_before_consistency_rewind<B: BlockchainBackend>(db: &B, rewind_to: u64) -> Result<(), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
     let tip = metadata.best_block_height();
@@ -10654,9 +10653,8 @@ mod test {
         /// A background task must never wipe a pruned node's chain.
         ///
         /// `rewind_to_height` turns a rewind that reaches past a pruned node's effective pruning horizon into a
-        /// rewind to height 0 - a full destructive wipe - and in that branch it also writes an orphan chain tip
-        /// without the matching orphan block. `rewind_below_invalid_header` must recognise that case before it
-        /// starts, refuse it, and leave the rebuild unfinished so the operator sees it again.
+        /// reset of the whole chain to the genesis block. `rewind_below_invalid_header` must recognise that case before
+        /// it starts, refuse it, and leave the rebuild unfinished so the operator sees it again.
         #[tokio::test]
         async fn a_rewind_that_would_wipe_a_pruned_node_is_refused() {
             const INVALID_AT: u64 = ACTIVATION;

@@ -302,7 +302,7 @@ impl LMDBStatsCollector {
     }
 
     /// Remove a metadata key deleted from the database
-    pub fn remove_metadata(&self, key: MetadataKey) {
+    pub(crate) fn remove_metadata(&self, key: MetadataKey) {
         let mut stats = self.receiver.borrow().clone();
         stats.metadata.remove(&key);
         self.update_db_stats(stats);

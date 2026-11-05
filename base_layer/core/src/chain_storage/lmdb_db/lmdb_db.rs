@@ -3310,7 +3310,9 @@ impl LMDBDatabase {
         let txn = self.read_transaction().unwrap();
         let access = txn.access();
         let mut tables = Vec::new();
-        for (name, db) in self.all_dbs() {
+        // `all_dbs` leaves out the burn commitment index
+        let burn_commitment_index = [(LMDB_DB_BURN_COMMITMENT_INDEX, &self.burn_commitment_index)];
+        for (name, db) in self.all_dbs().into_iter().chain(burn_commitment_index) {
             let mut cursor = txn.cursor(&**db).unwrap();
             let mut rows = Vec::new();
             while let Some((key, value)) = cursor.next::<[u8], [u8]>(&access).to_opt().unwrap() {
