@@ -109,6 +109,15 @@ impl<'a> PeerValidator<'a> {
 
         let node_id = NodeId::from_public_key(&new_peer.public_key);
 
+        let existing_latest_claim_time = existing_peer.as_ref().and_then(|existing| {
+            existing
+                .addresses
+                .iter()
+                .filter_map(|addr| addr.source().peer_identity_claim())
+                .map(|claim| claim.signature.updated_at())
+                .max()
+        });
+
         let mut peer = existing_peer.unwrap_or_else(|| {
             Peer::new(
                 new_peer.public_key.clone(),
@@ -122,12 +131,19 @@ impl<'a> PeerValidator<'a> {
         });
 
         let mut accepted_address_count = 0usize;
+        let mut latest_usable_claim: Option<(chrono::DateTime<chrono::Utc>, PeerFeatures)> = None;
         for claim in new_peer.claims {
             let valid_addresses = peer_validator::validate_and_filter_peer_identity_claim_addresses(
                 &self.config.peer_validator_config,
                 &new_peer.public_key,
                 &claim,
             )?;
+            if !valid_addresses.is_empty() {
+                let claim_time = claim.signature.updated_at();
+                if latest_usable_claim.is_none_or(|(latest_ts, _)| claim_time >= latest_ts) {
+                    latest_usable_claim = Some((claim_time, claim.features));
+                }
+            }
             accepted_address_count = accepted_address_count.saturating_add(valid_addresses.len());
             peer.update_addresses(&valid_addresses, &PeerAddressSource::FromDiscovery {
                 peer_identity_claim: claim.clone(),
@@ -139,6 +155,12 @@ impl<'a> PeerValidator<'a> {
                 new_peer.public_key.to_hex(),
                 valid_addresses
             );
+        }
+
+        if let Some((claim_time, features)) = latest_usable_claim &&
+            existing_latest_claim_time.is_none_or(|existing_ts| claim_time >= existing_ts)
+        {
+            peer.set_features(features);
         }
 
         if accepted_address_count == 0 {
@@ -413,5 +435,71 @@ mod tests {
         for address in addresses {
             assert!(peer.addresses.contains(&address));
         }
+    }
+
+    #[test]
+    fn it_updates_existing_peer_features_from_newer_valid_claim_without_regressing_on_stale_claims() {
+        let addr: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let node_identity = NodeIdentity::random_multiple_addresses(
+            &mut rand::rng(),
+            vec![addr.clone()],
+            PeerFeatures::COMMUNICATION_CLIENT,
+        );
+        let initial_claim = PeerIdentityClaim {
+            addresses: vec![addr.clone()],
+            features: PeerFeatures::COMMUNICATION_CLIENT,
+            signature: node_identity.identity_signature_read().as_ref().unwrap().clone(),
+        };
+
+        let config = DhtConfig::default_local_test();
+        let validator = PeerValidator::new(&config);
+        let peer = validator
+            .validate_peer(
+                UnvalidatedPeerInfo {
+                    public_key: node_identity.public_key().clone(),
+                    claims: vec![initial_claim.clone()],
+                },
+                None,
+            )
+            .unwrap();
+        assert_eq!(peer.features, PeerFeatures::COMMUNICATION_CLIENT);
+
+        // Create a newer signed claim with COMMUNICATION_NODE features
+        let newer_updated_at = initial_claim.signature.updated_at() + chrono::Duration::seconds(10);
+        let newer_sig = IdentitySignature::sign_new(
+            node_identity.secret_key(),
+            PeerFeatures::COMMUNICATION_NODE,
+            &[addr.clone()],
+            newer_updated_at,
+        )
+        .unwrap();
+        let newer_claim = PeerIdentityClaim {
+            addresses: vec![addr.clone()],
+            features: PeerFeatures::COMMUNICATION_NODE,
+            signature: newer_sig,
+        };
+
+        let updated_peer = validator
+            .validate_peer(
+                UnvalidatedPeerInfo {
+                    public_key: node_identity.public_key().clone(),
+                    claims: vec![newer_claim],
+                },
+                Some(peer),
+            )
+            .unwrap();
+        assert_eq!(updated_peer.features, PeerFeatures::COMMUNICATION_NODE);
+
+        // Replaying the older claim must not regress features back to COMMUNICATION_CLIENT
+        let after_stale = validator
+            .validate_peer(
+                UnvalidatedPeerInfo {
+                    public_key: node_identity.public_key().clone(),
+                    claims: vec![initial_claim],
+                },
+                Some(updated_peer),
+            )
+            .unwrap();
+        assert_eq!(after_stale.features, PeerFeatures::COMMUNICATION_NODE);
     }
 }
