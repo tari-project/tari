@@ -818,6 +818,10 @@ fn publish_compaction_progress(
     }
 }
 
+/// A stored key and value
+#[cfg(test)]
+type TableRow = (Vec<u8>, Vec<u8>);
+
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,
@@ -3302,7 +3306,7 @@ impl LMDBDatabase {
 
     /// Every stored key and value, by table name.
     #[cfg(test)]
-    pub(crate) fn dump_tables_for_test(&self) -> Vec<(&'static str, Vec<(Vec<u8>, Vec<u8>)>)> {
+    pub(crate) fn dump_tables_for_test(&self) -> Vec<(&'static str, Vec<TableRow>)> {
         let txn = self.read_transaction().unwrap();
         let access = txn.access();
         let mut tables = Vec::new();

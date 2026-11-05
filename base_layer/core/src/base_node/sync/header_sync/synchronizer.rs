@@ -232,7 +232,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     return Ok((peer, sync_result));
                 },
                 // Not this peer's fault, and the next round starts from the new chain
-                Err(err @ BlockHeaderSyncError::ChainResetToGenesis) => return Err(err),
+                Err(err @ BlockHeaderSyncError::ChainResetToGenesis { .. }) => return Err(err),
                 Err(err) => {
                     let err = match err {
                         BlockHeaderSyncError::ChainChangedDuringSync => self.record_chain_change(&node_id),
@@ -843,7 +843,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
         let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
-        let has_better_pow = self.pending_chain_has_higher_pow(&split_info.best_block_header);
+        let has_better_pow = self.pending_chain_should_replace_ours(&split_info).await?;
 
         if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
@@ -975,7 +975,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // The remote chain has not (yet) been accepted.
                 // We check the tip difficulties, switching over to the new chain if a higher accumulated difficulty is
                 // achieved.
-                if self.pending_chain_has_higher_pow(&split_info.best_block_header) {
+                if self.pending_chain_should_replace_ours(&split_info).await? {
                     self.switch_to_pending_chain(&split_info).await?;
                     has_switched_to_new_chain = true;
                 }
@@ -1022,7 +1022,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             actual: Some(validated_total_accumulated_diff),
                             local: best_local_before_sync,
                         });
-                    } else if self.pending_chain_has_higher_pow(&split_info.best_block_header) {
+                    } else if self.pending_chain_should_replace_ours(&split_info).await? {
                         self.switch_to_pending_chain(&split_info).await?;
                         has_switched_to_new_chain = true;
                         info!(
@@ -1118,6 +1118,23 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.header_validator.compare_chains(current_tip, proposed_tip).is_lt()
     }
 
+    /// Whether the pending chain is stronger than our block tip. If switching to it would reset this pruned node to
+    /// the genesis block, it also has to be stronger than our header tip, so that a short fork cannot wipe a stronger
+    /// header chain we already validated.
+    async fn pending_chain_should_replace_ours(
+        &self,
+        split_info: &ChainSplitInfo,
+    ) -> Result<bool, BlockHeaderSyncError> {
+        if !self.pending_chain_has_higher_pow(&split_info.best_block_header) {
+            return Ok(false);
+        }
+        if split_info.reorg_steps_back == 0 || !self.db.rewind_would_reset(split_info.chain_split_hash).await? {
+            return Ok(true);
+        }
+        let header_tip = self.db.fetch_last_chain_header().await?;
+        Ok(self.pending_chain_has_higher_pow(&header_tip))
+    }
+
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<(), BlockHeaderSyncError> {
         // Stop accepting propagated blocks while we swap to the peer's headers, then make sure no block that
         // landed during the attempt has made our chain the stronger one.
@@ -1150,13 +1167,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 split_hash.to_hex()
             );
             let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
-            if !blocks.is_empty() {
-                self.hooks.call_on_rewind_hooks(blocks);
-            }
             // A rewind past a pruned node's horizon resets the chain to the genesis block, so the pending headers no
             // longer link to it and every peer in this round has a stale view of our chain
             if self.db.fetch_last_header().await?.hash() != split_info.chain_split_hash {
-                return Err(BlockHeaderSyncError::ChainResetToGenesis);
+                return Err(BlockHeaderSyncError::ChainResetToGenesis { removed: blocks });
+            }
+            if !blocks.is_empty() {
+                self.hooks.call_on_rewind_hooks(blocks);
             }
         }
 
@@ -1308,7 +1325,7 @@ mod test {
 
         let err = synchronizer.switch_to_pending_chain(&split_info).await.unwrap_err();
 
-        assert!(matches!(err, BlockHeaderSyncError::ChainResetToGenesis));
+        assert!(matches!(err, BlockHeaderSyncError::ChainResetToGenesis { .. }));
         assert!(err.get_ban_reason().is_none());
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
         assert_eq!(db.fetch_last_header().unwrap().height, 0);

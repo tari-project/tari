@@ -2406,6 +2406,12 @@ where B: BlockchainBackend
         rewind_to_hash(&mut *db, hash)
     }
 
+    /// Whether rewinding to the block `hash` would reset a pruned node's chain to the genesis block
+    pub fn rewind_would_reset(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
+        let db = self.db_read_access()?;
+        rewind_would_reset(&*db, hash)
+    }
+
     /// This method will compare all chain tips the node currently knows about. This includes
     /// all tips in the orphan pool and the main active chain. It will swap the main active
     /// chain to the highest pow chain
@@ -3559,8 +3565,8 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
             ))
         })?;
 
-    let effective_pruning_horizon = last_block_height.saturating_sub(metadata.pruned_height());
-    if metadata.is_pruned_node() && last_block_height.saturating_sub(target_height) > effective_pruning_horizon {
+    if rewind_resets_chain(&metadata, target_height) {
+        let effective_pruning_horizon = last_block_height.saturating_sub(metadata.pruned_height());
         warn!(
             target: LOG_TARGET,
             "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), resetting the \
@@ -3660,6 +3666,23 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
     }
 
     Ok((removed_blocks, false))
+}
+
+/// Whether rewinding to `target_height` reaches below a pruned node's pruned height, which resets the chain to the
+/// genesis block
+fn rewind_resets_chain(metadata: &ChainMetadata, target_height: u64) -> bool {
+    let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
+    metadata.is_pruned_node() && metadata.best_block_height().saturating_sub(target_height) > effective_pruning_horizon
+}
+
+/// Whether rewinding to the block `block_hash` would reset the chain to the genesis block
+fn rewind_would_reset<T: BlockchainBackend>(db: &T, block_hash: BlockHash) -> Result<bool, ChainStorageError> {
+    let target_header = fetch_header_by_block_hash(db, block_hash)?.ok_or(ChainStorageError::ValueNotFound {
+        entity: "BlockHeader",
+        field: "block_hash",
+        value: block_hash.to_hex(),
+    })?;
+    Ok(rewind_resets_chain(&db.fetch_chain_metadata()?, target_header.height))
 }
 
 fn rewind_to_hash<T: BlockchainBackend>(
@@ -4189,8 +4212,8 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
 enum SwapAttempt {
     /// No orphan tip is stronger than the main chain. Nothing changed.
     NoStrongerTip,
-    /// The strongest tip's fork was refused by the deep reorg anchor, or does not link to the main chain, and was
-    /// dropped. Nothing else changed.
+    /// The strongest tip's fork was refused by the deep reorg anchor, would reset the chain without beating our
+    /// header tip, or does not link to the main chain, and was dropped. Nothing else changed.
     Refused,
     /// The rewind to the fork reset the chain to the genesis block, dropping the fork and every other orphan.
     /// `removed` holds only the blocks above the pruned height.
@@ -4291,6 +4314,27 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
     // `prune_past_horizon` rewind has not been reached. The header sync path does not come through here and is
     // anchored separately, in `HeaderSynchronizer::determine_sync_status`.
     if refuse_reorg_below_ghsa_activation(db, consensus_manager, &tip_header, &best_fork_header, &reorg_chain)? {
+        remove_non_canonical_headers(db)?;
+        return Ok(SwapAttempt::Refused);
+    }
+
+    // A fork that resets a pruned node to the genesis block also has to beat our header tip, so that a short fork
+    // cannot wipe a stronger header chain we already validated. Drop it as the deep reorg anchor does.
+    if rewind_would_reset(db, fork_hash)? &&
+        chain_strength_comparer.compare(&best_fork_header, &db.fetch_last_chain_header()?) != Ordering::Greater
+    {
+        warn!(
+            target: LOG_TARGET,
+            "Refusing fork tip #{} ({}): it would reset the chain to the genesis block but is not stronger than our \
+             header tip. Dropping it.",
+            best_fork_header.height(),
+            best_fork_header.hash(),
+        );
+        let mut txn = DbTransaction::new();
+        for hash in orphan_subtree_hashes(db, *lowest_new_block.hash())?.iter().rev() {
+            txn.delete_orphan(*hash);
+        }
+        db.write(txn)?;
         remove_non_canonical_headers(db)?;
         return Ok(SwapAttempt::Refused);
     }
@@ -5825,10 +5869,9 @@ fn strict_validate_header<B: BlockchainBackend>(
 /// Decide whether the rewind that is about to be performed is one this node is able to perform. Returns an error -
 /// and rewinds nothing - if it is not.
 ///
-/// The one refusal is a pruned node whose history no longer reaches the rewind target: `rewind_to_height` silently
-/// turns a rewind deeper than `best_block_height - pruned_height` into a rewind to height 0, a full destructive
-/// wipe, and in that branch it skips `insert_chained_orphan` but still calls `insert_orphan_chain_tip`, leaving a
-/// tip whose hash resolves to nothing. A background task must never do that on its own.
+/// The one refusal is a pruned node whose history no longer reaches the rewind target: `rewind_to_height` turns a
+/// rewind deeper than `best_block_height - pruned_height` into a reset of the whole chain to the genesis block, after
+/// which the node has to sync again from scratch. A background task must never do that on its own.
 ///
 /// Deliberately asked here, about the rewind actually being attempted, and deliberately *not* hoisted to the top of
 /// the walk. An earlier revision hoisted it by expanding the condition for the deepest rewind the walk could ever

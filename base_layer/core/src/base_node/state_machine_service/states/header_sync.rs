@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp::Ordering, time::Instant};
+use std::{cmp::Ordering, sync::Arc, time::Instant};
 
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -35,7 +35,7 @@ use crate::{
         state_machine_service::states::{BlockSyncInfo, StateEvent, StateInfo, StatusInfo},
         sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
     },
-    chain_storage::BlockchainBackend,
+    chain_storage::{BlockAddResult, BlockchainBackend},
 };
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -195,8 +195,23 @@ impl HeaderSyncState {
                     randomx_vm_flags,
                 });
                 match err {
-                    BlockHeaderSyncError::ChainResetToGenesis => {
-                        warn!(target: LOG_TARGET, "{err}");
+                    BlockHeaderSyncError::ChainResetToGenesis { removed } => {
+                        warn!(
+                            target: LOG_TARGET,
+                            "The rewind to the chain split reset the chain to the genesis block. Header sync starts \
+                             again."
+                        );
+                        // Reported as the gossip path reports a reset, so listeners see the new tip
+                        let genesis = Arc::new(shared.db.fetch_genesis_block());
+                        shared
+                            .local_node_interface
+                            .publish_block_event(BlockEvent::ValidBlockAdded(
+                                genesis.to_arc_block(),
+                                BlockAddResult::ChainReorg {
+                                    added: vec![genesis],
+                                    removed,
+                                },
+                            ));
                         StateEvent::Continue
                     },
                     BlockHeaderSyncError::SyncFailedAllPeers => {

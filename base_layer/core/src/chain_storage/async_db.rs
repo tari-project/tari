@@ -392,6 +392,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         "rewind_to_hash"
     );
 
+    make_async_fn!(rewind_would_reset(hash: BlockHash) -> bool, "rewind_would_reset");
+
     make_async_fn!(
         fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>,
         "fetch_block_timestamps"

@@ -2120,6 +2120,51 @@ mod rewind_past_pruning_horizon {
     }
 
     #[tokio::test]
+    async fn a_fork_that_would_reset_must_beat_the_header_tip() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
+        let honest = create_db(0);
+        let mut prev_block = Arc::new(honest.fetch_genesis_block().block().clone());
+        let mut blocks = Vec::new();
+        for _ in 0..10 {
+            let (block, _) = create_next_block(
+                &honest,
+                &prev_block,
+                vec![],
+                &key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
+            honest.add_block(block.clone()).unwrap().result.assert_added();
+            prev_block = block.clone();
+            blocks.push(block);
+        }
+        // The block tip is just above the pruned height while the validated headers are far ahead
+        let db = create_db(HORIZON);
+        for block in blocks.iter().take(5) {
+            db.add_block(block.clone()).unwrap().result.assert_added();
+        }
+        let headers = (6..=10)
+            .map(|height| honest.fetch_chain_header(height).unwrap())
+            .collect();
+        db.insert_valid_headers(headers).unwrap();
+        let metadata = db.get_chain_metadata().unwrap();
+        assert_eq!(metadata.best_block_height(), 5);
+        assert_eq!(metadata.pruned_height(), 2);
+        let before = dump(&db);
+
+        // From height 1, stronger than the block tip but not the header tip
+        let outcome = add_fork(&db, &blocks, &key_manager, 1, 5);
+
+        outcome.result.assert_orphaned();
+        assert!(outcome.rejected.is_empty());
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, 10);
+        assert_eq!(db.orphan_count().unwrap(), 0);
+        assert_eq!(dump(&db), before);
+    }
+
+    #[tokio::test]
     async fn a_failed_reset_leaves_the_database_untouched() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
