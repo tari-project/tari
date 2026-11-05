@@ -3308,7 +3308,10 @@ where
             .resources
             .db
             .get_unspent_output(output_hash, &self.resources.key_manager)?;
-        let output = db_output.wallet_output.clone();
+        let mut output = db_output.wallet_output.clone();
+        if output.input_data().is_empty() {
+            output.set_input_data(inputs!(CompressedPublicKey::default()));
+        }
 
         let amount = output.value();
 
