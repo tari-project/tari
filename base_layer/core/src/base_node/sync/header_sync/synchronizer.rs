@@ -762,7 +762,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             }
             // More difficulty than claimed at a lower height means the claim is stale (a reorg), not a lie
             let claimed_height = sync_peer.claimed_chain_metadata().best_block_height();
-            if claimed_height > start_header_height && total_accumulated_difficulty == claimed_total_accumulated_diff {
+            if claimed_height > start_header_height && total_accumulated_difficulty <= claimed_total_accumulated_diff {
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainHeight {
                     claimed: claimed_height,
                     actual: start_header_height,
@@ -963,7 +963,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // Same strict rule for the claimed height, unless more difficulty than claimed makes the claim stale
         let claimed_height = sync_peer.claimed_chain_metadata().best_block_height();
         let validated_height = prev_height.unwrap_or(start_header_height);
-        if claimed_height > validated_height && last_total_accumulated_difficulty == claimed_total_accumulated_diff {
+        if claimed_height > validated_height && last_total_accumulated_difficulty <= claimed_total_accumulated_diff {
             return Err(BlockHeaderSyncError::PeerSentInaccurateChainHeight {
                 claimed: claimed_height,
                 actual: validated_height,
