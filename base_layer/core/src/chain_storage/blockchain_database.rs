@@ -334,8 +334,6 @@ where B: BlockchainBackend
         Ok(blockchain_db)
     }
 
-    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
-    #[allow(clippy::arithmetic_side_effects)]
     pub fn start(&self) -> Result<(), ChainStorageError> {
         let (is_empty, config) = {
             let db = self.db_read_access()?;
@@ -352,27 +350,13 @@ where B: BlockchainBackend
             self.write(txn)?;
             txn = DbTransaction::new();
             self.insert_block(genesis_block.clone())?;
-            let body = &genesis_block.block().body;
-
-            let mut input_sum = UncompressedCommitment::default();
-            for input in body.inputs() {
-                input_sum = &input_sum + &input.commitment()?.to_commitment()?;
-            }
-            let mut output_sum = UncompressedCommitment::default();
-            for output in body.outputs() {
-                output_sum = &output_sum + &output.commitment.to_commitment()?;
-            }
-            let total_utxo_sum = CompressedCommitment::from_commitment(&output_sum - &input_sum);
-            let mut kernel_sum = UncompressedCommitment::default();
-            for kernel in body.kernels() {
-                kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
-            }
+            let (kernel_sum, total_utxo_sum) = genesis_horizon_sums(&genesis_block)?;
             txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                kernel_sum: Some(kernel_sum.clone()),
                 ..Default::default()
             });
             txn.set_pruned_height(0);
-            txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
+            txn.set_horizon_data(kernel_sum, total_utxo_sum);
             self.write(txn)?;
             self.store_pruning_horizon(config.pruning_horizon)?;
         } else if !self.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
@@ -3073,6 +3057,48 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     Ok(())
 }
 
+/// The genesis block's kernel sum and UTXO sum, which a fresh database stores as its block accumulated data and
+/// horizon data.
+// Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
+fn genesis_horizon_sums(
+    genesis: &ChainBlock,
+) -> Result<(CompressedCommitment, CompressedCommitment), ChainStorageError> {
+    let body = &genesis.block().body;
+    let mut input_sum = UncompressedCommitment::default();
+    for input in body.inputs() {
+        input_sum = &input_sum + &input.commitment()?.to_commitment()?;
+    }
+    let mut output_sum = UncompressedCommitment::default();
+    for output in body.outputs() {
+        output_sum = &output_sum + &output.commitment.to_commitment()?;
+    }
+    let total_utxo_sum = CompressedCommitment::from_commitment(&output_sum - &input_sum);
+    let mut kernel_sum = UncompressedCommitment::default();
+    for kernel in body.kernels() {
+        kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
+    }
+    Ok((CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum))
+}
+
+/// Replaces the whole chain with the genesis block in one write, leaving the database as `BlockchainDatabase::start`
+/// leaves an empty one. Bad blocks, reorgs, the migration version and the pruning horizon are kept.
+fn reset_chain_to_genesis<T: BlockchainBackend>(db: &mut T) -> Result<(), ChainStorageError> {
+    let genesis = Arc::new(db.fetch_genesis_block());
+    let genesis_hash = *genesis.hash();
+    let (kernel_sum, total_utxo_sum) = genesis_horizon_sums(&genesis)?;
+    let mut txn = DbTransaction::new();
+    txn.reset_chain_to_genesis();
+    insert_best_block(&mut txn, genesis)?;
+    txn.update_block_accumulated_data(genesis_hash, UpdateBlockAccumulatedData {
+        kernel_sum: Some(kernel_sum.clone()),
+        ..Default::default()
+    });
+    txn.set_pruned_height(0);
+    txn.set_horizon_data(kernel_sum, total_utxo_sum);
+    db.write(txn)
+}
+
 fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64) -> Result<(), ChainStorageError> {
     let mut txn = DbTransaction::new();
     txn.set_pruning_horizon(pruning_horizon);
@@ -3500,6 +3526,9 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
+///
+/// On a pruned node, a rewind that reaches below the pruned height resets the chain to the genesis block in one
+/// write instead, and returns only the blocks above the pruned height.
 #[allow(clippy::too_many_lines)]
 pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     db: &mut T,
@@ -3522,6 +3551,23 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             ))
         })?;
 
+    let effective_pruning_horizon = last_block_height.saturating_sub(metadata.pruned_height());
+    if metadata.is_pruned_node() && last_block_height.saturating_sub(target_height) > effective_pruning_horizon {
+        warn!(
+            target: LOG_TARGET,
+            "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), resetting the \
+             chain to the genesis block"
+        );
+        // Only the blocks above the pruned height can be rebuilt; the pruned ones are not returned.
+        let mut removed_blocks = Vec::with_capacity(usize::try_from(effective_pruning_horizon).unwrap_or(usize::MAX));
+        for h in 0..effective_pruning_horizon {
+            let block = fetch_block(db, last_block_height.saturating_sub(h), false)?;
+            removed_blocks.push(Arc::new(block.try_into_chain_block()?));
+        }
+        reset_chain_to_genesis(db)?;
+        return Ok(removed_blocks);
+    }
+
     if steps_back > 0 {
         info!(
             target: LOG_TARGET,
@@ -3539,20 +3585,11 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             "Rewinding headers at height {}",
             height,
         );
-        // If block accumulated data exists at this height (e.g. from a previous incomplete rewind
-        // past pruning horizon), remove it and any remaining block data before deleting the header.
-        if db.fetch_block_accumulated_data_by_height(height)?.is_some() {
-            let header = fetch_header(db, height)?;
-            let header_hash = header.hash();
-            txn.delete_block_accumulated_data(height);
-            txn.delete_all_kernerls_in_block(header_hash);
-            txn.delete_all_inputs_in_block(header_hash);
-        }
         txn.delete_header(height);
     }
     db.write(txn)?;
     // Delete blocks
-    let mut steps_back = last_block_height.saturating_sub(target_height);
+    let steps_back = last_block_height.saturating_sub(target_height);
     // No blocks to remove, no need to update the best block
     if steps_back == 0 {
         return Ok(vec![]);
@@ -3563,16 +3600,6 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         target: LOG_TARGET,
         "Rewinding blocks from height {last_block_height} to {target_height}"
     );
-
-    let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
-    let prune_past_horizon = metadata.is_pruned_node() && steps_back > effective_pruning_horizon;
-    if prune_past_horizon {
-        warn!(
-            target: LOG_TARGET,
-            "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), rewinding back to 0"
-        );
-        steps_back = effective_pruning_horizon;
-    }
 
     db.set_stats_total_height(steps_back);
     for h in 0..steps_back {
@@ -3587,7 +3614,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         let block_hash = *block.hash();
         txn.delete_tip_block(block_hash);
         txn.delete_header(block_height);
-        if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
+        if !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
             // can't recover from this apart from resync from another peer. Failure here
             // should not be common as this chain has a valid proof of work that has been
@@ -3596,14 +3623,8 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         }
         let block_total_accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
         removed_blocks.push(block);
-        // Set best block to one before, to keep DB consistent, or, if we reached pruned horizon, set best block to 0 as
-        // we have run out of headers.
-        let is_last_step = h.saturating_add(1) == steps_back;
-        let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && is_last_step {
-            0
-        } else {
-            block_height.saturating_sub(1)
-        })?;
+        // Set best block to one before, to keep DB consistent
+        let chain_header = db.fetch_chain_header_by_height(block_height.saturating_sub(1))?;
         let metadata = db.fetch_chain_metadata()?;
         let expected_block_hash = *metadata.best_block_hash();
         txn.set_best_block(
@@ -3613,14 +3634,8 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             expected_block_hash,
             chain_header.timestamp(),
         );
-        // When rewinding past the pruning horizon to height 0, reset pruned_height in the same
-        // transaction to maintain the invariant that pruned_height <= best_block_height.
-        if prune_past_horizon && is_last_step {
-            txn.set_pruned_height(0);
-        }
-        // The rewound tip is the new orphan chain tip, with its own work. A rewind past the pruning horizon keeps no
-        // orphans, so there is no tip to index.
-        if h == 0 && !prune_past_horizon {
+        // The rewound tip is the new orphan chain tip, with its own work.
+        if h == 0 {
             debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {block_hash}");
             txn.insert_orphan_chain_tip(block_hash, block_total_accumulated_difficulty);
         }
@@ -3634,34 +3649,6 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         // This write operation is inside the loop to reduce the size of the write operation; this previously caused
         // issues.
         db.write(txn)?;
-    }
-
-    if prune_past_horizon {
-        // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them.
-        // We also delete headers above the target height since they belong to the old chain and will be
-        // replaced during re-sync. The header at target_height is preserved as it is the chain split point.
-        // We don't have these complete blocks, so we don't push them to the removed blocks.
-        for h in 0..last_block_height.saturating_sub(steps_back) {
-            let height = last_block_height.saturating_sub(h).saturating_sub(steps_back);
-            debug!(
-                target: LOG_TARGET,
-                "Deleting pruned block data at height {}",
-                height,
-            );
-            // For pruned blocks, we cannot use delete_tip_block because it requires JMT validation
-            // which is not possible for pruned data. Instead, directly delete the accumulated data,
-            // kernels, inputs and then the header (above the target height).
-            let header = fetch_header(db, height)?;
-            let header_hash = header.hash();
-            let mut txn = DbTransaction::new();
-            txn.delete_block_accumulated_data(height);
-            txn.delete_all_kernerls_in_block(header_hash);
-            txn.delete_all_inputs_in_block(header_hash);
-            if height > target_height {
-                txn.delete_header(height);
-            }
-            db.write(txn)?;
-        }
     }
 
     Ok(removed_blocks)

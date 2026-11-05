@@ -301,6 +301,13 @@ impl LMDBStatsCollector {
         self.update_db_stats(stats);
     }
 
+    /// Remove a metadata key deleted from the database
+    pub fn remove_metadata(&self, key: MetadataKey) {
+        let mut stats = self.receiver.borrow().clone();
+        stats.metadata.remove(&key);
+        self.update_db_stats(stats);
+    }
+
     /// Set the total height for progress calculation
     pub fn set_total_height(&self, total_height: u64) {
         let mut stats = self.receiver.borrow().clone().migration_stats;

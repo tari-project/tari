@@ -78,6 +78,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// This is called to decide if the genesis block should be created.
     fn is_empty(&self) -> Result<bool, ChainStorageError>;
 
+    /// Returns the genesis block of the network this database was opened for.
+    fn fetch_genesis_block(&self) -> ChainBlock;
+
     /// Fetch accumulated data like MMR peaks and deleted hashmap
     fn fetch_block_accumulated_data(
         &self,
