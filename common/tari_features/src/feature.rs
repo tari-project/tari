@@ -54,7 +54,19 @@ impl Feature {
     }
 
     pub fn attr_name(&self) -> String {
-        format!("tari_feature_{}", self.name)
+        let normalized: String = self
+            .name
+            .trim()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    c.to_ascii_lowercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        format!("tari_feature_{normalized}")
     }
 
     pub fn is_active_in_testnet(&self) -> bool {
