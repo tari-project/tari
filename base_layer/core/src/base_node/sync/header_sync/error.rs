@@ -86,6 +86,8 @@ pub enum BlockHeaderSyncError {
         actual: Option<U512>,
         local: U512,
     },
+    #[error("Peer claimed a higher chain tip than they were able to provide. Claimed {claimed}, actual: {actual}")]
+    PeerSentInaccurateChainHeight { claimed: u64, actual: u64 },
     #[error("This peer sent too many headers ({0}) in response to a chain split request")]
     PeerSentTooManyHeaders(usize),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
@@ -138,7 +140,8 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
             err @ BlockHeaderSyncError::RpcError { .. } |
             err @ BlockHeaderSyncError::RpcRequestError { .. } |
-            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),

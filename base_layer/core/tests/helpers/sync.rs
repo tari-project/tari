@@ -25,8 +25,9 @@
 #![allow(clippy::arithmetic_side_effects)]
 use std::{sync::Arc, time::Duration};
 
+use primitive_types::U512;
 use tari_common::configuration::Network;
-use tari_common_types::types::HashOutput;
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 use tari_comms::peer_manager::NodeId;
 use tari_core::{
     base_node::{
@@ -80,6 +81,33 @@ pub fn initialize_sync_headers_with_ping_pong_data(
         vec![SyncPeer::from(PeerChainMetadata::new(
             peer_node_interfaces.node_identity.node_id().clone(),
             peer_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
+            None,
+        ))],
+        local_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
+    )
+}
+
+/// Helper function to initialize header sync with a single peer whose claimed height and difficulty are overridden
+pub fn initialize_sync_headers_with_claimed_height(
+    local_node_interfaces: &NodeInterfaces,
+    peer_node_interfaces: &NodeInterfaces,
+    claimed_height: u64,
+    claimed_difficulty: U512,
+) -> HeaderSyncState {
+    let actual = peer_node_interfaces.blockchain_db.get_chain_metadata().unwrap();
+    let claimed = ChainMetadata::new(
+        claimed_height,
+        *actual.best_block_hash(),
+        actual.pruning_horizon(),
+        actual.pruned_height(),
+        claimed_difficulty,
+        actual.timestamp(),
+    )
+    .unwrap();
+    HeaderSyncState::new(
+        vec![SyncPeer::from(PeerChainMetadata::new(
+            peer_node_interfaces.node_identity.node_id().clone(),
+            claimed,
             None,
         ))],
         local_node_interfaces.blockchain_db.get_chain_metadata().unwrap(),
