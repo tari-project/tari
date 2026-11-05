@@ -2406,6 +2406,12 @@ where B: BlockchainBackend
         rewind_to_hash(&mut *db, hash)
     }
 
+    /// As `rewind_to_hash`, and also returns whether the chain was reset to the genesis block
+    pub fn rewind_or_reset_to_hash(&self, hash: BlockHash) -> Result<(Vec<Arc<ChainBlock>>, bool), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        rewind_or_reset_to_hash(&mut *db, hash)
+    }
+
     /// Whether rewinding to the block `hash` would reset a pruned node's chain to the genesis block
     pub fn rewind_would_reset(&self, hash: BlockHash) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;

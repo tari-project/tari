@@ -392,6 +392,11 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         "rewind_to_hash"
     );
 
+    make_async_fn!(
+        rewind_or_reset_to_hash(hash: BlockHash) -> (Vec<Arc<ChainBlock>>, bool),
+        "rewind_or_reset_to_hash"
+    );
+
     make_async_fn!(rewind_would_reset(hash: BlockHash) -> bool, "rewind_would_reset");
 
     make_async_fn!(

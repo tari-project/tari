@@ -803,20 +803,24 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         })
     }
 
-    async fn rewind_blockchain(&self, split_hash: HashOutput) -> Result<Vec<Arc<ChainBlock>>, BlockHeaderSyncError> {
+    /// Rewinds to the split, returning the removed blocks and whether the chain was reset to the genesis block
+    async fn rewind_blockchain(
+        &self,
+        split_hash: HashOutput,
+    ) -> Result<(Vec<Arc<ChainBlock>>, bool), BlockHeaderSyncError> {
         debug!(
             target: LOG_TARGET,
             "Deleting headers that no longer form part of the main chain up until split at {}",
             split_hash.to_hex()
         );
 
-        let blocks = self.db.rewind_to_hash(split_hash).await?;
+        let (blocks, was_reset) = self.db.rewind_or_reset_to_hash(split_hash).await?;
         debug!(
             target: LOG_TARGET,
             "Rewound {} block(s) in preparation for header sync",
             blocks.len()
         );
-        Ok(blocks)
+        Ok((blocks, was_reset))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -849,13 +853,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
             // available headers from the peer, so they must cover what the peer claimed before we commit them.
-            // The peer's chain is as strong as it claimed, but our headers are stronger still
-            if verdict == PendingChainVerdict::RefusedReset &&
-                total_accumulated_difficulty >= claimed_total_accumulated_diff
-            {
-                return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
-            }
-            if !has_better_pow || total_accumulated_difficulty < claimed_total_accumulated_diff {
+            if verdict == PendingChainVerdict::Weaker || total_accumulated_difficulty < claimed_total_accumulated_diff {
                 debug!(target: LOG_TARGET, "No further headers to download");
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                     claimed: claimed_total_accumulated_diff,
@@ -873,6 +871,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     claimed: claimed_height,
                     actual: start_header_height,
                 });
+            }
+            // The peer's claim holds, but our headers are stronger still
+            if verdict == PendingChainVerdict::RefusedReset {
+                return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
             }
             debug!(
                 target: LOG_TARGET,
@@ -1011,6 +1013,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             prev_height = Some(current_height);
         }
 
+        let mut refused_reset = false;
         if !has_switched_to_new_chain {
             let best_local_before_sync = split_info
                 .best_block_header
@@ -1041,7 +1044,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             validated_total_accumulated_diff,
                         );
                     } else if verdict == PendingChainVerdict::RefusedReset {
-                        return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
+                        // Decided after the claim checks below
+                        refused_reset = true;
                     } else {
                         // We have a stronger chain, so we do not commit the headers.
                         debug!(
@@ -1088,6 +1092,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 claimed: claimed_height,
                 actual: validated_height,
             });
+        }
+        // The peer's claim holds, but our headers are stronger still
+        if refused_reset {
+            return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
         }
 
         Ok(())
@@ -1181,10 +1189,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Reorg: Rewinding the chain to the split at {}",
                 split_hash.to_hex()
             );
-            let blocks = self.rewind_blockchain(split_info.chain_split_hash).await?;
-            // A rewind past a pruned node's horizon resets the chain to the genesis block, so the pending headers no
-            // longer link to it and every peer in this round has a stale view of our chain
-            if self.db.fetch_last_header().await?.hash() != split_info.chain_split_hash {
+            let (blocks, was_reset) = self.rewind_blockchain(split_info.chain_split_hash).await?;
+            // A rewind past a pruned node's horizon resets the chain to the genesis block, which drops the split unless
+            // it is the genesis block, and every peer in this round has a stale view of our chain
+            if was_reset {
                 return Err(BlockHeaderSyncError::ChainResetToGenesis { removed: blocks });
             }
             if !blocks.is_empty() {
@@ -1302,11 +1310,20 @@ pub enum HeaderSyncStatus {
 mod test {
     #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::indexing_slicing)]
-    use tari_comms::test_utils::mocks::create_connectivity_mock;
+    use primitive_types::U512;
+    use tari_common_types::types::FixedHash;
+    use tari_comms::{
+        peer_manager::PeerFeatures,
+        protocol::rpc::{NamedProtocolService, mock::MockRpcServer},
+        test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
+    };
+    use tari_service_framework::reply_channel;
     use tari_utilities::epoch_time::EpochTime;
+    use tokio::sync::broadcast;
 
     use super::*;
     use crate::{
+        base_node::{LocalNodeCommsInterface, chain_metadata_service::PeerChainMetadata},
         chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, Validators},
         test_helpers::{
             blockchain::{TempDatabase, create_main_chain, create_store_with_consensus_and_validators_and_config},
@@ -1354,6 +1371,310 @@ mod test {
         validator.validate(next).await.unwrap();
     }
 
+    /// Validates `n` headers on top of the tip of `db` and stores them
+    async fn add_headers(db: &BlockchainDatabase<TempDatabase>, rules: &BaseNodeConsensusManager, n: usize) {
+        let mut validator = BlockHeaderSyncValidator::new(db.clone().into(), rules.clone(), RandomXFactory::default());
+        let tip = db.fetch_last_chain_header().unwrap();
+        validator.initialize_state(tip.hash()).await.unwrap();
+        let mut prev = tip.header().clone();
+        for _ in 0..n {
+            validate_next_header(&mut validator, &prev).await;
+            prev = validator.valid_headers().last().unwrap().header().clone();
+        }
+        db.insert_valid_headers(validator.take_valid_headers()).unwrap();
+    }
+
+    fn new_synchronizer<'a>(
+        db: &BlockchainDatabase<TempDatabase>,
+        rules: &BaseNodeConsensusManager,
+        sync_peers: &'a mut Vec<SyncPeer>,
+        metadata: &'a ChainMetadata,
+    ) -> HeaderSynchronizer<'a, TempDatabase> {
+        let (connectivity, _mock) = create_connectivity_mock();
+        HeaderSynchronizer::new(
+            BlockchainSyncConfig::default(),
+            AsyncBlockchainDb::new(db.clone()),
+            rules.clone(),
+            connectivity,
+            sync_peers,
+            RandomXFactory::default(),
+            metadata,
+        )
+    }
+
+    /// Grows a chain of headers on `split_hash`, one at a time up to `max_len`, and returns it with the verdict on
+    /// each length
+    async fn grow_pending_chain(
+        db: &BlockchainDatabase<TempDatabase>,
+        rules: &BaseNodeConsensusManager,
+        split_info: &ChainSplitInfo,
+        max_len: usize,
+    ) -> (Vec<ChainHeader>, Vec<PendingChainVerdict>) {
+        let metadata = db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![];
+        let mut synchronizer = new_synchronizer(db, rules, &mut sync_peers, &metadata);
+        synchronizer
+            .header_validator
+            .initialize_state(&split_info.chain_split_hash)
+            .await
+            .unwrap();
+        let mut prev = db
+            .fetch_header_by_block_hash(split_info.chain_split_hash)
+            .unwrap()
+            .unwrap();
+        let mut verdicts = Vec::new();
+        for _ in 0..max_len {
+            validate_next_header(&mut synchronizer.header_validator, &prev).await;
+            prev = synchronizer
+                .header_validator
+                .valid_headers()
+                .last()
+                .unwrap()
+                .header()
+                .clone();
+            verdicts.push(synchronizer.pending_chain_verdict(split_info).await.unwrap());
+        }
+        (synchronizer.header_validator.take_valid_headers(), verdicts)
+    }
+
+    type SyncRpcServer = MockRpcServer<rpc::BaseNodeSyncRpcServer<rpc::BaseNodeSyncRpcService<TempDatabase>>>;
+
+    /// Serves `peer_db` to a client over a mock connection, with the peer claiming the given chain
+    async fn connect_to_peer(
+        peer_db: &BlockchainDatabase<TempDatabase>,
+        claimed_height: u64,
+        claimed_difficulty: U512,
+    ) -> (rpc::BaseNodeSyncRpcClient, SyncPeer, SyncRpcServer, PeerConnection) {
+        let (req_tx, _) = reply_channel::unbounded();
+        let (block_tx, _) = reply_channel::unbounded();
+        let (block_event_tx, _) = broadcast::channel(1);
+        let service = rpc::BaseNodeSyncRpcServer::new(rpc::BaseNodeSyncRpcService::new(
+            peer_db.clone().into(),
+            LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+            10,
+        ));
+        let protocol = service.as_protocol_name();
+        let peer_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let mut server = MockRpcServer::new(service, peer_identity.clone());
+        server.serve();
+        let our_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let mut conn = server.create_connection(our_identity.to_peer(), protocol.into()).await;
+        let client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await.unwrap();
+        let claim = ChainMetadata::new(claimed_height, FixedHash::zero(), 0, 0, claimed_difficulty, 0).unwrap();
+        let sync_peer = SyncPeer::from(PeerChainMetadata::new(peer_identity.node_id().clone(), claim, None));
+        (client, sync_peer, server, conn)
+    }
+
+    /// A pruned chain of 5 blocks with 8 validated headers above it, and a peer holding headers from the genesis
+    /// block that are stronger than our blocks but not our headers
+    async fn create_peer_weaker_than_our_headers() -> (
+        BlockchainDatabase<TempDatabase>,
+        BaseNodeConsensusManager,
+        BlockchainDatabase<TempDatabase>,
+        ChainHeader,
+    ) {
+        let (db, rules, mut split_info) = create_pruned_chain();
+        add_headers(&db, &rules, 8).await;
+        split_info.chain_split_hash = *db.fetch_genesis_block().hash();
+        let (headers, verdicts) = grow_pending_chain(&db, &rules, &split_info, 20).await;
+        let len = verdicts
+            .iter()
+            .position(|verdict| *verdict == PendingChainVerdict::RefusedReset)
+            .unwrap() +
+            1;
+        let peer_db = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            ),
+            BlockchainDatabaseConfig::default(),
+        );
+        let headers = headers.into_iter().take(len).collect::<Vec<_>>();
+        let peer_tip = headers.last().unwrap().clone();
+        peer_db.insert_valid_headers(headers).unwrap();
+        (db, rules, peer_db, peer_tip)
+    }
+
+    async fn sync_from_peer(
+        db: &BlockchainDatabase<TempDatabase>,
+        rules: &BaseNodeConsensusManager,
+        peer_db: &BlockchainDatabase<TempDatabase>,
+        claimed_height: u64,
+        claimed_difficulty: U512,
+    ) -> Result<AttemptSyncResult, BlockHeaderSyncError> {
+        let metadata = db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![];
+        let mut synchronizer = new_synchronizer(db, rules, &mut sync_peers, &metadata);
+        // The server and connection have to outlive the sync
+        let (client, sync_peer, _server, _conn) = connect_to_peer(peer_db, claimed_height, claimed_difficulty).await;
+        synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+    }
+
+    #[tokio::test]
+    async fn a_peer_weaker_than_our_headers_is_refused_without_a_ban() {
+        let (db, rules, peer_db, peer_tip) = create_peer_weaker_than_our_headers().await;
+        let metadata = db.get_chain_metadata().unwrap();
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::WeakerThanLocalHeaders), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, 13);
+    }
+
+    #[tokio::test]
+    async fn a_peer_weaker_than_our_headers_that_inflates_its_height_is_banned() {
+        let (db, rules, peer_db, peer_tip) = create_peer_weaker_than_our_headers().await;
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height() + 5,
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(err, BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. }),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_some());
+        assert_eq!(db.fetch_last_header().unwrap().height, 13);
+    }
+
+    #[tokio::test]
+    async fn a_peer_weaker_than_our_headers_that_inflates_its_work_is_banned() {
+        let (db, rules, peer_db, peer_tip) = create_peer_weaker_than_our_headers().await;
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty + 1,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(err, BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. }),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_some());
+        assert_eq!(db.fetch_last_header().unwrap().height, 13);
+    }
+
+    /// A peer with a full first batch of headers, so the decision is made after streaming the rest
+    #[tokio::test]
+    async fn a_long_peer_chain_weaker_than_our_headers_is_refused_without_a_ban() {
+        let (db, rules, mut split_info) = create_pruned_chain();
+        add_headers(&db, &rules, HEADER_SYNC_INITIAL_MAX_HEADERS + 10).await;
+        let last_header_height = db.fetch_last_header().unwrap().height;
+        let metadata = db.get_chain_metadata().unwrap();
+        split_info.chain_split_hash = *db.fetch_genesis_block().hash();
+        let (headers, verdicts) = grow_pending_chain(&db, &rules, &split_info, HEADER_SYNC_INITIAL_MAX_HEADERS).await;
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::RefusedReset));
+        let peer_db = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            ),
+            BlockchainDatabaseConfig::default(),
+        );
+        let peer_tip = headers.last().unwrap().clone();
+        peer_db.insert_valid_headers(headers).unwrap();
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::WeakerThanLocalHeaders), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, last_header_height);
+    }
+
+    #[tokio::test]
+    async fn a_stronger_peer_split_at_genesis_resets_the_chain_and_ends_header_sync() {
+        let (db, rules, mut split_info) = create_pruned_chain();
+        split_info.chain_split_hash = *db.fetch_genesis_block().hash();
+        let (headers, verdicts) = grow_pending_chain(&db, &rules, &split_info, 20).await;
+        let len = verdicts
+            .iter()
+            .position(|verdict| *verdict == PendingChainVerdict::Switch)
+            .unwrap() +
+            1;
+        let peer_db = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            ),
+            BlockchainDatabaseConfig::default(),
+        );
+        let headers = headers.into_iter().take(len).collect::<Vec<_>>();
+        let peer_tip = headers.last().unwrap().clone();
+        peer_db.insert_valid_headers(headers).unwrap();
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::ChainResetToGenesis { .. }), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+        assert_eq!(db.fetch_last_header().unwrap().height, 0);
+    }
+
+    #[tokio::test]
+    async fn a_chain_split_above_the_pruned_height_only_has_to_beat_the_block_tip() {
+        let (db, rules, mut split_info) = create_pruned_chain();
+        add_headers(&db, &rules, 8).await;
+        // Block 3, above the pruned height
+        let split = db.fetch_chain_header(3).unwrap();
+        split_info.chain_split_hash = *split.hash();
+        split_info.reorg_steps_back = 2;
+
+        let (_, verdicts) = grow_pending_chain(&db, &rules, &split_info, 20).await;
+
+        let first_stronger = verdicts
+            .iter()
+            .position(|verdict| *verdict != PendingChainVerdict::Weaker)
+            .unwrap();
+        assert_eq!(verdicts[first_stronger], PendingChainVerdict::Switch);
+        assert!(!verdicts.contains(&PendingChainVerdict::RefusedReset));
+    }
+
     #[tokio::test]
     async fn a_rewind_that_resets_the_chain_ends_header_sync() {
         let (db, rules, split_info) = create_pruned_chain();
@@ -1382,15 +1703,7 @@ mod test {
     async fn a_chain_that_would_reset_must_beat_the_header_tip() {
         let (db, rules, split_info) = create_pruned_chain();
         // Validated headers far above the block tip
-        let mut validator = BlockHeaderSyncValidator::new(db.clone().into(), rules.clone(), RandomXFactory::default());
-        let tip = db.fetch_tip_header().unwrap();
-        validator.initialize_state(tip.hash()).await.unwrap();
-        let mut prev = tip.header().clone();
-        for _ in 0..8 {
-            validate_next_header(&mut validator, &prev).await;
-            prev = validator.valid_headers().last().unwrap().header().clone();
-        }
-        db.insert_valid_headers(validator.take_valid_headers()).unwrap();
+        add_headers(&db, &rules, 8).await;
         let metadata = db.get_chain_metadata().unwrap();
         let (connectivity, _mock) = create_connectivity_mock();
         let mut sync_peers = vec![];
