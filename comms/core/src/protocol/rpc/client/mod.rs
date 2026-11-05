@@ -685,7 +685,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             self.protocol_name(),
             start.elapsed()
         );
-        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, 0);
+        let mut deadline = None;
+        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, 0, &mut deadline);
         let resp = match reader.read_ack().await {
             Ok(resp) => resp,
             Err(RpcError::ReplyTimeout) => {
@@ -798,6 +799,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         // frame rather than taking effect only once the next frame arrives.
         let mut close_signal = self.shutdown_signal.clone();
         let mut buffered = ChannelByteBudget::new(RPC_CLIENT_MAX_BUFFERED_RESPONSE_BYTES);
+        // Armed by the first read and cleared only when a response is accepted, so ignored frames share the deadline
+        let mut deadline = None;
         loop {
             // Only an explicit `close()` cuts a stream short. When the last client handle is dropped
             // (`ShutdownReason::Dropped`) the stream is still being read by its `ClientStreaming` receiver, so let it
@@ -823,7 +826,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 // caller has dropped the receiver, and then `closed_fut` below resolves, so this never waits forever.
                 let buffered = &mut buffered;
                 let response_tx_ref = &response_tx;
-                let read_fut = self.read_response(request_id);
+                let read_fut = self.read_response(request_id, &mut deadline);
                 let resp_fut = async move {
                     if buffered.wait_for_room(response_tx_ref).await.is_err() {
                         future::pending::<()>().await;
@@ -877,6 +880,8 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
             let resp = match resp_result {
                 Ok((resp, time_to_first_msg)) => {
+                    // Each streamed item gets its own deadline
+                    deadline = None;
                     if let Some(t) = time_to_first_msg {
                         let _ = self
                             .last_request_latency_tx
@@ -1029,10 +1034,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     async fn read_response(
         &mut self,
         request_id: u16,
+        deadline: &mut Option<time::Instant>,
     ) -> Result<(proto::rpc::RpcResponse, Option<Duration>), RpcError> {
         let stream_id = self.stream_id();
 
-        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
+        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id, deadline);
         let mut num_ignored = 0usize;
         let resp = loop {
             match reader.read_response().await {
@@ -1116,6 +1122,7 @@ struct RpcResponseReader<'a, TSubstream> {
     framed: &'a mut CanonicalFraming<TSubstream>,
     config: RpcClientConfig,
     request_id: u16,
+    deadline: &'a mut Option<time::Instant>,
     bytes_read: usize,
     time_to_first_msg: Option<Duration>,
 }
@@ -1123,11 +1130,17 @@ struct RpcResponseReader<'a, TSubstream> {
 impl<'a, TSubstream> RpcResponseReader<'a, TSubstream>
 where TSubstream: AsyncRead + AsyncWrite + Unpin
 {
-    pub fn new(framed: &'a mut CanonicalFraming<TSubstream>, config: RpcClientConfig, request_id: u16) -> Self {
+    pub fn new(
+        framed: &'a mut CanonicalFraming<TSubstream>,
+        config: RpcClientConfig,
+        request_id: u16,
+        deadline: &'a mut Option<time::Instant>,
+    ) -> Self {
         Self {
             framed,
             config,
             request_id,
+            deadline,
             bytes_read: 0,
             time_to_first_msg: None,
         }
@@ -1190,9 +1203,16 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn next(&mut self) -> Result<proto::rpc::RpcResponse, RpcError> {
-        // Wait until the timeout, allowing an extra grace period to account for latency
-        let next_msg_fut = match self.config.timeout_with_grace_period() {
-            Some(timeout) => Either::Left(time::timeout(timeout, self.framed.next())),
+        // Wait until the timeout, allowing an extra grace period to account for latency. The first read arms the
+        // deadline and later reads reuse it until the caller clears it.
+        if self.deadline.is_none() {
+            *self.deadline = self
+                .config
+                .timeout_with_grace_period()
+                .and_then(|timeout| time::Instant::now().checked_add(timeout));
+        }
+        let next_msg_fut = match *self.deadline {
+            Some(deadline) => Either::Left(time::timeout_at(deadline, self.framed.next())),
             None => Either::Right(self.framed.next().map(Ok)),
         };
 
