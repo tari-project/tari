@@ -27,6 +27,7 @@ mod automation;
 mod cli;
 mod config;
 mod grpc;
+pub mod grpc_method;
 pub mod init;
 mod notifier;
 mod recovery;

@@ -264,7 +264,10 @@ pub fn tui_mode(handle: Handle, config: &WalletConfig, mut wallet: WalletSqlite)
     if config.grpc_enabled {
         #[cfg(feature = "grpc")]
         if let Some(address) = config.grpc_address.clone() {
-            let grpc = WalletGrpcServer::new(wallet.clone());
+            let grpc = WalletGrpcServer::new_with_allow_methods(
+                wallet.clone(),
+                config.grpc_server_allow_methods.as_slice().to_vec(),
+            );
 
             let mut tls_identity = None;
             if config.grpc_tls_enabled {
@@ -415,7 +418,10 @@ pub fn grpc_mode(
             });
             wallet.shutdown_signal = grpc_shutdown.to_signal();
 
-            let grpc = WalletGrpcServer::new(wallet.clone());
+            let grpc = WalletGrpcServer::new_with_allow_methods(
+                wallet.clone(),
+                config.grpc_server_allow_methods.as_slice().to_vec(),
+            );
             let auth = config.grpc_authentication.clone();
 
             let mut tls_identity = None;
