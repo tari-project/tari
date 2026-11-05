@@ -470,6 +470,20 @@ async fn prepare_grpc_params(
     });
 
     let auth = config.base_node.grpc_authentication.clone();
+    crate::config::validate_grpc_auth_transport(
+        &grpc_address,
+        config.base_node.grpc_tls_enabled,
+        &auth,
+        config.base_node.grpc_allow_insecure_auth,
+    )
+    .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
+    if config.base_node.grpc_allow_insecure_auth &&
+        !config.base_node.grpc_tls_enabled &&
+        auth.username_password().is_some() &&
+        !crate::config::is_grpc_loopback(&grpc_address)
+    {
+        warn!(target: LOG_TARGET, "grpc_allow_insecure_auth=true: Basic authentication may be sent without TLS");
+    }
 
     let mut tls_identity = None;
     if config.base_node.grpc_tls_enabled {
