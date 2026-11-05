@@ -45,7 +45,7 @@ use crate::{
     base_node::sync::{
         BlockchainSyncConfig,
         SyncPeer,
-        ban::PeerBanManager,
+        ban::{PeerBanManager, RECENT_OUTCOME_WINDOW, record_recent_outcome},
         header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
         hooks::Hooks,
         rpc,
@@ -71,9 +71,6 @@ const MAX_LATENCY_INCREASES: usize = 5;
 
 /// A peer whose attempts end because our chain changed this many times within the window is banned.
 const MAX_CHAIN_CHANGES_PER_PEER: usize = 3;
-const CHAIN_CHANGE_WINDOW: Duration = Duration::from_secs(30 * 60);
-/// Bounds the memory used to track chain changes per peer.
-const MAX_CHAIN_CHANGE_PEERS: usize = 1000;
 
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
@@ -1148,25 +1145,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     /// Records that an attempt with the peer ended because our chain changed, and returns the error to act on: a
     /// ban once the peer has done this too often.
     fn record_chain_change(&mut self, node_id: &NodeId) -> BlockHeaderSyncError {
-        let now = Instant::now();
-        self.chain_changes.retain(|_, times| {
-            times.retain(|time| now.duration_since(*time) < CHAIN_CHANGE_WINDOW);
-            !times.is_empty()
-        });
-        if !self.chain_changes.contains_key(node_id) && self.chain_changes.len() >= MAX_CHAIN_CHANGE_PEERS {
-            return BlockHeaderSyncError::ChainChangedDuringSync;
-        }
-        let times = self.chain_changes.entry(node_id.clone()).or_default();
-        times.push(now);
-        if times.len() >= MAX_CHAIN_CHANGES_PER_PEER {
+        let count = record_recent_outcome(self.chain_changes, node_id);
+        if count >= MAX_CHAIN_CHANGES_PER_PEER {
             warn!(
                 target: LOG_TARGET,
-                "Sync attempts with peer `{}` ended {} times in {:.0?} because our chain changed. Peer will be banned.",
-                node_id,
-                times.len(),
-                CHAIN_CHANGE_WINDOW,
+                "Sync attempts with peer `{node_id}` ended {count} times in {RECENT_OUTCOME_WINDOW:.0?} because our \
+                 chain changed. Peer will be banned.",
             );
-            return BlockHeaderSyncError::RepeatedChainChangesDuringSync { count: times.len() };
+            return BlockHeaderSyncError::RepeatedChainChangesDuringSync { count };
         }
         BlockHeaderSyncError::ChainChangedDuringSync
     }

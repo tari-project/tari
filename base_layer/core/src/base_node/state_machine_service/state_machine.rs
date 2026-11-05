@@ -107,6 +107,8 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
     pub(super) randomx_factory: RandomXFactory,
     /// When header sync attempts with each peer ended because our chain changed, kept across sync rounds
     pub(super) header_sync_chain_changes: HashMap<NodeId, Vec<Instant>>,
+    /// When block sync attempts with each peer ended without a block or a ban, kept across sync rounds
+    pub(super) block_sync_attempts_without_block: HashMap<NodeId, Vec<Instant>>,
     is_bootstrapped: bool,
     pub(super) is_primary_bootstrap_complete: bool,
     event_publisher: broadcast::Sender<Arc<StateEvent>>,
@@ -145,6 +147,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             sync_validators,
             randomx_factory,
             header_sync_chain_changes: HashMap::new(),
+            block_sync_attempts_without_block: HashMap::new(),
             is_bootstrapped: false,
             is_primary_bootstrap_complete: false,
             consensus_rules,

@@ -73,6 +73,8 @@ pub(crate) struct MockSyncPeer {
     pub(crate) blocks_to_serve: Vec<Block>,
     /// How long the `sync_blocks` stream stays open after the served blocks
     pub(crate) sync_blocks_stall: Duration,
+    /// Ends the `sync_blocks` stream with NotFound after the stall
+    pub(crate) sync_blocks_not_found: bool,
 }
 
 impl MockSyncPeer {
@@ -85,6 +87,7 @@ impl MockSyncPeer {
             saw_add_block_disabled: Arc::new(AtomicBool::new(false)),
             blocks_to_serve: vec![],
             sync_blocks_stall: Duration::ZERO,
+            sync_blocks_not_found: false,
         }
     }
 }
@@ -101,9 +104,12 @@ impl BaseNodeSyncService for MockSyncPeer {
             tx.send(Ok(response)).await.unwrap();
         }
         let stall = self.sync_blocks_stall;
+        let not_found = self.sync_blocks_not_found;
         tokio::spawn(async move {
             tokio::time::sleep(stall).await;
-            drop(tx);
+            if not_found {
+                let _ignore = tx.send(Err(RpcStatus::not_found("no such blocks"))).await;
+            }
         });
         Ok(Streaming::new(rx))
     }

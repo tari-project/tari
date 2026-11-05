@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use log::*;
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
@@ -28,6 +31,27 @@ use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use crate::base_node::BlockchainSyncConfig;
 
 const LOG_TARGET: &str = "c::bn::sync";
+
+/// How long a recorded sync outcome counts against a peer
+pub(crate) const RECENT_OUTCOME_WINDOW: Duration = Duration::from_secs(30 * 60);
+/// Bounds the memory used to track recent sync outcomes per peer
+const MAX_TRACKED_PEERS: usize = 1000;
+
+/// Records a sync outcome for `node_id` and returns how many it has had within `RECENT_OUTCOME_WINDOW`, or 0 when the
+/// table is full and the peer is not in it yet.
+pub(crate) fn record_recent_outcome(outcomes: &mut HashMap<NodeId, Vec<Instant>>, node_id: &NodeId) -> usize {
+    let now = Instant::now();
+    outcomes.retain(|_, times| {
+        times.retain(|time| now.duration_since(*time) < RECENT_OUTCOME_WINDOW);
+        !times.is_empty()
+    });
+    if !outcomes.contains_key(node_id) && outcomes.len() >= MAX_TRACKED_PEERS {
+        return 0;
+    }
+    let times = outcomes.entry(node_id.clone()).or_default();
+    times.push(now);
+    times.len()
+}
 
 // Sync peers are banned if there exists a ban reason for the error and the peer is not on the allow list for sync.
 
