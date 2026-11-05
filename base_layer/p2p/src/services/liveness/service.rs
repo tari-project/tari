@@ -215,21 +215,20 @@ where
                     return Ok(());
                 }
 
-                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce, &node_id);
+                let Some(latency) = self.state.record_pong(ping_pong_msg.nonce, &node_id) else {
+                    return Ok(());
+                };
                 trace!(
                     target: LOG_TARGET,
-                    "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
+                    "Received pong from peer '{}' with useragent '{}'. Latency: {latency:.2?} (Trace: {})",
                     node_id.short_str(),
                     source_peer.user_agent,
-                    maybe_latency
-                        .map(|latency| format!("Latency: {latency:.2?}"))
-                        .unwrap_or_default(),
                     message_tag,
                 );
 
                 let pong_event = PingPongEvent::new(
                     node_id.clone(),
-                    maybe_latency,
+                    Some(latency),
                     ping_pong_msg.metadata.into(),
                     ping_pong_msg.nonce,
                 );
@@ -244,9 +243,7 @@ where
                 {
                     let address = conn.address().clone();
                     let mut peer_to_update = source_peer.clone();
-                    if let Some(val) = maybe_latency {
-                        peer_to_update.addresses.update_latency(&address, val);
-                    }
+                    peer_to_update.addresses.update_latency(&address, latency);
                     peer_to_update.addresses.mark_last_seen_now(&address);
                     self.peer_manager.add_or_update_peer(peer_to_update).await?;
                 }
