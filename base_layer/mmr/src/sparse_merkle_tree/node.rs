@@ -49,11 +49,11 @@ macro_rules! hash_type {
             type Error = SMTError;
 
             fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-                if value.len() < KEY_LENGTH {
+                let Some(slice) = value.get(..KEY_LENGTH) else {
                     return Err(SMTError::ArrayTooShort(value.len()));
-                }
+                };
                 let mut bytes = [0u8; KEY_LENGTH];
-                bytes.copy_from_slice(value);
+                bytes.copy_from_slice(slice);
                 Ok(Self(bytes))
             }
         }
@@ -166,6 +166,10 @@ impl DoubleEndedIterator for PathIterator<'_> {
     }
 
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        if n >= self.len() {
+            self.cursor_back = self.cursor_front;
+            return None;
+        }
         self.cursor_back = self.cursor_back.checked_sub(n)?;
         self.next_back()
     }
@@ -656,18 +660,33 @@ mod test {
     #[test]
     fn hash_type_from_slice() {
         let arr = [1u8; 32];
+        let longer = [2u8; 40];
         assert!(matches!(NodeKey::try_from(&arr[..3]), Err(SMTError::ArrayTooShort(3))));
         assert!(NodeKey::try_from(&arr[..]).is_ok());
+        assert_eq!(NodeKey::try_from(&longer[..]).unwrap().as_slice(), &longer[..32]);
         assert!(matches!(
             ValueHash::try_from(&arr[..4]),
             Err(SMTError::ArrayTooShort(4))
         ));
         assert!(ValueHash::try_from(&arr[..]).is_ok());
+        assert_eq!(ValueHash::try_from(&longer[..]).unwrap().as_slice(), &longer[..32]);
         assert!(matches!(
             NodeHash::try_from(&arr[..16]),
             Err(SMTError::ArrayTooShort(16))
         ));
         assert!(NodeHash::try_from(&arr[..]).is_ok());
+        assert_eq!(NodeHash::try_from(&longer[..]).unwrap().as_slice(), &longer[..32]);
+    }
+
+    #[test]
+    fn path_iterator_nth_back_exhausts_on_out_of_bounds() {
+        let key = NodeKey::default();
+        let mut dirs = key.as_directions();
+        assert!(dirs.next().is_some());
+        assert_eq!(dirs.nth_back(300), None);
+        assert_eq!(dirs.len(), 0);
+        assert_eq!(dirs.next(), None);
+        assert_eq!(dirs.next_back(), None);
     }
 
     #[test]
