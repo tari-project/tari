@@ -83,6 +83,6 @@ pub struct JsonRpcResponse<T> {
 
 impl<T> JsonRpcResponse<T> {
     pub fn is_success(&self) -> bool {
-        self.error.is_none()
+        self.error.is_none() && self.result.is_some()
     }
 }

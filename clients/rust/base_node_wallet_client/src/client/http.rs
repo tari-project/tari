@@ -66,6 +66,18 @@ fn check_query_size(len: usize, item_name: &str) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Joins `endpoint` onto `base_url` while preserving any path prefix on `base_url` (unlike `Url::join("/foo")`, which
+/// treats a leading slash as an origin-root reference and discards any reverse-proxy path prefix).
+fn endpoint_url(base_url: &Url, endpoint: &str) -> Result<Url, url::ParseError> {
+    let mut base = base_url.clone();
+    let current_path = base.path();
+    if !current_path.ends_with('/') {
+        let with_slash = format!("{current_path}/");
+        base.set_path(&with_slash);
+    }
+    base.join(endpoint.trim_start_matches('/'))
+}
+
 /// HTTP client for the Base Node wallet service.
 pub struct Client {
     local_api_address: Url,
@@ -127,7 +139,7 @@ impl Client {
         // Try to reach the local API address
         let res = match self
             .http_client
-            .get(self.local_api_address.join("/get_tip_info")?)
+            .get(endpoint_url(&self.local_api_address, "/get_tip_info")?)
             .send()
             .await
         {
@@ -156,14 +168,9 @@ impl Client {
 
     async fn generate_request_url(&self, path: &str, query: &[(&str, String)]) -> Result<Url, anyhow::Error> {
         let base_url = self.http_server_address().await?;
-        let mut url = base_url.join(path)?;
+        let mut url = endpoint_url(base_url, path)?;
         if !query.is_empty() {
-            let query_string: String = query
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<String>>()
-                .join("&");
-            url.set_query(Some(&query_string));
+            url.query_pairs_mut().extend_pairs(query);
         }
         Ok(url)
     }
@@ -210,7 +217,7 @@ impl BaseNodeWalletClient for Client {
 
         let res = self
             .http_client
-            .get(server_address.join("/get_tip_info")?)
+            .get(endpoint_url(server_address, "/get_tip_info")?)
             .send()
             .await?;
         self.set_last_latency(timer.elapsed()).await;
@@ -235,7 +242,7 @@ impl BaseNodeWalletClient for Client {
             target: LOG_TARGET,
             "Requesting block header at height {height} from Base Node wallet service at {server_address}"
         );
-        let mut target_url = server_address.join("/get_header_by_height")?;
+        let mut target_url = endpoint_url(server_address, "/get_header_by_height")?;
         target_url.set_query(Some(format!("height={height}").as_str()));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
@@ -271,7 +278,7 @@ impl BaseNodeWalletClient for Client {
         debug!(
             target: LOG_TARGET, "Requesting block height at epoch time {epoch_time} from Base Node wallet service at {server_address}"
         );
-        let mut target_url = server_address.join("/get_height_at_time")?;
+        let mut target_url = endpoint_url(server_address, "/get_height_at_time")?;
         target_url.set_query(Some(format!("time={epoch_time}").as_str()));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
@@ -298,7 +305,7 @@ impl BaseNodeWalletClient for Client {
             "Requesting UTXOs for block with header hash {} from Base Node wallet service at {}",
             header_hash.to_hex(), server_address
         );
-        let mut target_url = server_address.join("/get_utxos_by_block")?;
+        let mut target_url = endpoint_url(server_address, "/get_utxos_by_block")?;
         target_url.set_query(Some(&format!("header_hash={}", header_hash.to_hex())));
         let timer = Instant::now();
         let res = self
@@ -329,7 +336,7 @@ impl BaseNodeWalletClient for Client {
             "Starting UTXO sync from {}",
             start_header_hash.to_hex()
         );
-        let mut target_url = self.http_server_address().await?.join("/sync_utxos_by_block")?;
+        let mut target_url = endpoint_url(self.http_server_address().await?, "/sync_utxos_by_block")?;
         let (resp_tx, resp_rx) = mpsc::channel(1000);
         let start_header_hash_hex = start_header_hash.to_hex();
         let client = self.http_client.clone();
@@ -350,12 +357,16 @@ impl BaseNodeWalletClient for Client {
                 // A stalled request or body read fails after HTTP_READ_TIMEOUT and ends the sync like any other error.
                 // Shutdown is raced separately so this task releases its shutdown signal promptly regardless.
                 let fetch_page = async {
-                    client
-                        .get(target_url.clone())
-                        .send()
-                        .await?
-                        .json::<SyncUtxosByBlockResponseV1>()
-                        .await
+                    let res = client.get(target_url.clone()).send().await?;
+                    if res.status().is_client_error() || res.status().is_server_error() {
+                        let status = res.status();
+                        let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+                        warn!(target: LOG_TARGET, "Received error response from Base Node wallet service: {status}. {body}");
+                        return Err(anyhow!(
+                            "Received error response from Base Node wallet service: {status}. {body}"
+                        ));
+                    }
+                    Ok(res.json::<SyncUtxosByBlockResponseV1>().await?)
                 };
                 let result = tokio::select! {
                     biased;
@@ -376,7 +387,7 @@ impl BaseNodeWalletClient for Client {
                         }
                     },
                     Err(error) => {
-                        if let Err(send_error) = resp_tx.send(Err(error.into())).await {
+                        if let Err(send_error) = resp_tx.send(Err(error)).await {
                             error!(target: LOG_TARGET, "Error sending error result: {send_error:?}");
                         }
                         break;
@@ -384,7 +395,15 @@ impl BaseNodeWalletClient for Client {
                 }
 
                 if has_next_page {
-                    page = page.saturating_add(1);
+                    match page.checked_add(1) {
+                        Some(next_page) => page = next_page,
+                        None => {
+                            let _ = resp_tx
+                                .send(Err(anyhow!("UTXO sync page counter overflowed u32::MAX")))
+                                .await;
+                            break;
+                        },
+                    }
                 }
             }
         });
@@ -408,7 +427,7 @@ impl BaseNodeWalletClient for Client {
             "Requesting matching UTXOs (version={}) for {} hashes from Base Node wallet service at {}",
             version, hashes.len(), server_address
         );
-        let mut target_url = server_address.join("/get_utxos_mined_info")?;
+        let mut target_url = endpoint_url(server_address, "/get_utxos_mined_info")?;
         target_url.set_query(Some(&format!(
             "hashes={}&version={}",
             hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(","),
@@ -450,7 +469,7 @@ impl BaseNodeWalletClient for Client {
             "Requesting deleted UTXOs for {} hashes, must include header {} from Base Node wallet",
             hashes.len(), must_include_header.to_hex()
         );
-        let mut target_url = server_address.join("/get_utxos_deleted_info")?;
+        let mut target_url = endpoint_url(server_address, "/get_utxos_deleted_info")?;
         target_url.set_query(Some(&format!(
             "hashes={}&must_include_header={}",
             hashes.iter().map(|h| h.to_hex()).collect::<Vec<_>>().join(","),
@@ -485,7 +504,7 @@ impl BaseNodeWalletClient for Client {
             "Requesting UTXO with hash {} from Base Node wallet service at {}",
             utxo.to_hex(), server_address
         );
-        let mut target_url = server_address.join("/fetch_utxo")?;
+        let mut target_url = endpoint_url(server_address, "/fetch_utxo")?;
         target_url.set_query(Some(&format!("utxo={}", utxo.to_hex())));
         let timer = Instant::now();
         let res = self.http_client.get(target_url).send().await?;
@@ -504,7 +523,7 @@ impl BaseNodeWalletClient for Client {
     async fn submit_transaction(&self, transaction: Transaction) -> Result<TxSubmissionResponse, anyhow::Error> {
         let server_address = self.http_server_address().await?;
         debug!(target: LOG_TARGET, "Submitting transaction to Base Node wallet service at {server_address}");
-        let target_url = server_address.join("/json_rpc")?;
+        let target_url = endpoint_url(server_address, "/json_rpc")?;
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
             "id": "1",
@@ -523,7 +542,15 @@ impl BaseNodeWalletClient for Client {
             len, len as f64 / (1024.0 * 1024.0), transaction.body.inputs().len(), transaction.body.outputs().len()
         );
 
-        let res = self.http_client.post(target_url).json(&request_body).send().await?;
+        let timer = Instant::now();
+        let res = self
+            .http_client
+            .post(target_url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body_bytes)
+            .send()
+            .await?;
+        self.set_last_latency(timer.elapsed()).await;
         if res.status().is_client_error() || res.status().is_server_error() {
             let status = res.status();
             let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
@@ -532,17 +559,20 @@ impl BaseNodeWalletClient for Client {
                 "Received error response from Base Node wallet service: {status}. {body}"
             ));
         }
-        info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {server_address}");
         let response = res.json::<JsonRpcResponse<TxSubmissionResponse>>().await?;
+        if let Some(error_message) = response.error {
+            warn!(target: LOG_TARGET, "Transaction submission failed: {error_message}");
+            return Err(anyhow!("Transaction submission failed: {error_message}"));
+        }
         match response.result {
             Some(result) => {
+                info!(target: LOG_TARGET, "Transaction submitted successfully to Base Node wallet service at {server_address}");
                 debug!(target: LOG_TARGET, "Transaction submission response: {result:?}");
                 Ok(result)
             },
             None => {
-                let error_message = response.error.unwrap_or_else(|| "Unknown error".to_string());
-                warn!(target: LOG_TARGET, "Transaction submission failed: {error_message}");
-                Err(anyhow!("Transaction submission failed: {error_message}"))
+                warn!(target: LOG_TARGET, "Transaction submission failed: Unknown error");
+                Err(anyhow!("Transaction submission failed: Unknown error"))
             },
         }
     }
@@ -558,7 +588,7 @@ impl BaseNodeWalletClient for Client {
             "Querying transaction with excess signature nonce {} and signature {}",
             excess_sig_nonce.to_hex(), excess_sig_sig.to_hex()
         );
-        let mut target_url = server_address.join("/transactions")?;
+        let mut target_url = endpoint_url(server_address, "/transactions")?;
         target_url.set_query(Some(&format!(
             "excess_sig_nonce={}&excess_sig_sig={}",
             excess_sig_nonce.to_hex(),
@@ -592,7 +622,7 @@ impl BaseNodeWalletClient for Client {
             count, server_address
         );
 
-        let mut target_url = server_address.join("/get_mempool_fee_per_gram_stats")?;
+        let mut target_url = endpoint_url(server_address, "/get_mempool_fee_per_gram_stats")?;
         target_url.set_query(Some(format!("count={count}").as_str()));
 
         let timer = Instant::now();
@@ -671,5 +701,50 @@ mod tests {
         let err = check_query_size(MAX_ALLOWED_QUERY_SIZE + 1, "output hashes")
             .expect_err("a query over the limit must be rejected before it is sent");
         assert!(err.to_string().contains(&MAX_ALLOWED_QUERY_SIZE.to_string()));
+    }
+
+    #[test]
+    fn endpoint_url_preserves_base_path_prefix() {
+        let root_base = Url::parse("http://127.0.0.1:18142").unwrap();
+        assert_eq!(
+            endpoint_url(&root_base, "/get_tip_info").unwrap().as_str(),
+            "http://127.0.0.1:18142/get_tip_info"
+        );
+
+        let prefixed_base = Url::parse("https://node.example.com/api/v1").unwrap();
+        assert_eq!(
+            endpoint_url(&prefixed_base, "/get_tip_info").unwrap().as_str(),
+            "https://node.example.com/api/v1/get_tip_info"
+        );
+
+        let trailing_slash_base = Url::parse("https://node.example.com/api/v1/").unwrap();
+        assert_eq!(
+            endpoint_url(&trailing_slash_base, "/json_rpc").unwrap().as_str(),
+            "https://node.example.com/api/v1/json_rpc"
+        );
+    }
+
+    #[test]
+    fn json_rpc_response_is_success_requires_result_and_no_error() {
+        let ok_resp = JsonRpcResponse {
+            result: Some(42u32),
+            error: None,
+            id: "1".to_string(),
+        };
+        assert!(ok_resp.is_success());
+
+        let empty_resp: JsonRpcResponse<u32> = JsonRpcResponse {
+            result: None,
+            error: None,
+            id: "1".to_string(),
+        };
+        assert!(!empty_resp.is_success());
+
+        let err_resp = JsonRpcResponse {
+            result: Some(42u32),
+            error: Some("failed".to_string()),
+            id: "1".to_string(),
+        };
+        assert!(!err_resp.is_success());
     }
 }
