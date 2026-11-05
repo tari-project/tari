@@ -57,7 +57,7 @@ pub use lmdb_db::{
     PayrefRebuildStatus,
 };
 #[cfg(test)]
-pub(crate) use lmdb_db::{MetadataKey, rewind_migration_version_for_test};
+pub(crate) use lmdb_db::{MetadataKey, MetadataValue, rewind_migration_version_for_test};
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
 mod stats_collector;

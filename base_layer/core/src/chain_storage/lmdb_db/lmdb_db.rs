@@ -1290,18 +1290,46 @@ impl LMDBDatabase {
                     }
                     drop(access);
                     // The best block, pruned height and horizon data are rewritten by the genesis operations that
-                    // follow; the migration version and pruning horizon are kept.
-                    for key in [
-                        MetadataKey::JMTVersion,
-                        MetadataKey::HorizonSyncOutputCheckpoint,
+                    // follow; the migration version and pruning horizon are kept. The genesis output tree write
+                    // re-creates the JMT version.
+                    for key in [MetadataKey::JMTVersion, MetadataKey::HorizonSyncOutputCheckpoint] {
+                        lmdb_delete(&write_txn, &self.metadata_db, &key.as_u32(), "metadata_db").optional()?;
+                        self.stats_collector.remove_metadata(key);
+                    }
+                    // The statuses the migrations and startup store for a new database, so no rebuild runs again
+                    self.set_metadata(
+                        &write_txn,
                         MetadataKey::PayrefRebuildStatus,
+                        &MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus {
+                            is_rebuilt: true,
+                            ..Default::default()
+                        }),
+                    )?;
+                    self.set_metadata(
+                        &write_txn,
                         MetadataKey::BurnCommitmentRebuildStatus,
+                        &MetadataValue::BurnCommitmentRebuildStatus(BurnCommitmentRebuildStatus {
+                            is_rebuilt: true,
+                            last_rebuild_height: None,
+                        }),
+                    )?;
+                    self.set_metadata(
+                        &write_txn,
                         MetadataKey::AccumulatedDataRebuildStatus,
+                        &MetadataValue::AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus {
+                            is_rebuilt: true,
+                            last_rebuild_height: None,
+                        }),
+                    )?;
+                    for key in [
                         MetadataKey::AccumulatedDataCheckStatus,
                         MetadataKey::BlockchainConsistencyCheckStatus,
                     ] {
-                        lmdb_delete(&write_txn, &self.metadata_db, &key.as_u32(), "metadata_db").optional()?;
-                        self.stats_collector.remove_metadata(key);
+                        self.set_metadata(
+                            &write_txn,
+                            key,
+                            &MetadataValue::BlockchainCheckStatus(BlockchainCheckStatus::default()),
+                        )?;
                     }
                 },
                 SetHorizonSyncOutputCheckpoint { checkpoint } => match checkpoint {

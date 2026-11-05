@@ -1751,13 +1751,16 @@ mod rewind_past_pruning_horizon {
     use super::*;
     use crate::{
         chain_storage::{
+            AccumulatedDataRebuildStatus,
+            BlockchainBackend,
+            BlockchainCheckRequest,
             BlockchainDatabaseConfig,
             DbTransaction,
             HorizonStateTreeUpdate,
             HorizonSyncOutputCheckpoint,
             Reorg,
             Validators,
-            lmdb_db::MetadataKey,
+            lmdb_db::{MetadataKey, MetadataValue},
         },
         consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparerBuilder},
         test_helpers::blockchain::create_store_with_consensus_and_validators_and_config,
@@ -1865,8 +1868,28 @@ mod rewind_past_pruning_horizon {
             sync_target_height: 4,
             sync_target_hash: FixedHash::from([2u8; 32]),
         });
+        // A rebuild and a check in progress
+        txn.set_accumulated_data_rebuild_status(AccumulatedDataRebuildStatus {
+            is_rebuilt: false,
+            last_rebuild_height: Some(3),
+        });
         db.write(txn).unwrap();
+        db.db_read_access()
+            .unwrap()
+            .update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
+                has_concluded: false,
+                last_check_height: 3,
+                current_height: CHAIN_LEN,
+            })
+            .unwrap();
         let before = dump(&db);
+        let fresh_before = create_db(HORIZON);
+        for key in [
+            MetadataKey::AccumulatedDataRebuildStatus,
+            MetadataKey::BlockchainConsistencyCheckStatus,
+        ] {
+            assert_ne!(metadata_value(&before, key), metadata_value(&dump(&fresh_before), key));
+        }
         assert!(metadata_value(&before, MetadataKey::HorizonSyncOutputCheckpoint).is_some());
         assert!(!table(&before, "utxos").is_empty());
 
@@ -1882,25 +1905,11 @@ mod rewind_past_pruning_horizon {
         assert_eq!(db.get_chain_metadata().unwrap().pruned_height(), 0);
         assert_eq!(db.fetch_last_header().unwrap().height, 0);
         let after = dump(&db);
-        // A fresh database stores these statuses, which the reset deletes
-        let deleted_keys = [
-            MetadataKey::HorizonSyncOutputCheckpoint,
-            MetadataKey::PayrefRebuildStatus,
-            MetadataKey::BurnCommitmentRebuildStatus,
-            MetadataKey::AccumulatedDataRebuildStatus,
-            MetadataKey::AccumulatedDataCheckStatus,
-            MetadataKey::BlockchainConsistencyCheckStatus,
-        ];
-        let deleted_key_bytes = deleted_keys.map(|key| key.as_u32().to_ne_bytes().to_vec());
         for ((name, rows), (fresh_name, fresh_rows)) in after.iter().zip(dump(&fresh).iter()) {
             assert_eq!(name, fresh_name);
             if *name == "bad_blocks" || *name == "reorgs" {
                 assert!(!rows.is_empty());
                 assert_eq!(rows, table(&before, name), "{name} changed");
-            } else if *name == "metadata" {
-                let mut fresh_rows = fresh_rows.clone();
-                fresh_rows.retain(|(key, _)| !deleted_key_bytes.contains(key));
-                assert_eq!(*rows, fresh_rows, "metadata differs from a fresh database");
             } else {
                 assert_eq!(rows, fresh_rows, "{name} differs from a fresh database");
             }
@@ -1908,11 +1917,39 @@ mod rewind_past_pruning_horizon {
         for key in [MetadataKey::MigrationVersion, MetadataKey::PruningHorizon] {
             assert_eq!(metadata_value(&after, key), metadata_value(&before, key));
         }
-        for key in deleted_keys {
-            assert!(metadata_value(&after, key).is_none(), "{key} was not deleted");
-        }
+        assert!(metadata_value(&after, MetadataKey::HorizonSyncOutputCheckpoint).is_none());
         let stats = db.db_read_access().unwrap().db().stats_collector().current_stats();
         assert!(stats.get_metadata(&MetadataKey::HorizonSyncOutputCheckpoint).is_none());
+        // The stats collector shows the statuses the reset stored
+        let backend = db.db_read_access().unwrap();
+        let stored = [
+            (
+                MetadataKey::PayrefRebuildStatus,
+                MetadataValue::PayrefRebuildStatus(backend.fetch_payref_rebuild_status().unwrap()),
+            ),
+            (
+                MetadataKey::BurnCommitmentRebuildStatus,
+                MetadataValue::BurnCommitmentRebuildStatus(backend.fetch_burn_commitment_rebuild_status().unwrap()),
+            ),
+            (
+                MetadataKey::AccumulatedDataRebuildStatus,
+                MetadataValue::AccumulatedDataRebuildStatus(backend.fetch_accumulated_data_rebuild_status().unwrap()),
+            ),
+            (
+                MetadataKey::AccumulatedDataCheckStatus,
+                MetadataValue::BlockchainCheckStatus(backend.fetch_accumulated_data_check_status().unwrap().unwrap()),
+            ),
+            (
+                MetadataKey::BlockchainConsistencyCheckStatus,
+                MetadataValue::BlockchainCheckStatus(
+                    backend.fetch_blockchain_consistency_check_status().unwrap().unwrap(),
+                ),
+            ),
+        ];
+        drop(backend);
+        for (key, value) in stored {
+            assert_eq!(stats.get_metadata(&key), Some(&value), "{key}");
+        }
         let genesis = db.fetch_genesis_block();
         db.verify_horizon_sync_output_root(genesis.header().output_mr).unwrap();
     }
