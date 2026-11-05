@@ -41,6 +41,7 @@ use crate::{
         aggregate_body::{
             check_total_burned,
             validate_input_maturity,
+            verify_no_duplicate_validator_node_registrations,
             verify_no_duplicated_inputs_outputs,
             verify_timelocks,
         },
@@ -107,6 +108,14 @@ impl BlockBodyPartialValidator {
             )
         })?;
 
+        verify_no_duplicate_validator_node_registrations(&block.body).inspect_err(|e| {
+            error!(
+                target: LOG_TARGET,
+                "BlockBodyPartialValidator: verify_no_duplicate_validator_node_registrations {}/{}: {:?}",
+                block.header.height, block.hash().to_hex(), e
+            )
+        })?;
+
         verify_no_duplicated_inputs_outputs(&block.body).inspect_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -150,6 +159,13 @@ fn validate_kernels_in_db<B: BlockchainBackend>(
                     header_hash, hash
                 );
                 return Err(ValidationError::HeaderHashMismatch(msg));
+            },
+            Some((db_kernel, _hash)) if &db_kernel != kernel => {
+                let msg = format!(
+                    "Aggregate body kernel {} does not match stored kernel in chain",
+                    kernel.excess.to_hex(),
+                );
+                return Err(ValidationError::MissingKernelError(msg));
             },
             None => {
                 let msg = format!(
@@ -303,16 +319,148 @@ fn check_outputs(constants: &ConsensusConstants, body: &AggregateBody, height: u
                 });
             }
 
-            if let Some(exit) = sidechain_features.validator_node_exit() &&
-                exit.max_epoch() < current_epoch
-            {
-                return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
-                    public_key: exit.public_key().to_string(),
-                    max_epoch: exit.max_epoch(),
-                    current_epoch,
-                });
+            if let Some(exit) = sidechain_features.validator_node_exit() {
+                if constants.vn_registration_max_exits_per_epoch() == 0 {
+                    return Err(ValidationError::ValidatorNodeExitNotPermitted);
+                }
+                if exit.max_epoch() < current_epoch {
+                    return Err(ValidationError::ValidatorNodeRegistrationMaxEpoch {
+                        public_key: exit.public_key().to_string(),
+                        max_epoch: exit.max_epoch(),
+                        current_epoch,
+                    });
+                }
+                if exit.activation_epoch() > current_epoch {
+                    return Err(ValidationError::ValidatorNodeNotRegistered {
+                        public_key: exit.public_key().to_string(),
+                        details: format!(
+                            "exit invalid for validator node that only activates in {} (current epoch {current_epoch})",
+                            exit.activation_epoch()
+                        ),
+                    });
+                }
             }
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::{
+        epoch::VnEpoch,
+        types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, PrivateKey},
+    };
+    use tari_crypto::keys::SecretKey;
+    use tari_node_components::blocks::BlockHeader;
+    use tari_transaction_components::{
+        MicroMinotari,
+        consensus::ConsensusManagerBuilder,
+        transaction_components::{
+            KernelFeatures,
+            OutputFeatures,
+            TransactionKernel,
+            TransactionOutput,
+            ValidatorNodeSignature,
+        },
+    };
+
+    use super::*;
+    use crate::{
+        chain_storage::DbTransaction,
+        test_helpers::{blockchain::create_new_blockchain, new_public_key},
+    };
+
+    const NETWORK: u8 = 0x10;
+
+    fn exit_output(vn_secret_key: &PrivateKey, activation_epoch: VnEpoch, max_epoch: VnEpoch) -> TransactionOutput {
+        let signature =
+            ValidatorNodeSignature::sign_for_exit(vn_secret_key, NETWORK, None, activation_epoch, max_epoch);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_exit(signature, None, activation_epoch, max_epoch),
+            commitment: CompressedCommitment::from_compressed_key(new_public_key()),
+            ..Default::default()
+        }
+    }
+
+    fn registration_output(vn_secret_key: &PrivateKey, max_epoch: VnEpoch) -> TransactionOutput {
+        let claim_public_key = CompressedPublicKey::from_secret_key(vn_secret_key);
+        let signature =
+            ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim_public_key, max_epoch);
+        TransactionOutput {
+            features: OutputFeatures::for_validator_node_registration(signature, claim_public_key, None, max_epoch),
+            commitment: CompressedCommitment::from_compressed_key(new_public_key()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn check_outputs_rejects_exit_with_future_activation_epoch() {
+        let rules = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let constants = rules.consensus_constants(0);
+        let sk = PrivateKey::random(&mut rand::rng());
+        let body = AggregateBody::new_unsorted(vec![], vec![exit_output(&sk, VnEpoch(5), VnEpoch(10))], vec![]);
+        let err = check_outputs(constants, &body, 0).unwrap_err();
+        assert!(matches!(err, ValidationError::ValidatorNodeNotRegistered { .. }));
+    }
+
+    #[test]
+    fn partial_validator_rejects_duplicate_validator_node_registrations() {
+        let db = create_new_blockchain();
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let validator = BlockBodyPartialValidator::new(rules);
+
+        let sk = PrivateKey::random(&mut rand::rng());
+        let out1 = registration_output(&sk, VnEpoch(10));
+        let out2 = registration_output(&sk, VnEpoch(11));
+
+        let mut header = BlockHeader::new(0);
+        header.height = 1;
+        let header_hash = header.hash();
+
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(out1.clone(), header_hash, header.height, header.timestamp.as_u64());
+        txn.insert_utxo(out2.clone(), header_hash, header.height, header.timestamp.as_u64());
+        db.write(txn).unwrap();
+
+        let block = Block::new(header, AggregateBody::new_unsorted(vec![], vec![out1, out2], vec![]));
+        let backend = db.db_read_access().unwrap();
+        let err = validator.validate(&*backend, &block).unwrap_err();
+        assert!(matches!(
+            err,
+            ValidationError::DuplicateValidatorNodeRegistration { .. }
+        ));
+    }
+
+    #[test]
+    fn validate_kernels_in_db_rejects_modified_kernel_with_matching_excess_sig() {
+        let db = create_new_blockchain();
+        let header_hash = FixedHash::from([0x42u8; 32]);
+
+        let excess = CompressedCommitment::from_compressed_key(new_public_key());
+        let excess_sig = CompressedSignature::new(new_public_key(), PrivateKey::random(&mut rand::rng()));
+        let stored_kernel = TransactionKernel::new_current_version(
+            KernelFeatures::empty(),
+            MicroMinotari::from(100),
+            0,
+            excess,
+            excess_sig,
+            None,
+        );
+
+        let mut txn = DbTransaction::new();
+        txn.insert_kernel(stored_kernel.clone(), header_hash, 0);
+        db.write(txn).unwrap();
+
+        let backend = db.db_read_access().unwrap();
+        let unchanged_body = AggregateBody::new_unsorted(vec![], vec![], vec![stored_kernel.clone()]);
+        validate_kernels_in_db(&unchanged_body, &*backend, header_hash).unwrap();
+
+        let mut mutated_kernel = stored_kernel;
+        mutated_kernel.fee = MicroMinotari::from(200);
+        let mutated_body = AggregateBody::new_unsorted(vec![], vec![], vec![mutated_kernel]);
+        let err = validate_kernels_in_db(&mutated_body, &*backend, header_hash).unwrap_err();
+        assert!(matches!(err, ValidationError::MissingKernelError(_)));
+    }
 }
