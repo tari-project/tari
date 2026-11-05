@@ -47,6 +47,12 @@ impl WindowedListState {
         let view_height = height.min(self.num_items);
         self.end = self.offset.saturating_add(view_height);
         let mut list_state = ListState::default();
+        if view_height == 0 {
+            self.start = 0;
+            self.end = 0;
+            self.offset = 0;
+            return list_state;
+        }
         if let Some(selected) = self.selected {
             if selected >= self.end {
                 let diff = selected.saturating_sub(self.end).saturating_add(1);
@@ -120,7 +126,11 @@ impl WindowedListState {
     }
 
     pub fn select(&mut self, idx: Option<usize>) {
-        self.selected = idx;
+        if self.num_items == 0 {
+            self.selected = None;
+        } else {
+            self.selected = idx.map(|i| i.min(self.num_items.saturating_sub(1)));
+        }
     }
 
     pub fn select_first(&mut self) {
@@ -253,5 +263,24 @@ mod test {
         // Resize to 50.
         list_state.update_list_state(50);
         assert_eq!(list_state.get_start_end(), (0, 20));
+    }
+
+    #[test]
+    fn test_select_clamps_to_bounds_and_handles_zero_height() {
+        let mut list_state = WindowedListState::new();
+        list_state.select(Some(5));
+        assert_eq!(list_state.selected(), None);
+
+        list_state.set_num_items(5);
+        list_state.select(Some(99));
+        assert_eq!(list_state.selected(), Some(4));
+
+        let state_zero = list_state.update_list_state(0);
+        assert_eq!(state_zero.selected(), None);
+        assert_eq!(list_state.get_start_end(), (0, 0));
+
+        let state_non_zero = list_state.update_list_state(3);
+        assert_eq!(state_non_zero.selected(), Some(2));
+        assert_eq!(list_state.get_start_end(), (2, 5));
     }
 }
