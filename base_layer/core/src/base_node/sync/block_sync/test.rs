@@ -335,3 +335,31 @@ async fn a_peer_whose_recent_attempts_ended_without_a_block_is_tried_after_the_o
     assert_eq!(db.get_height().unwrap(), 1);
     assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
 }
+
+#[tokio::test]
+async fn a_failure_on_our_side_is_not_recorded_against_the_peer() {
+    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
+    let block = chain.get("A").unwrap();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    // The block is stored locally while the peer serves it, so storing it again fails on our side
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block.block().clone()];
+    serving.blocks_to_add = vec![block.clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block)).await;
+    let mut attempts_without_block = HashMap::new();
+
+    let err = sync_blocks_with_history(
+        &db,
+        connectivity.clone(),
+        BlockchainSyncConfig::default(),
+        vec![peer],
+        &mut attempts_without_block,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
+    assert!(attempts_without_block.is_empty(), "{attempts_without_block:?}");
+    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+}

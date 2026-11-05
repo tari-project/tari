@@ -40,17 +40,22 @@ const MAX_TRACKED_PEERS: usize = 1000;
 /// Records a sync outcome for `node_id` and returns how many it has had within `RECENT_OUTCOME_WINDOW`, or 0 when the
 /// table is full and the peer is not in it yet.
 pub(crate) fn record_recent_outcome(outcomes: &mut HashMap<NodeId, Vec<Instant>>, node_id: &NodeId) -> usize {
+    prune_recent_outcomes(outcomes);
+    if !outcomes.contains_key(node_id) && outcomes.len() >= MAX_TRACKED_PEERS {
+        return 0;
+    }
+    let times = outcomes.entry(node_id.clone()).or_default();
+    times.push(Instant::now());
+    times.len()
+}
+
+/// Drops recorded outcomes older than `RECENT_OUTCOME_WINDOW`, and peers left with none.
+pub(crate) fn prune_recent_outcomes(outcomes: &mut HashMap<NodeId, Vec<Instant>>) {
     let now = Instant::now();
     outcomes.retain(|_, times| {
         times.retain(|time| now.duration_since(*time) < RECENT_OUTCOME_WINDOW);
         !times.is_empty()
     });
-    if !outcomes.contains_key(node_id) && outcomes.len() >= MAX_TRACKED_PEERS {
-        return 0;
-    }
-    let times = outcomes.entry(node_id.clone()).or_default();
-    times.push(now);
-    times.len()
 }
 
 // Sync peers are banned if there exists a ban reason for the error and the peer is not on the allow list for sync.

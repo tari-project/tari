@@ -48,7 +48,7 @@ use crate::{
         BlockchainSyncConfig,
         sync::{
             SyncPeer,
-            ban::{PeerBanManager, RECENT_OUTCOME_WINDOW, record_recent_outcome},
+            ban::{PeerBanManager, RECENT_OUTCOME_WINDOW, prune_recent_outcomes, record_recent_outcome},
             hooks::Hooks,
             rpc,
         },
@@ -218,6 +218,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     async fn attempt_block_sync(&mut self, max_latency: Duration) -> Result<(), BlockSyncError> {
         let mut sync_peer_node_ids = self.sync_peers.iter().map(|p| p.node_id()).cloned().collect::<Vec<_>>();
         // Peers whose recent attempts ended without a block go last
+        prune_recent_outcomes(self.attempts_without_block);
         sync_peer_node_ids.sort_by_key(|node_id| self.attempts_without_block.contains_key(node_id));
         info!(
             target: LOG_TARGET,
@@ -356,8 +357,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                         round_counted = round_counted.saturating_add(self.attempt_time());
                     } else if err.get_ban_reason().is_some() {
                         round_counted = round_counted.saturating_add(self.attempt_time());
-                    } else {
+                    } else if matches!(err, BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_)) {
                         round_counted = round_counted.saturating_add(self.end_attempt_without_block(&node_id).await);
+                    } else {
+                        // A failure on our side, such as a storage error, is not recorded against the peer
                     }
                     if let BlockSyncError::MaxLatencyExceeded { .. } = err {
                         latency_counter = latency_counter.saturating_add(1);

@@ -98,6 +98,9 @@ impl BaseNodeSyncService for MockSyncPeer {
         &self,
         _: Request<SyncBlocksRequest>,
     ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
+        for block in &self.blocks_to_add {
+            self.local_db.add_block(block.to_arc_block()).unwrap();
+        }
         let (tx, rx) = mpsc::channel(self.blocks_to_serve.len().saturating_add(1));
         for block in &self.blocks_to_serve {
             let response = proto::base_node::BlockBodyResponse::try_from(block.clone()).unwrap();
