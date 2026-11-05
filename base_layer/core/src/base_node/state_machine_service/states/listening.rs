@@ -248,7 +248,8 @@ impl ChainStatusLog {
 
 #[derive(Debug, Default)]
 struct ListeningLoopState {
-    time_since_better_block: Option<Instant>,
+    /// When we first saw a stronger chain, and our accumulated difficulty at that time
+    time_since_better_block: Option<(Instant, U512)>,
     initial_sync_counter: u64,
     ahead_of_peers_counter: u64,
     initial_sync_peer_list: HashMap<String, SyncPeer>,
@@ -350,7 +351,12 @@ impl Listening {
             peer_metadata,
         );
 
-        Self::promote_to_lagging_after_delay(&mut sync_mode, state, shared.config.time_before_considered_lagging);
+        Self::promote_to_lagging_after_delay(
+            &mut sync_mode,
+            state,
+            &local_metadata,
+            shared.config.time_before_considered_lagging,
+        );
 
         state.chain_status_log.record(&local_metadata, peer_metadata);
 
@@ -444,6 +450,7 @@ impl Listening {
     fn promote_to_lagging_after_delay(
         sync_mode: &mut SyncStatus,
         state: &mut ListeningLoopState,
+        local_metadata: &ChainMetadata,
         time_before_considered_lagging: Duration,
     ) {
         // If a stronger chain is known but blocks have not propagated yet, wait before block sync.
@@ -453,7 +460,9 @@ impl Listening {
             sync_peers,
         } = sync_mode
         {
-            let time_since_better_block = state.time_since_better_block.get_or_insert_with(Instant::now);
+            let (time_since_better_block, _) = state
+                .time_since_better_block
+                .get_or_insert_with(|| (Instant::now(), local_metadata.accumulated_difficulty()));
             if time_since_better_block.elapsed() > time_before_considered_lagging {
                 Some(SyncStatus::Lagging {
                     local: local.clone(),
@@ -464,8 +473,14 @@ impl Listening {
                 None
             }
         } else if *sync_mode == SyncStatus::UpToDate {
-            // We might have gotten up to date via propagation outside of this state, so reset the timer.
-            state.time_since_better_block = None;
+            // Reset the wait only once our own chain has advanced, likely by propagation. A peer that is merely at our
+            // tip says nothing about the stronger chain we are waiting for.
+            if state
+                .time_since_better_block
+                .is_some_and(|(_, local_at_start)| local_metadata.accumulated_difficulty() > local_at_start)
+            {
+                state.time_since_better_block = None;
+            }
             None
         } else {
             None
@@ -926,6 +941,48 @@ mod test {
         let block_sync = state_machine.transition(horizon_sync, StateEvent::HorizonStateSynchronized);
         assert!(matches!(block_sync, BaseNodeState::BlockSync(_)));
         assert!(db.is_add_block_disabled());
+    }
+
+    #[test]
+    fn a_peer_at_our_tip_does_not_restart_the_wait_for_a_stronger_chain() {
+        let wait = Duration::from_millis(50);
+        let local = chain_metadata(100, U512::from(1000));
+        let ahead = peer_chain_metadata(101, U512::from(1010));
+        let equal = peer_chain_metadata(100, U512::from(1000));
+        let mut state = ListeningLoopState::default();
+
+        let mut sync_mode = determine_sync_mode(1, &local, &ahead);
+        Listening::promote_to_lagging_after_delay(&mut sync_mode, &mut state, &local, wait);
+        assert!(matches!(sync_mode, SyncStatus::BehindButNotYetLagging { .. }));
+        let mut sync_mode = determine_sync_mode(1, &local, &equal);
+        Listening::promote_to_lagging_after_delay(&mut sync_mode, &mut state, &local, wait);
+        assert!(sync_mode.is_up_to_date());
+        assert!(state.time_since_better_block.is_some());
+
+        std::thread::sleep(wait.saturating_mul(2));
+        let mut sync_mode = determine_sync_mode(1, &local, &ahead);
+        Listening::promote_to_lagging_after_delay(&mut sync_mode, &mut state, &local, wait);
+        assert!(sync_mode.is_lagging());
+    }
+
+    #[test]
+    fn our_chain_advancing_restarts_the_wait_for_a_stronger_chain() {
+        let wait = Duration::from_millis(50);
+        let local = chain_metadata(100, U512::from(1000));
+        let ahead = peer_chain_metadata(101, U512::from(1010));
+        let mut state = ListeningLoopState::default();
+
+        let mut sync_mode = determine_sync_mode(1, &local, &ahead);
+        Listening::promote_to_lagging_after_delay(&mut sync_mode, &mut state, &local, wait);
+        assert!(state.time_since_better_block.is_some());
+
+        // The propagated block arrives, and a peer at our new tip reports in
+        let advanced = chain_metadata(101, U512::from(1010));
+        let equal = peer_chain_metadata(101, U512::from(1010));
+        let mut sync_mode = determine_sync_mode(1, &advanced, &equal);
+        Listening::promote_to_lagging_after_delay(&mut sync_mode, &mut state, &advanced, wait);
+        assert!(sync_mode.is_up_to_date());
+        assert!(state.time_since_better_block.is_none());
     }
 
     #[test]

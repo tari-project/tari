@@ -75,10 +75,10 @@ pub struct BlockSynchronizer<'a, B> {
     block_validator: Arc<dyn BlockBodyValidator<B>>,
     hooks: Hooks,
     peer_ban_manager: PeerBanManager,
-    attempt_started: Instant,
-    /// Time already spent on each peer by the strong dial before its attempt
+    /// Time spent on each peer by the strong dial before its attempt
     predial_time: HashMap<NodeId, Duration>,
-    attempt_spent_before: Duration,
+    /// Time the current attempt has spent waiting on the network, which is what its budget bounds
+    attempt_network_time: Duration,
     received_valid_block: bool,
     /// When block sync attempts with each peer ended without a block or a ban, kept across sync rounds
     attempts_without_block: &'a mut HashMap<NodeId, Vec<Instant>>,
@@ -102,9 +102,8 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             block_validator,
             hooks: Default::default(),
             peer_ban_manager,
-            attempt_started: Instant::now(),
             predial_time: HashMap::new(),
-            attempt_spent_before: Duration::ZERO,
+            attempt_network_time: Duration::ZERO,
             received_valid_block: false,
             attempts_without_block,
         }
@@ -229,8 +228,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         );
         let mut latency_counter = 0usize;
         for node_id in sync_peer_node_ids {
-            self.attempt_started = Instant::now();
-            self.attempt_spent_before = self.predial_time.remove(&node_id).unwrap_or_default();
+            self.attempt_network_time = self.predial_time.remove(&node_id).unwrap_or_default();
             self.received_valid_block = false;
             let peer_index = self.get_sync_peer_index(&node_id).ok_or(BlockSyncError::PeerNotFound)?;
             let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
@@ -244,9 +242,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .map(|c| c.clone_weak());
             let mut conn = match stored_conn {
                 Some(c) => c,
-                None => match self
-                    .before_first_block(self.connect_to_sync_peer(node_id.clone()))
-                    .await
+                None => match within_budget(
+                    &mut self.attempt_network_time,
+                    attempt_budget(&self.config),
+                    Self::connect_to_sync_peer(&self.connectivity, node_id.clone()),
+                )
+                .await
                 {
                     Ok(Ok(val)) => val,
                     Ok(Err(e)) => {
@@ -287,12 +288,15 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .with_stream_buffer_size(20);
             // Bound RPC negotiation: without this the negotiation itself (as opposed to
             // individual RPC requests) has no timeout and can wedge the sync loop indefinitely.
-            let mut client = match self
-                .before_first_block(tokio::time::timeout(
+            let mut client = match within_budget(
+                &mut self.attempt_network_time,
+                attempt_budget(&self.config),
+                tokio::time::timeout(
                     self.config.rpc_deadline,
                     conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
-                ))
-                .await
+                ),
+            )
+            .await
             {
                 Ok(Ok(Ok(val))) => val,
                 Ok(Ok(Err(e))) => {
@@ -380,15 +384,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         }
     }
 
-    fn attempt_budget(&self) -> Duration {
-        self.config.rpc_deadline.saturating_mul(2)
-    }
-
-    /// Time spent on the current peer, including its strong dial
-    fn attempt_time(&self) -> Duration {
-        self.attempt_spent_before.saturating_add(self.attempt_started.elapsed())
-    }
-
     /// Records that the attempt with the peer ended without a block and without a ban, and bans the peer once it has
     /// done this too often.
     async fn end_attempt_without_block(&mut self, node_id: &NodeId) {
@@ -421,21 +416,14 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         }
     }
 
-    /// Waits on a network call until the attempt's budget runs out. The budget only applies until the peer has sent a
-    /// valid block, and never to local database work.
-    async fn before_first_block<F: Future>(&self, fut: F) -> Result<F::Output, BlockSyncError> {
-        let budget = self.attempt_budget();
-        let remaining = budget.saturating_sub(self.attempt_time());
-        tokio::time::timeout(remaining, fut)
-            .await
-            .map_err(|_| BlockSyncError::NoValidBlockWithinBudget { budget })
-    }
-
-    async fn connect_to_sync_peer(&self, peer: NodeId) -> Result<PeerConnection, BlockSyncError> {
+    async fn connect_to_sync_peer(
+        connectivity: &ConnectivityRequester,
+        peer: NodeId,
+    ) -> Result<PeerConnection, BlockSyncError> {
         // `synchronize()` already holds a Strong reference to every sync peer for the duration
         // of this sync, so the per-attempt dial here can be Weak — the strong handle in the
         // outer guard list keeps the connection pinned.
-        let connection = self.connectivity.dial_peer(peer, RefKind::Weak).await?;
+        let connection = connectivity.dial_peer(peer, RefKind::Weak).await?;
         Ok(connection)
     }
 
@@ -480,10 +468,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             end_hash: tip_hash.to_vec(),
         };
 
-        let mut block_stream = match self.before_first_block(client.sync_blocks(request)).await? {
-            Ok(stream) => stream,
-            Err(err) => return Err(self.not_found_before_first_block(err, &sync_peer, &tip_hash)),
-        };
+        let budget = attempt_budget(&self.config);
+        let mut block_stream =
+            match within_budget(&mut self.attempt_network_time, budget, client.sync_blocks(request)).await? {
+                Ok(stream) => stream,
+                Err(err) => return Err(self.not_found_before_first_block(err, &sync_peer, &tip_hash)),
+            };
         let mut prev_hash = best_full_block_hash;
         let mut current_block = None;
         let mut last_sync_timer = Instant::now();
@@ -493,7 +483,7 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             let next = if self.received_valid_block {
                 block_stream.next().await
             } else {
-                self.before_first_block(block_stream.next()).await?
+                within_budget(&mut self.attempt_network_time, budget, block_stream.next()).await?
             };
             let Some(block_result) = next else {
                 break;
@@ -716,6 +706,21 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
         self.sync_peers.iter().position(|p| p.node_id() == node_id)
     }
+}
+
+/// How long each peer may keep us waiting before its first valid block
+fn attempt_budget(config: &BlockchainSyncConfig) -> Duration {
+    config.rpc_deadline.saturating_mul(2)
+}
+
+/// Waits on a network call before the peer's first valid block within what is left of the attempt's `budget`, adding
+/// the wait to `spent`. Only these network waits count against a peer, never local database work.
+async fn within_budget<F: Future>(spent: &mut Duration, budget: Duration, fut: F) -> Result<F::Output, BlockSyncError> {
+    let remaining = budget.saturating_sub(*spent);
+    let started = Instant::now();
+    let result = tokio::time::timeout(remaining, fut).await;
+    *spent = spent.saturating_add(started.elapsed());
+    result.map_err(|_| BlockSyncError::NoValidBlockWithinBudget { budget })
 }
 
 /// Whether a failed dial was the peer's doing, rather than ours (for example our own ban or a cancelled dial)

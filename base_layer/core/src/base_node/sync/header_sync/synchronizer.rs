@@ -82,7 +82,10 @@ pub struct HeaderSynchronizer<'a, B> {
     local_cached_metadata: &'a ChainMetadata,
     peer_ban_manager: PeerBanManager,
     consensus_rules: BaseNodeConsensusManager,
-    attempt_started: Instant,
+    /// Time spent on each peer by the strong dial before its attempt
+    predial_time: HashMap<NodeId, Duration>,
+    /// Time the current attempt has spent waiting on the network, which is what its budget bounds
+    attempt_network_time: Duration,
     attempt_start_block_hash: HashOutput,
     chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
 }
@@ -109,7 +112,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             local_cached_metadata: local_metadata,
             peer_ban_manager,
             consensus_rules,
-            attempt_started: Instant::now(),
+            predial_time: HashMap::new(),
+            attempt_network_time: Duration::ZERO,
             attempt_start_block_hash: HashOutput::zero(),
             chain_changes,
         }
@@ -154,15 +158,22 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             if peer.ensure_strong_connection() {
                 continue;
             }
-            match self
-                .connectivity
-                .dial_peer(peer.node_id().clone(), RefKind::Strong)
-                .await
-            {
-                Ok(conn) => peer.set_connection(conn),
-                Err(e) => debug!(
+            let dial_started = Instant::now();
+            let dial_result = tokio::time::timeout(
+                self.config.rpc_deadline,
+                self.connectivity.dial_peer(peer.node_id().clone(), RefKind::Strong),
+            )
+            .await;
+            self.predial_time.insert(peer.node_id().clone(), dial_started.elapsed());
+            match dial_result {
+                Ok(Ok(conn)) => peer.set_connection(conn),
+                Ok(Err(e)) => debug!(
                     target: LOG_TARGET,
                     "Failed to dial sync peer {} as strong: {e}", peer.node_id()
+                ),
+                Err(_) => debug!(
+                    target: LOG_TARGET,
+                    "Timed out dialing sync peer {} as strong", peer.node_id()
                 ),
             }
         }
@@ -214,7 +225,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         );
         let mut latency_counter = 0usize;
         for node_id in sync_peer_node_ids {
-            self.attempt_started = Instant::now();
+            self.attempt_network_time = self.predial_time.remove(&node_id).unwrap_or_default();
             match self.connect_and_attempt_sync(&node_id, max_latency).await {
                 Ok((peer, sync_result)) => {
                     self.chain_changes.remove(&node_id);
@@ -271,7 +282,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         // when the attempt ends has no effect on the counter.
         let mut conn = match sync_peer.connection() {
             Some(stored) if stored.is_connected() => stored.clone_weak(),
-            _ => self.within_attempt_budget(self.dial_sync_peer(node_id)).await??,
+            _ => {
+                let budget = self.attempt_budget();
+                within_budget(
+                    &mut self.attempt_network_time,
+                    budget,
+                    Self::dial_sync_peer(&self.connectivity, node_id),
+                )
+                .await??
+            },
         };
         debug!(
             target: LOG_TARGET,
@@ -298,14 +317,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             // buffer of padded headers at ~25 MiB rather than ~800 MiB.
             .with_max_response_size(PowData::default().max_size().saturating_mul(4));
         // Bound RPC negotiation so a stuck negotiation cannot wedge the sync loop.
-        let mut client = self
-            .within_attempt_budget(tokio::time::timeout(
+        let budget = self.attempt_budget();
+        let mut client = within_budget(
+            &mut self.attempt_network_time,
+            budget,
+            tokio::time::timeout(
                 self.config.rpc_deadline,
                 conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
-            ))
-            .await?
-            .map_err(|_| BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout))?
-            .map_err(BlockHeaderSyncError::from_connect_error)?;
+            ),
+        )
+        .await?
+        .map_err(|_| BlockHeaderSyncError::RpcError(RpcError::ReplyTimeout))?
+        .map_err(BlockHeaderSyncError::from_connect_error)?;
 
         let latency = client
             .get_last_request_latency()
@@ -332,13 +355,16 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         Ok((sync_peer, sync_result))
     }
 
-    async fn dial_sync_peer(&self, node_id: &NodeId) -> Result<PeerConnection, BlockHeaderSyncError> {
+    async fn dial_sync_peer(
+        connectivity: &ConnectivityRequester,
+        node_id: &NodeId,
+    ) -> Result<PeerConnection, BlockHeaderSyncError> {
         let timer = Instant::now();
         debug!(target: LOG_TARGET, "Dialing {node_id} sync peer");
         // `synchronize()` holds Strong references to every sync peer for the duration of this
         // sync, so the per-attempt redial can be Weak — the strong handles in the outer guard
         // list keep the connection pinned.
-        let conn = self.connectivity.dial_peer(node_id.clone(), RefKind::Weak).await?;
+        let conn = connectivity.dial_peer(node_id.clone(), RefKind::Weak).await?;
         info!(
             target: LOG_TARGET,
             "Successfully dialed sync peer {} in {:.2?}",
@@ -485,7 +511,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 header_count,
             };
 
-            let resp = match self.within_attempt_budget(client.find_chain_split(request)).await? {
+            let budget = self.attempt_budget();
+            let resp = match within_budget(&mut self.attempt_network_time, budget, client.find_chain_split(request))
+                .await?
+            {
                 Ok(r) => r,
                 Err(RpcError::RequestFailed(err)) if err.as_status_code().is_not_found() => {
                     // This round we sent less hashes than the max, so the next round will not have any more hashes to
@@ -681,9 +710,14 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             ));
         };
 
+        // The split hash is one of ours, so if it is gone our chain changed after we sent it
         self.header_validator
             .initialize_state(&chain_split_result.chain_split_hash)
-            .await?;
+            .await
+            .map_err(|err| match err {
+                BlockHeaderSyncError::StartHashNotFound(_) => BlockHeaderSyncError::ChainChangedDuringSync,
+                err => err,
+            })?;
         for header in headers {
             debug!(
                 target: LOG_TARGET,
@@ -735,7 +769,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .db
             .fetch_header_by_block_hash(chain_split_hash)
             .await?
-            .ok_or_else(|| BlockHeaderSyncError::StartHashNotFound(chain_split_hash.to_hex()))?;
+            // The split hash is one of ours, so if it is gone our chain changed after we sent it
+            .ok_or(BlockHeaderSyncError::ChainChangedDuringSync)?;
         let activation_height = self.consensus_rules.derived_monero_coinbase_activation_height();
         let local_tip_height = best_block_header.height();
         if !reorg_reintroduces_pre_ghsa_blocks(
@@ -1132,16 +1167,6 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.config.rpc_deadline.saturating_mul(2)
     }
 
-    /// Waits on the dial, RPC setup or a chain-split request until the current attempt's budget runs out. The
-    /// header stream and local database work are not bounded by it.
-    async fn within_attempt_budget<F: Future>(&self, fut: F) -> Result<F::Output, BlockHeaderSyncError> {
-        let budget = self.attempt_budget();
-        let remaining = budget.saturating_sub(self.attempt_started.elapsed());
-        tokio::time::timeout(remaining, fut)
-            .await
-            .map_err(|_| BlockHeaderSyncError::SyncAttemptTimedOut { budget })
-    }
-
     /// Records that an attempt with the peer ended because our chain changed, and returns the error to act on: a
     /// ban once the peer has done this too often.
     fn record_chain_change(&mut self, node_id: &NodeId) -> BlockHeaderSyncError {
@@ -1168,6 +1193,20 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     fn get_sync_peer_index(&mut self, node_id: &NodeId) -> Option<usize> {
         self.sync_peers.iter().position(|p| p.node_id() == node_id)
     }
+}
+
+/// Waits on the dial, RPC setup or a chain-split request within what is left of the attempt's `budget`, adding the
+/// wait to `spent`. Only these network waits count against a peer; the header stream and local database work do not.
+async fn within_budget<F: Future>(
+    spent: &mut Duration,
+    budget: Duration,
+    fut: F,
+) -> Result<F::Output, BlockHeaderSyncError> {
+    let remaining = budget.saturating_sub(*spent);
+    let started = Instant::now();
+    let result = tokio::time::timeout(remaining, fut).await;
+    *spent = spent.saturating_add(started.elapsed());
+    result.map_err(|_| BlockHeaderSyncError::SyncAttemptTimedOut { budget })
 }
 
 #[derive(Debug, Clone)]

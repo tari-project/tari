@@ -555,3 +555,56 @@ async fn a_peer_whose_attempts_keep_ending_on_a_chain_change_is_banned() {
         .unwrap();
     assert!(!chain_changes.contains_key(peer_identity.node_id()));
 }
+
+#[tokio::test]
+async fn a_split_that_leaves_our_chain_during_sync_is_not_banned() {
+    // Index 1 is checked by the deep reorg anchor, index 0 only by the header validator setup
+    for (fork_hash_index, peer_block_name) in [(1, "P1"), (0, "P0")] {
+        let db = create_new_blockchain();
+        let genesis = Arc::new(db.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+        let (_, mut chain) = create_chained_blocks(
+            &db,
+            block_specs!(
+                ["L1->GB"],
+                ["L2->L1"],
+                ["P0->L2"],
+                ["P1->L1"],
+                ["M1->GB"],
+                ["M2->M1"],
+                ["M3->M2"]
+            ),
+            genesis,
+        );
+        db.add_block(chain.get("L1").unwrap().to_arc_block()).unwrap();
+        db.add_block(chain.get("L2").unwrap().to_arc_block()).unwrap();
+        let peer_block = chain.remove(peer_block_name).unwrap();
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let connectivity_mock = connectivity_mock.spawn();
+        // We send (L2, L1, genesis); while the peer answers, a stronger chain on genesis replaces L1 and L2
+        let reply = FindChainSplitResponse {
+            headers: vec![peer_block.header().clone().into()],
+            fork_hash_index,
+        };
+        let mut service = MockSyncPeer::new(&db, Some(reply));
+        service.blocks_to_add = ["M1", "M2", "M3"]
+            .iter()
+            .map(|name| chain.get(*name).unwrap().clone())
+            .collect();
+        let (peer, _server) = connect_mock_peer(&connectivity_mock, service, claim_for(&peer_block)).await;
+        let mut chain_changes = HashMap::new();
+
+        let err = sync_headers_with_history(
+            &db,
+            connectivity.clone(),
+            BlockchainSyncConfig::default(),
+            vec![peer.clone()],
+            &mut chain_changes,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::NoMoreSyncPeers(_)), "{err}");
+        assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+        assert_eq!(chain_changes.get(peer.node_id()).map(Vec::len), Some(1));
+    }
+}
