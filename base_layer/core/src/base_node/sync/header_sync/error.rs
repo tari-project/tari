@@ -65,6 +65,11 @@ pub enum BlockHeaderSyncError {
     RepeatedChainChangesDuringSync { count: usize },
     #[error("The rewind to the chain split reset the chain to the genesis block. Header sync starts again.")]
     ChainResetToGenesis { removed: Vec<Arc<ChainBlock>> },
+    #[error(
+        "The peer's chain is stronger than our blocks but not our headers, and switching to it would reset the chain. \
+         Sync will be retried with another peer if possible."
+    )]
+    WeakerThanLocalHeaders,
     #[error("The sync peer could not take an RPC session ({0}). Sync will be retried with another peer if possible.")]
     SyncPeerUnavailable(RpcError),
     #[error("Unable to locate start hash `{0}`")]
@@ -141,6 +146,7 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::ChainChangedDuringSync |
             BlockHeaderSyncError::ChainResetToGenesis { .. } |
+            BlockHeaderSyncError::WeakerThanLocalHeaders |
             BlockHeaderSyncError::SyncPeerUnavailable(_) |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,
