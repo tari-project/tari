@@ -149,23 +149,34 @@ impl ReorgPool {
         let mut remaining = Vec::new();
 
         for sig in excess_sigs {
-            match self.txs_by_signature.get(sig) {
-                Some(ids) => found.extend(ids.iter()),
-                None => remaining.push(sig.clone()),
+            let matched: Vec<TransactionId> = self
+                .txs_by_signature
+                .get(sig)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|id| self.tx_by_key.contains_key(id))
+                .collect();
+            if matched.is_empty() {
+                remaining.push(sig.clone());
+            } else {
+                found.extend(matched);
             }
         }
 
         let found = found
             .into_iter()
-            .map(|id| self.tx_by_key.get(id).cloned().ok_or(MempoolError::IndexOutOfSync))
-            .collect::<Result<Vec<_>, _>>()?;
+            .filter_map(|id| self.tx_by_key.get(&id).cloned())
+            .collect();
 
         Ok((found, remaining))
     }
 
     /// Check if a transaction is stored in the ReorgPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
-        self.txs_by_signature.contains_key(excess_sig.get_signature())
+        self.txs_by_signature
+            .get(excess_sig.get_signature())
+            .is_some_and(|ids| ids.iter().any(|id| self.tx_by_key.contains_key(id)))
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
@@ -196,8 +207,7 @@ impl ReorgPool {
             for kernel in block.body.kernels() {
                 if let Some(removed_tx_ids) = self.txs_by_signature.remove(kernel.excess_sig.get_signature()) {
                     for tx_id in removed_tx_ids {
-                        if let Some(tx) = self.tx_by_key.remove(&tx_id) {
-                            self.remove_from_height_index(tx_id);
+                        if let Some(tx) = self.remove(tx_id) {
                             trace!(target: LOG_TARGET, "Removed tx from reorg pool: {tx_id:?}");
                             removed_txs.push(tx);
                         }
@@ -249,11 +259,13 @@ impl ReorgPool {
 
         for kernel in tx.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
-            let ids = self.txs_by_signature.get_mut(sig).expect("reorg pool out of sync");
-            let pos = ids.iter().position(|k| *k == tx_id).expect("reorg mempool out of sync");
-            ids.remove(pos);
-            if ids.is_empty() {
-                self.txs_by_signature.remove(sig);
+            if let Some(ids) = self.txs_by_signature.get_mut(sig) {
+                if let Some(pos) = ids.iter().position(|k| *k == tx_id) {
+                    ids.remove(pos);
+                }
+                if ids.is_empty() {
+                    self.txs_by_signature.remove(sig);
+                }
             }
         }
 
@@ -508,5 +520,16 @@ mod test {
         assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_treats_unmatched_index_entry_as_not_found() {
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 10 });
+        let dangling_sig = PrivateKey::from(42u64);
+        reorg_pool.txs_by_signature.insert(dangling_sig.clone(), vec![999]);
+
+        let (found, remaining) = reorg_pool.retrieve_by_excess_sigs(&[dangling_sig.clone()]).unwrap();
+        assert!(found.is_empty());
+        assert_eq!(remaining, vec![dangling_sig]);
     }
 }
