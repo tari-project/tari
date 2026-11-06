@@ -337,6 +337,13 @@ impl DbTransaction {
         self
     }
 
+    /// Empties every chain table and the chain-derived metadata. Must be followed, in the same transaction, by the
+    /// operations that seed the genesis block, as `BlockchainDatabase::start` does for an empty database.
+    pub(crate) fn reset_chain_to_genesis(&mut self) -> &mut Self {
+        self.operations.push(WriteOperation::ResetChainToGenesis);
+        self
+    }
+
     /// Prunes the copy of an output stored under one block, leaving copies under other blocks. Only for horizon sync.
     pub(crate) fn prune_output_copy(
         &mut self,
@@ -479,6 +486,7 @@ pub enum WriteOperation {
     },
     ClearAllReorgs,
     ClearHorizonSyncOutputState,
+    ResetChainToGenesis,
     DeleteUtxoCommitmentIndexEntry {
         commitment: CompressedCommitment,
     },
@@ -657,6 +665,7 @@ impl fmt::Display for WriteOperation {
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
             ClearHorizonSyncOutputState => write!(f, "Clear horizon sync output state"),
+            ResetChainToGenesis => write!(f, "Reset chain to genesis"),
             DeleteUtxoCommitmentIndexEntry { commitment } => {
                 write!(f, "Delete commitment index entry {}", commitment.to_hex())
             },

@@ -1735,3 +1735,407 @@ mod validator_node_exit {
         );
     }
 }
+
+mod rewind_past_pruning_horizon {
+    // Overflow in test code panics, which is the desired failure mode for a test.
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::cast_possible_truncation)]
+    use std::collections::VecDeque;
+
+    use primitive_types::U512;
+    use tari_common::configuration::Network;
+    use tari_common_types::types::FixedHash;
+    use tari_transaction_components::consensus::ConsensusConstantsBuilder;
+    use tari_utilities::ByteArray;
+
+    use super::*;
+    use crate::{
+        chain_storage::{
+            AccumulatedDataRebuildStatus,
+            BlockchainBackend,
+            BlockchainCheckRequest,
+            BlockchainDatabaseConfig,
+            DbTransaction,
+            HorizonStateTreeUpdate,
+            HorizonSyncOutputCheckpoint,
+            Reorg,
+            Validators,
+            lmdb_db::{MetadataKey, MetadataValue},
+        },
+        consensus::{BaseNodeConsensusManager, chain_strength_comparer::ChainStrengthComparerBuilder},
+        test_helpers::blockchain::create_store_with_consensus_and_validators_and_config,
+        validation::mocks::MockValidator,
+    };
+
+    const HORIZON: u64 = 3;
+    const CHAIN_LEN: u64 = 8;
+    /// Pruning waits until the tip is more than `pruning_interval` blocks past the horizon
+    const PRUNED_HEIGHT: u64 = 4;
+
+    type Tables = Vec<(&'static str, Vec<(Vec<u8>, Vec<u8>)>)>;
+
+    fn create_db(pruning_horizon: u64) -> BlockchainDatabase<TempDatabase> {
+        let network = Network::LocalNet;
+        let rules = BaseNodeConsensusManager::builder(network)
+            .add_consensus_constants(ConsensusConstantsBuilder::new(network).build())
+            .on_ties(ChainStrengthComparerBuilder::new().by_height().build())
+            .build()
+            .unwrap();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        let config = BlockchainDatabaseConfig {
+            pruning_horizon,
+            pruning_interval: 1,
+            ..Default::default()
+        };
+        create_store_with_consensus_and_validators_and_config(rules, validators, config)
+    }
+
+    /// Mines `CHAIN_LEN` blocks with a coinbase each. The last but one spends the first coinbase, so that output is
+    /// still unspent at every pruned height.
+    fn add_chain(db: &BlockchainDatabase<TempDatabase>, key_manager: &KeyManager) -> Vec<Arc<Block>> {
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(key_manager);
+        let mut prev_block = Arc::new(db.fetch_genesis_block().block().clone());
+        let mut first_coinbase = None;
+        let mut blocks = Vec::new();
+        for height in 1..=CHAIN_LEN {
+            let mut transactions = vec![];
+            if height == CHAIN_LEN - 1 {
+                let output = first_coinbase.clone().unwrap();
+                let (txns, _) =
+                    schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])], key_manager);
+                transactions = txns;
+            }
+            let (block, coinbase) = create_next_block(
+                db,
+                &prev_block,
+                transactions,
+                key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
+            db.add_block(block.clone()).unwrap().result.assert_added();
+            if height == 1 {
+                first_coinbase = Some(coinbase);
+            }
+            prev_block = block.clone();
+            blocks.push(block);
+        }
+        let metadata = db.get_chain_metadata().unwrap();
+        assert_eq!(metadata.best_block_height(), CHAIN_LEN);
+        assert_eq!(metadata.pruned_height(), PRUNED_HEIGHT);
+        blocks
+    }
+
+    fn dump(db: &BlockchainDatabase<TempDatabase>) -> Tables {
+        db.db_read_access().unwrap().db().dump_tables_for_test()
+    }
+
+    fn table<'a>(tables: &'a Tables, name: &str) -> &'a Vec<(Vec<u8>, Vec<u8>)> {
+        &tables.iter().find(|(table_name, _)| *table_name == name).unwrap().1
+    }
+
+    fn metadata_value(tables: &Tables, key: MetadataKey) -> Option<Vec<u8>> {
+        let key = key.as_u32().to_ne_bytes().to_vec();
+        table(tables, "metadata")
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, v)| v.clone())
+    }
+
+    const ORPHAN_TABLES: [&str; 5] = [
+        "orphans",
+        "orphan_accumulated_data",
+        "orphan_accumulated_data_v2",
+        "orphan_chain_tips",
+        "orphan_parent_map_index",
+    ];
+
+    #[tokio::test]
+    async fn it_resets_a_pruned_node_to_the_state_of_a_fresh_database() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        add_chain(&db, &key_manager);
+        let mut txn = DbTransaction::new();
+        txn.insert_bad_block(FixedHash::from([7u8; 32]), 3, "test".to_string());
+        txn.insert_reorg(Reorg::from_reorged_blocks(&VecDeque::new(), &[]));
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: 2,
+            checkpoint_hash: FixedHash::from([1u8; 32]),
+            sync_target_height: 4,
+            sync_target_hash: FixedHash::from([2u8; 32]),
+        });
+        // A rebuild and a check in progress
+        txn.set_accumulated_data_rebuild_status(AccumulatedDataRebuildStatus {
+            is_rebuilt: false,
+            last_rebuild_height: Some(3),
+        });
+        db.write(txn).unwrap();
+        db.db_read_access()
+            .unwrap()
+            .update_blockchain_consistency_check_status(BlockchainCheckRequest::SetCheckResult {
+                has_concluded: false,
+                last_check_height: 3,
+                current_height: CHAIN_LEN,
+            })
+            .unwrap();
+        let before = dump(&db);
+        let fresh_before = create_db(HORIZON);
+        for key in [
+            MetadataKey::AccumulatedDataRebuildStatus,
+            MetadataKey::BlockchainConsistencyCheckStatus,
+        ] {
+            assert_ne!(metadata_value(&before, key), metadata_value(&dump(&fresh_before), key));
+        }
+        assert!(metadata_value(&before, MetadataKey::HorizonSyncOutputCheckpoint).is_some());
+        assert!(!table(&before, "utxos").is_empty());
+
+        // Reaches below the pruned height
+        let removed = db.rewind_to_height(1).unwrap();
+
+        // Only the blocks above the pruned height are returned
+        let removed_heights = removed.iter().map(|b| b.height()).collect::<Vec<_>>();
+        assert_eq!(removed_heights, vec![8, 7, 6, 5]);
+        let fresh = create_db(HORIZON);
+        assert_eq!(db.get_chain_metadata().unwrap(), fresh.get_chain_metadata().unwrap());
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+        assert_eq!(db.get_chain_metadata().unwrap().pruned_height(), 0);
+        assert_eq!(db.fetch_last_header().unwrap().height, 0);
+        let after = dump(&db);
+        for ((name, rows), (fresh_name, fresh_rows)) in after.iter().zip(dump(&fresh).iter()) {
+            assert_eq!(name, fresh_name);
+            if *name == "bad_blocks" || *name == "reorgs" {
+                assert!(!rows.is_empty());
+                assert_eq!(rows, table(&before, name), "{name} changed");
+            } else {
+                assert_eq!(rows, fresh_rows, "{name} differs from a fresh database");
+            }
+        }
+        for key in [MetadataKey::MigrationVersion, MetadataKey::PruningHorizon] {
+            assert_eq!(metadata_value(&after, key), metadata_value(&before, key));
+        }
+        assert!(metadata_value(&after, MetadataKey::HorizonSyncOutputCheckpoint).is_none());
+        let stats = db.db_read_access().unwrap().db().stats_collector().current_stats();
+        assert!(stats.get_metadata(&MetadataKey::HorizonSyncOutputCheckpoint).is_none());
+        // The stats collector shows the statuses the reset stored
+        let backend = db.db_read_access().unwrap();
+        let stored = [
+            (
+                MetadataKey::PayrefRebuildStatus,
+                MetadataValue::PayrefRebuildStatus(backend.fetch_payref_rebuild_status().unwrap()),
+            ),
+            (
+                MetadataKey::BurnCommitmentRebuildStatus,
+                MetadataValue::BurnCommitmentRebuildStatus(backend.fetch_burn_commitment_rebuild_status().unwrap()),
+            ),
+            (
+                MetadataKey::AccumulatedDataRebuildStatus,
+                MetadataValue::AccumulatedDataRebuildStatus(backend.fetch_accumulated_data_rebuild_status().unwrap()),
+            ),
+            (
+                MetadataKey::AccumulatedDataCheckStatus,
+                MetadataValue::BlockchainCheckStatus(backend.fetch_accumulated_data_check_status().unwrap().unwrap()),
+            ),
+            (
+                MetadataKey::BlockchainConsistencyCheckStatus,
+                MetadataValue::BlockchainCheckStatus(
+                    backend.fetch_blockchain_consistency_check_status().unwrap().unwrap(),
+                ),
+            ),
+        ];
+        drop(backend);
+        for (key, value) in stored {
+            assert_eq!(stats.get_metadata(&key), Some(&value), "{key}");
+        }
+        let genesis = db.fetch_genesis_block();
+        db.verify_horizon_sync_output_root(genesis.header().output_mr).unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_reset_database_syncs_again_from_genesis() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        add_chain(&db, &key_manager);
+        db.rewind_to_height(1).unwrap();
+
+        // Horizon sync restores the genesis output state the same way
+        let genesis = db.fetch_genesis_block();
+        assert!(genesis.block().body.inputs().is_empty());
+        let mut txn = DbTransaction::new();
+        txn.clear_horizon_sync_output_state();
+        let mut updates = Vec::new();
+        for output in genesis.block().body.outputs() {
+            txn.insert_utxo(output.clone(), *genesis.hash(), 0, genesis.header().timestamp.as_u64());
+            if output.is_burned() {
+                continue;
+            }
+            let key: [u8; 32] = output.commitment.as_bytes().try_into().unwrap();
+            updates.push(HorizonStateTreeUpdate {
+                key: FixedHash::from(key),
+                value: Some(output.smt_hash(0)),
+                replaces_value: false,
+            });
+        }
+        txn.apply_horizon_state_tree_updates(updates);
+        db.write(txn).unwrap();
+        db.verify_horizon_sync_output_root(genesis.header().output_mr).unwrap();
+
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
+        let (block, _) = create_next_block(
+            &db,
+            genesis.block(),
+            vec![],
+            &key_manager,
+            &script_key_id,
+            &wallet_payment_address,
+        );
+        db.add_block(block).unwrap().result.assert_added();
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_rewind_down_to_the_pruned_height_keeps_the_chain() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let blocks = add_chain(&db, &key_manager);
+        let first_coinbase = blocks[0].body.outputs()[0].commitment.clone();
+        assert!(
+            db.fetch_unspent_output_hash_by_commitment(first_coinbase.clone())
+                .unwrap()
+                .is_none()
+        );
+
+        let removed = db.rewind_to_height(PRUNED_HEIGHT).unwrap();
+
+        let removed_heights = removed.iter().map(|b| b.height()).collect::<Vec<_>>();
+        assert_eq!(removed_heights, vec![8, 7, 6, 5]);
+        let metadata = db.get_chain_metadata().unwrap();
+        assert_eq!(metadata.best_block_height(), PRUNED_HEIGHT);
+        assert_eq!(metadata.pruned_height(), PRUNED_HEIGHT);
+        assert_eq!(db.fetch_last_header().unwrap().height, PRUNED_HEIGHT);
+        for block in &removed {
+            db.fetch_orphan(*block.hash()).unwrap();
+        }
+        // The spend in block 7 is undone
+        assert!(
+            db.fetch_unspent_output_hash_by_commitment(first_coinbase)
+                .unwrap()
+                .is_some()
+        );
+        let tip = db.fetch_header(PRUNED_HEIGHT).unwrap().unwrap();
+        db.verify_horizon_sync_output_root(tip.output_mr).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_stronger_fork_below_the_pruned_height_resets_the_chain() {
+        const FORK_HEIGHT: u64 = 2;
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let blocks = add_chain(&db, &key_manager);
+        // Build a longer fork on the same first blocks in a second database
+        let fork_db = create_db(0);
+        for block in blocks.iter().take(FORK_HEIGHT as usize) {
+            fork_db.add_block(block.clone()).unwrap().result.assert_added();
+        }
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
+        let mut prev_block = blocks[FORK_HEIGHT as usize - 1].clone();
+        let mut fork = Vec::new();
+        for _ in FORK_HEIGHT..=CHAIN_LEN {
+            let (block, _) = create_next_block(
+                &fork_db,
+                &prev_block,
+                vec![],
+                &key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
+            fork_db.add_block(block.clone()).unwrap().result.assert_added();
+            prev_block = block.clone();
+            fork.push(block);
+        }
+        let (last, weaker) = fork.split_last().unwrap();
+        for block in weaker {
+            db.add_block(block.clone()).unwrap().result.assert_orphaned();
+        }
+
+        let outcome = db.add_block(last.clone()).unwrap();
+
+        outcome.result.assert_reorg(0, (CHAIN_LEN - PRUNED_HEIGHT) as usize);
+        assert!(outcome.rejected.is_empty());
+        let fresh = create_db(HORIZON);
+        assert_eq!(db.get_chain_metadata().unwrap(), fresh.get_chain_metadata().unwrap());
+        assert_eq!(dump(&db), dump(&fresh));
+        assert!(db.fetch_bad_blocks().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_reset_leaves_the_database_untouched() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        add_chain(&db, &key_manager);
+        let before = dump(&db);
+        let metadata = db.get_chain_metadata().unwrap();
+
+        // Fails after the tables are dropped, before the genesis block is stored
+        let mut txn = DbTransaction::new();
+        txn.reset_chain_to_genesis();
+        txn.set_best_block(0, FixedHash::zero(), U512::zero(), FixedHash::zero(), 0);
+        assert!(db.write(txn).is_err());
+
+        assert_eq!(dump(&db), before);
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+    }
+
+    #[tokio::test]
+    async fn an_archival_node_never_resets() {
+        let db = create_db(0);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (script_key_id, wallet_payment_address) = default_coinbase_entities(&key_manager);
+        let mut prev_block = Arc::new(db.fetch_genesis_block().block().clone());
+        for _ in 0..CHAIN_LEN {
+            let (block, _) = create_next_block(
+                &db,
+                &prev_block,
+                vec![],
+                &key_manager,
+                &script_key_id,
+                &wallet_payment_address,
+            );
+            db.add_block(block.clone()).unwrap().result.assert_added();
+            prev_block = block;
+        }
+
+        let removed = db.rewind_to_height(0).unwrap();
+
+        assert_eq!(removed.len(), CHAIN_LEN as usize);
+        // A reset would have dropped the orphans the rewind keeps
+        assert_eq!(db.orphan_count().unwrap(), CHAIN_LEN as usize);
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_reset_drops_the_orphans() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        add_chain(&db, &key_manager);
+        db.rewind_to_height(CHAIN_LEN - 2).unwrap();
+        assert_eq!(db.orphan_count().unwrap(), 2);
+        let before = dump(&db);
+        for name in ["orphans", "orphan_chain_tips", "orphan_parent_map_index"] {
+            assert!(!table(&before, name).is_empty(), "{name} is empty");
+        }
+
+        // The effective horizon is now 2 blocks
+        db.rewind_to_height(PRUNED_HEIGHT - 1).unwrap();
+
+        assert_eq!(db.orphan_count().unwrap(), 0);
+        let after = dump(&db);
+        for name in ORPHAN_TABLES {
+            assert!(table(&after, name).is_empty(), "{name} is not empty");
+        }
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+    }
+}

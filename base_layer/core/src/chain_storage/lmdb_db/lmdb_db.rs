@@ -1251,6 +1251,87 @@ impl LMDBDatabase {
                     )
                     .optional()?;
                 },
+                ResetChainToGenesis => {
+                    // Every table that holds chain state, emptied with `mdb_drop`. Bad blocks, reorgs, the legacy
+                    // `utxo_smt` and the unused unique id and contract indexes are kept.
+                    let mut access = write_txn.access();
+                    for db in [
+                        &self.headers_db,
+                        &self.header_accumulated_data_db.db,
+                        &self.header_accumulated_data_v2_db.db,
+                        &self.block_accumulated_data_db,
+                        &self.block_hashes_db,
+                        &self.utxos_db,
+                        &self.inputs_db,
+                        &self.txos_hash_to_index_db,
+                        &self.kernels_db,
+                        &self.kernel_excess_index,
+                        &self.kernel_excess_sig_index,
+                        &self.kernel_mmr_size_index,
+                        &self.burn_commitment_index,
+                        &self.utxo_commitment_index,
+                        &self.payref_to_output_index,
+                        &self.deleted_txo_hash_to_header_index,
+                        &self.monero_seed_height_db,
+                        &self.monero_seed_height_index_db,
+                        &self.validator_nodes,
+                        &self.validator_nodes_activation_queue,
+                        &self.validator_nodes_exit_queue,
+                        &self.validator_nodes_cancelled,
+                        &self.jmt_value_data,
+                        &self.jmt_node_data,
+                        &self.orphans_db,
+                        &self.orphan_header_accumulated_data_db.db,
+                        &self.orphan_header_accumulated_data_v2_db.db,
+                        &self.orphan_chain_tips_db,
+                        &self.orphan_parent_map_index,
+                    ] {
+                        access.clear_db(db)?;
+                    }
+                    drop(access);
+                    // The best block, pruned height and horizon data are rewritten by the genesis operations that
+                    // follow; the migration version and pruning horizon are kept. The genesis output tree write
+                    // re-creates the JMT version.
+                    for key in [MetadataKey::JMTVersion, MetadataKey::HorizonSyncOutputCheckpoint] {
+                        lmdb_delete(&write_txn, &self.metadata_db, &key.as_u32(), "metadata_db").optional()?;
+                        self.stats_collector.remove_metadata(key);
+                    }
+                    // The statuses the migrations and startup store for a new database, so no rebuild runs again
+                    self.set_metadata(
+                        &write_txn,
+                        MetadataKey::PayrefRebuildStatus,
+                        &MetadataValue::PayrefRebuildStatus(PayrefRebuildStatus {
+                            is_rebuilt: true,
+                            ..Default::default()
+                        }),
+                    )?;
+                    self.set_metadata(
+                        &write_txn,
+                        MetadataKey::BurnCommitmentRebuildStatus,
+                        &MetadataValue::BurnCommitmentRebuildStatus(BurnCommitmentRebuildStatus {
+                            is_rebuilt: true,
+                            last_rebuild_height: None,
+                        }),
+                    )?;
+                    self.set_metadata(
+                        &write_txn,
+                        MetadataKey::AccumulatedDataRebuildStatus,
+                        &MetadataValue::AccumulatedDataRebuildStatus(AccumulatedDataRebuildStatus {
+                            is_rebuilt: true,
+                            last_rebuild_height: None,
+                        }),
+                    )?;
+                    for key in [
+                        MetadataKey::AccumulatedDataCheckStatus,
+                        MetadataKey::BlockchainConsistencyCheckStatus,
+                    ] {
+                        self.set_metadata(
+                            &write_txn,
+                            key,
+                            &MetadataValue::BlockchainCheckStatus(BlockchainCheckStatus::default()),
+                        )?;
+                    }
+                },
                 SetHorizonSyncOutputCheckpoint { checkpoint } => match checkpoint {
                     Some(cp) => {
                         self.set_metadata(
@@ -3219,6 +3300,23 @@ impl LMDBDatabase {
         self.write_transaction().expect("Failed to create write transaction")
     }
 
+    /// Every stored key and value, by table name.
+    #[cfg(test)]
+    pub(crate) fn dump_tables_for_test(&self) -> Vec<(&'static str, Vec<(Vec<u8>, Vec<u8>)>)> {
+        let txn = self.read_transaction().unwrap();
+        let access = txn.access();
+        let mut tables = Vec::new();
+        for (name, db) in self.all_dbs() {
+            let mut cursor = txn.cursor(&**db).unwrap();
+            let mut rows = Vec::new();
+            while let Some((key, value)) = cursor.next::<[u8], [u8]>(&access).to_opt().unwrap() {
+                rows.push((key.to_vec(), value.to_vec()));
+            }
+            tables.push((name, rows));
+        }
+        tables
+    }
+
     /// Deletes an output row but leaves its index entries, as a damaged database would.
     #[cfg(test)]
     pub(crate) fn delete_output_row_for_test(&self, header_hash: &HashOutput, output_hash: &HashOutput) {
@@ -3657,6 +3755,10 @@ impl BlockchainBackend for LMDBDatabase {
     fn is_empty(&self) -> Result<bool, ChainStorageError> {
         let txn = self.read_transaction()?;
         Ok(lmdb_len(&txn, &self.headers_db)? == 0)
+    }
+
+    fn fetch_genesis_block(&self) -> ChainBlock {
+        self.consensus_manager.get_genesis_block()
     }
 
     fn fetch_block_accumulated_data(

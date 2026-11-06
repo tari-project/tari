@@ -383,6 +383,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().is_empty()
     }
 
+    fn fetch_genesis_block(&self) -> ChainBlock {
+        self.db.as_ref().unwrap().fetch_genesis_block()
+    }
+
     fn fetch_block_accumulated_data(
         &self,
         header_hash: &HashOutput,

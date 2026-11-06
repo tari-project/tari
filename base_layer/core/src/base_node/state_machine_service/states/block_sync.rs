@@ -160,6 +160,10 @@ async fn swap_to_highest_pow_chain_and_publish<B: BlockchainBackend + 'static>(s
         Ok(outcome) => {
             let tip_block = match &outcome.result {
                 BlockAddResult::Ok(block) => Some(block.to_arc_block()),
+                // A reset to the genesis block removes blocks without adding any
+                BlockAddResult::ChainReorg { added, removed } if added.is_empty() && !removed.is_empty() => {
+                    Some(shared.db.fetch_genesis_block().to_arc_block())
+                },
                 BlockAddResult::ChainReorg { added, .. } => added.last().map(|block| block.to_arc_block()),
                 BlockAddResult::BlockExists | BlockAddResult::OrphanBlock => None,
             };
