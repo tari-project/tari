@@ -3990,3 +3990,161 @@ async fn test_scrape_wallet_batches_and_empty_wallet() {
     assert_ne!(chunked_batches[1].0, chunked_batches[2].0);
     assert_ne!(chunked_batches[0].0, chunked_batches[2].0);
 }
+
+#[tokio::test]
+async fn test_htlc_claim_and_refund_succeed_and_encumber_refunded_input() {
+    use sha2::{Digest, Sha256};
+    use tari_transaction_components::{
+        consensus::ConsensusManager,
+        transaction_builder::{RecipientKeys, RecipientMetadataSignature, RecipientScriptKey, RecipientSpec},
+        transaction_components::memo_field::TxType,
+        validation::transaction::TransactionInternalConsistencyValidator,
+    };
+
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection);
+    let mut oms = setup_output_manager_service(backend.clone(), true).await;
+    let fee_per_gram = MicroMinotari::from(1);
+
+    let funding_input = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(100_000),
+        &OutputFeatures::default(),
+        oms.key_manager_handle.key_manager(),
+    );
+
+    let view_key = oms.key_manager_handle.get_view_key();
+    let spend_key = oms.key_manager_handle.get_spend_key();
+    let own_dual_address = TariAddress::new_dual_address_with_default_features(
+        view_key.pub_key,
+        spend_key.pub_key.clone(),
+        Network::LocalNet,
+    )
+    .unwrap();
+
+    let pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+    let lock_height = 100u64;
+    let htlc_script = script!(
+        HashSha256 PushHash(Box::new(hash)) Equal IfThen
+            PushPubKey(Box::new(spend_key.pub_key.clone()))
+        Else
+            CheckHeightVerify(lock_height) PushPubKey(Box::new(spend_key.pub_key))
+        EndIf
+    )
+    .unwrap();
+
+    let mut swap_builder = TransactionBuilder::new(
+        create_consensus_constants(0),
+        oms.key_manager_handle.clone(),
+        Network::LocalNet,
+    )
+    .unwrap();
+    swap_builder
+        .with_lock_height(0)
+        .with_fee_per_gram(fee_per_gram)
+        .with_tx_type(TxType::ClaimAtomicSwap)
+        .with_input(funding_input)
+        .unwrap()
+        .with_recipient_spec(
+            RecipientSpec::stealth(
+                own_dual_address,
+                MicroMinotari::from(50_000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .with_keys(RecipientKeys::DiffieHellmanEncrypted)
+            .with_script(htlc_script)
+            .with_covenant(Covenant::default())
+            .with_script_key(RecipientScriptKey::OwnSpendKey)
+            .with_metadata_signature(RecipientMetadataSignature::Unverified),
+        )
+        .unwrap();
+    swap_builder.reserve_sender_offset_keys(&[]).unwrap();
+    let swap_finalized = swap_builder.build().unwrap();
+    let htlc_wallet_output = swap_finalized.spec_outputs[0].clone();
+    let htlc_hash = htlc_wallet_output.output_hash();
+    let tx_output = htlc_wallet_output.to_transaction_output().unwrap();
+
+    oms.output_manager_handle
+        .add_output_with_tx_id(
+            swap_finalized.tx_id,
+            htlc_wallet_output,
+            Some(SpendingPriority::HtlcSpendAsap),
+        )
+        .await
+        .unwrap();
+    backend.mark_outputs_as_unspent(vec![(htlc_hash, true)]).unwrap();
+
+    let validator = TransactionInternalConsistencyValidator::new(
+        false,
+        ConsensusManager::builder(Network::LocalNet).build(),
+        CryptoFactories::default(),
+    );
+
+    let (refund_tx_id, refund_fee, refund_amount, refund_tx) = oms
+        .output_manager_handle
+        .create_htlc_refund_transaction(htlc_hash, fee_per_gram)
+        .await
+        .expect("create_htlc_refund_transaction should succeed");
+    assert_eq!(refund_amount + refund_fee, MicroMinotari::from(50_000));
+    assert_eq!(refund_tx.body.inputs().len(), 1);
+    assert_eq!(refund_tx.body.outputs().len(), 1);
+    assert!(
+        validator.validate(&refund_tx, None, None, lock_height - 1).is_err(),
+        "HTLC refund transaction must not validate before lock_height"
+    );
+    validator
+        .validate(&refund_tx, None, None, lock_height)
+        .expect("HTLC refund transaction must validate at lock_height");
+    assert!(
+        oms.output_manager_handle
+            .get_unspent_outputs()
+            .await
+            .unwrap()
+            .is_empty(),
+        "refunded HTLC output must be encumbered as spent"
+    );
+    assert!(refund_tx_id.as_u64() > 0);
+
+    let shutdown = Shutdown::new();
+    let (_oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_event_publisher, _) = broadcast::channel(200);
+    let (bns_sender, _bns_receiver) = reply_channel::unbounded();
+    let (bns_event_publisher, _) = broadcast::channel(100);
+    let basenode_service_handle = BaseNodeServiceHandle::new(bns_sender, bns_event_publisher);
+    let wallet_connectivity_mock = WalletConnectivityHandle::new(MockHttpClientFactory::default());
+    let (scanner_event_sender, _) = broadcast::channel(200);
+    let scanner_handle = UtxoScannerHandle::new(
+        scanner_event_sender,
+        Watch::new("unset".to_string()),
+        Watch::new("unset".to_string()),
+    );
+    let mut direct_service = OutputManagerService::new(
+        OutputManagerServiceConfig::default(),
+        oms_request_receiver,
+        OutputManagerDatabase::new(backend),
+        oms_event_publisher,
+        CryptoFactories::default(),
+        create_consensus_constants(0),
+        shutdown.to_signal(),
+        basenode_service_handle,
+        Network::LocalNet,
+        wallet_connectivity_mock,
+        oms.key_manager_handle.clone(),
+        scanner_handle,
+    )
+    .await
+    .unwrap();
+
+    let (claim_tx_id, claim_fee, claim_amount, claim_tx) = direct_service
+        .create_claim_sha_atomic_swap_transaction(tx_output, pre_image, fee_per_gram)
+        .expect("create_claim_sha_atomic_swap_transaction should succeed");
+    assert_eq!(claim_amount + claim_fee, MicroMinotari::from(50_000));
+    assert_eq!(claim_tx.body.inputs().len(), 1);
+    assert_eq!(claim_tx.body.outputs().len(), 1);
+    validator
+        .validate(&claim_tx, None, None, 0)
+        .expect("HTLC claim transaction with matching preimage must validate before lock_height");
+    assert!(claim_tx_id.as_u64() > 0);
+}
