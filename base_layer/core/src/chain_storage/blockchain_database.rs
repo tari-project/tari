@@ -3659,6 +3659,21 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
             "Rewinding headers at height {}",
             height,
         );
+        let header = fetch_header(db, height)?;
+        let header_hash = header.hash();
+        if db.fetch_block_accumulated_data_by_height(height)?.is_some() {
+            txn.delete_block_accumulated_data(height);
+            txn.delete_all_kernerls_in_block(header_hash);
+            txn.delete_all_inputs_in_block(header_hash);
+        }
+        for output in db.fetch_outputs_in_block(&header_hash)? {
+            txn.prune_output_copy(
+                header_hash,
+                output.hash(),
+                output.commitment.clone(),
+                output.features.output_type,
+            );
+        }
         txn.delete_header(height);
     }
     db.write(txn)?;
