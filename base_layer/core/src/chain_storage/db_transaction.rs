@@ -344,6 +344,12 @@ impl DbTransaction {
         self
     }
 
+    /// Records the strongest header lost to a rewind
+    pub(crate) fn set_lost_header_tip(&mut self, header: ChainHeader) -> &mut Self {
+        self.operations.push(WriteOperation::SetLostHeaderTip(Box::new(header)));
+        self
+    }
+
     /// Prunes the copy of an output stored under one block, leaving copies under other blocks. Only for horizon sync.
     pub(crate) fn prune_output_copy(
         &mut self,
@@ -487,6 +493,7 @@ pub enum WriteOperation {
     ClearAllReorgs,
     ClearHorizonSyncOutputState,
     ResetChainToGenesis,
+    SetLostHeaderTip(Box<ChainHeader>),
     DeleteUtxoCommitmentIndexEntry {
         commitment: CompressedCommitment,
     },
@@ -666,6 +673,7 @@ impl fmt::Display for WriteOperation {
             ClearAllReorgs => write!(f, "Clear all reorgs"),
             ClearHorizonSyncOutputState => write!(f, "Clear horizon sync output state"),
             ResetChainToGenesis => write!(f, "Reset chain to genesis"),
+            SetLostHeaderTip(header) => write!(f, "Set lost header tip to #{} {}", header.height(), header.hash()),
             DeleteUtxoCommitmentIndexEntry { commitment } => {
                 write!(f, "Delete commitment index entry {}", commitment.to_hex())
             },

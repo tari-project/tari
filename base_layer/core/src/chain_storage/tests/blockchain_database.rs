@@ -2040,6 +2040,16 @@ mod rewind_past_pruning_horizon {
         fork_height: u64,
         len: u64,
     ) -> AddBlockOutcome {
+        let fork = create_fork(blocks, key_manager, fork_height, len);
+        let (last, weaker) = fork.split_last().unwrap();
+        for block in weaker {
+            db.add_block(block.clone()).unwrap().result.assert_orphaned();
+        }
+        db.add_block(last.clone()).unwrap()
+    }
+
+    /// Mines a fork of `len` blocks on block `fork_height` of `blocks` in a second database
+    fn create_fork(blocks: &[Arc<Block>], key_manager: &KeyManager, fork_height: u64, len: u64) -> Vec<Arc<Block>> {
         let fork_db = create_db(0);
         for block in blocks.iter().take(fork_height as usize) {
             fork_db.add_block(block.clone()).unwrap().result.assert_added();
@@ -2063,11 +2073,7 @@ mod rewind_past_pruning_horizon {
             prev_block = block.clone();
             fork.push(block);
         }
-        let (last, weaker) = fork.split_last().unwrap();
-        for block in weaker {
-            db.add_block(block.clone()).unwrap().result.assert_orphaned();
-        }
-        db.add_block(last.clone()).unwrap()
+        fork
     }
 
     /// The reset is reported as a reorg to the genesis block, with nothing rejected, and leaves a fresh database
@@ -2175,54 +2181,75 @@ mod rewind_past_pruning_horizon {
         assert_eq!(dump(&db), before);
     }
 
-    #[tokio::test]
-    async fn a_fork_that_would_delete_our_headers_must_beat_the_header_tip() {
-        let db = create_db(HORIZON);
-        let key_manager = KeyManager::new_random().unwrap();
-        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
-        let before = dump(&db);
-
-        // From height 3, above the pruned height, stronger than the block tip but not the header tip
-        let outcome = add_fork(&db, &blocks, &key_manager, 3, 3);
-
-        outcome.result.assert_orphaned();
-        assert_eq!(db.fetch_last_header().unwrap().height, 10);
-        assert_eq!(dump(&db), before);
+    fn lost_header_tip(db: &BlockchainDatabase<TempDatabase>) -> Option<tari_node_components::blocks::ChainHeader> {
+        db.db_read_access().unwrap().fetch_lost_header_tip().unwrap()
     }
 
+    /// A fork that does not reset the chain only has to beat the block tip, even if it deletes our headers, and the
+    /// strongest of them is remembered
     #[tokio::test]
-    async fn a_block_on_the_block_tip_cannot_delete_our_headers_to_allow_a_reset() {
+    async fn a_fork_above_the_pruned_height_only_has_to_beat_the_block_tip() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
-        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
-        let metadata = db.get_chain_metadata().unwrap();
-        let before = dump(&db);
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
 
-        // One block on the block tip would lower the header tip...
-        let outcome = add_fork(&db, &blocks, &key_manager, 5, 1);
-        outcome.result.assert_orphaned();
-        assert_eq!(dump(&db), before);
-        // ...so that a deep fork weaker than our headers could then reset the chain
-        let outcome = add_fork(&db, &blocks, &key_manager, 1, 5);
-        outcome.result.assert_orphaned();
-
-        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
-        assert_eq!(db.fetch_last_header().unwrap().height, 10);
-        assert_eq!(dump(&db), before);
-    }
-
-    #[tokio::test]
-    async fn without_headers_above_the_block_tip_a_fork_only_has_to_beat_the_block_tip() {
-        let db = create_db(HORIZON);
-        let key_manager = KeyManager::new_random().unwrap();
-        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
-        db.clear_all_pending_headers().unwrap();
-
-        // From height 3, stronger than the block tip
+        // From height 3, stronger than the block tip but not the header tip
         let outcome = add_fork(&db, &blocks, &key_manager, 3, 3);
 
         outcome.result.assert_reorg(3, 2);
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 6);
+        assert_eq!(lost_header_tip(&db), Some(honest.fetch_chain_header(10).unwrap()));
+    }
+
+    /// A header whose body is withheld does not stop an honest block of equal work at its height
+    #[tokio::test]
+    async fn an_unbacked_header_does_not_block_an_honest_block_at_its_height() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+        db.clear_all_pending_headers().unwrap();
+        db.insert_valid_headers(vec![honest.fetch_chain_header(6).unwrap()])
+            .unwrap();
+
+        let outcome = add_fork(&db, &blocks, &key_manager, 5, 1);
+
+        assert!(outcome.result.is_added(), "{}", outcome.result);
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 6);
+        assert_ne!(
+            db.fetch_last_header().unwrap().hash(),
+            *honest.fetch_chain_header(6).unwrap().hash()
+        );
+    }
+
+    /// Lowering the header tip with a block on the block tip does not lower what a reset has to beat
+    #[tokio::test]
+    async fn a_reset_has_to_beat_the_headers_a_rewind_deleted() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+
+        let outcome = add_fork(&db, &blocks, &key_manager, 5, 1);
+        assert!(outcome.result.is_added(), "{}", outcome.result);
+        assert_eq!(db.fetch_last_header().unwrap().height, 6);
+        assert_eq!(lost_header_tip(&db), Some(honest.fetch_chain_header(10).unwrap()));
+        let metadata = db.get_chain_metadata().unwrap();
+
+        // From height 1, stronger than the new header tip at 6 but not the lost one at 10
+        let outcome = add_fork(&db, &blocks, &key_manager, 1, 7);
+        outcome.result.assert_orphaned();
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+
+        // Stronger than the lost header tip. Added from its tip down, so that it is only linked once it is complete:
+        // linked block by block, it would be refused as soon as it beat the block tip.
+        let fork = create_fork(&blocks, &key_manager, 1, 11);
+        for block in fork.iter().skip(1).rev() {
+            db.add_block(block.clone()).unwrap().result.assert_orphaned();
+        }
+        let outcome = db.add_block(fork[0].clone()).unwrap();
+        // The blocks above the pruned height are reported removed
+        outcome.result.assert_reorg(1, 4);
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+        assert_eq!(lost_header_tip(&db), None);
     }
 
     #[tokio::test]
@@ -2236,33 +2263,34 @@ mod rewind_past_pruning_horizon {
         // Weaker than the header tip at 10, and equal to it
         for height in [9, 10] {
             let pending_tip = honest.fetch_chain_header(height).unwrap();
-            let rewind = db.rewind_for_pending_chain(split, pending_tip).unwrap();
+            let rewind = db.rewind_for_pending_chain(split, pending_tip, true).unwrap();
             assert!(matches!(rewind, PendingChainRewind::Refused), "{rewind:?}");
             assert_eq!(dump(&db), before);
         }
 
+        // Stronger, but a reset is not allowed yet
         let pending_tip = honest.fetch_chain_header(12).unwrap();
-        let rewind = db.rewind_for_pending_chain(split, pending_tip).unwrap();
+        let rewind = db.rewind_for_pending_chain(split, pending_tip.clone(), false).unwrap();
+        assert!(matches!(rewind, PendingChainRewind::WouldReset), "{rewind:?}");
+        assert_eq!(dump(&db), before);
+
+        let rewind = db.rewind_for_pending_chain(split, pending_tip, true).unwrap();
 
         assert!(matches!(rewind, PendingChainRewind::Reset(_)), "{rewind:?}");
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
     }
 
     #[tokio::test]
-    async fn a_header_sync_rewind_that_would_delete_our_headers_must_beat_the_header_tip() {
+    async fn a_header_sync_rewind_above_the_pruned_height_only_has_to_beat_the_block_tip() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
         let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
-        let before = dump(&db);
 
-        // From block 3, above the pruned height, stronger than the block tip but not the header tip
+        // From block 3, stronger than the block tip but not the header tip
         let pending_tip = honest.fetch_chain_header(6).unwrap();
-        let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
-        assert!(matches!(rewind, PendingChainRewind::Refused), "{rewind:?}");
-        assert_eq!(dump(&db), before);
-
-        let pending_tip = honest.fetch_chain_header(12).unwrap();
-        let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
+        let rewind = db
+            .rewind_for_pending_chain(blocks[2].hash(), pending_tip, false)
+            .unwrap();
 
         match rewind {
             PendingChainRewind::Rewound(removed) => assert_eq!(removed.len(), 2),
@@ -2270,30 +2298,18 @@ mod rewind_past_pruning_horizon {
         }
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
         assert_eq!(db.fetch_last_header().unwrap().height, 3);
-    }
-
-    #[tokio::test]
-    async fn without_headers_above_the_block_tip_a_header_sync_rewind_only_has_to_beat_the_block_tip() {
-        let db = create_db(HORIZON);
-        let key_manager = KeyManager::new_random().unwrap();
-        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
-        db.clear_all_pending_headers().unwrap();
-
-        let pending_tip = honest.fetch_chain_header(6).unwrap();
-        let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
-
-        match rewind {
-            PendingChainRewind::Rewound(removed) => assert_eq!(removed.len(), 2),
-            rewind => panic!("{rewind:?}"),
-        }
-        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
+        assert_eq!(lost_header_tip(&db), Some(honest.fetch_chain_header(10).unwrap()));
     }
 
     #[tokio::test]
     async fn a_bad_body_deletes_the_headers_from_its_height_up() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
-        create_headers_ahead_of_blocks(&db, &key_manager);
+        let (_, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+        let lost = honest.fetch_chain_header(12).unwrap();
+        let mut txn = DbTransaction::new();
+        txn.set_lost_header_tip(lost.clone());
+        db.write(txn).unwrap();
         let metadata = db.get_chain_metadata().unwrap();
         let bad = db.fetch_chain_header(7).unwrap();
 
@@ -2302,6 +2318,8 @@ mod rewind_past_pruning_horizon {
         assert!(db.bad_block_exists(*bad.hash()).unwrap().0);
         assert_eq!(db.fetch_last_header().unwrap().height, 6);
         assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        // Headers proven bad are not remembered, and what was remembered stays
+        assert_eq!(lost_header_tip(&db), Some(lost));
     }
 
     #[tokio::test]

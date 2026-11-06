@@ -394,15 +394,17 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     );
 
     make_async_fn!(
-        rewind_for_pending_chain(split_hash: BlockHash, pending_tip: ChainHeader) -> PendingChainRewind,
+        rewind_for_pending_chain(
+            split_hash: BlockHash,
+            pending_tip: ChainHeader,
+            may_reset: bool,
+        ) -> PendingChainRewind,
         "rewind_for_pending_chain"
     );
 
-    make_async_fn!(rewind_would_reset(hash: BlockHash) -> bool, "rewind_would_reset");
-
     make_async_fn!(
-        header_tip_to_beat(split_hash: BlockHash) -> Option<ChainHeader>,
-        "header_tip_to_beat"
+        reset_reference(split_hash: BlockHash) -> Option<ChainHeader>,
+        "reset_reference"
     );
 
     make_async_fn!(
