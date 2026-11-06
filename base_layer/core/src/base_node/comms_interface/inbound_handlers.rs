@@ -1798,8 +1798,8 @@ thread_local! {
 }
 
 /// The target difficulty of the most recent of the at most `cap` main-chain headers ending at `tip` of each `permitted`
-/// algorithm, `None` for one that none of them has. False when the walk stopped at a header that is not the parent of
-/// the one above it, which happens when the main chain changes under it.
+/// algorithm, `None` for one that none of them has. The walk follows `tip`'s own ancestry by hash; false when it
+/// stopped at a parent that is no longer stored, which happens when the main chain changes under it.
 async fn latest_targets_per_algo<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     tip: ChainHeader,
@@ -1818,11 +1818,10 @@ async fn latest_targets_per_algo<B: BlockchainBackend + 'static>(
         if header.height() <= lowest || targets.values().all(Option::is_some) {
             return Ok((targets, true));
         }
-        let parent = db.fetch_chain_header(header.height().saturating_sub(1)).await?;
-        if *parent.hash() != header.header().prev_hash {
-            return Ok((targets, false));
+        match db.fetch_chain_header_by_block_hash(header.header().prev_hash).await? {
+            Some(parent) => header = parent,
+            None => return Ok((targets, false)),
         }
-        header = parent;
     }
 }
 
@@ -2924,13 +2923,13 @@ mod test {
         }
     }
 
-    /// A walk that reaches a header which is not the parent of the one above it stops there, without that header's
-    /// target, and says so
+    /// A walk that reaches a parent which is not stored, as when the main chain changed under it, stops there and
+    /// says so, without reading the stored header at that height
     #[tokio::test]
-    async fn a_walk_stops_at_a_header_that_is_not_the_parent() {
+    async fn a_walk_stops_at_a_parent_that_is_not_stored() {
         let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
         extend_chain(&db, &mut chain, &[PowAlgorithm::Sha3x, PowAlgorithm::RandomXT]).await;
-        // A tip on a fork whose parent at height 2 is not the stored one
+        // A tip on a fork whose parent at height 2 is not stored
         let fork_parent = header_with_target(&chain[1], PowAlgorithm::Cuckaroo, 9000, 1);
         let fork_tip = header_with_target(&fork_parent, PowAlgorithm::Sha3x, 5000, 1);
         let permitted = handlers
