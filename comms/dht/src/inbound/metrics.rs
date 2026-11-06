@@ -62,20 +62,30 @@ pub(crate) fn set_flood_series(series: FloodSeries) {
     });
 }
 
-/// Marks the inbound message being handled as waiting on its dedup result. Until the result is known it does not
-/// count against the peer, even if its handling is cancelled.
-pub(crate) fn mark_at_dedup() {
+/// Marks the inbound message being handled as waiting on a local lookup (the peer database, the dedup cache) whose
+/// failure would not be the peer's fault. Until [`clear_outcome_unknown`] it does not count against the peer, even
+/// if the lookup fails or its handling is cancelled.
+pub(crate) fn mark_outcome_unknown() {
     let _ignore = FLOOD_SAMPLE.try_with(|sample| {
         let _ignore = sample
             .state
-            .compare_exchange(PENDING, AT_DEDUP, Ordering::Relaxed, Ordering::Relaxed);
+            .compare_exchange(PENDING, OUTCOME_UNKNOWN, Ordering::Relaxed, Ordering::Relaxed);
     });
 }
 
-/// `FloodSample::state`: has not reached dedup; counts against the peer
+/// Undoes [`mark_outcome_unknown`] once the lookup has succeeded
+pub(crate) fn clear_outcome_unknown() {
+    let _ignore = FLOOD_SAMPLE.try_with(|sample| {
+        let _ignore = sample
+            .state
+            .compare_exchange(OUTCOME_UNKNOWN, PENDING, Ordering::Relaxed, Ordering::Relaxed);
+    });
+}
+
+/// `FloodSample::state`: undecided; counts against the peer
 const PENDING: u8 = 0;
-/// `FloodSample::state`: waiting on its dedup result; does not count against the peer
-const AT_DEDUP: u8 = 1;
+/// `FloodSample::state`: waiting on a local lookup; does not count against the peer
+const OUTCOME_UNKNOWN: u8 = 1;
 /// `FloodSample::state`: counts against the peer, not written yet
 const COUNT: u8 = 2;
 /// `FloodSample::state`: does not count against the peer, not written yet
@@ -104,15 +114,15 @@ impl FloodSample {
         }
     }
 
-    /// Records the sample once the inner layers have returned. A message still waiting on its dedup result (the dedup
-    /// request failed) does not count against the peer.
+    /// Records the sample once the inner layers have returned. A message still waiting on a local lookup (the lookup
+    /// failed) does not count against the peer.
     async fn finish(&self) {
-        let counts = self.state.load(Ordering::Relaxed) != AT_DEDUP;
+        let counts = self.state.load(Ordering::Relaxed) != OUTCOME_UNKNOWN;
         self.record(counts).await;
     }
 
     async fn record(&self, counts: bool) {
-        if !matches!(self.state.load(Ordering::Relaxed), PENDING | AT_DEDUP) {
+        if !matches!(self.state.load(Ordering::Relaxed), PENDING | OUTCOME_UNKNOWN) {
             return;
         }
         // Decided before waiting, so a write finished from `Drop` keeps the decision
@@ -147,7 +157,7 @@ impl Drop for FloodSample {
         // Drop cannot wait for room in the queue, so the write is handed to a task
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                let _ignore = if matches!(state, AT_DEDUP | SKIP) {
+                let _ignore = if matches!(state, OUTCOME_UNKNOWN | SKIP) {
                     collector.write_metric_uncounted_message_received().await
                 } else {
                     collector
@@ -310,7 +320,7 @@ mod test {
     async fn a_message_cancelled_at_dedup_counts_in_the_total_only() {
         let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
         let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(|_: InboundMessage| async {
-            mark_at_dedup();
+            mark_outcome_unknown();
             future::pending::<Result<(), PipelineError>>().await
         }));
         let peer = make_node_identity().node_id().clone();

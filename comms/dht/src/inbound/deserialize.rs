@@ -29,7 +29,7 @@ use tari_comms::{PeerManager, message::InboundMessage, pipeline::PipelineError};
 use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
-    inbound::DhtInboundMessage,
+    inbound::{DhtInboundMessage, metrics},
     proto::{envelope::DhtEnvelope, is_canonical},
 };
 
@@ -126,7 +126,11 @@ where
                         return Ok(());
                     }
                     let res;
-                    if let Some(source_peer) = peer_manager.find_by_node_id(&source_peer).await? {
+                    // A peer database failure is not the peer's fault
+                    metrics::mark_outcome_unknown();
+                    let found = peer_manager.find_by_node_id(&source_peer).await?;
+                    metrics::clear_outcome_unknown();
+                    if let Some(source_peer) = found {
                         // .or_not_found(&source_peer)
                         // .map(Arc::new)?;
 
@@ -279,5 +283,68 @@ mod test {
         assert!(!peer_manager.is_peer_banned(node_identity.node_id()).await.unwrap());
         #[cfg(feature = "metrics")]
         assert!(inbound_non_canonical().get() > dropped_before);
+    }
+
+    /// A peer database failure is not the peer's fault: the message counts in the node-wide total only
+    #[tokio::test]
+    async fn a_peer_database_failure_counts_in_the_total_only() {
+        use diesel::connection::SimpleConnection;
+        use tari_common_sqlite::connection::DbConnection;
+        use tari_comms::{
+            peer_manager::database::{MIGRATIONS, PeerDatabaseSql},
+            types::TransportProtocol,
+        };
+        use tari_test_utils::async_assert;
+
+        use crate::{
+            connectivity::{FloodSeries, MetricsCollector},
+            inbound::MetricsLayer,
+            test_utils::create_test_peer,
+        };
+
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(db_connection.clone(), &create_test_peer()).unwrap();
+        let peer_manager = Arc::new(PeerManager::new(peers_db, TransportProtocol::get_all()).unwrap());
+        db_connection
+            .get_pooled_connection()
+            .unwrap()
+            .batch_execute("DROP TABLE multi_addresses; DROP TABLE peers;")
+            .unwrap();
+        let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+        let mut service = MetricsLayer::new(collector.clone())
+            .layer(DeserializeLayer::new(peer_manager).layer(service_spy().to_service::<PipelineError>()));
+
+        let node_identity = make_node_identity();
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            &b"A".to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+            false,
+        )
+        .unwrap();
+        let result = service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                dht_envelope.to_encoded_bytes().into(),
+            ))
+            .await;
+        assert!(result.is_err());
+
+        async_assert!(
+            collector
+                .get_total_message_count_in_timespan(Duration::from_secs(60))
+                .await
+                .unwrap() ==
+                1,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let ts = collector
+            .get_messages_received_timeseries(node_identity.node_id().clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 0);
     }
 }

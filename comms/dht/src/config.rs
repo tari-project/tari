@@ -82,7 +82,10 @@ pub(crate) const FORWARDED_FLOOD_BAN_FACTOR: usize = 10;
 /// This node forwards at most this many times `flood_ban_max_msg_count` messages of other peers to any one peer per
 /// `flood_ban_timespan`, so that relaying never takes it over a neighbour's forwarded-traffic limit. That holds only if
 /// the neighbour runs the same `flood_ban_max_msg_count` and `flood_ban_timespan` (the defaults): a neighbour with a
-/// lower count or a longer timespan can still ban an honest relay.
+/// lower count or a longer timespan can still ban an honest relay. This node's own unsigned re-broadcasts (for example
+/// the mempool and base node propagating transactions and blocks) also count in a neighbour's forwarded series and are
+/// not budgeted, so they share the neighbour's `FORWARDED_FLOOD_BAN_FACTOR` limit with up to this many forwarded
+/// messages.
 pub(crate) const FORWARD_BUDGET_FACTOR: usize = 5;
 const _: () = assert!(FORWARD_BUDGET_FACTOR < FORWARDED_FLOOD_BAN_FACTOR);
 
