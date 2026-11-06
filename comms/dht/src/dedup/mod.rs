@@ -160,8 +160,8 @@ impl<T: Clone + Eq + std::hash::Hash> BoundedSet<T> {
     }
 }
 
-/// The dedup hashes of the Joins the DHT handler accepted (stored or merged), shared by the dedup layer and the
-/// handler.
+/// The dedup hashes of the Joins the DHT handler handled, other than those it dropped for want of their source's
+/// budget. Shared by the dedup layer and the handler.
 pub(crate) type SharedAcceptedJoins = Arc<Mutex<BoundedSet<Vec<u8>>>>;
 
 /// The Joins each source has delivered.
@@ -220,11 +220,12 @@ where
                 );
                 return Ok(());
             }
-            // Joins skip the dedup cache. A copy counts as a duplicate only once the DHT handler has accepted the Join,
+            // Joins skip the dedup cache. A copy counts as a duplicate only once the DHT handler has handled the Join,
             // so that a copy dropped there for want of its source's budget does not stop copies from other sources.
             // A source's own repeats are dropped at once. Copies that pass before the first is accepted all reach the
             // handler, whose join gate propagates the Join once.
-            if message.dht_header.message_type.is_dht_join() {
+            // A Join that failed to decrypt is only forwarded, never handled, so it is deduped by the cache
+            if message.dht_header.message_type.is_dht_join() && !message.decryption_failed() {
                 let key = (message.dedup_hash.clone(), message.source_peer.public_key.clone());
                 let is_repeat = !seen_joins.lock().map_or(true, |mut seen| seen.insert(key));
                 let is_accepted = accepted_joins
@@ -299,7 +300,7 @@ impl DedupLayer {
         }
     }
 
-    /// Shares the Joins the DHT handler accepted.
+    /// Shares the Joins the DHT handler handled.
     pub(crate) fn with_accepted_joins(mut self, accepted_joins: SharedAcceptedJoins) -> Self {
         self.accepted_joins = accepted_joins;
         self
@@ -380,6 +381,30 @@ mod test {
         dedup.clone().call(domain.clone()).await.unwrap();
         dedup.clone().call(domain).await.unwrap();
         assert_eq!(mock_state.call_count(), 2);
+    }
+
+    /// A Join that failed to decrypt is only forwarded, so its copies are deduped by the cache as before
+    #[tokio::test]
+    async fn an_undecryptable_join_is_deduped_by_the_cache() {
+        let spy = service_spy();
+        let (dht_requester, mock) = create_dht_actor_mock();
+        let mock_state = mock.get_shared_state();
+        mock_state.set_number_of_message_hits(1);
+        tokio::spawn(mock.run());
+        let dedup = DedupLayer::new(dht_requester, 1).layer(spy.to_service::<PipelineError>());
+        let message = |source: &tari_comms::peer_manager::NodeIdentity| {
+            let inbound_message =
+                make_dht_inbound_message(source, &vec![], DhtMessageFlags::ENCRYPTED, false, false).unwrap();
+            let mut message = DecryptedDhtMessage::failed(inbound_message);
+            message.dht_header.message_type = DhtMessageType::Join;
+            message
+        };
+
+        dedup.clone().call(message(&make_node_identity())).await.unwrap();
+        mock_state.set_number_of_message_hits(2);
+        dedup.clone().call(message(&make_node_identity())).await.unwrap();
+        assert_eq!(mock_state.call_count(), 2);
+        assert_eq!(spy.call_count(), 1);
     }
 
     #[test]

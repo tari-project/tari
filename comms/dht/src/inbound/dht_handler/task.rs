@@ -61,7 +61,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
 
-/// Drops a Join that its source had no budget for. It is not recorded as accepted, so a copy from another source is
+/// Drops a Join that its source had no budget for. It is not recorded as handled, so a copy from another source is
 /// still processed.
 fn drop_capped_join(source: &NodeId, origin: &CommsPublicKey) {
     debug!(
@@ -171,7 +171,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             message.dht_header.message_tag
         );
         match message.dht_header.message_type {
-            DhtMessageType::Join => self.handle_join(message).await?,
+            DhtMessageType::Join => {
+                let dedup_hash = message.dedup_hash.clone();
+                let result = self.handle_join(message).await;
+                // Every copy of the Join would end the same way, so the dedup layer drops the rest. Not a capped Join,
+                // which a source with budget may still deliver, nor one that failed on this node's peer DB.
+                let is_capped = matches!(result, Ok(true));
+                let is_local_failure = matches!(result, Err(DhtInboundError::PeerManagerError(_)));
+                if !is_capped &&
+                    !is_local_failure &&
+                    let Ok(mut accepted) = self.accepted_joins.lock()
+                {
+                    accepted.insert(dedup_hash);
+                }
+                result?;
+            },
             DhtMessageType::Discovery => self.handle_discover(message).await?,
             DhtMessageType::DiscoveryResponse => self.handle_discover_response(message).await?,
             // Not a DHT message, call downstream middleware
@@ -190,7 +204,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     #[allow(clippy::too_many_lines)]
-    async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
+    /// Returns true if the Join was dropped because its source had no budget for it.
+    async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<bool, DhtInboundError> {
         let DecryptedDhtMessage {
             decryption_result,
             raw_body,
@@ -198,7 +213,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             source_peer,
             authenticated_origin,
             is_saf_message,
-            dedup_hash,
             ..
         } = message;
 
@@ -216,7 +230,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     "Received JoinMessage that did not have an authenticated origin",
                 )
                 .await;
-            return Ok(());
+            return Ok(false);
         };
 
         // Honest nodes address a Join to their own key. Holding every Join to that also fixes its fan-out.
@@ -226,12 +240,12 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 "Received JoinMessage from '{authenticated_pk}' addressed to {} instead of its signer. Discarding it.",
                 dht_header.destination
             );
-            return Ok(());
+            return Ok(false);
         }
 
         if authenticated_pk == *self.node_identity.public_key() {
             debug!(target: LOG_TARGET, "Received our own join message. Discarding it.");
-            return Ok(());
+            return Ok(false);
         }
 
         let body = decryption_result.expect("already checked that this message decrypted successfully");
@@ -244,7 +258,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             )
             .await?
         else {
-            return Ok(());
+            return Ok(false);
         };
 
         if join_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
@@ -268,7 +282,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
                 .await;
 
-            return Ok(());
+            return Ok(false);
         }
 
         debug!(
@@ -283,7 +297,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             )
             .await?
         else {
-            return Ok(());
+            return Ok(false);
         };
         let validator = PeerValidator::new(&self.config);
         let maybe_existing = self.peer_manager.find_by_public_key(&authenticated_pk).await?;
@@ -307,7 +321,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             })
         {
             drop_capped_join(&source_peer.node_id, &authenticated_pk);
-            return Ok(());
+            return Ok(true);
         }
         let validated = validator.validate_peer(new_peer, maybe_existing);
         if validated.is_err() {
@@ -317,7 +331,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             .ban_on_offence(&authenticated_pk, validated.map_err(Into::into))
             .await?
         else {
-            return Ok(());
+            return Ok(false);
         };
 
         if is_new_peer &&
@@ -331,12 +345,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             })
         {
             drop_capped_join(&source_peer.node_id, &authenticated_pk);
-            return Ok(());
-        }
-
-        // From here the Join is accepted, so the dedup layer drops later copies of it
-        if let Ok(mut accepted) = self.accepted_joins.lock() {
-            accepted.insert(dedup_hash);
+            return Ok(true);
         }
 
         let is_banned = valid_peer.is_banned();
@@ -351,7 +360,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received Join request for banned peer. This join request will not be propagated."
             );
-            return Ok(());
+            return Ok(false);
         }
 
         if is_saf_message {
@@ -359,7 +368,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Not re-propagating join message received from store and forward"
             );
-            return Ok(());
+            return Ok(false);
         }
 
         let interval = self.config.join_cooldown_interval;
@@ -382,7 +391,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                      propagating it."
                 );
                 join_received("stale");
-                return Ok(());
+                return Ok(false);
             },
             JoinAdmission::Cooldown => {
                 debug!(
@@ -390,7 +399,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     "A Join from '{authenticated_pk}' was propagated within the last {interval:.0?}. Not propagating it."
                 );
                 join_received("cooldown");
-                return Ok(());
+                return Ok(false);
             },
         }
 
@@ -418,7 +427,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             join_received("propagated");
         }
 
-        Ok(())
+        Ok(false)
     }
 
     async fn handle_discover_response(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {

@@ -1222,6 +1222,52 @@ mod test {
         assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
     }
 
+    /// A Join whose claim fails validation, relayed by two sources, is validated (and its signer banned) once: the
+    /// second copy is dropped by the dedup layer
+    #[tokio::test]
+    async fn an_invalid_join_from_two_relays_is_validated_once() {
+        let first = make_node_identity();
+        let second = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let dht = build_dht(
+            make_node_identity(),
+            &[&first, &second],
+            connectivity,
+            out_tx,
+            &shutdown,
+        )
+        .await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut join = JoinMessage::from(&origin);
+        // Still a parseable address, but not the one the identity signature covers
+        join.addresses = vec![
+            "/ip4/23.23.23.2/tcp/18189"
+                .parse::<tari_comms::multiaddr::Multiaddr>()
+                .unwrap()
+                .to_vec(),
+        ];
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(join).to_encoded_bytes(),
+        );
+        for source in [&first, &second] {
+            let _result = service
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+                .await;
+        }
+
+        assert_eq!(banned_peers(&mock_state).await, vec![origin.node_id().clone()]);
+        assert!(!dht.peer_manager.exists(origin.public_key()).await.unwrap());
+    }
+
     /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it
     /// received, so N verifies the Join and accepts it. N bans no one.
     #[tokio::test]
