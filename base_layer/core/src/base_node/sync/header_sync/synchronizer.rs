@@ -89,6 +89,12 @@ pub struct HeaderSynchronizer<'a, B> {
     attempt_network_time: Duration,
     attempt_start_block_hash: HashOutput,
     chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
+    /// Test only: `split_impact` misses a reset, as if the pruned height moved after it
+    #[cfg(test)]
+    stale_split_impact: bool,
+    /// Test only: how many times `switch_to_pending_chain` asked the database to rewind
+    #[cfg(test)]
+    rewind_attempts: usize,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -117,6 +123,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             attempt_network_time: Duration::ZERO,
             attempt_start_block_hash: HashOutput::zero(),
             chain_changes,
+            #[cfg(test)]
+            stale_split_impact: false,
+            #[cfg(test)]
+            rewind_attempts: 0,
         }
     }
 
@@ -845,6 +855,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let mut has_switched_to_new_chain = false;
         // Set once the pending chain may replace ours only by resetting it, which waits for the claim checks
         let mut switch_after_claim_checks = false;
+        // Set once the locked rewind refused a reset that the split impact missed, so it is not asked again
+        let mut refused_locked = false;
         let pending_len = self.header_validator.valid_headers().len();
 
         // Find the hash to start syncing the rest of the headers.
@@ -910,7 +922,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             // Otherwise the stream and the claim checks after it decide
             match self.switch_to_pending_chain(&split_info, false).await? {
                 PendingChainSwitch::Switched => has_switched_to_new_chain = true,
-                PendingChainSwitch::Refused => {},
+                PendingChainSwitch::Refused => refused_locked = true,
                 PendingChainSwitch::Deferred => switch_after_claim_checks = true,
             }
         }
@@ -1003,16 +1015,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // We check the tip difficulties, switching over to the new chain if a higher accumulated difficulty is
                 // achieved.
                 if !switch_after_claim_checks &&
+                    !refused_locked &&
                     self.pending_chain_verdict(&split_info, &impact) == PendingChainVerdict::Switch
                 {
                     match self.switch_to_pending_chain(&split_info, false).await? {
                         PendingChainSwitch::Switched => has_switched_to_new_chain = true,
-                        PendingChainSwitch::Refused => {},
+                        PendingChainSwitch::Refused => refused_locked = true,
                         PendingChainSwitch::Deferred => switch_after_claim_checks = true,
                     }
                 }
                 // A chain that can only replace ours by resetting it is never committed, so only its tip is kept
-                if switch_after_claim_checks || impact.reset_reference.is_some() {
+                if switch_after_claim_checks || refused_locked || impact.reset_reference.is_some() {
                     self.header_validator.keep_only_tip();
                 }
             }
@@ -1063,6 +1076,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     let mut verdict = self.pending_chain_verdict(&split_info, &impact);
                     if switch_after_claim_checks {
                         verdict = PendingChainVerdict::SwitchAfterClaimChecks;
+                    }
+                    if refused_locked {
+                        verdict = PendingChainVerdict::Refused;
                     }
                     if verdict == PendingChainVerdict::Switch {
                         match self.switch_to_pending_chain(&split_info, false).await? {
@@ -1183,6 +1199,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
     /// What switching to a chain from this split would do to ours
     async fn split_impact(&self, split_info: &ChainSplitInfo) -> Result<SplitImpact, BlockHeaderSyncError> {
+        #[cfg(test)]
+        if self.stale_split_impact {
+            return Ok(SplitImpact { reset_reference: None });
+        }
         if split_info.reorg_steps_back == 0 {
             return Ok(SplitImpact { reset_reference: None });
         }
@@ -1242,6 +1262,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 "Reorg: Rewinding the chain to the split at {}",
                 split_hash.to_hex()
             );
+            #[cfg(test)]
+            {
+                self.rewind_attempts += 1;
+            }
             match self.rewind_blockchain(split_info.chain_split_hash, may_reset).await? {
                 PendingChainRewind::Rewound(blocks) => {
                     if !blocks.is_empty() {
@@ -1798,6 +1822,36 @@ mod test {
                 .hash(),
             peer_tip.hash()
         );
+    }
+
+    /// The pruned height can move after the split impact is worked out, so that the locked rewind refuses a reset the
+    /// fast path did not expect. It is asked once, and the chain is then handled as refused.
+    #[tokio::test]
+    async fn a_reset_the_split_impact_missed_is_refused_once() {
+        let (db, rules, peer_db, peer_tip, _) = create_streaming_peer(HEADER_SYNC_INITIAL_MAX_HEADERS + 5).await;
+        let metadata = db.get_chain_metadata().unwrap();
+        let last_header_height = db.fetch_last_header().unwrap().height;
+        let mut sync_peers = vec![];
+        let mut synchronizer = new_synchronizer(&db, &rules, &mut sync_peers, &metadata);
+        synchronizer.stale_split_impact = true;
+        let (client, sync_peer, _server, _conn) = connect_to_peer(
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await;
+
+        let err = synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::WeakerThanLocalHeaders), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(synchronizer.rewind_attempts, 1);
+        assert_eq!(synchronizer.header_validator.valid_headers().len(), 1);
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, last_header_height);
     }
 
     #[tokio::test]
