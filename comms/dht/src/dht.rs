@@ -57,7 +57,7 @@ use crate::{
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
-    network_discovery::DhtNetworkDiscovery,
+    network_discovery::{DhtNetworkDiscovery, SharedSourceBudget},
     outbound,
     outbound::DhtOutboundRequest,
     rpc,
@@ -103,6 +103,8 @@ pub struct Dht {
     metrics_collector: MetricsCollectorHandle,
     /// Re-resolves seed peers for a rebootstrap
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
+    /// New peer records stored per direct source, shared by Join gossip and network discovery
+    source_budget: SharedSourceBudget,
 }
 
 impl Dht {
@@ -138,6 +140,7 @@ impl Dht {
             discovery_sender,
             event_publisher,
             seed_peer_provider,
+            source_budget: Default::default(),
         };
 
         // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
@@ -158,6 +161,7 @@ impl Dht {
         let connectivity = dht.connectivity_service(shutdown_signal.clone());
         dht.network_discovery_service(shutdown_signal.clone())
             .with_pool_peers(connectivity.pool_peers())
+            .with_source_budget(dht.source_budget.clone())
             .spawn();
         connectivity.spawn();
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
@@ -312,6 +316,7 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
+                self.source_budget.clone(),
             ))
             .into_inner()
     }
@@ -1043,6 +1048,13 @@ mod test {
             .collect()
     }
 
+    /// Re-signs `identity` a second later, so that its Join carries a claim newer than the one already stored for it
+    /// and is propagated
+    async fn resign_later(identity: &NodeIdentity) {
+        time::sleep(Duration::from_millis(1100)).await;
+        identity.sign();
+    }
+
     /// Builds relay H, whose outbound requests go to a mock so propagated messages can be captured
     async fn build_relay(
         relay: Arc<NodeIdentity>,
@@ -1068,6 +1080,7 @@ mod test {
 
         let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+        resign_later(&attacker).await;
 
         let mut body = wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes();
         body.extend_from_slice(&[0x10, 0x01]);
@@ -1163,6 +1176,7 @@ mod test {
 
         let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+        resign_later(&attacker).await;
 
         let mut envelope = signed_envelope(
             &attacker,

@@ -110,6 +110,19 @@ pub struct NetworkDiscoveryConfig {
     /// connections are used first, inbound ones only for the remaining slots. At most 20.
     /// Default: 5
     pub rebootstrap_connected_peers: usize,
+    /// The most new peer records one directly connected peer may have stored through Join gossip and OnConnect peer
+    /// sync together within `source_budget_window`. New records past this are dropped (and OnConnect stops syncing).
+    /// Default: 50
+    pub max_stored_per_source: usize,
+    /// The sliding window over which `max_stored_per_source` applies.
+    /// Default: 1 hour
+    #[serde(with = "serializers::seconds")]
+    pub source_budget_window: Duration,
+    /// How long a peer synced from in a discovery round is left out of the following rounds' selection. These peers
+    /// are also forgotten after a rebootstrap, and at most 1000 are remembered.
+    /// Default: 1 hour
+    #[serde(with = "serializers::seconds")]
+    pub attempted_peers_ttl: Duration,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -133,6 +146,9 @@ impl Default for NetworkDiscoveryConfig {
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
             on_connect_resync_ttl: Duration::from_secs(60 * 60),
             rebootstrap_connected_peers: 5,
+            max_stored_per_source: 50,
+            source_budget_window: Duration::from_secs(60 * 60),
+            attempted_peers_ttl: Duration::from_secs(60 * 60),
         }
     }
 }

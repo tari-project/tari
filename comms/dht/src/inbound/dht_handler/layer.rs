@@ -20,13 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
 
-use super::middleware::DhtHandlerMiddleware;
-use crate::{DhtConfig, DhtRequester, discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
+use super::{join_gate::JoinCooldown, middleware::DhtHandlerMiddleware};
+use crate::{
+    DhtConfig,
+    DhtRequester,
+    discovery::DhtDiscoveryRequester,
+    network_discovery::SharedSourceBudget,
+    outbound::OutboundMessageRequester,
+};
 
 pub struct DhtHandlerLayer {
     config: Arc<DhtConfig>,
@@ -35,16 +41,19 @@ pub struct DhtHandlerLayer {
     dht: DhtRequester,
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
+    join_cooldown: Arc<Mutex<JoinCooldown>>,
+    source_budget: SharedSourceBudget,
 }
 
 impl DhtHandlerLayer {
-    pub fn new(
+    pub(crate) fn new(
         config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         dht: DhtRequester,
         discovery_requester: DhtDiscoveryRequester,
         outbound_service: OutboundMessageRequester,
+        source_budget: SharedSourceBudget,
     ) -> Self {
         Self {
             config,
@@ -53,6 +62,8 @@ impl DhtHandlerLayer {
             dht,
             outbound_service,
             discovery_requester,
+            join_cooldown: Default::default(),
+            source_budget,
         }
     }
 }
@@ -69,6 +80,8 @@ impl<S> Layer<S> for DhtHandlerLayer {
             self.dht.clone(),
             self.discovery_requester.clone(),
             self.config.clone(),
+            self.join_cooldown.clone(),
+            self.source_budget.clone(),
         )
     }
 }

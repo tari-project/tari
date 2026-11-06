@@ -93,10 +93,14 @@ pub struct DhtConfig {
     pub auto_join: bool,
     /// The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
     /// enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
-    /// change happens again after this period, another join will be sent.
+    /// change happens again after this period, another join will be sent. It also governs receive-side
+    /// re-propagation: a Join from the same origin is relayed at most once per this interval.
     /// Default: 10 minutes
     #[serde(with = "serializers::seconds")]
     pub join_cooldown_interval: Duration,
+    /// The most Join origins remembered for the receive-side `join_cooldown_interval`. The oldest are forgotten first.
+    /// Default: 10,000
+    pub join_cooldown_capacity: usize,
     pub connectivity: DhtConnectivityConfig,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
@@ -275,6 +279,7 @@ impl Default for DhtConfig {
             connectivity: DhtConnectivityConfig::default(),
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
+            join_cooldown_capacity: 10_000,
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(2 * 60 * 60),
             ban_duration_short: Duration::from_secs(10 * 60),

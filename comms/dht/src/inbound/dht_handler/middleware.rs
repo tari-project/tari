@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll};
+use std::{
+    sync::{Arc, Mutex},
+    task::Poll,
+};
 
 use futures::{future::BoxFuture, task::Context};
 use tari_comms::{
@@ -29,12 +32,13 @@ use tari_comms::{
 };
 use tower::Service;
 
-use super::task::ProcessDhtMessage;
+use super::{join_gate::JoinCooldown, task::ProcessDhtMessage};
 use crate::{
     DhtConfig,
     DhtRequester,
     discovery::DhtDiscoveryRequester,
     inbound::DecryptedDhtMessage,
+    network_discovery::SharedSourceBudget,
     outbound::OutboundMessageRequester,
 };
 
@@ -47,10 +51,12 @@ pub struct DhtHandlerMiddleware<S> {
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
     config: Arc<DhtConfig>,
+    join_cooldown: Arc<Mutex<JoinCooldown>>,
+    source_budget: SharedSourceBudget,
 }
 
 impl<S> DhtHandlerMiddleware<S> {
-    pub fn new(
+    pub(super) fn new(
         next_service: S,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -58,6 +64,8 @@ impl<S> DhtHandlerMiddleware<S> {
         dht: DhtRequester,
         discovery_requester: DhtDiscoveryRequester,
         config: Arc<DhtConfig>,
+        join_cooldown: Arc<Mutex<JoinCooldown>>,
+        source_budget: SharedSourceBudget,
     ) -> Self {
         Self {
             next_service,
@@ -67,6 +75,8 @@ impl<S> DhtHandlerMiddleware<S> {
             outbound_service,
             discovery_requester,
             config,
+            join_cooldown,
+            source_budget,
         }
     }
 }
@@ -95,6 +105,8 @@ where
                 self.discovery_requester.clone(),
                 message,
                 self.config.clone(),
+                self.join_cooldown.clone(),
+                self.source_budget.clone(),
             )
             .run(),
         )
