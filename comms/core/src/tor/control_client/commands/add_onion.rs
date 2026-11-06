@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, fmt, num::NonZeroU16};
+use std::{fmt, num::NonZeroU16};
 
 use derivative::Derivative;
 
@@ -139,19 +139,13 @@ impl TorCommand for AddOnion<'_> {
                     service_id = Some(value.into_owned());
                 },
                 "PrivateKey" => {
-                    let mut split = value.split(':');
-                    let key = split
-                        .next()
-                        .ok_or_else(|| ParseError("PrivateKey field was empty".to_string()))?;
-
-                    let value = split
-                        .next()
-                        .map(|v| Cow::from(v.to_owned()))
+                    let (key, value) = value
+                        .split_once(':')
                         .ok_or_else(|| ParseError("Failed to parse private key".to_string()))?;
 
                     private_key = match key {
-                        "ED25519-V3" => Some(PrivateKey::Ed25519V3(value.into_owned())),
-                        "RSA1024" => Some(PrivateKey::Rsa1024(value.into_owned())),
+                        "ED25519-V3" => Some(PrivateKey::Ed25519V3(value.to_owned())),
+                        "RSA1024" => Some(PrivateKey::Rsa1024(value.to_owned())),
                         k => {
                             return Err(
                                 ParseError(format!("Server returned unrecognised private key type '{k}'")).into(),
@@ -214,6 +208,36 @@ mod test {
         assert_eq!(
             command.to_command_string().unwrap(),
             format!("ADD_ONION NEW:{key} Port=9090,127.0.0.1:9090")
+        );
+    }
+
+    #[test]
+    fn parse_responses_preserves_colons_in_private_key_blob() {
+        let command = AddOnion::new(KeyType::New, KeyBlob::Best, vec![], PortMapping::from_port(9090), None);
+        let responses = vec![
+            ResponseLine {
+                code: 250,
+                has_more: true,
+                is_multiline: false,
+                value: "ServiceID=testserviceid".to_string(),
+            },
+            ResponseLine {
+                code: 250,
+                has_more: true,
+                is_multiline: false,
+                value: "PrivateKey=ED25519-V3:part1:part2:part3".to_string(),
+            },
+            ResponseLine {
+                code: 250,
+                has_more: false,
+                is_multiline: false,
+                value: "OK".to_string(),
+            },
+        ];
+        let parsed = command.parse_responses(responses).unwrap();
+        assert_eq!(
+            parsed.private_key,
+            Some(PrivateKey::Ed25519V3("part1:part2:part3".to_string()))
         );
     }
 }
