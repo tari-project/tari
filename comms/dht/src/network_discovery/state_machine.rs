@@ -258,7 +258,7 @@ pub(super) struct NetworkDiscoveryContext {
     pub inbound_learned: Arc<std::sync::Mutex<InboundSuggested>>,
     /// The DHT pool's current members, as published by DhtConnectivity. Discovery leaves their connections up.
     pub pool_peers: PoolPeers,
-    /// New peer records stored per direct source, shared with the DHT handler's Join gossip.
+    /// New peer records stored per direct source by OnConnect. Separate from the DHT handler's Join gossip budget.
     pub source_budget: SharedSourceBudget,
 }
 
@@ -403,10 +403,9 @@ impl DhtNetworkDiscovery {
         self
     }
 
-    /// Shares the per-source budget for new peer records with the DHT handler.
-    pub(crate) fn with_source_budget(mut self, source_budget: SharedSourceBudget) -> Self {
-        self.context.source_budget = source_budget;
-        self
+    #[cfg(test)]
+    pub(crate) fn source_budget(&self) -> &SharedSourceBudget {
+        &self.context.source_budget
     }
 
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {

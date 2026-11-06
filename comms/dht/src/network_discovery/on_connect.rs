@@ -141,7 +141,8 @@ impl OnConnect {
     /// The peer is marked as synced before the sync, so that it is not synced from twice at once. If the sync fails it
     /// is marked for `FAILED_SYNC_BACKOFF` instead, so that a transient failure does not block a retry for
     /// `on_connect_resync_ttl`, while a peer that keeps reconnecting is not synced from on every connection. A peer
-    /// that relayed too many claims with invalid signatures is banned and stays marked.
+    /// that relayed too many claims with invalid signatures is banned and stays marked. A sync cut short because the
+    /// peer used up its OnConnect budget counts as failed, so that the rest of its peers can be synced later.
     ///
     /// Inbound peers are synced from too: the per-source budget bounds what any one of them can add, so the inbound
     /// share limit of a rebootstrap is not applied here.
@@ -162,18 +163,22 @@ impl OnConnect {
                     duration: format!("{deadline:.2?}"),
                 })
             });
-        if let Err(err) = result {
-            if is_bad_data_offence(&err) {
+        match result {
+            Ok(false) => {},
+            Ok(true) => self.mark_sync_failed(node_id, Instant::now()),
+            Err(err) if is_bad_data_offence(&err) => {
                 warn!(target: LOG_TARGET, "Peer `{node_id}` sent bad peer data: {err}. Banning peer.");
                 ban_peer(&self.context, node_id, OffenceSeverity::High, err).await;
-            } else {
+            },
+            Err(err) => {
                 debug!(target: LOG_TARGET, "Failed to peer sync from `{node_id}`: {err}");
                 self.mark_sync_failed(node_id, Instant::now());
-            }
+            },
         }
     }
 
-    async fn sync_peers(&self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
+    /// Returns true if the sync was cut short because the peer used up its budget for new peers.
+    async fn sync_peers(&self, mut conn: PeerConnection) -> Result<bool, NetworkDiscoveryError> {
         let sync_peer = conn.peer_node_id().clone();
         let discovery_config = &self.config().network_discovery;
         let timed_out = |operation: &str, duration: Duration| {
@@ -217,6 +222,7 @@ impl OnConnect {
         let streaming_timeout = discovery_config.bootstrap_rpc_streaming_timeout;
         let mut hostile_claims = HostileClaims::default();
         let mut num_added = 0usize;
+        let mut budget_used_up = false;
         while let Some(resp) = time::timeout(streaming_timeout, peer_stream.next())
             .await
             .map_err(|_| timed_out("get_peer_response", streaming_timeout))?
@@ -236,6 +242,7 @@ impl OnConnect {
                                     target: LOG_TARGET,
                                     "Peer `{sync_peer}` has relayed its share of new peers. Ending the sync"
                                 );
+                                budget_used_up = true;
                                 break;
                             },
                             Err(NetworkDiscoveryError::PeerValidationError(e)) => {
@@ -272,7 +279,7 @@ impl OnConnect {
                 }));
         }
 
-        Ok(())
+        Ok(budget_used_up)
     }
 
     /// Validates and stores a peer relayed by `sync_peer`, charging a new peer to `sync_peer`'s budget. Returns
@@ -285,11 +292,24 @@ impl OnConnect {
         let peer_validator = PeerValidator::new(self.config());
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
+        let config = &self.config().network_discovery;
+        // Checked before validation, so that records past the budget do not cost a signature check
+        if is_new_peer &&
+            !self
+                .context
+                .source_budget
+                .lock()
+                .is_ok_and(|budget| budget.has_headroom(sync_peer, Instant::now(), config))
+        {
+            return Ok(None);
+        }
         let valid_peer = peer_validator.validate_peer(peer, maybe_existing_peer)?;
         if is_new_peer &&
-            !self.context.source_budget.lock().is_ok_and(|mut budget| {
-                budget.try_charge(sync_peer, Instant::now(), &self.config().network_discovery)
-            })
+            !self
+                .context
+                .source_budget
+                .lock()
+                .is_ok_and(|mut budget| budget.try_charge(sync_peer, &valid_peer.node_id, Instant::now(), config))
         {
             return Ok(None);
         }

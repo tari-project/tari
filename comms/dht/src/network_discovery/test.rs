@@ -807,6 +807,25 @@ mod rebootstrap {
         assert!(mock.take_banned_peers().await.is_empty());
     }
 
+    /// A sync cut short by the OnConnect budget is retried after the failed-sync backoff, not the resync TTL, so the
+    /// rest of the peer's peers can be synced once the budget frees up
+    #[tokio::test]
+    async fn an_on_connect_sync_cut_short_by_the_budget_is_backed_off() {
+        let (mut context, _mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 2;
+        context.config = Arc::new(config);
+        let (_server, conn) = peers_server(fresh_peer_infos(5), false).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        assert_eq!(context.peer_manager.count().await, 2);
+        let now = Instant::now();
+        assert!(on_connect.is_recently_synced(&node_id, now));
+        assert!(!on_connect.is_recently_synced(&node_id, now + Duration::from_secs(5 * 60)));
+    }
+
     #[tokio::test]
     async fn a_peer_serving_forged_claims_on_connect_is_banned() {
         let (context, mock, _events) = context(None);

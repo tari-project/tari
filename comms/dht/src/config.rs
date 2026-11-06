@@ -42,6 +42,13 @@ const MAX_SEED_PEER_SYNC_COUNT: usize = 20;
 const MAX_REBOOTSTRAP_CONNECTED_PEERS: usize = 20;
 /// Lower bound for `on_connect_resync_ttl`.
 const MIN_ON_CONNECT_RESYNC_TTL: Duration = Duration::from_secs(60);
+/// Lower bound for `source_budget_window`.
+const MIN_SOURCE_BUDGET_WINDOW: Duration = Duration::from_secs(60);
+/// Bounds for `on_connect_sync_timeout`.
+const MIN_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Lower bound for `attempted_peers_ttl`.
+const MIN_ATTEMPTED_PEERS_TTL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -183,6 +190,7 @@ impl DhtConfig {
 
     /// Brings the rebootstrap settings into a sane range, logging a warning for each one that was out of it. Applied
     /// when the DHT is initialized.
+    #[allow(clippy::too_many_lines)]
     pub fn clamp_rebootstrap_settings(&mut self) {
         let defaults = DhtConnectivityConfig::default();
         let connectivity = &mut self.connectivity;
@@ -249,6 +257,43 @@ impl DhtConfig {
                 "on_connect_resync_ttl must be at least {MIN_ON_CONNECT_RESYNC_TTL:.0?}. Using that"
             );
             discovery.on_connect_resync_ttl = MIN_ON_CONNECT_RESYNC_TTL;
+        }
+        // Zero would also stop a rebootstrap storing anything
+        if discovery.max_stored_per_source < 1 {
+            warn!(target: LOG_TARGET, "max_stored_per_source must be at least 1. Using 1");
+            discovery.max_stored_per_source = 1;
+        }
+        if discovery.source_budget_window < MIN_SOURCE_BUDGET_WINDOW {
+            warn!(
+                target: LOG_TARGET,
+                "source_budget_window must be at least {MIN_SOURCE_BUDGET_WINDOW:.0?}. Using that"
+            );
+            discovery.source_budget_window = MIN_SOURCE_BUDGET_WINDOW;
+        }
+        if discovery.on_connect_sync_timeout < MIN_ON_CONNECT_SYNC_TIMEOUT {
+            warn!(
+                target: LOG_TARGET,
+                "on_connect_sync_timeout must be at least {MIN_ON_CONNECT_SYNC_TIMEOUT:.0?}. Using that"
+            );
+            discovery.on_connect_sync_timeout = MIN_ON_CONNECT_SYNC_TIMEOUT;
+        }
+        if discovery.on_connect_sync_timeout > MAX_ON_CONNECT_SYNC_TIMEOUT {
+            warn!(
+                target: LOG_TARGET,
+                "on_connect_sync_timeout must be at most {MAX_ON_CONNECT_SYNC_TIMEOUT:.0?}. Using that"
+            );
+            discovery.on_connect_sync_timeout = MAX_ON_CONNECT_SYNC_TIMEOUT;
+        }
+        if discovery.attempted_peers_ttl < MIN_ATTEMPTED_PEERS_TTL {
+            warn!(
+                target: LOG_TARGET,
+                "attempted_peers_ttl must be at least {MIN_ATTEMPTED_PEERS_TTL:.0?}. Using that"
+            );
+            discovery.attempted_peers_ttl = MIN_ATTEMPTED_PEERS_TTL;
+        }
+        if self.join_cooldown_capacity < 1 {
+            warn!(target: LOG_TARGET, "join_cooldown_capacity must be at least 1. Using 1");
+            self.join_cooldown_capacity = 1;
         }
     }
 
@@ -397,6 +442,28 @@ mod test {
             assert!((config.connectivity.pool_starved_threshold_ratio - 0.5).abs() < f32::EPSILON);
         }
 
+        let mut config = DhtConfig::default();
+        config.network_discovery.max_stored_per_source = 0;
+        config.network_discovery.source_budget_window = Duration::ZERO;
+        config.network_discovery.on_connect_sync_timeout = Duration::ZERO;
+        config.network_discovery.attempted_peers_ttl = Duration::ZERO;
+        config.join_cooldown_capacity = 0;
+        config.clamp_rebootstrap_settings();
+        assert_eq!(config.network_discovery.max_stored_per_source, 1);
+        assert_eq!(config.network_discovery.source_budget_window, MIN_SOURCE_BUDGET_WINDOW);
+        assert_eq!(
+            config.network_discovery.on_connect_sync_timeout,
+            MIN_ON_CONNECT_SYNC_TIMEOUT
+        );
+        assert_eq!(config.network_discovery.attempted_peers_ttl, MIN_ATTEMPTED_PEERS_TTL);
+        assert_eq!(config.join_cooldown_capacity, 1);
+        config.network_discovery.on_connect_sync_timeout = Duration::MAX;
+        config.clamp_rebootstrap_settings();
+        assert_eq!(
+            config.network_discovery.on_connect_sync_timeout,
+            MAX_ON_CONNECT_SYNC_TIMEOUT
+        );
+
         // Sane settings are left alone
         let mut config = DhtConfig::default();
         config.connectivity.pool_starved_threshold_ratio = 1.0;
@@ -406,5 +473,11 @@ mod test {
             config.connectivity.rebootstrap_cooldown_min,
             Duration::from_secs(10 * 60)
         );
+        let defaults = DhtConfig::default();
+        assert_eq!(
+            config.network_discovery.on_connect_sync_timeout,
+            defaults.network_discovery.on_connect_sync_timeout
+        );
+        assert_eq!(config.join_cooldown_capacity, defaults.join_cooldown_capacity);
     }
 }

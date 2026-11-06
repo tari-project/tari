@@ -103,8 +103,8 @@ pub struct Dht {
     metrics_collector: MetricsCollectorHandle,
     /// Re-resolves seed peers for a rebootstrap
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
-    /// New peer records stored per direct source, shared by Join gossip and network discovery
-    source_budget: SharedSourceBudget,
+    /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
+    join_budget: SharedSourceBudget,
 }
 
 impl Dht {
@@ -140,7 +140,7 @@ impl Dht {
             discovery_sender,
             event_publisher,
             seed_peer_provider,
-            source_budget: Default::default(),
+            join_budget: Default::default(),
         };
 
         // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
@@ -161,7 +161,6 @@ impl Dht {
         let connectivity = dht.connectivity_service(shutdown_signal.clone());
         dht.network_discovery_service(shutdown_signal.clone())
             .with_pool_peers(connectivity.pool_peers())
-            .with_source_budget(dht.source_budget.clone())
             .spawn();
         connectivity.spawn();
         dht.actor(conn, dht_receiver, shutdown_signal.clone()).spawn();
@@ -316,7 +315,7 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
-                self.source_budget.clone(),
+                self.join_budget.clone(),
             ))
             .into_inner()
     }
@@ -424,7 +423,7 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use futures::future;
     use tari_comms::{
@@ -1067,6 +1066,49 @@ mod test {
         task::spawn(oms_mock.run());
         let dht = build_dht(relay, peers, connectivity, oms_requester.get_mpsc_sender(), shutdown).await;
         (dht, oms_mock_state)
+    }
+
+    /// A source that uses up its Join budget at a node still has its whole OnConnect budget there: a Join flood
+    /// relayed by an honest neighbour does not stop OnConnect between the two
+    #[tokio::test]
+    async fn exhausting_the_join_budget_leaves_the_on_connect_budget() {
+        let source = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&source], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let max = dht.config.network_discovery.max_stored_per_source;
+
+        for _ in 0..max {
+            let signer = make_node_identity();
+            let envelope = signed_envelope(
+                &signer,
+                DhtMessageType::Join,
+                signer.public_key().clone().into(),
+                None,
+                wrap_in_envelope_body!(JoinMessage::from(&signer)).to_encoded_bytes(),
+            );
+            service
+                .call(make_comms_inbound_message(&source, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        oms_mock_state
+            .wait_call_count(max, Duration::from_secs(10))
+            .await
+            .unwrap();
+
+        let source_id = source.node_id();
+        let now = Instant::now();
+        let config = &dht.config.network_discovery;
+        assert!(!dht.join_budget.lock().unwrap().has_headroom(source_id, now, config));
+        let discovery = dht.network_discovery_service(shutdown.to_signal());
+        assert!(
+            discovery
+                .source_budget()
+                .lock()
+                .unwrap()
+                .has_headroom(source_id, now, config)
+        );
     }
 
     /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it

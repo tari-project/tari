@@ -283,6 +283,16 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 .max()
         });
         let incoming_newest = new_peer.claims.iter().map(|claim| claim.signature.updated_at()).max();
+        // Identities are free, so each direct source may add only so many new peers through Joins. Updates are not
+        // charged. A capped source is checked before validation, so that its Joins do not cost a signature check.
+        if is_new_peer &&
+            !self.source_budget.lock().is_ok_and(|budget| {
+                budget.has_headroom(&source_peer.node_id, Instant::now(), &self.config.network_discovery)
+            })
+        {
+            self.drop_capped_join(&source_peer.node_id, &authenticated_pk);
+            return Ok(());
+        }
         let validated = validator.validate_peer(new_peer, maybe_existing);
         if validated.is_err() {
             join_received("invalid");
@@ -294,18 +304,17 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         };
 
-        // Identities are free, so each direct source may add only so many new peers. Updates are not charged.
         if is_new_peer &&
             !self.source_budget.lock().is_ok_and(|mut budget| {
-                budget.try_charge(&source_peer.node_id, Instant::now(), &self.config.network_discovery)
+                budget.try_charge(
+                    &source_peer.node_id,
+                    &valid_peer.node_id,
+                    Instant::now(),
+                    &self.config.network_discovery,
+                )
             })
         {
-            debug!(
-                target: LOG_TARGET,
-                "Source peer '{}' has relayed its share of new peers. Dropping the Join from '{authenticated_pk}'.",
-                source_peer.node_id.short_str()
-            );
-            join_received("capped");
+            self.drop_capped_join(&source_peer.node_id, &authenticated_pk);
             return Ok(());
         }
 
@@ -389,6 +398,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         Ok(())
+    }
+
+    fn drop_capped_join(&self, source: &NodeId, origin: &CommsPublicKey) {
+        debug!(
+            target: LOG_TARGET,
+            "Source peer '{}' has relayed its share of new peers. Dropping the Join from '{origin}'.",
+            source.short_str()
+        );
+        join_received("capped");
     }
 
     async fn handle_discover_response(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
@@ -1095,8 +1113,8 @@ mod test {
         );
     }
 
-    /// Attack C: one direct source streams Joins from fresh identities. Only its budget of new peers is stored, each
-    /// origin is propagated at most once, and nothing more is propagated once the budget is used up.
+    /// Attack C: one direct source streams Joins from fresh identities. Only its Join budget of new peers is stored,
+    /// each origin is propagated at most once, and nothing more is propagated once the budget is used up.
     #[tokio::test]
     async fn one_source_streaming_fresh_joins_is_capped() {
         let handler = Handler::new(DhtConfig::default_local_test());
@@ -1170,5 +1188,27 @@ mod test {
         assert!(received.bans.is_empty());
         assert_eq!(received.outbound_sends, 1);
         assert_eq!(handler.process(join_from(&signer, &signer)).await.outbound_sends, 0);
+    }
+
+    /// A capped source's Join for a new peer is dropped before validation: even a forged claim costs it nothing
+    #[tokio::test]
+    async fn a_capped_sources_joins_are_dropped_before_validation() {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 1;
+        let handler = Handler::new(config);
+        let relay = make_node_identity();
+        let first = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        assert_eq!(handler.process(join_from(&relay, &first)).await.outbound_sends, 1);
+
+        let signer = identity_with_addresses(&["/ip4/23.23.23.2/tcp/18189"]);
+        let mut join = JoinMessage::from(&signer);
+        join.addresses = vec!["/ip4/23.23.23.3/tcp/18189".parse::<Multiaddr>().unwrap().to_vec()];
+        let received = handler
+            .process(make_message(&relay, &signer, DhtMessageType::Join, join))
+            .await;
+        assert!(received.result.is_ok());
+        assert!(received.bans.is_empty());
+        assert_eq!(received.outbound_sends, 0);
+        assert!(!received.peer_manager.exists(signer.public_key()).await.unwrap());
     }
 }
