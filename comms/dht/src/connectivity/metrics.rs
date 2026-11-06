@@ -53,7 +53,7 @@ pub enum MetricWrite {
 #[derive(Debug)]
 pub enum MetricRead {
     GetMessagesReceivedTimeseries(NodeId, oneshot::Sender<TimeSeries<()>>),
-    ExceedingMessagesReceivedRate((usize, Duration), oneshot::Sender<Vec<(NodeId, f32)>>),
+    TakeFloodingPeers(oneshot::Sender<Vec<(NodeId, f32)>>),
     MessagesReceivedTotalCountInTimespan(Duration, oneshot::Sender<usize>),
 }
 
@@ -61,22 +61,30 @@ pub enum MetricRead {
 struct MetricsState {
     messages_recv: HashMap<NodeId, TimeSeries<()>>,
     all_messages_recv: TimeSeries<()>,
-    /// Maximum number of samples kept per peer
+    /// Maximum number of samples kept per peer, one more than the flood-ban message count
     per_peer_capacity: usize,
+    flood_ban_timespan: Duration,
+    /// Peers that sent `per_peer_capacity` messages within `flood_ban_timespan` since the last flood check, with their
+    /// message rate. Kept apart from the samples, so pruning cannot lose a detection.
+    flooding: HashMap<NodeId, f32>,
 }
 
 impl MetricsState {
-    fn new(per_peer_capacity: usize) -> Self {
+    fn new(per_peer_capacity: usize, flood_ban_timespan: Duration) -> Self {
         Self {
             messages_recv: HashMap::new(),
             all_messages_recv: TimeSeries::new(ALL_MESSAGES_RECV_CAPACITY),
             per_peer_capacity,
+            flood_ban_timespan,
+            flooding: HashMap::new(),
         }
     }
 
+    /// Records a message and checks the window ending at it. Every window that holds the most samples ends at a sample,
+    /// so checking on arrival sees every flood, however late the flood check runs.
     pub fn add_message_received(&mut self, node_id: NodeId) {
-        match self.messages_recv.entry(node_id) {
-            Entry::Occupied(mut entry) => {
+        let ts = match self.messages_recv.entry(node_id.clone()) {
+            Entry::Occupied(entry) => {
                 let node_id = entry.key();
                 let ts = entry.get();
                 debug!(
@@ -86,15 +94,22 @@ impl MetricsState {
                     ts.timespan().expect("Time series did not contain a data point"),
                     node_id,
                 );
-                entry.get_mut().inc();
+                let ts = entry.into_mut();
+                ts.inc();
+                ts
             },
             Entry::Vacant(entry) => {
                 // Most peers send few messages, so the series grows as samples arrive instead of being allocated
                 // to its full capacity up front
-                let mut t = TimeSeries::new_unallocated(self.per_peer_capacity);
-                t.inc();
-                entry.insert(t);
+                let ts = entry.insert(TimeSeries::new_unallocated(self.per_peer_capacity));
+                ts.inc();
+                ts
             },
+        };
+        // The series is full and its oldest sample is inside the window: more than the max count in one window
+        if ts.count() >= self.per_peer_capacity && ts.timespan().is_some_and(|age| age <= self.flood_ban_timespan) {
+            let rate = ts.rate();
+            self.flooding.insert(node_id, rate);
         }
         self.all_messages_recv.inc();
     }
@@ -120,18 +135,9 @@ impl MetricsState {
         self.messages_recv.get(node_id).cloned().unwrap_or_default()
     }
 
-    pub fn message_received_get_nodes_exceeding(&self, counts: usize, timespan: Duration) -> Vec<(NodeId, f32)> {
-        let since = Instant::now().checked_sub(timespan).unwrap_or_else(Instant::now);
-        self.messages_recv
-            .iter()
-            .filter_map(|(node_id, t)| {
-                if t.count_since(since) > counts {
-                    Some((node_id.clone(), t.rate()))
-                } else {
-                    None
-                }
-            })
-            .collect()
+    /// The peers that exceeded the flood-ban rate since the last call, with their message rate
+    pub fn take_flooding_peers(&mut self) -> Vec<(NodeId, f32)> {
+        self.flooding.drain().collect()
     }
 
     pub fn message_received_get_total_count_in_timespan(&self, timespan: Duration) -> usize {
@@ -157,7 +163,7 @@ impl MetricsCollector {
         let metrics_collector = MetricsCollectorHandle::new(metrics_tx);
         let collector = Self {
             stream: metrics_rx,
-            state: MetricsState::new(per_peer_capacity),
+            state: MetricsState::new(per_peer_capacity, flood_ban_timespan),
             flood_ban_timespan,
         };
         task::spawn(collector.run());
@@ -208,8 +214,8 @@ impl MetricsCollector {
             GetMessagesReceivedTimeseries(node_id, reply) => {
                 let _result = reply.send(self.state.message_received_get_timeseries(&node_id));
             },
-            ExceedingMessagesReceivedRate((counts, timespan), reply) => {
-                let _result = reply.send(self.state.message_received_get_nodes_exceeding(counts, timespan));
+            TakeFloodingPeers(reply) => {
+                let _result = reply.send(self.state.take_flooding_peers());
             },
             MessagesReceivedTotalCountInTimespan(timespan, reply) => {
                 let _result = reply.send(self.state.message_received_get_total_count_in_timespan(timespan));
@@ -331,7 +337,7 @@ impl MetricsCollectorHandle {
             .map_err(Into::into)
     }
 
-    /// Get (NodeId, messages per second) tuples that exceed the given number of messages within the given time
+    /// Get the message samples of the given `NodeId`
     pub async fn get_messages_received_timeseries(&mut self, node_id: NodeId) -> Result<TimeSeries<()>, MetricsError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.inner
@@ -342,18 +348,12 @@ impl MetricsCollectorHandle {
         reply_rx.await.map_err(Into::into)
     }
 
-    /// Get (NodeId, messages per second) tuples that exceed the given number of messages within the given time
-    pub async fn get_message_rates_exceeding(
-        &mut self,
-        counts: usize,
-        timespan: Duration,
-    ) -> Result<Vec<(NodeId, f32)>, MetricsError> {
+    /// Get (NodeId, messages per second) tuples of the peers that sent more than the flood-ban message count within
+    /// the flood-ban timespan since the last call
+    pub async fn take_flooding_peers(&mut self) -> Result<Vec<(NodeId, f32)>, MetricsError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.inner
-            .send(MetricOp::Read(MetricRead::ExceedingMessagesReceivedRate(
-                (counts, timespan),
-                reply_tx,
-            )))
+            .send(MetricOp::Read(MetricRead::TakeFloodingPeers(reply_tx)))
             .await?;
         reply_rx.await.map_err(Into::into)
     }
@@ -405,7 +405,7 @@ mod test {
 
     #[test]
     fn it_allocates_peer_entries_lazily() {
-        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        let mut state = MetricsState::new(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
         state.add_message_received(node_id(1));
         let ts = state.messages_recv.get(&node_id(1)).unwrap();
         assert_eq!(ts.count(), 1);
@@ -418,7 +418,7 @@ mod test {
 
     #[tokio::test(start_paused = true)]
     async fn it_evicts_the_oldest_sample_beyond_the_cap() {
-        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        let mut state = MetricsState::new(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
         state.add_message_received(node_id(1));
         time::advance(Duration::from_secs(1)).await;
         let after_first = Instant::now();
@@ -433,28 +433,65 @@ mod test {
 
     #[tokio::test(start_paused = true)]
     async fn it_detects_flooding_at_max_count_plus_one() {
-        let timespan = Duration::from_secs(60);
-        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        let mut state = MetricsState::new(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
         for _ in 0..FLOOD_BAN_MAX_MSG_COUNT {
             state.add_message_received(node_id(1));
         }
-        assert!(
-            state
-                .message_received_get_nodes_exceeding(FLOOD_BAN_MAX_MSG_COUNT, timespan)
-                .is_empty()
-        );
+        assert!(state.take_flooding_peers().is_empty());
 
         state.add_message_received(node_id(1));
-        let exceeding = state.message_received_get_nodes_exceeding(FLOOD_BAN_MAX_MSG_COUNT, timespan);
-        assert_eq!(exceeding.len(), 1);
-        assert_eq!(exceeding.first().map(|(n, _)| n), Some(&node_id(1)));
+        let flooding = state.take_flooding_peers();
+        assert_eq!(flooding.first().map(|(n, _)| n), Some(&node_id(1)));
+        assert_eq!(flooding.len(), 1);
 
         // Still detected once the cap is reached and old samples are being evicted
         for _ in 0..500 {
             state.add_message_received(node_id(1));
         }
-        let exceeding = state.message_received_get_nodes_exceeding(FLOOD_BAN_MAX_MSG_COUNT, timespan);
-        assert_eq!(exceeding.len(), 1);
+        assert_eq!(state.take_flooding_peers().len(), 1);
+    }
+
+    /// A burst split across two flood-ban timespans is still one window of more than the max count
+    #[tokio::test(start_paused = true)]
+    async fn it_detects_a_burst_across_a_window_boundary() {
+        let mut state = MetricsState::new(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
+        time::advance(Duration::from_secs(55)).await;
+        for _ in 0..PER_PEER_CAPACITY / 2 {
+            state.add_message_received(node_id(1));
+        }
+        time::advance(Duration::from_secs(10)).await;
+        for _ in 0..PER_PEER_CAPACITY / 2 {
+            state.add_message_received(node_id(1));
+        }
+        assert!(state.take_flooding_peers().is_empty());
+        state.add_message_received(node_id(1));
+        assert_eq!(state.take_flooding_peers().len(), 1);
+    }
+
+    /// Messages spread more thinly than the flood-ban rate are not flooding, even once the cap is reached
+    #[tokio::test(start_paused = true)]
+    async fn it_does_not_flag_a_slow_sender() {
+        let mut state = MetricsState::new(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
+        for _ in 0..(PER_PEER_CAPACITY * 2) {
+            state.add_message_received(node_id(1));
+            time::advance(Duration::from_millis(100)).await;
+        }
+        assert!(state.take_flooding_peers().is_empty());
+    }
+
+    /// A flood is reported when the flood check finally runs, however late, even after its samples were pruned
+    #[tokio::test(start_paused = true)]
+    async fn a_late_flood_check_still_sees_the_burst() {
+        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
+        time::sleep(Duration::from_secs(10)).await;
+        for _ in 0..PER_PEER_CAPACITY {
+            collector.write_metric_message_received(node_id(1)).await.unwrap();
+        }
+        // Several prune ticks pass before the check runs
+        time::sleep(FLOOD_BAN_TIMESPAN * 3).await;
+        let flooding = collector.take_flooding_peers().await.unwrap();
+        assert_eq!(flooding.first().map(|(n, _)| n), Some(&node_id(1)));
+        assert!(collector.take_flooding_peers().await.unwrap().is_empty());
     }
 
     #[tokio::test(start_paused = true)]
@@ -493,7 +530,7 @@ mod test {
 
     #[tokio::test(start_paused = true)]
     async fn pruning_releases_the_memory_of_old_samples() {
-        let mut state = MetricsState::new(PER_PEER_CAPACITY);
+        let mut state = MetricsState::new(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
         for _ in 0..FLOOD_BAN_MAX_MSG_COUNT {
             state.add_message_received(node_id(1));
         }

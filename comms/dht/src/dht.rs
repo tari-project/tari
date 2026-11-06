@@ -1044,14 +1044,36 @@ mod test {
         )
     }
 
-    /// True if the flood check would ban `peer` for sending more than `max_count` messages
-    async fn is_flooding(dht: &Dht, peer: &NodeIdentity, max_count: usize) -> bool {
-        dht.metrics_collector()
-            .get_message_rates_exceeding(max_count, Duration::from_secs(60))
+    const FLOOD_TEST_MAX_COUNT: usize = 5;
+
+    /// Builds a DHT that knows `peers` and flags a peer for flooding after `FLOOD_TEST_MAX_COUNT` messages
+    async fn build_flood_test_dht(peers: &[&NodeIdentity], shutdown: &Shutdown) -> Dht {
+        let peer_manager = build_peer_manager();
+        for peer in peers {
+            peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+        }
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        Dht::builder()
+            .with_config(DhtConfig {
+                flood_ban_max_msg_count: FLOOD_TEST_MAX_COUNT,
+                ..DhtConfig::default_local_test()
+            })
+            .with_outbound_sender(out_tx)
+            .build(make_node_identity(), peer_manager, connectivity, shutdown.to_signal())
             .await
             .unwrap()
-            .iter()
-            .any(|(node_id, _)| node_id == peer.node_id())
+    }
+
+    /// The peers the flood check would ban
+    async fn flooding_peers(dht: &Dht) -> Vec<NodeId> {
+        dht.metrics_collector()
+            .take_flooding_peers()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(node_id, _)| node_id)
+            .collect()
     }
 
     /// A duplicate first delivered by another peer does not count against the relay that delivers it again, but a
@@ -1099,20 +1121,17 @@ mod test {
     async fn a_peer_replaying_its_own_message_is_flagged_for_flooding() {
         let peer = make_node_identity();
         let shutdown = Shutdown::new();
-        let (connectivity, _) = create_connectivity_mock();
-        let (out_tx, _) = mpsc::unbounded_channel();
-        let dht = build_dht(make_node_identity(), &[&peer], connectivity, out_tx, &shutdown).await;
+        let dht = build_flood_test_dht(&[&peer], &shutdown).await;
         let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
 
-        let max_count = 5;
         let bytes = signed_domain_envelope(&peer).to_encoded_bytes();
-        for _ in 0..=max_count {
+        for _ in 0..=FLOOD_TEST_MAX_COUNT {
             service
                 .call(make_comms_inbound_message(&peer, bytes.clone().into()))
                 .await
                 .unwrap();
         }
-        assert!(is_flooding(&dht, &peer, max_count).await);
+        assert_eq!(flooding_peers(&dht).await, vec![peer.node_id().clone()]);
     }
 
     /// Messages dropped before dedup (here: undecodable envelopes and bad signatures) count towards the flood ban
@@ -1121,21 +1140,11 @@ mod test {
         let undecodable_sender = make_node_identity();
         let bad_signature_sender = make_node_identity();
         let shutdown = Shutdown::new();
-        let (connectivity, _) = create_connectivity_mock();
-        let (out_tx, _) = mpsc::unbounded_channel();
-        let dht = build_dht(
-            make_node_identity(),
-            &[&undecodable_sender, &bad_signature_sender],
-            connectivity,
-            out_tx,
-            &shutdown,
-        )
-        .await;
+        let dht = build_flood_test_dht(&[&undecodable_sender, &bad_signature_sender], &shutdown).await;
         let spy = service_spy();
         let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
 
-        let max_count = 5;
-        for i in 0..=max_count {
+        for i in 0..=FLOOD_TEST_MAX_COUNT {
             let result = service
                 .call(make_comms_inbound_message(&undecodable_sender, vec![0xff; 8].into()))
                 .await;
@@ -1153,8 +1162,9 @@ mod test {
                 .unwrap();
         }
         assert_eq!(spy.call_count(), 0);
-        assert!(is_flooding(&dht, &undecodable_sender, max_count).await);
-        assert!(is_flooding(&dht, &bad_signature_sender, max_count).await);
+        let flooding = flooding_peers(&dht).await;
+        assert!(flooding.contains(undecodable_sender.node_id()));
+        assert!(flooding.contains(bad_signature_sender.node_id()));
     }
 
     /// Waits a little for bans to reach the connectivity mock, and returns the banned node ids

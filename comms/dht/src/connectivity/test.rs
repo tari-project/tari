@@ -290,7 +290,8 @@ async fn a_flood_split_by_a_reconnect_is_still_banned() {
     };
     let (mut dht_connectivity, _, connectivity_state, _, _, _shutdown) =
         setup(config, make_node_identity(), vec![]).await;
-    let mut metrics_collector = dht_connectivity.metrics_collector.clone();
+    let mut metrics_collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+    dht_connectivity.metrics_collector = metrics_collector.clone();
     let peer = make_node_identity().node_id().clone();
 
     for _ in 0..6 {
@@ -338,8 +339,10 @@ async fn a_burst_followed_by_silence_is_banned() {
         ..Default::default()
     };
     assert!(config.flood_ban_timespan < config.connectivity.update_interval);
-    let (dht_connectivity, _, connectivity_state, _, _, shutdown) = setup(config, make_node_identity(), vec![]).await;
-    let mut metrics_collector = dht_connectivity.metrics_collector.clone();
+    let (mut dht_connectivity, _, connectivity_state, _, _, shutdown) =
+        setup(config, make_node_identity(), vec![]).await;
+    let mut metrics_collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+    dht_connectivity.metrics_collector = metrics_collector.clone();
     let peer = make_node_identity().node_id().clone();
     let (_event_tx, event_rx) = broadcast::channel(1);
     let handle = tokio::spawn(dht_connectivity.run(event_rx));

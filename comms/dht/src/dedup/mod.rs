@@ -177,9 +177,7 @@ where
                 .await?;
             message.dedup_hit_count = hit_count;
             // A relay passes on what others sent it, so only a peer's own repeats count against it
-            if !from_first_sender {
-                metrics::skip_flood_ban_count();
-            }
+            metrics::record_flood_sample(from_first_sender).await;
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
                 trace!(

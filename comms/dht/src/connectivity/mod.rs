@@ -430,7 +430,7 @@ impl DhtConnectivity {
         self.pool_fill_started = Some(now.into_std());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        // Checked over its own timespan once per timespan, so no stretch of time goes unchecked
+        // The collector detects floods as messages arrive, so a late tick only delays the ban
         let flood_ban_timespan = self.config.flood_ban_timespan;
         let mut flood_ticker =
             time::interval_at(now.checked_add(flood_ban_timespan).unwrap_or(now), flood_ban_timespan);
@@ -684,10 +684,7 @@ impl DhtConnectivity {
     }
 
     async fn check_and_ban_flooding_peers(&mut self) -> Result<(), DhtConnectivityError> {
-        let nodes = self
-            .metrics_collector
-            .get_message_rates_exceeding(self.config.flood_ban_max_msg_count, self.config.flood_ban_timespan)
-            .await?;
+        let nodes = self.metrics_collector.take_flooding_peers().await?;
 
         for (peer, mps) in nodes {
             warn!(
