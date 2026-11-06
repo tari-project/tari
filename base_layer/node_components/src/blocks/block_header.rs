@@ -78,6 +78,8 @@ pub enum BlockHeaderValidationError {
     InvalidNonce,
     #[error("Incorrect height: Expected {expected} but got {actual}")]
     InvalidHeight { expected: u64, actual: u64 },
+    #[error("Kernel MMR size must grow: previous header has {prev} but this header has {actual}")]
+    KernelMmrSizeNotIncreasing { prev: u64, actual: u64 },
     #[error("Incorrect previous hash: Expected {expected} but got {actual}")]
     InvalidPreviousHash { expected: BlockHash, actual: BlockHash },
     #[error("Invalid block POW algorithm: {0}")]

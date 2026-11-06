@@ -7499,6 +7499,41 @@ mod test {
         }
 
         #[tokio::test]
+        async fn it_rejects_an_orphan_whose_kernel_mmr_size_does_not_grow() {
+            let rules = create_consensus_rules();
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+            let validators = Validators::new(
+                MockValidator::new(true),
+                HeaderFullValidator::new(rules.clone(), difficulty_calculator),
+                MockValidator::new(true),
+            );
+            let db = crate::test_helpers::blockchain::create_store_with_consensus_and_validators(rules, validators);
+            let (_, main_chain) = create_main_chain(&db, block_specs!(["1a->GB"], ["2a->1a"]));
+
+            let fork_root = main_chain.get("1a").unwrap().clone();
+            let (_, fork) = create_chained_blocks(&db, block_specs!(["2b->GB"]), fork_root.clone());
+            let mut block = fork.get("2b").unwrap().block().clone();
+            block.header.kernel_mmr_size = fork_root.header().kernel_mmr_size;
+            let hash = block.hash();
+
+            let err = db.add_block(Arc::new(block)).unwrap_err();
+            assert!(
+                matches!(err, ChainStorageError::ValidationError {
+                    source: ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::KernelMmrSizeNotIncreasing { .. }
+                    )
+                }),
+                "{err:?}"
+            );
+            assert!(
+                !db.db_read_access()
+                    .unwrap()
+                    .contains(&DbKey::OrphanBlock(hash))
+                    .unwrap()
+            );
+        }
+
+        #[tokio::test]
         async fn it_allows_orphan_blocks_with_any_height() {
             let test = TestHarness::setup();
             let (_, main_chain) = create_main_chain(
