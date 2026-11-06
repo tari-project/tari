@@ -29,7 +29,6 @@ use super::{join_gate::JoinCooldown, middleware::DhtHandlerMiddleware};
 use crate::{
     DhtConfig,
     DhtRequester,
-    dedup::SharedCappedCopies,
     discovery::DhtDiscoveryRequester,
     network_discovery::SharedSourceBudget,
     outbound::OutboundMessageRequester,
@@ -44,7 +43,6 @@ pub struct DhtHandlerLayer {
     discovery_requester: DhtDiscoveryRequester,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
     source_budget: SharedSourceBudget,
-    capped_copies: SharedCappedCopies,
 }
 
 impl DhtHandlerLayer {
@@ -56,7 +54,6 @@ impl DhtHandlerLayer {
         discovery_requester: DhtDiscoveryRequester,
         outbound_service: OutboundMessageRequester,
         source_budget: SharedSourceBudget,
-        capped_copies: SharedCappedCopies,
     ) -> Self {
         Self {
             config,
@@ -67,7 +64,6 @@ impl DhtHandlerLayer {
             discovery_requester,
             join_cooldown: Default::default(),
             source_budget,
-            capped_copies,
         }
     }
 }
@@ -86,7 +82,6 @@ impl<S> Layer<S> for DhtHandlerLayer {
             self.config.clone(),
             self.join_cooldown.clone(),
             self.source_budget.clone(),
-            self.capped_copies.clone(),
         )
     }
 }

@@ -50,7 +50,6 @@ use crate::{
     SeedPeerProvider,
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
-    dedup::SharedCappedCopies,
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     envelope::DhtMessageType,
     event::{DhtEventReceiver, DhtEventSender},
@@ -106,8 +105,6 @@ pub struct Dht {
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
     /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
     join_budget: SharedSourceBudget,
-    /// Copies of messages the DHT handler dropped for want of their source's budget, which the dedup layer then drops
-    capped_copies: SharedCappedCopies,
 }
 
 impl Dht {
@@ -144,7 +141,6 @@ impl Dht {
             event_publisher,
             seed_peer_provider,
             join_budget: Default::default(),
-            capped_copies: Default::default(),
         };
 
         // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
@@ -297,10 +293,10 @@ impl Dht {
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
-            .layer(
-                DedupLayer::new(self.dht_requester(), self.config.dedup_allowed_message_occurrences)
-                    .with_capped_copies(self.capped_copies.clone()),
-            )
+            .layer(DedupLayer::new(
+                self.dht_requester(),
+                self.config.dedup_allowed_message_occurrences,
+            ))
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
@@ -320,7 +316,6 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.outbound_requester(),
                 self.join_budget.clone(),
-                self.capped_copies.clone(),
             ))
             .into_inner()
     }
@@ -1116,8 +1111,8 @@ mod test {
         );
     }
 
-    /// A source that has used up its Join budget delivers a Join first, and keeps resending it: the copy an honest
-    /// source delivers next is still processed, so the origin is stored and propagated exactly once
+    /// A source that has used up its Join budget delivers a Join first, twice at once, and keeps resending it: the
+    /// copy an honest source delivers next is still processed, so the origin is stored and propagated exactly once
     #[tokio::test]
     async fn a_capped_source_delivering_a_join_first_does_not_suppress_it() {
         let capped = make_node_identity();
@@ -1125,7 +1120,7 @@ mod test {
         let origin = make_node_identity();
         let shutdown = Shutdown::new();
         let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest], &shutdown).await;
-        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
         let max = dht.config.network_discovery.max_stored_per_source;
         {
             let mut budget = dht.join_budget.lock().unwrap();
@@ -1147,11 +1142,17 @@ mod test {
             None,
             wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
         );
-        for source in [&capped, &capped, &capped, &capped, &honest, &capped, &honest] {
+        let deliver = |source: &NodeIdentity| {
             service
+                .clone()
                 .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
-                .await
-                .unwrap();
+        };
+        // Two copies from the capped source at once, then repeats from both sources
+        let (first, second) = futures::join!(deliver(&capped), deliver(&capped));
+        first.unwrap();
+        second.unwrap();
+        for source in [&capped, &honest, &capped, &honest] {
+            deliver(source).await.unwrap();
         }
 
         assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());

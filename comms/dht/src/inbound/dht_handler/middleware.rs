@@ -36,7 +36,6 @@ use super::{join_gate::JoinCooldown, task::ProcessDhtMessage};
 use crate::{
     DhtConfig,
     DhtRequester,
-    dedup::SharedCappedCopies,
     discovery::DhtDiscoveryRequester,
     inbound::DecryptedDhtMessage,
     network_discovery::SharedSourceBudget,
@@ -54,7 +53,6 @@ pub struct DhtHandlerMiddleware<S> {
     config: Arc<DhtConfig>,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
     source_budget: SharedSourceBudget,
-    capped_copies: SharedCappedCopies,
 }
 
 impl<S> DhtHandlerMiddleware<S> {
@@ -68,7 +66,6 @@ impl<S> DhtHandlerMiddleware<S> {
         config: Arc<DhtConfig>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
         source_budget: SharedSourceBudget,
-        capped_copies: SharedCappedCopies,
     ) -> Self {
         Self {
             next_service,
@@ -80,7 +77,6 @@ impl<S> DhtHandlerMiddleware<S> {
             config,
             join_cooldown,
             source_budget,
-            capped_copies,
         }
     }
 }
@@ -111,7 +107,6 @@ where
                 self.config.clone(),
                 self.join_cooldown.clone(),
                 self.source_budget.clone(),
-                self.capped_copies.clone(),
             )
             .run(),
         )

@@ -30,7 +30,16 @@ use std::{
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SqliteConnection, dsl, sql_types};
+use diesel::{
+    Connection,
+    ExpressionMethods,
+    OptionalExtension,
+    QueryDsl,
+    RunQueryDsl,
+    SqliteConnection,
+    dsl,
+    sql_types,
+};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
@@ -79,8 +88,9 @@ const UPSERT_HIT_SQL: &str = "INSERT INTO dedup_cache (body_hash, sender_public_
                               1, last_hit_at = excluded.last_hit_at, keep_until = MAX(keep_until, \
                               excluded.keep_until) RETURNING number_of_hits";
 
-const FORGET_HIT_SQL: &str = "UPDATE dedup_cache SET number_of_hits = number_of_hits - 1 WHERE body_hash = ? AND \
-                              number_of_hits > 0 RETURNING number_of_hits";
+const FORGET_LAST_HIT_SQL: &str = "DELETE FROM dedup_cache WHERE body_hash = ? AND number_of_hits <= 1";
+const FORGET_HIT_SQL: &str =
+    "UPDATE dedup_cache SET number_of_hits = number_of_hits - 1 WHERE body_hash = ? AND number_of_hits > 1";
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -186,18 +196,22 @@ impl DedupCacheDatabase {
     /// Takes back one hit on `body_hash`, so that the next copy of the message is processed as if this one had not
     /// arrived
     pub fn forget_hit(&self, body_hash: &[u8]) -> Result<(), StorageError> {
-        #[derive(QueryableByName)]
-        struct Hits {
-            #[diesel(sql_type = sql_types::Integer)]
-            number_of_hits: i32,
-        }
-
+        let body_hash = to_hex(body_hash);
         let mut conn = self.connection.get_pooled_connection()?;
-        let rows = diesel::sql_query(FORGET_HIT_SQL)
-            .bind::<sql_types::Text, _>(to_hex(body_hash))
-            .load::<Hits>(&mut conn)?;
-        // The next hit counts as an insert again, so take this one back from the trim schedule
-        if rows.iter().any(|row| row.number_of_hits == 0) {
+        let deleted = conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // Forgetting the last hit removes the entry, so that it does not linger unseen by the insert-driven trim
+            let deleted = diesel::sql_query(FORGET_LAST_HIT_SQL)
+                .bind::<sql_types::Text, _>(&body_hash)
+                .execute(conn)?;
+            if deleted == 0 {
+                diesel::sql_query(FORGET_HIT_SQL)
+                    .bind::<sql_types::Text, _>(&body_hash)
+                    .execute(conn)?;
+            }
+            Ok(deleted)
+        })?;
+        // The next hit inserts the entry again, so take this insert back from the trim schedule
+        if deleted > 0 {
             self.num_inserts.fetch_sub(1, Ordering::Relaxed);
         }
         Ok(())
@@ -446,14 +460,21 @@ mod test {
     #[test]
     fn a_forgotten_hit_is_not_counted() {
         let cache = new_cache(10);
-        assert_eq!(add(&cache, 1, None, true), 1);
         let hash = 1usize.to_le_bytes();
-        cache.forget_hit(&hash).unwrap();
-        assert_eq!(cache.get_hit_count(&hash).unwrap(), 0);
-        cache.forget_hit(&hash).unwrap();
-        assert_eq!(cache.get_hit_count(&hash).unwrap(), 0);
         assert_eq!(add(&cache, 1, None, true), 1);
-        // A forgotten and re-hit entry was inserted once
+        assert_eq!(add(&cache, 1, None, true), 2);
+        cache.forget_hit(&hash).unwrap();
+        assert_eq!(cache.get_hit_count(&hash).unwrap(), 1);
+        assert_eq!(row_count(&cache), 1);
+
+        // Forgetting the last hit removes the entry and its insert
+        cache.forget_hit(&hash).unwrap();
+        assert_eq!(row_count(&cache), 0);
+        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 0);
+        cache.forget_hit(&hash).unwrap();
+        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 0);
+
+        assert_eq!(add(&cache, 1, None, true), 1);
         assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
     }
 

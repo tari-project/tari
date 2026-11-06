@@ -116,35 +116,29 @@ pub fn create_message_hash(sig_canonical: &[u8], body: &[u8]) -> [u8; 32] {
     out
 }
 
-/// The most (message, source) pairs remembered as dropped for want of the source's budget. The oldest are forgotten
-/// first.
-const MAX_CAPPED_COPIES: usize = 10_000;
+/// The most (Join, source) pairs remembered by the dedup layer. The oldest are forgotten first.
+const MAX_SEEN_JOIN_COPIES: usize = 10_000;
 
-/// Shared by the dedup layer and the DHT handler.
-pub(crate) type SharedCappedCopies = Arc<Mutex<CappedCopies>>;
-
-/// Messages the DHT handler dropped because the source that delivered them had used up its budget. The handler gives
-/// back the dedup hit such a copy took, so that a copy from another source is still processed; the dedup layer drops
-/// that source's repeats of the message before they reach the dedup cache, so they cannot take the hit again.
+/// The Joins each source has delivered. A source's repeat of a Join is dropped before it reaches the dedup cache, so
+/// the cache counts the distinct sources a Join came from. When the DHT handler drops a Join for want of its source's
+/// budget and gives back the hit it took, that source cannot take the hit again by resending it, and a copy from
+/// another source is still processed. Only Joins: other messages may be re-propagated through the same peer
+/// (`dedup_allowed_message_occurrences`).
 #[derive(Debug, Default)]
-pub(crate) struct CappedCopies {
+struct SeenJoinCopies {
     copies: HashSet<(Vec<u8>, CommsPublicKey)>,
     order: VecDeque<(Vec<u8>, CommsPublicKey)>,
 }
 
-impl CappedCopies {
-    pub fn contains(&self, dedup_hash: &[u8], source: &CommsPublicKey) -> bool {
-        self.copies.contains(&(dedup_hash.to_vec(), source.clone()))
-    }
-
-    /// Records a capped copy. Returns false if it was already recorded.
-    pub fn insert(&mut self, dedup_hash: Vec<u8>, source: CommsPublicKey) -> bool {
-        let key = (dedup_hash, source);
+impl SeenJoinCopies {
+    /// Records a copy. Returns false if this source already delivered it.
+    fn insert(&mut self, dedup_hash: &[u8], source: &CommsPublicKey) -> bool {
+        let key = (dedup_hash.to_vec(), source.clone());
         if !self.copies.insert(key.clone()) {
             return false;
         }
         self.order.push_back(key);
-        if self.order.len() > MAX_CAPPED_COPIES &&
+        if self.order.len() > MAX_SEEN_JOIN_COPIES &&
             let Some(oldest) = self.order.pop_front()
         {
             self.copies.remove(&oldest);
@@ -162,7 +156,7 @@ pub struct DedupMiddleware<S> {
     next_service: S,
     dht_requester: DhtRequester,
     allowed_message_occurrences: usize,
-    capped_copies: SharedCappedCopies,
+    seen_joins: Arc<Mutex<SeenJoinCopies>>,
 }
 
 impl<S> DedupMiddleware<S> {
@@ -171,7 +165,7 @@ impl<S> DedupMiddleware<S> {
             next_service: service,
             dht_requester,
             allowed_message_occurrences,
-            capped_copies: Default::default(),
+            seen_joins: Default::default(),
         }
     }
 }
@@ -193,7 +187,7 @@ where
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
         let allowed_message_occurrences = self.allowed_message_occurrences;
-        let capped_copies = self.capped_copies.clone();
+        let seen_joins = self.seen_joins.clone();
         Box::pin(async move {
             if message.dedup_hash.is_empty() {
                 debug!(
@@ -203,13 +197,15 @@ where
                 );
                 return Ok(());
             }
-            if capped_copies
-                .lock()
-                .is_ok_and(|capped| capped.contains(&message.dedup_hash, &message.source_peer.public_key))
+            // Recorded before the cache is hit, so that two copies from one source at once cannot both take a hit
+            if message.dht_header.message_type.is_dht_join() &&
+                !seen_joins.lock().map_or(true, |mut seen| {
+                    seen.insert(&message.dedup_hash, &message.source_peer.public_key)
+                })
             {
                 debug!(
                     target: LOG_TARGET,
-                    "Peer '{}' resent message {} that was dropped for want of its budget. Message discarded.",
+                    "Peer '{}' resent Join {}. Message discarded.",
                     message.source_peer.node_id.short_str(),
                     message.tag
                 );
@@ -259,7 +255,7 @@ where
 pub struct DedupLayer {
     dht_requester: DhtRequester,
     allowed_message_occurrences: usize,
-    capped_copies: SharedCappedCopies,
+    seen_joins: Arc<Mutex<SeenJoinCopies>>,
 }
 
 impl DedupLayer {
@@ -267,14 +263,8 @@ impl DedupLayer {
         Self {
             dht_requester,
             allowed_message_occurrences,
-            capped_copies: Default::default(),
+            seen_joins: Default::default(),
         }
-    }
-
-    /// Shares the copies the DHT handler dropped for want of their source's budget.
-    pub(crate) fn with_capped_copies(mut self, capped_copies: SharedCappedCopies) -> Self {
-        self.capped_copies = capped_copies;
-        self
     }
 }
 
@@ -284,7 +274,7 @@ impl<S> Layer<S> for DedupLayer {
     fn layer(&self, service: S) -> Self::Service {
         let mut middleware =
             DedupMiddleware::new(service, self.dht_requester.clone(), self.allowed_message_occurrences);
-        middleware.capped_copies = self.capped_copies.clone();
+        middleware.seen_joins = self.seen_joins.clone();
         middleware
     }
 }
@@ -298,45 +288,48 @@ mod test {
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
+        proto::envelope::DhtMessageType,
         test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
 
-    /// A source's repeats of a copy the DHT handler dropped for want of its budget are dropped before the dedup
-    /// cache, while other sources' copies go through
+    /// A source's repeats of a Join, even two at once, are dropped before the dedup cache, while other sources'
+    /// copies, and other messages a source repeats, still reach it
     #[tokio::test]
-    async fn repeats_of_a_capped_copy_skip_the_dedup_cache() {
+    async fn a_sources_repeats_of_a_join_skip_the_dedup_cache() {
         let spy = service_spy();
         let (dht_requester, mock) = create_dht_actor_mock();
         let mock_state = mock.get_shared_state();
         mock_state.set_number_of_message_hits(1);
         tokio::spawn(mock.run());
-        let capped_copies = SharedCappedCopies::default();
-        let mut dedup = DedupLayer::new(dht_requester, 1)
-            .with_capped_copies(capped_copies.clone())
-            .layer(spy.to_service::<PipelineError>());
+        let dedup = DedupLayer::new(dht_requester, 3).layer(spy.to_service::<PipelineError>());
 
-        let capped = make_node_identity();
-        let message = |source: &tari_comms::peer_manager::NodeIdentity| {
+        let message = |source: &tari_comms::peer_manager::NodeIdentity, message_type| {
             let inbound_message =
                 make_dht_inbound_message(source, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
-            DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message)
+            let mut message = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
+            message.dht_header.message_type = message_type;
+            message
         };
-        let from_capped = message(&capped);
-        assert!(
-            capped_copies
-                .lock()
-                .unwrap()
-                .insert(from_capped.dedup_hash.clone(), capped.public_key().clone())
-        );
-        for _ in 0..5 {
-            dedup.call(from_capped.clone()).await.unwrap();
-        }
-        assert_eq!(spy.call_count(), 0);
-        assert_eq!(mock_state.call_count(), 0);
-
-        dedup.call(message(&make_node_identity())).await.unwrap();
-        assert_eq!(spy.call_count(), 1);
+        let source = make_node_identity();
+        let join = message(&source, DhtMessageType::Join);
+        let (first, second) = futures::join!(dedup.clone().call(join.clone()), dedup.clone().call(join.clone()));
+        first.unwrap();
+        second.unwrap();
+        dedup.clone().call(join).await.unwrap();
         assert_eq!(mock_state.call_count(), 1);
+        assert_eq!(spy.call_count(), 1);
+
+        dedup
+            .clone()
+            .call(message(&make_node_identity(), DhtMessageType::Join))
+            .await
+            .unwrap();
+        assert_eq!(mock_state.call_count(), 2);
+
+        let domain = message(&source, DhtMessageType::None);
+        dedup.clone().call(domain.clone()).await.unwrap();
+        dedup.clone().call(domain).await.unwrap();
+        assert_eq!(mock_state.call_count(), 4);
     }
 
     #[test]
