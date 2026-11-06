@@ -1111,6 +1111,53 @@ mod test {
         );
     }
 
+    /// A source that has used up its Join budget delivers a Join first: the copy an honest source delivers next is
+    /// still processed, so the origin is stored and propagated exactly once
+    #[tokio::test]
+    async fn a_capped_source_delivering_a_join_first_does_not_suppress_it() {
+        let capped = make_node_identity();
+        let honest = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let max = dht.config.network_discovery.max_stored_per_source;
+        {
+            let mut budget = dht.join_budget.lock().unwrap();
+            for _ in 0..max {
+                let peer = make_node_identity();
+                assert!(budget.try_charge(
+                    capped.node_id(),
+                    peer.node_id(),
+                    Instant::now(),
+                    &dht.config.network_discovery
+                ));
+            }
+        }
+
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
+        );
+        for source in [&capped, &honest, &capped, &honest] {
+            service
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+
+        assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
+    }
+
     /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it
     /// received, so N verifies the Join and accepts it. N bans no one.
     #[tokio::test]

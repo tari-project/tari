@@ -183,6 +183,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             source_peer,
             authenticated_origin,
             is_saf_message,
+            dedup_hash,
             ..
         } = message;
 
@@ -290,7 +291,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 budget.has_headroom(&source_peer.node_id, Instant::now(), &self.config.network_discovery)
             })
         {
-            self.drop_capped_join(&source_peer.node_id, &authenticated_pk);
+            self.drop_capped_join(&source_peer.node_id, &authenticated_pk, dedup_hash)
+                .await;
             return Ok(());
         }
         let validated = validator.validate_peer(new_peer, maybe_existing);
@@ -314,7 +316,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
             })
         {
-            self.drop_capped_join(&source_peer.node_id, &authenticated_pk);
+            self.drop_capped_join(&source_peer.node_id, &authenticated_pk, dedup_hash)
+                .await;
             return Ok(());
         }
 
@@ -400,13 +403,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    fn drop_capped_join(&self, source: &NodeId, origin: &CommsPublicKey) {
+    /// Drops a Join that its source had no budget for. The dedup hit it took is given back, otherwise a source that
+    /// used up its budget could deliver a Join first and so stop the copies from other sources being processed.
+    async fn drop_capped_join(&mut self, source: &NodeId, origin: &CommsPublicKey, dedup_hash: Vec<u8>) {
         debug!(
             target: LOG_TARGET,
             "Source peer '{}' has relayed its share of new peers. Dropping the Join from '{origin}'.",
             source.short_str()
         );
         join_received("capped");
+        if let Err(err) = self.dht.forget_dedup_hit(dedup_hash).await {
+            warn!(target: LOG_TARGET, "Failed to take back the dedup hit of a dropped Join: {err}");
+        }
     }
 
     async fn handle_discover_response(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
@@ -774,17 +782,24 @@ mod test {
                 self.join_cooldown.clone(),
                 self.source_budget.clone(),
             );
-            let result = task.run().await;
-
-            let mut bans = Vec::new();
-            while let Ok(request) = dht_rx.try_recv() {
-                if let DhtRequest::BanPeer {
-                    public_key, severity, ..
-                } = request
-                {
-                    bans.push((public_key, severity));
+            // Answers the requests the handler waits on, and collects bans, until the handler is done
+            let dht_requests = tokio::spawn(async move {
+                let mut bans = Vec::new();
+                while let Some(request) = dht_rx.recv().await {
+                    match request {
+                        DhtRequest::BanPeer {
+                            public_key, severity, ..
+                        } => bans.push((public_key, severity)),
+                        DhtRequest::MsgHashCacheForgetHit(_, reply_tx) => {
+                            let _ignore = reply_tx.send(());
+                        },
+                        _ => {},
+                    }
                 }
-            }
+                bans
+            });
+            let result = task.run().await;
+            let bans = dht_requests.await.unwrap();
             let mut outbound_sends = 0usize;
             let mut outbound_bodies = Vec::new();
             while let Ok(DhtOutboundRequest::SendMessage(_, body, _)) = outbound_rx.try_recv() {

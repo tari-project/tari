@@ -79,6 +79,9 @@ const UPSERT_HIT_SQL: &str = "INSERT INTO dedup_cache (body_hash, sender_public_
                               1, last_hit_at = excluded.last_hit_at, keep_until = MAX(keep_until, \
                               excluded.keep_until) RETURNING number_of_hits";
 
+const FORGET_HIT_SQL: &str =
+    "UPDATE dedup_cache SET number_of_hits = number_of_hits - 1 WHERE body_hash = ? AND number_of_hits > 0";
+
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
     connection: DbConnection,
@@ -178,6 +181,16 @@ impl DedupCacheDatabase {
 
         #[allow(clippy::cast_sign_loss)]
         Ok(hit_count.unwrap_or(0) as u32)
+    }
+
+    /// Takes back one hit on `body_hash`, so that the next copy of the message is processed as if this one had not
+    /// arrived
+    pub fn forget_hit(&self, body_hash: &[u8]) -> Result<(), StorageError> {
+        let mut conn = self.connection.get_pooled_connection()?;
+        diesel::sql_query(FORGET_HIT_SQL)
+            .bind::<sql_types::Text, _>(to_hex(body_hash))
+            .execute(&mut conn)?;
+        Ok(())
     }
 
     /// Trims the dedup cache. Entries whose `keep_until` has passed are removed, earliest first, down to capacity.
@@ -419,6 +432,18 @@ mod test {
     }
 
     const AFTER_MIN_AGE: Duration = MIN_ENTRY_AGE.saturating_add(Duration::from_secs(60));
+
+    #[test]
+    fn a_forgotten_hit_is_not_counted() {
+        let cache = new_cache(10);
+        assert_eq!(add(&cache, 1, None, true), 1);
+        let hash = 1usize.to_le_bytes();
+        cache.forget_hit(&hash).unwrap();
+        assert_eq!(cache.get_hit_count(&hash).unwrap(), 0);
+        cache.forget_hit(&hash).unwrap();
+        assert_eq!(cache.get_hit_count(&hash).unwrap(), 0);
+        assert_eq!(add(&cache, 1, None, true), 1);
+    }
 
     #[test]
     fn it_trims_as_it_grows() {
