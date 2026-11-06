@@ -532,4 +532,48 @@ mod test {
         assert!(found.is_empty());
         assert_eq!(remaining, vec![dangling_sig]);
     }
+
+    #[tokio::test]
+    async fn remove_reorged_txs_cleans_up_all_signatures_for_partially_matched_multi_kernel_tx() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let network = Network::LocalNet;
+        let consensus = BaseNodeConsensusManagerBuilder::new(network).build().unwrap();
+        let tx1 = tx!(MicroMinotari(10_000), fee: MicroMinotari(10), lock: 4000, inputs: 2, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
+        let tx2 = tx!(MicroMinotari(10_000), fee: MicroMinotari(6), lock: 3000, inputs: 2, outputs: 1, &key_manager)
+            .expect("Failed to get tx")
+            .0;
+
+        let k1_sig = tx1.body.kernels()[0].excess_sig.clone();
+        let k2_sig = tx2.body.kernels()[0].excess_sig.clone();
+
+        let mut agg_inputs = tx1.body.inputs().clone();
+        agg_inputs.extend(tx2.body.inputs().iter().cloned());
+        let mut agg_outputs = tx1.body.outputs().clone();
+        agg_outputs.extend(tx2.body.outputs().iter().cloned());
+        let mut agg_kernels = tx1.body.kernels().clone();
+        agg_kernels.extend(tx2.body.kernels().iter().cloned());
+        let mut tx_agg = Transaction::new(
+            agg_inputs,
+            agg_outputs,
+            agg_kernels,
+            &tx1.offset + &tx2.offset,
+            &tx1.script_offset + &tx2.script_offset,
+        );
+        tx_agg.body.sort();
+        let tx_agg = Arc::new(tx_agg);
+
+        let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 10 });
+        reorg_pool.insert(1, tx_agg.clone());
+        assert!(reorg_pool.has_tx_with_excess_sig(&k1_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&k2_sig));
+
+        let reorg_blocks = &[create_orphan_block(3000, vec![tx1], &consensus).into()];
+        let removed_txs = reorg_pool.remove_reorged_txs_and_discard_double_spends(reorg_blocks, &[]);
+        assert_eq!(removed_txs, vec![tx_agg]);
+        assert!(!reorg_pool.has_tx_with_excess_sig(&k1_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&k2_sig));
+        assert!(reorg_pool.txs_by_signature.is_empty());
+    }
 }
