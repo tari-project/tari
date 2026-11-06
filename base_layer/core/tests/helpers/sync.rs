@@ -50,7 +50,7 @@ use tari_core::{
     mempool::MempoolServiceConfig,
     proof_of_work::randomx_factory::RandomXFactory,
     test_helpers::blockchain::TempDatabase,
-    validation::mocks::MockValidator,
+    validation::{BlockBodyValidator, mocks::MockValidator},
 };
 use tari_node_components::blocks::ChainBlock;
 use tari_p2p::{P2pConfig, services::liveness::LivenessConfig};
@@ -224,26 +224,12 @@ pub async fn create_network_with_multiple_nodes(
         network,
     )
     .await;
-    let shutdown = Shutdown::new();
-
     let mut state_machines = Vec::with_capacity(num_nodes);
     for node_interface in node_interfaces.iter().take(num_nodes) {
-        let (state_change_event_publisher, _) = broadcast::channel(10);
-        let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
-        state_machines.push(BaseNodeStateMachine::new(
-            node_interface.blockchain_db.clone().into(),
-            node_interface.local_nci.clone(),
-            node_interface.comms.connectivity(),
-            node_interface.chain_metadata_handle.get_event_stream(),
-            node_interface.comms.peer_manager(),
-            node_interface.dht.subscribe_dht_events(),
-            BaseNodeStateMachineConfig::default(),
-            SyncValidators::new(MockValidator::new(true), MockValidator::new(true)),
-            status_event_sender,
-            state_change_event_publisher,
-            RandomXFactory::default(),
-            consensus_manager.clone(),
-            shutdown.to_signal(),
+        state_machines.push(create_state_machine_with_block_body_validator(
+            node_interface,
+            &consensus_manager,
+            MockValidator::new(true),
         ));
     }
 
@@ -254,6 +240,32 @@ pub async fn create_network_with_multiple_nodes(
         consensus_manager,
         key_manager,
         coinbase_wallet_output,
+    )
+}
+
+/// A state machine for the node whose block sync validates bodies with `block_body`
+pub fn create_state_machine_with_block_body_validator<V: BlockBodyValidator<TempDatabase> + 'static>(
+    node_interface: &NodeInterfaces,
+    consensus_manager: &BaseNodeConsensusManager,
+    block_body: V,
+) -> BaseNodeStateMachine<TempDatabase> {
+    let shutdown = Shutdown::new();
+    let (state_change_event_publisher, _) = broadcast::channel(10);
+    let (status_event_sender, _status_event_receiver) = watch::channel(StatusInfo::new());
+    BaseNodeStateMachine::new(
+        node_interface.blockchain_db.clone().into(),
+        node_interface.local_nci.clone(),
+        node_interface.comms.connectivity(),
+        node_interface.chain_metadata_handle.get_event_stream(),
+        node_interface.comms.peer_manager(),
+        node_interface.dht.subscribe_dht_events(),
+        BaseNodeStateMachineConfig::default(),
+        SyncValidators::new(block_body, MockValidator::new(true)),
+        status_event_sender,
+        state_change_event_publisher,
+        RandomXFactory::default(),
+        consensus_manager.clone(),
+        shutdown.to_signal(),
     )
 }
 

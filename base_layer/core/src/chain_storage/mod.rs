@@ -43,6 +43,8 @@ pub use blockchain_database::{
     BlockchainDatabaseConfig,
     CandidateVmKey,
     MmrRoots,
+    PendingChainRewind,
+    ResetPermission,
     Validators,
     adjusted_target_difficulties_in_range,
     body_matches_header,

@@ -359,6 +359,16 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         Ok(total_accumulated_difficulty)
     }
 
+    /// Drops every validated header but the last. The validation state is kept, so validation carries on from the
+    /// tip.
+    pub fn keep_only_tip(&mut self) {
+        let valid_headers = &mut self.state_mut().valid_headers;
+        if let Some(tip) = valid_headers.pop() {
+            valid_headers.clear();
+            valid_headers.push(tip);
+        }
+    }
+
     /// Drains and returns all the headers that were validated.
     ///
     /// ## Panics

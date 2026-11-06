@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use primitive_types::U512;
 use tari_comms::{
@@ -28,7 +28,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
-use tari_node_components::blocks::BlockError;
+use tari_node_components::blocks::{BlockError, ChainBlock};
 use tari_transaction_components::{BanPeriod, BanReason};
 
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
@@ -63,6 +63,13 @@ pub enum BlockHeaderSyncError {
     ChainChangedDuringSync,
     #[error("Sync attempts with the peer ended {count} times because our chain changed")]
     RepeatedChainChangesDuringSync { count: usize },
+    #[error("The rewind to the chain split reset the chain to the genesis block. Header sync starts again.")]
+    ChainResetToGenesis { removed: Vec<Arc<ChainBlock>> },
+    #[error(
+        "The peer's chain is stronger than our blocks but not our headers, and switching to it would reset the chain. \
+         Sync will be retried with another peer if possible."
+    )]
+    WeakerThanLocalHeaders,
     #[error("The sync peer could not take an RPC session ({0}). Sync will be retried with another peer if possible.")]
     SyncPeerUnavailable(RpcError),
     #[error("Unable to locate start hash `{0}`")]
@@ -138,6 +145,8 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
             BlockHeaderSyncError::ChainChangedDuringSync |
+            BlockHeaderSyncError::ChainResetToGenesis { .. } |
+            BlockHeaderSyncError::WeakerThanLocalHeaders |
             BlockHeaderSyncError::SyncPeerUnavailable(_) |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,

@@ -81,6 +81,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Returns the genesis block of the network this database was opened for.
     fn fetch_genesis_block(&self) -> ChainBlock;
 
+    /// Returns the strongest header validated and then deleted by a rewind, if any.
+    fn fetch_lost_header_tip(&self) -> Result<Option<ChainHeader>, ChainStorageError>;
+
     /// Fetch accumulated data like MMR peaks and deleted hashmap
     fn fetch_block_accumulated_data(
         &self,

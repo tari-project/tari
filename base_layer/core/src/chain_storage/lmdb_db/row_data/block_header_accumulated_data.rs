@@ -69,7 +69,7 @@ impl From<&BlockHeaderAccumulatedData> for LmdbRowBlockHeaderAccumulatedDataV1 {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LmdbRowBlockHeaderAccumulatedDataV2 {
     pub hash: HashOutput,
     pub total_kernel_offset: PrivateKey,

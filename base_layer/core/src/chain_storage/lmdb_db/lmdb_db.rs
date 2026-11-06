@@ -818,6 +818,10 @@ fn publish_compaction_progress(
     }
 }
 
+/// A stored key and value
+#[cfg(test)]
+type TableRow = (Vec<u8>, Vec<u8>);
+
 /// This is a lmdb-based blockchain database for persistent storage of the chain state.
 pub struct LMDBDatabase {
     env: Arc<Environment>,
@@ -1251,6 +1255,16 @@ impl LMDBDatabase {
                     )
                     .optional()?;
                 },
+                SetLostHeaderTip(header) => {
+                    self.set_metadata(
+                        &write_txn,
+                        MetadataKey::LostHeaderTip,
+                        &MetadataValue::LostHeaderTip(LostHeaderTip {
+                            header: header.header().clone(),
+                            accumulated_data: header.accumulated_data().into(),
+                        }),
+                    )?;
+                },
                 ResetChainToGenesis => {
                     // Every table that holds chain state, emptied with `mdb_drop`. Bad blocks, reorgs, the legacy
                     // `utxo_smt` and the unused unique id and contract indexes are kept.
@@ -1292,7 +1306,11 @@ impl LMDBDatabase {
                     // The best block, pruned height and horizon data are rewritten by the genesis operations that
                     // follow; the migration version and pruning horizon are kept. The genesis output tree write
                     // re-creates the JMT version.
-                    for key in [MetadataKey::JMTVersion, MetadataKey::HorizonSyncOutputCheckpoint] {
+                    for key in [
+                        MetadataKey::JMTVersion,
+                        MetadataKey::HorizonSyncOutputCheckpoint,
+                        MetadataKey::LostHeaderTip,
+                    ] {
                         lmdb_delete(&write_txn, &self.metadata_db, &key.as_u32(), "metadata_db").optional()?;
                         self.stats_collector.remove_metadata(key);
                     }
@@ -3302,11 +3320,13 @@ impl LMDBDatabase {
 
     /// Every stored key and value, by table name.
     #[cfg(test)]
-    pub(crate) fn dump_tables_for_test(&self) -> Vec<(&'static str, Vec<(Vec<u8>, Vec<u8>)>)> {
+    pub(crate) fn dump_tables_for_test(&self) -> Vec<(&'static str, Vec<TableRow>)> {
         let txn = self.read_transaction().unwrap();
         let access = txn.access();
         let mut tables = Vec::new();
-        for (name, db) in self.all_dbs() {
+        // `all_dbs` leaves out the burn commitment index
+        let burn_commitment_index = [(LMDB_DB_BURN_COMMITMENT_INDEX, &self.burn_commitment_index)];
+        for (name, db) in self.all_dbs().into_iter().chain(burn_commitment_index) {
             let mut cursor = txn.cursor(&**db).unwrap();
             let mut rows = Vec::new();
             while let Some((key, value)) = cursor.next::<[u8], [u8]>(&access).to_opt().unwrap() {
@@ -4538,6 +4558,22 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(Some(fetch_horizon_data(&txn, &self.metadata_db)?))
     }
 
+    fn fetch_lost_header_tip(&self) -> Result<Option<ChainHeader>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let val: Option<MetadataValue> = lmdb_get(&txn, &self.metadata_db, &MetadataKey::LostHeaderTip.as_u32())?;
+        match val {
+            Some(MetadataValue::LostHeaderTip(lost)) => {
+                ChainHeader::try_construct(lost.header, lost.accumulated_data.into())
+                    .map(Some)
+                    .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                        function: "fetch_lost_header_tip",
+                        details: "The stored header and accumulated data do not match".to_string(),
+                    })
+            },
+            _ => Ok(None),
+        }
+    }
+
     fn fetch_horizon_sync_output_checkpoint(&self) -> Result<Option<HorizonSyncOutputCheckpoint>, ChainStorageError> {
         let txn = self.read_transaction()?;
         let val: Option<MetadataValue> = lmdb_get(
@@ -5153,6 +5189,7 @@ pub enum MetadataKey {
     HorizonSyncOutputCheckpoint,
     JMTVersion,
     BurnCommitmentRebuildStatus,
+    LostHeaderTip,
 }
 
 impl MetadataKey {
@@ -5180,6 +5217,7 @@ impl fmt::Display for MetadataKey {
             MetadataKey::HorizonSyncOutputCheckpoint => write!(f, "Horizon sync output checkpoint"),
             MetadataKey::JMTVersion => write!(f, "JMT written version"),
             MetadataKey::BurnCommitmentRebuildStatus => write!(f, "Burn commitment index rebuild status"),
+            MetadataKey::LostHeaderTip => write!(f, "Strongest header lost to a rewind"),
         }
     }
 }
@@ -5385,6 +5423,15 @@ pub enum MetadataValue {
     HorizonSyncOutputCheckpoint(HorizonSyncOutputCheckpoint),
     JMTVersion(u64),
     BurnCommitmentRebuildStatus(BurnCommitmentRebuildStatus),
+    LostHeaderTip(LostHeaderTip),
+}
+
+/// The strongest header validated and then deleted by a rewind, so that a reset to the genesis block has to beat it
+/// even though the header is no longer stored
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct LostHeaderTip {
+    header: BlockHeader,
+    accumulated_data: LmdbRowBlockHeaderAccumulatedDataV2,
 }
 
 impl fmt::Display for MetadataValue {
@@ -5415,6 +5462,9 @@ impl fmt::Display for MetadataValue {
             MetadataValue::JMTVersion(version) => write!(f, "JMT version is {version}"),
             MetadataValue::BurnCommitmentRebuildStatus(status) => {
                 write!(f, "Burn commitment index has been rebuilt - {}", status.is_rebuilt)
+            },
+            MetadataValue::LostHeaderTip(lost) => {
+                write!(f, "Strongest header lost to a rewind is #{}", lost.header.height)
             },
         }
     }
@@ -6719,7 +6769,8 @@ fn verify_metadata_keys(db: &LMDBDatabase) -> Result<(), ChainStorageError> {
                 Some(MetadataKey::BlockchainConsistencyCheckStatus) |
                 Some(MetadataKey::HorizonSyncOutputCheckpoint) |
                 Some(MetadataKey::JMTVersion) |
-                Some(MetadataKey::BurnCommitmentRebuildStatus) => {
+                Some(MetadataKey::BurnCommitmentRebuildStatus) |
+                Some(MetadataKey::LostHeaderTip) => {
                     warn!(
                         target: LOG_TARGET,
                         "Removed corrupt metadata entry {metadata_key:?} with key bytes: 0x{hex_key}",
@@ -6776,6 +6827,7 @@ fn num_to_key(n: u32) -> Option<MetadataKey> {
         12 => Some(MetadataKey::HorizonSyncOutputCheckpoint),
         13 => Some(MetadataKey::JMTVersion),
         14 => Some(MetadataKey::BurnCommitmentRebuildStatus),
+        15 => Some(MetadataKey::LostHeaderTip),
         _ => None,
     }
 }
@@ -6796,6 +6848,7 @@ fn variant_name(v: &MetadataValue) -> &'static str {
         MetadataValue::HorizonSyncOutputCheckpoint(_) => "HorizonSyncOutputCheckpoint",
         MetadataValue::JMTVersion(_) => "JMTVersion",
         MetadataValue::BurnCommitmentRebuildStatus(_) => "BurnCommitmentRebuildStatus",
+        MetadataValue::LostHeaderTip(_) => "LostHeaderTip",
     }
 }
 
@@ -6817,6 +6870,7 @@ fn summarize_value(v: &MetadataValue) -> String {
         },
         MetadataValue::JMTVersion(v) => format!("{v}"),
         MetadataValue::BurnCommitmentRebuildStatus(s) => format!("{s:?}"),
+        MetadataValue::LostHeaderTip(lost) => format!("#{} {}", lost.header.height, lost.header.hash()),
     }
 }
 
