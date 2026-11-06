@@ -529,6 +529,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .end_header_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
+        let end_hash = hash;
         let end_header = db
             .fetch_header_by_block_hash(hash)
             .await
@@ -563,6 +564,27 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         target: LOG_TARGET,
                         "Kernel sync session for peer '{peer_node_id}' terminated early",
                     );
+                    break;
+                }
+
+                let (header_at_height, end_header_now) = match db.fetch_header_pair(current_height, end_height).await {
+                    Ok(headers) => headers,
+                    Err(err) => {
+                        let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
+                        break;
+                    },
+                };
+                if !is_on_requested_chain(
+                    &current_header_hash,
+                    header_at_height.as_ref(),
+                    end_header_now.as_ref(),
+                    &end_hash,
+                ) {
+                    let _result = tx
+                        .send(Err(RpcStatus::conflict(
+                            "Reorg detected: the requested end block is no longer on the chain",
+                        )))
+                        .await;
                     break;
                 }
 
@@ -619,9 +641,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         },
                         Ok(None) => {
                             let _result = tx
-                                .send(Err(RpcStatus::not_found(&format!(
-                                    "Could not find header #{current_height} while streaming UTXOs after position \
-                                     {current_mmr_position}"
+                                .send(Err(RpcStatus::conflict(&format!(
+                                    "Header #{current_height} is no longer on the chain while streaming kernels after \
+                                     position {current_mmr_position}"
                                 ))))
                                 .await;
                             break;
