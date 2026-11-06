@@ -229,11 +229,25 @@ services:
       - "18189:18189"
 ```
 
-The image runs with `/var/tari` as the Tari home directory. Mounting the host `./data` directory there persists the
-node base path (`/var/tari/node`) and config path (`/var/tari/config/config.toml`).
+The image runs with `/var/tari` as the Tari home directory. Mounting `./data:/var/tari` persists both the
+node data (`/var/tari/node`) and configuration (`/var/tari/config/config.toml`). Existing installations can continue
+using `./data:/var/tari` with no changes required. Alternatively, you may mount `./data/node:/var/tari/node`
+along with `./data/config:/var/tari/config` if you prefer separating application data and configuration directories.
+*(Note: Avoid mounting a single config file path directly if the host file does not exist yet, as Docker will create a directory in its place).*
 
-Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default, so
-publishing it also requires overriding `base_node.grpc_address` to listen on `0.0.0.0`.
+Port `18189` is the P2P TCP listener. The gRPC port (`18142`) binds to `127.0.0.1` inside the container by default. If publishing it externally, ensure gRPC authentication is enabled (`base_node.grpc_authentication_required=true`) and override `base_node.grpc_address` in your configuration or environment variables rather than passing credentials via command-line flags.
+
+On Linux, create the host directory before running `docker compose up` so Docker does not create it owned by `root`.
+The container runs as uid 1000, so the directory must be writable by that uid and have restrictive permissions:
+
+```sh
+mkdir -p ./data
+chmod 700 ./data
+# only needed if your user is not uid 1000, or Docker already created the directory as root
+sudo chown -R 1000:1000 ./data
+```
+
+Docker Desktop on macOS and Windows maps file ownership automatically, so these steps are not needed there.
 
 Start the service with `docker compose up -d` and check it with `docker compose ps`. To reach the console, find the
 container ID with `docker ps` and run `docker attach <container-id>`.
