@@ -2176,12 +2176,49 @@ mod rewind_past_pruning_horizon {
     }
 
     #[tokio::test]
-    async fn a_fork_above_the_pruned_height_only_has_to_beat_the_block_tip() {
+    async fn a_fork_that_would_delete_our_headers_must_beat_the_header_tip() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
         let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
+        let before = dump(&db);
 
-        // From height 3, stronger than the block tip but not the header tip
+        // From height 3, above the pruned height, stronger than the block tip but not the header tip
+        let outcome = add_fork(&db, &blocks, &key_manager, 3, 3);
+
+        outcome.result.assert_orphaned();
+        assert_eq!(db.fetch_last_header().unwrap().height, 10);
+        assert_eq!(dump(&db), before);
+    }
+
+    #[tokio::test]
+    async fn a_block_on_the_block_tip_cannot_delete_our_headers_to_allow_a_reset() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
+        let metadata = db.get_chain_metadata().unwrap();
+        let before = dump(&db);
+
+        // One block on the block tip would lower the header tip...
+        let outcome = add_fork(&db, &blocks, &key_manager, 5, 1);
+        outcome.result.assert_orphaned();
+        assert_eq!(dump(&db), before);
+        // ...so that a deep fork weaker than our headers could then reset the chain
+        let outcome = add_fork(&db, &blocks, &key_manager, 1, 5);
+        outcome.result.assert_orphaned();
+
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, 10);
+        assert_eq!(dump(&db), before);
+    }
+
+    #[tokio::test]
+    async fn without_headers_above_the_block_tip_a_fork_only_has_to_beat_the_block_tip() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, _) = create_headers_ahead_of_blocks(&db, &key_manager);
+        db.clear_all_pending_headers().unwrap();
+
+        // From height 3, stronger than the block tip
         let outcome = add_fork(&db, &blocks, &key_manager, 3, 3);
 
         outcome.result.assert_reorg(3, 2);
@@ -2200,7 +2237,7 @@ mod rewind_past_pruning_horizon {
         for height in [9, 10] {
             let pending_tip = honest.fetch_chain_header(height).unwrap();
             let rewind = db.rewind_for_pending_chain(split, pending_tip).unwrap();
-            assert!(matches!(rewind, PendingChainRewind::RefusedReset), "{rewind:?}");
+            assert!(matches!(rewind, PendingChainRewind::Refused), "{rewind:?}");
             assert_eq!(dump(&db), before);
         }
 
@@ -2212,10 +2249,35 @@ mod rewind_past_pruning_horizon {
     }
 
     #[tokio::test]
-    async fn a_header_sync_rewind_above_the_pruned_height_only_has_to_beat_the_block_tip() {
+    async fn a_header_sync_rewind_that_would_delete_our_headers_must_beat_the_header_tip() {
         let db = create_db(HORIZON);
         let key_manager = KeyManager::new_random().unwrap();
         let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+        let before = dump(&db);
+
+        // From block 3, above the pruned height, stronger than the block tip but not the header tip
+        let pending_tip = honest.fetch_chain_header(6).unwrap();
+        let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
+        assert!(matches!(rewind, PendingChainRewind::Refused), "{rewind:?}");
+        assert_eq!(dump(&db), before);
+
+        let pending_tip = honest.fetch_chain_header(12).unwrap();
+        let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
+
+        match rewind {
+            PendingChainRewind::Rewound(removed) => assert_eq!(removed.len(), 2),
+            rewind => panic!("{rewind:?}"),
+        }
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
+        assert_eq!(db.fetch_last_header().unwrap().height, 3);
+    }
+
+    #[tokio::test]
+    async fn without_headers_above_the_block_tip_a_header_sync_rewind_only_has_to_beat_the_block_tip() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+        db.clear_all_pending_headers().unwrap();
 
         let pending_tip = honest.fetch_chain_header(6).unwrap();
         let rewind = db.rewind_for_pending_chain(blocks[2].hash(), pending_tip).unwrap();
@@ -2225,6 +2287,39 @@ mod rewind_past_pruning_horizon {
             rewind => panic!("{rewind:?}"),
         }
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_bad_body_deletes_the_headers_from_its_height_up() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        create_headers_ahead_of_blocks(&db, &key_manager);
+        let metadata = db.get_chain_metadata().unwrap();
+        let bad = db.fetch_chain_header(7).unwrap();
+
+        db.insert_bad_body(*bad.hash(), 7, "test".to_string()).unwrap();
+
+        assert!(db.bad_block_exists(*bad.hash()).unwrap().0);
+        assert_eq!(db.fetch_last_header().unwrap().height, 6);
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+    }
+
+    #[tokio::test]
+    async fn a_bad_body_deletes_no_headers_unless_it_is_ours_above_the_block_tip() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        create_headers_ahead_of_blocks(&db, &key_manager);
+        let metadata = db.get_chain_metadata().unwrap();
+
+        // Not our header at that height
+        db.insert_bad_body(FixedHash::from([9u8; 32]), 7, "test".to_string())
+            .unwrap();
+        assert_eq!(db.fetch_last_header().unwrap().height, 10);
+        // At or below the block tip
+        let block = db.fetch_chain_header(4).unwrap();
+        db.insert_bad_body(*block.hash(), 4, "test".to_string()).unwrap();
+        assert_eq!(db.fetch_last_header().unwrap().height, 10);
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
     }
 
     #[tokio::test]

@@ -468,8 +468,9 @@ async fn test_header_sync_even_headers_and_blocks_peer_metadata_improve_with_reo
 
     // Alice attempts header sync, but Bob's ping-pong data will be outdated when header sync is executed
     let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
-    // Bob's chain will reorg with improved metadata
-    sync::delete_some_blocks_and_headers(&blocks[4..=6], WhatToDelete::Blocks, &bob_node);
+    // Bob's chain will reorg with improved metadata. His headers go too: a fork weaker than headers he holds above
+    // his block tip could not replace them.
+    sync::delete_some_blocks_and_headers(&blocks[4..=6], WhatToDelete::BlocksAndHeaders, &bob_node);
     let _blocks = sync::create_and_add_some_blocks(
         &bob_node,
         &blocks[4],

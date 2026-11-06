@@ -401,6 +401,16 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(rewind_would_reset(hash: BlockHash) -> bool, "rewind_would_reset");
 
     make_async_fn!(
+        header_tip_to_beat(split_hash: BlockHash) -> Option<ChainHeader>,
+        "header_tip_to_beat"
+    );
+
+    make_async_fn!(
+        insert_bad_body(hash: BlockHash, height: u64, reason: String) -> (),
+        "insert_bad_body"
+    );
+
+    make_async_fn!(
         fetch_block_timestamps(start_hash: HashOutput) -> RollingVec<EpochTime>,
         "fetch_block_timestamps"
     );

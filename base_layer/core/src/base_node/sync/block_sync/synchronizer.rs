@@ -570,13 +570,10 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     return Err(err.into());
                 },
                 Err(err) => {
-                    // Add to bad blocks
+                    // Add to bad blocks, and drop the headers built on it
                     if let Err(err) = self
                         .db
-                        .write_transaction()
-                        .delete_orphan(header_hash)
-                        .insert_bad_block(header_hash, current_height, err.to_string())
-                        .commit()
+                        .insert_bad_body(header_hash, current_height, err.to_string())
                         .await
                     {
                         error!(target: LOG_TARGET, "Failed to insert bad block: {err}");

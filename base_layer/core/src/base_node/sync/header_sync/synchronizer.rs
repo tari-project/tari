@@ -848,8 +848,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .expect("synchronize_headers: expected there to be a valid tip header but it was None");
 
         let claimed_total_accumulated_diff = sync_peer.claimed_chain_metadata().accumulated_difficulty();
-        let verdict = self.pending_chain_verdict(&split_info).await?;
-        let has_better_pow = verdict == PendingChainVerdict::Switch;
+        // The split is fixed for this attempt; the rewind checks the same rule again under its lock
+        let impact = self.split_impact(&split_info).await?;
+        let verdict = self.pending_chain_verdict(&split_info, &impact);
 
         if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
@@ -874,7 +875,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 });
             }
             // The peer's claim holds, but our headers are stronger still
-            if verdict == PendingChainVerdict::RefusedReset {
+            if verdict == PendingChainVerdict::Refused {
                 return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
             }
             debug!(
@@ -891,7 +892,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         // If we already have a stronger chain at this point, switch over to it.
         // just in case we happen to be exactly HEADER_SYNC_INITIAL_MAX_HEADERS headers behind.
-        if has_better_pow {
+        if verdict == PendingChainVerdict::Switch {
             debug!(
                 target: LOG_TARGET,
                 "Remote chain from peer {} has higher PoW. Switching",
@@ -988,7 +989,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 // The remote chain has not (yet) been accepted.
                 // We check the tip difficulties, switching over to the new chain if a higher accumulated difficulty is
                 // achieved.
-                if self.pending_chain_verdict(&split_info).await? == PendingChainVerdict::Switch {
+                if self.pending_chain_verdict(&split_info, &impact) == PendingChainVerdict::Switch {
                     has_switched_to_new_chain = self.switch_to_pending_chain(&split_info).await?;
                 }
             }
@@ -1016,7 +1017,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             prev_height = Some(current_height);
         }
 
-        let mut refused_reset = false;
+        let mut refused = false;
+        let mut switch_after_claim_checks = false;
         if !has_switched_to_new_chain {
             let best_local_before_sync = split_info
                 .best_block_header
@@ -1036,9 +1038,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             local: best_local_before_sync,
                         });
                     }
-                    let mut verdict = self.pending_chain_verdict(&split_info).await?;
+                    let mut verdict = self.pending_chain_verdict(&split_info, &impact);
                     if verdict == PendingChainVerdict::Switch && !self.switch_to_pending_chain(&split_info).await? {
-                        verdict = PendingChainVerdict::RefusedReset;
+                        verdict = PendingChainVerdict::Refused;
                     }
                     if verdict == PendingChainVerdict::Switch {
                         has_switched_to_new_chain = true;
@@ -1048,9 +1050,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                             best_local_before_sync,
                             validated_total_accumulated_diff,
                         );
-                    } else if verdict == PendingChainVerdict::RefusedReset {
+                    } else if verdict == PendingChainVerdict::SwitchAfterClaimChecks {
+                        switch_after_claim_checks = true;
+                    } else if verdict == PendingChainVerdict::Refused {
                         // Decided after the claim checks below
-                        refused_reset = true;
+                        refused = true;
                     } else {
                         // We have a stronger chain, so we do not commit the headers.
                         debug!(
@@ -1099,7 +1103,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             });
         }
         // The peer's claim holds, but our headers are stronger still
-        if refused_reset {
+        if refused {
+            return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
+        }
+        // The peer's claim holds, so its chain may now reset ours
+        if switch_after_claim_checks && !self.switch_to_pending_chain(&split_info).await? {
             return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
         }
 
@@ -1142,29 +1150,41 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         self.header_validator.compare_chains(current_tip, proposed_tip).is_lt()
     }
 
-    /// Whether to switch to the pending chain: it has to be stronger than our block tip, and if switching would reset
-    /// this pruned node to the genesis block, also stronger than our header tip, so that a short fork cannot wipe a
-    /// stronger header chain we already validated.
-    async fn pending_chain_verdict(
-        &self,
-        split_info: &ChainSplitInfo,
-    ) -> Result<PendingChainVerdict, BlockHeaderSyncError> {
+    /// What switching to a chain from this split would do to ours
+    async fn split_impact(&self, split_info: &ChainSplitInfo) -> Result<SplitImpact, BlockHeaderSyncError> {
+        if split_info.reorg_steps_back == 0 {
+            return Ok(SplitImpact {
+                header_tip_to_beat: None,
+                would_reset: false,
+            });
+        }
+        Ok(SplitImpact {
+            header_tip_to_beat: self.db.header_tip_to_beat(split_info.chain_split_hash).await?,
+            would_reset: self.db.rewind_would_reset(split_info.chain_split_hash).await?,
+        })
+    }
+
+    /// Whether to switch to the pending chain. It has to be stronger than our block tip, and if switching would delete
+    /// headers we hold above our block tip, also stronger than our header tip, so that a weaker chain cannot remove a
+    /// stronger header chain we already validated. A switch that resets the chain waits for the peer's claim checks.
+    fn pending_chain_verdict(&self, split_info: &ChainSplitInfo, impact: &SplitImpact) -> PendingChainVerdict {
         if !self.pending_chain_has_higher_pow(&split_info.best_block_header) {
-            return Ok(PendingChainVerdict::Weaker);
+            return PendingChainVerdict::Weaker;
         }
-        if split_info.reorg_steps_back == 0 || !self.db.rewind_would_reset(split_info.chain_split_hash).await? {
-            return Ok(PendingChainVerdict::Switch);
+        if let Some(header_tip) = &impact.header_tip_to_beat &&
+            !self.pending_chain_has_higher_pow(header_tip)
+        {
+            return PendingChainVerdict::Refused;
         }
-        let header_tip = self.db.fetch_last_chain_header().await?;
-        if self.pending_chain_has_higher_pow(&header_tip) {
-            Ok(PendingChainVerdict::Switch)
+        if impact.would_reset {
+            PendingChainVerdict::SwitchAfterClaimChecks
         } else {
-            Ok(PendingChainVerdict::RefusedReset)
+            PendingChainVerdict::Switch
         }
     }
 
-    /// Switches to the pending chain. Returns false, having changed nothing, if that would reset the chain and the
-    /// pending chain is not stronger than our header tip.
+    /// Switches to the pending chain. Returns false, having changed nothing, if that would delete headers above our
+    /// block tip and the pending chain is not stronger than our header tip.
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<bool, BlockHeaderSyncError> {
         // Stop accepting propagated blocks while we swap to the peer's headers, then make sure no block that
         // landed during the attempt has made our chain the stronger one.
@@ -1207,7 +1227,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 PendingChainRewind::Reset(blocks) => {
                     return Err(BlockHeaderSyncError::ChainResetToGenesis { removed: blocks });
                 },
-                PendingChainRewind::RefusedReset => {
+                PendingChainRewind::Refused => {
                     self.db.inner().clear_disable_add_block_flag();
                     return Ok(false);
                 },
@@ -1274,10 +1294,21 @@ async fn within_budget<F: Future>(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingChainVerdict {
     Switch,
+    /// Stronger than our chain, but switching resets it to the genesis block, so only once the peer's claim has been
+    /// checked
+    SwitchAfterClaimChecks,
     /// Not stronger than our block tip
     Weaker,
-    /// Stronger than our block tip, but switching would reset the chain and it is not stronger than our header tip
-    RefusedReset,
+    /// Stronger than our block tip, but switching would delete headers we hold above it and it is not stronger than
+    /// our header tip
+    Refused,
+}
+
+/// What switching to a chain from the split would do to ours. Fixed for a sync attempt.
+struct SplitImpact {
+    /// Our header tip, if switching would delete headers we hold above our block tip
+    header_tip_to_beat: Option<ChainHeader>,
+    would_reset: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1343,7 +1374,7 @@ mod test {
             blockchain::{TempDatabase, create_main_chain, create_store_with_consensus_and_validators_and_config},
             create_consensus_rules,
         },
-        validation::mocks::MockValidator,
+        validation::{ValidationError, mocks::MockValidator},
     };
 
     /// A pruned chain of five blocks with its pruned height at 2, and the split at block 1 below it
@@ -1436,6 +1467,7 @@ mod test {
             .fetch_header_by_block_hash(split_info.chain_split_hash)
             .unwrap()
             .unwrap();
+        let impact = synchronizer.split_impact(split_info).await.unwrap();
         let mut verdicts = Vec::new();
         for _ in 0..max_len {
             validate_next_header(&mut synchronizer.header_validator, &prev).await;
@@ -1446,7 +1478,7 @@ mod test {
                 .unwrap()
                 .header()
                 .clone();
-            verdicts.push(synchronizer.pending_chain_verdict(split_info).await.unwrap());
+            verdicts.push(synchronizer.pending_chain_verdict(split_info, &impact));
         }
         (synchronizer.header_validator.take_valid_headers(), verdicts)
     }
@@ -1493,7 +1525,7 @@ mod test {
         let (headers, verdicts) = grow_pending_chain(&db, &rules, &split_info, 20).await;
         let len = verdicts
             .iter()
-            .position(|verdict| *verdict == PendingChainVerdict::RefusedReset)
+            .position(|verdict| *verdict == PendingChainVerdict::Refused)
             .unwrap() +
             1;
         let peer_db = create_store_with_consensus_and_validators_and_config(
@@ -1602,7 +1634,7 @@ mod test {
         let metadata = db.get_chain_metadata().unwrap();
         split_info.chain_split_hash = *db.fetch_genesis_block().hash();
         let (headers, verdicts) = grow_pending_chain(&db, &rules, &split_info, HEADER_SYNC_INITIAL_MAX_HEADERS).await;
-        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::RefusedReset));
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::Refused));
         let peer_db = create_store_with_consensus_and_validators_and_config(
             rules.clone(),
             Validators::new(
@@ -1650,7 +1682,7 @@ mod test {
         // Stronger than our blocks but not our headers from the first batch on
         assert_eq!(
             verdicts[HEADER_SYNC_INITIAL_MAX_HEADERS - 1],
-            PendingChainVerdict::RefusedReset
+            PendingChainVerdict::Refused
         );
         let peer_db = create_store_with_consensus_and_validators_and_config(
             rules.clone(),
@@ -1679,7 +1711,7 @@ mod test {
     #[tokio::test]
     async fn a_streamed_peer_chain_weaker_than_our_headers_is_refused_without_a_ban() {
         let (db, rules, peer_db, peer_tip, verdicts) = create_streaming_peer(HEADER_SYNC_INITIAL_MAX_HEADERS + 5).await;
-        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::RefusedReset));
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::Refused));
         let metadata = db.get_chain_metadata().unwrap();
         let last_header_height = db.fetch_last_header().unwrap().height;
 
@@ -1728,7 +1760,7 @@ mod test {
         let (db, rules, peer_db, peer_tip, verdicts) =
             create_streaming_peer(HEADER_SYNC_INITIAL_MAX_HEADERS + 30).await;
         // It only beats our header tip after the first batch
-        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::Switch));
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::SwitchAfterClaimChecks));
 
         let err = sync_from_peer(
             &db,
@@ -1746,13 +1778,135 @@ mod test {
     }
 
     #[tokio::test]
+    async fn a_streamed_peer_chain_that_would_reset_us_but_inflates_its_claim_is_banned_before_the_reset() {
+        let (db, rules, peer_db, peer_tip, verdicts) =
+            create_streaming_peer(HEADER_SYNC_INITIAL_MAX_HEADERS + 30).await;
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::SwitchAfterClaimChecks));
+        let metadata = db.get_chain_metadata().unwrap();
+        let last_header_height = db.fetch_last_header().unwrap().height;
+        let difficulty = peer_tip.accumulated_data().total_accumulated_difficulty;
+
+        let err = sync_from_peer(&db, &rules, &peer_db, peer_tip.height() + 5, difficulty)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. }),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_some());
+
+        let err = sync_from_peer(&db, &rules, &peer_db, peer_tip.height(), difficulty + 1)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. }),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_some());
+
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, last_header_height);
+    }
+
+    /// A peer one header past our block tip, which would delete the headers we hold above it and so let a weaker fork
+    /// reset us next
+    #[tokio::test]
+    async fn a_peer_cannot_lower_our_header_tip_with_a_chain_weaker_than_our_headers() {
+        let (db, rules, _) = create_pruned_chain();
+        add_headers(&db, &rules, 8).await;
+        let metadata = db.get_chain_metadata().unwrap();
+        let peer_db = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            ),
+            BlockchainDatabaseConfig::default(),
+        );
+        let our_blocks = (1..=5).map(|height| db.fetch_chain_header(height).unwrap()).collect();
+        peer_db.insert_valid_headers(our_blocks).unwrap();
+        // One header on our block tip that differs from our own next header
+        let mut validator =
+            BlockHeaderSyncValidator::new(peer_db.clone().into(), rules.clone(), RandomXFactory::default());
+        let split = peer_db.fetch_last_chain_header().unwrap();
+        validator.initialize_state(split.hash()).await.unwrap();
+        let mut next = BlockHeader::from_previous(split.header());
+        next.timestamp = split.header().timestamp.checked_add(EpochTime::from(2)).unwrap();
+        next.kernel_mmr_size += 1;
+        next.output_smt_size += 1;
+        validator.validate(next).await.unwrap();
+        peer_db.insert_valid_headers(validator.take_valid_headers()).unwrap();
+        let peer_tip = peer_db.fetch_last_chain_header().unwrap();
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::WeakerThanLocalHeaders), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, 13);
+    }
+
+    #[tokio::test]
+    async fn a_peer_chain_through_a_bad_block_is_refused_with_a_ban() {
+        let (db, rules, mut split_info) = create_pruned_chain();
+        split_info.chain_split_hash = *db.fetch_genesis_block().hash();
+        let (headers, _) = grow_pending_chain(&db, &rules, &split_info, 10).await;
+        // A block of the peer's chain whose body we found invalid
+        let bad = headers[7].clone();
+        db.insert_bad_body(*bad.hash(), bad.height(), "test".to_string())
+            .unwrap();
+        let peer_db = create_store_with_consensus_and_validators_and_config(
+            rules.clone(),
+            Validators::new(
+                MockValidator::new(true),
+                MockValidator::new(true),
+                MockValidator::new(true),
+            ),
+            BlockchainDatabaseConfig::default(),
+        );
+        let peer_tip = headers.last().unwrap().clone();
+        peer_db.insert_valid_headers(headers).unwrap();
+        let metadata = db.get_chain_metadata().unwrap();
+
+        let err = sync_from_peer(
+            &db,
+            &rules,
+            &peer_db,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(
+                err,
+                BlockHeaderSyncError::ValidationFailed(ValidationError::BadBlockFound { .. })
+            ),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_some());
+        assert_eq!(db.get_chain_metadata().unwrap(), metadata);
+        assert_eq!(db.fetch_last_header().unwrap().height, 5);
+    }
+
+    #[tokio::test]
     async fn a_stronger_peer_split_at_genesis_resets_the_chain_and_ends_header_sync() {
         let (db, rules, mut split_info) = create_pruned_chain();
         split_info.chain_split_hash = *db.fetch_genesis_block().hash();
         let (headers, verdicts) = grow_pending_chain(&db, &rules, &split_info, 20).await;
         let len = verdicts
             .iter()
-            .position(|verdict| *verdict == PendingChainVerdict::Switch)
+            .position(|verdict| *verdict == PendingChainVerdict::SwitchAfterClaimChecks)
             .unwrap() +
             1;
         let peer_db = create_store_with_consensus_and_validators_and_config(
@@ -1784,8 +1938,24 @@ mod test {
         assert_eq!(db.fetch_last_header().unwrap().height, 0);
     }
 
+    /// Weaker than the block tip, then stronger than it but not the header tip, then stronger than both
+    fn assert_verdicts_in_order(verdicts: &[PendingChainVerdict], last: PendingChainVerdict) {
+        let refused = verdicts
+            .iter()
+            .position(|v| *v == PendingChainVerdict::Refused)
+            .unwrap();
+        let switch = verdicts.iter().position(|v| *v == last).unwrap();
+        assert!(verdicts[..refused].iter().all(|v| *v == PendingChainVerdict::Weaker));
+        assert!(
+            verdicts[refused..switch]
+                .iter()
+                .all(|v| *v == PendingChainVerdict::Refused)
+        );
+        assert!(verdicts[switch..].iter().all(|v| *v == last));
+    }
+
     #[tokio::test]
-    async fn a_chain_split_above_the_pruned_height_only_has_to_beat_the_block_tip() {
+    async fn a_chain_that_would_delete_our_headers_must_beat_the_header_tip() {
         let (db, rules, mut split_info) = create_pruned_chain();
         add_headers(&db, &rules, 8).await;
         // Block 3, above the pruned height
@@ -1795,12 +1965,27 @@ mod test {
 
         let (_, verdicts) = grow_pending_chain(&db, &rules, &split_info, 20).await;
 
+        assert_verdicts_in_order(&verdicts, PendingChainVerdict::Switch);
+    }
+
+    #[tokio::test]
+    async fn without_headers_above_the_block_tip_a_chain_only_has_to_beat_the_block_tip() {
+        let (db, rules, mut split_info) = create_pruned_chain();
+        let split = db.fetch_chain_header(3).unwrap();
+        split_info.chain_split_hash = *split.hash();
+        split_info.reorg_steps_back = 2;
+
+        let (_, verdicts) = grow_pending_chain(&db, &rules, &split_info, 10).await;
+
         let first_stronger = verdicts
             .iter()
             .position(|verdict| *verdict != PendingChainVerdict::Weaker)
             .unwrap();
-        assert_eq!(verdicts[first_stronger], PendingChainVerdict::Switch);
-        assert!(!verdicts.contains(&PendingChainVerdict::RefusedReset));
+        assert!(
+            verdicts[first_stronger..]
+                .iter()
+                .all(|v| *v == PendingChainVerdict::Switch)
+        );
     }
 
     /// Validates `n` headers on the split as the synchronizer's pending chain
@@ -1870,57 +2055,11 @@ mod test {
         // Validated headers far above the block tip
         add_headers(&db, &rules, 8).await;
         let metadata = db.get_chain_metadata().unwrap();
-        let (connectivity, _mock) = create_connectivity_mock();
-        let mut sync_peers = vec![];
-        let mut synchronizer = HeaderSynchronizer::new(
-            BlockchainSyncConfig::default(),
-            AsyncBlockchainDb::new(db.clone()),
-            rules,
-            connectivity,
-            &mut sync_peers,
-            RandomXFactory::default(),
-            &metadata,
-        );
-        synchronizer
-            .header_validator
-            .initialize_state(&split_info.chain_split_hash)
-            .await
-            .unwrap();
-        let mut prev = db
-            .fetch_header_by_block_hash(split_info.chain_split_hash)
-            .unwrap()
-            .unwrap();
 
-        // Grow the peer's chain from the split until it beats our header tip as well
-        let mut verdicts = Vec::new();
-        for _ in 0..30 {
-            validate_next_header(&mut synchronizer.header_validator, &prev).await;
-            prev = synchronizer
-                .header_validator
-                .valid_headers()
-                .last()
-                .unwrap()
-                .header()
-                .clone();
-            let verdict = synchronizer.pending_chain_verdict(&split_info).await.unwrap();
-            verdicts.push(verdict);
-            if verdict == PendingChainVerdict::Switch {
-                break;
-            }
-        }
+        let (_, verdicts) = grow_pending_chain(&db, &rules, &split_info, 30).await;
 
-        // Weaker than the block tip, then stronger than it but not the header tip, then stronger than both
-        let refused = verdicts
-            .iter()
-            .position(|v| *v == PendingChainVerdict::RefusedReset)
-            .unwrap();
-        assert!(verdicts[..refused].iter().all(|v| *v == PendingChainVerdict::Weaker));
-        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::Switch));
-        assert!(
-            verdicts[refused..verdicts.len() - 1]
-                .iter()
-                .all(|v| *v == PendingChainVerdict::RefusedReset)
-        );
+        // A reset waits for the peer's claim checks
+        assert_verdicts_in_order(&verdicts, PendingChainVerdict::SwitchAfterClaimChecks);
         // Deciding rewinds nothing, and refusing is no fault of the peer
         assert_eq!(db.get_chain_metadata().unwrap(), metadata);
         assert_eq!(db.fetch_last_header().unwrap().height, 13);
