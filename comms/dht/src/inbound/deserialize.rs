@@ -347,4 +347,52 @@ mod test {
             .unwrap();
         assert_eq!(ts.count(), 0);
     }
+
+    /// A peer that is not in a working peer database is to blame: the message counts as its own
+    #[tokio::test]
+    async fn an_unknown_peer_is_counted_as_own() {
+        use tari_test_utils::async_assert;
+
+        use crate::{
+            connectivity::{FloodSeries, MetricsCollector},
+            inbound::MetricsLayer,
+        };
+
+        let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+        let mut service = MetricsLayer::new(collector.clone())
+            .layer(DeserializeLayer::new(build_peer_manager()).layer(service_spy().to_service::<PipelineError>()));
+
+        let node_identity = make_node_identity();
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            &b"A".to_vec(),
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+            false,
+        )
+        .unwrap();
+        let result = service
+            .call(make_comms_inbound_message(
+                &node_identity,
+                dht_envelope.to_encoded_bytes().into(),
+            ))
+            .await;
+        assert!(result.is_err());
+
+        async_assert!(
+            collector
+                .get_total_message_count_in_timespan(Duration::from_secs(60))
+                .await
+                .unwrap() ==
+                1,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let ts = collector
+            .get_messages_received_timeseries(node_identity.node_id().clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
+    }
 }
