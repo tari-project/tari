@@ -151,7 +151,18 @@ impl OnConnect {
 
         debug!(target: LOG_TARGET, "Node peer `{node_id}` connected. Syncing peers...");
 
-        if let Err(err) = self.sync_peers(conn).await {
+        // The per-item timeouts alone let a peer drip records for minutes, holding up every other connection
+        let deadline = self.config().network_discovery.on_connect_sync_timeout;
+        let result = time::timeout(deadline, self.sync_peers(conn))
+            .await
+            .unwrap_or_else(|_| {
+                Err(NetworkDiscoveryError::Timeout {
+                    operation: "on_connect_sync".to_string(),
+                    peer: node_id.to_hex(),
+                    duration: format!("{deadline:.2?}"),
+                })
+            });
+        if let Err(err) = result {
             if is_bad_data_offence(&err) {
                 warn!(target: LOG_TARGET, "Peer `{node_id}` sent bad peer data: {err}. Banning peer.");
                 ban_peer(&self.context, node_id, OffenceSeverity::High, err).await;

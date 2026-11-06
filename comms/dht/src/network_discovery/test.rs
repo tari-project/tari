@@ -865,6 +865,115 @@ mod rebootstrap {
         }
     }
 
+    /// Sends a record that does not convert (so is neither stored, charged nor hostile) every `interval`, until the
+    /// client hangs up
+    struct DripService {
+        interval: Duration,
+    }
+
+    #[tari_comms::async_trait]
+    impl DhtRpcService for DripService {
+        async fn get_peers(&self, _: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            let interval = self.interval;
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(interval).await;
+                    let record = GetPeersResponse {
+                        peer: Some(PeerInfo {
+                            public_key: vec![1u8; 3],
+                            claims: vec![],
+                        }),
+                    };
+                    if tx.send(Ok(record)).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            Ok(Streaming::new(rx))
+        }
+    }
+
+    async fn drip_server(interval: Duration) -> (MockRpcServer<DhtService<DripService>>, PeerConnection) {
+        let identity = make_node_identity();
+        let peer = identity.to_peer();
+        let mut server = MockRpcServer::new(DhtService::new(DripService { interval }), identity);
+        server.serve();
+        let conn = server
+            .create_connection(peer, ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        (server, conn)
+    }
+
+    fn with_sync_timeouts(context: &mut NetworkDiscoveryContext, streaming: Duration, sync: Duration) {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_streaming_timeout = streaming;
+        config.network_discovery.on_connect_sync_timeout = sync;
+        context.config = Arc::new(config);
+    }
+
+    /// A peer dripping records just inside the streaming timeout is cut off at the overall sync deadline, and backed
+    /// off rather than banned
+    #[tokio::test]
+    async fn a_drip_feeding_on_connect_sync_ends_at_the_sync_deadline() {
+        const SYNC_TIMEOUT: Duration = Duration::from_secs(1);
+        let (mut context, mock, _events) = context(None);
+        with_sync_timeouts(&mut context, Duration::from_millis(200), SYNC_TIMEOUT);
+        let (_server, conn) = drip_server(Duration::from_millis(150)).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context);
+
+        let started = Instant::now();
+        on_connect.sync_from(conn).await;
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= SYNC_TIMEOUT && elapsed < 2 * SYNC_TIMEOUT,
+            "took {elapsed:.1?}"
+        );
+        assert!(!on_connect.is_recently_synced(&node_id, Instant::now() + Duration::from_secs(5 * 60)));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+    }
+
+    /// Attack G with drip-feeding: five fresh identities each drip uncharged records just inside the streaming
+    /// timeout. Each sync is cut off at the sync deadline, so an honest sixth peer is synced from right after them
+    /// rather than after 5 x 100 items' worth of streaming timeouts.
+    #[tokio::test]
+    async fn drip_feeding_identities_hold_on_connect_only_until_the_sync_deadline() {
+        const STREAMING_TIMEOUT: Duration = Duration::from_millis(200);
+        const SYNC_TIMEOUT: Duration = Duration::from_millis(500);
+        let (mut context, _mock, _events) = context(None);
+        with_sync_timeouts(&mut context, STREAMING_TIMEOUT, SYNC_TIMEOUT);
+        let mut on_connect = OnConnect::new(context.clone());
+
+        let mut attackers = Vec::new();
+        for _ in 0..5 {
+            attackers.push(drip_server(STREAMING_TIMEOUT * 3 / 4).await);
+        }
+        let honest = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let honest_peers = honest
+            .iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect();
+        let (_honest_server, honest_conn) = peers_server(honest_peers, false).await;
+
+        let started = Instant::now();
+        for (_, conn) in &attackers {
+            on_connect.sync_from(conn.clone()).await;
+        }
+        let attackers_done = started.elapsed();
+        assert!(
+            attackers_done < 5 * SYNC_TIMEOUT + STREAMING_TIMEOUT,
+            "took {attackers_done:.1?}"
+        );
+        on_connect.sync_from(honest_conn).await;
+        let honest_took = started.elapsed() - attackers_done;
+        assert!(honest_took < 2 * STREAMING_TIMEOUT, "took {honest_took:.1?}");
+        for identity in &honest {
+            assert!(context.peer_manager.exists(identity.public_key()).await.unwrap());
+        }
+    }
+
     #[tokio::test]
     async fn attempted_peers_are_bounded_and_forgotten_after_a_rebootstrap() {
         let (context, _mock, _events) = context(None);
