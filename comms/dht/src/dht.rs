@@ -1114,6 +1114,12 @@ mod test {
             .await
             .unwrap();
         assert_eq!(ts.count(), 0);
+        // The node-wide total still counts every message
+        let total = metrics
+            .get_total_message_count_in_timespan(Duration::from_secs(60))
+            .await
+            .unwrap();
+        assert_eq!(total, 4);
     }
 
     /// A peer replaying its own signed message is caught by the flood check even though dedup drops the replays

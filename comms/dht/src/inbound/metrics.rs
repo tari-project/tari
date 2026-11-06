@@ -42,9 +42,9 @@ tokio::task_local! {
     static FLOOD_SAMPLE: Arc<FloodSample>;
 }
 
-/// Records the flood-ban sample of the inbound message being handled, if it counts. Called by the dedup layer as soon
-/// as it knows: a duplicate that another peer delivered first does not count, so relays are not blamed for what they
-/// pass on.
+/// Records the flood-ban sample of the inbound message being handled. Called by the dedup layer as soon as it knows
+/// whether the message counts against its peer: a duplicate that another peer delivered first only counts in the
+/// node-wide total, so relays are not blamed for what they pass on.
 pub(crate) async fn record_flood_sample(counts: bool) {
     if let Ok(sample) = FLOOD_SAMPLE.try_with(Arc::clone) {
         sample.record(counts).await;
@@ -66,13 +66,13 @@ impl FloodSample {
         }
         // Waits for room in the collector's queue, so that samples are not dropped (and a flood under-counted) when
         // the collector falls behind
-        if counts &&
-            self.collector
-                .clone()
-                .write_metric_message_received(self.source_peer.clone())
-                .await
-                .is_err()
-        {
+        let mut collector = self.collector.clone();
+        let result = if counts {
+            collector.write_metric_message_received(self.source_peer.clone()).await
+        } else {
+            collector.write_metric_relayed_duplicate_received().await
+        };
+        if result.is_err() {
             debug!(target: LOG_TARGET, "Unable to write metric: the metric collector is shut down");
         }
         self.recorded.store(true, Ordering::Relaxed);

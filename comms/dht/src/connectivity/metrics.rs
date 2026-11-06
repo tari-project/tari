@@ -48,6 +48,8 @@ enum MetricOp {
 #[derive(Debug)]
 pub enum MetricWrite {
     MessageReceived(NodeId),
+    /// A duplicate first delivered by another peer: counted in the node-wide total only, not against the peer
+    RelayedDuplicateReceived,
 }
 
 #[derive(Debug)]
@@ -204,6 +206,9 @@ impl MetricsCollector {
             MetricWrite::MessageReceived(node_id) => {
                 self.state.add_message_received(node_id);
             },
+            MetricWrite::RelayedDuplicateReceived => {
+                self.state.all_messages_recv.inc();
+            },
         }
     }
 
@@ -333,6 +338,14 @@ impl MetricsCollectorHandle {
     pub async fn write_metric_message_received(&mut self, node_id: NodeId) -> Result<(), MetricsError> {
         self.inner
             .send(MetricOp::Write(MetricWrite::MessageReceived(node_id)))
+            .await
+            .map_err(Into::into)
+    }
+
+    /// Write a received duplicate that another peer delivered first. It counts in the node-wide message total only.
+    pub async fn write_metric_relayed_duplicate_received(&mut self) -> Result<(), MetricsError> {
+        self.inner
+            .send(MetricOp::Write(MetricWrite::RelayedDuplicateReceived))
             .await
             .map_err(Into::into)
     }

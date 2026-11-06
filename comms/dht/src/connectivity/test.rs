@@ -330,18 +330,18 @@ async fn a_flood_split_by_a_reconnect_is_still_banned() {
     );
 }
 
-/// A burst just after a pool update tick that is followed by silence is checked before it leaves the flood-ban window,
-/// not only at the next pool update tick.
+/// A burst followed by silence is banned within the flood check interval, well before the next pool update tick and
+/// however long the flood-ban timespan is.
 #[tokio::test(start_paused = true)]
-async fn a_burst_followed_by_silence_is_banned() {
+async fn a_burst_followed_by_silence_is_banned_promptly() {
     let config = DhtConfig {
         flood_ban_max_msg_count: 10,
+        flood_ban_timespan: Duration::from_secs(60 * 60),
         ..Default::default()
     };
-    assert!(config.flood_ban_timespan < config.connectivity.update_interval);
     let (mut dht_connectivity, _, connectivity_state, _, _, shutdown) =
         setup(config, make_node_identity(), vec![]).await;
-    let mut metrics_collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+    let mut metrics_collector = MetricsCollector::spawn(11, Duration::from_secs(60 * 60));
     dht_connectivity.metrics_collector = metrics_collector.clone();
     let peer = make_node_identity().node_id().clone();
     let (_event_tx, event_rx) = broadcast::channel(1);
@@ -354,8 +354,8 @@ async fn a_burst_followed_by_silence_is_banned() {
             .await
             .unwrap();
     }
-    // Silent until just after the first flood-ban timespan, well before the next pool update tick
-    tokio::time::sleep(Duration::from_secs(61)).await;
+    // Silent until just after the first flood check
+    tokio::time::sleep(Duration::from_secs(10)).await;
     let banned = connectivity_state.take_banned_peers().await;
     assert!(banned.iter().any(|(node_id, ..)| *node_id == peer), "{banned:?}");
 

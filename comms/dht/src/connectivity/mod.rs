@@ -121,6 +121,9 @@ const INBOUND_LEARNED_DIAL_DIVISOR: usize = 4;
 
 /// How long to wait before retrying when the initial pool refresh fails at start-up.
 const INITIAL_REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
+/// How often flooding peers detected by the metrics collector are banned, at most. Shorter if the flood-ban timespan
+/// is.
+const FLOOD_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Per-peer dial backoff state.
 ///
@@ -430,10 +433,12 @@ impl DhtConnectivity {
         self.pool_fill_started = Some(now.into_std());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-        // The collector detects floods as messages arrive, so a late tick only delays the ban
-        let flood_ban_timespan = self.config.flood_ban_timespan;
-        let mut flood_ticker =
-            time::interval_at(now.checked_add(flood_ban_timespan).unwrap_or(now), flood_ban_timespan);
+        // The collector detects floods as messages arrive, so this tick only sets how soon a flooding peer is banned
+        let flood_check_interval = FLOOD_CHECK_INTERVAL.min(self.config.flood_ban_timespan);
+        let mut flood_ticker = time::interval_at(
+            now.checked_add(flood_check_interval).unwrap_or(now),
+            flood_check_interval,
+        );
         flood_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut connectivity_events_closed = false;
         loop {
