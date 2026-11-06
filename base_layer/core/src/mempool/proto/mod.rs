@@ -24,7 +24,6 @@ pub use mempool::{InventoryIndexes, TransactionInventory, TransactionItem};
 
 use crate::proto::mempool;
 
-mod state_response;
 mod stats_response;
 mod sync_protocol;
 mod tx_storage_response;
