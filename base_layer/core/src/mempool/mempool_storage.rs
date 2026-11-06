@@ -674,33 +674,46 @@ impl MempoolStorage {
         let mut num_invalid_txs: i64 = 0;
         let tip = self.chain_tip();
 
-        // Clear out all transactions from the unconfirmed pool and re-submit them to the unconfirmed mempool for
-        // validation. This is important as invalid transactions that have not been mined yet may remain in the mempool
-        // after a reorg.
+        // Drain the unconfirmed pool first, then re-insert transactions from the reorg pool before the drained
+        // unconfirmed transactions so that parents from reorged blocks are back in the unconfirmed pool before any
+        // children spending their outputs are re-validated. If a transaction temporarily fails as `NotStoredOrphan`
+        // because one of its parent transactions has not been restored yet (e.g. an aggregate in `reorg_txs` that also
+        // spends an output from an unconfirmed parent in `removed_txs`), retry deferred orphans until a pass makes no
+        // further progress.
         let removed_txs = self.unconfirmed_pool.drain_all_mempool_transactions();
         let num_removed_txs = removed_txs.len();
-        // Try to add in all the transactions again.
-        for tx in removed_txs {
-            let resp = self
-                .insert(tx, tip.as_ref())
-                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-            if resp == TxStorageResponse::NotStoredAlreadySpent {
-                num_invalid_txs = num_invalid_txs.saturating_add(1);
-            }
-        }
 
         // Remove re-orged transactions from reorg pool and re-submit them to the unconfirmed mempool
         let reorg_txs = self
             .reorg_pool
             .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         let num_reorg_txs = reorg_txs.len();
-        for tx in reorg_txs {
-            let resp = self
-                .insert(tx, tip.as_ref())
-                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-            if resp == TxStorageResponse::NotStoredAlreadySpent {
-                num_invalid_txs = num_invalid_txs.saturating_add(1);
+
+        let mut pending_txs: Vec<Arc<Transaction>> = reorg_txs.into_iter().chain(removed_txs).collect();
+        while !pending_txs.is_empty() {
+            let mut deferred_orphans = Vec::new();
+            let mut made_progress = false;
+            for tx in pending_txs {
+                let resp = self
+                    .insert(tx.clone(), tip.as_ref())
+                    .map_err(|e| MempoolError::InternalError(e.to_string()))?;
+                match resp {
+                    TxStorageResponse::UnconfirmedPool => {
+                        made_progress = true;
+                    },
+                    TxStorageResponse::NotStoredOrphan => {
+                        deferred_orphans.push(tx);
+                    },
+                    TxStorageResponse::NotStoredAlreadySpent => {
+                        num_invalid_txs = num_invalid_txs.saturating_add(1);
+                    },
+                    _ => {},
+                }
             }
+            if !made_progress {
+                break;
+            }
+            pending_txs = deferred_orphans;
         }
 
         if num_invalid_txs > 0 {
@@ -2011,5 +2024,356 @@ mod test {
         let response = MempoolStorage::insert_unlocked(&storage, child).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         assert_eq!(pool_len(&storage), 2);
+    }
+
+    #[tokio::test]
+    async fn process_reorg_keeps_valid_child_of_reorged_block_transaction() {
+        use tari_transaction_components::{
+            crypto_factories::CryptoFactories,
+            test_helpers::spend_utxos,
+            txn_schema,
+        };
+
+        use crate::{
+            chain_storage::BlockAddResult,
+            mempool::Mempool,
+            test_helpers::blockchain::{TestBlockchain, create_chained_blocks},
+            validation::transaction::TransactionFullValidator,
+        };
+
+        let rules = create_consensus_rules();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+
+        let (_block_1, coinbase_1) = blockchain.add_next_tip(crate::block_spec!("1->GB")).unwrap();
+        let (_block_2, _coinbase_2) = blockchain.add_next_tip(crate::block_spec!("2->1")).unwrap();
+        let (block_3, _coinbase_3) = blockchain.add_next_tip(crate::block_spec!("3->2")).unwrap();
+
+        let (tx_parent, parent_outputs) = spend_utxos(
+            txn_schema!(
+                from: vec![coinbase_1],
+                to: vec![MicroMinotari(2_000_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+        let (tx_child, _child_outputs) = spend_utxos(
+            txn_schema!(
+                from: vec![parent_outputs[0].clone()],
+                to: vec![MicroMinotari(1_000_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+        let tx_parent = Arc::new(tx_parent);
+        let tx_child = Arc::new(tx_child);
+
+        let validator = TransactionFullValidator::new(
+            CryptoFactories::default(),
+            false,
+            blockchain.db().clone(),
+            rules.clone(),
+        );
+        let mempool = Mempool::new(MempoolConfig::default(), rules, Box::new(validator));
+
+        assert_eq!(
+            mempool.insert(tx_parent.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        let (block_4a, _) = blockchain
+            .add_next_tip(crate::block_spec!("4a->3", transactions: vec![(*tx_parent).clone()]))
+            .unwrap();
+        mempool
+            .process_published_block(block_4a.to_arc_block())
+            .await
+            .unwrap();
+        assert_eq!(
+            mempool.has_transaction(tx_parent.clone()).await.unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+
+        assert_eq!(
+            mempool.insert(tx_child.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        let (_fork_names, fork_blocks) = create_chained_blocks(
+            blockchain.db(),
+            crate::block_specs!(["4b->GB"], ["5b->4b"]),
+            block_3,
+        );
+        let block_4b = fork_blocks.get("4b").unwrap().clone();
+        let block_5b = fork_blocks.get("5b").unwrap().clone();
+        blockchain.db().add_block(block_4b.to_arc_block()).unwrap();
+        let reorg_result = blockchain.db().add_block(block_5b.to_arc_block()).unwrap().result;
+        assert!(
+            matches!(reorg_result, BlockAddResult::ChainReorg { .. }),
+            "Expected ChainReorg when adding heavier fork 5b, got: {reorg_result:?}"
+        );
+
+        mempool
+            .process_reorg(
+                vec![block_4a.to_arc_block()],
+                vec![block_4b.to_arc_block(), block_5b.to_arc_block()],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            mempool.has_transaction(tx_parent).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_transaction(tx_child).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    #[tokio::test]
+    async fn reorg_pool_partial_kernel_match_cleans_up_all_kernel_signatures() {
+        use tari_transaction_components::{
+            crypto_factories::CryptoFactories,
+            test_helpers::spend_utxos,
+            txn_schema,
+        };
+
+        use crate::{
+            chain_storage::BlockAddResult,
+            mempool::Mempool,
+            test_helpers::blockchain::{TestBlockchain, create_chained_blocks},
+            validation::transaction::TransactionFullValidator,
+        };
+
+        let rules = create_consensus_rules();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+
+        let (_block_1, coinbase_1) = blockchain.add_next_tip(crate::block_spec!("1->GB")).unwrap();
+        let (_block_2, coinbase_2) = blockchain.add_next_tip(crate::block_spec!("2->1")).unwrap();
+        let (_block_3, _coinbase_3) = blockchain.add_next_tip(crate::block_spec!("3->2")).unwrap();
+
+        let mut setup_schema = txn_schema!(
+            from: vec![coinbase_2],
+            to: vec![MicroMinotari(1_000_000)],
+            fee: MicroMinotari(100)
+        );
+        setup_schema.script =
+            script!(CheckHeight(5) LeZero IfThen Nop Else Drop PushPubKey(Box::default()) EndIf).unwrap();
+        let (tx_setup, setup_outputs) = spend_utxos(setup_schema, &blockchain.km);
+        let (block_4, _coinbase_4) = blockchain
+            .add_next_tip(crate::block_spec!("4->3", transactions: vec![tx_setup]))
+            .unwrap();
+
+        let (tx1, _) = spend_utxos(
+            txn_schema!(
+                from: vec![coinbase_1],
+                to: vec![MicroMinotari(1_000_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+        let (tx2, _) = spend_utxos(
+            txn_schema!(
+                from: vec![setup_outputs[0].clone()],
+                to: vec![MicroMinotari(500_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+        let k2_sig = tx2.body.kernels()[0].excess_sig.get_signature().clone();
+
+        let mut agg_inputs = tx1.body.inputs().clone();
+        agg_inputs.extend(tx2.body.inputs().iter().cloned());
+        let mut agg_outputs = tx1.body.outputs().clone();
+        agg_outputs.extend(tx2.body.outputs().iter().cloned());
+        let mut agg_kernels = tx1.body.kernels().clone();
+        agg_kernels.extend(tx2.body.kernels().iter().cloned());
+        let mut tx_agg = Transaction::new(
+            agg_inputs,
+            agg_outputs,
+            agg_kernels,
+            &tx1.offset + &tx2.offset,
+            &tx1.script_offset + &tx2.script_offset,
+        );
+        tx_agg.body.sort();
+        let tx_agg = Arc::new(tx_agg);
+
+        let validator = TransactionFullValidator::new(
+            CryptoFactories::default(),
+            false,
+            blockchain.db().clone(),
+            rules.clone(),
+        );
+        let mempool = Mempool::new(MempoolConfig::default(), rules, Box::new(validator));
+
+        assert_eq!(
+            mempool.insert(tx_agg.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        let (block_5a, _) = blockchain
+            .add_next_tip(crate::block_spec!("5a->4", transactions: vec![tx1]))
+            .unwrap();
+        mempool
+            .process_published_block(block_5a.to_arc_block())
+            .await
+            .unwrap();
+        assert_eq!(
+            mempool.has_transaction(tx_agg.clone()).await.unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+
+        let (_fork_names, fork_blocks) = create_chained_blocks(
+            blockchain.db(),
+            crate::block_specs!(["5b->GB"], ["6b->5b"]),
+            block_4,
+        );
+        let block_5b = fork_blocks.get("5b").unwrap().clone();
+        let block_6b = fork_blocks.get("6b").unwrap().clone();
+        blockchain.db().add_block(block_5b.to_arc_block()).unwrap();
+        let reorg_result = blockchain.db().add_block(block_6b.to_arc_block()).unwrap().result;
+        assert!(
+            matches!(reorg_result, BlockAddResult::ChainReorg { .. }),
+            "Expected ChainReorg when adding heavier fork 6b, got: {reorg_result:?}"
+        );
+
+        mempool
+            .process_reorg(
+                vec![block_5a.to_arc_block()],
+                vec![block_5b.to_arc_block(), block_6b.to_arc_block()],
+            )
+            .await
+            .unwrap();
+
+        let (found, remaining) = mempool.retrieve_by_excess_sigs(vec![k2_sig.clone()]).await.unwrap();
+        assert!(found.is_empty());
+        assert_eq!(remaining, vec![k2_sig]);
+    }
+
+    #[tokio::test]
+    async fn process_reorg_keeps_reorged_aggregate_depending_on_unconfirmed_parent() {
+        use tari_transaction_components::{
+            crypto_factories::CryptoFactories,
+            test_helpers::spend_utxos,
+            txn_schema,
+        };
+
+        use crate::{
+            chain_storage::BlockAddResult,
+            mempool::Mempool,
+            test_helpers::blockchain::{TestBlockchain, create_chained_blocks},
+            validation::transaction::TransactionFullValidator,
+        };
+
+        let rules = create_consensus_rules();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+
+        let (_block_1, coinbase_1) = blockchain.add_next_tip(crate::block_spec!("1->GB")).unwrap();
+        let (_block_2, coinbase_2) = blockchain.add_next_tip(crate::block_spec!("2->1")).unwrap();
+        let (block_3, _coinbase_3) = blockchain.add_next_tip(crate::block_spec!("3->2")).unwrap();
+
+        // A stays unconfirmed; B spends A's output; C spends coinbase_2; aggregate B+C is in the mempool.
+        let (tx_a, a_outputs) = spend_utxos(
+            txn_schema!(
+                from: vec![coinbase_1],
+                to: vec![MicroMinotari(2_000_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+        let (tx_b, _) = spend_utxos(
+            txn_schema!(
+                from: vec![a_outputs[0].clone()],
+                to: vec![MicroMinotari(1_000_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+        let (tx_c, _) = spend_utxos(
+            txn_schema!(
+                from: vec![coinbase_2],
+                to: vec![MicroMinotari(1_000_000)],
+                fee: MicroMinotari(100)
+            ),
+            &blockchain.km,
+        );
+
+        let mut agg_inputs = tx_b.body.inputs().clone();
+        agg_inputs.extend(tx_c.body.inputs().iter().cloned());
+        let mut agg_outputs = tx_b.body.outputs().clone();
+        agg_outputs.extend(tx_c.body.outputs().iter().cloned());
+        let mut agg_kernels = tx_b.body.kernels().clone();
+        agg_kernels.extend(tx_c.body.kernels().iter().cloned());
+        let mut tx_bc = Transaction::new(
+            agg_inputs,
+            agg_outputs,
+            agg_kernels,
+            &tx_b.offset + &tx_c.offset,
+            &tx_b.script_offset + &tx_c.script_offset,
+        );
+        tx_bc.body.sort();
+
+        let tx_a = Arc::new(tx_a);
+        let tx_bc = Arc::new(tx_bc);
+
+        let validator = TransactionFullValidator::new(
+            CryptoFactories::default(),
+            false,
+            blockchain.db().clone(),
+            rules.clone(),
+        );
+        let mempool = Mempool::new(MempoolConfig::default(), rules, Box::new(validator));
+
+        assert_eq!(
+            mempool.insert(tx_a.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.insert(tx_bc.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+
+        // Block 4a mines only independent C, moving aggregate B+C to reorg_pool while A remains unconfirmed.
+        let (block_4a, _) = blockchain
+            .add_next_tip(crate::block_spec!("4a->3", transactions: vec![tx_c]))
+            .unwrap();
+        mempool
+            .process_published_block(block_4a.to_arc_block())
+            .await
+            .unwrap();
+        assert_eq!(
+            mempool.has_transaction(tx_a.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_transaction(tx_bc.clone()).await.unwrap(),
+            TxStorageResponse::ReorgPool
+        );
+
+        let (_fork_names, fork_blocks) = create_chained_blocks(
+            blockchain.db(),
+            crate::block_specs!(["4b->GB"], ["5b->4b"]),
+            block_3,
+        );
+        let block_4b = fork_blocks.get("4b").unwrap().clone();
+        let block_5b = fork_blocks.get("5b").unwrap().clone();
+        blockchain.db().add_block(block_4b.to_arc_block()).unwrap();
+        let reorg_result = blockchain.db().add_block(block_5b.to_arc_block()).unwrap().result;
+        assert!(matches!(reorg_result, BlockAddResult::ChainReorg { .. }));
+
+        mempool
+            .process_reorg(
+                vec![block_4a.to_arc_block()],
+                vec![block_4b.to_arc_block(), block_5b.to_arc_block()],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            mempool.has_transaction(tx_a).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            mempool.has_transaction(tx_bc).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
     }
 }
