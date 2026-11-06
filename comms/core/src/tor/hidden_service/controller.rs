@@ -353,7 +353,7 @@ impl HiddenServiceController {
         debug!(target: LOG_TARGET, "Tor SOCKS address is '{socks_addr}'" );
 
         // Initialize a onion hidden service - either from the given private key or by creating a new one
-        match self.identity.take() {
+        match self.identity.clone() {
             Some(identity) => {
                 let resp = self.create_or_reuse_onion(&identity).await?;
                 self.identity = Some(TorIdentity {
@@ -364,10 +364,11 @@ impl HiddenServiceController {
             None => {
                 let port_mapping = self.proxied_port_mapping;
                 let resp = self.client_mut()?.add_onion(vec![], port_mapping, None).await?;
-                let private_key = resp
-                    .private_key
-                    .clone()
-                    .expect("Tor server MUST return private key according to spec");
+                let private_key = resp.private_key.clone().ok_or_else(|| {
+                    TorClientError::ServerInvalidResponse(
+                        "ADD_ONION response did not contain a private key".to_string(),
+                    )
+                })?;
 
                 self.identity = Some(TorIdentity {
                     private_key,

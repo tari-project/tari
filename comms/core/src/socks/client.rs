@@ -449,6 +449,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
         match (part1, part2) {
             (Protocol::Ip4(ip), Some(Protocol::Tcp(port))) => {
+                if addr_iter.next().is_some() {
+                    return Err(SocksError::AddressTypeNotSupported);
+                }
                 *self.buf.get_mut(3).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x01;
                 self.buf
                     .get_mut(4..8)
@@ -461,6 +464,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.len = 10;
             },
             (Protocol::Ip6(ip), Some(Protocol::Tcp(port))) => {
+                if addr_iter.next().is_some() {
+                    return Err(SocksError::AddressTypeNotSupported);
+                }
                 *self.buf.get_mut(3).ok_or(SocksError::InvalidAmountOfBytesRead)? = 0x04;
                 self.buf
                     .get_mut(4..20)
@@ -472,11 +478,20 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                     .copy_from_slice(&port.to_be_bytes());
                 self.len = 22;
             },
-            (Protocol::Dns4(domain), Some(Protocol::Tcp(port))) => {
+            (Protocol::Dns(domain), Some(Protocol::Tcp(port))) |
+            (Protocol::Dns4(domain), Some(Protocol::Tcp(port))) |
+            (Protocol::Dns6(domain), Some(Protocol::Tcp(port))) |
+            (Protocol::Dnsaddr(domain), Some(Protocol::Tcp(port))) => {
+                if addr_iter.next().is_some() {
+                    return Err(SocksError::AddressTypeNotSupported);
+                }
                 self.write_domain_request(domain.as_bytes(), port)?;
             },
             // Special case for Tor resolve: a zero port
-            (Protocol::Dns4(domain), None) | (Protocol::Dns(domain), None) => {
+            (Protocol::Dns4(domain), None) |
+            (Protocol::Dns6(domain), None) |
+            (Protocol::Dnsaddr(domain), None) |
+            (Protocol::Dns(domain), None) => {
                 self.write_domain_request(domain.as_bytes(), 0)?;
             },
             (p @ Protocol::Onion(_, _), None) => {
