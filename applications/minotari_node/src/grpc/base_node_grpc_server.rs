@@ -33,7 +33,7 @@ use either::Either;
 use futures::{SinkExt, channel::mpsc};
 use log::*;
 use minotari_app_grpc::{
-    conversions::transaction_output::grpc_output_with_payref,
+    conversions::{check_body_size, transaction_output::grpc_output_with_payref},
     tari_rpc::{
         self,
         CalcType,
@@ -1314,6 +1314,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "Incoming GRPC request for get new block");
+        if let Some(ref body) = request.body {
+            let height = request.header.as_ref().map(|h| h.height).unwrap_or(0);
+            let consensus_constants = self.consensus_rules.consensus_constants(height);
+            check_body_size(body, consensus_constants).map_err(|s| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Block template body size check failed: {s}")),
+                )
+            })?;
+        }
         let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
             obscure_error_if_true(
                 report_error_flag,
@@ -1998,6 +2008,16 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let report_error_flag = self.report_error_flag();
         let request = request.into_inner();
         trace!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
+        if let Some(ref body) = request.body {
+            let height = request.header.as_ref().map(|h| h.height).unwrap_or(0);
+            let consensus_constants = self.consensus_rules.consensus_constants(height);
+            check_body_size(body, consensus_constants).map_err(|s| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Block template body size check failed: {s}")),
+                )
+            })?;
+        }
         let block_template: NewBlockTemplate = request.try_into().map_err(|s| {
             obscure_error_if_true(
                 report_error_flag,
@@ -2081,7 +2101,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitBlock)?;
         let report_error_flag = self.report_error_flag();
-        let block = decode_submit_block_request(request.into_inner(), report_error_flag)?;
+        let request = request.into_inner();
+        if let Some(ref body) = request.body {
+            let height = request.header.as_ref().map(|h| h.height).unwrap_or(0);
+            let consensus_constants = self.consensus_rules.consensus_constants(height);
+            check_body_size(body, consensus_constants).map_err(|s| {
+                obscure_error_if_true(
+                    report_error_flag,
+                    Status::invalid_argument(format!("Block body size check failed: {s}")),
+                )
+            })?;
+        }
+        let block = decode_submit_block_request(request, report_error_flag)?;
         let block_height = block.header.height;
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
@@ -2114,6 +2145,33 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         trace!(target: LOG_TARGET, "request: {request:?}");
         let block = decode_block_blob(&request.header_blob, &request.body_blob, report_error_flag)?;
         let block_height = block.header.height;
+        let consensus_constants = self.consensus_rules.consensus_constants(block_height);
+        let max_weight = consensus_constants.max_block_transaction_weight();
+        let max_coinbase = consensus_constants.max_block_coinbase_count();
+        let weight_params = tari_transaction_components::weight::WeightParams::v1();
+        let num_inputs = block.body.inputs().len() as u64;
+        if num_inputs.saturating_mul(weight_params.input_weight) > max_weight {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!(
+                    "Block input count ({num_inputs}) exceeds max weight ({max_weight})"
+                )),
+            ));
+        }
+        let num_outputs = (block.body.outputs().len() as u64).saturating_sub(max_coinbase);
+        if num_outputs.saturating_mul(weight_params.output_weight) > max_weight {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Block output count exceeds max weight ({max_weight})")),
+            ));
+        }
+        let num_kernels = (block.body.kernels().len() as u64).saturating_sub(max_coinbase);
+        if num_kernels.saturating_mul(weight_params.kernel_weight) > max_weight {
+            return Err(obscure_error_if_true(
+                report_error_flag,
+                Status::invalid_argument(format!("Block kernel count exceeds max weight ({max_weight})")),
+            ));
+        }
         trace!(target: LOG_TARGET, "Miner submitted block: {block}");
         info!(
             target: LOG_TARGET,
@@ -2140,7 +2198,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     ) -> Result<Response<tari_rpc::SubmitTransactionResponse>, Status> {
         self.check_method_enabled(GrpcMethod::SubmitTransaction)?;
         let report_error_flag = self.report_error_flag();
-        let txn = decode_submit_transaction_request(request.into_inner(), report_error_flag)?;
+        let request = request.into_inner();
+        if let Some(ref tx) = request.transaction {
+            if let Some(ref body) = tx.body {
+                let consensus_constants = self.consensus_rules.consensus_constants(0);
+                check_body_size(body, consensus_constants).map_err(|s| {
+                    obscure_error_if_true(
+                        report_error_flag,
+                        Status::invalid_argument(format!("Transaction body size check failed: {s}")),
+                    )
+                })?;
+            }
+        }
+        let txn = decode_submit_transaction_request(request, report_error_flag)?;
         trace!(
             target: LOG_TARGET,
             "Received SubmitTransaction request from client ({} kernels, {} outputs, {} inputs)",
@@ -4068,5 +4138,20 @@ mod test {
             lines.get(2).unwrap(),
             &format!("gRPC methods enabled by `second_layer_grpc_enabled`: {SECOND_LAYER_METHODS:?}")
         );
+    }
+
+    #[test]
+    fn get_new_block_body_size_guard_rejects_oversized_template() {
+        let constants = ConsensusConstants::mainnet().pop().unwrap();
+        let max_weight = constants.max_block_transaction_weight();
+        let weight_params = tari_transaction_components::weight::WeightParams::v1();
+        let too_many_inputs = (max_weight / weight_params.input_weight) + 1;
+
+        let mut body = tari_rpc::AggregateBody::default();
+        body.inputs = vec![tari_rpc::TransactionInput::default(); too_many_inputs as usize];
+
+        let res = check_body_size(&body, &constants);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("input count"));
     }
 }

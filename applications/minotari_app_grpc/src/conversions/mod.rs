@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod aggregate_body;
+pub use aggregate_body::check_body_size;
 #[cfg(feature = "base_node")]
 pub mod base_node_state;
 pub mod block;
