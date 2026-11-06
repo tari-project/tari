@@ -62,6 +62,11 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         };
         write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
+        info!(
+            target: LOG_TARGET,
+            "Created default configuration file at {}",
+            display_path(config_path.as_ref())
+        );
     } else {
         // Nothing here
     }
@@ -608,7 +613,12 @@ pub fn sanitize_for_display(s: &str) -> String {
 }
 
 /// [`sanitize_for_display`] for a path.
-fn display_path(path: &Path) -> String {
+pub fn display_path<P: AsRef<Path>>(path: P) -> String {
+    sanitize_for_display(&path.as_ref().display().to_string())
+}
+
+#[allow(dead_code)]
+fn _display_path_legacy(path: &Path) -> String {
     sanitize_for_display(&path.display().to_string())
 }
 
