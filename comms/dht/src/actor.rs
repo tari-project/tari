@@ -1118,11 +1118,13 @@ mod test {
             .batch_execute("DROP TABLE dedup_cache;")
             .unwrap();
 
-        let (num_hits, _) = requester
+        let (num_hits, from_first_sender) = requester
             .add_message_to_dedup_cache(vec![1u8, 2, 3], CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, u32::MAX);
+        // Not known to be a relayed duplicate, so it still counts towards the flood ban
+        assert!(from_first_sender);
 
         let spy = service_spy();
         let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());

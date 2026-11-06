@@ -39,6 +39,9 @@ const LOG_TARGET: &str = "comms::dht::metrics";
 /// Number of samples kept for the node-wide message count. A single instance, so it is allocated up front.
 const ALL_MESSAGES_RECV_CAPACITY: usize = 100_000;
 
+/// Capacity of the collector's request queue
+pub(crate) const METRICS_QUEUE_SIZE: usize = 500;
+
 #[derive(Debug)]
 enum MetricOp {
     Write(MetricWrite),
@@ -161,18 +164,23 @@ impl MetricsCollector {
     /// flood-ban window: samples are kept for at least this long, across disconnects, so that a peer cannot reset its
     /// count by reconnecting.
     pub fn spawn(per_peer_capacity: usize, flood_ban_timespan: Duration) -> MetricsCollectorHandle {
-        let (metrics_tx, metrics_rx) = mpsc::channel(500);
-        let metrics_collector = MetricsCollectorHandle::new(metrics_tx);
+        let (metrics_collector, collector) = Self::new(per_peer_capacity, flood_ban_timespan);
+        task::spawn(collector.run());
+        metrics_collector
+    }
+
+    /// Create the collector without running it. See [`MetricsCollector::spawn`].
+    pub(crate) fn new(per_peer_capacity: usize, flood_ban_timespan: Duration) -> (MetricsCollectorHandle, Self) {
+        let (metrics_tx, metrics_rx) = mpsc::channel(METRICS_QUEUE_SIZE);
         let collector = Self {
             stream: metrics_rx,
             state: MetricsState::new(per_peer_capacity, flood_ban_timespan),
             flood_ban_timespan,
         };
-        task::spawn(collector.run());
-        metrics_collector
+        (MetricsCollectorHandle::new(metrics_tx), collector)
     }
 
-    async fn run(mut self) {
+    pub(crate) async fn run(mut self) {
         let first_prune = Instant::now()
             .checked_add(self.flood_ban_timespan)
             .unwrap_or_else(Instant::now);

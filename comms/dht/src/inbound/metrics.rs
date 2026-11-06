@@ -23,7 +23,7 @@
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicU8, Ordering},
     },
     task::Poll,
 };
@@ -51,19 +51,30 @@ pub(crate) async fn record_flood_sample(counts: bool) {
     }
 }
 
+/// `FloodSample::state`: nothing decided yet
+const PENDING: u8 = 0;
+/// `FloodSample::state`: counts against the peer, not written yet
+const COUNT: u8 = 1;
+/// `FloodSample::state`: a duplicate another peer delivered first, not written yet
+const SKIP: u8 = 2;
+/// `FloodSample::state`: written
+const RECORDED: u8 = 3;
+
 /// One inbound message's flood-ban sample, recorded at most once: by the dedup layer, else when the inner layers
 /// return, else (if they are cancelled, e.g. by the pipeline timeout, or panic) when it is dropped.
 struct FloodSample {
     collector: MetricsCollectorHandle,
     source_peer: NodeId,
-    recorded: AtomicBool,
+    state: AtomicU8,
 }
 
 impl FloodSample {
     async fn record(&self, counts: bool) {
-        if self.recorded.load(Ordering::Relaxed) {
+        if self.state.load(Ordering::Relaxed) != PENDING {
             return;
         }
+        // Decided before waiting, so a write finished from `Drop` keeps the decision
+        self.state.store(if counts { COUNT } else { SKIP }, Ordering::Relaxed);
         // Waits for room in the collector's queue, so that samples are not dropped (and a flood under-counted) when
         // the collector falls behind
         let mut collector = self.collector.clone();
@@ -75,13 +86,14 @@ impl FloodSample {
         if result.is_err() {
             debug!(target: LOG_TARGET, "Unable to write metric: the metric collector is shut down");
         }
-        self.recorded.store(true, Ordering::Relaxed);
+        self.state.store(RECORDED, Ordering::Relaxed);
     }
 }
 
 impl Drop for FloodSample {
     fn drop(&mut self) {
-        if *self.recorded.get_mut() {
+        let state = *self.state.get_mut();
+        if state == RECORDED {
             return;
         }
         let mut collector = self.collector.clone();
@@ -89,7 +101,11 @@ impl Drop for FloodSample {
         // Drop cannot wait for room in the queue, so the write is handed to a task
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                let _ignore = collector.write_metric_message_received(source_peer).await;
+                let _ignore = if state == SKIP {
+                    collector.write_metric_relayed_duplicate_received().await
+                } else {
+                    collector.write_metric_message_received(source_peer).await
+                };
             });
         }
     }
@@ -130,7 +146,7 @@ where
         let sample = Arc::new(FloodSample {
             collector: self.metric_collector.clone(),
             source_peer: message.source_peer.clone(),
-            recorded: AtomicBool::new(false),
+            state: AtomicU8::new(PENDING),
         });
         Box::pin(async move {
             // The inner layers run on this task, so the dedup layer reaches the sample through the task-local
@@ -171,7 +187,10 @@ mod test {
     use tower::service_fn;
 
     use super::*;
-    use crate::connectivity::MetricsCollector;
+    use crate::{
+        connectivity::{MetricsCollector, metrics::METRICS_QUEUE_SIZE},
+        test_utils::make_node_identity,
+    };
 
     /// A message whose handling is cancelled (here: by a timeout, like the pipeline's) before it is counted still
     /// counts
@@ -196,5 +215,38 @@ mod test {
             max_attempts = 20,
             interval = Duration::from_millis(10),
         );
+    }
+
+    /// A relayed duplicate whose write is still waiting for room in the queue when its handling is cancelled keeps the
+    /// skip decision: it counts in the node-wide total, not against the relay
+    #[tokio::test]
+    async fn a_cancelled_relayed_duplicate_is_not_charged_to_the_relay() {
+        let (mut collector, runner) = MetricsCollector::new(11, Duration::from_secs(60));
+        // The collector is not running yet, so these fill its queue
+        let filler = NodeId::default();
+        for _ in 0..METRICS_QUEUE_SIZE {
+            collector.write_metric_message_received(filler.clone()).await.unwrap();
+        }
+        let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(|_: InboundMessage| async {
+            record_flood_sample(false).await;
+            Ok::<_, PipelineError>(())
+        }));
+        let relay = make_node_identity().node_id().clone();
+
+        let call = service.call(InboundMessage::new(relay.clone(), Bytes::new()));
+        assert!(time::timeout(Duration::from_millis(10), call).await.is_err());
+        tokio::spawn(runner.run());
+
+        async_assert!(
+            collector
+                .get_total_message_count_in_timespan(Duration::from_secs(60))
+                .await
+                .unwrap() ==
+                METRICS_QUEUE_SIZE + 1,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let ts = collector.get_messages_received_timeseries(relay).await.unwrap();
+        assert_eq!(ts.count(), 0);
     }
 }

@@ -131,7 +131,8 @@ pub struct DhtConfig {
     /// Default: 1000 messages
     #[serde(deserialize_with = "deserialize_flood_ban_max_msg_count")]
     pub flood_ban_max_msg_count: usize,
-    /// The timespan over which to calculate the max message rate. Peers are checked once per timespan.
+    /// The timespan over which to calculate the max message rate. A flood is detected as messages arrive, and the
+    /// peer is banned within 10 seconds (or this timespan, if shorter).
     /// `flood_ban_max_msg_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
     /// Default: 60 seconds
     #[serde(with = "serializers::seconds_nonzero")]

@@ -33,7 +33,7 @@
 #[cfg(test)]
 mod test;
 
-mod metrics;
+pub(crate) mod metrics;
 use std::{
     cmp,
     collections::{HashMap, HashSet},
