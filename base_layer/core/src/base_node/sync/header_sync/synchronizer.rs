@@ -816,7 +816,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     /// Rewinds to the split to make way for the pending chain, unless that would reset the chain for a pending chain
-    /// that is not stronger than everything we hold, or before the claim checks (`may_reset` false)
+    /// that is not stronger than everything we hold, or before the claim checks (`ResetPermission::NotYet`)
     async fn rewind_blockchain(
         &self,
         split_hash: HashOutput,
