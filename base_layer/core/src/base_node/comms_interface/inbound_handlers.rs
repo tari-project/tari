@@ -932,10 +932,10 @@ where B: BlockchainBackend + 'static
         let cap = constants
             .difficulty_block_window()
             .saturating_mul(u64::try_from(permitted.len()).unwrap_or(u64::MAX));
-        let targets = latest_targets_per_algo(&self.blockchain_db, tip, &permitted, cap).await?;
+        let (targets, linked) = latest_targets_per_algo(&self.blockchain_db, tip, &permitted, cap).await?;
         let target = targets.get(&algo).copied().flatten();
         // A walk that raced a tip change may have read headers from two chains
-        if *self.blockchain_db.fetch_last_chain_header().await?.hash() == tip_hash {
+        if linked && *self.blockchain_db.fetch_last_chain_header().await?.hash() == tip_hash {
             *self.min_difficulty_cache.write().unwrap_or_else(|e| e.into_inner()) =
                 Some(MinDifficultyCache { tip_hash, targets });
         }
@@ -1798,13 +1798,14 @@ thread_local! {
 }
 
 /// The target difficulty of the most recent of the at most `cap` main-chain headers ending at `tip` of each `permitted`
-/// algorithm, `None` for one that none of them has
+/// algorithm, `None` for one that none of them has. False when the walk stopped at a header that is not the parent of
+/// the one above it, which happens when the main chain changes under it.
 async fn latest_targets_per_algo<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     tip: ChainHeader,
     permitted: &[PowAlgorithm],
     cap: u64,
-) -> Result<HashMap<PowAlgorithm, Option<Difficulty>>, CommsInterfaceError> {
+) -> Result<(HashMap<PowAlgorithm, Option<Difficulty>>, bool), CommsInterfaceError> {
     #[cfg(test)]
     TARGET_WALKS.with(|walks| walks.set(walks.get().saturating_add(1)));
     let mut targets: HashMap<_, _> = permitted.iter().map(|algo| (*algo, None)).collect();
@@ -1815,9 +1816,13 @@ async fn latest_targets_per_algo<B: BlockchainBackend + 'static>(
             *target = Some(header.accumulated_data().target_difficulty);
         }
         if header.height() <= lowest || targets.values().all(Option::is_some) {
-            return Ok(targets);
+            return Ok((targets, true));
         }
-        header = db.fetch_chain_header(header.height().saturating_sub(1)).await?;
+        let parent = db.fetch_chain_header(header.height().saturating_sub(1)).await?;
+        if *parent.hash() != header.header().prev_hash {
+            return Ok((targets, false));
+        }
+        header = parent;
     }
 }
 
@@ -2906,7 +2911,8 @@ mod test {
             .consensus_constants(tip.height())
             .current_permitted_pow_algos();
 
-        let targets = latest_targets_per_algo(&db, tip, &permitted, u64::MAX).await.unwrap();
+        let (targets, linked) = latest_targets_per_algo(&db, tip, &permitted, u64::MAX).await.unwrap();
+        assert!(linked);
         assert_eq!(targets.len(), 4);
         for algo in ALGOS {
             let expected = chain
@@ -2916,5 +2922,27 @@ mod test {
                 .map(|header| header.accumulated_data().target_difficulty);
             assert_eq!(targets[&algo], expected, "{algo}");
         }
+    }
+
+    /// A walk that reaches a header which is not the parent of the one above it stops there, without that header's
+    /// target, and says so
+    #[tokio::test]
+    async fn a_walk_stops_at_a_header_that_is_not_the_parent() {
+        let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
+        extend_chain(&db, &mut chain, &[PowAlgorithm::Sha3x, PowAlgorithm::RandomXT]).await;
+        // A tip on a fork whose parent at height 2 is not the stored one
+        let fork_parent = header_with_target(&chain[1], PowAlgorithm::Cuckaroo, 9000, 1);
+        let fork_tip = header_with_target(&fork_parent, PowAlgorithm::Sha3x, 5000, 1);
+        let permitted = handlers
+            .consensus_manager
+            .consensus_constants(fork_tip.height())
+            .current_permitted_pow_algos();
+
+        let (targets, linked) = latest_targets_per_algo(&db, fork_tip, &permitted, u64::MAX)
+            .await
+            .unwrap();
+        assert!(!linked);
+        assert_eq!(targets[&PowAlgorithm::Sha3x], Some(Difficulty::from_u64(5000).unwrap()));
+        assert_eq!(targets[&PowAlgorithm::RandomXT], None);
     }
 }
