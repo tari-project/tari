@@ -97,12 +97,8 @@ impl TransactionWeight {
         let rounded_up_features_and_scripts_bytes_size =
             self.calculate_normalised_total_features_and_scripts_size(body)?;
         let output_count = body.outputs().len().saturating_sub(body.get_coinbase_outputs().len());
-        let kernel_count = if body.get_coinbase_outputs().is_empty() {
-            // we dont count coinbase kernels, and there is only ever an allowed max of 1 coinbase kernel
-            body.kernels().len()
-        } else {
-            body.kernels().len().saturating_sub(1)
-        };
+        let coinbase_kernel_count = body.kernels().iter().filter(|k| k.is_coinbase()).count();
+        let kernel_count = body.kernels().len().saturating_sub(coinbase_kernel_count.min(1));
         Ok(self.calculate(
             kernel_count,
             body.inputs().len(),
@@ -187,5 +183,29 @@ mod test {
         let weighting = TransactionWeight::latest();
         let body = AggregateBody::empty();
         assert_eq!(weighting.calculate_body(&body).unwrap(), 0);
+    }
+
+    #[test]
+    fn coinbase_output_without_coinbase_kernel_does_not_discount_normal_kernel_weight() {
+        use crate::transaction_components::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput};
+
+        let weighting = TransactionWeight::latest();
+        let coinbase_output = TransactionOutput {
+            features: OutputFeatures::create_coinbase(10, None, Default::default()),
+            ..Default::default()
+        };
+        let normal_kernel = TransactionKernel::new_current_version(
+            KernelFeatures::empty(),
+            0.into(),
+            0,
+            Default::default(),
+            Default::default(),
+            None,
+        );
+        let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output], vec![normal_kernel]);
+        assert_eq!(
+            weighting.calculate_body(&body).unwrap(),
+            weighting.params().kernel_weight
+        );
     }
 }
