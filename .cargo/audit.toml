@@ -13,6 +13,12 @@ ignore = [
     # signatures on release hash files (no private-key or secret scalar operations). In the excluded
     # `minotari_ledger_wallet/comms_testing` workspace it is linked through `k256` in a non-shipped local Ledger
     # test harness. Last reviewed 2026-10-27; remove once `pgp` and `k256` move off `elliptic-curve` 0.13.
-    "RUSTSEC-2026-0387",
+        "RUSTSEC-2026-0387",
+
+    # RUSTSEC-2024-0449 (unsafe-libyaml is unmaintained). `unsafe-libyaml` 0.2.11 repository was archived by its
+    # maintainer on 2024-03-25. It is linked transitively through dependencies and cannot be removed until
+    # upstream dependencies migrate to safe YAML alternatives (e.g. saphyr). Last reviewed 2026-11-06; re-review
+    # when upstream crates replace serde_yaml/unsafe-libyaml.
+    "RUSTSEC-2024-0449",
 
 ]
