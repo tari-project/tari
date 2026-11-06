@@ -154,7 +154,9 @@ impl OnConnect {
 
         // The per-item timeouts alone let a peer drip records for minutes, holding up every other connection
         let deadline = self.config().network_discovery.on_connect_sync_timeout;
-        let result = time::timeout(deadline, self.sync_peers(conn))
+        // Counted outside the sync, so that peers stored before a timeout or error are still announced
+        let mut num_added = 0usize;
+        let result = time::timeout(deadline, self.sync_peers(conn, &mut num_added))
             .await
             .unwrap_or_else(|_| {
                 Err(NetworkDiscoveryError::Timeout {
@@ -163,6 +165,17 @@ impl OnConnect {
                     duration: format!("{deadline:.2?}"),
                 })
             });
+        debug!(target: LOG_TARGET, "Added {num_added} peer(s) from peer `{node_id}`");
+        if num_added > 0 {
+            self.context
+                .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo {
+                    num_new_peers: num_added,
+                    num_duplicate_peers: 0,
+                    num_succeeded: num_added,
+                    sync_peers: vec![node_id.clone()],
+                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
+                }));
+        }
         match result {
             Ok(false) => {},
             Ok(true) => self.mark_sync_failed(node_id, Instant::now()),
@@ -177,8 +190,9 @@ impl OnConnect {
         }
     }
 
-    /// Returns true if the sync was cut short because the peer used up its budget for new peers.
-    async fn sync_peers(&self, mut conn: PeerConnection) -> Result<bool, NetworkDiscoveryError> {
+    /// Counts the new peers stored in `num_added`. Returns true if the sync was cut short because the peer used up its
+    /// budget for new peers.
+    async fn sync_peers(&self, mut conn: PeerConnection, num_added: &mut usize) -> Result<bool, NetworkDiscoveryError> {
         let sync_peer = conn.peer_node_id().clone();
         let discovery_config = &self.config().network_discovery;
         let timed_out = |operation: &str, duration: Duration| {
@@ -221,7 +235,6 @@ impl OnConnect {
 
         let streaming_timeout = discovery_config.bootstrap_rpc_streaming_timeout;
         let mut hostile_claims = HostileClaims::default();
-        let mut num_added = 0usize;
         let mut budget_used_up = false;
         while let Some(resp) = time::timeout(streaming_timeout, peer_stream.next())
             .await
@@ -234,7 +247,7 @@ impl OnConnect {
                         match self.validate_and_add_peer(&sync_peer, peer).await {
                             Ok(Some(true)) => {
                                 debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
-                                num_added = num_added.saturating_add(1);
+                                *num_added = num_added.saturating_add(1);
                             },
                             Ok(Some(false)) => {},
                             Ok(None) => {
@@ -262,21 +275,6 @@ impl OnConnect {
                     debug!(target: LOG_TARGET, "Error response from peer `{sync_peer}`: {err}");
                 },
             }
-        }
-
-        debug!(
-            target: LOG_TARGET,
-            "Added {num_added} peer(s) from peer `{sync_peer}`"
-        );
-        if num_added > 0 {
-            self.context
-                .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo {
-                    num_new_peers: num_added,
-                    num_duplicate_peers: 0,
-                    num_succeeded: num_added,
-                    sync_peers: vec![sync_peer],
-                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
-                }));
         }
 
         Ok(budget_used_up)

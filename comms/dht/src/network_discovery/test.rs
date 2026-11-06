@@ -954,6 +954,29 @@ mod rebootstrap {
         assert!(mock.take_banned_peers().await.is_empty());
     }
 
+    /// A sync that stores some peers and then runs into its deadline still announces them
+    #[tokio::test]
+    async fn peers_stored_before_the_sync_deadline_are_announced() {
+        let (mut context, _mock, mut events) = context(None);
+        with_sync_timeouts(&mut context, Duration::from_secs(5), Duration::from_millis(500));
+        let (_server, conn) = peers_server(fresh_peer_infos(3), true).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        assert_eq!(context.peer_manager.count().await, 3);
+        let event = events.try_recv().unwrap();
+        match &*event {
+            DhtEvent::NetworkDiscoveryPeersAdded(info) => {
+                assert_eq!(info.num_new_peers, 3);
+                assert_eq!(info.sync_peers, vec![node_id.clone()]);
+            },
+            event => panic!("unexpected event {event:?}"),
+        }
+        // The sync failed, so the peer is retried after the backoff
+        assert!(!on_connect.is_recently_synced(&node_id, Instant::now() + Duration::from_secs(5 * 60)));
+    }
+
     /// Attack G with drip-feeding: five fresh identities each drip uncharged records just inside the streaming
     /// timeout. Each sync is cut off at the sync deadline, so an honest sixth peer is synced from right after them
     /// rather than after 5 x 100 items' worth of streaming timeouts.
