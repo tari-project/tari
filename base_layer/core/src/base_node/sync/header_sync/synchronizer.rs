@@ -1264,7 +1264,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             );
             #[cfg(test)]
             {
-                self.rewind_attempts += 1;
+                self.rewind_attempts = self.rewind_attempts.saturating_add(1);
             }
             match self.rewind_blockchain(split_info.chain_split_hash, may_reset).await? {
                 PendingChainRewind::Rewound(blocks) => {
