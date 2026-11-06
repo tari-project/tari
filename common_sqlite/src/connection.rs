@@ -48,7 +48,7 @@ use crate::{
 const LOG_TARGET: &str = "common_sqlite::connection";
 
 /// Describes how to connect to the database (currently, SQLite).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub enum DbConnectionUrl {
     /// In-memory database. Each connection has it's own database
@@ -98,8 +98,18 @@ impl TryFrom<String> for DbConnectionUrl {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() {
+            return Err("Database connection URL cannot be empty".to_string());
+        }
         if value.as_str() == ":memory:" {
             Ok(Self::Memory)
+        } else if let Some(rest) = value.strip_prefix("file:") &&
+            let Some(identifier) = rest.strip_suffix("?mode=memory&cache=shared")
+        {
+            if identifier.is_empty() {
+                return Err("Shared in-memory database identifier cannot be empty".to_string());
+            }
+            Ok(Self::MemoryShared(identifier.to_owned()))
         } else {
             Ok(Self::File(PathBuf::from(value)))
         }
@@ -274,7 +284,15 @@ impl DbConnection {
         // `create_pool` creates the directory owner-only.
         let path = DbConnection::temp_db_dir().join(prefixed_string("data-", 20));
         let db_url = DbConnectionUrl::File(path.join("my_temp.db"));
-        let mut conn = DbConnection::connect_and_migrate(&db_url, migrations, Some(10), DbProfile::Cache)?;
+        let mut conn = match DbConnection::connect_and_migrate(&db_url, migrations, Some(10), DbProfile::Cache) {
+            Ok(conn) => conn,
+            Err(err) => {
+                if path.exists() {
+                    let _ = fs::remove_dir_all(&path);
+                }
+                return Err(err);
+            },
+        };
         conn.temp_dir = Some(Arc::new(TempDatabaseDir {
             pool: conn.pool.clone(),
             dir: path,
@@ -507,5 +525,21 @@ mod test {
             .get_result(&mut c)
             .unwrap();
         assert_eq!(count as usize, WRITERS);
+    }
+
+    #[test]
+    fn db_connection_url_roundtrips_all_variants_and_rejects_empty() {
+        let shared = DbConnectionUrl::MemoryShared("wallet_shared".to_string());
+        let encoded = shared.to_url_string();
+        assert_eq!(encoded, "file:wallet_shared?mode=memory&cache=shared");
+        assert_eq!(DbConnectionUrl::try_from(encoded).unwrap(), shared);
+
+        assert_eq!(
+            DbConnectionUrl::try_from(":memory:".to_string()).unwrap(),
+            DbConnectionUrl::Memory
+        );
+        assert!(DbConnectionUrl::try_from("".to_string()).is_err());
+        assert!(DbConnectionUrl::try_from("   ".to_string()).is_err());
+        assert!(DbConnectionUrl::try_from("file:?mode=memory&cache=shared".to_string()).is_err());
     }
 }
