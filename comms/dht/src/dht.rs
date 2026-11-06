@@ -285,7 +285,6 @@ impl Dht {
         S::Future: Send,
     {
         ServiceBuilder::new()
-            .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
@@ -294,6 +293,7 @@ impl Dht {
                 self.dht_requester(),
                 self.config.dedup_allowed_message_occurrences,
             ))
+            .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
@@ -360,7 +360,8 @@ impl Dht {
     ) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send + 'static + use<> {
         move |msg: &DhtInboundMessage| match msg.dht_header.message_type {
             DhtMessageType::SafRequestMessages => {
-                warn!(
+                debug!(
+                    target: LOG_TARGET,
                     "Received store and forward message from PublicKey={}. Store and forward feature is not supported \
                      by this node. Discarding message.",
                     msg.source_peer.public_key
@@ -531,6 +532,60 @@ mod test {
         };
 
         assert_eq!(msg, b"secret");
+    }
+
+    /// Duplicates are dropped by dedup before the flood-ban metric, so they do not count against the delivering peer.
+    #[tokio::test]
+    async fn test_stack_does_not_count_duplicates_towards_the_flood_ban() {
+        let node_identity = make_node_identity();
+        let peer_manager = build_peer_manager();
+        let (connectivity, _) = create_connectivity_mock();
+        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let dht = Dht::builder()
+            .local_test()
+            .with_outbound_sender(out_tx)
+            .build(
+                Arc::clone(&node_identity),
+                peer_manager,
+                connectivity,
+                shutdown.to_signal(),
+            )
+            .await
+            .unwrap();
+        let (out_tx, mut out_rx) = mpsc::channel(10);
+        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
+
+        let msg = wrap_in_envelope_body!(b"secret".to_vec());
+        let dht_envelope = make_dht_envelope(
+            &node_identity,
+            &msg,
+            DhtMessageFlags::empty(),
+            false,
+            MessageTag::new(),
+            false,
+        )
+        .unwrap();
+        let bytes = dht_envelope.to_encoded_bytes();
+        for _ in 0..3 {
+            service
+                .call(make_comms_inbound_message(&node_identity, bytes.clone().into()))
+                .await
+                .unwrap();
+        }
+        time::timeout(Duration::from_secs(10), out_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(out_rx.try_recv().is_err());
+
+        let ts = dht
+            .metrics_collector()
+            .get_messages_received_timeseries(node_identity.node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
     }
 
     /// A re-encoded signature (here: an appended unknown field) still verifies. The decryption layer drops it as

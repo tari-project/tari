@@ -42,6 +42,21 @@ const MAX_SEED_PEER_SYNC_COUNT: usize = 20;
 const MAX_REBOOTSTRAP_CONNECTED_PEERS: usize = 20;
 /// Lower bound for `on_connect_resync_ttl`.
 const MIN_ON_CONNECT_RESYNC_TTL: Duration = Duration::from_secs(60);
+/// Upper bound for `flood_ban_max_msg_count`. The DHT keeps this many sample times per peer that sends messages.
+const MAX_FLOOD_BAN_MAX_MSG_COUNT: usize = 1_000_000;
+
+fn deserialize_flood_ban_max_msg_count<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where D: serde::Deserializer<'de> {
+    use serde::de::Error;
+
+    let count = usize::deserialize(deserializer)?;
+    if count == 0 || count > MAX_FLOOD_BAN_MAX_MSG_COUNT {
+        return Err(D::Error::custom(format!(
+            "flood_ban_max_msg_count must be in 1..={MAX_FLOOD_BAN_MAX_MSG_COUNT}, got {count}"
+        )));
+    }
+    Ok(count)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,11 +68,11 @@ pub struct DhtConfig {
     /// and is lost on restart.
     pub database_url: DbConnectionUrl,
     /// The number of peers to connect to as part of the managed peer pool.
-    /// Default: 8
+    /// Default: 6
     pub num_neighbouring_nodes: usize,
     /// Additional number of random peers to include in the managed peer pool.
     /// The total managed pool size is `num_neighbouring_nodes + num_random_nodes`.
-    /// Default: 4
+    /// Default: 6
     pub num_random_nodes: usize,
     /// Connections above the configured number of pool peers will be removed
     /// (default: false)
@@ -66,7 +81,7 @@ pub struct DhtConfig {
     /// Default: 8
     pub broadcast_factor: usize,
     /// Send to this many peers when using the propagate strategy
-    /// Default: 4
+    /// Default: 20
     pub propagation_factor: usize,
     /// The target capacity of the message hash cache. The cache is trimmed every max(capacity / 10, 100) new entries.
     /// Each signed entry is kept until its message expires plus 10 min of clock slack, but at least 3 h 10 min and at
@@ -89,7 +104,8 @@ pub struct DhtConfig {
     /// Default: 2 minutes
     #[serde(with = "serializers::seconds")]
     pub discovery_request_timeout: Duration,
-    /// Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+    /// Set to true to automatically broadcast a join message when ready, otherwise false. Default: false here, but the
+    /// p2p config default (`P2pConfig::default()`, used by the base node and wallet) sets it to true.
     pub auto_join: bool,
     /// The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
     /// enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
@@ -109,13 +125,15 @@ pub struct DhtConfig {
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
-    /// `ban_duration_short`). The DHT keeps the times of up to this many messages plus one per peer.
+    /// `ban_duration_short`). The DHT keeps the times of up to this many messages plus one per peer. Duplicate
+    /// messages are not counted. Must be in 1..=1,000,000.
     /// Default: 1000 messages
+    #[serde(deserialize_with = "deserialize_flood_ban_max_msg_count")]
     pub flood_ban_max_msg_count: usize,
-    /// The timespan over which to calculate the max message rate.
+    /// The timespan over which to calculate the max message rate. Peers are checked once per timespan.
     /// `flood_ban_max_msg_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
     /// Default: 60 seconds
-    #[serde(with = "serializers::seconds")]
+    #[serde(with = "serializers::seconds_nonzero")]
     pub flood_ban_timespan: Duration,
     /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
     /// In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
@@ -348,7 +366,19 @@ impl Default for DhtConnectivityConfig {
 
 #[cfg(test)]
 mod test {
+    use serde::de::{IntoDeserializer, value::Error};
+
     use super::*;
+
+    #[test]
+    fn flood_ban_max_msg_count_is_bounded() {
+        let parse =
+            |count: usize| deserialize_flood_ban_max_msg_count(IntoDeserializer::<Error>::into_deserializer(count));
+        assert!(parse(0).is_err());
+        assert!(parse(MAX_FLOOD_BAN_MAX_MSG_COUNT + 1).is_err());
+        assert_eq!(parse(1).unwrap(), 1);
+        assert_eq!(parse(MAX_FLOOD_BAN_MAX_MSG_COUNT).unwrap(), MAX_FLOOD_BAN_MAX_MSG_COUNT);
+    }
 
     #[test]
     fn rebootstrap_settings_are_clamped() {

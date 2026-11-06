@@ -281,72 +281,80 @@ async fn it_survives_a_failed_initial_refresh() {
         .unwrap();
 }
 
-/// Missed connectivity events may include disconnects, so on `Lagged` the message metrics are resynced to the peers
-/// that are still connected.
+/// Message metrics are kept across a disconnect, so a peer cannot reset its flood-ban count by reconnecting.
 #[tokio::test]
-async fn it_drops_metrics_of_disconnected_peers_when_events_lag() {
-    let shutdown = Shutdown::new();
-    let (connectivity, mock) = create_connectivity_mock();
-    let connectivity_state = mock.spawn();
-    let (dht_requester, mock) = create_dht_actor_mock();
-    mock.spawn();
-    let (event_publisher, _) = broadcast::channel(1);
-    let mut metrics_collector = MetricsCollector::spawn(1001, Duration::from_secs(60));
-    let dht_connectivity = DhtConnectivity::new(
-        Arc::new(DhtConfig::default()),
-        build_peer_manager(),
-        connectivity,
-        dht_requester,
-        event_publisher,
-        metrics_collector.clone(),
-        shutdown.to_signal(),
-    );
+async fn a_flood_split_by_a_reconnect_is_still_banned() {
+    let config = DhtConfig {
+        flood_ban_max_msg_count: 10,
+        ..Default::default()
+    };
+    let (mut dht_connectivity, _, connectivity_state, _, _, _shutdown) =
+        setup(config, make_node_identity(), vec![]).await;
+    let mut metrics_collector = dht_connectivity.metrics_collector.clone();
+    let peer = make_node_identity().node_id().clone();
 
-    let connected_peer = make_node_identity().node_id().clone();
-    let disconnected_peer = make_node_identity().node_id().clone();
-    let (conn, _) = create_dummy_peer_connection(connected_peer.clone());
-    connectivity_state.add_active_connection(conn.clone()).await;
-    assert!(metrics_collector.write_metric_message_received(connected_peer.clone()));
-    assert!(metrics_collector.write_metric_message_received(disconnected_peer.clone()));
-    let ts = metrics_collector
-        .get_messages_received_timeseries(disconnected_peer.clone())
-        .await
-        .unwrap();
-    assert_eq!(ts.count(), 1);
-
-    // Overflow a channel of capacity 1 so that the first receive returns `Lagged`. The disconnect of
-    // `disconnected_peer` is one of the events that is lost.
-    let (event_tx, event_rx) = broadcast::channel(1);
-    event_tx
-        .send(ConnectivityEvent::PeerDisconnected(
-            disconnected_peer.clone(),
+    for _ in 0..6 {
+        metrics_collector
+            .write_metric_message_received(peer.clone())
+            .await
+            .unwrap();
+    }
+    dht_connectivity
+        .handle_connectivity_event(ConnectivityEvent::PeerDisconnected(
+            peer.clone(),
             tari_comms::Minimized::No,
         ))
-        .unwrap();
-    // The event that survives the lag keeps the connection handles non-empty, so no aggressive pool refresh starts
-    event_tx.send(ConnectivityEvent::PeerConnected(Box::new(conn))).unwrap();
-    let handle = tokio::spawn(dht_connectivity.run(event_rx));
-
-    async_assert!(
-        connectivity_state.count_calls_containing("GetActiveConnections").await > 0,
-        max_attempts = 50,
-        interval = Duration::from_millis(10),
-    );
-    async_assert!(
-        metrics_collector
-            .get_messages_received_timeseries(disconnected_peer.clone())
-            .await
-            .unwrap()
-            .count() ==
-            0,
-        max_attempts = 50,
-        interval = Duration::from_millis(10),
-    );
-    let ts = metrics_collector
-        .get_messages_received_timeseries(connected_peer)
         .await
         .unwrap();
-    assert_eq!(ts.count(), 1);
+    dht_connectivity
+        .handle_connectivity_event(ConnectivityEvent::PeerConnectFailed(peer.clone()))
+        .await
+        .unwrap();
+    for _ in 0..5 {
+        metrics_collector
+            .write_metric_message_received(peer.clone())
+            .await
+            .unwrap();
+    }
+
+    dht_connectivity.check_and_ban_flooding_peers().await.unwrap();
+    async_assert!(
+        connectivity_state
+            .take_banned_peers()
+            .await
+            .iter()
+            .any(|(node_id, ..)| *node_id == peer),
+        max_attempts = 20,
+        interval = Duration::from_millis(10),
+    );
+}
+
+/// A burst just after a pool update tick that is followed by silence is checked before it leaves the flood-ban window,
+/// not only at the next pool update tick.
+#[tokio::test(start_paused = true)]
+async fn a_burst_followed_by_silence_is_banned() {
+    let config = DhtConfig {
+        flood_ban_max_msg_count: 10,
+        ..Default::default()
+    };
+    assert!(config.flood_ban_timespan < config.connectivity.update_interval);
+    let (dht_connectivity, _, connectivity_state, _, _, shutdown) = setup(config, make_node_identity(), vec![]).await;
+    let mut metrics_collector = dht_connectivity.metrics_collector.clone();
+    let peer = make_node_identity().node_id().clone();
+    let (_event_tx, event_rx) = broadcast::channel(1);
+    let handle = tokio::spawn(dht_connectivity.run(event_rx));
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    for _ in 0..11 {
+        metrics_collector
+            .write_metric_message_received(peer.clone())
+            .await
+            .unwrap();
+    }
+    // Silent until just after the first flood-ban timespan, well before the next pool update tick
+    tokio::time::sleep(Duration::from_secs(61)).await;
+    let banned = connectivity_state.take_banned_peers().await;
+    assert!(banned.iter().any(|(node_id, ..)| *node_id == peer), "{banned:?}");
 
     shutdown.trigger();
     tokio::time::timeout(Duration::from_secs(5), handle)
@@ -1429,29 +1437,18 @@ mod metrics {
         async fn it_adds_message_received() {
             let mut metric_collector = MetricsCollector::spawn(1001, std::time::Duration::from_secs(60));
             let node_id = NodeId::default();
-            (0..100).for_each(|_| {
-                assert!(metric_collector.write_metric_message_received(node_id.clone()));
-            });
+            for _ in 0..100 {
+                metric_collector
+                    .write_metric_message_received(node_id.clone())
+                    .await
+                    .unwrap();
+            }
 
             let ts = metric_collector
                 .get_messages_received_timeseries(node_id)
                 .await
                 .unwrap();
             assert_eq!(ts.count(), 100);
-        }
-
-        #[tokio::test]
-        async fn it_clears_the_metrics() {
-            let mut metric_collector = MetricsCollector::spawn(1001, std::time::Duration::from_secs(60));
-            let node_id = NodeId::default();
-            assert!(metric_collector.write_metric_message_received(node_id.clone()));
-
-            metric_collector.clear_metrics(node_id.clone()).await.unwrap();
-            let ts = metric_collector
-                .get_messages_received_timeseries(node_id)
-                .await
-                .unwrap();
-            assert_eq!(ts.count(), 0);
         }
     }
 }

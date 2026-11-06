@@ -74,7 +74,7 @@ mod get_peers {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn it_returns_all_peers() {
+    async fn it_ignores_include_clients() {
         let (service, mock, peer_manager) = setup();
         let nodes = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
         let clients = build_many_node_identities(2, PeerFeatures::COMMUNICATION_CLIENT);
@@ -98,7 +98,7 @@ mod get_peers {
             .await
             .unwrap();
         let results = collect_recv!(peers_stream.into_inner(), timeout = Duration::from_secs(10));
-        assert_eq!(results.len(), 5);
+        assert_eq!(results.len(), 3);
 
         let peers = results
             .into_iter()
@@ -107,7 +107,7 @@ mod get_peers {
             .map(|p| p.try_into().unwrap())
             .collect::<Vec<UnvalidatedPeerInfo>>();
 
-        assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_client()).count(), 2);
+        assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_client()).count(), 0);
         assert_eq!(peers.iter().filter(|p| p.claims[0].features.is_node()).count(), 3);
     }
 

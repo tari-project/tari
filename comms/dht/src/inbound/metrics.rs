@@ -22,15 +22,17 @@
 
 use std::task::Poll;
 
-use futures::task::Context;
+use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::message::InboundMessage;
-use tower::{Service, layer::Layer};
+use tari_comms::pipeline::PipelineError;
+use tower::{Service, ServiceExt, layer::Layer};
 
-use crate::connectivity::MetricsCollectorHandle;
+use crate::{connectivity::MetricsCollectorHandle, inbound::DecryptedDhtMessage};
 
 const LOG_TARGET: &str = "comms::dht::metrics";
 
+/// Counts each message that passed dedup against the peer that delivered it, for the flood ban. Placed after the
+/// dedup layer so that relayed duplicates do not count against the honest neighbour that delivered them.
 #[derive(Clone)]
 pub struct Metrics<S> {
     next_service: S,
@@ -46,26 +48,34 @@ impl<S> Metrics<S> {
     }
 }
 
-impl<S> Service<InboundMessage> for Metrics<S>
-where S: Service<InboundMessage> + Clone + 'static
+impl<S> Service<DecryptedDhtMessage> for Metrics<S>
+where
+    S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError> + Clone + Send + 'static,
+    S::Future: Send,
 {
-    type Error = S::Error;
-    type Future = S::Future;
-    type Response = S::Response;
+    type Error = PipelineError;
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+    type Response = ();
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.next_service.poll_ready(cx)
+    fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, message: InboundMessage) -> Self::Future {
-        if !self
-            .metric_collector
-            .write_metric_message_received(message.source_peer.clone())
-        {
-            debug!(target: LOG_TARGET, "Unable to write metric");
-        }
-
-        self.next_service.call(message)
+    fn call(&mut self, message: DecryptedDhtMessage) -> Self::Future {
+        let next_service = self.next_service.clone();
+        let mut metric_collector = self.metric_collector.clone();
+        Box::pin(async move {
+            // Waits for room in the collector's queue, so that samples are not dropped (and a flood under-counted)
+            // when the collector falls behind
+            if metric_collector
+                .write_metric_message_received(message.source_peer.node_id.clone())
+                .await
+                .is_err()
+            {
+                debug!(target: LOG_TARGET, "Unable to write metric: the metric collector is shut down");
+            }
+            next_service.oneshot(message).await
+        })
     }
 }
 

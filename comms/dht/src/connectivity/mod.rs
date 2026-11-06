@@ -430,6 +430,11 @@ impl DhtConnectivity {
         self.pool_fill_started = Some(now.into_std());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        // Checked over its own timespan once per timespan, so no stretch of time goes unchecked
+        let flood_ban_timespan = self.config.flood_ban_timespan;
+        let mut flood_ticker =
+            time::interval_at(now.checked_add(flood_ban_timespan).unwrap_or(now), flood_ban_timespan);
+        flood_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut connectivity_events_closed = false;
         loop {
             tokio::select! {
@@ -447,9 +452,7 @@ impl DhtConnectivity {
                             }
                         },
                         Err(RecvError::Lagged(num_missed)) => {
-                            if let Err(err) = self.handle_connectivity_events_lagged(num_missed).await {
-                                error!(target: LOG_TARGET, "Error resyncing message metrics after missed connectivity events: {err:?}");
-                            }
+                            warn!(target: LOG_TARGET, "Missed {num_missed} connectivity event(s)");
                         },
                         Err(RecvError::Closed) => {
                             warn!(target: LOG_TARGET, "Connectivity event stream closed");
@@ -464,10 +467,13 @@ impl DhtConnectivity {
                     }
                },
 
-               _ = ticker.tick() => {
+               _ = flood_ticker.tick() => {
                     if let Err(err) = self.check_and_ban_flooding_peers().await {
                         error!(target: LOG_TARGET, "Error checking for peer flooding: {err:?}");
                     }
+               },
+
+               _ = ticker.tick() => {
                     match self.refresh_random_pool_if_required().await {
                         Ok(()) => self.check_pool_starved(),
                         Err(err) => error!(target: LOG_TARGET, "Error refreshing random peer pool: {err:?}"),
@@ -486,22 +492,6 @@ impl DhtConnectivity {
             self.publish_pool_peers();
         }
 
-        Ok(())
-    }
-
-    /// Missed connectivity events may include disconnects, whose message metrics would then never be cleared. Drop the
-    /// metrics of every peer that is not currently connected. The pool is left alone.
-    async fn handle_connectivity_events_lagged(&mut self, num_missed: u64) -> Result<(), DhtConnectivityError> {
-        warn!(
-            target: LOG_TARGET,
-            "Missed {num_missed} connectivity event(s). Dropping message metrics for peers that are no longer connected."
-        );
-        let conns = self.connectivity.get_active_connections().await?;
-        let mut connected = HashSet::with_capacity(conns.len());
-        for conn in conns {
-            connected.insert(conn.peer_node_id().clone());
-        }
-        self.metrics_collector.retain_only(connected).await?;
         Ok(())
     }
 
@@ -1261,12 +1251,6 @@ impl DhtConnectivity {
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 self.pending_dials.remove(&node_id);
                 self.record_dial_failure(&node_id);
-                if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Failed to clear metrics for peer `{node_id}`. Metric collector is shut down."
-                    );
-                };
                 if !self.is_pool_peer(&node_id) {
                     debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());
@@ -1283,12 +1267,6 @@ impl DhtConnectivity {
                 );
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 self.pending_dials.remove(&node_id);
-                if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Failed to clear metrics for peer `{node_id}`. Metric collector is shut down."
-                    );
-                };
                 if !self.is_pool_peer(&node_id) {
                     debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());

@@ -22,7 +22,7 @@
 
 use std::{
     cmp,
-    collections::{HashMap, HashSet, VecDeque, hash_map::Entry},
+    collections::{HashMap, VecDeque, hash_map::Entry},
     time::Duration,
 };
 
@@ -40,8 +40,8 @@ const LOG_TARGET: &str = "comms::dht::metrics";
 /// Number of samples kept for the node-wide message count. A single instance, so it is allocated up front.
 const ALL_MESSAGES_RECV_CAPACITY: usize = 100_000;
 
-/// How often the collector drops per-peer entries that have gone quiet. Entries are normally removed when the peer
-/// disconnects; this catches the ones whose disconnect was missed.
+/// How often the collector drops per-peer entries that have gone quiet. Entries are kept across disconnects, so that a
+/// peer cannot reset its flood-ban count by reconnecting; this is what removes them.
 const STALE_PRUNE_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 /// A per-peer entry whose newest sample is older than this is dropped at the next prune. If the configured flood-ban
@@ -57,9 +57,6 @@ enum MetricOp {
 #[derive(Debug)]
 pub enum MetricWrite {
     MessageReceived(NodeId),
-    ClearMetrics(NodeId),
-    /// Drop the metrics of every peer not in the set
-    RetainOnly(HashSet<NodeId>),
 }
 
 #[derive(Debug)]
@@ -109,20 +106,6 @@ impl MetricsState {
             },
         }
         self.all_messages_recv.inc();
-    }
-
-    pub fn drop_metrics(&mut self, node_id: &NodeId) {
-        self.messages_recv.remove(node_id);
-    }
-
-    pub fn retain_only(&mut self, node_ids: &HashSet<NodeId>) {
-        let num_before = self.messages_recv.len();
-        self.messages_recv.retain(|node_id, _| node_ids.contains(node_id));
-        debug!(
-            target: LOG_TARGET,
-            "Dropped message metrics for {} peer(s) that are no longer connected",
-            num_before.saturating_sub(self.messages_recv.len()),
-        );
     }
 
     /// Drop every per-peer entry whose newest sample is older than `max_age`.
@@ -219,16 +202,9 @@ impl MetricsCollector {
     }
 
     fn handle_write(&mut self, write: MetricWrite) {
-        use MetricWrite::{ClearMetrics, MessageReceived, RetainOnly};
         match write {
-            MessageReceived(node_id) => {
+            MetricWrite::MessageReceived(node_id) => {
                 self.state.add_message_received(node_id);
-            },
-            ClearMetrics(node_id) => {
-                self.state.drop_metrics(&node_id);
-            },
-            RetainOnly(node_ids) => {
-                self.state.retain_only(&node_ids);
             },
         }
     }
@@ -348,36 +324,13 @@ impl MetricsCollectorHandle {
         Self { inner: sender }
     }
 
-    /// Write the MessageReceived metric for the given `NodeId`. Returning true if the metric was queued for collection,
-    /// otherwise false. A metric may not be collected when there are many writes.
-    pub fn write_metric_message_received(&mut self, node_id: NodeId) -> bool {
-        self.write(MetricWrite::MessageReceived(node_id))
-    }
-
-    /// Clear the metrics for a `NodeId`. Err is returned if the metric collector has been shut down.
-    pub async fn clear_metrics(&mut self, node_id: NodeId) -> Result<(), MetricsError> {
+    /// Write the MessageReceived metric for the given `NodeId`, waiting for room in the queue if the collector is
+    /// behind. Err is returned if the metric collector has been shut down.
+    pub async fn write_metric_message_received(&mut self, node_id: NodeId) -> Result<(), MetricsError> {
         self.inner
-            .send(MetricOp::Write(MetricWrite::ClearMetrics(node_id)))
+            .send(MetricOp::Write(MetricWrite::MessageReceived(node_id)))
             .await
             .map_err(Into::into)
-    }
-
-    /// Drop the metrics of every peer not in `node_ids`. Err is returned if the metric collector has been shut down.
-    pub async fn retain_only(&mut self, node_ids: HashSet<NodeId>) -> Result<(), MetricsError> {
-        self.inner
-            .send(MetricOp::Write(MetricWrite::RetainOnly(node_ids)))
-            .await
-            .map_err(Into::into)
-    }
-
-    fn write(&mut self, write: MetricWrite) -> bool {
-        match self.inner.try_send(MetricOp::Write(write)) {
-            Ok(_) => true,
-            Err(err) => {
-                warn!(target: LOG_TARGET, "Failed to write metric: {err:?}");
-                false
-            },
-        }
     }
 
     /// Get (NodeId, messages per second) tuples that exceed the given number of messages within the given time
@@ -506,21 +459,6 @@ mod test {
         assert_eq!(exceeding.len(), 1);
     }
 
-    #[test]
-    fn it_retains_only_the_listed_peers() {
-        let mut state = MetricsState::new(PER_PEER_CAPACITY);
-        state.add_message_received(node_id(1));
-        state.add_message_received(node_id(2));
-        state.add_message_received(node_id(3));
-
-        let keep = [node_id(1), node_id(3)].into_iter().collect::<HashSet<_>>();
-        state.retain_only(&keep);
-
-        assert!(state.messages_recv.contains_key(&node_id(1)));
-        assert!(!state.messages_recv.contains_key(&node_id(2)));
-        assert!(state.messages_recv.contains_key(&node_id(3)));
-    }
-
     #[tokio::test(start_paused = true)]
     async fn it_prunes_stale_entries_at_the_next_tick() {
         let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
@@ -528,7 +466,7 @@ mod test {
         let recent_peer = node_id(2);
 
         // t = 0
-        assert!(collector.write_metric_message_received(old_peer.clone()));
+        collector.write_metric_message_received(old_peer.clone()).await.unwrap();
         let ts = collector
             .get_messages_received_timeseries(old_peer.clone())
             .await
@@ -537,7 +475,10 @@ mod test {
 
         // t = 50 min
         time::sleep(Duration::from_secs(50 * 60)).await;
-        assert!(collector.write_metric_message_received(recent_peer.clone()));
+        collector
+            .write_metric_message_received(recent_peer.clone())
+            .await
+            .unwrap();
         let ts = collector
             .get_messages_received_timeseries(recent_peer.clone())
             .await
@@ -567,7 +508,7 @@ mod test {
         let peer = node_id(1);
 
         // t = 0
-        assert!(collector.write_metric_message_received(peer.clone()));
+        collector.write_metric_message_received(peer.clone()).await.unwrap();
         let ts = collector.get_messages_received_timeseries(peer.clone()).await.unwrap();
         assert_eq!(ts.count(), 1);
 
@@ -579,21 +520,6 @@ mod test {
         // t = 135 min. The 130 min tick pruned it: it has been idle for longer than the timespan
         time::sleep(Duration::from_secs(60 * 60)).await;
         let ts = collector.get_messages_received_timeseries(peer).await.unwrap();
-        assert_eq!(ts.count(), 0);
-    }
-
-    #[tokio::test]
-    async fn it_retains_only_via_the_handle() {
-        let mut collector = MetricsCollector::spawn(PER_PEER_CAPACITY, FLOOD_BAN_TIMESPAN);
-        assert!(collector.write_metric_message_received(node_id(1)));
-        assert!(collector.write_metric_message_received(node_id(2)));
-
-        let keep = [node_id(1)].into_iter().collect::<HashSet<_>>();
-        collector.retain_only(keep).await.unwrap();
-
-        let ts = collector.get_messages_received_timeseries(node_id(1)).await.unwrap();
-        assert_eq!(ts.count(), 1);
-        let ts = collector.get_messages_received_timeseries(node_id(2)).await.unwrap();
         assert_eq!(ts.count(), 0);
     }
 }

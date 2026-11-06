@@ -48,6 +48,19 @@ fn inbound_non_canonical() -> tari_metrics::IntCounter {
     METER.clone()
 }
 
+#[cfg(feature = "metrics")]
+fn inbound_decode_failures() -> tari_metrics::IntCounter {
+    static METER: std::sync::LazyLock<tari_metrics::IntCounter> = std::sync::LazyLock::new(|| {
+        tari_metrics::register_int_counter(
+            "comms::dht::inbound_decode_failures_total",
+            "Inbound DHT envelopes dropped because they do not decode",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
+
 /// # DHT Deserialization middleware
 ///
 /// Takes in an `InboundMessage` and deserializes the body into a [DhtEnvelope].
@@ -149,7 +162,9 @@ where
                     res
                 },
                 Err(err) => {
-                    error!(target: LOG_TARGET, "DHT deserialization failed: {err}");
+                    debug!(target: LOG_TARGET, "DHT deserialization failed: {err}");
+                    #[cfg(feature = "metrics")]
+                    inbound_decode_failures().inc();
                     Err(err.into())
                 },
             }

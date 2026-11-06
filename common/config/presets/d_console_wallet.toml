@@ -330,16 +330,16 @@ event_channel_size = 3500
 [wallet.p2p.dht]
 # The `DbConnectionUrl` for the Dht database. Default: `dht.sqlite` under the data directory. `:memory:` is accepted only with a single connection and is lost on restart.
 database_url = "data/wallet/dht.db"
-# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
+# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 6
 num_neighbouring_nodes = 5
-# Number of random peers to include. Default: 4
+# Number of random peers to include. Default: 6
 num_random_nodes = 1
 # Connections above the configured number of neighbouring and random nodes will be removed (default: false)
 minimize_connections = true
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
-# Send to this many peers when using the propagate strategy. Default: 4
-#propagation_factor = 4
+# Send to this many peers when using the propagate strategy. Default: 20
+#propagation_factor = 20
 
 # The amount of time added to the current time will be used to check if the message has expired or not. Default: 3 hours
 #saf.msg_validity = 10_800 # 3 * 60 * 60 // 3 hours
@@ -365,16 +365,19 @@ minimize_connections = true
 # The maximum number of peer nodes that a message must be closer than to get stored by SAF. Default: 8
 #saf.num_neighbouring_nodes = 8
 
-# The max capacity of the message hash cache. Default: 2,500
-#dedup_cache_capacity = 2_500
-# The periodic trim interval for items in the message hash cache. Default: 300s (5 mins)
-#dedup_cache_trim_interval = 300 # 5 * 60
+# The target capacity of the message hash cache. The cache is trimmed as it grows: signed entries are kept until
+# their message expires (3 h 10 min to 24 h), unsigned ones for 3 h 10 min, and the cache can grow to about 10 x this
+# before unexpired entries are evicted. Default: 50,000
+#dedup_cache_capacity = 50_000
+# The periodic trim interval for items in the message hash cache. A fallback; the cache is also trimmed as it grows.
+# Default: 43200s (12 hours)
+#dedup_cache_trim_interval = 43200 # 12 * 60 * 60
 # The number of occurrences of a message is allowed to pass through the DHT pipeline before being deduped/discarded
 # Default: 1
 #dedup_allowed_message_occurrences = 1
 # The duration to wait for a peer discovery to complete before giving up. Default: 2 minutes
 #discovery_request_timeout = 120 # 2 * 60
-# Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+# Set to true to automatically broadcast a join message when ready, otherwise false. Default: true
 #auto_join = true
 # The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
 # enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
