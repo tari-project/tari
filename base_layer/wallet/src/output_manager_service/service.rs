@@ -2605,7 +2605,7 @@ where
         let unspent_remainder = MicroMinotari(
             aftertax_amount
                 .as_u64()
-                .checked_rem(amount_per_split.as_u64())
+                .checked_rem(number_of_splits as u64)
                 .unwrap_or(0),
         );
         let mut expected_outputs = vec![];
@@ -2724,7 +2724,7 @@ where
         let unspent_remainder = MicroMinotari(
             accumulated_amount
                 .as_u64()
-                .checked_rem(amount_per_split.as_u64())
+                .checked_rem(number_of_splits as u64)
                 .unwrap_or(0),
         );
 
@@ -2784,7 +2784,7 @@ where
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
-        let dest_outputs = spec_outputs_to_db_outputs(&finalized);
+        let mut dest_outputs = spec_outputs_to_db_outputs(&finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2792,6 +2792,16 @@ where
             self.resources.key_manager.get_view_key().pub_key.as_bytes(),
             finalized.transaction.body.outputs(),
         );
+
+        if let Some(change) = finalized.change {
+            dest_outputs.push(DbWalletOutput::from_wallet_output(
+                change,
+                None,
+                OutputSource::default(),
+                Some(tx_id),
+                None,
+            ));
+        }
 
         trace!(
             target: LOG_TARGET,
