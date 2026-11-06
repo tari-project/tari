@@ -157,7 +157,8 @@ mod header_validators {
         let (_, blocks) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"], ["3->2"]));
         let last_block = blocks.get("3").unwrap();
 
-        let candidate_header = BlockHeader::from_previous(last_block.header());
+        let mut candidate_header = BlockHeader::from_previous(last_block.header());
+        candidate_header.kernel_mmr_size = candidate_header.kernel_mmr_size.saturating_add(1);
         let difficulty_calculator = DifficultyCalculator::new(consensus_manager.clone(), Default::default());
         let validator = HeaderFullValidator::new(consensus_manager, difficulty_calculator);
         let mut timestamps = db.fetch_block_timestamps(*blocks.get("3").unwrap().hash()).unwrap();
