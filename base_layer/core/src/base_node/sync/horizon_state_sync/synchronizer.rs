@@ -1725,6 +1725,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Err(e) => return Err(e.into()),
         }
 
+        let stored_outputs = self.stored_unspent_output_count().await?;
+        if stored_outputs != to_header.output_smt_size {
+            return Err(HorizonSyncError::IncorrectResponse(format!(
+                "Peer sent {stored_outputs} unspent outputs at horizon target height {}, but header commits to \
+                 output_smt_size {}",
+                to_header.height, to_header.output_smt_size
+            )));
+        }
+
         // Mark output sync as complete
         db.write_transaction()
             .set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
@@ -4404,5 +4413,197 @@ mod tests {
         apply_tranche_output_updates(updates, deletes, Vec::new(), &mut txn);
         txn.commit().await.unwrap();
         assert_only_genesis_row_left(&db, &genesis_output);
+    }
+
+    fn mine_chain_block(
+        block: tari_node_components::blocks::Block,
+        prev_accum: &tari_node_components::blocks::BlockHeaderAccumulatedData,
+        rules: &BaseNodeConsensusManager,
+    ) -> Arc<ChainBlock> {
+        use tari_transaction_components::tari_proof_of_work::{Difficulty, PowAlgorithm};
+
+        use crate::{
+            blocks::BlockHeaderAccumulatedDataBuilder,
+            proof_of_work::AchievedTargetDifficulty,
+            test_helpers::mine_to_difficulty,
+        };
+
+        let difficulty = Difficulty::min();
+        let mined = mine_to_difficulty(block, difficulty).unwrap();
+        let accum = BlockHeaderAccumulatedDataBuilder::from_previous(prev_accum)
+            .with_hash(mined.hash())
+            .with_achieved_target_difficulty(
+                AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3x, difficulty, difficulty, difficulty)
+                    .unwrap(),
+            )
+            .with_total_kernel_offset(mined.header.total_kernel_offset.clone())
+            .build(rules.consensus_constants(mined.header.height))
+            .unwrap();
+        Arc::new(ChainBlock::try_construct(Arc::new(mined), accum).unwrap())
+    }
+
+    async fn spawn_sync_rpc_peer(
+        peer_db: &BlockchainDatabase<TempDatabase>,
+    ) -> (
+        SyncPeer,
+        tari_comms::protocol::rpc::mock::MockRpcServer<
+            crate::base_node::sync::rpc::BaseNodeSyncRpcServer<
+                crate::base_node::sync::rpc::BaseNodeSyncRpcService<TempDatabase>,
+            >,
+        >,
+    ) {
+        use tari_comms::{
+            NodeIdentity,
+            peer_manager::PeerFeatures,
+            protocol::{ProtocolId, rpc::mock::MockRpcServer},
+        };
+        use tari_service_framework::reply_channel;
+        use tokio::sync::broadcast;
+
+        use crate::base_node::{LocalNodeCommsInterface, sync::rpc::create_base_node_sync_rpc_service};
+
+        let (req_tx, _) = reply_channel::unbounded();
+        let (block_tx, _) = reply_channel::unbounded();
+        let (block_event_tx, _) = broadcast::channel(1);
+        let service = create_base_node_sync_rpc_service(
+            peer_db.clone().into(),
+            LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+            BlockchainSyncConfig::default().rpc_block_batch_size,
+        );
+        let server_node = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/memory/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let client_node = NodeIdentity::random(
+            &mut rand::rng(),
+            "/memory/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let mut mock_server = MockRpcServer::new(service, server_node.clone());
+        mock_server.serve();
+        let conn = mock_server
+            .create_connection(client_node.to_peer(), ProtocolId::from_static(b"t/blksync/1"))
+            .await;
+        let mut sync_peer = SyncPeer::from(PeerChainMetadata::new(
+            server_node.node_id().clone(),
+            peer_db.get_chain_metadata().unwrap(),
+            None,
+        ));
+        sync_peer.set_connection(conn);
+        (sync_peer, mock_server)
+    }
+
+    #[tokio::test]
+    async fn horizon_sync_rejects_target_header_with_inflated_output_smt_size() {
+        use tari_node_components::blocks::BlockValidationError;
+
+        use crate::{
+            base_node::sync::HeaderSynchronizer,
+            proof_of_work::randomx_factory::RandomXFactory,
+            validation::{BlockBodyValidator, ChainBalanceValidator, ValidationError},
+        };
+
+        let (chain, body_validator, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let rules = chain.rules().clone();
+        let block_a = chain.get_block_and_smt_by_name("A").unwrap().block().clone();
+        let block_1 = chain.get_block_and_smt_by_name("1").unwrap().block().clone();
+        let block_2_chain = chain.get_block_and_smt_by_name("2").unwrap();
+        let block_2 = block_2_chain.block().clone();
+        let honest_b3 = chain.get_block_and_smt_by_name("3").unwrap().block().clone();
+
+        // Construct and mine block at height 4 ("3") identical to `honest_b3` except `output_smt_size` is inflated by
+        // +1.
+        let mut inflated_b3 = honest_b3.clone();
+        inflated_b3.header.output_smt_size = honest_b3.header.output_smt_size.saturating_add(1);
+        let inflated_chain_block = mine_chain_block(inflated_b3, block_2_chain.accumulated_data(), &rules);
+        let inflated_header = inflated_chain_block.header().clone();
+
+        // 1. A full/archival node validating `inflated_chain_block` on top of height 3 ("2") rejects it in
+        //    BlockBodyFullValidator.
+        let full_db = create_custom_blockchain(rules.clone());
+        for blk in [&block_a, &block_1, &block_2] {
+            full_db.add_block(Arc::new(blk.clone())).unwrap().result.assert_added();
+        }
+        let full_err = body_validator
+            .validate_body(
+                &*full_db.db_read_access().unwrap(),
+                inflated_chain_block.block().clone(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(
+                full_err,
+                ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
+                    ref mmr_tree,
+                    expected,
+                    actual,
+                }) if mmr_tree == "UTXO"
+                    && expected == honest_b3.header.output_smt_size
+                    && actual == inflated_header.output_smt_size
+            ),
+            "full node must reject inflated output_smt_size, got: {full_err:?}"
+        );
+
+        // 2. Prepare the serving peer DB with heights 1..=3 and `inflated_chain_block` at height 4.
+        let peer_db = full_db;
+        let mut peer_txn = DbTransaction::new();
+        peer_txn.insert_chain_header(inflated_chain_block.to_chain_header());
+        peer_txn.insert_tip_block_body(inflated_chain_block.clone());
+        peer_txn.set_best_block(
+            inflated_chain_block.height(),
+            *inflated_chain_block.hash(),
+            inflated_chain_block.accumulated_data().total_accumulated_difficulty,
+            inflated_header.prev_hash,
+            inflated_header.timestamp.as_u64(),
+        );
+        peer_db.write(peer_txn).unwrap();
+
+        // 3. Drive a fresh syncing node from genesis through `HeaderSynchronizer::synchronize()` and
+        // `HorizonStateSynchronization::synchronize()` with default config and the real `ChainBalanceValidator`.
+        let syncing_db = create_custom_blockchain(rules.clone());
+        let genesis_hash = *syncing_db.get_chain_metadata().unwrap().best_block_hash();
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        connectivity_mock.spawn();
+        let (sync_peer, _mock_server) = spawn_sync_rpc_peer(&peer_db).await;
+        let mut peers = vec![sync_peer];
+
+        let local_meta = syncing_db.get_chain_metadata().unwrap();
+        let mut chain_changes = std::collections::HashMap::new();
+        let mut header_sync = HeaderSynchronizer::new(
+            BlockchainSyncConfig::default(),
+            syncing_db.clone().into(),
+            rules.clone(),
+            connectivity.clone(),
+            &mut peers,
+            RandomXFactory::default(),
+            &local_meta,
+            &mut chain_changes,
+        );
+        header_sync.synchronize().await.unwrap();
+        assert_eq!(syncing_db.fetch_last_header().unwrap().hash(), inflated_header.hash());
+
+        let prover = CryptoFactories::default().range_proof;
+        let real_balance_validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> =
+            Arc::new(ChainBalanceValidator::new(rules.clone(), CryptoFactories::default()));
+        let mut horizon_sync = HorizonStateSynchronization::new(
+            BlockchainSyncConfig::default(),
+            syncing_db.clone().into(),
+            connectivity,
+            rules,
+            &mut peers,
+            inflated_header.height,
+            prover,
+            real_balance_validator,
+        );
+        let err = horizon_sync.synchronize().await.unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::NoMoreSyncPeers(ref msg) if msg.contains("output_smt_size")),
+            "horizon sync must reject mismatched output_smt_size, got: {err:?}"
+        );
+        assert_eq!(
+            syncing_db.get_chain_metadata().unwrap().best_block_hash(),
+            &genesis_hash
+        );
     }
 }
