@@ -26,7 +26,11 @@
 
 mod dedup_cache;
 
-use std::task::Poll;
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::{Arc, Mutex},
+    task::Poll,
+};
 
 use blake2::Blake2b;
 pub use dedup_cache::DedupCacheDatabase;
@@ -34,7 +38,7 @@ use digest::{Digest, consts::U32};
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{message::EnvelopeBody, pipeline::PipelineError};
+use tari_comms::{message::EnvelopeBody, pipeline::PipelineError, types::CommsPublicKey};
 use tari_crypto::{
     hash_domain,
     hashing::{DomainSeparatedHasher, LengthExtensionAttackResistant},
@@ -112,6 +116,43 @@ pub fn create_message_hash(sig_canonical: &[u8], body: &[u8]) -> [u8; 32] {
     out
 }
 
+/// The most (message, source) pairs remembered as dropped for want of the source's budget. The oldest are forgotten
+/// first.
+const MAX_CAPPED_COPIES: usize = 10_000;
+
+/// Shared by the dedup layer and the DHT handler.
+pub(crate) type SharedCappedCopies = Arc<Mutex<CappedCopies>>;
+
+/// Messages the DHT handler dropped because the source that delivered them had used up its budget. The handler gives
+/// back the dedup hit such a copy took, so that a copy from another source is still processed; the dedup layer drops
+/// that source's repeats of the message before they reach the dedup cache, so they cannot take the hit again.
+#[derive(Debug, Default)]
+pub(crate) struct CappedCopies {
+    copies: HashSet<(Vec<u8>, CommsPublicKey)>,
+    order: VecDeque<(Vec<u8>, CommsPublicKey)>,
+}
+
+impl CappedCopies {
+    pub fn contains(&self, dedup_hash: &[u8], source: &CommsPublicKey) -> bool {
+        self.copies.contains(&(dedup_hash.to_vec(), source.clone()))
+    }
+
+    /// Records a capped copy. Returns false if it was already recorded.
+    pub fn insert(&mut self, dedup_hash: Vec<u8>, source: CommsPublicKey) -> bool {
+        let key = (dedup_hash, source);
+        if !self.copies.insert(key.clone()) {
+            return false;
+        }
+        self.order.push_back(key);
+        if self.order.len() > MAX_CAPPED_COPIES &&
+            let Some(oldest) = self.order.pop_front()
+        {
+            self.copies.remove(&oldest);
+        }
+        true
+    }
+}
+
 /// # DHT Deduplication middleware
 ///
 /// Takes in a `DecryptedDhtMessage` and checks the message signature cache for duplicates.
@@ -121,6 +162,7 @@ pub struct DedupMiddleware<S> {
     next_service: S,
     dht_requester: DhtRequester,
     allowed_message_occurrences: usize,
+    capped_copies: SharedCappedCopies,
 }
 
 impl<S> DedupMiddleware<S> {
@@ -129,6 +171,7 @@ impl<S> DedupMiddleware<S> {
             next_service: service,
             dht_requester,
             allowed_message_occurrences,
+            capped_copies: Default::default(),
         }
     }
 }
@@ -150,11 +193,24 @@ where
         let next_service = self.next_service.clone();
         let mut dht_requester = self.dht_requester.clone();
         let allowed_message_occurrences = self.allowed_message_occurrences;
+        let capped_copies = self.capped_copies.clone();
         Box::pin(async move {
             if message.dedup_hash.is_empty() {
                 debug!(
                     target: LOG_TARGET,
                     "Message {} has no dedup key because its signature does not decode. Message discarded.",
+                    message.tag
+                );
+                return Ok(());
+            }
+            if capped_copies
+                .lock()
+                .is_ok_and(|capped| capped.contains(&message.dedup_hash, &message.source_peer.public_key))
+            {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' resent message {} that was dropped for want of its budget. Message discarded.",
+                    message.source_peer.node_id.short_str(),
                     message.tag
                 );
                 return Ok(());
@@ -203,6 +259,7 @@ where
 pub struct DedupLayer {
     dht_requester: DhtRequester,
     allowed_message_occurrences: usize,
+    capped_copies: SharedCappedCopies,
 }
 
 impl DedupLayer {
@@ -210,7 +267,14 @@ impl DedupLayer {
         Self {
             dht_requester,
             allowed_message_occurrences,
+            capped_copies: Default::default(),
         }
+    }
+
+    /// Shares the copies the DHT handler dropped for want of their source's budget.
+    pub(crate) fn with_capped_copies(mut self, capped_copies: SharedCappedCopies) -> Self {
+        self.capped_copies = capped_copies;
+        self
     }
 }
 
@@ -218,7 +282,10 @@ impl<S> Layer<S> for DedupLayer {
     type Service = DedupMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        DedupMiddleware::new(service, self.dht_requester.clone(), self.allowed_message_occurrences)
+        let mut middleware =
+            DedupMiddleware::new(service, self.dht_requester.clone(), self.allowed_message_occurrences);
+        middleware.capped_copies = self.capped_copies.clone();
+        middleware
     }
 }
 
@@ -233,6 +300,44 @@ mod test {
         envelope::DhtMessageFlags,
         test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
+
+    /// A source's repeats of a copy the DHT handler dropped for want of its budget are dropped before the dedup
+    /// cache, while other sources' copies go through
+    #[tokio::test]
+    async fn repeats_of_a_capped_copy_skip_the_dedup_cache() {
+        let spy = service_spy();
+        let (dht_requester, mock) = create_dht_actor_mock();
+        let mock_state = mock.get_shared_state();
+        mock_state.set_number_of_message_hits(1);
+        tokio::spawn(mock.run());
+        let capped_copies = SharedCappedCopies::default();
+        let mut dedup = DedupLayer::new(dht_requester, 1)
+            .with_capped_copies(capped_copies.clone())
+            .layer(spy.to_service::<PipelineError>());
+
+        let capped = make_node_identity();
+        let message = |source: &tari_comms::peer_manager::NodeIdentity| {
+            let inbound_message =
+                make_dht_inbound_message(source, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
+            DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message)
+        };
+        let from_capped = message(&capped);
+        assert!(
+            capped_copies
+                .lock()
+                .unwrap()
+                .insert(from_capped.dedup_hash.clone(), capped.public_key().clone())
+        );
+        for _ in 0..5 {
+            dedup.call(from_capped.clone()).await.unwrap();
+        }
+        assert_eq!(spy.call_count(), 0);
+        assert_eq!(mock_state.call_count(), 0);
+
+        dedup.call(message(&make_node_identity())).await.unwrap();
+        assert_eq!(spy.call_count(), 1);
+        assert_eq!(mock_state.call_count(), 1);
+    }
 
     #[test]
     fn process_message() {

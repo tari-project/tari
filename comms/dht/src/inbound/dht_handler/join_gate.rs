@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     time::{Duration, Instant},
 };
 
@@ -41,15 +41,22 @@ pub(super) enum JoinAdmission {
 #[derive(Debug)]
 struct Propagated {
     at: Instant,
+    seq: u64,
     claim_updated_at: DateTime<Utc>,
 }
 
 /// The Join origins this node re-propagated, when, and the claim each carried. An origin is relayed at most once per
 /// `join_cooldown_interval`, and only with a claim newer than any it was relayed with before. Entries outlive the
-/// cooldown so that an old Join cannot be replayed once it has passed; only capacity eviction drops them.
+/// cooldown so that an old Join cannot be replayed once it has passed; only capacity eviction drops them, the least
+/// recently propagated first. Every entry has the same cooldown, so that is always one whose cooldown has passed, if
+/// there is one.
 #[derive(Debug, Default)]
 pub(super) struct JoinCooldown {
     propagated: HashMap<CommsPublicKey, Propagated>,
+    /// The origins in the order they were last propagated. The sequence number orders propagations at the same
+    /// instant.
+    by_age: BTreeMap<(Instant, u64), CommsPublicKey>,
+    next_seq: u64,
 }
 
 impl JoinCooldown {
@@ -73,19 +80,20 @@ impl JoinCooldown {
         if entry.is_some_and(|entry| now.saturating_duration_since(entry.at) < interval) {
             return JoinAdmission::Cooldown;
         }
-        self.propagated.insert(origin.clone(), Propagated {
+        let seq = self.next_seq;
+        self.next_seq = self.next_seq.wrapping_add(1);
+        if let Some(previous) = self.propagated.insert(origin.clone(), Propagated {
             at: now,
+            seq,
             claim_updated_at: incoming,
-        });
-        // shortcut: a linear scan for the oldest entry, only when a new origin overflows the capacity; new origins
-        // are bounded by the per-source budget. Use an ordered index if the capacity grows much beyond 10,000.
-        if self.propagated.len() > capacity &&
-            let Some(oldest) = self
-                .propagated
-                .iter()
-                .min_by_key(|(_, entry)| entry.at)
-                .map(|(origin, _)| origin.clone())
-        {
+        }) {
+            self.by_age.remove(&(previous.at, previous.seq));
+        }
+        self.by_age.insert((now, seq), origin.clone());
+        while self.propagated.len() > capacity {
+            let Some((_, oldest)) = self.by_age.pop_first() else {
+                break;
+            };
             self.propagated.remove(&oldest);
         }
         JoinAdmission::Propagate
@@ -136,8 +144,34 @@ mod test {
             gate.admit(origin, secs(10), None, start + Duration::from_secs(i), INTERVAL, 3);
         }
         assert_eq!(gate.propagated.len(), 3);
+        assert_eq!(gate.by_age.len(), 3);
         assert!(!gate.propagated.contains_key(&origins[0]));
         assert!(!gate.propagated.contains_key(&origins[1]));
         assert!(origins[2..].iter().all(|origin| gate.propagated.contains_key(origin)));
+    }
+
+    /// Past capacity an origin whose cooldown has passed goes before one still in its cooldown, even if the latter
+    /// was added first
+    #[test]
+    fn an_expired_origin_is_forgotten_before_a_live_one() {
+        let mut gate = JoinCooldown::default();
+        let origins = (0..3)
+            .map(|_| make_node_identity().public_key().clone())
+            .collect::<Vec<_>>();
+        let start = Instant::now();
+        gate.admit(&origins[0], secs(10), None, start, INTERVAL, 2);
+        gate.admit(&origins[1], secs(10), None, start + Duration::from_secs(1), INTERVAL, 2);
+        // origins[0] is propagated again after its cooldown: it is now the newest, and origins[1] has expired too
+        let later = start + INTERVAL + Duration::from_secs(1);
+        assert_eq!(
+            gate.admit(&origins[0], secs(11), None, later, INTERVAL, 2),
+            JoinAdmission::Propagate
+        );
+        gate.admit(&origins[2], secs(10), None, later, INTERVAL, 2);
+
+        assert!(!gate.propagated.contains_key(&origins[1]));
+        assert!(gate.propagated.contains_key(&origins[0]));
+        assert!(gate.propagated.contains_key(&origins[2]));
+        assert_eq!(gate.by_age.len(), 2);
     }
 }

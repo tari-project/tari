@@ -379,8 +379,8 @@ minimize_connections = true
 # The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
 # enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
 # change happens again after this period, another join will be sent. A Join received from the same origin is also
-# relayed at most once per this interval. Default: 10 minutes
-#join_cooldown_interval = 120 # 10 * 60
+# relayed at most once per this interval. At least 1 minute. Default: 10 minutes
+#join_cooldown_interval = 600 # 10 * 60
 # The most Join origins remembered for the receive-side join cooldown, oldest forgotten first. Default: 10,000
 #join_cooldown_capacity = 10_000
 

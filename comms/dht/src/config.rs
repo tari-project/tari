@@ -47,6 +47,8 @@ const MIN_SOURCE_BUDGET_WINDOW: Duration = Duration::from_secs(60);
 /// Bounds for `on_connect_sync_timeout`.
 const MIN_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Lower bound for `join_cooldown_interval`.
+const MIN_JOIN_COOLDOWN_INTERVAL: Duration = Duration::from_secs(60);
 /// Lower bound for `attempted_peers_ttl`.
 const MIN_ATTEMPTED_PEERS_TTL: Duration = Duration::from_secs(1);
 
@@ -101,7 +103,7 @@ pub struct DhtConfig {
     /// The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
     /// enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
     /// change happens again after this period, another join will be sent. It also governs receive-side
-    /// re-propagation: a Join from the same origin is relayed at most once per this interval.
+    /// re-propagation: a Join from the same origin is relayed at most once per this interval. At least 1 minute.
     /// Default: 10 minutes
     #[serde(with = "serializers::seconds")]
     pub join_cooldown_interval: Duration,
@@ -291,6 +293,14 @@ impl DhtConfig {
             );
             discovery.attempted_peers_ttl = MIN_ATTEMPTED_PEERS_TTL;
         }
+        // It also sets how often a Join from one origin is relayed
+        if self.join_cooldown_interval < MIN_JOIN_COOLDOWN_INTERVAL {
+            warn!(
+                target: LOG_TARGET,
+                "join_cooldown_interval must be at least {MIN_JOIN_COOLDOWN_INTERVAL:.0?}. Using that"
+            );
+            self.join_cooldown_interval = MIN_JOIN_COOLDOWN_INTERVAL;
+        }
         if self.join_cooldown_capacity < 1 {
             warn!(target: LOG_TARGET, "join_cooldown_capacity must be at least 1. Using 1");
             self.join_cooldown_capacity = 1;
@@ -448,7 +458,9 @@ mod test {
         config.network_discovery.on_connect_sync_timeout = Duration::ZERO;
         config.network_discovery.attempted_peers_ttl = Duration::ZERO;
         config.join_cooldown_capacity = 0;
+        config.join_cooldown_interval = Duration::ZERO;
         config.clamp_rebootstrap_settings();
+        assert_eq!(config.join_cooldown_interval, MIN_JOIN_COOLDOWN_INTERVAL);
         assert_eq!(config.network_discovery.max_stored_per_source, 1);
         assert_eq!(config.network_discovery.source_budget_window, MIN_SOURCE_BUDGET_WINDOW);
         assert_eq!(
@@ -479,5 +491,6 @@ mod test {
             defaults.network_discovery.on_connect_sync_timeout
         );
         assert_eq!(config.join_cooldown_capacity, defaults.join_cooldown_capacity);
+        assert_eq!(config.join_cooldown_interval, defaults.join_cooldown_interval);
     }
 }

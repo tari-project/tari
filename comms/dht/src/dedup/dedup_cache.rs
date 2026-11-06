@@ -79,8 +79,8 @@ const UPSERT_HIT_SQL: &str = "INSERT INTO dedup_cache (body_hash, sender_public_
                               1, last_hit_at = excluded.last_hit_at, keep_until = MAX(keep_until, \
                               excluded.keep_until) RETURNING number_of_hits";
 
-const FORGET_HIT_SQL: &str =
-    "UPDATE dedup_cache SET number_of_hits = number_of_hits - 1 WHERE body_hash = ? AND number_of_hits > 0";
+const FORGET_HIT_SQL: &str = "UPDATE dedup_cache SET number_of_hits = number_of_hits - 1 WHERE body_hash = ? AND \
+                              number_of_hits > 0 RETURNING number_of_hits";
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -186,10 +186,20 @@ impl DedupCacheDatabase {
     /// Takes back one hit on `body_hash`, so that the next copy of the message is processed as if this one had not
     /// arrived
     pub fn forget_hit(&self, body_hash: &[u8]) -> Result<(), StorageError> {
+        #[derive(QueryableByName)]
+        struct Hits {
+            #[diesel(sql_type = sql_types::Integer)]
+            number_of_hits: i32,
+        }
+
         let mut conn = self.connection.get_pooled_connection()?;
-        diesel::sql_query(FORGET_HIT_SQL)
+        let rows = diesel::sql_query(FORGET_HIT_SQL)
             .bind::<sql_types::Text, _>(to_hex(body_hash))
-            .execute(&mut conn)?;
+            .load::<Hits>(&mut conn)?;
+        // The next hit counts as an insert again, so take this one back from the trim schedule
+        if rows.iter().any(|row| row.number_of_hits == 0) {
+            self.num_inserts.fetch_sub(1, Ordering::Relaxed);
+        }
         Ok(())
     }
 
@@ -443,6 +453,8 @@ mod test {
         cache.forget_hit(&hash).unwrap();
         assert_eq!(cache.get_hit_count(&hash).unwrap(), 0);
         assert_eq!(add(&cache, 1, None, true), 1);
+        // A forgotten and re-hit entry was inserted once
+        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
     }
 
     #[test]

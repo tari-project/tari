@@ -32,7 +32,7 @@ use tari_comms::{
     BytesMut,
     OrNotFound,
     net_address::PeerAddressSource,
-    peer_manager::{NodeId, NodeIdentity, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
@@ -44,6 +44,7 @@ use crate::{
     DhtConfig,
     DhtRequester,
     actor::OffenceSeverity,
+    dedup::SharedCappedCopies,
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
@@ -87,6 +88,7 @@ pub struct ProcessDhtMessage<S> {
     config: Arc<DhtConfig>,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
     source_budget: SharedSourceBudget,
+    capped_copies: SharedCappedCopies,
 }
 
 impl<S> ProcessDhtMessage<S>
@@ -103,6 +105,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         config: Arc<DhtConfig>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
         source_budget: SharedSourceBudget,
+        capped_copies: SharedCappedCopies,
     ) -> Self {
         Self {
             next_service,
@@ -115,6 +118,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             config,
             join_cooldown,
             source_budget,
+            capped_copies,
         }
     }
 
@@ -291,8 +295,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 budget.has_headroom(&source_peer.node_id, Instant::now(), &self.config.network_discovery)
             })
         {
-            self.drop_capped_join(&source_peer.node_id, &authenticated_pk, dedup_hash)
-                .await;
+            self.drop_capped_join(&source_peer, &authenticated_pk, dedup_hash).await;
             return Ok(());
         }
         let validated = validator.validate_peer(new_peer, maybe_existing);
@@ -316,8 +319,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
             })
         {
-            self.drop_capped_join(&source_peer.node_id, &authenticated_pk, dedup_hash)
-                .await;
+            self.drop_capped_join(&source_peer, &authenticated_pk, dedup_hash).await;
             return Ok(());
         }
 
@@ -404,15 +406,20 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     /// Drops a Join that its source had no budget for. The dedup hit it took is given back, otherwise a source that
-    /// used up its budget could deliver a Join first and so stop the copies from other sources being processed.
-    async fn drop_capped_join(&mut self, source: &NodeId, origin: &CommsPublicKey, dedup_hash: Vec<u8>) {
+    /// used up its budget could deliver a Join first and so stop the copies from other sources being processed. The
+    /// dedup layer drops that source's repeats of the Join, so each source gives a hit back at most once.
+    async fn drop_capped_join(&mut self, source: &Peer, origin: &CommsPublicKey, dedup_hash: Vec<u8>) {
         debug!(
             target: LOG_TARGET,
             "Source peer '{}' has relayed its share of new peers. Dropping the Join from '{origin}'.",
-            source.short_str()
+            source.node_id.short_str()
         );
         join_received("capped");
-        if let Err(err) = self.dht.forget_dedup_hit(dedup_hash).await {
+        let is_first = self
+            .capped_copies
+            .lock()
+            .is_ok_and(|mut capped| capped.insert(dedup_hash.clone(), source.public_key.clone()));
+        if is_first && let Err(err) = self.dht.forget_dedup_hit(dedup_hash).await {
             warn!(target: LOG_TARGET, "Failed to take back the dedup hit of a dropped Join: {err}");
         }
     }
@@ -751,6 +758,7 @@ mod test {
         peer_manager: Arc<PeerManager>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
         source_budget: SharedSourceBudget,
+        capped_copies: SharedCappedCopies,
     }
 
     impl Handler {
@@ -761,6 +769,7 @@ mod test {
                 peer_manager: build_peer_manager(),
                 join_cooldown: Default::default(),
                 source_budget: Default::default(),
+                capped_copies: Default::default(),
             }
         }
 
@@ -781,6 +790,7 @@ mod test {
                 self.config.clone(),
                 self.join_cooldown.clone(),
                 self.source_budget.clone(),
+                self.capped_copies.clone(),
             );
             // Answers the requests the handler waits on, and collects bans, until the handler is done
             let dht_requests = tokio::spawn(async move {
