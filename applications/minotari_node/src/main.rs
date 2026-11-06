@@ -224,6 +224,12 @@ fn main_inner() -> Result<(), ExitError> {
     })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
 
+    info!(target: LOG_TARGET, "Effective base path: {}", base_path.display());
+    info!(target: LOG_TARGET, "Effective config path: {}", config_path.display());
+    info!(target: LOG_TARGET, "Effective log config path: {}", cli.common.log_config_path("base_node").display());
+    info!(target: LOG_TARGET, "Effective identity file: {}", config.base_node.identity_file.display());
+    info!(target: LOG_TARGET, "Effective Tor identity file: {}", config.base_node.tor_identity_file.display());
+
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,

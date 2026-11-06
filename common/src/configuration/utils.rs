@@ -62,6 +62,11 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
         };
         write_config_to(&config_path, &sources)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
+        info!(
+            target: LOG_TARGET,
+            "Created default configuration file at {}",
+            display_path(config_path.as_ref())
+        );
     } else {
         // Nothing here
     }

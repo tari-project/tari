@@ -48,12 +48,19 @@ pub fn default_subdir(path: &str, base_dir: Option<&PathBuf>) -> String {
 
 pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
     let mut home = base_path.cloned().unwrap_or_else(|| {
-        [
-            dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(".")),
-            PathBuf::from(".tari"),
-        ]
-        .iter()
-        .collect()
+        let home_dir = match dirs_next::home_dir() {
+            Some(dir) => dir,
+            None => {
+                let fallback = absolute_path(".");
+                log::warn!(
+                    target: crate::LOG_TARGET,
+                    "Home directory could not be determined; falling back to working directory: {}",
+                    fallback.display()
+                );
+                PathBuf::from(".")
+            },
+        };
+        [home_dir, PathBuf::from(".tari")].iter().collect()
     });
     for component in PathBuf::from(filename).components() {
         home.push(component);
