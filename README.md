@@ -262,9 +262,9 @@ minotari_mcp_node --node-grpc-address 127.0.0.1:18142
 Security-relevant options:
 
 - Read-only by default; `--mcp-control-enabled` opts in to operations that can move funds or change node state
-- `--require-confirmation` (wallet) prompts the user for every value transfer
 - `--mcp-rate-limit` caps requests per minute per client
 - `--mcp-audit-logging` / `--mcp-audit-log-path` record every operation
+- Authentication credentials can be passed via environment variables (`MINOTARI_WALLET_GRPC_USERNAME`, `MINOTARI_WALLET_GRPC_PASSWORD`)
 - The servers connect only to local gRPC endpoints
 
 For complete documentation, see:

@@ -77,7 +77,7 @@ minotari_mcp_wallet --help
 
 3. **For control operations** (allows spending - use with caution):
    ```bash
-   minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --require-confirmation
+   minotari_mcp_wallet --mcp-enabled --mcp-control-enabled
    ```
 
 ### AI Integration
@@ -107,7 +107,7 @@ Example MCP client configuration:
 
 2. **Network Binding**: The server only binds to localhost (127.0.0.1) for security. Do not modify this unless you understand the risks.
 
-3. **User Confirmation**: Use `--require-confirmation` for additional safety when control operations are enabled.
+3. **gRPC Authentication**: Provide credentials via `MINOTARI_WALLET_GRPC_USERNAME` and `MINOTARI_WALLET_GRPC_PASSWORD` environment variables to authenticate with the wallet gRPC server without leaking secrets in process lists.
 
 4. **Audit Logging**: Enable audit logging in production environments to track all operations.
 
@@ -125,7 +125,7 @@ minotari_mcp_wallet --mcp-enabled --mcp-audit-logging --mcp-rate-limit 10
 
 **For Trusted AI Control** (use with extreme caution):
 ```bash
-minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --require-confirmation --mcp-audit-logging
+minotari_mcp_wallet --mcp-enabled --mcp-control-enabled --mcp-audit-logging
 ```
 
 ## Development

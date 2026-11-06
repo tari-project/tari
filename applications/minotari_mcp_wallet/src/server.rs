@@ -22,7 +22,7 @@
 // infrastructure for Tari applications
 //! Wallet MCP server implementation
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use minotari_mcp_common::{
     CliConfigExtractor,
@@ -38,7 +38,10 @@ use minotari_mcp_common::{
     TariProcessLauncher,
 };
 use minotari_wallet_grpc_client::WalletGrpcClient;
+use tari_common_types::grpc_authentication::GrpcAuthentication;
+use tari_utilities::SafePassword;
 use tonic::transport::Channel;
+use uuid::Uuid;
 
 use crate::{
     cli::Cli,
@@ -57,10 +60,10 @@ pub struct WalletMcpServer {
 
 impl WalletMcpServer {
     /// Create a new Wallet MCP server
-    pub async fn new(config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
+    pub async fn new(mut config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch wallet if configured and not running
         let launched_process = if config.should_auto_launch_wallet() {
-            Self::ensure_wallet_running(&config, cli).await?
+            Self::ensure_wallet_running(&mut config, cli).await?
         } else {
             None
         };
@@ -121,8 +124,8 @@ impl WalletMcpServer {
 
         log::info!("Connecting to wallet at: {wallet_grpc_url}");
 
-        // Use the wallet client's connect method
-        let client = WalletGrpcClient::connect(&wallet_grpc_url)
+        // Use the wallet client's connect_with_auth method
+        let client = WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.authentication)
             .await
             .map_err(|e| McpError::config_error(format!("Failed to connect to wallet: {e}")))?;
 
@@ -131,15 +134,50 @@ impl WalletMcpServer {
     }
 
     /// Ensure wallet is running, auto-launch if needed
-    async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
+    async fn ensure_wallet_running(config: &mut WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
         let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address).unwrap_or(18143);
 
         // Check if already running using proper health monitor
         let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
         if health_monitor.is_service_ready().await {
-            log::info!("Wallet already running and healthy on port {port}");
-            return Ok(None); // No process launched by us
+            // Verify if the running service can be authenticated with current credentials
+            let wallet_grpc_url = if config.wallet_grpc.address.starts_with("http://") ||
+                config.wallet_grpc.address.starts_with("https://")
+            {
+                config.wallet_grpc.address.clone()
+            } else {
+                format!("http://{}", config.wallet_grpc.address)
+            };
+
+            match WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.authentication).await {
+                Ok(mut test_client) => {
+                    match test_client
+                        .identify(minotari_wallet_grpc_client::grpc::GetIdentityRequest {})
+                        .await
+                    {
+                        Ok(_) => {
+                            log::info!("Wallet already running and authenticated on port {port}");
+                            return Ok(None);
+                        },
+                        Err(status) if status.code() == tonic::Code::Unauthenticated => {
+                            return Err(McpError::service_unavailable(format!(
+                                "An orphaned or existing wallet is listening on port {port} with different \
+                                 authentication credentials. Please stop the existing wallet process or provide \
+                                 matching credentials via --wallet-grpc-username/--wallet-grpc-password."
+                            )));
+                        },
+                        Err(e) => {
+                            log::warn!("Wallet responded to probe with: {e}");
+                            return Ok(None);
+                        },
+                    }
+                },
+                Err(e) => {
+                    log::warn!("Could not connect client to probe running wallet: {e}");
+                    return Ok(None);
+                },
+            }
         }
 
         log::info!("Wallet not detected, auto-launching...");
@@ -152,10 +190,9 @@ impl WalletMcpServer {
 
         // Extract proper CLI configuration and arguments
         let launch_config = cli.extract_launch_config();
-        let wallet_args = cli.extract_wallet_args();
+        let (wallet_args, env_vars) = Self::prepare_auto_launch_params(config, cli);
 
-        log::debug!("Launching wallet with config: {launch_config:?}");
-        log::debug!("Wallet arguments: {wallet_args:?}");
+        log::debug!("Launching wallet on port {available_port}");
 
         // Create process launcher using TariProcessLauncher
         let grpc_address = format!("127.0.0.1:{available_port}");
@@ -165,6 +202,7 @@ impl WalletMcpServer {
             launch_config.network,
             grpc_address,
             wallet_args,
+            env_vars,
         )
         .await?;
 
@@ -202,6 +240,7 @@ impl WalletMcpServer {
             // Check if the service is ready using proper health check
             if launched_health_monitor.is_service_ready().await {
                 log::info!("Wallet is now running and healthy on port {available_port}");
+                config.wallet_grpc.address = format!("127.0.0.1:{available_port}");
                 return Ok(Some(launcher));
             }
 
@@ -228,6 +267,58 @@ impl WalletMcpServer {
         Err(McpError::server_error("Wallet failed to become healthy within timeout"))
     }
 
+    /// Prepare launch args and environment variables for the spawned wallet process.
+    /// Credentials are intentionally placed into environment variables (never argv / args)
+    /// to prevent credential leakage via /proc/<pid>/cmdline and avoid CLI override parsing issues.
+    pub(crate) fn prepare_auto_launch_params(
+        config: &mut WalletMcpConfig,
+        cli: &Cli,
+    ) -> (Vec<String>, HashMap<String, String>) {
+        let wallet_args = cli.extract_wallet_args();
+        let mut env_vars = HashMap::new();
+
+        // Pass wallet password via MINOTARI_WALLET_PASSWORD environment variable
+        if let Some(ref password) = cli.wallet_password {
+            env_vars.insert(
+                "MINOTARI_WALLET_PASSWORD".to_string(),
+                String::from_utf8_lossy(password.reveal()).to_string(),
+            );
+        }
+
+        // Setup gRPC authentication for auto-launched wallet via environment variables
+        // to avoid leaking credentials in argv / ps or failing string deserialization of untagged enums.
+        match &config.wallet_grpc.authentication {
+            GrpcAuthentication::Basic { username, password } => {
+                env_vars.insert(
+                    "TARI_WALLET__GRPC_AUTHENTICATION__USERNAME".to_string(),
+                    username.clone(),
+                );
+                env_vars.insert(
+                    "TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD".to_string(),
+                    String::from_utf8_lossy(password.reveal()).to_string(),
+                );
+            },
+            GrpcAuthentication::None => {
+                let random_user = "mcp_wallet";
+                let random_password = Uuid::new_v4().to_string();
+                env_vars.insert(
+                    "TARI_WALLET__GRPC_AUTHENTICATION__USERNAME".to_string(),
+                    random_user.to_string(),
+                );
+                env_vars.insert(
+                    "TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD".to_string(),
+                    random_password.clone(),
+                );
+                config.wallet_grpc.authentication = GrpcAuthentication::Basic {
+                    username: random_user.to_string(),
+                    password: SafePassword::from(random_password),
+                };
+            },
+        }
+
+        (wallet_args, env_vars)
+    }
+
     /// Run startup diagnostics for troubleshooting
     #[allow(dead_code)]
     pub async fn run_diagnostics(config: &WalletMcpConfig, cli: &Cli) -> String {
@@ -240,5 +331,78 @@ impl WalletMcpServer {
 
         let results = diagnostics.run_diagnostics().await;
         diagnostics.format_diagnostic_report(&results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+    use tari_common_types::grpc_authentication::GrpcAuthentication;
+
+    use super::*;
+
+    #[test]
+    fn test_auto_launch_credentials_in_env_not_argv() {
+        let cli = Cli::try_parse_from(["minotari_mcp_wallet", "--wallet-password", "test_wallet_auth"]).unwrap();
+
+        let mut config = WalletMcpConfig::load(&cli).unwrap();
+        let (args, env_vars) = WalletMcpServer::prepare_auto_launch_params(&mut config, &cli);
+
+        // Args must NOT contain any passwords or credentials
+        for arg in &args {
+            assert!(!arg.contains("test_wallet_auth"));
+            assert!(!arg.contains("mcp_wallet"));
+            assert_ne!(arg, "-p");
+            assert_ne!(arg, "--password");
+        }
+
+        // Env vars must contain the wallet password
+        assert_eq!(
+            env_vars.get("MINOTARI_WALLET_PASSWORD"),
+            Some(&"test_wallet_auth".to_string())
+        );
+
+        // Env vars must contain generated gRPC authentication
+        assert_eq!(
+            env_vars.get("TARI_WALLET__GRPC_AUTHENTICATION__USERNAME"),
+            Some(&"mcp_wallet".to_string())
+        );
+        assert!(env_vars.contains_key("TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD"));
+
+        // Config should have been updated to GrpcAuthentication::Basic
+        assert!(matches!(
+            config.wallet_grpc.authentication,
+            GrpcAuthentication::Basic { .. }
+        ));
+    }
+
+    #[test]
+    fn test_auto_launch_configured_grpc_auth_in_env() {
+        let cli = Cli::try_parse_from([
+            "minotari_mcp_wallet",
+            "--wallet-grpc-username",
+            "custom_admin",
+            "--wallet-grpc-password",
+            "test_grpc_auth",
+        ])
+        .unwrap();
+
+        let mut config = WalletMcpConfig::load(&cli).unwrap();
+        let (args, env_vars) = WalletMcpServer::prepare_auto_launch_params(&mut config, &cli);
+
+        for arg in &args {
+            assert!(!arg.contains("test_grpc_auth"));
+            assert!(!arg.contains("custom_admin"));
+            assert_ne!(arg, "-p");
+        }
+
+        assert_eq!(
+            env_vars.get("TARI_WALLET__GRPC_AUTHENTICATION__USERNAME"),
+            Some(&"custom_admin".to_string())
+        );
+        assert_eq!(
+            env_vars.get("TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD"),
+            Some(&"test_grpc_auth".to_string())
+        );
     }
 }

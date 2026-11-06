@@ -22,7 +22,7 @@
 // infrastructure for Tari applications
 //! Security and permission management for MCP operations
 
-use std::{collections::HashMap, net::IpAddr};
+use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,6 @@ pub struct SecurityContext {
 #[derive(Debug, Clone)]
 struct Session {
     id: Uuid,
-    client_ip: IpAddr,
     #[allow(dead_code)]
     created_at: DateTime<Utc>,
     last_activity: DateTime<Utc>,
@@ -66,7 +65,7 @@ struct Session {
 #[derive(Debug, Clone)]
 struct RateLimiter {
     requests_per_minute: u32,
-    client_requests: HashMap<IpAddr, Vec<DateTime<Utc>>>,
+    client_requests: Vec<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +78,6 @@ pub struct AuditLogger {
 pub struct AuditEntry {
     timestamp: DateTime<Utc>,
     session_id: Uuid,
-    client_ip: IpAddr,
     operation: String,
     permission_level: PermissionLevel,
     success: bool,
@@ -100,33 +98,15 @@ impl SecurityContext {
     /// Check if a client can perform an operation with the given permission level
     pub fn check_permission(
         &mut self,
-        client_ip: IpAddr,
         operation: &str,
         permission_level: PermissionLevel,
         request_data: serde_json::Value,
     ) -> McpResult<Uuid> {
-        // Enforce local-only access
-        if !client_ip.is_loopback() {
-            let error =
-                McpError::permission_denied("Remote access not allowed - MCP server only accepts local connections");
-            self.audit_logger.log_operation(
-                Uuid::new_v4(),
-                client_ip,
-                operation,
-                permission_level,
-                false,
-                Some(error.to_string()),
-                request_data,
-            );
-            return Err(error);
-        }
-
-        // Check rate limiting
-        if !self.rate_limiter.check_rate_limit(client_ip) {
+        // Check rate limiting on the stdio transport connection
+        if !self.rate_limiter.check_rate_limit() {
             let error = McpError::RateLimitExceeded;
             self.audit_logger.log_operation(
                 Uuid::new_v4(),
-                client_ip,
                 operation,
                 permission_level,
                 false,
@@ -148,7 +128,6 @@ impl SecurityContext {
                     );
                     self.audit_logger.log_operation(
                         Uuid::new_v4(),
-                        client_ip,
                         operation,
                         permission_level,
                         false,
@@ -161,36 +140,22 @@ impl SecurityContext {
         }
 
         // Create or update session
-        let session_id = self.create_or_update_session(client_ip);
+        let session_id = self.create_or_update_session();
 
         // Log successful permission check
-        self.audit_logger.log_operation(
-            session_id,
-            client_ip,
-            operation,
-            permission_level,
-            true,
-            None,
-            request_data,
-        );
+        self.audit_logger
+            .log_operation(session_id, operation, permission_level, true, None, request_data);
 
         Ok(session_id)
     }
 
-    fn create_or_update_session(&mut self, client_ip: IpAddr) -> Uuid {
+    fn create_or_update_session(&mut self) -> Uuid {
         let now = Utc::now();
 
-        // Find existing session for this IP
-        let session_id = self
-            .sessions
-            .values()
-            .find(|s| s.client_ip == client_ip)
-            .map(|s| s.id)
-            .unwrap_or_else(Uuid::new_v4);
+        let session_id = self.sessions.values().next().map(|s| s.id).unwrap_or_else(Uuid::new_v4);
 
         let session = Session {
             id: session_id,
-            client_ip,
             created_at: now,
             last_activity: now,
             request_count: 1,
@@ -213,25 +178,20 @@ impl RateLimiter {
     fn new(requests_per_minute: u32) -> Self {
         Self {
             requests_per_minute,
-            client_requests: HashMap::new(),
+            client_requests: Vec::new(),
         }
     }
 
-    fn check_rate_limit(&mut self, client_ip: IpAddr) -> bool {
+    fn check_rate_limit(&mut self) -> bool {
         let now = Utc::now();
-        // On the (impossible in practice) overflow, keep every request, i.e. rate limit more strictly
         let cutoff = now
             .checked_sub_signed(chrono::Duration::minutes(1))
             .unwrap_or(DateTime::<Utc>::MIN_UTC);
 
-        let requests = self.client_requests.entry(client_ip).or_default();
+        self.client_requests.retain(|&timestamp| timestamp > cutoff);
 
-        // Remove old requests
-        requests.retain(|&timestamp| timestamp > cutoff);
-
-        // Check if under limit
-        if requests.len() < self.requests_per_minute as usize {
-            requests.push(now);
+        if self.client_requests.len() < self.requests_per_minute as usize {
+            self.client_requests.push(now);
             true
         } else {
             false
@@ -250,7 +210,6 @@ impl AuditLogger {
     fn log_operation(
         &self,
         session_id: Uuid,
-        client_ip: IpAddr,
         operation: &str,
         permission_level: PermissionLevel,
         success: bool,
@@ -264,7 +223,6 @@ impl AuditLogger {
         let _entry = AuditEntry {
             timestamp: Utc::now(),
             session_id,
-            client_ip,
             operation: operation.to_string(),
             permission_level,
             success,
@@ -274,12 +232,11 @@ impl AuditLogger {
 
         // Log to structured logger
         if success {
-            log::info!("MCP Operation: {operation} by {client_ip} (session: {session_id})");
+            log::info!("MCP Operation: {operation} (session: {session_id})");
         } else {
             log::warn!(
-                "MCP Operation Failed: {} by {} (session: {}) - {}",
+                "MCP Operation Failed: {} (session: {}) - {}",
                 operation,
-                client_ip,
                 session_id,
                 error_message.unwrap_or_else(|| "Unknown error".to_string())
             );
