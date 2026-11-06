@@ -194,12 +194,13 @@ impl DedupCacheDatabase {
     }
 
     /// Takes back one hit on `body_hash`, so that the next copy of the message is processed as if this one had not
-    /// arrived
+    /// arrived. Forgetting the last hit removes the entry, so that it does not linger unseen by the insert-driven trim.
+    /// The insert stays counted towards the trim schedule: taking it back would let a stream of forgotten entries
+    /// hold the count just short of a trim and trigger one on every insert.
     pub fn forget_hit(&self, body_hash: &[u8]) -> Result<(), StorageError> {
         let body_hash = to_hex(body_hash);
         let mut conn = self.connection.get_pooled_connection()?;
-        let deleted = conn.transaction::<_, diesel::result::Error, _>(|conn| {
-            // Forgetting the last hit removes the entry, so that it does not linger unseen by the insert-driven trim
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
             let deleted = diesel::sql_query(FORGET_LAST_HIT_SQL)
                 .bind::<sql_types::Text, _>(&body_hash)
                 .execute(conn)?;
@@ -208,12 +209,8 @@ impl DedupCacheDatabase {
                     .bind::<sql_types::Text, _>(&body_hash)
                     .execute(conn)?;
             }
-            Ok(deleted)
+            Ok(())
         })?;
-        // The next hit inserts the entry again, so take this insert back from the trim schedule
-        if deleted > 0 {
-            self.num_inserts.fetch_sub(1, Ordering::Relaxed);
-        }
         Ok(())
     }
 
@@ -458,7 +455,7 @@ mod test {
     const AFTER_MIN_AGE: Duration = MIN_ENTRY_AGE.saturating_add(Duration::from_secs(60));
 
     #[test]
-    fn a_forgotten_hit_is_not_counted() {
+    fn a_forgotten_hit_is_taken_back_and_the_last_removes_the_entry() {
         let cache = new_cache(10);
         let hash = 1usize.to_le_bytes();
         assert_eq!(add(&cache, 1, None, true), 1);
@@ -467,15 +464,15 @@ mod test {
         assert_eq!(cache.get_hit_count(&hash).unwrap(), 1);
         assert_eq!(row_count(&cache), 1);
 
-        // Forgetting the last hit removes the entry and its insert
+        // Forgetting the last hit removes the entry; the insert stays counted
         cache.forget_hit(&hash).unwrap();
         assert_eq!(row_count(&cache), 0);
-        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 0);
+        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
         cache.forget_hit(&hash).unwrap();
-        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 0);
+        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
 
         assert_eq!(add(&cache, 1, None, true), 1);
-        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
+        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 2);
     }
 
     #[test]
