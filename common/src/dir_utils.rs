@@ -52,11 +52,13 @@ pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
             Some(dir) => dir,
             None => {
                 let fallback = absolute_path(".");
+                let shown = crate::configuration::utils::display_path(&fallback);
                 log::warn!(
                     target: crate::LOG_TARGET,
                     "Home directory could not be determined; falling back to working directory: {}",
-                    fallback.display()
+                    shown
                 );
+                eprintln!("⚠️  Home directory could not be determined; falling back to working directory: {}", shown);
                 PathBuf::from(".")
             },
         };

@@ -613,7 +613,12 @@ pub fn sanitize_for_display(s: &str) -> String {
 }
 
 /// [`sanitize_for_display`] for a path.
-fn display_path(path: &Path) -> String {
+pub fn display_path<P: AsRef<Path>>(path: P) -> String {
+    sanitize_for_display(&path.as_ref().display().to_string())
+}
+
+#[allow(dead_code)]
+fn _display_path_legacy(path: &Path) -> String {
     sanitize_for_display(&path.display().to_string())
 }
 
