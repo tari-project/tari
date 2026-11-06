@@ -114,7 +114,7 @@ pub enum DhtRequest {
     /// Send a Join request to the network
     SendJoin,
     /// Inserts a message signature to the msg hash cache. This operation replies with the number of times this message
-    /// has previously been seen (hit count)
+    /// has been seen (hit count) and whether `received_from` is the peer that first delivered it
     MsgHashCacheInsert {
         message_hash: Vec<u8>,
         received_from: CommsPublicKey,
@@ -122,7 +122,7 @@ pub enum DhtRequest {
         expires: Option<EpochTime>,
         /// True if the message carries a signature
         is_signed: bool,
-        reply_tx: oneshot::Sender<u32>,
+        reply_tx: oneshot::Sender<(u32, bool)>,
     },
     GetMsgHashHitCount(Vec<u8>, oneshot::Sender<u32>),
     /// Fetch selected peers according to the broadcast strategy
@@ -206,14 +206,15 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
-    /// Adds a message hash to the dedup cache.
+    /// Adds a message hash to the dedup cache. Returns the hit count and whether `received_from` is the peer that first
+    /// delivered the message.
     pub async fn add_message_to_dedup_cache(
         &mut self,
         message_hash: Vec<u8>,
         received_from: CommsPublicKey,
         expires: Option<EpochTime>,
         is_signed: bool,
-    ) -> Result<u32, DhtActorError> {
+    ) -> Result<(u32, bool), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender.send(DhtRequest::MsgHashCacheInsert {
             message_hash,
@@ -464,8 +465,8 @@ impl DhtActor {
                     .await
                     .map_err(StorageError::from);
                     match result.and_then(|r| r) {
-                        Ok(hit_count) => {
-                            let _ = reply_tx.send(hit_count);
+                        Ok(hit) => {
+                            let _ = reply_tx.send(hit);
                         },
                         Err(err) => {
                             // Fail closed: a hit count above any allowed number of occurrences makes the dedup
@@ -485,7 +486,8 @@ impl DhtActor {
                                 );
                             }
                             drop(logged_at);
-                            let _ = reply_tx.send(u32::MAX);
+                            // Not known to be a relayed duplicate, so it still counts towards the flood ban
+                            let _ = reply_tx.send((u32::MAX, true));
                         },
                     }
                     Ok(())
@@ -1116,7 +1118,7 @@ mod test {
             .batch_execute("DROP TABLE dedup_cache;")
             .unwrap();
 
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(vec![1u8, 2, 3], CommsPublicKey::default(), None, true)
             .await
             .unwrap();
@@ -1158,17 +1160,17 @@ mod test {
         actor.spawn();
 
         let signature = vec![1u8, 2, 3];
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(signature.clone(), CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 1);
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(signature, CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 2);
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(Vec::new(), CommsPublicKey::default(), None, true)
             .await
             .unwrap();
@@ -1215,7 +1217,7 @@ mod test {
 
         // Pre-populate the dedup cache; everything should be accepted because the cleanup ticker has not run yet
         for key in &signatures {
-            let num_hits = actor
+            let (num_hits, _) = actor
                 .msg_hash_dedup_cache
                 .add_msg_hash(key, &CommsPublicKey::default(), None, true)
                 .unwrap();
@@ -1223,7 +1225,7 @@ mod test {
         }
         // Try to re-insert all; all hashes should have incremented their hit count
         for key in &signatures {
-            let num_hits = actor
+            let (num_hits, _) = actor
                 .msg_hash_dedup_cache
                 .add_msg_hash(key, &CommsPublicKey::default(), None, true)
                 .unwrap();
@@ -1239,7 +1241,7 @@ mod test {
 
         // Verify that the last half of the signatures are still present in the cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {
-            let num_hits = requester
+            let (num_hits, _) = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
@@ -1247,7 +1249,7 @@ mod test {
         }
         // Verify that the first half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity) {
-            let num_hits = requester
+            let (num_hits, _) = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
@@ -1259,7 +1261,7 @@ mod test {
 
         // Verify that the last half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {
-            let num_hits = requester
+            let (num_hits, _) = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();

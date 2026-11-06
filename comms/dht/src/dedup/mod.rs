@@ -45,7 +45,7 @@ use tower::{Service, ServiceExt, layer::Layer};
 use crate::{
     actor::DhtRequester,
     envelope::DhtMessageFlags,
-    inbound::{DecryptedDhtMessage, DhtInboundMessage},
+    inbound::{DecryptedDhtMessage, DhtInboundMessage, metrics},
     message_signature::{MessageSignature, ProtoMessageSignature},
 };
 
@@ -167,7 +167,7 @@ where
                 message.dht_header.message_tag
             );
 
-            message.dedup_hit_count = dht_requester
+            let (hit_count, from_first_sender) = dht_requester
                 .add_message_to_dedup_cache(
                     message.dedup_hash.clone(),
                     message.source_peer.public_key.clone(),
@@ -175,6 +175,11 @@ where
                     message.has_message_signature(),
                 )
                 .await?;
+            message.dedup_hit_count = hit_count;
+            // A relay passes on what others sent it, so only a peer's own repeats count against it
+            if !from_first_sender {
+                metrics::skip_flood_ban_count();
+            }
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
                 trace!(

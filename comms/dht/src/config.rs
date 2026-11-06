@@ -125,8 +125,9 @@ pub struct DhtConfig {
     #[serde(with = "serializers::seconds")]
     pub ban_duration_short: Duration,
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
-    /// `ban_duration_short`). The DHT keeps the times of up to this many messages plus one per peer. Duplicate
-    /// messages are not counted. Must be in 1..=1,000,000.
+    /// `ban_duration_short`). Every message a peer delivers counts, including invalid ones, except duplicates
+    /// that another peer delivered first. The DHT keeps the times of up to this many messages plus one per peer. Must
+    /// be in 1..=1,000,000.
     /// Default: 1000 messages
     #[serde(deserialize_with = "deserialize_flood_ban_max_msg_count")]
     pub flood_ban_max_msg_count: usize,

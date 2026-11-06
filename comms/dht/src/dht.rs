@@ -285,6 +285,7 @@ impl Dht {
         S::Future: Send,
     {
         ServiceBuilder::new()
+            .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
@@ -293,7 +294,6 @@ impl Dht {
                 self.dht_requester(),
                 self.config.dedup_allowed_message_occurrences,
             ))
-            .layer(MetricsLayer::new(self.metrics_collector.clone()))
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
@@ -532,60 +532,6 @@ mod test {
         };
 
         assert_eq!(msg, b"secret");
-    }
-
-    /// Duplicates are dropped by dedup before the flood-ban metric, so they do not count against the delivering peer.
-    #[tokio::test]
-    async fn test_stack_does_not_count_duplicates_towards_the_flood_ban() {
-        let node_identity = make_node_identity();
-        let peer_manager = build_peer_manager();
-        let (connectivity, _) = create_connectivity_mock();
-        peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
-        let (out_tx, _) = mpsc::unbounded_channel();
-        let shutdown = Shutdown::new();
-        let dht = Dht::builder()
-            .local_test()
-            .with_outbound_sender(out_tx)
-            .build(
-                Arc::clone(&node_identity),
-                peer_manager,
-                connectivity,
-                shutdown.to_signal(),
-            )
-            .await
-            .unwrap();
-        let (out_tx, mut out_rx) = mpsc::channel(10);
-        let mut service = dht.inbound_middleware_layer().layer(SinkService::new(out_tx));
-
-        let msg = wrap_in_envelope_body!(b"secret".to_vec());
-        let dht_envelope = make_dht_envelope(
-            &node_identity,
-            &msg,
-            DhtMessageFlags::empty(),
-            false,
-            MessageTag::new(),
-            false,
-        )
-        .unwrap();
-        let bytes = dht_envelope.to_encoded_bytes();
-        for _ in 0..3 {
-            service
-                .call(make_comms_inbound_message(&node_identity, bytes.clone().into()))
-                .await
-                .unwrap();
-        }
-        time::timeout(Duration::from_secs(10), out_rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(out_rx.try_recv().is_err());
-
-        let ts = dht
-            .metrics_collector()
-            .get_messages_received_timeseries(node_identity.node_id().clone())
-            .await
-            .unwrap();
-        assert_eq!(ts.count(), 1);
     }
 
     /// A re-encoded signature (here: an appended unknown field) still verifies. The decryption layer drops it as
@@ -1085,6 +1031,130 @@ mod test {
         let binding_hash = crypt::create_message_domain_separated_hash(&header, &body);
         header.message_signature = make_valid_message_signature(signer.secret_key(), &binding_hash);
         DhtEnvelope::new(header.into(), body)
+    }
+
+    /// A clear text domain message signed by `signer`
+    fn signed_domain_envelope(signer: &NodeIdentity) -> DhtEnvelope {
+        signed_envelope(
+            signer,
+            DhtMessageType::None,
+            NodeDestination::Unknown,
+            None,
+            wrap_in_envelope_body!(b"flood".to_vec()).to_encoded_bytes(),
+        )
+    }
+
+    /// True if the flood check would ban `peer` for sending more than `max_count` messages
+    async fn is_flooding(dht: &Dht, peer: &NodeIdentity, max_count: usize) -> bool {
+        dht.metrics_collector()
+            .get_message_rates_exceeding(max_count, Duration::from_secs(60))
+            .await
+            .unwrap()
+            .iter()
+            .any(|(node_id, _)| node_id == peer.node_id())
+    }
+
+    /// A duplicate first delivered by another peer does not count against the relay that delivers it again, but a
+    /// peer's own repeats do.
+    #[tokio::test]
+    async fn flood_ban_skips_only_duplicates_first_delivered_by_another_peer() {
+        let signer = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let dht = build_dht(
+            make_node_identity(),
+            &[&signer, &relay],
+            connectivity,
+            out_tx,
+            &shutdown,
+        )
+        .await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let bytes = signed_domain_envelope(&signer).to_encoded_bytes();
+        for peer in [&signer, &signer, &relay, &relay] {
+            service
+                .call(make_comms_inbound_message(peer, bytes.clone().into()))
+                .await
+                .unwrap();
+        }
+
+        let mut metrics = dht.metrics_collector();
+        let ts = metrics
+            .get_messages_received_timeseries(signer.node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 2);
+        let ts = metrics
+            .get_messages_received_timeseries(relay.node_id().clone())
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 0);
+    }
+
+    /// A peer replaying its own signed message is caught by the flood check even though dedup drops the replays
+    #[tokio::test]
+    async fn a_peer_replaying_its_own_message_is_flagged_for_flooding() {
+        let peer = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let dht = build_dht(make_node_identity(), &[&peer], connectivity, out_tx, &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let max_count = 5;
+        let bytes = signed_domain_envelope(&peer).to_encoded_bytes();
+        for _ in 0..=max_count {
+            service
+                .call(make_comms_inbound_message(&peer, bytes.clone().into()))
+                .await
+                .unwrap();
+        }
+        assert!(is_flooding(&dht, &peer, max_count).await);
+    }
+
+    /// Messages dropped before dedup (here: undecodable envelopes and bad signatures) count towards the flood ban
+    #[tokio::test]
+    async fn dropped_messages_count_towards_the_flood_ban() {
+        let undecodable_sender = make_node_identity();
+        let bad_signature_sender = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let dht = build_dht(
+            make_node_identity(),
+            &[&undecodable_sender, &bad_signature_sender],
+            connectivity,
+            out_tx,
+            &shutdown,
+        )
+        .await;
+        let spy = service_spy();
+        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
+
+        let max_count = 5;
+        for i in 0..=max_count {
+            let result = service
+                .call(make_comms_inbound_message(&undecodable_sender, vec![0xff; 8].into()))
+                .await;
+            assert!(result.is_err());
+
+            // Each envelope is distinct, so dedup is not what drops them
+            let mut envelope = signed_domain_envelope(&bad_signature_sender);
+            envelope.body = wrap_in_envelope_body!(vec![u8::try_from(i).unwrap()]).to_encoded_bytes();
+            service
+                .call(make_comms_inbound_message(
+                    &bad_signature_sender,
+                    envelope.to_encoded_bytes().into(),
+                ))
+                .await
+                .unwrap();
+        }
+        assert_eq!(spy.call_count(), 0);
+        assert!(is_flooding(&dht, &undecodable_sender, max_count).await);
+        assert!(is_flooding(&dht, &bad_signature_sender, max_count).await);
     }
 
     /// Waits a little for bans to reach the connectivity mock, and returns the banned node ids
