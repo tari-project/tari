@@ -44,6 +44,7 @@ pub use blockchain_database::{
     CandidateVmKey,
     MmrRoots,
     PendingChainRewind,
+    ResetPermission,
     Validators,
     adjusted_target_difficulties_in_range,
     body_matches_header,

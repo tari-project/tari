@@ -2407,13 +2407,13 @@ where B: BlockchainBackend
 
     /// Rewinds to `split_hash` to make way for a header chain ending at `pending_tip`. A rewind that would reset this
     /// pruned node to the genesis block is refused unless the pending chain is stronger than the chain a reset has to
-    /// beat, and is not done at all unless `may_reset`; neither writes anything. Checked under the same lock as the
-    /// rewind, so nothing can move in between.
+    /// beat, and is done only as `reset` allows; none of these refusals writes anything. Checked under the same lock as
+    /// the rewind, so nothing can move in between.
     pub(crate) fn rewind_for_pending_chain(
         &self,
         split_hash: BlockHash,
         pending_tip: ChainHeader,
-        may_reset: bool,
+        reset: ResetPermission,
     ) -> Result<PendingChainRewind, ChainStorageError> {
         let mut db = self.db_write_access()?;
         let comparer = self.consensus_manager.chain_strength_comparer();
@@ -2421,10 +2421,13 @@ where B: BlockchainBackend
             if comparer.compare(&pending_tip, &reference) != Ordering::Greater {
                 return Ok(PendingChainRewind::Refused);
             }
-            if !may_reset {
+            if reset == ResetPermission::NotYet {
                 return Ok(PendingChainRewind::WouldReset);
             }
         } else {
+            if reset == ResetPermission::Required {
+                return Ok(PendingChainRewind::NoLongerResets);
+            }
             remember_lost_header_tip(&mut *db, comparer, split_hash)?;
         }
         let (blocks, was_reset) = rewind_or_reset_to_hash(&mut *db, split_hash)?;
@@ -4322,6 +4325,19 @@ pub enum PendingChainRewind {
     Refused,
     /// The rewind would have reset the chain, which was not allowed yet, so nothing was done
     WouldReset,
+    /// Only a reset was allowed, and the rewind would no longer reset the chain, so nothing was done
+    NoLongerResets,
+}
+
+/// Whether `BlockchainDatabase::rewind_for_pending_chain` may reset the chain
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResetPermission {
+    /// A rewind that would reset the chain is not done
+    NotYet,
+    /// The rewind may reset the chain
+    Allowed,
+    /// Only a reset is done: the pending headers no longer link to our chain except through the genesis block
+    Required,
 }
 
 /// What one attempt to swap to the strongest orphan tip did

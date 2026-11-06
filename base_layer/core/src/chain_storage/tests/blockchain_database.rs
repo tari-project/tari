@@ -1761,6 +1761,7 @@ mod rewind_past_pruning_horizon {
             HorizonSyncOutputCheckpoint,
             PendingChainRewind,
             Reorg,
+            ResetPermission,
             Validators,
             lmdb_db::{MetadataKey, MetadataValue},
         },
@@ -2263,18 +2264,24 @@ mod rewind_past_pruning_horizon {
         // Weaker than the header tip at 10, and equal to it
         for height in [9, 10] {
             let pending_tip = honest.fetch_chain_header(height).unwrap();
-            let rewind = db.rewind_for_pending_chain(split, pending_tip, true).unwrap();
+            let rewind = db
+                .rewind_for_pending_chain(split, pending_tip, ResetPermission::Allowed)
+                .unwrap();
             assert!(matches!(rewind, PendingChainRewind::Refused), "{rewind:?}");
             assert_eq!(dump(&db), before);
         }
 
         // Stronger, but a reset is not allowed yet
         let pending_tip = honest.fetch_chain_header(12).unwrap();
-        let rewind = db.rewind_for_pending_chain(split, pending_tip.clone(), false).unwrap();
+        let rewind = db
+            .rewind_for_pending_chain(split, pending_tip.clone(), ResetPermission::NotYet)
+            .unwrap();
         assert!(matches!(rewind, PendingChainRewind::WouldReset), "{rewind:?}");
         assert_eq!(dump(&db), before);
 
-        let rewind = db.rewind_for_pending_chain(split, pending_tip, true).unwrap();
+        let rewind = db
+            .rewind_for_pending_chain(split, pending_tip, ResetPermission::Allowed)
+            .unwrap();
 
         assert!(matches!(rewind, PendingChainRewind::Reset(_)), "{rewind:?}");
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
@@ -2289,7 +2296,7 @@ mod rewind_past_pruning_horizon {
         // From block 3, stronger than the block tip but not the header tip
         let pending_tip = honest.fetch_chain_header(6).unwrap();
         let rewind = db
-            .rewind_for_pending_chain(blocks[2].hash(), pending_tip, false)
+            .rewind_for_pending_chain(blocks[2].hash(), pending_tip, ResetPermission::NotYet)
             .unwrap();
 
         match rewind {
@@ -2299,6 +2306,23 @@ mod rewind_past_pruning_horizon {
         assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
         assert_eq!(db.fetch_last_header().unwrap().height, 3);
         assert_eq!(lost_header_tip(&db), Some(honest.fetch_chain_header(10).unwrap()));
+    }
+
+    /// A rewind that must reset the chain is not done if it no longer would
+    #[tokio::test]
+    async fn a_header_sync_rewind_that_must_reset_does_nothing_if_it_would_not() {
+        let db = create_db(HORIZON);
+        let key_manager = KeyManager::new_random().unwrap();
+        let (blocks, honest) = create_headers_ahead_of_blocks(&db, &key_manager);
+        let before = dump(&db);
+
+        let pending_tip = honest.fetch_chain_header(12).unwrap();
+        let rewind = db
+            .rewind_for_pending_chain(blocks[2].hash(), pending_tip, ResetPermission::Required)
+            .unwrap();
+
+        assert!(matches!(rewind, PendingChainRewind::NoLongerResets), "{rewind:?}");
+        assert_eq!(dump(&db), before);
     }
 
     #[tokio::test]

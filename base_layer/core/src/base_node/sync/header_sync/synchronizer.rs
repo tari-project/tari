@@ -54,6 +54,7 @@ use crate::{
         BlockchainBackend,
         ChainStorageError,
         PendingChainRewind,
+        ResetPermission,
         async_db::AsyncBlockchainDb,
         reorg_reintroduces_pre_ghsa_blocks,
     },
@@ -819,7 +820,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     async fn rewind_blockchain(
         &self,
         split_hash: HashOutput,
-        may_reset: bool,
+        reset: ResetPermission,
     ) -> Result<PendingChainRewind, BlockHeaderSyncError> {
         debug!(
             target: LOG_TARGET,
@@ -833,10 +834,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             .ok_or_else(|| {
                 BlockHeaderSyncError::InvalidProtocolResponse("No pending headers to switch to".to_string())
             })?;
-        let rewind = self
-            .db
-            .rewind_for_pending_chain(split_hash, pending_tip, may_reset)
-            .await?;
+        let rewind = self.db.rewind_for_pending_chain(split_hash, pending_tip, reset).await?;
         debug!(target: LOG_TARGET, "Rewind in preparation for header sync: {rewind:?}");
         Ok(rewind)
     }
@@ -905,7 +903,11 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 sync_peer.node_id()
             );
             // The claim checks above have passed
-            if self.switch_to_pending_chain(&split_info, true).await? != PendingChainSwitch::Switched {
+            if self
+                .switch_to_pending_chain(&split_info, ResetPermission::Allowed)
+                .await? !=
+                PendingChainSwitch::Switched
+            {
                 return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
             }
             return Ok(());
@@ -920,7 +922,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 sync_peer.node_id()
             );
             // Otherwise the stream and the claim checks after it decide
-            match self.switch_to_pending_chain(&split_info, false).await? {
+            match self
+                .switch_to_pending_chain(&split_info, ResetPermission::NotYet)
+                .await?
+            {
                 PendingChainSwitch::Switched => has_switched_to_new_chain = true,
                 PendingChainSwitch::Refused => refused_locked = true,
                 PendingChainSwitch::Deferred => switch_after_claim_checks = true,
@@ -1018,7 +1023,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     !refused_locked &&
                     self.pending_chain_verdict(&split_info, &impact) == PendingChainVerdict::Switch
                 {
-                    match self.switch_to_pending_chain(&split_info, false).await? {
+                    match self
+                        .switch_to_pending_chain(&split_info, ResetPermission::NotYet)
+                        .await?
+                    {
                         PendingChainSwitch::Switched => has_switched_to_new_chain = true,
                         PendingChainSwitch::Refused => refused_locked = true,
                         PendingChainSwitch::Deferred => switch_after_claim_checks = true,
@@ -1081,7 +1089,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                         verdict = PendingChainVerdict::Refused;
                     }
                     if verdict == PendingChainVerdict::Switch {
-                        match self.switch_to_pending_chain(&split_info, false).await? {
+                        match self
+                            .switch_to_pending_chain(&split_info, ResetPermission::NotYet)
+                            .await?
+                        {
                             PendingChainSwitch::Switched => {},
                             PendingChainSwitch::Refused => verdict = PendingChainVerdict::Refused,
                             PendingChainSwitch::Deferred => verdict = PendingChainVerdict::SwitchAfterClaimChecks,
@@ -1153,7 +1164,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
         // The peer's claim holds, so its chain may now reset ours
         if switch_after_claim_checks &&
-            self.switch_to_pending_chain(&split_info, true).await? != PendingChainSwitch::Switched
+            self.switch_to_pending_chain(&split_info, ResetPermission::Required)
+                .await? !=
+                PendingChainSwitch::Switched
         {
             return Err(BlockHeaderSyncError::WeakerThanLocalHeaders);
         }
@@ -1225,12 +1238,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
     }
 
-    /// Switches to the pending chain, changing nothing if it is refused, or if it would reset the chain and `may_reset`
-    /// is false.
+    /// Switches to the pending chain, changing nothing if it is refused, or if `reset` does not allow what the switch
+    /// would do to our chain.
     async fn switch_to_pending_chain(
         &mut self,
         split_info: &ChainSplitInfo,
-        may_reset: bool,
+        reset: ResetPermission,
     ) -> Result<PendingChainSwitch, BlockHeaderSyncError> {
         // Stop accepting propagated blocks while we swap to the peer's headers, then make sure no block that
         // landed during the attempt has made our chain the stronger one.
@@ -1266,7 +1279,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             {
                 self.rewind_attempts = self.rewind_attempts.saturating_add(1);
             }
-            match self.rewind_blockchain(split_info.chain_split_hash, may_reset).await? {
+            match self.rewind_blockchain(split_info.chain_split_hash, reset).await? {
                 PendingChainRewind::Rewound(blocks) => {
                     if !blocks.is_empty() {
                         self.hooks.call_on_rewind_hooks(blocks);
@@ -1285,7 +1298,18 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     self.db.inner().clear_disable_add_block_flag();
                     return Ok(PendingChainSwitch::Deferred);
                 },
+                // Our chain changed so that the pending headers, of which only the tip is kept, no longer reset it
+                PendingChainRewind::NoLongerResets => {
+                    self.db.inner().clear_disable_add_block_flag();
+                    return Err(BlockHeaderSyncError::ChainChangedDuringSync);
+                },
             }
+        } else if reset == ResetPermission::Required {
+            // Nothing to rewind, so our chain changed and no longer needs a reset to take the pending headers
+            self.db.inner().clear_disable_add_block_flag();
+            return Err(BlockHeaderSyncError::ChainChangedDuringSync);
+        } else {
+            // The pending headers follow our header tip, so there is nothing to rewind
         }
 
         // Commit the forked chain. At this point
@@ -1421,7 +1445,7 @@ mod test {
     use tari_common_types::types::FixedHash;
     use tari_comms::{
         peer_manager::PeerFeatures,
-        protocol::rpc::{NamedProtocolService, mock::MockRpcServer},
+        protocol::rpc::{NamedProtocolService, Request, Response, RpcStatus, Streaming, mock::MockRpcServer},
         test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
     };
     use tari_service_framework::reply_channel;
@@ -1432,8 +1456,21 @@ mod test {
     use crate::{
         base_node::{LocalNodeCommsInterface, chain_metadata_service::PeerChainMetadata},
         chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, DbTransaction, Validators},
+        proto,
+        proto::base_node::{
+            FindChainSplitResponse,
+            SyncBlocksRequest,
+            SyncKernelsRequest,
+            SyncUtxosRequest,
+            SyncUtxosResponse,
+        },
         test_helpers::{
-            blockchain::{TempDatabase, create_main_chain, create_store_with_consensus_and_validators_and_config},
+            blockchain::{
+                TempDatabase,
+                create_chained_blocks,
+                create_main_chain,
+                create_store_with_consensus_and_validators_and_config,
+            },
             create_consensus_rules,
         },
         validation::{ValidationError, mocks::MockValidator},
@@ -1506,6 +1543,8 @@ mod test {
             sync_peers,
             RandomXFactory::default(),
             metadata,
+            // Kept for the length of the test
+            Box::leak(Box::default()),
         )
     }
 
@@ -1553,14 +1592,32 @@ mod test {
         claimed_height: u64,
         claimed_difficulty: U512,
     ) -> (rpc::BaseNodeSyncRpcClient, SyncPeer, SyncRpcServer, PeerConnection) {
+        connect_to_service(sync_service(peer_db), claimed_height, claimed_difficulty).await
+    }
+
+    fn sync_service(peer_db: &BlockchainDatabase<TempDatabase>) -> rpc::BaseNodeSyncRpcService<TempDatabase> {
         let (req_tx, _) = reply_channel::unbounded();
         let (block_tx, _) = reply_channel::unbounded();
         let (block_event_tx, _) = broadcast::channel(1);
-        let service = rpc::BaseNodeSyncRpcServer::new(rpc::BaseNodeSyncRpcService::new(
+        rpc::BaseNodeSyncRpcService::new(
             peer_db.clone().into(),
             LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
             10,
-        ));
+        )
+    }
+
+    /// Serves `service` to a client over a mock connection, with the peer claiming the given chain
+    async fn connect_to_service<S: rpc::BaseNodeSyncService>(
+        service: S,
+        claimed_height: u64,
+        claimed_difficulty: U512,
+    ) -> (
+        rpc::BaseNodeSyncRpcClient,
+        SyncPeer,
+        MockRpcServer<rpc::BaseNodeSyncRpcServer<S>>,
+        PeerConnection,
+    ) {
+        let service = rpc::BaseNodeSyncRpcServer::new(service);
         let protocol = service.as_protocol_name();
         let peer_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let mut server = MockRpcServer::new(service, peer_identity.clone());
@@ -1571,6 +1628,145 @@ mod test {
         let claim = ChainMetadata::new(claimed_height, FixedHash::zero(), 0, 0, claimed_difficulty, 0).unwrap();
         let sync_peer = SyncPeer::from(PeerChainMetadata::new(peer_identity.node_id().clone(), claim, None));
         (client, sync_peer, server, conn)
+    }
+
+    /// A peer's sync service that changes our chain when we ask for its header stream, as a block arriving by
+    /// propagation during the sync would
+    struct ChangingOurChain {
+        inner: rpc::BaseNodeSyncRpcService<TempDatabase>,
+        change: Box<dyn Fn() + Send + Sync>,
+    }
+
+    #[tari_comms::async_trait]
+    impl rpc::BaseNodeSyncService for ChangingOurChain {
+        async fn sync_blocks(
+            &self,
+            request: Request<SyncBlocksRequest>,
+        ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
+            self.inner.sync_blocks(request).await
+        }
+
+        async fn sync_headers(
+            &self,
+            request: Request<SyncHeadersRequest>,
+        ) -> Result<Streaming<ProtoBlockHeader>, RpcStatus> {
+            (self.change)();
+            self.inner.sync_headers(request).await
+        }
+
+        async fn get_header_by_height(&self, request: Request<u64>) -> Result<Response<ProtoBlockHeader>, RpcStatus> {
+            self.inner.get_header_by_height(request).await
+        }
+
+        async fn find_chain_split(
+            &self,
+            request: Request<FindChainSplitRequest>,
+        ) -> Result<Response<FindChainSplitResponse>, RpcStatus> {
+            self.inner.find_chain_split(request).await
+        }
+
+        async fn get_chain_metadata(
+            &self,
+            request: Request<()>,
+        ) -> Result<Response<proto::base_node::ChainMetadata>, RpcStatus> {
+            self.inner.get_chain_metadata(request).await
+        }
+
+        async fn sync_kernels(
+            &self,
+            request: Request<SyncKernelsRequest>,
+        ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
+            self.inner.sync_kernels(request).await
+        }
+
+        async fn sync_utxos(
+            &self,
+            request: Request<SyncUtxosRequest>,
+        ) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
+            self.inner.sync_utxos(request).await
+        }
+    }
+
+    /// Syncs from `peer_db`, changing our chain with `change` when the header stream is requested
+    async fn sync_while_our_chain_changes(
+        db: &BlockchainDatabase<TempDatabase>,
+        rules: &BaseNodeConsensusManager,
+        peer_db: &BlockchainDatabase<TempDatabase>,
+        peer_tip: &ChainHeader,
+        change: Box<dyn Fn() + Send + Sync>,
+    ) -> Result<AttemptSyncResult, BlockHeaderSyncError> {
+        let metadata = db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![];
+        let mut synchronizer = new_synchronizer(db, rules, &mut sync_peers, &metadata);
+        let service = ChangingOurChain {
+            inner: sync_service(peer_db),
+            change,
+        };
+        let (client, sync_peer, _server, _conn) = connect_to_service(
+            service,
+            peer_tip.height(),
+            peer_tip.accumulated_data().total_accumulated_difficulty,
+        )
+        .await;
+        synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+    }
+
+    /// A block arriving by propagation while a reset waits for the claim checks: the reset still has to beat the
+    /// headers that block deleted, and happens after the checks
+    #[tokio::test]
+    async fn a_reset_waiting_for_the_claim_checks_survives_a_propagated_block() {
+        let (db, rules, peer_db, peer_tip, verdicts) =
+            create_streaming_peer(HEADER_SYNC_INITIAL_MAX_HEADERS + 30).await;
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::SwitchAfterClaimChecks));
+        let tip = Arc::new(db.fetch_block(5, false).unwrap().try_into_chain_block().unwrap());
+        let (_, chain) = create_chained_blocks(&db, block_specs!(["F->GB"]), tip);
+        let propagated = chain.get("F").unwrap().to_arc_block();
+        let local_db = db.clone();
+
+        let err = sync_while_our_chain_changes(
+            &db,
+            &rules,
+            &peer_db,
+            &peer_tip,
+            Box::new(move || {
+                assert!(local_db.add_block(propagated.clone()).unwrap().result.is_added());
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::ChainResetToGenesis { .. }), "{err}");
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+        assert!(db.db_read_access().unwrap().fetch_lost_header_tip().unwrap().is_none());
+    }
+
+    /// Our chain is reset by something else while a reset waits for the claim checks, so only the tip of the peer's
+    /// chain is held and it no longer links: nothing is committed and the peer is not blamed
+    #[tokio::test]
+    async fn a_reset_waiting_for_the_claim_checks_is_dropped_if_our_chain_is_reset_meanwhile() {
+        let (db, rules, peer_db, peer_tip, verdicts) =
+            create_streaming_peer(HEADER_SYNC_INITIAL_MAX_HEADERS + 30).await;
+        assert_eq!(verdicts.last(), Some(&PendingChainVerdict::SwitchAfterClaimChecks));
+        let local_db = db.clone();
+
+        let err = sync_while_our_chain_changes(
+            &db,
+            &rules,
+            &peer_db,
+            &peer_tip,
+            Box::new(move || {
+                local_db.rewind_to_height(0).unwrap();
+            }),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, BlockHeaderSyncError::ChainChangedDuringSync), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(db.fetch_last_header().unwrap().height, 0);
+        assert!(!db.is_add_block_disabled());
     }
 
     /// A pruned chain of 5 blocks with 8 validated headers above it, and a peer holding headers from the genesis
@@ -2137,7 +2333,7 @@ mod test {
         add_pending_headers(&mut synchronizer, &db, &split_info, 10).await;
 
         let err = synchronizer
-            .switch_to_pending_chain(&split_info, true)
+            .switch_to_pending_chain(&split_info, ResetPermission::Allowed)
             .await
             .unwrap_err();
 
@@ -2158,7 +2354,10 @@ mod test {
         add_pending_headers(&mut synchronizer, &db, &split_info, 10).await;
 
         assert_eq!(
-            synchronizer.switch_to_pending_chain(&split_info, true).await.unwrap(),
+            synchronizer
+                .switch_to_pending_chain(&split_info, ResetPermission::Allowed)
+                .await
+                .unwrap(),
             PendingChainSwitch::Refused
         );
 
