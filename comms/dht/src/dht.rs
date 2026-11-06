@@ -1186,6 +1186,27 @@ mod test {
         assert_eq!(series_counts(&dht, &relay).await, (1, 1));
     }
 
+    /// A validly signed cleartext message whose body does not decode is the delivering peer's own, whoever signed it:
+    /// an honest relay drops it rather than passing it on
+    #[tokio::test]
+    async fn an_undecodable_signed_body_counts_as_own() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let envelope = signed_envelope(&sybil, DhtMessageType::None, NodeDestination::Unknown, None, vec![
+            0xff;
+            8
+        ]);
+        service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (1, 0));
+    }
+
     /// An encrypted message for another node fails to decrypt here and is passed on: relay H may only be forwarding
     /// it, so it counts in H's forwarded series
     #[tokio::test]

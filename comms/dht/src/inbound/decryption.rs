@@ -413,6 +413,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 Ok(validated.into_succeeded(deserialized, authenticated_pk))
             },
             Err(err) => {
+                // An honest relay on the same version drops a body that does not decode instead of passing it on, so
+                // it is the source's own however it is signed
+                metrics::set_flood_series(FloodSeries::Own);
                 // Message was not encrypted but failed to deserialize - immediately discard
                 debug!(
                     target: LOG_TARGET,

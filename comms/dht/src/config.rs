@@ -80,7 +80,9 @@ where D: serde::Deserializer<'de> {
 /// does not provably own (signed by another peer, or not attributable) within `flood_ban_timespan`.
 pub(crate) const FORWARDED_FLOOD_BAN_FACTOR: usize = 10;
 /// This node forwards at most this many times `flood_ban_max_msg_count` messages of other peers to any one peer per
-/// `flood_ban_timespan`, so that relaying never takes it over a neighbour's forwarded-traffic limit.
+/// `flood_ban_timespan`, so that relaying never takes it over a neighbour's forwarded-traffic limit. That holds only if
+/// the neighbour runs the same `flood_ban_max_msg_count` and `flood_ban_timespan` (the defaults): a neighbour with a
+/// lower count or a longer timespan can still ban an honest relay.
 pub(crate) const FORWARD_BUDGET_FACTOR: usize = 5;
 const _: () = assert!(FORWARD_BUDGET_FACTOR < FORWARDED_FLOOD_BAN_FACTOR);
 

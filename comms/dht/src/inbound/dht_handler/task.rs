@@ -497,7 +497,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // Don't send a join request to the origin peer if they are banned
         if origin_peer.is_banned() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received Discovery request for banned peer '{node_id}'. Not propagating further."
             );
