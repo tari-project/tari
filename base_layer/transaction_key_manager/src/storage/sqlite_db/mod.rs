@@ -130,15 +130,16 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
             .map_err(|e| KeyManagerStorageError::StorageError(e.to_string()))?;
         let acquire_lock = start.elapsed();
 
-        let result = match KeyManagerStateSql::get_state(branch, &mut conn).ok() {
-            None => None,
-            Some(km) => {
+        let result = match KeyManagerStateSql::get_state(branch, &mut conn) {
+            Ok(km) => {
                 let cipher = acquire_read_lock!(self.cipher);
                 let km = km
                     .decrypt(&cipher)
                     .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
                 Some(KeyManagerState::try_from(km)?)
             },
+            Err(KeyManagerStorageError::KeyManagerNotInitialized) => None,
+            Err(e) => return Err(e),
         };
         if start.elapsed().as_millis() > 0 {
             trace!(
@@ -194,8 +195,12 @@ where TTransactionKeyManagerDbConnection: PooledDbConnection<Error = SqliteStora
             let mut km = km
                 .decrypt(&cipher)
                 .map_err(|e| KeyManagerStorageError::AeadError(format!("Decryption Error: {e}")))?;
-            let mut bytes: [u8; 8] = [0u8; 8];
-            bytes.copy_from_slice(km.primary_key_index.get(..8).expect("Already checked"));
+            let bytes: [u8; 8] = km.primary_key_index.as_slice().try_into().map_err(|_| {
+                KeyManagerStorageError::UnexpectedResult(format!(
+                    "Invalid primary_key_index length: expected 8 bytes, got {}",
+                    km.primary_key_index.len()
+                ))
+            })?;
             let index = u64::from_le_bytes(bytes).saturating_add(1);
             km.primary_key_index = index.to_le_bytes().to_vec();
             let km = km
