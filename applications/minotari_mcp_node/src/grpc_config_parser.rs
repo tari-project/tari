@@ -119,17 +119,27 @@ impl GrpcConfigParser {
     #[allow(dead_code)]
     pub fn is_method_allowed(&self, method_name: &str) -> bool {
         // If no restrictions configured, allow all methods
-        if self.config.allow_all_by_default && self.config.allowed_methods.is_empty() {
+        if self.config.allow_all_by_default && self.allowed_methods_set.is_empty() && self.allowed_services.is_empty() {
             return true;
         }
 
-        // Check exact method match
-        if self.allowed_methods_set.contains(method_name) {
+        let trimmed = method_name.trim().trim_start_matches('/');
+        if trimmed.is_empty() {
+            return false;
+        }
+
+        // Check exact method match (accept both "Service/Method" and "tari.rpc.Service/Method")
+        let normalized = if trimmed.starts_with("tari.rpc.") {
+            trimmed.to_string()
+        } else {
+            format!("tari.rpc.{trimmed}")
+        };
+        if self.allowed_methods_set.contains(trimmed) || self.allowed_methods_set.contains(&normalized) {
             return true;
         }
 
         // Check service wildcard match
-        if let Some(service_name) = self.extract_service_name(method_name) &&
+        if let Some(service_name) = self.extract_service_name(trimmed) &&
             self.allowed_services.contains(&service_name)
         {
             return true;
@@ -172,7 +182,7 @@ impl GrpcConfigParser {
         let allowed_count = self.allowed_methods_set.len();
         let services_count = self.allowed_services.len();
 
-        if self.config.allow_all_by_default && self.config.allowed_methods.is_empty() {
+        if self.config.allow_all_by_default && allowed_count == 0 && services_count == 0 {
             "All methods allowed (no restrictions configured)".to_string()
         } else {
             format!(
@@ -199,13 +209,15 @@ impl GrpcConfigParser {
 
     /// Parse a single method specification
     fn parse_method_spec(&mut self, spec: &str) -> Result<(), GrpcConfigError> {
+        let spec = spec.trim().trim_start_matches('/');
         if spec.is_empty() {
             return Ok(());
         }
 
-        // Handle service wildcard (e.g., "BaseNode/*")
+        // Handle service wildcard (e.g., "BaseNode/*" or "tari.rpc.BaseNode/*")
         if spec.ends_with("/*") {
-            let service_name = spec.trim_end_matches("/*");
+            let service_part = spec.trim_end_matches("/*");
+            let service_name = service_part.strip_prefix("tari.rpc.").unwrap_or(service_part);
             self.validate_service_name(service_name)?;
             self.allowed_services.insert(service_name.to_string());
             return Ok(());
@@ -228,8 +240,9 @@ impl GrpcConfigParser {
 
         // Handle service name only (equivalent to service/*)
         if !spec.contains('/') {
-            self.validate_service_name(spec)?;
-            self.allowed_services.insert(spec.to_string());
+            let service_name = spec.strip_prefix("tari.rpc.").unwrap_or(spec);
+            self.validate_service_name(service_name)?;
+            self.allowed_services.insert(service_name.to_string());
             return Ok(());
         }
 
@@ -418,16 +431,20 @@ mod tests {
         let parser = GrpcConfigParser::from_string("BaseNode/GetTipInfo,BaseNode/GetSyncInfo", false).unwrap();
 
         assert!(parser.is_method_allowed("tari.rpc.BaseNode/GetTipInfo"));
+        assert!(parser.is_method_allowed("BaseNode/GetTipInfo"));
+        assert!(parser.is_method_allowed("/tari.rpc.BaseNode/GetTipInfo"));
         assert!(parser.is_method_allowed("tari.rpc.BaseNode/GetSyncInfo"));
         assert!(!parser.is_method_allowed("tari.rpc.BaseNode/SubmitBlock"));
+        assert!(!parser.is_method_allowed("BaseNode/SubmitBlock"));
     }
 
     #[test]
     fn test_service_wildcard() {
-        let parser = GrpcConfigParser::from_string("BaseNode/*", false).unwrap();
+        let parser = GrpcConfigParser::from_string("tari.rpc.BaseNode/*", false).unwrap();
 
         assert!(parser.is_method_allowed("tari.rpc.BaseNode/GetTipInfo"));
-        assert!(parser.is_method_allowed("tari.rpc.BaseNode/SubmitBlock"));
+        assert!(parser.is_method_allowed("BaseNode/GetTipInfo"));
+        assert!(parser.is_method_allowed("/tari.rpc.BaseNode/SubmitBlock"));
         assert!(!parser.is_method_allowed("tari.rpc.Wallet/GetBalance"));
     }
 
