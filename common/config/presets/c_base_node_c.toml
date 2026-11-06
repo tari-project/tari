@@ -427,11 +427,12 @@ database_url = "data/base_node/dht.db"
 #ban_duration_short = 600 # 10 * 60
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
 # Every inbound message from the peer counts, including invalid ones, except duplicates another peer delivered first.
-# Must be in 1..=1,000,000. Default: 1000 messages
+# Messages the peer may only be relaying (signed by another peer, or not attributable) count separately, against a
+# limit of 10 x this. Must be in 1..=1,000,000. Default: 1000 messages
 #flood_ban_max_msg_count = 1000
 # The timespan over which to calculate the max message rate.
 # `flood_ban_max_msg_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
-# Must be at least 1. Default: 60 seconds
+# Must be in 1..=86,400 (1 day). Default: 60 seconds
 #flood_ban_timespan = 60
 # Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry

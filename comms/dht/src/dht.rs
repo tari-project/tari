@@ -439,6 +439,7 @@ mod test {
 
     use super::*;
     use crate::{
+        connectivity::FloodSeries,
         crypt,
         envelope::{DhtEnvelope, DhtMessageFlags, DhtMessageHeader, NodeDestination},
         outbound::{
@@ -1065,15 +1066,82 @@ mod test {
             .unwrap()
     }
 
-    /// The peers the flood check would ban
-    async fn flooding_peers(dht: &Dht) -> Vec<NodeId> {
+    /// The peers the flood check would ban, and the series that got them banned
+    async fn flooding_peers(dht: &Dht) -> Vec<(NodeId, FloodSeries)> {
         dht.metrics_collector()
             .take_flooding_peers()
             .await
             .unwrap()
             .into_iter()
-            .map(|(node_id, _)| node_id)
+            .map(|(node_id, _, series)| (node_id, series))
             .collect()
+    }
+
+    /// Two sybils, each under the limit, send messages through relay H. H's neighbour does not ban H at the own
+    /// limit: the messages are signed by the sybils, so they count in H's forwarded series, which bans only at
+    /// `FORWARDED_FLOOD_BAN_FACTOR` x the limit.
+    #[tokio::test]
+    async fn relayed_messages_count_in_the_forwarded_series() {
+        let (sybil_a, sybil_b) = (make_node_identity(), make_node_identity());
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil_a, &sybil_b, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let forwarded_limit = FLOOD_TEST_MAX_COUNT * crate::config::FORWARDED_FLOOD_BAN_FACTOR;
+        let relay_signed = |i: usize| {
+            let sybil = if i.is_multiple_of(2) { &sybil_a } else { &sybil_b };
+            signed_domain_envelope(sybil).to_encoded_bytes()
+        };
+        for i in 0..forwarded_limit {
+            service
+                .call(make_comms_inbound_message(&relay, relay_signed(i).into()))
+                .await
+                .unwrap();
+        }
+        assert!(flooding_peers(&dht).await.is_empty());
+        let mut metrics = dht.metrics_collector();
+        let own = metrics
+            .get_messages_received_timeseries(relay.node_id().clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(own.count(), 0);
+        let forwarded = metrics
+            .get_messages_received_timeseries(relay.node_id().clone(), FloodSeries::Forwarded)
+            .await
+            .unwrap();
+        assert_eq!(forwarded.count(), forwarded_limit);
+
+        // A relay that forwards more than that is banned for it
+        service
+            .call(make_comms_inbound_message(&relay, relay_signed(0).into()))
+            .await
+            .unwrap();
+        assert_eq!(flooding_peers(&dht).await, vec![(
+            relay.node_id().clone(),
+            FloodSeries::Forwarded
+        )]);
+    }
+
+    /// A peer that sends more than the limit of messages it signed itself is banned on its own series
+    #[tokio::test]
+    async fn a_peer_flooding_messages_it_signed_is_banned_on_its_own_series() {
+        let peer = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&peer], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        for _ in 0..=FLOOD_TEST_MAX_COUNT {
+            let bytes = signed_domain_envelope(&peer).to_encoded_bytes();
+            service
+                .call(make_comms_inbound_message(&peer, bytes.into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(flooding_peers(&dht).await, vec![(
+            peer.node_id().clone(),
+            FloodSeries::Own
+        )]);
     }
 
     /// A duplicate first delivered by another peer does not count against the relay that delivers it again, but a
@@ -1105,12 +1173,12 @@ mod test {
 
         let mut metrics = dht.metrics_collector();
         let ts = metrics
-            .get_messages_received_timeseries(signer.node_id().clone())
+            .get_messages_received_timeseries(signer.node_id().clone(), FloodSeries::Own)
             .await
             .unwrap();
         assert_eq!(ts.count(), 2);
         let ts = metrics
-            .get_messages_received_timeseries(relay.node_id().clone())
+            .get_messages_received_timeseries(relay.node_id().clone(), FloodSeries::Own)
             .await
             .unwrap();
         assert_eq!(ts.count(), 0);
@@ -1137,7 +1205,10 @@ mod test {
                 .await
                 .unwrap();
         }
-        assert_eq!(flooding_peers(&dht).await, vec![peer.node_id().clone()]);
+        assert_eq!(flooding_peers(&dht).await, vec![(
+            peer.node_id().clone(),
+            FloodSeries::Own
+        )]);
     }
 
     /// Messages dropped before dedup (here: undecodable envelopes and bad signatures) count towards the flood ban
@@ -1169,8 +1240,8 @@ mod test {
         }
         assert_eq!(spy.call_count(), 0);
         let flooding = flooding_peers(&dht).await;
-        assert!(flooding.contains(undecodable_sender.node_id()));
-        assert!(flooding.contains(bad_signature_sender.node_id()));
+        assert!(flooding.contains(&(undecodable_sender.node_id().clone(), FloodSeries::Own)));
+        assert!(flooding.contains(&(bad_signature_sender.node_id().clone(), FloodSeries::Own)));
     }
 
     /// Waits a little for bans to reach the connectivity mock, and returns the banned node ids

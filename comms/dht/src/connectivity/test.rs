@@ -51,7 +51,14 @@ use tokio::sync::{broadcast, mpsc};
 use crate::{
     DhtConfig,
     DhtConnectivityConfig,
-    connectivity::{DhtConnectivity, MAX_REBOOTSTRAP_PEERS, MetricsCollector, RebootstrapTrigger, is_pool_starved},
+    connectivity::{
+        DhtConnectivity,
+        FloodSeries,
+        MAX_REBOOTSTRAP_PEERS,
+        MetricsCollector,
+        RebootstrapTrigger,
+        is_pool_starved,
+    },
     event::DhtEvent,
     test_utils::{
         DhtMockState,
@@ -296,7 +303,7 @@ async fn a_flood_split_by_a_reconnect_is_still_banned() {
 
     for _ in 0..6 {
         metrics_collector
-            .write_metric_message_received(peer.clone())
+            .write_metric_message_received(peer.clone(), FloodSeries::Own, tokio::time::Instant::now())
             .await
             .unwrap();
     }
@@ -313,7 +320,7 @@ async fn a_flood_split_by_a_reconnect_is_still_banned() {
         .unwrap();
     for _ in 0..5 {
         metrics_collector
-            .write_metric_message_received(peer.clone())
+            .write_metric_message_received(peer.clone(), FloodSeries::Own, tokio::time::Instant::now())
             .await
             .unwrap();
     }
@@ -350,7 +357,7 @@ async fn a_burst_followed_by_silence_is_banned_promptly() {
     tokio::time::sleep(Duration::from_secs(1)).await;
     for _ in 0..11 {
         metrics_collector
-            .write_metric_message_received(peer.clone())
+            .write_metric_message_received(peer.clone(), FloodSeries::Own, tokio::time::Instant::now())
             .await
             .unwrap();
     }
@@ -1434,7 +1441,7 @@ mod metrics {
     mod collector {
         use tari_comms::peer_manager::NodeId;
 
-        use crate::connectivity::MetricsCollector;
+        use crate::connectivity::{FloodSeries, MetricsCollector};
 
         #[tokio::test]
         async fn it_adds_message_received() {
@@ -1442,13 +1449,13 @@ mod metrics {
             let node_id = NodeId::default();
             for _ in 0..100 {
                 metric_collector
-                    .write_metric_message_received(node_id.clone())
+                    .write_metric_message_received(node_id.clone(), FloodSeries::Own, tokio::time::Instant::now())
                     .await
                     .unwrap();
             }
 
             let ts = metric_collector
-                .get_messages_received_timeseries(node_id)
+                .get_messages_received_timeseries(node_id, FloodSeries::Own)
                 .await
                 .unwrap();
             assert_eq!(ts.count(), 100);

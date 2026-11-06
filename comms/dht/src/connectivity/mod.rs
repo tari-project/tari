@@ -42,7 +42,7 @@ use std::{
 };
 
 use log::*;
-pub use metrics::{MetricsCollector, MetricsCollectorHandle};
+pub use metrics::{FloodSeries, MetricsCollector, MetricsCollectorHandle};
 use rand::RngExt;
 use tari_comms::{
     Minimized,
@@ -75,6 +75,7 @@ use crate::{
     DhtConfig,
     DhtConnectivityConfig,
     DhtRequester,
+    config::FORWARDED_FLOOD_BAN_FACTOR,
     connectivity::metrics::MetricsError,
     event::{DhtEvent, DhtEventSender},
     network_discovery::{InboundSuggested, MAX_LEARNED_PEERS, REBOOTSTRAP_LOG_TARGET, state_machine::PoolPeers},
@@ -691,18 +692,25 @@ impl DhtConnectivity {
     async fn check_and_ban_flooding_peers(&mut self) -> Result<(), DhtConnectivityError> {
         let nodes = self.metrics_collector.take_flooding_peers().await?;
 
-        for (peer, mps) in nodes {
+        for (peer, mps, series) in nodes {
+            let max_count = match series {
+                FloodSeries::Own => self.config.flood_ban_max_msg_count,
+                FloodSeries::Forwarded => self
+                    .config
+                    .flood_ban_max_msg_count
+                    .saturating_mul(FORWARDED_FLOOD_BAN_FACTOR),
+            };
             warn!(
                 target: LOG_TARGET,
-                "Banning peer `{peer}` because of flooding. Message rate: {mps:.2}m/s"
+                "Banning peer `{peer}` because of flooding ({series} messages). Message rate: {mps:.2}m/s"
             );
             self.connectivity
                 .ban_peer_until(
                     peer,
                     self.config.ban_duration_short,
                     format!(
-                        "Exceeded maximum message rate. Config: {}/{:#?}. Rate: {:.2} m/s",
-                        self.config.flood_ban_max_msg_count, self.config.flood_ban_timespan, mps
+                        "Exceeded maximum {} message rate. Config: {}/{:#?}. Rate: {:.2} m/s",
+                        series, max_count, self.config.flood_ban_timespan, mps
                     ),
                 )
                 .await?;

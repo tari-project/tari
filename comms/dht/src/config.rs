@@ -58,6 +58,32 @@ where D: serde::Deserializer<'de> {
     Ok(count)
 }
 
+/// Upper bound for `flood_ban_timespan`
+const MAX_FLOOD_BAN_TIMESPAN: Duration = Duration::from_secs(24 * 60 * 60);
+
+fn deserialize_flood_ban_timespan<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+where D: serde::Deserializer<'de> {
+    use serde::de::Error;
+
+    let timespan = serializers::seconds_nonzero::deserialize(deserializer)?;
+    if timespan > MAX_FLOOD_BAN_TIMESPAN {
+        return Err(D::Error::custom(format!(
+            "flood_ban_timespan must be at most {} seconds, got {}",
+            MAX_FLOOD_BAN_TIMESPAN.as_secs(),
+            timespan.as_secs()
+        )));
+    }
+    Ok(timespan)
+}
+
+/// A peer is banned for flooding once it delivers more than this many times `flood_ban_max_msg_count` messages it
+/// does not provably own (signed by another peer, or not attributable) within `flood_ban_timespan`.
+pub(crate) const FORWARDED_FLOOD_BAN_FACTOR: usize = 10;
+/// This node forwards at most this many times `flood_ban_max_msg_count` messages of other peers to any one peer per
+/// `flood_ban_timespan`, so that relaying never takes it over a neighbour's forwarded-traffic limit.
+pub(crate) const FORWARD_BUDGET_FACTOR: usize = 5;
+const _: () = assert!(FORWARD_BUDGET_FACTOR < FORWARDED_FLOOD_BAN_FACTOR);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DhtConfig {
@@ -126,16 +152,21 @@ pub struct DhtConfig {
     pub ban_duration_short: Duration,
     /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
     /// `ban_duration_short`). Every message a peer delivers counts, including invalid ones, except duplicates
-    /// that another peer delivered first. The DHT keeps the times of up to this many messages plus one per peer. Must
-    /// be in 1..=1,000,000.
+    /// that another peer delivered first. Messages the peer may only be relaying (signed by another peer, or not
+    /// attributable) count separately, against a limit of 10 x this. The DHT keeps the times of up to that many
+    /// messages per peer. Must be in 1..=1,000,000.
     /// Default: 1000 messages
     #[serde(deserialize_with = "deserialize_flood_ban_max_msg_count")]
     pub flood_ban_max_msg_count: usize,
     /// The timespan over which to calculate the max message rate. A flood is detected as messages arrive, and the
     /// peer is banned within 10 seconds (or this timespan, if shorter).
     /// `flood_ban_max_msg_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
+    /// Must be in 1..=86,400 seconds (1 day).
     /// Default: 60 seconds
-    #[serde(with = "serializers::seconds_nonzero")]
+    #[serde(
+        serialize_with = "serializers::seconds_nonzero::serialize",
+        deserialize_with = "deserialize_flood_ban_timespan"
+    )]
     pub flood_ban_timespan: Duration,
     /// Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
     /// In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
@@ -380,6 +411,15 @@ mod test {
         assert!(parse(MAX_FLOOD_BAN_MAX_MSG_COUNT + 1).is_err());
         assert_eq!(parse(1).unwrap(), 1);
         assert_eq!(parse(MAX_FLOOD_BAN_MAX_MSG_COUNT).unwrap(), MAX_FLOOD_BAN_MAX_MSG_COUNT);
+    }
+
+    #[test]
+    fn flood_ban_timespan_is_bounded() {
+        let parse = |secs: u64| deserialize_flood_ban_timespan(IntoDeserializer::<Error>::into_deserializer(secs));
+        assert!(parse(0).is_err());
+        assert!(parse(MAX_FLOOD_BAN_TIMESPAN.as_secs() + 1).is_err());
+        assert_eq!(parse(1).unwrap(), Duration::from_secs(1));
+        assert_eq!(parse(MAX_FLOOD_BAN_TIMESPAN.as_secs()).unwrap(), MAX_FLOOD_BAN_TIMESPAN);
     }
 
     #[test]

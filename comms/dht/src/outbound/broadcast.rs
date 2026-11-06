@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, task::Poll, time::Duration};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::{Arc, Mutex},
+    task::Poll,
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
 use futures::{
@@ -39,7 +44,7 @@ use tari_comms::{
     types::{CommsDHKE, CommsPublicKey},
 };
 use tari_utilities::{ByteArray, epoch_time::EpochTime, hex::Hex};
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time::Instant};
 use tower::{Service, ServiceExt, layer::Layer};
 
 use super::{error::DhtOutboundError, message::DhtOutboundRequest};
@@ -47,6 +52,7 @@ use crate::{
     DhtConfig,
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
+    config::FORWARD_BUDGET_FACTOR,
     crypt,
     dedup,
     discovery::DhtDiscoveryRequester,
@@ -68,12 +74,85 @@ const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 /// How long a message this node sends stays valid (its `expires`).
 pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 * 60);
 
+/// Caps how many messages of other peers this node forwards (sends under their original header) to any one peer per
+/// flood-ban timespan, so that relaying for others never takes it over that peer's forwarded-traffic flood limit.
+/// Messages this node originates are not capped.
+pub(crate) struct ForwardBudget {
+    max_per_peer: usize,
+    window: Duration,
+    state: Mutex<ForwardBudgetState>,
+}
+
+#[derive(Default)]
+struct ForwardBudgetState {
+    /// When each peer was sent its forwarded messages within the window, oldest first
+    sent: HashMap<NodeId, VecDeque<Instant>>,
+    pruned_at: Option<Instant>,
+    /// Forwarded messages dropped since the last log line
+    dropped: usize,
+    logged_at: Option<Instant>,
+}
+
+impl ForwardBudget {
+    pub(crate) fn new(config: &DhtConfig) -> Self {
+        Self {
+            max_per_peer: config.flood_ban_max_msg_count.saturating_mul(FORWARD_BUDGET_FACTOR),
+            window: config.flood_ban_timespan,
+            state: Mutex::default(),
+        }
+    }
+
+    /// Keeps the peers that can take one more forwarded message in this window, and uses up one of their budget
+    fn take(&self, peers: &mut Vec<NodeId>) {
+        let now = Instant::now();
+        let since = now.checked_sub(self.window).unwrap_or(now);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let state = &mut *state;
+        if state
+            .pruned_at
+            .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
+        {
+            state.sent.retain(|_, sent| sent.back().is_some_and(|t| *t >= since));
+            state.pruned_at = Some(now);
+        }
+        let num_before = peers.len();
+        peers.retain(|peer| {
+            let sent = state.sent.entry(peer.clone()).or_default();
+            while sent.front().is_some_and(|t| *t < since) {
+                sent.pop_front();
+            }
+            if sent.len() >= self.max_per_peer {
+                return false;
+            }
+            sent.push_back(now);
+            true
+        });
+        state.dropped = state.dropped.saturating_add(num_before.saturating_sub(peers.len()));
+        if state.dropped > 0 &&
+            state
+                .logged_at
+                .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
+        {
+            warn!(
+                target: LOG_TARGET,
+                "Dropped {} forwarded message(s) to peers over the forwarding budget of {} per {:.0?}",
+                state.dropped,
+                self.max_per_peer,
+                self.window
+            );
+            state.dropped = 0;
+            state.logged_at = Some(now);
+        }
+    }
+}
+
 pub struct BroadcastLayer {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
     message_validity_window: chrono::Duration,
     protocol_version: DhtProtocolVersion,
+    forward_budget: Arc<ForwardBudget>,
 }
 
 impl BroadcastLayer {
@@ -90,6 +169,7 @@ impl BroadcastLayer {
             message_validity_window: chrono::Duration::from_std(MESSAGE_VALIDITY_WINDOW)
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
+            forward_budget: Arc::new(ForwardBudget::new(config)),
         }
     }
 }
@@ -105,6 +185,7 @@ impl<S> Layer<S> for BroadcastLayer {
             self.dht_discovery_requester.clone(),
             self.message_validity_window,
             self.protocol_version,
+            self.forward_budget.clone(),
         )
     }
 }
@@ -119,16 +200,18 @@ pub struct BroadcastMiddleware<S> {
     node_identity: Arc<NodeIdentity>,
     message_validity_window: chrono::Duration,
     protocol_version: DhtProtocolVersion,
+    forward_budget: Arc<ForwardBudget>,
 }
 
 impl<S> BroadcastMiddleware<S> {
-    pub fn new(
+    pub(crate) fn new(
         service: S,
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
         message_validity_window: chrono::Duration,
         protocol_version: DhtProtocolVersion,
+        forward_budget: Arc<ForwardBudget>,
     ) -> Self {
         Self {
             next_service: service,
@@ -137,6 +220,7 @@ impl<S> BroadcastMiddleware<S> {
             node_identity,
             message_validity_window,
             protocol_version,
+            forward_budget,
         }
     }
 }
@@ -164,6 +248,7 @@ where
                 msg,
                 self.message_validity_window,
                 self.protocol_version,
+                self.forward_budget.clone(),
             )
             .handle(),
         )
@@ -178,6 +263,7 @@ struct BroadcastTask<S> {
     request: Option<DhtOutboundRequest>,
     message_validity_window: chrono::Duration,
     protocol_version: DhtProtocolVersion,
+    forward_budget: Arc<ForwardBudget>,
 }
 type FinalMessageParts = (Option<Arc<CommsPublicKey>>, Option<Bytes>, Bytes);
 
@@ -192,6 +278,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         request: DhtOutboundRequest,
         message_validity_window: chrono::Duration,
         protocol_version: DhtProtocolVersion,
+        forward_budget: Arc<ForwardBudget>,
     ) -> Self {
         Self {
             service,
@@ -201,6 +288,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             request: Some(request),
             message_validity_window,
             protocol_version,
+            forward_budget,
         }
     }
 
@@ -402,7 +490,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
     async fn generate_send_messages(
         &mut self,
-        selected_peers: Vec<NodeId>,
+        mut selected_peers: Vec<NodeId>,
         destination: NodeDestination,
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
@@ -426,6 +514,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             expires_epochtime,
             body,
         )?;
+
+        // A message sent with an existing header is being forwarded: only peers with forwarding budget left get it
+        if custom_header.is_some() {
+            self.forward_budget.take(&mut selected_peers);
+        }
 
         // A message sent with an existing header is being forwarded: the inbound path already recorded its key, and
         // the signature that key needs is in that header, not in `message_signature`.
@@ -660,6 +753,7 @@ mod test {
             dht_discover_requester,
             chrono::Duration::seconds(10800),
             DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
         assert_send_static_service(&service);
         let (reply_tx, _reply_rx) = oneshot::channel();
@@ -681,6 +775,108 @@ mod test {
                 .any(|msg| msg.destination_node_id == example_peer.node_id)
         );
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
+    }
+
+    /// Forwarded messages to one peer are capped per flood-ban timespan; messages this node originates are not
+    #[tokio::test(start_paused = true)]
+    async fn forwarded_messages_are_capped_per_peer() {
+        let config = DhtConfig {
+            flood_ban_max_msg_count: 1,
+            ..Default::default()
+        };
+        let budget = ForwardBudget::new(&config);
+        let max = FORWARD_BUDGET_FACTOR;
+        let (peer_a, peer_b) = (make_peer().node_id, make_peer().node_id);
+
+        for _ in 0..max {
+            let mut peers = vec![peer_a.clone()];
+            budget.take(&mut peers);
+            assert_eq!(peers, vec![peer_a.clone()]);
+        }
+        // `peer_a` has used its budget for this window, `peer_b` has not
+        let mut peers = vec![peer_a.clone(), peer_b.clone()];
+        budget.take(&mut peers);
+        assert_eq!(peers, vec![peer_b.clone()]);
+
+        tokio::time::advance(config.flood_ban_timespan + Duration::from_secs(1)).await;
+        let mut peers = vec![peer_a.clone()];
+        budget.take(&mut peers);
+        assert_eq!(peers, vec![peer_a]);
+    }
+
+    #[tokio::test]
+    async fn the_forwarding_budget_applies_only_to_forwarded_messages() {
+        let node_identity = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/127.0.0.1/tcp/9000".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let peer = make_peer();
+        let (dht_requester, dht_mock) = create_dht_actor_mock();
+        let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
+        dht_mock
+            .get_shared_state()
+            .set_select_peers_response(vec![peer.clone()]);
+        task::spawn(dht_mock.run());
+        let spy = service_spy();
+        let config = DhtConfig {
+            flood_ban_max_msg_count: 1,
+            ..Default::default()
+        };
+        let mut service = BroadcastMiddleware::new(
+            spy.to_service::<PipelineError>(),
+            node_identity.clone(),
+            dht_requester,
+            dht_discover_requester,
+            chrono::Duration::seconds(10800),
+            DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&config)),
+        );
+        let header = DhtMessageHeader {
+            version: DhtProtocolVersion::latest(),
+            destination: NodeDestination::Unknown,
+            message_signature: Vec::new(),
+            ephemeral_public_key: None,
+            message_type: DhtMessageType::None,
+            flags: DhtMessageFlags::NONE,
+            message_tag: MessageTag::new(),
+            expires: None,
+        };
+
+        for _ in 0..=FORWARD_BUDGET_FACTOR {
+            let (reply_tx, _reply_rx) = oneshot::channel();
+            service
+                .call(DhtOutboundRequest::SendMessage(
+                    Box::new(
+                        SendMessageParams::new()
+                            .propagate(NodeDestination::Unknown, vec![])
+                            .with_dht_header(header.clone())
+                            .finish(),
+                    ),
+                    b"forwarded".as_slice().into(),
+                    reply_tx,
+                ))
+                .await
+                .unwrap();
+        }
+        assert_eq!(spy.call_count(), FORWARD_BUDGET_FACTOR);
+
+        for _ in 0..=FORWARD_BUDGET_FACTOR {
+            let (reply_tx, _reply_rx) = oneshot::channel();
+            service
+                .call(DhtOutboundRequest::SendMessage(
+                    Box::new(
+                        SendMessageParams::new()
+                            .propagate(NodeDestination::Unknown, vec![])
+                            .finish(),
+                    ),
+                    b"own".as_slice().into(),
+                    reply_tx,
+                ))
+                .await
+                .unwrap();
+        }
+        assert_eq!(spy.call_count(), FORWARD_BUDGET_FACTOR * 2 + 1);
     }
 
     #[tokio::test]
@@ -705,6 +901,7 @@ mod test {
             dht_discover_requester,
             chrono::Duration::seconds(10800),
             DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 
@@ -753,6 +950,7 @@ mod test {
             dht_discover_requester,
             chrono::Duration::seconds(10800),
             DhtProtocolVersion::latest(),
+            Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
         let (reply_tx, reply_rx) = oneshot::channel();
 

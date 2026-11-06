@@ -167,6 +167,7 @@ where
                 message.dht_header.message_tag
             );
 
+            metrics::mark_at_dedup();
             let (hit_count, from_first_sender) = dht_requester
                 .add_message_to_dedup_cache(
                     message.dedup_hash.clone(),

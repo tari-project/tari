@@ -486,8 +486,8 @@ impl DhtActor {
                                 );
                             }
                             drop(logged_at);
-                            // Not known to be a relayed duplicate, so it still counts towards the flood ban
-                            let _ = reply_tx.send((u32::MAX, true));
+                            // Whether it is a relayed duplicate is unknown, so it does not count against the peer
+                            let _ = reply_tx.send((u32::MAX, false));
                         },
                     }
                     Ok(())
@@ -1123,8 +1123,8 @@ mod test {
             .await
             .unwrap();
         assert_eq!(num_hits, u32::MAX);
-        // Not known to be a relayed duplicate, so it still counts towards the flood ban
-        assert!(from_first_sender);
+        // Whether it is a relayed duplicate is unknown, so it does not count against the peer
+        assert!(!from_first_sender);
 
         let spy = service_spy();
         let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());

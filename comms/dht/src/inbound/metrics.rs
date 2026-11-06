@@ -23,7 +23,7 @@
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     task::Poll,
 };
@@ -31,9 +31,10 @@ use std::{
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use tari_comms::{message::InboundMessage, peer_manager::NodeId, pipeline::PipelineError};
+use tokio::time::Instant;
 use tower::{Service, ServiceExt, layer::Layer};
 
-use crate::connectivity::MetricsCollectorHandle;
+use crate::connectivity::{FloodSeries, MetricsCollectorHandle};
 
 const LOG_TARGET: &str = "comms::dht::metrics";
 
@@ -51,26 +52,67 @@ pub(crate) async fn record_flood_sample(counts: bool) {
     }
 }
 
-/// `FloodSample::state`: nothing decided yet
+/// Sets the flood-ban series of the inbound message being handled. Messages count in the delivering peer's own series
+/// unless the decryption layer finds that the peer may only be relaying them.
+pub(crate) fn set_flood_series(series: FloodSeries) {
+    let _ignore = FLOOD_SAMPLE.try_with(|sample| {
+        sample
+            .forwarded
+            .store(series == FloodSeries::Forwarded, Ordering::Relaxed)
+    });
+}
+
+/// Marks the inbound message being handled as waiting on its dedup result. Until the result is known it does not
+/// count against the peer, even if its handling is cancelled.
+pub(crate) fn mark_at_dedup() {
+    let _ignore = FLOOD_SAMPLE.try_with(|sample| {
+        let _ignore = sample
+            .state
+            .compare_exchange(PENDING, AT_DEDUP, Ordering::Relaxed, Ordering::Relaxed);
+    });
+}
+
+/// `FloodSample::state`: has not reached dedup; counts against the peer
 const PENDING: u8 = 0;
+/// `FloodSample::state`: waiting on its dedup result; does not count against the peer
+const AT_DEDUP: u8 = 1;
 /// `FloodSample::state`: counts against the peer, not written yet
-const COUNT: u8 = 1;
-/// `FloodSample::state`: a duplicate another peer delivered first, not written yet
-const SKIP: u8 = 2;
+const COUNT: u8 = 2;
+/// `FloodSample::state`: does not count against the peer, not written yet
+const SKIP: u8 = 3;
 /// `FloodSample::state`: written
-const RECORDED: u8 = 3;
+const RECORDED: u8 = 4;
 
 /// One inbound message's flood-ban sample, recorded at most once: by the dedup layer, else when the inner layers
 /// return, else (if they are cancelled, e.g. by the pipeline timeout, or panic) when it is dropped.
 struct FloodSample {
     collector: MetricsCollectorHandle,
     source_peer: NodeId,
+    /// When the message entered the inbound pipeline
+    received_at: Instant,
+    /// The series it counts in: own unless set otherwise
+    forwarded: AtomicBool,
     state: AtomicU8,
 }
 
 impl FloodSample {
+    fn series(&self) -> FloodSeries {
+        if self.forwarded.load(Ordering::Relaxed) {
+            FloodSeries::Forwarded
+        } else {
+            FloodSeries::Own
+        }
+    }
+
+    /// Records the sample once the inner layers have returned. A message still waiting on its dedup result (the dedup
+    /// request failed) does not count against the peer.
+    async fn finish(&self) {
+        let counts = self.state.load(Ordering::Relaxed) != AT_DEDUP;
+        self.record(counts).await;
+    }
+
     async fn record(&self, counts: bool) {
-        if self.state.load(Ordering::Relaxed) != PENDING {
+        if !matches!(self.state.load(Ordering::Relaxed), PENDING | AT_DEDUP) {
             return;
         }
         // Decided before waiting, so a write finished from `Drop` keeps the decision
@@ -79,9 +121,11 @@ impl FloodSample {
         // the collector falls behind
         let mut collector = self.collector.clone();
         let result = if counts {
-            collector.write_metric_message_received(self.source_peer.clone()).await
+            collector
+                .write_metric_message_received(self.source_peer.clone(), self.series(), self.received_at)
+                .await
         } else {
-            collector.write_metric_relayed_duplicate_received().await
+            collector.write_metric_uncounted_message_received().await
         };
         if result.is_err() {
             debug!(target: LOG_TARGET, "Unable to write metric: the metric collector is shut down");
@@ -98,13 +142,17 @@ impl Drop for FloodSample {
         }
         let mut collector = self.collector.clone();
         let source_peer = self.source_peer.clone();
+        let series = self.series();
+        let received_at = self.received_at;
         // Drop cannot wait for room in the queue, so the write is handed to a task
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                let _ignore = if state == SKIP {
-                    collector.write_metric_relayed_duplicate_received().await
+                let _ignore = if matches!(state, AT_DEDUP | SKIP) {
+                    collector.write_metric_uncounted_message_received().await
                 } else {
-                    collector.write_metric_message_received(source_peer).await
+                    collector
+                        .write_metric_message_received(source_peer, series, received_at)
+                        .await
                 };
             });
         }
@@ -112,7 +160,7 @@ impl Drop for FloodSample {
 }
 
 /// Counts every inbound message against the peer that delivered it, for the flood ban, including messages the inner
-/// layers drop, except duplicates first delivered by another peer.
+/// layers drop, except duplicates first delivered by another peer and messages whose dedup result is unknown.
 #[derive(Clone)]
 pub struct Metrics<S> {
     next_service: S,
@@ -146,13 +194,14 @@ where
         let sample = Arc::new(FloodSample {
             collector: self.metric_collector.clone(),
             source_peer: message.source_peer.clone(),
+            received_at: Instant::now(),
+            forwarded: AtomicBool::new(false),
             state: AtomicU8::new(PENDING),
         });
         Box::pin(async move {
             // The inner layers run on this task, so the dedup layer reaches the sample through the task-local
             let result = FLOOD_SAMPLE.scope(sample.clone(), next_service.oneshot(message)).await;
-            // The message never reached dedup (or dedup failed), so it counts
-            sample.record(true).await;
+            sample.finish().await;
             result
         })
     }
@@ -207,7 +256,7 @@ mod test {
 
         async_assert!(
             collector
-                .get_messages_received_timeseries(source_peer.clone())
+                .get_messages_received_timeseries(source_peer.clone(), FloodSeries::Own)
                 .await
                 .unwrap()
                 .count() ==
@@ -225,7 +274,10 @@ mod test {
         // The collector is not running yet, so these fill its queue
         let filler = NodeId::default();
         for _ in 0..METRICS_QUEUE_SIZE {
-            collector.write_metric_message_received(filler.clone()).await.unwrap();
+            collector
+                .write_metric_message_received(filler.clone(), FloodSeries::Own, Instant::now())
+                .await
+                .unwrap();
         }
         let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(|_: InboundMessage| async {
             record_flood_sample(false).await;
@@ -246,7 +298,39 @@ mod test {
             max_attempts = 20,
             interval = Duration::from_millis(10),
         );
-        let ts = collector.get_messages_received_timeseries(relay).await.unwrap();
+        let ts = collector
+            .get_messages_received_timeseries(relay, FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 0);
+    }
+
+    /// A message cancelled while it waits on its dedup result does not count against the peer, only in the total
+    #[tokio::test]
+    async fn a_message_cancelled_at_dedup_counts_in_the_total_only() {
+        let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+        let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(|_: InboundMessage| async {
+            mark_at_dedup();
+            future::pending::<Result<(), PipelineError>>().await
+        }));
+        let peer = make_node_identity().node_id().clone();
+
+        let call = service.call(InboundMessage::new(peer.clone(), Bytes::new()));
+        assert!(time::timeout(Duration::from_millis(10), call).await.is_err());
+
+        async_assert!(
+            collector
+                .get_total_message_count_in_timespan(Duration::from_secs(60))
+                .await
+                .unwrap() ==
+                1,
+            max_attempts = 20,
+            interval = Duration::from_millis(10),
+        );
+        let ts = collector
+            .get_messages_received_timeseries(peer, FloodSeries::Own)
+            .await
+            .unwrap();
         assert_eq!(ts.count(), 0);
     }
 }
