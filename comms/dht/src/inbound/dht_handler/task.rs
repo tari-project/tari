@@ -32,7 +32,7 @@ use tari_comms::{
     BytesMut,
     OrNotFound,
     net_address::PeerAddressSource,
-    peer_manager::{NodeId, NodeIdentity, Peer, PeerManager},
+    peer_manager::{NodeId, NodeIdentity, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
 };
@@ -44,6 +44,7 @@ use crate::{
     DhtConfig,
     DhtRequester,
     actor::OffenceSeverity,
+    dedup::SharedAcceptedJoins,
     discovery::DhtDiscoveryRequester,
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
@@ -59,6 +60,17 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
+
+/// Drops a Join that its source had no budget for. It is not recorded as accepted, so a copy from another source is
+/// still processed.
+fn drop_capped_join(source: &NodeId, origin: &CommsPublicKey) {
+    debug!(
+        target: LOG_TARGET,
+        "Source peer '{}' has relayed its share of new peers. Dropping the Join from '{origin}'.",
+        source.short_str()
+    );
+    join_received("capped");
+}
 
 /// Counts received Joins by what became of them
 fn join_received(outcome: &'static str) {
@@ -87,6 +99,7 @@ pub struct ProcessDhtMessage<S> {
     config: Arc<DhtConfig>,
     join_cooldown: Arc<Mutex<JoinCooldown>>,
     source_budget: SharedSourceBudget,
+    accepted_joins: SharedAcceptedJoins,
 }
 
 impl<S> ProcessDhtMessage<S>
@@ -103,6 +116,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         config: Arc<DhtConfig>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
         source_budget: SharedSourceBudget,
+        accepted_joins: SharedAcceptedJoins,
     ) -> Self {
         Self {
             next_service,
@@ -115,6 +129,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             config,
             join_cooldown,
             source_budget,
+            accepted_joins,
         }
     }
 
@@ -291,7 +306,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 budget.has_headroom(&source_peer.node_id, Instant::now(), &self.config.network_discovery)
             })
         {
-            self.drop_capped_join(&source_peer, &authenticated_pk, dedup_hash).await;
+            drop_capped_join(&source_peer.node_id, &authenticated_pk);
             return Ok(());
         }
         let validated = validator.validate_peer(new_peer, maybe_existing);
@@ -315,8 +330,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
             })
         {
-            self.drop_capped_join(&source_peer, &authenticated_pk, dedup_hash).await;
+            drop_capped_join(&source_peer.node_id, &authenticated_pk);
             return Ok(());
+        }
+
+        // From here the Join is accepted, so the dedup layer drops later copies of it
+        if let Ok(mut accepted) = self.accepted_joins.lock() {
+            accepted.insert(dedup_hash);
         }
 
         let is_banned = valid_peer.is_banned();
@@ -399,22 +419,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         Ok(())
-    }
-
-    /// Drops a Join that its source had no budget for. The dedup hit it took is given back, otherwise a source that
-    /// used up its budget could deliver a Join first and so stop the copies from other sources being processed. The
-    /// dedup layer drops a source's repeats of a Join before they take a hit, so this gives back exactly the one hit
-    /// this source took.
-    async fn drop_capped_join(&mut self, source: &Peer, origin: &CommsPublicKey, dedup_hash: Vec<u8>) {
-        debug!(
-            target: LOG_TARGET,
-            "Source peer '{}' has relayed its share of new peers. Dropping the Join from '{origin}'.",
-            source.node_id.short_str()
-        );
-        join_received("capped");
-        if let Err(err) = self.dht.forget_dedup_hit(dedup_hash).await {
-            warn!(target: LOG_TARGET, "Failed to take back the dedup hit of a dropped Join: {err}");
-        }
     }
 
     async fn handle_discover_response(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
@@ -751,6 +755,7 @@ mod test {
         peer_manager: Arc<PeerManager>,
         join_cooldown: Arc<Mutex<JoinCooldown>>,
         source_budget: SharedSourceBudget,
+        accepted_joins: SharedAcceptedJoins,
     }
 
     impl Handler {
@@ -761,6 +766,7 @@ mod test {
                 peer_manager: build_peer_manager(),
                 join_cooldown: Default::default(),
                 source_budget: Default::default(),
+                accepted_joins: Default::default(),
             }
         }
 
@@ -781,25 +787,19 @@ mod test {
                 self.config.clone(),
                 self.join_cooldown.clone(),
                 self.source_budget.clone(),
+                self.accepted_joins.clone(),
             );
-            // Answers the requests the handler waits on, and collects bans, until the handler is done
-            let dht_requests = tokio::spawn(async move {
-                let mut bans = Vec::new();
-                while let Some(request) = dht_rx.recv().await {
-                    match request {
-                        DhtRequest::BanPeer {
-                            public_key, severity, ..
-                        } => bans.push((public_key, severity)),
-                        DhtRequest::MsgHashCacheForgetHit(_, reply_tx) => {
-                            let _ignore = reply_tx.send(());
-                        },
-                        _ => {},
-                    }
-                }
-                bans
-            });
             let result = task.run().await;
-            let bans = dht_requests.await.unwrap();
+
+            let mut bans = Vec::new();
+            while let Ok(request) = dht_rx.try_recv() {
+                if let DhtRequest::BanPeer {
+                    public_key, severity, ..
+                } = request
+                {
+                    bans.push((public_key, severity));
+                }
+            }
             let mut outbound_sends = 0usize;
             let mut outbound_bodies = Vec::new();
             while let Ok(DhtOutboundRequest::SendMessage(_, body, _)) = outbound_rx.try_recv() {

@@ -30,16 +30,7 @@ use std::{
 };
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{
-    Connection,
-    ExpressionMethods,
-    OptionalExtension,
-    QueryDsl,
-    RunQueryDsl,
-    SqliteConnection,
-    dsl,
-    sql_types,
-};
+use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SqliteConnection, dsl, sql_types};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
 use tari_comms::types::CommsPublicKey;
@@ -87,10 +78,6 @@ const UPSERT_HIT_SQL: &str = "INSERT INTO dedup_cache (body_hash, sender_public_
                               SET sender_public_key = excluded.sender_public_key, number_of_hits = number_of_hits + \
                               1, last_hit_at = excluded.last_hit_at, keep_until = MAX(keep_until, \
                               excluded.keep_until) RETURNING number_of_hits";
-
-const FORGET_LAST_HIT_SQL: &str = "DELETE FROM dedup_cache WHERE body_hash = ? AND number_of_hits <= 1";
-const FORGET_HIT_SQL: &str =
-    "UPDATE dedup_cache SET number_of_hits = number_of_hits - 1 WHERE body_hash = ? AND number_of_hits > 1";
 
 #[derive(Clone)]
 pub struct DedupCacheDatabase {
@@ -191,27 +178,6 @@ impl DedupCacheDatabase {
 
         #[allow(clippy::cast_sign_loss)]
         Ok(hit_count.unwrap_or(0) as u32)
-    }
-
-    /// Takes back one hit on `body_hash`, so that the next copy of the message is processed as if this one had not
-    /// arrived. Forgetting the last hit removes the entry, so that it does not linger unseen by the insert-driven trim.
-    /// The insert stays counted towards the trim schedule: taking it back would let a stream of forgotten entries
-    /// hold the count just short of a trim and trigger one on every insert.
-    pub fn forget_hit(&self, body_hash: &[u8]) -> Result<(), StorageError> {
-        let body_hash = to_hex(body_hash);
-        let mut conn = self.connection.get_pooled_connection()?;
-        conn.transaction::<_, diesel::result::Error, _>(|conn| {
-            let deleted = diesel::sql_query(FORGET_LAST_HIT_SQL)
-                .bind::<sql_types::Text, _>(&body_hash)
-                .execute(conn)?;
-            if deleted == 0 {
-                diesel::sql_query(FORGET_HIT_SQL)
-                    .bind::<sql_types::Text, _>(&body_hash)
-                    .execute(conn)?;
-            }
-            Ok(())
-        })?;
-        Ok(())
     }
 
     /// Trims the dedup cache. Entries whose `keep_until` has passed are removed, earliest first, down to capacity.
@@ -453,27 +419,6 @@ mod test {
     }
 
     const AFTER_MIN_AGE: Duration = MIN_ENTRY_AGE.saturating_add(Duration::from_secs(60));
-
-    #[test]
-    fn a_forgotten_hit_is_taken_back_and_the_last_removes_the_entry() {
-        let cache = new_cache(10);
-        let hash = 1usize.to_le_bytes();
-        assert_eq!(add(&cache, 1, None, true), 1);
-        assert_eq!(add(&cache, 1, None, true), 2);
-        cache.forget_hit(&hash).unwrap();
-        assert_eq!(cache.get_hit_count(&hash).unwrap(), 1);
-        assert_eq!(row_count(&cache), 1);
-
-        // Forgetting the last hit removes the entry; the insert stays counted
-        cache.forget_hit(&hash).unwrap();
-        assert_eq!(row_count(&cache), 0);
-        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
-        cache.forget_hit(&hash).unwrap();
-        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 1);
-
-        assert_eq!(add(&cache, 1, None, true), 1);
-        assert_eq!(cache.num_inserts.load(Ordering::Relaxed), 2);
-    }
 
     #[test]
     fn it_trims_as_it_grows() {

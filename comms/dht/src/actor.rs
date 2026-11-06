@@ -125,8 +125,6 @@ pub enum DhtRequest {
         reply_tx: oneshot::Sender<u32>,
     },
     GetMsgHashHitCount(Vec<u8>, oneshot::Sender<u32>),
-    /// Takes back one hit on a message hash, so that the next copy of the message is processed
-    MsgHashCacheForgetHit(Vec<u8>, oneshot::Sender<()>),
     /// Fetch selected peers according to the broadcast strategy
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<NodeId>>),
     GetMetadata(DhtMetadataKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
@@ -166,7 +164,6 @@ impl Display for DhtRequest {
                 received_from.to_hex(),
             ),
             GetMsgHashHitCount(hash, _) => write!(f, "GetMsgHashHitCount({})", hash.to_hex()),
-            MsgHashCacheForgetHit(hash, _) => write!(f, "MsgHashCacheForgetHit({})", hash.to_hex()),
             SelectPeers(s, _) => write!(f, "SelectPeers (Strategy={s})"),
             GetMetadata(key, _) => write!(f, "GetMetadata (key={key})"),
             SetMetadata(key, value, _) => {
@@ -226,14 +223,6 @@ impl DhtRequester {
             reply_tx,
         })?;
 
-        reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
-    }
-
-    /// Takes back one hit on `message_hash` in the dedup cache, so that the next copy of the message is processed.
-    pub async fn forget_dedup_hit(&mut self, message_hash: Vec<u8>) -> Result<(), DhtActorError> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.sender
-            .send(DhtRequest::MsgHashCacheForgetHit(message_hash, reply_tx))?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
@@ -509,16 +498,6 @@ impl DhtActor {
                         .await
                         .map_err(StorageError::from)??;
                     let _ = reply_tx.send(hit_count);
-                    Ok(())
-                })
-            },
-            MsgHashCacheForgetHit(hash, reply_tx) => {
-                let msg_hash_cache = self.msg_hash_dedup_cache.clone();
-                Box::pin(async move {
-                    task::spawn_blocking(move || msg_hash_cache.forget_hit(&hash))
-                        .await
-                        .map_err(StorageError::from)??;
-                    let _ = reply_tx.send(());
                     Ok(())
                 })
             },

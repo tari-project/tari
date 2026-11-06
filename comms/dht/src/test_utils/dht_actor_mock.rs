@@ -121,9 +121,6 @@ impl DhtActorMock {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
                 reply_tx.send(u32::try_from(v).unwrap()).unwrap();
             },
-            MsgHashCacheForgetHit(_, reply_tx) => {
-                let _ignore = reply_tx.send(());
-            },
             SelectPeers(_, reply_tx) => {
                 let lock = self.state.select_peers.read().unwrap();
                 reply_tx

@@ -50,6 +50,7 @@ use crate::{
     SeedPeerProvider,
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
+    dedup::SharedAcceptedJoins,
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     envelope::DhtMessageType,
     event::{DhtEventReceiver, DhtEventSender},
@@ -105,6 +106,8 @@ pub struct Dht {
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
     /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
     join_budget: SharedSourceBudget,
+    /// The Joins the DHT handler accepted, which the dedup layer then drops
+    accepted_joins: SharedAcceptedJoins,
 }
 
 impl Dht {
@@ -141,6 +144,7 @@ impl Dht {
             event_publisher,
             seed_peer_provider,
             join_budget: Default::default(),
+            accepted_joins: Default::default(),
         };
 
         // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
@@ -293,10 +297,10 @@ impl Dht {
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
-            .layer(DedupLayer::new(
-                self.dht_requester(),
-                self.config.dedup_allowed_message_occurrences,
-            ))
+            .layer(
+                DedupLayer::new(self.dht_requester(), self.config.dedup_allowed_message_occurrences)
+                    .with_accepted_joins(self.accepted_joins.clone()),
+            )
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
@@ -316,6 +320,7 @@ impl Dht {
                 self.discovery_service_requester(),
                 self.outbound_requester(),
                 self.join_budget.clone(),
+                self.accepted_joins.clone(),
             ))
             .into_inner()
     }
@@ -1162,6 +1167,59 @@ mod test {
             .unwrap();
         time::sleep(Duration::from_millis(100)).await;
         assert_eq!(oms_mock_state.call_count().await, 1);
+    }
+
+    /// An honest copy of a Join arrives while a capped source's copy is being handled: the Join is still stored and
+    /// propagated exactly once, and once accepted a third source's copy is dropped by the dedup layer
+    #[tokio::test]
+    async fn an_honest_copy_racing_a_capped_copy_is_processed_once() {
+        let capped = make_node_identity();
+        let honest = make_node_identity();
+        let third = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest, &third], &shutdown).await;
+        let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        {
+            let mut budget = dht.join_budget.lock().unwrap();
+            for _ in 0..dht.config.network_discovery.max_stored_per_source {
+                let peer = make_node_identity();
+                budget.try_charge(
+                    capped.node_id(),
+                    peer.node_id(),
+                    Instant::now(),
+                    &dht.config.network_discovery,
+                );
+            }
+        }
+
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
+        );
+        let deliver = |source: &NodeIdentity| {
+            service
+                .clone()
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+        };
+        let (capped_result, honest_result) = futures::join!(deliver(&capped), deliver(&honest));
+        capped_result.unwrap();
+        honest_result.unwrap();
+        assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());
+        assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
+
+        deliver(&third).await.unwrap();
+        deliver(&capped).await.unwrap();
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
+        assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
     }
 
     /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it

@@ -116,36 +116,56 @@ pub fn create_message_hash(sig_canonical: &[u8], body: &[u8]) -> [u8; 32] {
     out
 }
 
-/// The most (Join, source) pairs remembered by the dedup layer. The oldest are forgotten first.
-const MAX_SEEN_JOIN_COPIES: usize = 10_000;
+/// The most Join copies, and accepted Joins, each remembered by the dedup layer. The oldest are forgotten first.
+const MAX_REMEMBERED_JOINS: usize = 10_000;
 
-/// The Joins each source has delivered. A source's repeat of a Join is dropped before it reaches the dedup cache, so
-/// the cache counts the distinct sources a Join came from. When the DHT handler drops a Join for want of its source's
-/// budget and gives back the hit it took, that source cannot take the hit again by resending it, and a copy from
-/// another source is still processed. Only Joins: other messages may be re-propagated through the same peer
-/// (`dedup_allowed_message_occurrences`).
-#[derive(Debug, Default)]
-struct SeenJoinCopies {
-    copies: HashSet<(Vec<u8>, CommsPublicKey)>,
-    order: VecDeque<(Vec<u8>, CommsPublicKey)>,
+/// A set that forgets its oldest entries past `MAX_REMEMBERED_JOINS`.
+#[derive(Debug)]
+pub(crate) struct BoundedSet<T> {
+    entries: HashSet<T>,
+    order: VecDeque<T>,
 }
 
-impl SeenJoinCopies {
-    /// Records a copy. Returns false if this source already delivered it.
-    fn insert(&mut self, dedup_hash: &[u8], source: &CommsPublicKey) -> bool {
-        let key = (dedup_hash.to_vec(), source.clone());
-        if !self.copies.insert(key.clone()) {
+impl<T> Default for BoundedSet<T> {
+    fn default() -> Self {
+        Self {
+            entries: HashSet::new(),
+            order: VecDeque::new(),
+        }
+    }
+}
+
+impl<T: Clone + Eq + std::hash::Hash> BoundedSet<T> {
+    pub fn contains(&self, entry: &T) -> bool {
+        self.entries.contains(entry)
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns false if `entry` was already in the set.
+    pub fn insert(&mut self, entry: T) -> bool {
+        if !self.entries.insert(entry.clone()) {
             return false;
         }
-        self.order.push_back(key);
-        if self.order.len() > MAX_SEEN_JOIN_COPIES &&
+        self.order.push_back(entry);
+        if self.order.len() > MAX_REMEMBERED_JOINS &&
             let Some(oldest) = self.order.pop_front()
         {
-            self.copies.remove(&oldest);
+            self.entries.remove(&oldest);
         }
         true
     }
 }
+
+/// The dedup hashes of the Joins the DHT handler accepted (stored or merged), shared by the dedup layer and the
+/// handler.
+pub(crate) type SharedAcceptedJoins = Arc<Mutex<BoundedSet<Vec<u8>>>>;
+
+/// The Joins each source has delivered.
+type SeenJoinCopies = BoundedSet<(Vec<u8>, CommsPublicKey)>;
 
 /// # DHT Deduplication middleware
 ///
@@ -157,6 +177,7 @@ pub struct DedupMiddleware<S> {
     dht_requester: DhtRequester,
     allowed_message_occurrences: usize,
     seen_joins: Arc<Mutex<SeenJoinCopies>>,
+    accepted_joins: SharedAcceptedJoins,
 }
 
 impl<S> DedupMiddleware<S> {
@@ -166,6 +187,7 @@ impl<S> DedupMiddleware<S> {
             dht_requester,
             allowed_message_occurrences,
             seen_joins: Default::default(),
+            accepted_joins: Default::default(),
         }
     }
 }
@@ -188,6 +210,7 @@ where
         let mut dht_requester = self.dht_requester.clone();
         let allowed_message_occurrences = self.allowed_message_occurrences;
         let seen_joins = self.seen_joins.clone();
+        let accepted_joins = self.accepted_joins.clone();
         Box::pin(async move {
             if message.dedup_hash.is_empty() {
                 debug!(
@@ -197,19 +220,26 @@ where
                 );
                 return Ok(());
             }
-            // Recorded before the cache is hit, so that two copies from one source at once cannot both take a hit
-            if message.dht_header.message_type.is_dht_join() &&
-                !seen_joins.lock().map_or(true, |mut seen| {
-                    seen.insert(&message.dedup_hash, &message.source_peer.public_key)
-                })
-            {
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' resent Join {}. Message discarded.",
-                    message.source_peer.node_id.short_str(),
-                    message.tag
-                );
-                return Ok(());
+            // Joins skip the dedup cache. A copy counts as a duplicate only once the DHT handler has accepted the Join,
+            // so that a copy dropped there for want of its source's budget does not stop copies from other sources.
+            // A source's own repeats are dropped at once. Copies that pass before the first is accepted all reach the
+            // handler, whose join gate propagates the Join once.
+            if message.dht_header.message_type.is_dht_join() {
+                let key = (message.dedup_hash.clone(), message.source_peer.public_key.clone());
+                let is_repeat = !seen_joins.lock().map_or(true, |mut seen| seen.insert(key));
+                let is_accepted = accepted_joins
+                    .lock()
+                    .is_ok_and(|accepted| accepted.contains(&message.dedup_hash));
+                if is_repeat || is_accepted {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Join {} from peer '{}' was already received. Message discarded.",
+                        message.tag,
+                        message.source_peer.node_id.short_str()
+                    );
+                    return Ok(());
+                }
+                return next_service.oneshot(message).await;
             }
             trace!(
                 target: LOG_TARGET,
@@ -256,6 +286,7 @@ pub struct DedupLayer {
     dht_requester: DhtRequester,
     allowed_message_occurrences: usize,
     seen_joins: Arc<Mutex<SeenJoinCopies>>,
+    accepted_joins: SharedAcceptedJoins,
 }
 
 impl DedupLayer {
@@ -264,7 +295,14 @@ impl DedupLayer {
             dht_requester,
             allowed_message_occurrences,
             seen_joins: Default::default(),
+            accepted_joins: Default::default(),
         }
+    }
+
+    /// Shares the Joins the DHT handler accepted.
+    pub(crate) fn with_accepted_joins(mut self, accepted_joins: SharedAcceptedJoins) -> Self {
+        self.accepted_joins = accepted_joins;
+        self
     }
 }
 
@@ -275,6 +313,7 @@ impl<S> Layer<S> for DedupLayer {
         let mut middleware =
             DedupMiddleware::new(service, self.dht_requester.clone(), self.allowed_message_occurrences);
         middleware.seen_joins = self.seen_joins.clone();
+        middleware.accepted_joins = self.accepted_joins.clone();
         middleware
     }
 }
@@ -292,16 +331,20 @@ mod test {
         test_utils::{create_dht_actor_mock, make_dht_inbound_message, make_node_identity, service_spy},
     };
 
-    /// A source's repeats of a Join, even two at once, are dropped before the dedup cache, while other sources'
-    /// copies, and other messages a source repeats, still reach it
+    /// Joins never reach the dedup cache. A source's repeats of a Join, even two at once, are dropped, as is any copy
+    /// once the handler has accepted the Join; until then each source's first copy goes through. Other messages still
+    /// go through the cache.
     #[tokio::test]
-    async fn a_sources_repeats_of_a_join_skip_the_dedup_cache() {
+    async fn joins_are_deduped_per_source_and_once_accepted() {
         let spy = service_spy();
         let (dht_requester, mock) = create_dht_actor_mock();
         let mock_state = mock.get_shared_state();
         mock_state.set_number_of_message_hits(1);
         tokio::spawn(mock.run());
-        let dedup = DedupLayer::new(dht_requester, 3).layer(spy.to_service::<PipelineError>());
+        let accepted_joins = SharedAcceptedJoins::default();
+        let dedup = DedupLayer::new(dht_requester, 3)
+            .with_accepted_joins(accepted_joins.clone())
+            .layer(spy.to_service::<PipelineError>());
 
         let message = |source: &tari_comms::peer_manager::NodeIdentity, message_type| {
             let inbound_message =
@@ -315,21 +358,28 @@ mod test {
         let (first, second) = futures::join!(dedup.clone().call(join.clone()), dedup.clone().call(join.clone()));
         first.unwrap();
         second.unwrap();
-        dedup.clone().call(join).await.unwrap();
-        assert_eq!(mock_state.call_count(), 1);
+        dedup.clone().call(join.clone()).await.unwrap();
         assert_eq!(spy.call_count(), 1);
 
+        // Another source's copy of a Join that has not been accepted goes through
+        let other = message(&make_node_identity(), DhtMessageType::Join);
+        assert_eq!(other.dedup_hash, join.dedup_hash);
+        dedup.clone().call(other).await.unwrap();
+        assert_eq!(spy.call_count(), 2);
+
+        accepted_joins.lock().unwrap().insert(join.dedup_hash.clone());
         dedup
             .clone()
             .call(message(&make_node_identity(), DhtMessageType::Join))
             .await
             .unwrap();
-        assert_eq!(mock_state.call_count(), 2);
+        assert_eq!(spy.call_count(), 2);
+        assert_eq!(mock_state.call_count(), 0);
 
         let domain = message(&source, DhtMessageType::None);
         dedup.clone().call(domain.clone()).await.unwrap();
         dedup.clone().call(domain).await.unwrap();
-        assert_eq!(mock_state.call_count(), 4);
+        assert_eq!(mock_state.call_count(), 2);
     }
 
     #[test]
