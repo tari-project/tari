@@ -76,6 +76,10 @@ pub struct Cli {
     #[clap(long, env = "MINOTARI_WALLET_MCP_REQUIRE_CONFIRMATION")]
     pub require_confirmation: bool,
 
+    /// Maximum transaction amount without confirmation in microTari (default: 1_000_000 µT / 1 Tari)
+    #[clap(long, env = "MINOTARI_WALLET_MCP_MAX_AUTO_AMOUNT")]
+    pub max_auto_amount: Option<u64>,
+
     // Wallet-specific flags for auto-launch (prefixed to avoid conflicts)
     /// Wallet: Password for the console wallet
     #[clap(long, env = "MINOTARI_MCP_WALLET_PASSWORD", hide_env_values = true)]
@@ -119,6 +123,9 @@ impl ConfigOverrideProvider for Cli {
         }
         if self.require_confirmation {
             overrides.push(("mcp.require_confirmation".to_string(), "true".to_string()));
+        }
+        if let Some(max_auto) = self.max_auto_amount {
+            overrides.push(("mcp.max_auto_amount".to_string(), max_auto.to_string()));
         }
         overrides.push(("mcp.request_timeout_secs".to_string(), self.mcp_timeout.to_string()));
         overrides.push(("mcp.rate_limit_per_minute".to_string(), self.mcp_rate_limit.to_string()));
@@ -201,11 +208,8 @@ impl Cli {
             args.push(log_config.to_string_lossy().to_string());
         }
 
-        // Add wallet-specific flags
-        if let Some(ref password) = self.wallet_password {
-            args.push("--password".to_string());
-            args.push(String::from_utf8_lossy(password.reveal()).to_string());
-        }
+        // Note: wallet password is passed via MINOTARI_WALLET_PASSWORD environment variable
+        // rather than on argv to prevent process table / procfs leaks.
         if self.wallet_recovery {
             args.push("--recovery".to_string());
         }
@@ -248,6 +252,11 @@ impl CliConfigExtractor for Cli {
             builder = builder.with_log_config(log_config.clone());
         }
 
+        if let Some(ref password) = self.wallet_password {
+            let password_str = String::from_utf8_lossy(password.reveal()).to_string();
+            builder = builder.with_environment_var("MINOTARI_WALLET_PASSWORD".to_string(), password_str);
+        }
+
         // Add property overrides
         for (key, value) in &self.common.config_property_overrides {
             builder = builder.with_property_override(key.clone(), value.clone());
@@ -278,11 +287,7 @@ impl CliConfigExtractor for Cli {
             builder = builder.non_interactive();
         }
 
-        if let Some(ref password) = self.wallet_password {
-            // Convert SafePassword to String (be careful with this in production)
-            let password_str = String::from_utf8_lossy(password.reveal()).to_string();
-            builder = builder.with_password(password_str);
-        }
+        // Note: wallet_password is passed via MINOTARI_WALLET_PASSWORD env var rather than argv
 
         if self.wallet_recovery {
             builder = builder.force_recovery();
@@ -293,5 +298,52 @@ impl CliConfigExtractor for Cli {
         }
 
         builder.build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn test_wallet_password_not_on_argv_but_in_env() {
+        let cli = Cli::parse_from([
+            "minotari_mcp_wallet",
+            "--wallet-password",
+            "super_secret_wallet_password",
+        ]);
+
+        let wallet_args = cli.extract_wallet_args();
+        assert!(
+            !wallet_args
+                .iter()
+                .any(|arg| arg.contains("super_secret_wallet_password"))
+        );
+        assert!(!wallet_args.contains(&"--password".to_string()));
+
+        let gen_args = cli.generate_wallet_args();
+        assert!(!gen_args.iter().any(|arg| arg.contains("super_secret_wallet_password")));
+        assert!(!gen_args.contains(&"--password".to_string()));
+
+        let launch_config = cli.extract_launch_config();
+        assert_eq!(
+            launch_config.environment_vars.get("MINOTARI_WALLET_PASSWORD"),
+            Some(&"super_secret_wallet_password".to_string())
+        );
+    }
+
+    #[test]
+    fn test_max_auto_amount_cli_parsing() {
+        let cli = Cli::parse_from([
+            "minotari_mcp_wallet",
+            "--require-confirmation",
+            "--max-auto-amount",
+            "5000000",
+        ]);
+
+        assert!(cli.require_confirmation);
+        assert_eq!(cli.max_auto_amount, Some(5_000_000));
     }
 }
