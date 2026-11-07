@@ -106,7 +106,10 @@ impl WalletToolRegistry {
             registry.register(Box::new(CancelTransactionTool::new(grpc_client.clone())));
 
             // Atomic swap control tools
-            registry.register(Box::new(SendShaAtomicSwapTool::new(grpc_client.clone())));
+            registry.register(Box::new(SendShaAtomicSwapTool::new(
+                grpc_client.clone(),
+                security.clone(),
+            )));
             registry.register(Box::new(ClaimShaAtomicSwapTool::new(grpc_client.clone())));
             registry.register(Box::new(ClaimHtlcRefundTool::new(grpc_client.clone())));
         }

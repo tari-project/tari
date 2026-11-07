@@ -212,10 +212,11 @@ mod tests {
     use tonic::transport::Channel;
 
     use super::*;
+    use crate::config::WalletSecurityConfig;
 
     fn make_test_tool(require_confirmation: bool, max_auto_amount: u64) -> SimpleTransferTool {
         let channel = Channel::from_static("http://127.0.0.1:18143").connect_lazy();
-        let client = Arc::new(WalletGrpcClient::new(channel));
+        let client = Arc::new(WalletGrpcClient::new(channel).expect("failed to create client"));
         let security = WalletSecurityConfig {
             require_confirmation,
             max_auto_amount,
@@ -227,7 +228,7 @@ mod tests {
     #[test]
     fn test_simple_transfer_requires_confirmation_when_configured() {
         let tool = make_test_tool(true, 1_000_000);
-        let valid_address = "9f8c3d4a5b6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b";
+        let valid_address = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456";
 
         // Without confirmed: true, must fail validation
         let params_unconfirmed = json!({
@@ -249,7 +250,7 @@ mod tests {
     #[test]
     fn test_simple_transfer_blocks_above_max_auto_amount_without_confirmation() {
         let tool = make_test_tool(false, 1_000_000);
-        let valid_address = "9f8c3d4a5b6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b";
+        let valid_address = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456";
 
         // Under threshold: allowed without confirmation
         let params_under = json!({
