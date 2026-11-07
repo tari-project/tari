@@ -45,7 +45,10 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     }
 
     match (network_proto, transport_proto) {
-        (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
+        (Protocol::Dns(domain), Protocol::Tcp(port)) |
+        (Protocol::Dns4(domain), Protocol::Tcp(port)) |
+        (Protocol::Dns6(domain), Protocol::Tcp(port)) |
+        (Protocol::Dnsaddr(domain), Protocol::Tcp(port)) => {
             let addr = format!("{domain}:{port}");
             addr.to_socket_addrs()
                 .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{domain}'")))?
@@ -97,8 +100,11 @@ mod test {
 
         expect_success("/ip4/254.0.1.2/tcp/1234", &["254.0.1.2"]);
         expect_success("/ip6/::1/tcp/1234", &["::1"]);
-        // Test DNS name resolution
+        // Test DNS name resolution across Dns, Dns4, Dns6, and Dnsaddr
+        expect_success("/dns/localhost/tcp/1234", &["127.0.0.1", "::1"]);
         expect_success("/dns4/localhost/tcp/1234", &["127.0.0.1", "::1"]);
+        expect_success("/dns6/localhost/tcp/1234", &["127.0.0.1", "::1"]);
+        expect_success("/dnsaddr/localhost/tcp/1234", &["127.0.0.1", "::1"]);
     }
 
     #[test]
