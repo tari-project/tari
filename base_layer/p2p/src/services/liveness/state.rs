@@ -249,10 +249,13 @@ impl AverageLatency {
 
     /// Add a sample `Duration`. The number of milliseconds is capped at `u32::MAX`.
     pub fn add_sample(&mut self, sample: Duration) {
+        if self.samples.capacity() == 0 {
+            return;
+        }
         if self.samples.len() == self.samples.capacity() {
             self.samples.remove(0);
         }
-        self.samples.push(u32::try_from(sample.as_millis()).unwrap())
+        self.samples.push(u32::try_from(sample.as_millis()).unwrap_or(u32::MAX));
     }
 
     /// Calculate the average of the recorded samples
@@ -370,5 +373,16 @@ mod test {
         let n = state.failed_pings.get(&peer1).unwrap();
         assert_eq!(*n, 1);
         assert!(!state.failed_pings.contains_key(&peer2));
+    }
+
+    #[test]
+    fn average_latency_caps_large_samples_and_handles_default() {
+        let mut default_avg = AverageLatency::default();
+        default_avg.add_sample(Duration::from_millis(10));
+        assert_eq!(default_avg.calc_average(), Duration::ZERO);
+
+        let mut avg = AverageLatency::new(2);
+        avg.add_sample(Duration::from_millis(u64::from(u32::MAX) + 5000));
+        assert_eq!(avg.calc_average(), Duration::from_millis(u64::from(u32::MAX)));
     }
 }
