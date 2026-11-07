@@ -246,6 +246,7 @@ impl InnerService {
                 .pow
                 .as_mut()
                 .ok_or(MmProxyError::UnexpectedMissingData("tari_block.header.pow".to_string()))?;
+            pow_mut.pow_data.clear();
             BorshSerialize::serialize(&monero_data, &mut pow_mut.pow_data)
                 .map_err(|err| MmProxyError::ConversionError(err.to_string()))?;
             let tari_header = tari_header_mut

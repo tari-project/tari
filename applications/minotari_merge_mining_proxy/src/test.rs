@@ -71,4 +71,13 @@ mod append_aux_chain_data {
             json!({"test": "works"})
         ]);
     }
+
+    #[test]
+    fn it_handles_non_object_result() {
+        let v = json_rpc::default_block_accept_response(Some(1));
+        let v = append_aux_chain_data(v, json!({"id": "xtr"}));
+        assert_eq!(v["result"][MMPROXY_AUX_KEY_NAME]["chains"].as_array().unwrap(), &[
+            json!({"id": "xtr"})
+        ]);
+    }
 }
