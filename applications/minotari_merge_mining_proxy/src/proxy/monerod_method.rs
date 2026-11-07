@@ -57,7 +57,7 @@ impl FromStr for MonerodMethod {
             "submit_block" | "submitblock" => Ok(MonerodMethod::SubmitBlock),
             "get_block_header_by_hash" | "getblockheaderbyhash" => Ok(MonerodMethod::GetBlockHeaderByHash),
             "get_last_block_header" | "getlastblockheader" => Ok(MonerodMethod::GetLastBlockHeader),
-            "get_block" | "getblovk" => Ok(MonerodMethod::GetLastBlockHeader),
+            "get_block" | "getblock" | "getblovk" => Ok(MonerodMethod::GetBlock),
             _ => {
                 let msg = format!("Unknown monerod rpc method: '{s}'");
                 warn!(target: LOG_TARGET, "{msg}");
@@ -100,5 +100,17 @@ pub fn parse_monerod_rpc_method(request_method: &Method, request_uri: &Uri, requ
             }
         },
         _ => MonerodMethod::RpcMethodNotDefined,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parses_get_block_to_get_block_variant() {
+        assert_eq!(MonerodMethod::from_str("get_block").unwrap(), MonerodMethod::GetBlock);
+        assert_eq!(MonerodMethod::from_str("getblock").unwrap(), MonerodMethod::GetBlock);
+        assert_eq!(MonerodMethod::from_str("getblovk").unwrap(), MonerodMethod::GetBlock);
     }
 }
