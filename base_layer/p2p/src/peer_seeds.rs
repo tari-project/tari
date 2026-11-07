@@ -98,7 +98,7 @@ impl DnsSeedResolver {
 }
 
 /// Parsed information from a DNS seed record
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct SeedPeer {
     pub public_key: CommsPublicKey,
@@ -124,6 +124,43 @@ impl TryFrom<String> for SeedPeer {
     }
 }
 
+fn parse_seed_addresses(mut rest: &str) -> Result<Vec<Multiaddr>, anyhow::Error> {
+    if rest.is_empty() {
+        return Err(anyhow!("Invalid address string: empty address"));
+    }
+    let mut addresses = Vec::new();
+    loop {
+        let mut split_at = None;
+        for (idx, _) in rest.char_indices() {
+            if rest[idx..].starts_with("::") {
+                let candidate = &rest[..idx];
+                if !candidate.is_empty() &&
+                    let Ok(addr) = Multiaddr::from_str(candidate) &&
+                    !addr.is_empty()
+                {
+                    split_at = Some((addr, &rest[idx + 2..]));
+                    break;
+                }
+            }
+        }
+        if let Some((addr, remainder)) = split_at {
+            addresses.push(addr);
+            if remainder.is_empty() {
+                return Err(anyhow!("Invalid address string: trailing '::' delimiter"));
+            }
+            rest = remainder;
+        } else {
+            let addr = Multiaddr::from_str(rest).map_err(|e| anyhow!("Invalid address string:{e}"))?;
+            if addr.is_empty() {
+                return Err(anyhow!("Invalid address string: empty address"));
+            }
+            addresses.push(addr);
+            break;
+        }
+    }
+    Ok(addresses)
+}
+
 impl FromStr for SeedPeer {
     type Err = anyhow::Error;
 
@@ -134,7 +171,7 @@ impl FromStr for SeedPeer {
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
             .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{e}"))?];
+        let addresses = parse_seed_addresses(part_b)?;
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -199,6 +236,23 @@ mod test {
         }
 
         #[test]
+        fn it_parses_multiple_addresses_and_roundtrips_display() {
+            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/ip6/::1/tcp/8001::/ip6/2001:db8::/tcp/8002::/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
+            let seed = SeedPeer::from_str(sample).unwrap();
+            assert_eq!(seed.addresses.len(), 4);
+            assert_eq!(seed.addresses[0].to_string(), "/ip4/127.0.0.1/tcp/8000");
+            assert_eq!(seed.addresses[1].to_string(), "/ip6/::1/tcp/8001");
+            assert_eq!(seed.addresses[2].to_string(), "/ip6/2001:db8::/tcp/8002");
+            assert_eq!(
+                seed.addresses[3].to_string(),
+                "/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234"
+            );
+            let formatted = seed.to_string();
+            assert_eq!(formatted, sample);
+            assert_eq!(SeedPeer::from_str(&formatted).unwrap(), seed);
+        }
+
+        #[test]
         fn it_errors_if_empty_or_blank() {
             SeedPeer::from_str("").unwrap_err();
             SeedPeer::from_str(" ").unwrap_err();
@@ -219,6 +273,11 @@ mod test {
         fn it_errors_invalid_address() {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/invalid/tcp/8000";
             SeedPeer::from_str(sample).unwrap_err();
+            let empty_addr = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::";
+            SeedPeer::from_str(empty_addr).unwrap_err();
+            let trailing_delim =
+                "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::";
+            SeedPeer::from_str(trailing_delim).unwrap_err();
         }
     }
 

@@ -342,7 +342,7 @@ where
     }
 
     async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
-        let mut monitored_peers = { self.monitored_peers.read().await.clone() };
+        let monitored_peers = { self.monitored_peers.read().await.clone() };
         // Try to select connections that exclude seed nodes
         let mut selected_peers = self
             .connectivity
@@ -379,7 +379,11 @@ where
                 )
             }
         }
-        selected_peers.append(&mut monitored_peers);
+        for peer in monitored_peers {
+            if !selected_peers.contains(&peer) {
+                selected_peers.push(peer);
+            }
+        }
 
         let len_peers = selected_peers.len();
 
@@ -395,6 +399,7 @@ where
                     "Start ping round".to_string(),
                 )
                 .await?;
+            self.state.inc_pings_sent();
         }
 
         self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
@@ -983,5 +988,43 @@ mod test {
             time::sleep(Duration::from_millis(20)).await;
         };
         assert!(matches!(req, PeerConnectionRequest::Disconnect(..)));
+    }
+
+    #[tokio::test]
+    async fn start_ping_round_deduplicates_monitored_peers_and_counts_pings_sent() {
+        let node_id = random_node_id();
+        let (conn, _conn_rx) = create_dummy_peer_connection(node_id.clone());
+
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        mock_state.add_active_connection(conn).await;
+
+        let (outbound_tx, outbound_rx) = mpsc::unbounded_channel();
+        spawn_outbound_ack(outbound_rx);
+
+        let (publisher, mut subscriber) = broadcast::channel(200);
+        let shutdown = Shutdown::new();
+        let config = LivenessConfig {
+            num_peers_per_round: 1,
+            monitored_peers: vec![node_id.clone(), node_id],
+            ..Default::default()
+        };
+        let mut service = LivenessService::new(
+            config,
+            stream::empty(),
+            stream::empty(),
+            LivenessState::new(),
+            connectivity,
+            OutboundMessageRequester::new(outbound_tx),
+            publisher,
+            shutdown.to_signal(),
+            build_peer_manager(),
+        );
+
+        service.start_ping_round().await.unwrap();
+        assert_eq!(service.state.pings_sent(), 1);
+
+        let event = subscriber.try_recv().unwrap();
+        assert!(matches!(&*event, LivenessEvent::PingRoundBroadcast(1)));
     }
 }
