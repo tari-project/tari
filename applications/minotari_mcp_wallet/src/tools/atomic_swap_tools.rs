@@ -45,15 +45,18 @@ use minotari_wallet_grpc_client::WalletGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
 
+use crate::config::WalletSecurityConfig;
+
 /// Tool for sending SHA atomic swap transactions
 #[derive(Clone)]
 pub struct SendShaAtomicSwapTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    security: WalletSecurityConfig,
 }
 
 impl SendShaAtomicSwapTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, security: WalletSecurityConfig) -> Self {
+        Self { grpc_client, security }
     }
 }
 
@@ -93,6 +96,11 @@ impl McpTool for SendShaAtomicSwapTool {
                     },
                     "required": ["address", "amount", "fee_per_gram"],
                     "description": "Recipient details for the atomic swap"
+                },
+                "confirmed": {
+                    "type": "boolean",
+                    "description": "User confirmation to proceed with the atomic swap. Required if require_confirmation is enabled or amount exceeds max_auto_amount.",
+                    "default": false
                 }
             },
             "required": ["recipient"]
@@ -125,6 +133,16 @@ impl McpTool for SendShaAtomicSwapTool {
 
         if fee_per_gram == 0 {
             return Err(McpError::invalid_request("fee_per_gram must be greater than 0"));
+        }
+
+        // Validate confirmation if required or amount exceeds auto-approval threshold
+        let confirmed = params.get("confirmed").and_then(|v| v.as_bool()).unwrap_or(false);
+        if (self.security.require_confirmation || amount > self.security.max_auto_amount) && !confirmed {
+            return Err(McpError::invalid_request(format!(
+                "Transaction confirmation required for atomic swap of {} µT (threshold: {} µT). Set 'confirmed: true' \
+                 in tool arguments to approve.",
+                amount, self.security.max_auto_amount
+            )));
         }
 
         let recipient = PaymentRecipient {
@@ -583,5 +601,74 @@ impl McpTool for AtomicSwapStatusTool {
                 ]
             }
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_test_tool(require_confirmation: bool, max_auto_amount: u64) -> SendShaAtomicSwapTool {
+        let channel = Channel::from_static("http://127.0.0.1:18143").connect_lazy();
+        let client = Arc::new(WalletGrpcClient::new(channel).expect("failed to create client"));
+        let security = WalletSecurityConfig {
+            require_confirmation,
+            max_auto_amount,
+            enable_preview: true,
+        };
+        SendShaAtomicSwapTool::new(client, security)
+    }
+
+    #[tokio::test]
+    async fn test_send_sha_atomic_swap_requires_confirmation_when_configured() {
+        let tool = make_test_tool(true, 1_000_000);
+        let params_unconfirmed = json!({
+            "recipient": {
+                "address": "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456",
+                "amount": 500_000,
+                "fee_per_gram": 10
+            }
+        });
+        let err = tool.execute(params_unconfirmed).await.unwrap_err();
+        assert!(err.to_string().contains("Transaction confirmation required"));
+
+        // With confirmed: true, confirmation check passes (and fails later on network connection)
+        let params_confirmed = json!({
+            "recipient": {
+                "address": "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456",
+                "amount": 500_000,
+                "fee_per_gram": 10
+            },
+            "confirmed": true
+        });
+        let res = tool.execute(params_confirmed).await;
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("Failed to send SHA atomic swap"));
+    }
+
+    #[tokio::test]
+    async fn test_send_sha_atomic_swap_blocks_above_max_auto_amount_without_confirmation() {
+        let tool = make_test_tool(false, 1_000_000);
+        let params_over = json!({
+            "recipient": {
+                "address": "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456",
+                "amount": 2_000_000,
+                "fee_per_gram": 10
+            }
+        });
+        let err = tool.execute(params_over).await.unwrap_err();
+        assert!(err.to_string().contains("Transaction confirmation required"));
+
+        // Under threshold: confirmation check passes (and fails later on network connection)
+        let params_under = json!({
+            "recipient": {
+                "address": "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456",
+                "amount": 500_000,
+                "fee_per_gram": 10
+            }
+        });
+        let res = tool.execute(params_under).await;
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("Failed to send SHA atomic swap"));
     }
 }

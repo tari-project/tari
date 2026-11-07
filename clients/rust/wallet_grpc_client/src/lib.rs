@@ -43,20 +43,14 @@ pub struct WalletGrpcClient<TTransport> {
 }
 
 impl WalletGrpcClient<tonic::transport::Channel> {
-    pub async fn connect(addr: &str) -> Result<Self, WalletClientError> {
-        let channel = Endpoint::new(addr.to_string())?.connect().await?;
-        Ok(Self {
-            client: Client::<tonic::transport::Channel>::with_interceptor(
-                channel,
-                ClientAuthenticationInterceptor::create(&GrpcAuthentication::None)?,
-            )
-            .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
-            .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
-        })
+    pub fn new(channel: tonic::transport::Channel) -> Result<Self, WalletClientError> {
+        Self::new_with_auth(channel, &GrpcAuthentication::None)
     }
 
-    pub async fn connect_with_auth(addr: &str, auth_config: &GrpcAuthentication) -> Result<Self, WalletClientError> {
-        let channel = Endpoint::new(addr.to_string())?.connect().await?;
+    pub fn new_with_auth(
+        channel: tonic::transport::Channel,
+        auth_config: &GrpcAuthentication,
+    ) -> Result<Self, WalletClientError> {
         Ok(Self {
             client: Client::<tonic::transport::Channel>::with_interceptor(
                 channel,
@@ -65,6 +59,16 @@ impl WalletGrpcClient<tonic::transport::Channel> {
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE),
         })
+    }
+
+    pub async fn connect(addr: &str) -> Result<Self, WalletClientError> {
+        let channel = Endpoint::new(addr.to_string())?.connect().await?;
+        Self::new(channel)
+    }
+
+    pub async fn connect_with_auth(addr: &str, auth_config: &GrpcAuthentication) -> Result<Self, WalletClientError> {
+        let channel = Endpoint::new(addr.to_string())?.connect().await?;
+        Self::new_with_auth(channel, auth_config)
     }
 }
 

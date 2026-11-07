@@ -64,7 +64,11 @@ pub struct WalletToolRegistry;
 impl WalletToolRegistry {
     /// Create a new wallet tool registry with all available tools
     #[allow(clippy::new_ret_no_self)] // Factory method for registry
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, control_enabled: bool) -> ToolRegistry {
+    pub fn new(
+        grpc_client: Arc<WalletGrpcClient<Channel>>,
+        control_enabled: bool,
+        security: crate::config::WalletSecurityConfig,
+    ) -> ToolRegistry {
         let mut registry = ToolRegistry::new();
 
         // Always available tools (read-only operations)
@@ -96,13 +100,16 @@ impl WalletToolRegistry {
         // Control tools (only if control operations are enabled)
         if control_enabled {
             // Transaction control tools
-            registry.register(Box::new(SimpleTransferTool::new(grpc_client.clone())));
-            registry.register(Box::new(TransferTool::new(grpc_client.clone())));
+            registry.register(Box::new(SimpleTransferTool::new(grpc_client.clone(), security.clone())));
+            registry.register(Box::new(TransferTool::new(grpc_client.clone(), security.clone())));
             registry.register(Box::new(CoinSplitTool::new(grpc_client.clone())));
             registry.register(Box::new(CancelTransactionTool::new(grpc_client.clone())));
 
             // Atomic swap control tools
-            registry.register(Box::new(SendShaAtomicSwapTool::new(grpc_client.clone())));
+            registry.register(Box::new(SendShaAtomicSwapTool::new(
+                grpc_client.clone(),
+                security.clone(),
+            )));
             registry.register(Box::new(ClaimShaAtomicSwapTool::new(grpc_client.clone())));
             registry.register(Box::new(ClaimHtlcRefundTool::new(grpc_client.clone())));
         }

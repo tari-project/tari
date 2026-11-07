@@ -52,6 +52,10 @@ pub struct WalletGrpcConfig {
 
     /// Whether to auto-launch the wallet
     pub auto_launch: bool,
+
+    /// gRPC authentication configuration
+    #[serde(default)]
+    pub grpc_authentication: minotari_wallet_grpc_client::GrpcAuthentication,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,16 +87,32 @@ impl WalletMcpConfig {
             input_sanitization: minotari_mcp_common::config::InputSanitizationConfig::default(),
         };
 
+        let grpc_authentication = match (
+            std::env::var("MINOTARI_MCP_WALLET_GRPC_USERNAME")
+                .ok()
+                .filter(|s| !s.is_empty()),
+            std::env::var("MINOTARI_MCP_WALLET_GRPC_PASSWORD")
+                .ok()
+                .filter(|s| !s.is_empty()),
+        ) {
+            (Some(username), Some(password)) => minotari_wallet_grpc_client::GrpcAuthentication::Basic {
+                username,
+                password: tari_utilities::SafePassword::from(password),
+            },
+            _ => minotari_wallet_grpc_client::GrpcAuthentication::None,
+        };
+
         let wallet_grpc_config = WalletGrpcConfig {
             address: cli.wallet_grpc_address.clone(),
             timeout_secs: cli.wallet_grpc_timeout,
             max_retries: 3,
             auto_launch: cli.auto_launch_wallet,
+            grpc_authentication,
         };
 
         let security_config = WalletSecurityConfig {
             require_confirmation: cli.require_confirmation,
-            max_auto_amount: 1_000_000, // 1 Tari in µT
+            max_auto_amount: cli.max_auto_amount.unwrap_or(1_000_000), // 1 Tari in µT
             enable_preview: true,
         };
 
@@ -152,6 +172,7 @@ impl Default for WalletGrpcConfig {
             timeout_secs: 30,
             max_retries: 3,
             auto_launch: true,
+            grpc_authentication: minotari_wallet_grpc_client::GrpcAuthentication::None,
         }
     }
 }
@@ -163,5 +184,58 @@ impl Default for WalletSecurityConfig {
             max_auto_amount: 1_000_000, // 1 Tari
             enable_preview: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn test_grpc_authentication_from_env() {
+        // Test None
+        unsafe {
+            std::env::remove_var("MINOTARI_MCP_WALLET_GRPC_USERNAME");
+            std::env::remove_var("MINOTARI_MCP_WALLET_GRPC_PASSWORD");
+        }
+        let cli = Cli::parse_from(["minotari_mcp_wallet"]);
+        let config = WalletMcpConfig::load(&cli).unwrap();
+        assert!(matches!(
+            config.wallet_grpc.grpc_authentication,
+            minotari_wallet_grpc_client::GrpcAuthentication::None
+        ));
+
+        // Test Basic auth from env
+        unsafe {
+            std::env::set_var("MINOTARI_MCP_WALLET_GRPC_USERNAME", "test_user");
+            std::env::set_var("MINOTARI_MCP_WALLET_GRPC_PASSWORD", "test_password_123");
+        }
+        let config_with_auth = WalletMcpConfig::load(&cli).unwrap();
+        if let Some((user, pass)) = config_with_auth.wallet_grpc.grpc_authentication.username_password() {
+            assert_eq!(user, "test_user");
+            assert_eq!(pass.reveal(), b"test_password_123");
+        } else {
+            panic!("Expected GrpcAuthentication::Basic");
+        }
+
+        unsafe {
+            std::env::remove_var("MINOTARI_MCP_WALLET_GRPC_USERNAME");
+            std::env::remove_var("MINOTARI_MCP_WALLET_GRPC_PASSWORD");
+        }
+    }
+
+    #[test]
+    fn test_security_max_auto_amount_config() {
+        let cli = Cli::parse_from([
+            "minotari_mcp_wallet",
+            "--require-confirmation",
+            "--max-auto-amount",
+            "2500000",
+        ]);
+        let config = WalletMcpConfig::load(&cli).unwrap();
+        assert!(config.security.require_confirmation);
+        assert_eq!(config.security.max_auto_amount, 2_500_000);
     }
 }

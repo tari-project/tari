@@ -57,10 +57,10 @@ pub struct WalletMcpServer {
 
 impl WalletMcpServer {
     /// Create a new Wallet MCP server
-    pub async fn new(config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
+    pub async fn new(mut config: WalletMcpConfig, cli: &Cli) -> McpResult<Self> {
         // Auto-launch wallet if configured and not running
         let launched_process = if config.should_auto_launch_wallet() {
-            Self::ensure_wallet_running(&config, cli).await?
+            Self::ensure_wallet_running(&mut config, cli).await?
         } else {
             None
         };
@@ -70,7 +70,8 @@ impl WalletMcpServer {
         let grpc_client = Arc::new(grpc_client);
 
         // Create tool registry with wallet-specific tools
-        let tool_registry = WalletToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled);
+        let tool_registry =
+            WalletToolRegistry::new(grpc_client.clone(), config.mcp.control_enabled, config.security.clone());
 
         // Create resource registry with wallet-specific resources
         let resource_registry = WalletResourceRegistry::new(grpc_client.clone());
@@ -121,8 +122,8 @@ impl WalletMcpServer {
 
         log::info!("Connecting to wallet at: {wallet_grpc_url}");
 
-        // Use the wallet client's connect method
-        let client = WalletGrpcClient::connect(&wallet_grpc_url)
+        // Connect to wallet with configured gRPC authentication
+        let client = WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.grpc_authentication)
             .await
             .map_err(|e| McpError::config_error(format!("Failed to connect to wallet: {e}")))?;
 
@@ -131,7 +132,7 @@ impl WalletMcpServer {
     }
 
     /// Ensure wallet is running, auto-launch if needed
-    async fn ensure_wallet_running(config: &WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
+    async fn ensure_wallet_running(config: &mut WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
         let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address).unwrap_or(18143);
 
@@ -153,9 +154,42 @@ impl WalletMcpServer {
         // Extract proper CLI configuration and arguments
         let launch_config = cli.extract_launch_config();
         let wallet_args = cli.extract_wallet_args();
+        let mut env_vars = CliIntegrationUtils::create_environment_vars(&launch_config);
 
-        log::debug!("Launching wallet with config: {launch_config:?}");
-        log::debug!("Wallet arguments: {wallet_args:?}");
+        // If gRPC authentication is not configured, generate random credentials for this run
+        if matches!(
+            config.wallet_grpc.grpc_authentication,
+            minotari_wallet_grpc_client::GrpcAuthentication::None
+        ) {
+            let random_suffix = uuid::Uuid::new_v4().simple().to_string();
+            let random_username = format!("mcp_{}", &random_suffix[..8]);
+            let random_password = uuid::Uuid::new_v4().simple().to_string();
+
+            env_vars.insert(
+                "TARI_WALLET__GRPC_AUTHENTICATION__USERNAME".to_string(),
+                random_username.clone(),
+            );
+            env_vars.insert(
+                "TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD".to_string(),
+                random_password.clone(),
+            );
+
+            config.wallet_grpc.grpc_authentication = minotari_wallet_grpc_client::GrpcAuthentication::Basic {
+                username: random_username,
+                password: tari_utilities::SafePassword::from(random_password),
+            };
+        } else if let Some((user, pass)) = config.wallet_grpc.grpc_authentication.username_password() {
+            env_vars.insert(
+                "TARI_WALLET__GRPC_AUTHENTICATION__USERNAME".to_string(),
+                user.to_string(),
+            );
+            env_vars.insert(
+                "TARI_WALLET__GRPC_AUTHENTICATION__PASSWORD".to_string(),
+                String::from_utf8_lossy(pass.reveal()).to_string(),
+            );
+        }
+
+        log::debug!("Launching wallet on port {available_port}");
 
         // Create process launcher using TariProcessLauncher
         let grpc_address = format!("127.0.0.1:{available_port}");
@@ -165,6 +199,7 @@ impl WalletMcpServer {
             launch_config.network,
             grpc_address,
             wallet_args,
+            env_vars,
         )
         .await?;
 

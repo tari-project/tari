@@ -150,7 +150,15 @@ impl ProcessLauncher {
             executable_path.display(),
             self.config.args
         );
-        log::debug!("Process launch config: {:?}", self.config);
+        let masked_env_keys: Vec<&String> = self.config.env_vars.keys().collect();
+        log::debug!(
+            "Process launch config: executable={:?}, args={:?}, env_keys={:?}, working_dir={:?}, timeout={:?}",
+            executable_path,
+            self.config.args,
+            masked_env_keys,
+            self.config.working_dir,
+            self.config.startup_timeout
+        );
 
         // Prepare command
         let mut command = Command::new(&executable_path);
@@ -171,7 +179,11 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        log::debug!("About to spawn process: {command:?}");
+        log::debug!(
+            "About to spawn process: {} with args: {:?}",
+            executable_path.display(),
+            self.config.args
+        );
         let mut child = command.spawn().map_err(|e| {
             log::error!(
                 "Failed to spawn process: {} (executable: {})",
@@ -424,6 +436,11 @@ impl LaunchConfigBuilder {
         self
     }
 
+    pub fn with_env_vars(mut self, env_vars: HashMap<String, String>) -> Self {
+        self.env_vars.extend(env_vars);
+        self
+    }
+
     pub fn with_working_dir(mut self, dir: PathBuf) -> Self {
         self.working_dir = Some(dir);
         self
@@ -533,6 +550,7 @@ impl TariProcessLauncher {
         network: Option<String>,
         grpc_address: String,
         additional_args: Vec<String>,
+        env_vars: HashMap<String, String>,
     ) -> McpResult<(ProcessLauncher, mpsc::UnboundedReceiver<ProcessLaunchStatus>)> {
         // Convert IP:PORT format to multiaddr format
         let multiaddr_format = Self::convert_to_multiaddr(&grpc_address);
@@ -565,6 +583,7 @@ impl TariProcessLauncher {
         let config = LaunchConfigBuilder::new()
             .with_executable(TariExecutables::find_wallet()?)
             .with_args(args)
+            .with_env_vars(env_vars)
             .with_startup_timeout(Duration::from_secs(200))
             .with_health_check(health_config)
             .build()?;

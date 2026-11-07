@@ -42,11 +42,12 @@ use tonic::transport::Channel;
 pub struct SimpleTransferTool {
     #[allow(dead_code)]
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    security: crate::config::WalletSecurityConfig,
 }
 
 impl SimpleTransferTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, security: crate::config::WalletSecurityConfig) -> Self {
+        Self { grpc_client, security }
     }
 }
 
@@ -92,6 +93,11 @@ impl McpTool for SimpleTransferTool {
                 "description": "Transaction fee per gram in microTari. Higher fees result in faster processing. If not specified, wallet will calculate an appropriate fee automatically. Typical range: 1-100 µT/gram",
                 "minimum": 1,
                 "default": null
+            }),
+            "confirmed" => serde_json::json!({
+                "type": "boolean",
+                "description": "User confirmation to proceed with the transaction. Required if require_confirmation is enabled or amount exceeds max_auto_amount.",
+                "default": false
             })
         }
     }
@@ -120,6 +126,16 @@ impl McpTool for SimpleTransferTool {
             return Err(McpError::invalid_request(
                 "Recipient address contains invalid characters - must be valid base58",
             ));
+        }
+
+        // Validate confirmation if required or amount exceeds auto-approval threshold
+        let confirmed = params.get("confirmed").and_then(|v| v.as_bool()).unwrap_or(false);
+        if (self.security.require_confirmation || amount > self.security.max_auto_amount) && !confirmed {
+            return Err(McpError::invalid_request(format!(
+                "Transaction confirmation required for {} µT (threshold: {} µT). Set 'confirmed: true' in tool \
+                 arguments to approve.",
+                amount, self.security.max_auto_amount
+            )));
         }
 
         // Validate amount
@@ -187,5 +203,76 @@ impl McpTool for SimpleTransferTool {
             ],
             "security_note": "Always verify the recipient address before sending. Transactions cannot be reversed once confirmed on the blockchain."
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use tonic::transport::Channel;
+
+    use super::*;
+    use crate::config::WalletSecurityConfig;
+
+    fn make_test_tool(require_confirmation: bool, max_auto_amount: u64) -> SimpleTransferTool {
+        let channel = Channel::from_static("http://127.0.0.1:18143").connect_lazy();
+        let client = Arc::new(WalletGrpcClient::new(channel).expect("failed to create client"));
+        let security = WalletSecurityConfig {
+            require_confirmation,
+            max_auto_amount,
+            enable_preview: true,
+        };
+        SimpleTransferTool::new(client, security)
+    }
+
+    #[test]
+    fn test_simple_transfer_requires_confirmation_when_configured() {
+        let tool = make_test_tool(true, 1_000_000);
+        let valid_address = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456";
+
+        // Without confirmed: true, must fail validation
+        let params_unconfirmed = json!({
+            "recipient": valid_address,
+            "amount": 500_000,
+        });
+        let err = tool.validate_params(&params_unconfirmed).unwrap_err();
+        assert!(err.to_string().contains("Transaction confirmation required"));
+
+        // With confirmed: true, passes validation
+        let params_confirmed = json!({
+            "recipient": valid_address,
+            "amount": 500_000,
+            "confirmed": true,
+        });
+        assert!(tool.validate_params(&params_confirmed).is_ok());
+    }
+
+    #[test]
+    fn test_simple_transfer_blocks_above_max_auto_amount_without_confirmation() {
+        let tool = make_test_tool(false, 1_000_000);
+        let valid_address = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456";
+
+        // Under threshold: allowed without confirmation
+        let params_under = json!({
+            "recipient": valid_address,
+            "amount": 500_000,
+        });
+        assert!(tool.validate_params(&params_under).is_ok());
+
+        // Above threshold: blocked without confirmation
+        let params_over = json!({
+            "recipient": valid_address,
+            "amount": 2_000_000,
+        });
+        let err = tool.validate_params(&params_over).unwrap_err();
+        assert!(err.to_string().contains("Transaction confirmation required"));
+
+        // Above threshold: allowed with confirmation
+        let params_over_confirmed = json!({
+            "recipient": valid_address,
+            "amount": 2_000_000,
+            "confirmed": true,
+        });
+        assert!(tool.validate_params(&params_over_confirmed).is_ok());
     }
 }

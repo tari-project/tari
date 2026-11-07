@@ -453,11 +453,12 @@ fn parse_payment_recipient(index: usize, recipient_data: &Value) -> McpResult<Pa
 #[derive(Clone)]
 pub struct TransferTool {
     grpc_client: Arc<WalletGrpcClient<Channel>>,
+    security: crate::config::WalletSecurityConfig,
 }
 
 impl TransferTool {
-    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>) -> Self {
-        Self { grpc_client }
+    pub fn new(grpc_client: Arc<WalletGrpcClient<Channel>>, security: crate::config::WalletSecurityConfig) -> Self {
+        Self { grpc_client, security }
     }
 }
 
@@ -512,6 +513,11 @@ impl McpTool for TransferTool {
                     },
                     "minItems": 1,
                     "description": "Array of transfer recipients"
+                },
+                "confirmed": {
+                    "type": "boolean",
+                    "description": "User confirmation to proceed with the transaction. Required if require_confirmation is enabled or total amount exceeds max_auto_amount.",
+                    "default": false
                 }
             },
             "required": ["recipients"]
@@ -535,6 +541,16 @@ impl McpTool for TransferTool {
             let recipient = parse_payment_recipient(i, recipient_data)?;
             total_amount = total_amount.saturating_add(recipient.amount);
             recipients.push(recipient);
+        }
+
+        // Validate confirmation if required or total amount exceeds threshold
+        let confirmed = params.get("confirmed").and_then(|v| v.as_bool()).unwrap_or(false);
+        if (self.security.require_confirmation || total_amount > self.security.max_auto_amount) && !confirmed {
+            return Err(McpError::invalid_request(format!(
+                "Transaction confirmation required for total transfer of {} µT (threshold: {} µT). Set 'confirmed: \
+                 true' in tool arguments to approve.",
+                total_amount, self.security.max_auto_amount
+            )));
         }
 
         // Validate total amount

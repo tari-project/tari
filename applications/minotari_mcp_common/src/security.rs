@@ -55,7 +55,7 @@ pub struct SecurityContext {
 #[derive(Debug, Clone)]
 struct Session {
     id: Uuid,
-    client_ip: IpAddr,
+    client_address: String,
     #[allow(dead_code)]
     created_at: DateTime<Utc>,
     last_activity: DateTime<Utc>,
@@ -66,7 +66,7 @@ struct Session {
 #[derive(Debug, Clone)]
 struct RateLimiter {
     requests_per_minute: u32,
-    client_requests: HashMap<IpAddr, Vec<DateTime<Utc>>>,
+    client_requests: HashMap<String, Vec<DateTime<Utc>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +79,7 @@ pub struct AuditLogger {
 pub struct AuditEntry {
     timestamp: DateTime<Utc>,
     session_id: Uuid,
-    client_ip: IpAddr,
+    client_address: String,
     operation: String,
     permission_level: PermissionLevel,
     success: bool,
@@ -100,33 +100,40 @@ impl SecurityContext {
     /// Check if a client can perform an operation with the given permission level
     pub fn check_permission(
         &mut self,
-        client_ip: IpAddr,
+        client_ip: Option<IpAddr>,
         operation: &str,
         permission_level: PermissionLevel,
         request_data: serde_json::Value,
     ) -> McpResult<Uuid> {
-        // Enforce local-only access
-        if !client_ip.is_loopback() {
-            let error =
-                McpError::permission_denied("Remote access not allowed - MCP server only accepts local connections");
-            self.audit_logger.log_operation(
-                Uuid::new_v4(),
-                client_ip,
-                operation,
-                permission_level,
-                false,
-                Some(error.to_string()),
-                request_data,
-            );
-            return Err(error);
+        let client_address = client_ip
+            .map(|ip| ip.to_string())
+            .unwrap_or_else(|| "stdio".to_string());
+
+        // Enforce local-only access for network connections
+        if let Some(ip) = client_ip {
+            if !ip.is_loopback() {
+                let error = McpError::permission_denied(
+                    "Remote access not allowed - MCP server only accepts local connections",
+                );
+                self.audit_logger.log_operation(
+                    Uuid::new_v4(),
+                    &client_address,
+                    operation,
+                    permission_level,
+                    false,
+                    Some(error.to_string()),
+                    request_data,
+                );
+                return Err(error);
+            }
         }
 
         // Check rate limiting
-        if !self.rate_limiter.check_rate_limit(client_ip) {
+        if !self.rate_limiter.check_rate_limit(&client_address) {
             let error = McpError::RateLimitExceeded;
             self.audit_logger.log_operation(
                 Uuid::new_v4(),
-                client_ip,
+                &client_address,
                 operation,
                 permission_level,
                 false,
@@ -148,7 +155,7 @@ impl SecurityContext {
                     );
                     self.audit_logger.log_operation(
                         Uuid::new_v4(),
-                        client_ip,
+                        &client_address,
                         operation,
                         permission_level,
                         false,
@@ -161,12 +168,12 @@ impl SecurityContext {
         }
 
         // Create or update session
-        let session_id = self.create_or_update_session(client_ip);
+        let session_id = self.create_or_update_session(&client_address);
 
         // Log successful permission check
         self.audit_logger.log_operation(
             session_id,
-            client_ip,
+            &client_address,
             operation,
             permission_level,
             true,
@@ -177,20 +184,20 @@ impl SecurityContext {
         Ok(session_id)
     }
 
-    fn create_or_update_session(&mut self, client_ip: IpAddr) -> Uuid {
+    fn create_or_update_session(&mut self, client_address: &str) -> Uuid {
         let now = Utc::now();
 
-        // Find existing session for this IP
+        // Find existing session for this client address
         let session_id = self
             .sessions
             .values()
-            .find(|s| s.client_ip == client_ip)
+            .find(|s| s.client_address == client_address)
             .map(|s| s.id)
             .unwrap_or_else(Uuid::new_v4);
 
         let session = Session {
             id: session_id,
-            client_ip,
+            client_address: client_address.to_string(),
             created_at: now,
             last_activity: now,
             request_count: 1,
@@ -217,14 +224,14 @@ impl RateLimiter {
         }
     }
 
-    fn check_rate_limit(&mut self, client_ip: IpAddr) -> bool {
+    fn check_rate_limit(&mut self, client_address: &str) -> bool {
         let now = Utc::now();
         // On the (impossible in practice) overflow, keep every request, i.e. rate limit more strictly
         let cutoff = now
             .checked_sub_signed(chrono::Duration::minutes(1))
             .unwrap_or(DateTime::<Utc>::MIN_UTC);
 
-        let requests = self.client_requests.entry(client_ip).or_default();
+        let requests = self.client_requests.entry(client_address.to_string()).or_default();
 
         // Remove old requests
         requests.retain(|&timestamp| timestamp > cutoff);
@@ -250,7 +257,7 @@ impl AuditLogger {
     fn log_operation(
         &self,
         session_id: Uuid,
-        client_ip: IpAddr,
+        client_address: &str,
         operation: &str,
         permission_level: PermissionLevel,
         success: bool,
@@ -264,7 +271,7 @@ impl AuditLogger {
         let _entry = AuditEntry {
             timestamp: Utc::now(),
             session_id,
-            client_ip,
+            client_address: client_address.to_string(),
             operation: operation.to_string(),
             permission_level,
             success,
@@ -274,12 +281,12 @@ impl AuditLogger {
 
         // Log to structured logger
         if success {
-            log::info!("MCP Operation: {operation} by {client_ip} (session: {session_id})");
+            log::info!("MCP Operation: {operation} by {client_address} (session: {session_id})");
         } else {
             log::warn!(
                 "MCP Operation Failed: {} by {} (session: {}) - {}",
                 operation,
-                client_ip,
+                client_address,
                 session_id,
                 error_message.unwrap_or_else(|| "Unknown error".to_string())
             );
@@ -290,5 +297,40 @@ impl AuditLogger {
             // Write JSON entry to audit log file
             // This would be implemented based on Tari's logging infrastructure
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_security_context_stdio_transport() {
+        let mut context = SecurityContext::new(true, 100, None);
+
+        // Stdio transport (client_ip == None) should succeed
+        let result = context.check_permission(None, "tool:test", PermissionLevel::Control, serde_json::json!({}));
+        assert!(result.is_ok());
+
+        // Rate limiter tracks stdio requests
+        assert_eq!(context.sessions.len(), 1);
+        let session = context.sessions.values().next().unwrap();
+        assert_eq!(session.client_address, "stdio");
+    }
+
+    #[test]
+    fn test_security_context_remote_ip_denied() {
+        let mut context = SecurityContext::new(true, 100, None);
+
+        // Non-loopback IP must be denied
+        let remote_ip: IpAddr = "192.168.1.100".parse().unwrap();
+        let result = context.check_permission(
+            Some(remote_ip),
+            "tool:test",
+            PermissionLevel::ReadOnly,
+            serde_json::json!({}),
+        );
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Remote access not allowed"));
     }
 }
