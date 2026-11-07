@@ -32,6 +32,7 @@ use tari_transaction_components::{
     rpc::models::{TxSubmissionRejectionReason, TxSubmissionResponse},
     transaction_components::Transaction,
 };
+use tari_utilities::ByteArray;
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc::submit_transaction";
 
@@ -48,6 +49,7 @@ pub async fn handle<T: BlockchainBackend + 'static>(
             anyhow::anyhow!("Failed to get tip info: {e}")
         })?
         .is_synced;
+    let first_kernel_sig = transaction.first_kernel_excess_sig().cloned();
     let res = match mempool_service.submit_transaction(transaction).await {
         Ok(response) => {
             debug!(target: LOG_TARGET, "Transaction submitted successfully: {response:?}");
@@ -93,11 +95,30 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                 },
                 TxStorageResponse::NotStoredAlreadySpent |
                 TxStorageResponse::ReorgPool |
-                TxStorageResponse::NotStoredAlreadyMined => TxSubmissionResponse {
-                    accepted: false,
-                    rejection_reason: TxSubmissionRejectionReason::AlreadyMined,
-                    is_synced,
-                    details: None,
+                TxStorageResponse::NotStoredAlreadyMined => {
+                    let is_mined = match first_kernel_sig {
+                        Some(sig) => matches!(
+                            query_service
+                                .transaction_query(tari_transaction_components::rpc::models::Signature {
+                                    public_nonce: sig.get_compressed_public_nonce().as_bytes().to_vec(),
+                                    signature: sig.get_signature().as_bytes().to_vec(),
+                                })
+                                .await?
+                                .location,
+                            tari_transaction_components::rpc::models::TxLocation::Mined
+                        ),
+                        None => false,
+                    };
+                    TxSubmissionResponse {
+                        accepted: false,
+                        rejection_reason: if is_mined {
+                            TxSubmissionRejectionReason::AlreadyMined
+                        } else {
+                            TxSubmissionRejectionReason::DoubleSpend
+                        },
+                        is_synced,
+                        details: None,
+                    }
                 },
             }
         },
