@@ -306,13 +306,12 @@ impl<'a> EmissionRate<'a> {
             .as_u128()
             .saturating_mul(u128::from(self.schedule.inflation_bips)) /
             10_000u128;
-        #[allow(clippy::cast_possible_truncation)]
-        let epoch_issuance = epoch_issuance as u64; // intentionally allow rounding via truncation
         // in uT; a zero epoch length is a misconfigured consensus schedule, which must not be
         // papered over with a silently wrong reward.
-        let reward = epoch_issuance
-            .checked_div(self.schedule.epoch_length)
+        let reward_u128 = epoch_issuance
+            .checked_div(u128::from(self.schedule.epoch_length))
             .expect("Emission schedule epoch length must be non-zero");
+        let reward = u64::try_from(reward_u128).unwrap_or(u64::MAX);
         MicroMinotari::from((reward / 1_000_000).saturating_mul(1_000_000)) // truncate to nearest whole XTR
     }
 }
@@ -491,5 +490,16 @@ mod test {
         assert_eq!(height, 100);
         assert_eq!(reward, MicroMinotari::from(2_000_000));
         assert_eq!(supply, MicroMinotari::from(248_996_989));
+    }
+
+    #[test]
+    fn tail_emission_does_not_truncate_epoch_issuance_before_dividing_by_epoch_length() {
+        let initial_supply = MicroMinotari::from(20_000_000_000) * T;
+        let epoch_length = 263_520;
+        let schedule = EmissionSchedule::new(MicroMinotari::from(1), vec![1], 1000, epoch_length, initial_supply);
+        let (_, reward, _) = schedule.iter().nth(1).unwrap();
+        let expected_u128 = (initial_supply.as_u128() * 1000 / 10_000) / u128::from(epoch_length);
+        let expected = MicroMinotari::from((u64::try_from(expected_u128).unwrap() / 1_000_000) * 1_000_000);
+        assert_eq!(reward, expected);
     }
 }
