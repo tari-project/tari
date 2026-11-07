@@ -270,7 +270,7 @@ impl Shutdown {
     /// and never dropped keeps this pending forever, so callers should bound it with a timeout.
     ///
     /// Any number of drain futures may be awaited concurrently; all of them resolve when the last listener drops.
-    pub fn wait_for_listeners(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn wait_for_listeners(&self) -> impl FusedFuture<Output = ()> + Send + 'static {
         drain(self.trigger.state.clone())
     }
 }
@@ -281,7 +281,7 @@ impl Default for Shutdown {
     }
 }
 
-fn drain(state: Arc<State>) -> impl Future<Output = ()> + Send + 'static {
+fn drain(state: Arc<State>) -> impl FusedFuture<Output = ()> + Send + 'static {
     Drain { state, slot: None }
 }
 
@@ -317,6 +317,12 @@ impl Future for Drain {
         } else {
             Poll::Pending
         }
+    }
+}
+
+impl FusedFuture for Drain {
+    fn is_terminated(&self) -> bool {
+        self.slot.is_none() && self.state.is_drained()
     }
 }
 
@@ -388,7 +394,7 @@ impl ShutdownSignal {
     /// shutdown has been dropped. Equivalent to [`Shutdown::wait_for_listeners`] for holders that only have a signal.
     ///
     /// This does not trigger the shutdown, and callers should bound it with a timeout.
-    pub fn drained(self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn drained(self) -> impl FusedFuture<Output = ()> + Send + 'static {
         let state = self.listener.state.clone();
         drop(self);
         drain(state)
@@ -663,8 +669,11 @@ mod test {
         let signal = shutdown.to_signal();
         let other = shutdown.to_signal();
         let mut drain = Box::pin(signal.drained());
+        assert!(!drain.is_terminated());
         assert!(poll_once(&mut drain).is_pending());
+        assert!(!drain.is_terminated());
         drop(other);
         assert!(poll_once(&mut drain).is_ready());
+        assert!(drain.is_terminated());
     }
 }
