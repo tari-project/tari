@@ -62,7 +62,12 @@ pub async fn recovery_event_monitoring(
                 value_recovered,
                 ..
             }) => {
-                let rate = (final_height as f32) * 1000f32 / (elapsed.as_millis() as f32);
+                let elapsed_ms = elapsed.as_millis();
+                let rate = if elapsed_ms > 0 {
+                    (final_height as f32) * 1000f32 / (elapsed_ms as f32)
+                } else {
+                    0.0
+                };
                 info!(
                     target: LOG_TARGET,
                     "Recovery complete! Scanned {final_height} blocks in {elapsed:.2?} ({rate:.2?} blocks/s)"
