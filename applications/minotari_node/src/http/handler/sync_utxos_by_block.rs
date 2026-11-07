@@ -116,7 +116,7 @@ pub async fn handle<B: BlockchainBackend + 'static>(
         // if we're excluding spent outputs we cannot cache for longer than a day, so we force the "height" so that the
         // caching will only be a max of 1 day. Wallets will sent full without excluding spends the last 1000 blocks so
         // this leaves a margin for wallets to get data if it changed.
-        cmp::min(height.unwrap_or(0), tip_height.saturating_add(2500))
+        cmp::max(height.unwrap_or(0), tip_height.saturating_sub(2500))
     } else {
         height.unwrap_or(0)
     };

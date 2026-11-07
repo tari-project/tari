@@ -274,4 +274,28 @@ mod tests {
         assert_eq!(submitted.len(), 1);
         assert_eq!(submitted[0].body.inputs()[0].version, TransactionInputVersion::V0);
     }
+
+    #[tokio::test]
+    async fn submit_transaction_returns_double_spend_when_not_stored_already_spent_and_not_mined() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::NotStoredAlreadySpent)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+
+        let response = match handle(
+            Extension(query_service),
+            Extension(mempool),
+            Json(request(transaction_json(None))),
+        )
+        .await
+        {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
+        };
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert_eq!(response.result["accepted"], false);
+        assert_eq!(response.result["rejection_reason"], "DoubleSpend");
+    }
 }
