@@ -153,7 +153,7 @@ pub async fn send_burn_transaction_task(
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionBurnStatus>,
 ) {
-    result_tx.send(UiTransactionBurnStatus::Initiated).unwrap();
+    let _result = result_tx.send(UiTransactionBurnStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
 
     // ----------------------------------------------------------------------------
@@ -178,9 +178,7 @@ pub async fn send_burn_transaction_task(
         Ok((burn_tx_id, original_proof)) => (burn_tx_id, original_proof),
         Err(e) => {
             error!(target: LOG_TARGET, "failed to burn minotari: {e:?}");
-            result_tx
-                .send(UiTransactionBurnStatus::Error(format!("burn error: {e}")))
-                .unwrap();
+            let _result = result_tx.send(UiTransactionBurnStatus::Error(format!("burn error: {e}")));
             return;
         },
     };
@@ -200,7 +198,7 @@ pub async fn send_burn_transaction_task(
                     continue;
                 }
 
-                result_tx.send(UiTransactionBurnStatus::TransactionComplete).unwrap();
+                let _result = result_tx.send(UiTransactionBurnStatus::TransactionComplete);
 
                 return;
             },
