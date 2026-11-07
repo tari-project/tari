@@ -38,7 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use std::{
-    cmp::Ordering,
+    cmp::Reverse,
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
@@ -189,21 +189,23 @@ impl BlockHeader {
     }
 
     /// Given a slice of headers, calculate the maximum, minimum and average periods between them.
-    /// Expects the slice of headers to be ordered from youngest to oldest, but will reverse them if not.
-    /// This function always allocates a vec of the slice length. This is in case it needs to reverse the list.
+    /// Expects the slice of headers to be ordered from youngest to oldest, but will sort them by height if not.
+    /// This function always allocates a vec of the slice length.
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
             (0, 0, 0.0)
         } else {
             let mut headers = headers.to_vec();
 
-            // ensure the slice is in reverse order
-            let ordering = headers
-                .first()
-                .expect("Already checked")
-                .timestamp
-                .cmp(&headers.last().expect("Already checked").timestamp);
-            if ordering == Ordering::Less {
+            // Order from youngest to oldest: sort by height descending when heights are distinct,
+            // otherwise fall back to reversing when the first timestamp is older than the last.
+            let has_distinct_heights =
+                headers.first().expect("Already checked").height != headers.last().expect("Already checked").height;
+            if has_distinct_heights {
+                headers.sort_by_key(|h| Reverse(h.height));
+            } else if headers.first().expect("Already checked").timestamp <
+                headers.last().expect("Already checked").timestamp
+            {
                 headers.reverse();
             }
 
@@ -505,5 +507,24 @@ mod test {
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn timing_stats_orders_by_height_when_youngest_timestamp_is_smaller() {
+        let headers = vec![
+            BlockHeader {
+                height: 1,
+                timestamp: 150.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 2,
+                timestamp: 100.into(),
+                ..BlockHeader::new(0)
+            },
+        ];
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!((max, min), (0, 0));
+        assert!((avg - 0f64).abs() < f64::EPSILON);
     }
 }
