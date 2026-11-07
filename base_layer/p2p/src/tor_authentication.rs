@@ -93,8 +93,22 @@ impl FromStr for TorControlAuthentication {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (auth_type, maybe_value) = parse_key_value(s, '=');
         match auth_type.as_str() {
-            "auto" => Ok(TorControlAuthentication::Auto),
-            "none" => Ok(TorControlAuthentication::None),
+            "auto" => {
+                if maybe_value.is_some() {
+                    return Err(anyhow!(
+                        "Invalid format for 'auto' tor authentication type. It should be in the format 'auto'."
+                    ));
+                }
+                Ok(TorControlAuthentication::Auto)
+            },
+            "none" => {
+                if maybe_value.is_some() {
+                    return Err(anyhow!(
+                        "Invalid format for 'none' tor authentication type. It should be in the format 'none'."
+                    ));
+                }
+                Ok(TorControlAuthentication::None)
+            },
             "password" => {
                 let password = maybe_value.ok_or_else(|| {
                     anyhow!(
@@ -184,5 +198,9 @@ mod tests {
         TorControlAuthentication::from_str("").unwrap_err();
         TorControlAuthentication::from_str("not_valid").unwrap_err();
         TorControlAuthentication::from_str("cookie abcd").unwrap_err();
+        TorControlAuthentication::from_str("auto=extra").unwrap_err();
+        TorControlAuthentication::from_str("none=extra").unwrap_err();
+        TorControlAuthentication::from_str("password").unwrap_err();
+        TorControlAuthentication::from_str("cookie").unwrap_err();
     }
 }
