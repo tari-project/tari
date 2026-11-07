@@ -222,7 +222,7 @@ impl DhtDiscoveryService {
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
-                            if !reply_tx.is_closed() {
+                            if !request.reply_tx.is_closed() {
                                 let _result = request.reply_tx.send(Ok(peer.clone()));
                             }
                         }
@@ -472,5 +472,51 @@ mod test {
             request => panic!("unexpected request {request}"),
         }
         assert!(dht_rx.try_recv().is_err());
+    }
+
+    /// Even when the initial discovery requester dropped its receiver, a valid response for that nonce must still
+    /// resolve any concurrent in-flight discovery requests for the same public key.
+    #[tokio::test]
+    async fn cancelled_primary_request_still_notifies_concurrent_requests_for_same_peer() {
+        let mut config = DhtConfig::default();
+        config.peer_validator_config.allow_test_addresses = true;
+        let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht_tx, _dht_rx) = mpsc::unbounded_channel();
+        let shutdown = Shutdown::new();
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(config),
+            make_node_identity(),
+            build_peer_manager(),
+            DhtRequester::new(dht_tx),
+            outbound_requester,
+            receiver,
+            shutdown.to_signal(),
+        );
+
+        let target = make_node_identity();
+        let (reply_tx_1, reply_rx_1) = oneshot::channel();
+        drop(reply_rx_1); // first requester cancelled
+        let (reply_tx_2, reply_rx_2) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            1,
+            DiscoveryRequestState::new(Box::new(target.public_key().clone()), reply_tx_1),
+        );
+        service.inflight_discoveries.insert(
+            2,
+            DiscoveryRequestState::new(Box::new(target.public_key().clone()), reply_tx_2),
+        );
+
+        let response = DiscoveryResponseMessage {
+            public_key: target.public_key().to_vec(),
+            addresses: target.public_addresses().into_iter().map(|a| a.to_vec()).collect(),
+            peer_features: target.features().bits(),
+            nonce: 1,
+            identity_signature: target.identity_signature_read().as_ref().map(Into::into),
+        };
+        service.handle_discovery_response(Box::new(response)).await.unwrap();
+
+        let peer = reply_rx_2.await.unwrap().unwrap();
+        assert_eq!(&peer.public_key, target.public_key());
     }
 }
