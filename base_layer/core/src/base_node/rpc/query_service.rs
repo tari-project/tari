@@ -245,7 +245,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             })?
             .hash();
         let next_header_to_request;
-        let mut has_next_page = true;
+        let has_next_page;
         loop {
             let current_header_hash = current_header.hash();
             trace!(
@@ -291,6 +291,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                     mined_timestamp: current_header.timestamp.as_u64(),
                 };
                 utxos.push(block_response);
+                fetched_chunks = fetched_chunks.saturating_add(1);
             }
             for output_chunk in outputs.chunks(self.max_utxo_chunk_size) {
                 let inputs_to_send = if inputs.is_empty() {
@@ -331,13 +332,7 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 fetched_chunks = fetched_chunks.saturating_add(1);
             }
 
-            if current_header.height >= tip_header.header().height {
-                next_header_to_request = vec![];
-                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
-                break;
-            }
             if fetched_chunks > request.limit {
-                next_header_to_request = current_header_hash.to_vec();
                 // This is a special edge case, our request has reached the page limit, but we are also not done with
                 // the block. We also dont want to split up the block over two requests. So we need to ensure that we
                 // remove the partial block we added so that it can be requested fully in the next request. We also dont
@@ -350,6 +345,19 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 {
                     // special edge case where the first block is also the last block we can send, so we just send it as
                     // is, partial
+                    if current_header.height >= tip_header.header().height {
+                        next_header_to_request = vec![];
+                        has_next_page = false;
+                    } else {
+                        let next_height = current_header.height.saturating_add(1);
+                        let next_header = self
+                            .db
+                            .fetch_header(next_height)
+                            .await?
+                            .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
+                        next_header_to_request = next_header.hash().to_vec();
+                        has_next_page = next_height <= end_height;
+                    }
                     break;
                 }
                 while !utxos.is_empty() &&
@@ -359,20 +367,27 @@ impl<B: BlockchainBackend + 'static> Service<B> {
                 {
                     utxos.pop();
                 }
+                next_header_to_request = current_header_hash.to_vec();
                 has_next_page = false;
                 break;
             }
-            let next_height = current_header.height.saturating_add(1);
-            if next_height > end_height {
-                next_header_to_request = current_header.hash().to_vec();
+            if current_header.height >= tip_header.header().height {
+                next_header_to_request = vec![];
                 has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
-                break; // Stop if we reach the end height
+                break;
             }
-            current_header = self
+            let next_height = current_header.height.saturating_add(1);
+            let next_header = self
                 .db
                 .fetch_header(next_height)
                 .await?
                 .ok_or_else(|| Error::HeaderNotFound { height: next_height })?;
+            if next_height > end_height {
+                next_header_to_request = next_header.hash().to_vec();
+                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                break; // Stop if we reach the end height
+            }
+            current_header = next_header;
 
             if current_header.height == next_page_start_height {
                 // we are on the limit, stop here
@@ -1135,5 +1150,41 @@ mod tests {
         assert_eq!(response.utxos[0].found_in_header.as_ref().unwrap().0, remined.height());
         assert_eq!(response.utxos[0].spent_in_header, None);
         assert_eq!(response.utxos[0].spent_timestamp, None);
+    }
+
+    #[cfg(tari_target_network_testnet)]
+    #[tokio::test]
+    async fn single_large_block_exceeding_limit_advances_next_header_to_scan() {
+        use crate::test_helpers::blockchain::create_main_chain;
+
+        let db = create_new_blockchain_with_network(Network::Esmeralda);
+        let (_names, _chain) = create_main_chain(&db, block_specs!(["1->GB"], ["2->1"]));
+
+        let adb = AsyncBlockchainDb::from(db);
+        let mut service = Service::new(adb, make_state_machine_handle(), make_mempool_handle());
+        service.max_utxo_chunk_size = 500;
+
+        let genesis = service.db().fetch_header(0).await.unwrap().unwrap();
+        let header_1 = service.db().fetch_header(1).await.unwrap().unwrap();
+
+        // With limit = 1 and max_utxo_chunk_size = 500, genesis (height 0) takes 2 chunks (> limit),
+        // triggering the single-large-block fallback. next_header_to_scan must advance to height 1, not stay at 0.
+        let resp = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                start_header_hash: genesis.hash().to_vec(),
+                limit: 1,
+                page: 0,
+                exclude_spent: false,
+                exclude_inputs: false,
+                version: 0,
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks.len(), 2);
+        assert_eq!(resp.blocks[0].height, 0);
+        assert_eq!(resp.blocks[1].height, 0);
+        assert_eq!(resp.next_header_to_scan, header_1.hash().to_vec());
+        assert_ne!(resp.next_header_to_scan, genesis.hash().to_vec());
+        assert!(resp.has_next_page);
     }
 }
