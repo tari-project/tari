@@ -76,7 +76,10 @@ impl FromStr for DnsNameServer {
             }
             return Ok(Self::System);
         }
-        let dns_name = split.next().unwrap_or("");
+        let dns_name = split
+            .next()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| anyhow!("custom DNS name server requires a non-empty dns_name suffix (`addr/dns_name`)"))?;
         Ok(Self::Custom {
             addr: addr.parse()?,
             dns_name: dns_name.to_string(),
@@ -125,5 +128,7 @@ mod test {
         let parsed = DnsNameServer::System.to_string().parse::<DnsNameServer>().unwrap();
         assert_eq!(parsed, DnsNameServer::System);
         assert!("system/cloudflare-dns.com".parse::<DnsNameServer>().is_err());
+        assert!("127.0.0.1:853".parse::<DnsNameServer>().is_err());
+        assert!("127.0.0.1:853/".parse::<DnsNameServer>().is_err());
     }
 }
