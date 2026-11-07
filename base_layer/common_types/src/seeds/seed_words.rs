@@ -66,7 +66,10 @@ impl FromStr for SeedWords {
     type Err = MnemonicError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let words = s.split(' ').map(|s| Hidden::hide(String::from(s))).collect::<Vec<_>>();
+        let words = s
+            .split_whitespace()
+            .map(|s| Hidden::hide(String::from(s)))
+            .collect::<Vec<_>>();
         Ok(Self { words })
     }
 }
@@ -197,5 +200,26 @@ mod tests {
 
         // equality fails, in case of same len but distinct words
         assert_ne!(seed_words, other_seed_words);
+    }
+
+    #[test]
+    pub fn test_seed_words_from_str_whitespace_handling() {
+        let empty = SeedWords::from_str("").unwrap();
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        let whitespace_only = SeedWords::from_str("   \t\n  ").unwrap();
+        assert!(whitespace_only.is_empty());
+        assert_eq!(whitespace_only.len(), 0);
+
+        let parsed = SeedWords::from_str("  hi   niao\thola\nbonjour  olá \r\n").unwrap();
+        let expected = SeedWords::new(vec![
+            Hidden::hide("hi".to_string()),
+            Hidden::hide("niao".to_string()),
+            Hidden::hide("hola".to_string()),
+            Hidden::hide("bonjour".to_string()),
+            Hidden::hide("olá".to_string()),
+        ]);
+        assert_eq!(parsed, expected);
     }
 }
