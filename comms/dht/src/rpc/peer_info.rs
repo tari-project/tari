@@ -41,6 +41,7 @@ pub struct UnvalidatedPeerInfo {
 
 impl UnvalidatedPeerInfo {
     pub fn from_peer_limited_claims(peer: Peer, max_claims: usize, max_addresses_per_claim: usize) -> Self {
+        let mut seen_claims = Vec::<PeerIdentityClaim>::new();
         let claims = peer
             .addresses
             .addresses()
@@ -66,6 +67,11 @@ impl UnvalidatedPeerInfo {
                 {
                     return None;
                 }
+
+                if seen_claims.contains(claim) {
+                    return None;
+                }
+                seen_claims.push(claim.clone());
 
                 Some(claim)
             })
@@ -243,5 +249,29 @@ mod test {
         let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5);
         assert_eq!(served.claims.len(), 1);
         assert_eq!(served.claims[0].addresses, vec![other]);
+    }
+
+    #[test]
+    fn from_peer_limited_claims_deduplicates_shared_claim_across_multiple_addresses() {
+        let addr1: Multiaddr = "/ip4/23.23.23.23/tcp/18189".parse().unwrap();
+        let addr2: Multiaddr = "/ip4/24.24.24.24/tcp/18189".parse().unwrap();
+        let node_identity = NodeIdentity::random(&mut rand::rng(), addr1.clone(), PeerFeatures::COMMUNICATION_NODE);
+
+        let addresses = MultiaddressesWithStats::from_addresses_with_source(
+            vec![addr1.clone(), addr2.clone()],
+            &claim_source(vec![addr1, addr2]),
+        );
+        let peer = Peer::new(
+            node_identity.public_key().clone(),
+            node_identity.node_id().clone(),
+            addresses,
+            PeerFlags::empty(),
+            PeerFeatures::COMMUNICATION_NODE,
+            vec![],
+            String::new(),
+        );
+
+        let served = UnvalidatedPeerInfo::from_peer_limited_claims(peer, 5, 5);
+        assert_eq!(served.claims.len(), 1);
     }
 }
