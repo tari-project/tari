@@ -179,7 +179,11 @@ impl ProcessLauncher {
         }
 
         // Launch the process
-        log::debug!("About to spawn process: {command:?}");
+        log::debug!(
+            "About to spawn process: {} with args: {:?}",
+            executable_path.display(),
+            self.config.args
+        );
         let mut child = command.spawn().map_err(|e| {
             log::error!(
                 "Failed to spawn process: {} (executable: {})",
