@@ -60,14 +60,17 @@ impl<T: Clone> OneshotTrigger<T> {
     }
 
     pub fn broadcast(&mut self, item: T) {
-        let mut x = self.sender.lock().unwrap();
+        let mut x = self.sender.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(tx) = (*x).take() {
             let _result = tx.send(item);
         }
     }
 
     pub fn is_used(&self) -> bool {
-        self.sender.lock().unwrap().is_none()
+        self.sender
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_none()
     }
 }
 
@@ -117,12 +120,17 @@ impl<T: Clone> Future for OneshotSignal<T> {
             return Poll::Ready(None);
         }
 
-        let output = match Pin::new(&mut this.inner).poll(cx) {
+        let mut inner = this.inner.clone();
+        let output = match Pin::new(&mut inner).poll(cx) {
             Poll::Ready(Ok(v)) => Some(v),
             // Channel canceled: every trigger was dropped without broadcasting
             Poll::Ready(Err(_)) => None,
-            Poll::Pending => return Poll::Pending,
+            Poll::Pending => {
+                this.inner = inner;
+                return Poll::Pending;
+            },
         };
+        this.inner = inner;
         this.output = Some(output.clone());
         Poll::Ready(output)
     }
@@ -211,5 +219,23 @@ mod test {
         });
         trigger.broadcast("done");
         assert_eq!(task.await.unwrap(), (Some("done"), Some("done")));
+    }
+
+    #[test]
+    fn broadcast_and_is_used_survive_poisoned_mutex() {
+        let mut trigger = OneshotTrigger::<u32>::new();
+        let clone = trigger.clone();
+        let mut signal = trigger.to_signal();
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = clone.sender.lock().unwrap();
+            panic!("poison sender lock");
+        }));
+
+        assert!(!trigger.is_used());
+        trigger.broadcast(42);
+        assert!(trigger.is_used());
+        let mut cx = Context::from_waker(futures::task::noop_waker_ref());
+        assert_eq!(signal.poll_unpin(&mut cx), Poll::Ready(Some(42)));
     }
 }
