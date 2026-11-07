@@ -349,7 +349,7 @@ impl TransactionServiceSqliteDatabase {
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
-                        TransactionStorageError::ValueNotFound(DbKey::CancelledPendingOutboundTransaction(k)),
+                        TransactionStorageError::ValueNotFound(DbKey::CancelledPendingInboundTransaction(k)),
                     ),
                     Err(e) => Err(e),
                 })
@@ -2626,7 +2626,7 @@ impl CompletedTransactionSql {
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
                 mined_timestamp: Some(timestamp.naive_utc()),
                 // If the tx is mined, then it can't be cancelled
-                cancelled: None,
+                cancelled: Some(None),
                 ..Default::default()
             })
             .execute(conn)
@@ -3057,8 +3057,10 @@ impl UnconfirmedTransactionInfoSql {
                     .ne(LegacyTransactionStatus::Imported as i32)
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedUnconfirmed as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmedLocked as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmedLocked as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
                     // Filter out any transaction without a kernel signature
                     .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
@@ -3067,7 +3069,8 @@ impl UnconfirmedTransactionInfoSql {
                     .and(
                         completed_transactions::mined_height
                             .is_null()
-                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32)),
+                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32))
+                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedConfirmedLocked as i32)),
                     ),
             )
             .filter(completed_transactions::cancelled.is_null())
@@ -3248,17 +3251,20 @@ mod test {
         legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         test_utils::create_consensus_constants,
-        transaction_service::storage::{
-            database::{DbKey, DbValue, TransactionBackend},
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
-            sqlite_db::{
-                CompletedTransactionSql,
-                InboundTransactionSenderInfo,
-                InboundTransactionSql,
-                OutboundTransactionSql,
-                PayrefSql,
-                TransactionServiceSqliteDatabase,
-                UpdateCompletedTransactionSql,
+        transaction_service::{
+            error::TransactionStorageError,
+            storage::{
+                database::{DbKey, DbValue, TransactionBackend, WriteOperation},
+                models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
+                sqlite_db::{
+                    CompletedTransactionSql,
+                    InboundTransactionSenderInfo,
+                    InboundTransactionSql,
+                    OutboundTransactionSql,
+                    PayrefSql,
+                    TransactionServiceSqliteDatabase,
+                    UpdateCompletedTransactionSql,
+                },
             },
         },
     };
@@ -4558,6 +4564,81 @@ mod test {
         corrupt_completed(&connection, 30, TAMPERED_CIPHERTEXT);
         corrupt_completed(&connection, 32, TAMPERED_CIPHERTEXT);
         assert!(db.fetch_unconfirmed_transactions_info().is_err());
+    }
+
+    #[test]
+    fn unconfirmed_transactions_info_includes_mined_confirmed_locked_and_excludes_detected_locked() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        for (tx_id, status) in [
+            (50u64, LegacyTransactionStatus::MinedConfirmedLocked),
+            (51, LegacyTransactionStatus::OneSidedConfirmedLocked),
+            (52, LegacyTransactionStatus::CoinbaseConfirmedLocked),
+            (53, LegacyTransactionStatus::MinedConfirmed),
+        ] {
+            let mut tx = mined_tx(tx_id, 100);
+            tx.status = status;
+            let nonce = PrivateKey::random(&mut rand::rng());
+            tx.transaction_signature = CompressedSignature::new(
+                CompressedPublicKey::from_secret_key(&nonce),
+                PrivateKey::random(&mut rand::rng()),
+            );
+            commit_completed(&connection, &cipher, tx);
+        }
+
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        let info = db.fetch_unconfirmed_transactions_info().unwrap();
+        assert_eq!(info.iter().map(|i| i.tx_id.as_u64()).collect::<Vec<_>>(), vec![50]);
+    }
+
+    #[test]
+    fn update_mined_height_clears_non_sticky_cancelled_flag() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        let mut tx = completed_tx_with_hashes(60, vec![], vec![]);
+        tx.status = LegacyTransactionStatus::Rejected;
+        tx.cancelled = Some(TxCancellationReason::InvalidTransaction);
+        commit_completed(&connection, &cipher, tx);
+
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        db.update_mined_height(
+            60u64.into(),
+            100,
+            FixedHash::zero(),
+            1_700_000_000,
+            true,
+            LegacyTransactionStatus::Broadcast,
+            110,
+        )
+        .unwrap();
+
+        let Some(DbValue::CompletedTransaction(updated)) =
+            db.fetch(&DbKey::CompletedTransaction(60u64.into())).unwrap()
+        else {
+            panic!("expected completed transaction");
+        };
+        assert_eq!(updated.cancelled, None);
+        assert_eq!(updated.status, LegacyTransactionStatus::MinedConfirmed);
+    }
+
+    #[test]
+    fn remove_missing_cancelled_pending_inbound_reports_inbound_key() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        let tx_id = TxId::from(999u64);
+        let err = db
+            .write(WriteOperation::Remove(DbKey::CancelledPendingInboundTransaction(tx_id)))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            TransactionStorageError::ValueNotFound(DbKey::CancelledPendingInboundTransaction(id)) if id == tx_id
+        ));
     }
 
     #[ignore]
