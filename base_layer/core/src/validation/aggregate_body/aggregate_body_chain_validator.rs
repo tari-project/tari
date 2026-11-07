@@ -116,7 +116,7 @@ impl AggregateBodyChainLinkedValidator {
         let vn_epoch = constants.block_height_to_epoch(next_height);
 
         self.validate_consensus(body, db)?;
-        self.check_body(body, db, constants, header, next_height, vn_epoch, true)
+        self.check_body(body, db, constants, next_height, vn_epoch, true)
     }
 
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
@@ -135,7 +135,7 @@ impl AggregateBodyChainLinkedValidator {
         header: &BlockHeader,
     ) -> Result<(), ValidationError> {
         let vn_epoch = constants.block_height_to_epoch(header.height);
-        self.check_body(body, db, constants, header, header.height, vn_epoch, false)
+        self.check_body(body, db, constants, header.height, vn_epoch, false)
     }
 
     /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
@@ -147,7 +147,6 @@ impl AggregateBodyChainLinkedValidator {
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
-        header: &BlockHeader,
         spend_height: u64,
         vn_epoch: VnEpoch,
         defer_unknown_inputs: bool,
@@ -162,7 +161,7 @@ impl AggregateBodyChainLinkedValidator {
         check_outputs(db, constants, body, vn_epoch)?;
         verify_no_duplicate_validator_node_registrations(body)?;
         check_total_burned(body)?;
-        verify_timelocks(body, header.height)?;
+        verify_timelocks(body, spend_height)?;
 
         if !spent_inputs.is_empty() {
             return Err(ValidationError::SpentInputs {
@@ -496,11 +495,11 @@ pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
 
 // This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
 // input maturities
-pub fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
-    if body.min_spendable_height()? > current_height.saturating_add(1) {
+pub fn verify_timelocks(body: &AggregateBody, spend_height: u64) -> Result<(), ValidationError> {
+    if body.min_spendable_height()? > spend_height {
         warn!(
             target: LOG_TARGET,
-            "AggregateBody has a min spend height higher than the current tip"
+            "AggregateBody has a min spend height higher than the spending height"
         );
         return Err(ValidationError::MaturityError);
     }
@@ -899,5 +898,37 @@ mod test {
             let body = AggregateBody::new_unsorted(vec![], vec![output, twin], vec![]);
             verify_no_duplicated_inputs_outputs(&body).unwrap();
         }
+    }
+
+    #[test]
+    fn validate_body_enforces_kernel_lock_height_at_header_height() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let blockchain = TestBlockchain::create(rules.clone());
+        let validator = AggregateBodyChainLinkedValidator::new(rules);
+        let db = blockchain.db().db_read_access().unwrap();
+
+        let mut header = BlockHeader::new(0);
+        header.height = 5;
+        let kernel = TransactionKernel::new_current_version(
+            KernelFeatures::empty(),
+            0.into(),
+            6,
+            random_commitment(),
+            create_signature(
+                PrivateKey::random(&mut rand::rng()),
+                0.into(),
+                6,
+                KernelFeatures::empty(),
+            ),
+            None,
+        );
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![kernel]);
+
+        // At block height 5, a kernel with lock_height = 6 is not yet valid
+        let err = validator.validate(&body, &header, &*db).unwrap_err();
+        assert!(matches!(err, ValidationError::MaturityError));
+
+        // For a transaction evaluated against tip height 5 (next block height 6), lock_height = 6 is valid
+        validator.validate_transaction_body(&body, &header, &*db).unwrap();
     }
 }
