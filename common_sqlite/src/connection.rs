@@ -100,6 +100,11 @@ impl TryFrom<String> for DbConnectionUrl {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if value.as_str() == ":memory:" {
             Ok(Self::Memory)
+        } else if let Some(identifier) = value
+            .strip_prefix("file:")
+            .and_then(|rest| rest.strip_suffix("?mode=memory&cache=shared"))
+        {
+            Ok(Self::MemoryShared(identifier.to_string()))
         } else {
             Ok(Self::File(PathBuf::from(value)))
         }
@@ -507,5 +512,18 @@ mod test {
             .get_result(&mut c)
             .unwrap();
         assert_eq!(count as usize, WRITERS);
+    }
+
+    #[test]
+    fn memory_shared_url_round_trips_through_string_and_serde() {
+        let shared = DbConnectionUrl::MemoryShared("test_shared_db".to_string());
+        let url_str = String::from(shared.clone());
+        assert_eq!(url_str, "file:test_shared_db?mode=memory&cache=shared");
+        let parsed = DbConnectionUrl::try_from(url_str).unwrap();
+        assert!(matches!(parsed, DbConnectionUrl::MemoryShared(ref id) if id == "test_shared_db"));
+
+        let json = serde_json::to_string(&shared).unwrap();
+        let decoded: DbConnectionUrl = serde_json::from_str(&json).unwrap();
+        assert!(matches!(decoded, DbConnectionUrl::MemoryShared(ref id) if id == "test_shared_db"));
     }
 }
