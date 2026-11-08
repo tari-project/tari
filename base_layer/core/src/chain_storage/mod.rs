@@ -95,6 +95,7 @@ pub use lmdb_db::{
     get_all_database_names,
     get_legacy_database_names,
     lmdb_tree_reader::{LmdbTreeReader, OwnedLmdbTreeReader},
+    recovery_lmdb_path,
 };
 mod stats;
 pub use stats::{DbBasicStats, DbSize, DbStat, DbTotalSizeStats};
