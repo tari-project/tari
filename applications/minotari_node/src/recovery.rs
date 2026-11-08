@@ -22,7 +22,6 @@
 //
 
 use std::{
-    env::temp_dir,
     fs,
     io::{self, Write},
     sync::Arc,
@@ -44,6 +43,7 @@ use tari_core::{
         async_db::AsyncBlockchainDb,
         create_lmdb_database_with_stats_channel,
         create_recovery_lmdb_database,
+        recovery_lmdb_path,
     },
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -97,7 +97,9 @@ pub async fn run_recovery(
                 error!(target: LOG_TARGET, "Error opening db: {e}");
                 anyhow!("Could not open DB: {e}")
             })?;
-            let temp_path = temp_dir().join("temp_recovery");
+            // `initiate_recover_db` moved the existing store here. A fixed name under the shared temp directory would
+            // be both the wrong store and one that any other local account can create first.
+            let temp_path = recovery_lmdb_path(&node_config.lmdb_path);
 
             let temp = create_lmdb_database_with_stats_channel(
                 &temp_path,
