@@ -31,9 +31,13 @@ use crate::{
     peer_manager::{NodeId, PeerIdentityClaim, PeerManagerError},
     peer_validator::{PeerValidatorConfig, error::PeerValidatorError},
     types::CommsPublicKey,
+    utils::text::sanitize_for_display,
 };
 
 const LOG_TARGET: &str = "comms::peer_validator";
+
+/// The longest rejected address logged, in bytes. The address comes from the peer's own claim.
+const MAX_LOGGED_ADDRESS_BYTES: usize = 256;
 
 fn validate_address_count(config: &PeerValidatorConfig, addresses: &[Multiaddr]) -> Result<(), PeerValidatorError> {
     if addresses.len() > config.max_permitted_peer_addresses_per_claim {
@@ -105,10 +109,13 @@ pub fn validate_and_filter_peer_identity_claim_addresses(
         match permitted {
             Ok(()) => valid_addresses.push(addr.clone()),
             Err(err) => {
+                // The address is logged because it failed validation, so it is exactly the value an
+                // unauthenticated peer chose. A DNS label carrying control or line-breaking characters would
+                // otherwise forge log entries, as the user agent and ban reason checks elsewhere already prevent.
                 debug!(
                     target: LOG_TARGET,
                     "Discarding disallowed address '{}' from a valid peer claim: {}",
-                    addr,
+                    sanitize_for_display(&addr.to_string(), MAX_LOGGED_ADDRESS_BYTES),
                     err
                 );
             },
@@ -325,6 +332,37 @@ mod test {
     use multiaddr::multiaddr;
 
     use super::*;
+
+    /// A rejected address is logged, and it is exactly the value an unauthenticated peer put in its claim. A DNS
+    /// label carrying control or line-breaking characters must not reach the log as it was sent.
+    #[test]
+    fn rejected_address_is_sanitised_before_it_is_logged() {
+        let hostile = "\u{1b}[2J\u{1b}[H ok\n2026-01-01 00:00:00 [comms::connectivity] INFO  Peer is now ONLINE\u{0}x";
+        let addr = multiaddr!(Dns4(hostile), Tcp(18189u16));
+
+        // The address is rejected, so the logging branch is the one that runs.
+        assert!(validate_address_shape(&addr).is_err());
+
+        // Unsanitised, the claim reaches the log with the bytes that forge an entry.
+        let raw = addr.to_string();
+        assert!(raw.contains('\u{1b}'));
+        assert!(raw.contains('\n'));
+
+        let logged = sanitize_for_display(&raw, MAX_LOGGED_ADDRESS_BYTES);
+        assert!(!logged.contains('\u{1b}'), "escape byte reached the log: {logged:?}");
+        assert!(!logged.contains('\n'), "line break reached the log: {logged:?}");
+        assert!(!logged.contains('\r'), "carriage return reached the log: {logged:?}");
+        assert!(!logged.contains('\u{0}'), "nul reached the log: {logged:?}");
+        assert!(logged.len() <= MAX_LOGGED_ADDRESS_BYTES);
+    }
+
+    /// An ordinary address is still readable in the log.
+    #[test]
+    fn ordinary_address_is_unchanged_when_logged() {
+        let addr = multiaddr!(Dnsaddr("mike-magic-nodes.com"), Tcp(18189u16));
+        let logged = sanitize_for_display(&addr.to_string(), MAX_LOGGED_ADDRESS_BYTES);
+        assert_eq!(logged, addr.to_string());
+    }
 
     #[test]
     fn validate_address_strict() {
