@@ -3464,6 +3464,17 @@ pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), Chai
 
     let new_data_file = new_path.join("data.mdb");
 
+    // A store already here was left by a rebuild that did not finish, and the store in `path` is then only as far as
+    // that rebuild got. Moving it over the left-over one would throw away the only complete copy.
+    if new_data_file.exists() {
+        return Err(ChainStorageError::CriticalError(format!(
+            "{} was left by a rebuild that did not finish and may be the only complete copy of the chain. Move it \
+             back to {} to rebuild from it, or delete it to rebuild from the current store",
+            new_data_file.display(),
+            data_file.display()
+        )));
+    }
+
     fs::rename(data_file, new_data_file)
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{err}")))?;
     Ok(())
@@ -6979,5 +6990,22 @@ mod recovery_path_test {
         assert!(!db_dir.path().join("data.mdb").exists());
         let moved = recovery_lmdb_path(db_dir.path()).join("data.mdb");
         assert_eq!(fs::read(moved).unwrap(), b"old store");
+    }
+
+    /// After an interrupted rebuild the left-over store is the complete one and `data.mdb` only holds the blocks the
+    /// rebuild got through. A second rebuild must not move the partial store over it.
+    #[test]
+    fn create_recovery_refuses_to_replace_a_left_over_store() {
+        let db_dir = tempfile::tempdir().unwrap();
+        let recovery = recovery_lmdb_path(db_dir.path());
+        fs::create_dir_all(&recovery).unwrap();
+        fs::write(recovery.join("data.mdb"), b"complete store").unwrap();
+        fs::write(db_dir.path().join("data.mdb"), b"partial store").unwrap();
+
+        let err = create_recovery_lmdb_database(db_dir.path()).unwrap_err();
+
+        assert!(err.to_string().contains("did not finish"), "{err}");
+        assert_eq!(fs::read(recovery.join("data.mdb")).unwrap(), b"complete store");
+        assert_eq!(fs::read(db_dir.path().join("data.mdb")).unwrap(), b"partial store");
     }
 }
