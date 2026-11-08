@@ -109,9 +109,10 @@ pub fn validate_and_filter_peer_identity_claim_addresses(
         match permitted {
             Ok(()) => valid_addresses.push(addr.clone()),
             Err(err) => {
-                // The address is logged because it failed validation, so it is exactly the value an
-                // unauthenticated peer chose. A DNS label carrying control or line-breaking characters would
-                // otherwise forge log entries, as the user agent and ban reason checks elsewhere already prevent.
+                // The address is logged because it failed validation, so it is exactly the value the claiming
+                // peer chose, whether the claim arrived on a connection or was relayed by discovery. A DNS label
+                // carrying control or line-breaking characters would otherwise forge log entries, which the user
+                // agent and ban reason checks elsewhere already prevent.
                 debug!(
                     target: LOG_TARGET,
                     "Discarding disallowed address '{}' from a valid peer claim: {}",
@@ -333,8 +334,8 @@ mod test {
 
     use super::*;
 
-    /// A rejected address is logged, and it is exactly the value an unauthenticated peer put in its claim. A DNS
-    /// label carrying control or line-breaking characters must not reach the log as it was sent.
+    /// A rejected address is logged, and it is exactly the value the claiming peer put in its claim. A DNS label
+    /// carrying control or line-breaking characters must not reach the log as it was sent.
     #[test]
     fn rejected_address_is_sanitised_before_it_is_logged() {
         let hostile = "\u{1b}[2J\u{1b}[H ok\n2026-01-01 00:00:00 [comms::connectivity] INFO  Peer is now ONLINE\u{0}x";
