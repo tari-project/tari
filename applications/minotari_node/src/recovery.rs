@@ -30,10 +30,7 @@ use std::{
 use anyhow::anyhow;
 use log::*;
 use minotari_app_grpc::tari_rpc::readiness_status::State as ReadinessState;
-use tari_common::{
-    configuration::Network,
-    exit_codes::{ExitCode, ExitError},
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_core::{
     chain_storage::{
         BlockchainBackend,
@@ -134,7 +131,7 @@ pub async fn run_recovery(
         difficulty_calculator,
     )?;
     db.start()?;
-    do_recovery(db.into(), temp_db, &readiness_handler).await?;
+    do_recovery(db.into(), temp_db, rules, &readiness_handler).await?;
 
     info!(
         target: LOG_TARGET,
@@ -150,15 +147,11 @@ pub async fn run_recovery(
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     source_backend: D,
+    rules: BaseNodeConsensusManager,
     readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
-    // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
-    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
-        .build()
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Error creating consensus manager: {e}");
-            anyhow!("Error creating consensus manager: {e}")
-        })?;
+    // The target validates every block it adds, so the source is read with mock validators. Its rules must still be
+    // those of the node's network: `start` checks the stored genesis block against them.
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -215,4 +208,64 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         counter = counter.saturating_add(1);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::Path;
+
+    use tari_common::configuration::Network;
+    use tari_core::{
+        block_specs,
+        chain_storage::{LMDBDatabase, create_lmdb_database},
+        test_helpers::blockchain::create_chained_blocks,
+    };
+    use tari_storage::lmdb_store::LMDBConfig;
+
+    use super::*;
+    use crate::grpc::readiness_grpc_server::ReadinessGrpcServer;
+
+    fn open_chain(path: &Path, rules: &BaseNodeConsensusManager) -> BlockchainDatabase<LMDBDatabase> {
+        let backend = create_lmdb_database(path, LMDBConfig::default(), rules.clone()).unwrap();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        BlockchainDatabase::start_new(
+            backend,
+            rules.clone(),
+            validators,
+            BlockchainDatabaseConfig::default(),
+            DifficultyCalculator::new(rules.clone(), Default::default()),
+        )
+        .unwrap()
+    }
+
+    /// The store being rebuilt carries the genesis block of the node's network, so it has to be read with that
+    /// network's rules. Esmeralda stands in for every network other than LocalNet.
+    #[tokio::test]
+    async fn rebuild_reads_a_store_of_a_network_other_than_localnet() {
+        let rules = BaseNodeConsensusManager::builder(Network::Esmeralda).build().unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        let target_dir = tempfile::tempdir().unwrap();
+        {
+            let source = open_chain(source_dir.path(), &rules);
+            let genesis = Arc::new(source.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+            let (names, blocks) = create_chained_blocks(&source, block_specs!(["A->GB"], ["B->A"], ["C->B"]), genesis);
+            for name in names {
+                source.add_block(blocks[&name].to_arc_block()).unwrap();
+            }
+            assert_eq!(source.get_height().unwrap(), 3);
+        }
+        let source_backend = create_lmdb_database(source_dir.path(), LMDBConfig::default(), rules.clone()).unwrap();
+        let target = open_chain(target_dir.path(), &rules);
+        let (_server, readiness) = ReadinessGrpcServer::new();
+
+        do_recovery(target.clone().into(), source_backend, rules, &readiness)
+            .await
+            .unwrap();
+
+        assert_eq!(target.get_height().unwrap(), 3);
+    }
 }
