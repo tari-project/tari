@@ -3450,8 +3450,14 @@ impl LMDBDatabase {
     }
 }
 
+/// The directory `create_recovery_lmdb_database` moves the existing store into, and the one `--rebuild-db` reads it
+/// back from. It is inside the node's own database directory, so no other account can create it first.
+pub fn recovery_lmdb_path<P: AsRef<Path>>(path: P) -> PathBuf {
+    path.as_ref().join("temp_recovery")
+}
+
 pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
-    let new_path = path.as_ref().join("temp_recovery");
+    let new_path = recovery_lmdb_path(&path);
     let _result = fs::create_dir_all(&new_path);
 
     let data_file = path.as_ref().join("data.mdb");
@@ -6948,5 +6954,30 @@ mod template_registrations_migration_test {
 
         let temp = TempDatabase::from_path_with_rules(&path, create_consensus_rules());
         assert!(!legacy_table_exists(temp.db()));
+    }
+}
+
+#[cfg(test)]
+mod recovery_path_test {
+    use super::*;
+
+    #[test]
+    fn recovery_store_is_inside_the_database_directory() {
+        let db_dir = tempfile::tempdir().unwrap();
+        let recovery = recovery_lmdb_path(db_dir.path());
+        assert_eq!(recovery.parent(), Some(db_dir.path()));
+    }
+
+    /// `--rebuild-db` reads the old store back from `recovery_lmdb_path`, so it has to be where it was moved to.
+    #[test]
+    fn create_recovery_moves_the_store_to_the_recovery_path() {
+        let db_dir = tempfile::tempdir().unwrap();
+        fs::write(db_dir.path().join("data.mdb"), b"old store").unwrap();
+
+        create_recovery_lmdb_database(db_dir.path()).unwrap();
+
+        assert!(!db_dir.path().join("data.mdb").exists());
+        let moved = recovery_lmdb_path(db_dir.path()).join("data.mdb");
+        assert_eq!(fs::read(moved).unwrap(), b"old store");
     }
 }
