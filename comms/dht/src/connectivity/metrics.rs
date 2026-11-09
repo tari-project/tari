@@ -140,7 +140,10 @@ impl MetricsState {
 
     /// Drop every per-peer sample older than `max_age`, and the entries left without samples.
     pub fn prune_stale(&mut self, max_age: Duration) {
-        let since = Instant::now().checked_sub(max_age).unwrap_or_else(Instant::now);
+        // The clock started less than `max_age` ago (as it does at boot on Windows): nothing is old enough to prune
+        let Some(since) = Instant::now().checked_sub(max_age) else {
+            return;
+        };
         let num_before = self
             .messages_recv
             .len()
@@ -179,8 +182,11 @@ impl MetricsState {
     }
 
     pub fn message_received_get_total_count_in_timespan(&self, timespan: Duration) -> usize {
-        let since = Instant::now().checked_sub(timespan).unwrap_or_else(Instant::now);
-        self.all_messages_recv.count_since(since)
+        // The clock started less than `timespan` ago (as it does at boot on Windows): every sample is inside it
+        match Instant::now().checked_sub(timespan) {
+            Some(since) => self.all_messages_recv.count_since(since),
+            None => self.all_messages_recv.count(),
+        }
     }
 }
 

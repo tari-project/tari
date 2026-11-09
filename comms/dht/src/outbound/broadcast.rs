@@ -83,7 +83,9 @@ pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 
 ///   `CONTENDED_PERCENT` of that, any source may use it. From then on it is shared fairly: a source is let through only
 ///   while it has sent the peer fewer than the budget / (active sources + 1). The heaviest sources stop first, and the
 ///   extra share stays free for a source that has sent little or nothing, so low-rate sources still get through while a
-///   few others flood the same peer.
+///   few others flood the same peer. The first `CONTENDED_PERCENT` is first come, first served, so this protects
+///   low-rate sources against at most `FORWARD_BUDGET_FACTOR` flooding sources: `FORWARD_BUDGET_FACTOR` + 1 directly
+///   connected sources flooding the same peer can still use up its budget.
 ///
 /// Messages this node originates are not capped.
 pub(crate) struct ForwardBudget {
@@ -113,9 +115,10 @@ struct PeerForwards {
     by_source: HashMap<NodeId, VecDeque<Instant>>,
 }
 
-/// Drops the times before `since`
-fn trim(sent: &mut VecDeque<Instant>, since: Instant) {
-    while sent.front().is_some_and(|t| *t < since) {
+/// Drops the times before `since`. `None` (the clock started less than a window ago, as it does at boot on Windows)
+/// keeps them all.
+fn trim(sent: &mut VecDeque<Instant>, since: Option<Instant>) {
+    while sent.front().is_some_and(|t| since.is_some_and(|since| *t < since)) {
         sent.pop_front();
     }
 }
@@ -134,7 +137,7 @@ impl ForwardBudget {
         let max_per_peer = self.max_count.saturating_mul(FORWARD_BUDGET_FACTOR);
         let contended_at = max_per_peer.saturating_mul(CONTENDED_PERCENT) / 100;
         let now = Instant::now();
-        let since = now.checked_sub(self.window).unwrap_or(now);
+        let since = now.checked_sub(self.window);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let state = &mut *state;
         if state
@@ -868,6 +871,17 @@ mod test {
         let mut peers = peers.iter().map(|p| (*p).clone()).collect();
         budget.take(source, &mut peers);
         peers
+    }
+
+    /// Without a window start (the clock started less than a window ago, as at boot on Windows) nothing is trimmed
+    #[test]
+    fn trim_keeps_everything_without_a_window_start() {
+        let now = Instant::now();
+        let mut sent = VecDeque::from([now, now]);
+        trim(&mut sent, None);
+        assert_eq!(sent.len(), 2);
+        trim(&mut sent, now.checked_add(Duration::from_secs(1)));
+        assert!(sent.is_empty());
     }
 
     /// A source's budget is charged once per forwarded message, however many peers it goes to

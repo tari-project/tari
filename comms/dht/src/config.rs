@@ -91,8 +91,14 @@ const _: () = assert!(FORWARD_BUDGET_FACTOR < FORWARDED_FLOOD_BAN_FACTOR);
 /// This node forwards at most this many times `flood_ban_max_msg_count` messages delivered by any one source peer per
 /// `flood_ban_timespan`, counted once per message however many peers it goes to. A forwarded message always has a
 /// destination, so it goes to that peer when connected, otherwise to at most `num_neighbouring_nodes` peers. At 1, a
-/// source gets as many forwarded messages as it may send of its own, and it takes more than
+/// source gets as many forwarded messages as it may send of its own, and at the first hop it takes more than
 /// `FORWARD_BUDGET_FACTOR` sources to use up the budget towards any one peer.
+///
+/// One hop on it is cheaper: a relay R is itself one source at each of its peers, so about c / `num_neighbouring_nodes`
+/// identities connected to R (c being R's node connections), rounded up, can use up R's budget at every one of its
+/// peers, which then drop what R relays for the rest of the window. That is a drop, never a ban, and no worse than
+/// without a budget, where R would be banned. The factor is not raised to make this harder, because a higher factor
+/// would let a single identity push more through than it could without a budget.
 pub(crate) const FORWARD_SOURCE_BUDGET_FACTOR: usize = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
