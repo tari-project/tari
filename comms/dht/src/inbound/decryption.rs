@@ -321,7 +321,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// These failure modes are detectable by any node, but not attributable to the direct source (see the attribution
     /// rule above), so the message is only dropped.
     fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
+        // Relays of every version reject these failures before forwarding, so the source is to blame for them and they
+        // count as its own. The exceptions stay counted by the claimed signer: a non-canonical signature encoding
+        // (older relays do not check it), and a Join that fails to verify (v6.2 and older relays re-encode the
+        // Join body they propagate, which breaks its signature: audit finding A, fixed by #8146).
+        let own = || metrics::set_flood_series(FloodSeries::Own);
         if !message.is_semantically_valid() {
+            own();
             if message.dht_header.flags.is_encrypted() {
                 return Err(DecryptionError::BadEncryptedMessageSemantics);
             } else {
@@ -336,20 +342,27 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // If a signature is present, it must be valid and canonically encoded: other encodings of the same signature
         // would let anyone change the bytes relays carry
-        let proto_signature = ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
-            .map_err(|_| DecryptionError::InvalidSignature)?;
+        let proto_signature =
+            ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice()).map_err(|_| {
+                own();
+                DecryptionError::InvalidSignature
+            })?;
         if !is_canonical(&message.dht_header.message_signature, &proto_signature) {
             return Err(DecryptionError::InvalidSignature);
         }
-        let message_signature: MessageSignature = proto_signature
-            .try_into()
-            .map_err(|_| DecryptionError::InvalidSignature)?;
+        let message_signature: MessageSignature = proto_signature.try_into().map_err(|_| {
+            own();
+            DecryptionError::InvalidSignature
+        })?;
 
         let binding_hash = crypt::create_message_domain_separated_hash(&message.dht_header, &message.body);
 
-        message_signature
-            .verify(&binding_hash)
-            .map_err(|_| DecryptionError::InvalidSignature)?;
+        message_signature.verify(&binding_hash).map_err(|_| {
+            if !message.dht_header.message_type.is_dht_join() {
+                own();
+            }
+            DecryptionError::InvalidSignature
+        })?;
 
         // The message is valid at this point
         Ok(ValidatedDhtInboundMessage::new(message, Some(message_signature)))

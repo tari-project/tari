@@ -1226,6 +1226,51 @@ mod test {
         assert_eq!(series_counts(&dht, &relay).await, (0, 1));
     }
 
+    /// A canonically encoded signature that fails to verify is rejected by relays of every version, so even one naming
+    /// another signer counts as relay H's own
+    #[tokio::test]
+    async fn a_signature_that_fails_to_verify_counts_as_own() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_domain_envelope(&sybil);
+        envelope.body = wrap_in_envelope_body!(b"not what was signed".to_vec()).to_encoded_bytes();
+        service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (1, 0));
+    }
+
+    /// v6.2 and older relays re-encode the Join body they propagate, which can break its signature, so a Join from
+    /// another signer that fails to verify counts in relay H's forwarded series
+    #[tokio::test]
+    async fn a_join_that_fails_to_verify_counts_as_forwarded() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_envelope(
+            &sybil,
+            DhtMessageType::Join,
+            sybil.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&sybil)).to_encoded_bytes(),
+        );
+        // A trailing unknown field, as an older relay's re-encoding could differ from the signed bytes
+        envelope.body.extend_from_slice(&[0x78, 0x01]);
+        service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
     /// An encrypted message for another node fails to decrypt here and is passed on: relay H may only be forwarding
     /// it, so it counts in H's forwarded series
     #[tokio::test]
