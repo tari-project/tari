@@ -262,14 +262,14 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         };
 
         if join_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received JoinMessage from peer that mismatches the authenticated origin. \
                 This message was signed by another party which may be attempting to get other nodes banned. \
                 Banning the message signer."
             );
 
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Authenticated origin: {:#.6}, Source: {:#.6}, join message: {}",
                 authenticated_pk, source_peer.public_key, join_msg.public_key.to_hex()
@@ -420,6 +420,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                         ])
                         .with_debug_info("Propagating join message".to_string())
                         .with_dht_header(dht_header)
+                        .forwarded_from(source_peer.node_id.clone())
                         .finish(),
                     BytesMut::from(Bytes::from(raw_body)),
                 )
@@ -495,7 +496,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         };
 
         if authenticated_origin.as_bytes() != discover_msg.public_key.as_slice() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received DiscoveryResponseMessage signed by {:#.6} that claims to be for {}. Banning the message \
                  signer.",
@@ -554,7 +555,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         };
 
         if discover_msg.public_key.as_slice() != authenticated_pk.as_bytes() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received DiscoveryMessage signed by {:#.6} that claims to be from {}. Banning the message signer.",
                 authenticated_pk, discover_msg.public_key.to_hex()
@@ -588,7 +589,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Ok(());
         };
         if new_peer.public_key != *authenticated_pk {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received DiscoveryMessage signed by {:#.6} for peer {:#.6}. Banning the message signer.",
                 authenticated_pk, new_peer.public_key
@@ -626,7 +627,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // Don't send a join request to the origin peer if they are banned
         if origin_peer.is_banned() {
-            warn!(
+            debug!(
                 target: LOG_TARGET,
                 "Received Discovery request for banned peer '{node_id}'. Not propagating further."
             );

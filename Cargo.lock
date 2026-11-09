@@ -1568,7 +1568,7 @@ dependencies = [
  "itertools 0.14.0",
  "junit-report",
  "linked-hash-map",
- "pin-project 1.1.13",
+ "pin-project",
  "ref-cast",
  "regex",
  "sealed 0.6.0",
@@ -2702,7 +2702,7 @@ dependencies = [
  "futures-sink",
  "futures-task",
  "futures-util",
- "pin-project 1.1.13",
+ "pin-project",
 ]
 
 [[package]]
@@ -5793,31 +5793,11 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
-version = "0.4.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ef0f924a5ee7ea9cbcea77529dba45f8a9ba9f622419fe3386ca581a3ae9d5a"
-dependencies = [
- "pin-project-internal 0.4.30",
-]
-
-[[package]]
-name = "pin-project"
 version = "1.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924"
 dependencies = [
- "pin-project-internal 1.1.13",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "0.4.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "851c8d0ce9bebe43790dedfc86614c23494ac9f423dd618d3a61fc693eafe61e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
+ "pin-project-internal",
 ]
 
 [[package]]
@@ -7915,7 +7895,7 @@ dependencies = [
  "multiaddr",
  "nom 7.1.3",
  "once_cell",
- "pin-project 1.1.13",
+ "pin-project",
  "prost 0.13.5",
  "rand 0.10.3",
  "serde",
@@ -7952,7 +7932,6 @@ dependencies = [
  "anyhow",
  "bitflags 2.13.0",
  "blake2 0.10.6",
- "chacha20 0.7.3",
  "chacha20poly1305",
  "chrono",
  "clap",
@@ -7966,7 +7945,7 @@ dependencies = [
  "log",
  "once_cell",
  "petgraph 0.5.1",
- "pin-project 0.4.30",
+ "pin-project",
  "prost 0.13.5",
  "rand 0.10.3",
  "serde",
@@ -8920,7 +8899,7 @@ dependencies = [
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
- "pin-project 1.1.13",
+ "pin-project",
  "prost 0.13.5",
  "socket2 0.5.10",
  "tokio",
@@ -8949,7 +8928,7 @@ dependencies = [
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
- "pin-project 1.1.13",
+ "pin-project",
  "prost 0.13.5",
  "rustls-native-certs",
  "socket2 0.5.10",
@@ -9011,7 +8990,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "indexmap 1.9.3",
- "pin-project 1.1.13",
+ "pin-project",
  "pin-project-lite",
  "rand 0.8.6",
  "slab",
@@ -9437,7 +9416,7 @@ dependencies = [
  "mime",
  "mime_guess",
  "percent-encoding",
- "pin-project 1.1.13",
+ "pin-project",
  "scoped-tls",
  "serde",
  "serde_json",
@@ -10018,7 +9997,7 @@ dependencies = [
  "log",
  "nohash-hasher",
  "parking_lot 0.12.5",
- "pin-project 1.1.13",
+ "pin-project",
  "rand 0.9.4",
  "static_assertions",
  "web-time",
