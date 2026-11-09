@@ -321,8 +321,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     /// Performs message validation that should be performed by all nodes. If an error is encountered, the message is
     /// invalid and should never have been propagated.
     ///
-    /// These failure modes are detectable by any node, but not attributable to the direct source (see the attribution
-    /// rule above), so the message is only dropped.
+    /// The message is only dropped, never banned for (see the attribution rule above). For the flood ban, the failures
+    /// every relay version also checks count as the source's own; the rest count by the signer the message claims.
     fn initial_validation(message: DhtInboundMessage) -> Result<ValidatedDhtInboundMessage, DecryptionError> {
         // Relays of every version reject these failures before forwarding, so the source is to blame for them and they
         // count as its own. The exceptions stay counted by the claimed signer: a non-canonical signature encoding

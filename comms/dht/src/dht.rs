@@ -429,6 +429,7 @@ mod test {
 
     use futures::future;
     use tari_comms::{
+        Bytes,
         BytesMut,
         message::{MessageExt, MessageTag, OutboundMessage},
         peer_manager::NodeId,
@@ -448,6 +449,7 @@ mod test {
         crypt,
         envelope::{DhtEnvelope, DhtMessageFlags, DhtMessageHeader, NodeDestination},
         outbound::{
+            OutboundEncryption,
             SendMessageParams,
             mock::{OutboundServiceMockState, create_outbound_service_mock},
         },
@@ -1320,6 +1322,56 @@ mod test {
         let _result = service
             .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
             .await;
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// A message `sender` encrypts for `recipient`, as `sender`'s outbound pipeline puts it on the wire
+    async fn encrypted_message(sender: Arc<NodeIdentity>, recipient: &NodeIdentity, shutdown: &Shutdown) -> Bytes {
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let dht = build_dht(sender, &[recipient], connectivity, out_tx, shutdown).await;
+        let (wire_tx, mut wire_rx) = mpsc::channel(1);
+        let mut outbound = dht.outbound_middleware_layer().layer(SinkService::new(wire_tx));
+        let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+        outbound
+            .call(DhtOutboundRequest::SendMessage(
+                Box::new(
+                    SendMessageParams::new()
+                        .direct_public_key(recipient.public_key().clone())
+                        .with_destination(recipient.public_key().clone().into())
+                        .with_encryption(OutboundEncryption::encrypt_for(recipient.public_key().clone()))
+                        .finish(),
+                ),
+                crypt::prepare_message(true, &wrap_in_envelope_body!(b"for you".to_vec())).unwrap(),
+                reply_tx,
+            ))
+            .await
+            .unwrap();
+        let message: OutboundMessage = time::timeout(Duration::from_secs(10), wire_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        message.body
+    }
+
+    /// An encrypted message for this node is the delivering peer's own once decryption shows that peer sent it, and
+    /// counts in the forwarded series when another peer delivers it
+    #[tokio::test]
+    async fn an_encrypted_message_for_this_node_counts_by_its_decrypted_sender() {
+        let sender = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sender, &relay], &shutdown).await;
+        let spy = service_spy();
+        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
+
+        let bytes = encrypted_message(sender.clone(), &dht.node_identity, &shutdown).await;
+        service.call(make_comms_inbound_message(&sender, bytes)).await.unwrap();
+        assert_eq!(spy.call_count(), 1);
+        assert_eq!(series_counts(&dht, &sender).await, (1, 0));
+
+        let bytes = encrypted_message(sender, &dht.node_identity, &shutdown).await;
+        service.call(make_comms_inbound_message(&relay, bytes)).await.unwrap();
         assert_eq!(series_counts(&dht, &relay).await, (0, 1));
     }
 

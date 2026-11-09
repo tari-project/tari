@@ -176,7 +176,11 @@ impl ForwardBudget {
                         .by_source
                         .len()
                         .saturating_add(usize::from(!forwards.by_source.contains_key(source)));
-                    let fair_share = max_per_peer.checked_div(num_active.saturating_add(1)).unwrap_or(0);
+                    // At least 1, so that a small budget split many ways still lets each source through
+                    let fair_share = max_per_peer
+                        .checked_div(num_active.saturating_add(1))
+                        .unwrap_or(0)
+                        .max(1);
                     if forwards.by_source.get(source).map_or(0, VecDeque::len) >= fair_share {
                         return false;
                     }
