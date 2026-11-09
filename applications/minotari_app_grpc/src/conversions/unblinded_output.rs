@@ -26,7 +26,7 @@ use std::{
 };
 
 use borsh::BorshSerialize;
-use tari_common_types::types::{CompressedPublicKey, PrivateKey, RangeProof};
+use tari_common_types::types::{CompressedPublicKey, MAX_RANGE_PROOF_BYTES, PrivateKey, RangeProof};
 use tari_script::{ExecutionStack, TariScript};
 use tari_transaction_components::{
     MicroMinotari,
@@ -235,6 +235,12 @@ fn convert_unblinded_output(output: &mut grpc::UnblindedOutput) -> Result<Unblin
         if proof.proof_bytes.is_empty() {
             None
         } else {
+            if proof.proof_bytes.len() != MAX_RANGE_PROOF_BYTES {
+                return Err(format!(
+                    "Range proof is invalid: length {} does not match expected size of {MAX_RANGE_PROOF_BYTES} bytes",
+                    proof.proof_bytes.len()
+                ));
+            }
             let proof = RangeProof::from_vec(&proof.proof_bytes).map_err(|e| format!("Range proof is invalid: {e}"))?;
             Some(proof)
         }

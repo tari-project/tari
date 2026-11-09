@@ -104,9 +104,9 @@ impl Serialize for BulletRangeProof {
 }
 
 fn check_range_proof_len(len: usize) -> Result<(), String> {
-    if len != 0 && len != MAX_RANGE_PROOF_BYTES {
+    if len > MAX_RANGE_PROOF_BYTES {
         return Err(format!(
-            "Range proof of {len} bytes does not match expected size of {MAX_RANGE_PROOF_BYTES} bytes"
+            "Range proof of {len} bytes exceeds maximum size of {MAX_RANGE_PROOF_BYTES} bytes"
         ));
     }
     Ok(())

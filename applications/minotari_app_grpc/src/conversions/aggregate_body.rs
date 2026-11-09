@@ -23,22 +23,18 @@
 use std::convert::TryFrom;
 
 use tari_common_types::types::BlockHash;
-use tari_transaction_components::{
-    aggregated_body::AggregateBody,
-    consensus::ConsensusConstants,
-    weight::WeightParams,
-};
+use tari_transaction_components::{aggregated_body::AggregateBody, consensus::ConsensusConstants};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{conversions::transaction_output::grpc_output_with_payref, tari_rpc as grpc};
 
 /// Checks that the element counts in an `AggregateBody` do not exceed the network's maximum block transaction weight
 /// under the current consensus weight parameters, accounting for allowed coinbases.
-/// Rejection is O(1) based solely on collection lengths before any element parsing or allocation.
+/// Rejection is O(1) based solely on collection lengths before conversion into domain types.
 pub fn check_body_size(body: &grpc::AggregateBody, consensus_constants: &ConsensusConstants) -> Result<(), String> {
     let max_weight = consensus_constants.max_block_transaction_weight();
     let max_coinbase = consensus_constants.max_block_coinbase_count();
-    let weight_params = WeightParams::v1();
+    let weight_params = consensus_constants.transaction_weight_params().params();
 
     let num_inputs = body.inputs.len() as u64;
     if num_inputs.saturating_mul(weight_params.input_weight) > max_weight {
@@ -120,11 +116,13 @@ mod tests {
         let rules = ConsensusManager::builder(Network::MainNet).build();
         let constants = rules.consensus_constants(0);
         let max_weight = constants.max_block_transaction_weight();
-        let weight_params = WeightParams::v1();
+        let weight_params = constants.transaction_weight_params().params();
 
-        let too_many_inputs = (max_weight / weight_params.input_weight) + 1;
-        let mut body = grpc::AggregateBody::default();
-        body.inputs = vec![grpc::TransactionInput::default(); too_many_inputs as usize];
+        let too_many_inputs = usize::try_from((max_weight / weight_params.input_weight) + 1).unwrap();
+        let body = grpc::AggregateBody {
+            inputs: vec![grpc::TransactionInput::default(); too_many_inputs],
+            ..Default::default()
+        };
 
         let err = check_body_size(&body, constants).unwrap_err();
         assert!(err.contains("input count"));
@@ -134,10 +132,79 @@ mod tests {
     fn check_body_size_accepts_valid_body() {
         let rules = ConsensusManager::builder(Network::MainNet).build();
         let constants = rules.consensus_constants(0);
-        let mut body = grpc::AggregateBody::default();
-        body.inputs = vec![grpc::TransactionInput::default(); 5];
-        body.outputs = vec![grpc::TransactionOutput::default(); 5];
-        body.kernels = vec![grpc::TransactionKernel::default(); 5];
+        let body = grpc::AggregateBody {
+            inputs: vec![grpc::TransactionInput::default(); 5],
+            outputs: vec![grpc::TransactionOutput::default(); 5],
+            kernels: vec![grpc::TransactionKernel::default(); 5],
+        };
         assert!(check_body_size(&body, constants).is_ok());
+    }
+
+    #[test]
+    fn check_body_size_boundary_outputs_with_coinbase() {
+        let rules = ConsensusManager::builder(Network::MainNet).build();
+        let constants = rules.consensus_constants(0);
+        let max_weight = constants.max_block_transaction_weight();
+        let max_coinbase = constants.max_block_coinbase_count();
+        let weight_params = constants.transaction_weight_params().params();
+
+        let max_outputs = usize::try_from((max_weight / weight_params.output_weight) + max_coinbase).unwrap();
+        let valid_body = grpc::AggregateBody {
+            outputs: vec![grpc::TransactionOutput::default(); max_outputs],
+            ..Default::default()
+        };
+        assert!(check_body_size(&valid_body, constants).is_ok());
+
+        let invalid_body = grpc::AggregateBody {
+            outputs: vec![grpc::TransactionOutput::default(); max_outputs + 1],
+            ..Default::default()
+        };
+        let err = check_body_size(&invalid_body, constants).unwrap_err();
+        assert!(err.contains("output count"));
+    }
+
+    #[test]
+    fn check_body_size_boundary_kernels_with_coinbase() {
+        let rules = ConsensusManager::builder(Network::MainNet).build();
+        let constants = rules.consensus_constants(0);
+        let max_weight = constants.max_block_transaction_weight();
+        let max_coinbase = constants.max_block_coinbase_count();
+        let weight_params = constants.transaction_weight_params().params();
+
+        let max_kernels = usize::try_from((max_weight / weight_params.kernel_weight) + max_coinbase).unwrap();
+        let valid_body = grpc::AggregateBody {
+            kernels: vec![grpc::TransactionKernel::default(); max_kernels],
+            ..Default::default()
+        };
+        assert!(check_body_size(&valid_body, constants).is_ok());
+
+        let invalid_body = grpc::AggregateBody {
+            kernels: vec![grpc::TransactionKernel::default(); max_kernels + 1],
+            ..Default::default()
+        };
+        let err = check_body_size(&invalid_body, constants).unwrap_err();
+        assert!(err.contains("kernel count"));
+    }
+
+    #[test]
+    fn check_body_size_rejects_mixed_body_exceeding_combined_weight() {
+        let rules = ConsensusManager::builder(Network::MainNet).build();
+        let constants = rules.consensus_constants(0);
+        let max_weight = constants.max_block_transaction_weight();
+        let max_coinbase = constants.max_block_coinbase_count();
+        let weight_params = constants.transaction_weight_params().params();
+
+        // Individually within limits, but combined weight exceeds max_weight
+        let half_inputs = usize::try_from((max_weight / weight_params.input_weight) / 2 + 10).unwrap();
+        let half_outputs = usize::try_from((max_weight / weight_params.output_weight) / 2 + max_coinbase + 10).unwrap();
+
+        let body = grpc::AggregateBody {
+            inputs: vec![grpc::TransactionInput::default(); half_inputs],
+            outputs: vec![grpc::TransactionOutput::default(); half_outputs],
+            ..Default::default()
+        };
+
+        let err = check_body_size(&body, constants).unwrap_err();
+        assert!(err.contains("minimum weight"));
     }
 }
