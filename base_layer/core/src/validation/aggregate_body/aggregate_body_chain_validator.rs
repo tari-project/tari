@@ -869,6 +869,24 @@ mod test {
         assert!(matches!(err, ValidationError::MaturityError));
     }
 
+    #[tokio::test]
+    async fn block_body_timelocks_are_checked_at_the_header_height() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let (block, _) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+        let header = block.header().clone();
+        let height = header.height;
+        let constants = rules.consensus_constants(height).clone();
+        let validator = AggregateBodyChainLinkedValidator::new(rules);
+        let db = blockchain.db().db_read_access().unwrap();
+
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![kernel_locked_at(height)]);
+        validator.validate_body(&body, &*db, &constants, &header).unwrap();
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![kernel_locked_at(height + 1)]);
+        let err = validator.validate_body(&body, &*db, &constants, &header).unwrap_err();
+        assert!(matches!(err, ValidationError::MaturityError));
+    }
+
     mod duplicated_inputs_outputs {
         use tari_script::{ExecutionStack, StackItem, script};
 
