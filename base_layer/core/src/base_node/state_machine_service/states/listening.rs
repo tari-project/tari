@@ -539,9 +539,15 @@ impl Listening {
         local_metadata: &ChainMetadata,
         peer_metadata: &PeerChainMetadata,
     ) {
-        // SyncNotPossible is also returned for a peer far behind us, which says nothing about a stronger chain
-        let claims_stronger_chain =
-            peer_metadata.claimed_chain_metadata().accumulated_difficulty() > local_metadata.accumulated_difficulty();
+        // SyncNotPossible is also returned for a peer far behind us, which says nothing about a stronger chain, and
+        // before the propagation tolerance is applied, so a peer whose blocks are still propagating does not count
+        let peer_claim = peer_metadata.claimed_chain_metadata();
+        let claims_stronger_chain = peer_claim.accumulated_difficulty() > local_metadata.accumulated_difficulty() &&
+            !within_propagation_tolerance(
+                shared.config.blocks_behind_before_considered_lagging,
+                local_metadata.best_block_height(),
+                peer_claim.best_block_height(),
+            );
         state.seen_stronger_chain |=
             sync_mode.is_lagging() || (sync_mode.is_sync_not_possible() && claims_stronger_chain);
         if self.is_synced {
@@ -563,7 +569,14 @@ impl Listening {
     /// How many distinct up-to-date peers declare initial sync: `initial_sync_peer_count`, but no more than the forced
     /// sync peers when those are configured, as no other peer is counted
     fn initial_sync_peer_threshold<B: BlockchainBackend + 'static>(shared: &BaseNodeStateMachine<B>) -> u64 {
-        let forced_sync_peers = shared.config.blockchain_sync_config.forced_sync_peers.len();
+        // The same peer may be listed once per address
+        let forced_sync_peers = shared
+            .config
+            .blockchain_sync_config
+            .forced_sync_peers
+            .iter()
+            .collect::<HashSet<_>>()
+            .len();
         if forced_sync_peers == 0 {
             shared.config.initial_sync_peer_count
         } else {
@@ -731,6 +744,14 @@ impl From<DecideNextSync> for Listening {
     }
 }
 
+/// Whether a peer's tip is close enough above ours that its blocks are probably still propagating to us. A tolerance
+/// of 0 turns this off, and a tip at or below ours never qualifies, as such chains would never be reorged to.
+fn within_propagation_tolerance(tolerance: u64, local_tip_height: u64, network_tip_height: u64) -> bool {
+    tolerance > 0 &&
+        network_tip_height > local_tip_height &&
+        local_tip_height.saturating_add(tolerance) >= network_tip_height
+}
+
 /// Given a local and the network chain state respectively, figure out what synchronisation state we should be in.
 #[allow(clippy::too_many_lines)]
 fn determine_sync_mode(
@@ -788,22 +809,20 @@ fn determine_sync_mode(
 
         // This is to test the block propagation by delaying lagging.
         // If the config is 0, ignore this set.
-        if blocks_behind_before_considered_lagging > 0 {
-            // Otherwise, only wait when the tip is above us, otherwise
-            // chains with a lower height will never be reorged to.
-            if network_tip_height > local_tip_height &&
-                local_tip_height.saturating_add(blocks_behind_before_considered_lagging) >= network_tip_height
-            {
-                trace!(
-                    target: LOG_TARGET,
-                    "While we are behind, we are still within {blocks_behind_before_considered_lagging} blocks of them, so we are staying as listening and \
-                     waiting for the propagated blocks"
-                );
-                return SyncStatus::BehindButNotYetLagging {
-                    local: local.clone(),
-                    network: network.claimed_chain_metadata().clone(),
-                    sync_peers: vec![network.clone().into()],
-                };
+        if within_propagation_tolerance(
+            blocks_behind_before_considered_lagging,
+            local_tip_height,
+            network_tip_height,
+        ) {
+            trace!(
+                target: LOG_TARGET,
+                "While we are behind, we are still within {blocks_behind_before_considered_lagging} blocks of them, so we are staying as listening and \
+                 waiting for the propagated blocks"
+            );
+            return SyncStatus::BehindButNotYetLagging {
+                local: local.clone(),
+                network: network.claimed_chain_metadata().clone(),
+                sync_peers: vec![network.clone().into()],
             };
         }
 
@@ -1097,6 +1116,40 @@ mod test {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn a_peer_we_cannot_sync_from_within_the_propagation_tolerance_does_not_stop_the_timeout() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let mut listening = Listening::new();
+        let mut state = ListeningLoopState::default();
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &SyncStatus::UpToDate,
+            &local(),
+            &equal_peer(),
+        );
+        let one_ahead = peer_chain_metadata(101, U512::from(1010));
+        listening.update_initial_sync_status(
+            &mut state_machine,
+            &mut state,
+            &sync_not_possible(),
+            &local(),
+            &one_ahead,
+        );
+        assert!(!state.seen_stronger_chain);
+
+        time::advance(INITIAL_SYNC_UP_TO_DATE_TIMEOUT).await;
+        assert!(listening.check_initial_sync(&mut state_machine, &state));
+    }
+
+    #[test]
+    fn duplicate_forced_sync_peers_count_once() {
+        let (mut state_machine, _metadata_tx) = idle_state_machine();
+        let (a, b) = (random_node_id(), random_node_id());
+        state_machine.config.blockchain_sync_config.forced_sync_peers = vec![a.clone(), a, b];
+        assert_eq!(Listening::initial_sync_peer_threshold(&state_machine), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn a_stronger_peer_we_cannot_sync_from_stops_the_timeout_from_declaring_initial_sync() {
         let (mut state_machine, _metadata_tx) = idle_state_machine();
         let mut listening = Listening::new();
@@ -1108,7 +1161,7 @@ mod test {
             &local(),
             &equal_peer(),
         );
-        // A peer far behind us does not count
+        // A peer far behind us does not count, but one beyond the propagation tolerance does
         let weaker_peer = peer_chain_metadata(10, U512::from(100));
         listening.update_initial_sync_status(
             &mut state_machine,
