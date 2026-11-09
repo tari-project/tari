@@ -39,16 +39,18 @@ pub async fn start(listen_addr: SocketAddr, registry: Registry) {
 }
 
 async fn metrics_text_handler(registry: Registry) -> Result<impl Reply, Rejection> {
-    task::spawn_blocking::<_, Result<_, Error>>(move || {
+    let (encoded, content_type) = task::spawn_blocking::<_, Result<_, Error>>(move || {
         let text_encoder = TextEncoder::new();
         let mut buffer = Vec::new();
         text_encoder.encode(&registry.gather(), &mut buffer)?;
         let encoded = String::from_utf8(buffer)?;
-        Ok(encoded)
+        Ok((encoded, text_encoder.format_type().to_string()))
     })
     .await
     .map_err(Error::BlockingThreadFailed)?
-    .map_err(Into::into)
+    .map_err(Rejection::from)?;
+
+    Ok(warp::reply::with_header(encoded, "Content-Type", content_type))
 }
 
 fn with<T: Clone + Send>(t: T) -> impl Filter<Extract = (T,), Error = Infallible> + Clone {
