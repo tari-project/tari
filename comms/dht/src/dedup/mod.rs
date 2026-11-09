@@ -238,6 +238,10 @@ where
                         message.tag,
                         message.source_peer.node_id.short_str()
                     );
+                    // A copy of a Join another peer delivered first does not count against this one; its own repeats do
+                    if !is_repeat {
+                        metrics::record_flood_sample(false).await;
+                    }
                     return Ok(());
                 }
                 return next_service.oneshot(message).await;
@@ -388,6 +392,72 @@ mod test {
         dedup.clone().call(domain.clone()).await.unwrap();
         dedup.clone().call(domain).await.unwrap();
         assert_eq!(mock_state.call_count(), 2);
+    }
+
+    /// A copy of an accepted Join delivered by another peer does not count against that peer, while a source's own
+    /// repeat of a Join does
+    #[tokio::test]
+    async fn only_a_sources_own_join_repeats_count_against_it() {
+        use std::time::Duration;
+
+        use tari_comms::{Bytes, message::InboundMessage};
+        use tower::service_fn;
+
+        use crate::{
+            connectivity::{FloodSeries, MetricsCollector},
+            inbound::MetricsLayer,
+        };
+
+        let (dht_requester, mock) = create_dht_actor_mock();
+        tokio::spawn(mock.run());
+        let accepted_joins = SharedAcceptedJoins::default();
+        let dedup = DedupLayer::new(dht_requester, 1)
+            .with_accepted_joins(accepted_joins.clone())
+            .layer(service_spy().to_service::<PipelineError>());
+        let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+        let mut deliver = |message: DecryptedDhtMessage| {
+            let source = message.source_peer.node_id.clone();
+            let dedup = dedup.clone();
+            MetricsLayer::new(collector.clone())
+                .layer(service_fn(move |_: InboundMessage| {
+                    dedup.clone().oneshot(message.clone())
+                }))
+                .call(InboundMessage::new(source, Bytes::new()))
+        };
+        let join_from = |source: &tari_comms::peer_manager::NodeIdentity| {
+            let inbound_message =
+                make_dht_inbound_message(source, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
+            let mut message = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
+            message.dht_header.message_type = DhtMessageType::Join;
+            message
+        };
+
+        let source = make_node_identity();
+        let join = join_from(&source);
+        deliver(join.clone()).await.unwrap();
+        deliver(join.clone()).await.unwrap();
+        accepted_joins.lock().unwrap().insert(join.dedup_hash.clone());
+        let relay = make_node_identity();
+        deliver(join_from(&relay)).await.unwrap();
+
+        let own = |peer: &tari_comms::peer_manager::NodeIdentity| {
+            let mut collector = collector.clone();
+            let node_id = peer.node_id().clone();
+            async move {
+                collector
+                    .get_messages_received_timeseries(node_id, FloodSeries::Own)
+                    .await
+                    .unwrap()
+                    .count()
+            }
+        };
+        assert_eq!(own(&source).await, 2);
+        assert_eq!(own(&relay).await, 0);
+        let total = collector
+            .get_total_message_count_in_timespan(Duration::from_secs(60))
+            .await
+            .unwrap();
+        assert_eq!(total, 3);
     }
 
     /// A Join that failed to decrypt is only forwarded, so its copies are deduped by the cache as before
