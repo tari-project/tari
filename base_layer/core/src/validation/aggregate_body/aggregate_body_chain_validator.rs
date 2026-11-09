@@ -139,8 +139,9 @@ impl AggregateBodyChainLinkedValidator {
     }
 
     /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
-    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `spend_height` is the height input
-    /// maturity is checked at, and `vn_epoch` is the epoch the validator node registration/exit rules are evaluated in.
+    /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `spend_height` is the height the
+    /// body would be mined at, used for the input maturity and timelock checks, and `vn_epoch` is the epoch the
+    /// validator node registration/exit rules are evaluated in.
     fn check_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
@@ -498,7 +499,7 @@ pub fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(),
     if body.min_spendable_height()? > current_height {
         warn!(
             target: LOG_TARGET,
-            "AggregateBody has a min spend height higher than the current tip"
+            "AggregateBody has a min spend height higher than the height it would be mined at"
         );
         return Err(ValidationError::MaturityError);
     }
