@@ -50,6 +50,7 @@ use crate::{
     SeedPeerProvider,
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
+    dedup::SharedAcceptedJoins,
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     envelope::DhtMessageType,
     event::{DhtEventReceiver, DhtEventSender},
@@ -57,7 +58,7 @@ use crate::{
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
-    network_discovery::DhtNetworkDiscovery,
+    network_discovery::{DhtNetworkDiscovery, SharedSourceBudget},
     outbound,
     outbound::DhtOutboundRequest,
     rpc,
@@ -103,6 +104,10 @@ pub struct Dht {
     metrics_collector: MetricsCollectorHandle,
     /// Re-resolves seed peers for a rebootstrap
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
+    /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
+    join_budget: SharedSourceBudget,
+    /// The Joins the DHT handler accepted, which the dedup layer then drops
+    accepted_joins: SharedAcceptedJoins,
 }
 
 impl Dht {
@@ -138,6 +143,8 @@ impl Dht {
             discovery_sender,
             event_publisher,
             seed_peer_provider,
+            join_budget: Default::default(),
+            accepted_joins: Default::default(),
         };
 
         // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
@@ -290,10 +297,10 @@ impl Dht {
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
-            .layer(DedupLayer::new(
-                self.dht_requester(),
-                self.config.dedup_allowed_message_occurrences,
-            ))
+            .layer(
+                DedupLayer::new(self.dht_requester(), self.config.dedup_allowed_message_occurrences)
+                    .with_accepted_joins(self.accepted_joins.clone()),
+            )
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
@@ -312,6 +319,8 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
+                self.join_budget.clone(),
+                self.accepted_joins.clone(),
             ))
             .into_inner()
     }
@@ -419,7 +428,7 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use futures::future;
     use tari_comms::{
@@ -1043,6 +1052,13 @@ mod test {
             .collect()
     }
 
+    /// Re-signs `identity` a second later, so that its Join carries a claim newer than the one already stored for it
+    /// and is propagated
+    async fn resign_later(identity: &NodeIdentity) {
+        time::sleep(Duration::from_millis(1100)).await;
+        identity.sign();
+    }
+
     /// Builds relay H, whose outbound requests go to a mock so propagated messages can be captured
     async fn build_relay(
         relay: Arc<NodeIdentity>,
@@ -1057,6 +1073,201 @@ mod test {
         (dht, oms_mock_state)
     }
 
+    /// A source that uses up its Join budget at a node still has its whole OnConnect budget there: a Join flood
+    /// relayed by an honest neighbour does not stop OnConnect between the two
+    #[tokio::test]
+    async fn exhausting_the_join_budget_leaves_the_on_connect_budget() {
+        let source = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&source], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let max = dht.config.network_discovery.max_stored_per_source;
+
+        for _ in 0..max {
+            let signer = make_node_identity();
+            let envelope = signed_envelope(
+                &signer,
+                DhtMessageType::Join,
+                signer.public_key().clone().into(),
+                None,
+                wrap_in_envelope_body!(JoinMessage::from(&signer)).to_encoded_bytes(),
+            );
+            service
+                .call(make_comms_inbound_message(&source, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        oms_mock_state
+            .wait_call_count(max, Duration::from_secs(10))
+            .await
+            .unwrap();
+
+        let source_id = source.node_id();
+        let now = Instant::now();
+        let config = &dht.config.network_discovery;
+        assert!(!dht.join_budget.lock().unwrap().has_headroom(source_id, now, config));
+        let discovery = dht.network_discovery_service(shutdown.to_signal());
+        assert!(
+            discovery
+                .source_budget()
+                .lock()
+                .unwrap()
+                .has_headroom(source_id, now, config)
+        );
+    }
+
+    /// A source that has used up its Join budget delivers a Join first, twice at once, and keeps resending it: the
+    /// copy an honest source delivers next is still processed, so the origin is stored and propagated exactly once
+    #[tokio::test]
+    async fn a_capped_source_delivering_a_join_first_does_not_suppress_it() {
+        let capped = make_node_identity();
+        let honest = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest], &shutdown).await;
+        let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let max = dht.config.network_discovery.max_stored_per_source;
+        {
+            let mut budget = dht.join_budget.lock().unwrap();
+            for _ in 0..max {
+                let peer = make_node_identity();
+                assert!(budget.try_charge(
+                    capped.node_id(),
+                    peer.node_id(),
+                    Instant::now(),
+                    &dht.config.network_discovery
+                ));
+            }
+        }
+
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
+        );
+        let deliver = |source: &NodeIdentity| {
+            service
+                .clone()
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+        };
+        // Two copies from the capped source at once, then repeats from both sources
+        let (first, second) = futures::join!(deliver(&capped), deliver(&capped));
+        first.unwrap();
+        second.unwrap();
+        for source in [&capped, &honest, &capped, &honest] {
+            deliver(source).await.unwrap();
+        }
+
+        assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
+    }
+
+    /// An honest copy of a Join arrives while a capped source's copy is being handled: the Join is still stored and
+    /// propagated exactly once, and once accepted a third source's copy is dropped by the dedup layer
+    #[tokio::test]
+    async fn an_honest_copy_racing_a_capped_copy_is_processed_once() {
+        let capped = make_node_identity();
+        let honest = make_node_identity();
+        let third = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest, &third], &shutdown).await;
+        let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        {
+            let mut budget = dht.join_budget.lock().unwrap();
+            for _ in 0..dht.config.network_discovery.max_stored_per_source {
+                let peer = make_node_identity();
+                budget.try_charge(
+                    capped.node_id(),
+                    peer.node_id(),
+                    Instant::now(),
+                    &dht.config.network_discovery,
+                );
+            }
+        }
+
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
+        );
+        let deliver = |source: &NodeIdentity| {
+            service
+                .clone()
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+        };
+        let (capped_result, honest_result) = futures::join!(deliver(&capped), deliver(&honest));
+        capped_result.unwrap();
+        honest_result.unwrap();
+        assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());
+        assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
+
+        deliver(&third).await.unwrap();
+        deliver(&capped).await.unwrap();
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
+        assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
+    }
+
+    /// A Join whose claim fails validation, relayed by two sources, is validated (and its signer banned) once: the
+    /// second copy is dropped by the dedup layer
+    #[tokio::test]
+    async fn an_invalid_join_from_two_relays_is_validated_once() {
+        let first = make_node_identity();
+        let second = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let dht = build_dht(
+            make_node_identity(),
+            &[&first, &second],
+            connectivity,
+            out_tx,
+            &shutdown,
+        )
+        .await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut join = JoinMessage::from(&origin);
+        // Still a parseable address, but not the one the identity signature covers
+        join.addresses = vec![
+            "/ip4/23.23.23.2/tcp/18189"
+                .parse::<tari_comms::multiaddr::Multiaddr>()
+                .unwrap()
+                .to_vec(),
+        ];
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(join).to_encoded_bytes(),
+        );
+        for source in [&first, &second] {
+            let _result = service
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+                .await;
+        }
+
+        assert_eq!(banned_peers(&mock_state).await, vec![origin.node_id().clone()]);
+        assert!(!dht.peer_manager.exists(origin.public_key()).await.unwrap());
+    }
+
     /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it
     /// received, so N verifies the Join and accepts it. N bans no one.
     #[tokio::test]
@@ -1068,6 +1279,7 @@ mod test {
 
         let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+        resign_later(&attacker).await;
 
         let mut body = wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes();
         body.extend_from_slice(&[0x10, 0x01]);
@@ -1163,6 +1375,7 @@ mod test {
 
         let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+        resign_later(&attacker).await;
 
         let mut envelope = signed_envelope(
             &attacker,
