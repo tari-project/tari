@@ -2443,31 +2443,21 @@ impl UnconfirmedPool {
         Ok(removed)
     }
 
-    /// Removes every pool transaction that produces an output commitment `published_block` produced (as an output or
-    /// a burn), or contains a kernel excess `published_block` contains: they can never be mined now, even though their
-    /// outputs or kernels differ in other respects.
+    /// Removes every pool transaction that produces an output commitment `published_block` produced, or contains a
+    /// kernel excess `published_block` contains: they can never be mined now, even though their outputs or kernels
+    /// differ in other respects.
     fn remove_by_commitments_and_kernel_excesses(
         &mut self,
         published_block: &Block,
     ) -> Result<Vec<Arc<Transaction>>, UnconfirmedPoolError> {
         let mut to_remove: Vec<TransactionKey> = Vec::new();
-        // Remove all transactions that produce an output commitment the block produced (as an output or a burn), or
-        // contain a kernel excess the block contains: they can never be mined now, even though their outputs or
-        // kernels differ in other respects
+        // A burn's commitment is always that of a burned output in the same body, so outputs alone cover burns
         let timer = Instant::now();
         let commitments = published_block
             .body
             .outputs()
             .iter()
-            .map(|output| &output.commitment)
-            .chain(
-                published_block
-                    .body
-                    .kernels()
-                    .iter()
-                    .filter_map(|kernel| kernel.burn_commitment.as_ref()),
-            )
-            .filter_map(|commitment| FixedHash::try_from(commitment.as_bytes()).ok())
+            .filter_map(|output| FixedHash::try_from(output.commitment.as_bytes()).ok())
             .collect::<Vec<_>>();
         let excesses = published_block
             .body
@@ -4735,6 +4725,69 @@ mod test {
         assert_eq!(removed.len(), 2);
         assert!(removed.contains(&same_commitment));
         assert!(removed.contains(&same_excess));
+        assert_eq!(unconfirmed_pool.tx_by_key.len(), 1);
+        assert!(unconfirmed_pool.check_data_consistency());
+    }
+
+    #[tokio::test]
+    async fn publishing_a_block_matches_burns_by_output_commitment_only() {
+        use tari_transaction_components::transaction_components::{KernelFeatures, OutputFeatures};
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let consensus = create_consensus_rules();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let burn_tx = |n: u64| {
+            let tx = synthetic_tx(&base, n, 10);
+            let mut output = tx.body.outputs()[0].clone();
+            output.features = OutputFeatures::create_burn_output();
+            let mut kernel = tx.body.kernels()[0].clone();
+            kernel.features = KernelFeatures::create_burn();
+            kernel.burn_commitment = Some(output.commitment.clone());
+            (output, kernel)
+        };
+
+        let pending = synthetic_tx(&base, 0, 10);
+        let (burned_output, burn_kernel) = burn_tx(1);
+        let burn = Arc::new(Transaction::new(
+            vec![],
+            vec![burned_output.clone()],
+            vec![burn_kernel],
+            Default::default(),
+            Default::default(),
+        ));
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        for tx in [&pending, &burn] {
+            unconfirmed_pool.insert(tx.clone(), None, &tx_weight).unwrap();
+        }
+
+        // A non-burn kernel naming a pending output's commitment does not remove the pending transaction
+        let mut kernel = synthetic_tx(&base, 2, 10).body.kernels()[0].clone();
+        kernel.burn_commitment = Some(pending.body.outputs()[0].commitment.clone());
+        let other = with_kernels(&base, 3, vec![kernel]);
+        // This body fails block validation; it only exercises the pool
+        let published_block = create_orphan_block(0, vec![(*other).clone()], &consensus);
+        let removed = unconfirmed_pool
+            .remove_published_and_discard_deprecated_transactions(&published_block)
+            .unwrap();
+        assert!(removed.is_empty());
+        assert_eq!(unconfirmed_pool.tx_by_key.len(), 2);
+
+        // A mined burn of the same output (under a different kernel) still removes the pooled burn
+        let (_, mut other_burn_kernel) = burn_tx(4);
+        other_burn_kernel.burn_commitment = Some(burned_output.commitment.clone());
+        let mined_burn = Transaction::new(
+            vec![],
+            vec![burned_output],
+            vec![other_burn_kernel],
+            Default::default(),
+            Default::default(),
+        );
+        let published_block = create_orphan_block(1, vec![mined_burn], &consensus);
+        crate::validation::aggregate_body::check_total_burned(&published_block.body).unwrap();
+        let removed = unconfirmed_pool
+            .remove_published_and_discard_deprecated_transactions(&published_block)
+            .unwrap();
+        assert_eq!(removed, vec![burn]);
         assert_eq!(unconfirmed_pool.tx_by_key.len(), 1);
         assert!(unconfirmed_pool.check_data_consistency());
     }
