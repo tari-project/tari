@@ -116,7 +116,7 @@ impl AggregateBodyChainLinkedValidator {
         let vn_epoch = constants.block_height_to_epoch(next_height);
 
         self.validate_consensus(body, db)?;
-        self.check_body(body, db, constants, header, next_height, vn_epoch, true)
+        self.check_body(body, db, constants, next_height, vn_epoch, true)
     }
 
     fn validate_consensus<B: BlockchainBackend>(&self, body: &AggregateBody, db: &B) -> Result<(), ValidationError> {
@@ -135,19 +135,17 @@ impl AggregateBodyChainLinkedValidator {
         header: &BlockHeader,
     ) -> Result<(), ValidationError> {
         let vn_epoch = constants.block_height_to_epoch(header.height);
-        self.check_body(body, db, constants, header, header.height, vn_epoch, false)
+        self.check_body(body, db, constants, header.height, vn_epoch, false)
     }
 
     /// If `defer_unknown_inputs` is set, inputs that are not found in the database are only reported (as
     /// [`ValidationError::UnknownInputs`]) after all the other checks have passed. `spend_height` is the height input
     /// maturity is checked at, and `vn_epoch` is the epoch the validator node registration/exit rules are evaluated in.
-    #[allow(clippy::too_many_arguments)]
     fn check_body<B: BlockchainBackend>(
         &self,
         body: &AggregateBody,
         db: &B,
         constants: &ConsensusConstants,
-        header: &BlockHeader,
         spend_height: u64,
         vn_epoch: VnEpoch,
         defer_unknown_inputs: bool,
@@ -162,7 +160,7 @@ impl AggregateBodyChainLinkedValidator {
         check_outputs(db, constants, body, vn_epoch)?;
         verify_no_duplicate_validator_node_registrations(body)?;
         check_total_burned(body)?;
-        verify_timelocks(body, header.height)?;
+        verify_timelocks(body, spend_height)?;
 
         if !spent_inputs.is_empty() {
             return Err(ValidationError::SpentInputs {
@@ -494,10 +492,10 @@ pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
     Ok(())
 }
 
-// This function checks that all the timelocks in the provided transaction pass. It checks kernel lock heights and
-// input maturities
+/// Checks that all the timelocks in the body pass, i.e. kernel lock heights and input maturities. `current_height` is
+/// the height the body would be mined at: the block's own height, or for the mempool the height after the tip.
 pub fn verify_timelocks(body: &AggregateBody, current_height: u64) -> Result<(), ValidationError> {
-    if body.min_spendable_height()? > current_height.saturating_add(1) {
+    if body.min_spendable_height()? > current_height {
         warn!(
             target: LOG_TARGET,
             "AggregateBody has a min spend height higher than the current tip"
@@ -806,6 +804,68 @@ mod test {
             .validate_transaction_body(&body, &tip_header, &*db)
             .unwrap_err();
         assert!(matches!(err, ValidationError::DuplicateKernelError(_)));
+    }
+
+    fn kernel_locked_at(lock_height: u64) -> TransactionKernel {
+        TransactionKernel {
+            lock_height,
+            excess_sig: create_signature(
+                PrivateKey::random(&mut rand::rng()),
+                0.into(),
+                lock_height,
+                KernelFeatures::empty(),
+            ),
+            ..Default::default()
+        }
+    }
+
+    fn input_maturing_at(maturity: u64) -> TransactionInput {
+        let output = TransactionOutput {
+            features: OutputFeatures {
+                maturity,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        TransactionInput::new_current_version(
+            SpentOutput::create_from_output(output),
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    #[test]
+    fn block_timelocks_are_checked_at_the_block_height() {
+        let height = 10;
+        let at = |lock| AggregateBody::new_unsorted(vec![], vec![], vec![kernel_locked_at(lock)]);
+        verify_timelocks(&at(height), height).unwrap();
+        let err = verify_timelocks(&at(height + 1), height).unwrap_err();
+        assert!(matches!(err, ValidationError::MaturityError));
+
+        let at = |maturity| AggregateBody::new_unsorted(vec![input_maturing_at(maturity)], vec![], vec![]);
+        verify_timelocks(&at(height), height).unwrap();
+        let err = verify_timelocks(&at(height + 1), height).unwrap_err();
+        assert!(matches!(err, ValidationError::MaturityError));
+    }
+
+    #[tokio::test]
+    async fn mempool_timelocks_are_checked_at_the_next_height() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let (block, _) = blockchain.add_next_tip(block_spec!("A")).unwrap();
+        let tip_header = block.header().clone();
+        let tip = tip_header.height;
+        let validator = AggregateBodyChainLinkedValidator::new(rules);
+        let db = blockchain.db().db_read_access().unwrap();
+
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![kernel_locked_at(tip + 1)]);
+        validator.validate_transaction_body(&body, &tip_header, &*db).unwrap();
+        // A kernel-only body passes every check before `verify_timelocks`, so this rejection comes from it
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![kernel_locked_at(tip + 2)]);
+        let err = validator
+            .validate_transaction_body(&body, &tip_header, &*db)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::MaturityError));
     }
 
     mod duplicated_inputs_outputs {
