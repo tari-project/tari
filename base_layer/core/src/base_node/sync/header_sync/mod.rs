@@ -27,3 +27,6 @@ mod validator;
 
 mod synchronizer;
 pub use synchronizer::{AttemptSyncResult, HeaderSyncStatus, HeaderSynchronizer};
+
+#[cfg(test)]
+mod test;

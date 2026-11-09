@@ -379,6 +379,86 @@ async fn timeout() {
     assert_eq!(resp.greeting, "took a while to load");
 }
 
+/// Frames tagged with the previous request id are ignored, and the request still times out at its own deadline
+#[tokio::test]
+async fn ignored_stale_responses_do_not_extend_the_deadline() {
+    use futures::SinkExt;
+    use prost::Message;
+
+    use crate::{proto, protocol::rpc::handshake::Handshake};
+
+    const DEADLINE: Duration = Duration::from_millis(100);
+    const NUM_STALE: u32 = 20;
+    let (_, inbound, outbound) = build_multiplexed_connections().await;
+    let server = task::spawn(async move {
+        let mut incoming = inbound.into_incoming();
+        let mut framed = framing::canonical(incoming.next().await.unwrap(), 1024);
+        Handshake::new(&mut framed).perform_server_handshake().await.unwrap();
+        let request = proto::rpc::RpcRequest::decode(framed.next().await.unwrap().unwrap()).unwrap();
+        // Each stale frame arrives just before the deadline would expire if it were restarted by the last frame
+        for _ in 0..NUM_STALE {
+            time::sleep(DEADLINE * 8 / 10).await;
+            let stale = proto::rpc::RpcResponse {
+                request_id: request.request_id - 1,
+                payload: vec![1],
+                ..Default::default()
+            };
+            if framed.send(stale.encode_to_vec().into()).await.is_err() {
+                break;
+            }
+        }
+        framed
+    });
+
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let mut client = GreetingClient::builder()
+        .with_deadline(DEADLINE)
+        .with_deadline_grace_period(Duration::ZERO)
+        .connect(framing::canonical(socket, 1024))
+        .await
+        .unwrap();
+
+    let start = std::time::Instant::now();
+    let err = client.say_hello(Default::default()).await.unwrap_err();
+    let elapsed = start.elapsed();
+    unpack_enum!(RpcError::RequestFailed(status) = err);
+    assert_eq!(status.as_status_code(), RpcStatusCode::Timeout);
+    // Restarting the deadline on every stale frame would hold the request for about NUM_STALE * 80ms
+    assert!(elapsed < DEADLINE * 5, "request timed out after {elapsed:.0?}");
+    let _framed = server.await.unwrap();
+}
+
+/// A stream that runs longer than one deadline in total still completes while each item arrives within the deadline
+#[tokio::test]
+async fn a_stream_longer_than_the_deadline_completes_when_items_arrive_in_time() {
+    const NUM_ITEMS: u32 = 5;
+    let (_inbound, outbound, _, _, _shutdown) = setup(GreetingService::default(), 1).await;
+    let socket = outbound.get_yamux_control().open_stream().await.unwrap();
+    let mut client = GreetingClient::builder()
+        .with_deadline(Duration::from_secs(1))
+        .with_deadline_grace_period(Duration::ZERO)
+        .connect(framing::canonical(socket, 1024))
+        .await
+        .unwrap();
+
+    let start = std::time::Instant::now();
+    let mut resp = client
+        .slow_stream(SlowStreamRequest {
+            num_items: NUM_ITEMS,
+            item_size: 4,
+            delay_ms: 400,
+        })
+        .await
+        .unwrap();
+    let mut indices = Vec::new();
+    while let Some(item) = resp.next().await {
+        let item = item.unwrap();
+        indices.push(u32::from_le_bytes(item[..4].try_into().unwrap()));
+    }
+    assert_eq!(indices, (0..NUM_ITEMS).collect::<Vec<_>>());
+    assert!(start.elapsed() > Duration::from_secs(1));
+}
+
 /// A peer asking for a deadline beyond the server's ceiling must be held to the ceiling, and must
 /// be *told* when the request runs past it - not left waiting out its own, much longer, deadline.
 #[tokio::test]

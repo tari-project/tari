@@ -62,7 +62,11 @@ where D: Deserializer<'de> {
         where A: de::SeqAccess<'de> {
             let mut dns_list = Vec::new();
             while let Some(value) = seq.next_element::<String>()? {
-                let dns_name_server = DnsNameServer::from_str(&value).map_err(de::Error::custom)?;
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let dns_name_server = DnsNameServer::from_str(trimmed).map_err(de::Error::custom)?;
                 dns_list.push(dns_name_server);
             }
             Ok(DnsNameServerList::from(dns_list))
@@ -157,7 +161,8 @@ mod tests {
         let test = toml::from_str::<Test>(config_str).unwrap();
         assert_eq!(test.something.into_vec(), vec![]);
 
-        let config_str = r#"something = ["127.0.0.1:8080/my_dns", "system", "1.1.1.1:853/cloudflare-dns.com"]"#;
+        let config_str =
+            r#"something = ["", "127.0.0.1:8080/my_dns", "   ", "system", "1.1.1.1:853/cloudflare-dns.com"]"#;
         let test = toml::from_str::<Test>(config_str).unwrap();
         assert_eq!(test.something.into_vec(), vec![
             DnsNameServer::from_str("127.0.0.1:8080/my_dns").unwrap(),

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use primitive_types::U512;
 use tari_comms::{
@@ -28,7 +28,7 @@ use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
-use tari_node_components::blocks::BlockError;
+use tari_node_components::blocks::{BlockError, ChainBlock};
 use tari_transaction_components::{BanPeriod, BanReason};
 
 use crate::{chain_storage::ChainStorageError, validation::ValidationError};
@@ -59,6 +59,17 @@ pub enum BlockHeaderSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Node is still not in sync. Sync will be retried with another peer if possible.")]
     NotInSync,
+    #[error("Our chain changed during the sync attempt. Sync will be retried with another peer if possible.")]
+    ChainChangedDuringSync,
+    #[error("Sync attempts with the peer ended {count} times because our chain changed")]
+    RepeatedChainChangesDuringSync { count: usize },
+    #[error("The rewind to the chain split reset the chain to the genesis block. Header sync starts again.")]
+    ChainResetToGenesis { removed: Vec<Arc<ChainBlock>> },
+    #[error(
+        "The peer's chain is stronger than our blocks but not our headers, and switching to it would reset the chain. \
+         Sync will be retried with another peer if possible."
+    )]
+    WeakerThanLocalHeaders,
     #[error("The sync peer could not take an RPC session ({0}). Sync will be retried with another peer if possible.")]
     SyncPeerUnavailable(RpcError),
     #[error("Unable to locate start hash `{0}`")]
@@ -86,6 +97,8 @@ pub enum BlockHeaderSyncError {
         actual: Option<U512>,
         local: U512,
     },
+    #[error("Peer claimed a higher chain tip than they were able to provide. Claimed {claimed}, actual: {actual}")]
+    PeerSentInaccurateChainHeight { claimed: u64, actual: u64 },
     #[error("This peer sent too many headers ({0}) in response to a chain split request")]
     PeerSentTooManyHeaders(usize),
     #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
@@ -96,6 +109,8 @@ pub enum BlockHeaderSyncError {
     },
     #[error("All sync peers exceeded max allowed latency")]
     AllSyncPeersExceedLatency,
+    #[error("Header sync attempt with the peer did not complete within {budget:.2?}")]
+    SyncAttemptTimedOut { budget: Duration },
     #[error("Unable to get TargetDifficulties: ({0})")]
     TargetDifficultiesError(String),
     #[error(
@@ -129,6 +144,9 @@ impl BlockHeaderSyncError {
             BlockHeaderSyncError::AllSyncPeersExceedLatency |
             BlockHeaderSyncError::ConnectivityError(_) |
             BlockHeaderSyncError::NotInSync |
+            BlockHeaderSyncError::ChainChangedDuringSync |
+            BlockHeaderSyncError::ChainResetToGenesis { .. } |
+            BlockHeaderSyncError::WeakerThanLocalHeaders |
             BlockHeaderSyncError::SyncPeerUnavailable(_) |
             BlockHeaderSyncError::TargetDifficultiesError(_) |
             BlockHeaderSyncError::PeerNotFound => None,
@@ -138,7 +156,10 @@ impl BlockHeaderSyncError {
             err @ BlockHeaderSyncError::MaxLatencyExceeded { .. } |
             err @ BlockHeaderSyncError::RpcError { .. } |
             err @ BlockHeaderSyncError::RpcRequestError { .. } |
-            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } => Some(BanReason {
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. } |
+            err @ BlockHeaderSyncError::PeerSentInaccurateChainHeight { .. } |
+            err @ BlockHeaderSyncError::SyncAttemptTimedOut { .. } |
+            err @ BlockHeaderSyncError::RepeatedChainChangesDuringSync { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),

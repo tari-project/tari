@@ -87,12 +87,12 @@ impl DecideNextSync {
             } else {
                 // If our tip already covers the new horizon we have the full blocks locally — use block
                 // sync + prune rather than re-downloading the entire aggregate snapshot from genesis.
-                let best_peer_tip = sync_peers
-                    .iter()
-                    .map(|p| p.claimed_chain_metadata().best_block_height())
-                    .max()
-                    .unwrap_or(0);
-                let new_horizon = local_metadata.pruned_height_at_given_chain_tip(best_peer_tip);
+                // The horizon comes from our validated header tip, never from a peer's claimed height.
+                let last_header = match shared.db.fetch_last_header().await {
+                    Ok(h) => h,
+                    Err(e) => return FatalError(format!("Could not fetch the last header. {e}")),
+                };
+                let new_horizon = local_metadata.pruned_height_at_given_chain_tip(last_header.height);
                 if local_metadata.best_block_height() >= new_horizon {
                     debug!(
                         target: LOG_TARGET,
@@ -100,10 +100,13 @@ impl DecideNextSync {
                         local_metadata.best_block_height(),
                         new_horizon
                     );
-                    if local_metadata.pruned_height() < new_horizon {
-                        debug!(target: LOG_TARGET, "Pruning to new horizon height {new_horizon}");
-                        if let Err(e) = shared.db.prune_to_height(new_horizon).await {
-                            return FatalError(format!("Failed to prune to height {new_horizon}: {e}"));
+                    // Keep at least the pruning horizon of full blocks below our local tip.
+                    let prune_target = new_horizon
+                        .min(local_metadata.pruned_height_at_given_chain_tip(local_metadata.best_block_height()));
+                    if local_metadata.pruned_height() < prune_target {
+                        debug!(target: LOG_TARGET, "Pruning to new horizon height {prune_target}");
+                        if let Err(e) = shared.db.prune_to_height(prune_target).await {
+                            return FatalError(format!("Failed to prune to height {prune_target}: {e}"));
                         }
                     }
                 } else {

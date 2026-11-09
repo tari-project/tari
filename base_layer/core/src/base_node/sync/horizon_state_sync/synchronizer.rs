@@ -958,6 +958,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             let kernel: TransactionKernel = kernel.try_into().map_err(HorizonSyncError::ConversionError)?;
             kernel.verify_signature()?;
 
+            // A header whose kernel MMR size does not exceed this position can never be closed
+            if mmr_position >= current_header.header().kernel_mmr_size {
+                return Err(HorizonSyncError::InvalidMmrPosition {
+                    at_height: current_header.height(),
+                    mmr_position,
+                });
+            }
+
             kernel_hashes.push(kernel.hash());
 
             txn.insert_kernel_via_horizon_sync(kernel, *current_header.hash(), mmr_position);
@@ -1046,6 +1054,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         if mmr_position < end {
             return Err(HorizonSyncError::IncompleteKernelStream(format!(
                 "received up to kernel {mmr_position} of {end}"
+            )));
+        }
+        if !kernel_hashes.is_empty() {
+            return Err(HorizonSyncError::IncorrectResponse(format!(
+                "{} kernel(s) left uncommitted at end of stream",
+                kernel_hashes.len()
             )));
         }
         Ok(())
@@ -3502,6 +3516,83 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+    }
+
+    /// As `headers_only_db`, with the kernel MMR size of header `edited` replaced and the headers above it relinked,
+    /// as if they had been stored without header validation
+    fn headers_only_db_with_kernel_mmr_size(
+        chain: &TestBlockchain,
+        names: &[&'static str],
+        edited: &'static str,
+        kernel_mmr_size: u64,
+    ) -> BlockchainDatabase<TempDatabase> {
+        let db = create_custom_blockchain(chain.rules().clone());
+        let mut txn = DbTransaction::new();
+        let mut prev_hash = None;
+        for name in names {
+            let chain_header = chain.get_block_and_smt_by_name(name).unwrap().to_chain_header();
+            let mut header = chain_header.header().clone();
+            if *name == edited {
+                header.kernel_mmr_size = kernel_mmr_size;
+            }
+            if let Some(prev_hash) = prev_hash {
+                header.prev_hash = prev_hash;
+            }
+            let mut accumulated_data = chain_header.accumulated_data().clone();
+            accumulated_data.hash = header.hash();
+            prev_hash = Some(header.hash());
+            txn.insert_chain_header(ChainHeader::try_construct(header, accumulated_data).unwrap());
+        }
+        db.write(txn).unwrap();
+        db
+    }
+
+    fn kernel_mmr_size_of(chain: &TestBlockchain, name: &'static str) -> u64 {
+        chain.get_block_and_smt_by_name(name).unwrap().header().kernel_mmr_size
+    }
+
+    /// A stored header whose kernel MMR size does not exceed the previous one fails the sync at its first kernel,
+    /// with nothing past the previous header committed
+    #[tokio::test]
+    async fn kernel_sync_rejects_a_header_whose_kernel_mmr_size_does_not_grow() {
+        let (chain, _) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let size_at_1 = kernel_mmr_size_of(&chain, "1");
+        // Smaller than header 1's, and unused by any other header so that it can be stored
+        let bad_size = size_at_1 - 1;
+        assert!(bad_size > kernel_mmr_size_of(&chain, "A"));
+        let db = headers_only_db_with_kernel_mmr_size(&chain, &["A", "1", "2", "3", "4"], "2", bad_size);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        let err = sync
+            .synchronize_kernels(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::InvalidMmrPosition { .. }), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        assert_eq!(db.fetch_mmr_size(MmrTree::Kernel).unwrap(), size_at_1);
+    }
+
+    /// A complete kernel stream that leaves the kernels of a header uncommitted fails the sync
+    #[tokio::test]
+    async fn kernel_sync_rejects_kernels_left_uncommitted_at_the_end_of_the_stream() {
+        let (chain, _) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        // Header 3 claims more kernels than the whole stream holds, so it never closes
+        let db =
+            headers_only_db_with_kernel_mmr_size(&chain, &["A", "1", "2", "3", "4"], "3", target.kernel_mmr_size + 1);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        let err = sync
+            .synchronize_kernels(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        assert_eq!(
+            db.fetch_mmr_size(MmrTree::Kernel).unwrap(),
+            kernel_mmr_size_of(&chain, "2")
+        );
     }
 
     /// A kernel stream that ends early, as a dropped connection does, gets a short ban

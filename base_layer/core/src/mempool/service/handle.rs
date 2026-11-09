@@ -26,7 +26,6 @@ use tari_transaction_components::{rpc::models::FeePerGramStat, transaction_compo
 
 use crate::mempool::{
     MempoolServiceError,
-    StateResponse,
     StatsResponse,
     TxStorageResponse,
     service::{MempoolRequest, MempoolResponse},
@@ -45,13 +44,6 @@ impl MempoolHandle {
     pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
         match self.inner.call(MempoolRequest::GetStats).await?? {
             MempoolResponse::Stats(response) => Ok(response),
-            _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
-        }
-    }
-
-    pub async fn get_state(&mut self) -> Result<StateResponse, MempoolServiceError> {
-        match self.inner.call(MempoolRequest::GetState).await?? {
-            MempoolResponse::State(response) => Ok(response),
             _ => Err(MempoolServiceError::InvalidResponse("Incorrect response".to_string())),
         }
     }

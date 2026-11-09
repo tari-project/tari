@@ -32,7 +32,7 @@ use tari_comms_rpc_macros::tari_rpc;
 use crate::{
     mempool::service::MempoolHandle,
     proto::{
-        mempool::{StateResponse, StatsResponse, TxStorage},
+        mempool::{StatsResponse, TxStorage},
         types::{Signature, Transaction},
     },
 };
@@ -50,8 +50,7 @@ pub trait MempoolService: Send + Sync + 'static {
     #[rpc(method = 1)]
     async fn get_stats(&self, request: Request<()>) -> Result<Response<StatsResponse>, RpcStatus>;
 
-    #[rpc(method = 2, max_items = crate::proto::BODY_MAX_DECODE_ITEMS)]
-    async fn get_state(&self, request: Request<()>) -> Result<Response<StateResponse>, RpcStatus>;
+    // Method id 2 was `get_state`. It is retired and must not be reused.
 
     #[rpc(method = 3)]
     async fn get_transaction_state_by_excess_sig(

@@ -1551,6 +1551,8 @@ async fn a_relayed_fork_block_spending_a_held_orphans_output_is_hydrated_from_it
     let (txs, _) = schema_to_transaction(&[schema], &key_manager);
     let f2 = prepare_block(&store, &f1_chain_block, vec![(*txs[0]).clone()], &rules, &key_manager);
     store.rewind_to_height(0).unwrap();
+    // Forget the rewound F1: it is as strong as T1, and held as a tip from the rewind it could win the tie with T1
+    store.cleanup_all_orphans().unwrap();
 
     // Our chain: a stronger T1, with F1 held as an orphan
     append_block(

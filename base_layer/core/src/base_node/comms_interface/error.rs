@@ -85,6 +85,10 @@ pub enum CommsInterfaceError {
         /// main chain state whose outputs we hold completely
         fork_searched_to_main_chain: bool,
     },
+    #[error(
+        "Block {hash} could not be checked against its own chain's RandomX key, its ancestry is unknown: {details}"
+    )]
+    UnknownRandomXKey { hash: FixedHash, details: String },
     #[error("Invalid merge mined block: {0}")]
     MergeMineError(#[from] MergeMineError),
     #[error("Invalid difficulty: {0}")]
@@ -138,6 +142,8 @@ impl CommsInterfaceError {
                 fork_searched_to_main_chain: false,
                 ..
             } |
+            // Checked against a key that may not be the block's own, so it says nothing about the peer
+            CommsInterfaceError::UnknownRandomXKey { .. } |
             // CommsInterfaceError::Other(_) |
             CommsInterfaceError::DifficultyError(_) => None,
         }
