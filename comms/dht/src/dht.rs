@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use futures::Future;
 use log::*;
-use prost::Message;
 use tari_common_sqlite::{
     DbProfile,
     connection::{DbConnection, DbConnectionUrl},
@@ -50,7 +49,7 @@ use crate::{
     DhtConfig,
     SeedPeerProvider,
     actor::{DhtActor, DhtRequest, DhtRequester},
-    connectivity::{DhtConnectivity, FloodSeries, MetricsCollector, MetricsCollectorHandle},
+    connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     envelope::DhtMessageType,
     event::{DhtEventReceiver, DhtEventSender},
@@ -58,7 +57,6 @@ use crate::{
     inbound,
     inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer, metrics},
     logging_middleware::MessageLoggingLayer,
-    message_signature::{MessageSignature, ProtoMessageSignature},
     network_discovery::DhtNetworkDiscovery,
     outbound,
     outbound::DhtOutboundRequest,
@@ -288,7 +286,10 @@ impl Dht {
     {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
-            .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
+            .layer(inbound::DeserializeLayer::new(
+                self.peer_manager.clone(),
+                self.connectivity.clone(),
+            ))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
@@ -411,17 +412,8 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
     if let Some(expires) = msg.dht_header.expires &&
         expires < EpochTime::now()
     {
-        // The signature is not verified for an expired message, so the signer it names is only a claim: it is the
-        // source's own only if it names the source, otherwise the source may only be relaying it
-        let signer = ProtoMessageSignature::decode(msg.dht_header.message_signature.as_slice())
-            .ok()
-            .and_then(|signature| MessageSignature::try_from(signature).ok())
-            .map(MessageSignature::into_signer_public_key);
-        metrics::set_flood_series(if signer.as_ref() == Some(&msg.source_peer.public_key) {
-            FloodSeries::Own
-        } else {
-            FloodSeries::Forwarded
-        });
+        // The signature of an expired message is not verified, so it counts by the signer it claims
+        metrics::set_flood_series(metrics::claimed_flood_series(msg));
         debug!(
             target: LOG_TARGET,
             "[discard_expired_messages] Discarding expired message {msg}"
@@ -1186,25 +1178,52 @@ mod test {
         assert_eq!(series_counts(&dht, &relay).await, (1, 1));
     }
 
-    /// A validly signed cleartext message whose body does not decode is the delivering peer's own, whoever signed it:
-    /// an honest relay drops it rather than passing it on
+    /// A validly signed cleartext message whose body does not decode counts by the signer it names: relay H's own if H
+    /// signed it, its forwarded series if another peer did
     #[tokio::test]
-    async fn an_undecodable_signed_body_counts_as_own() {
+    async fn an_undecodable_signed_body_counts_by_its_signer() {
         let sybil = make_node_identity();
         let relay = make_node_identity();
         let shutdown = Shutdown::new();
         let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
         let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
 
-        let envelope = signed_envelope(&sybil, DhtMessageType::None, NodeDestination::Unknown, None, vec![
-            0xff;
-            8
-        ]);
+        for signer in [&sybil, &relay] {
+            let envelope = signed_envelope(signer, DhtMessageType::None, NodeDestination::Unknown, None, vec![
+                0xff;
+                8
+            ]);
+            service
+                .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(series_counts(&dht, &relay).await, (1, 1));
+    }
+
+    /// A non-canonically encoded signature is rejected before it is verified. One naming another signer, delivered by
+    /// relay H (which an older relay without the canonical check would pass on), counts in H's forwarded series.
+    #[tokio::test]
+    async fn a_non_canonical_signature_from_another_signer_counts_as_forwarded() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_domain_envelope(&sybil);
+        // Unknown field 15 (varint) = 1: the signature decodes to the same value
+        envelope
+            .header
+            .as_mut()
+            .unwrap()
+            .message_signature
+            .extend_from_slice(&[0x78, 0x01]);
         service
             .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
             .await
             .unwrap();
-        assert_eq!(series_counts(&dht, &relay).await, (1, 0));
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
     }
 
     /// An encrypted message for another node fails to decrypt here and is passed on: relay H may only be forwarding

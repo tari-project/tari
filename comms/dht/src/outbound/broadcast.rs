@@ -52,7 +52,7 @@ use crate::{
     DhtConfig,
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
-    config::FORWARD_BUDGET_FACTOR,
+    config::{FORWARD_BUDGET_FACTOR, FORWARD_SOURCE_BUDGET_FACTOR},
     crypt,
     dedup,
     discovery::DhtDiscoveryRequester,
@@ -74,36 +74,52 @@ const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 /// How long a message this node sends stays valid (its `expires`).
 pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 * 60);
 
-/// Caps how many messages of other peers this node forwards (sends under their original header) to any one peer per
-/// flood-ban timespan, so that relaying for others never takes it over that peer's forwarded-traffic flood limit.
+/// Caps how many messages of other peers this node forwards (sends under their original header), so that relaying for
+/// others never takes it over a neighbour's forwarded-traffic flood limit, and so that one source cannot use up the
+/// forwarding that other sources need. Per `flood_ban_timespan`, at most:
+/// - `FORWARD_BUDGET_FACTOR` x `flood_ban_max_msg_count` messages to any one peer,
+/// - `flood_ban_max_msg_count` of those from any one source (the peer that delivered them to this node), and
+/// - `FORWARD_SOURCE_BUDGET_FACTOR` x `flood_ban_max_msg_count` messages from any one source in total.
+///
 /// Messages this node originates are not capped.
 pub(crate) struct ForwardBudget {
-    max_per_peer: usize,
+    max_count: usize,
     window: Duration,
     state: Mutex<ForwardBudgetState>,
 }
 
 #[derive(Default)]
 struct ForwardBudgetState {
-    /// When each peer was sent its forwarded messages within the window, oldest first
-    sent: HashMap<NodeId, VecDeque<Instant>>,
+    /// When forwarded messages were sent within the window, oldest first: to each peer, from each source to each
+    /// peer, and from each source in total
+    to_peer: HashMap<NodeId, VecDeque<Instant>>,
+    from_source_to_peer: HashMap<(NodeId, NodeId), VecDeque<Instant>>,
+    from_source: HashMap<NodeId, VecDeque<Instant>>,
     pruned_at: Option<Instant>,
-    /// Forwarded messages dropped since the last log line
-    dropped: usize,
+    /// Forwarded messages dropped since the last log line, by source
+    dropped: HashMap<NodeId, usize>,
     logged_at: Option<Instant>,
+}
+
+/// Drops the times before `since` and returns whether there is room for one more below `max`
+fn has_room(sent: &mut VecDeque<Instant>, since: Instant, max: usize) -> bool {
+    while sent.front().is_some_and(|t| *t < since) {
+        sent.pop_front();
+    }
+    sent.len() < max
 }
 
 impl ForwardBudget {
     pub(crate) fn new(config: &DhtConfig) -> Self {
         Self {
-            max_per_peer: config.flood_ban_max_msg_count.saturating_mul(FORWARD_BUDGET_FACTOR),
+            max_count: config.flood_ban_max_msg_count,
             window: config.flood_ban_timespan,
             state: Mutex::default(),
         }
     }
 
-    /// Keeps the peers that can take one more forwarded message in this window, and uses up one of their budget
-    fn take(&self, peers: &mut Vec<NodeId>) {
+    /// Keeps the peers that a message from `source` can still be forwarded to in this window, and uses up their budget
+    fn take(&self, source: &NodeId, peers: &mut Vec<NodeId>) {
         let now = Instant::now();
         let since = now.checked_sub(self.window).unwrap_or(now);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -112,35 +128,61 @@ impl ForwardBudget {
             .pruned_at
             .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
         {
-            state.sent.retain(|_, sent| sent.back().is_some_and(|t| *t >= since));
+            let is_live = |sent: &VecDeque<Instant>| sent.back().is_some_and(|t| *t >= since);
+            state.to_peer.retain(|_, sent| is_live(sent));
+            state.from_source_to_peer.retain(|_, sent| is_live(sent));
+            state.from_source.retain(|_, sent| is_live(sent));
             state.pruned_at = Some(now);
         }
         let num_before = peers.len();
         peers.retain(|peer| {
-            let sent = state.sent.entry(peer.clone()).or_default();
-            while sent.front().is_some_and(|t| *t < since) {
-                sent.pop_front();
-            }
-            if sent.len() >= self.max_per_peer {
+            let from_source = state.from_source.entry(source.clone()).or_default();
+            if !has_room(
+                from_source,
+                since,
+                self.max_count.saturating_mul(FORWARD_SOURCE_BUDGET_FACTOR),
+            ) {
                 return false;
             }
-            sent.push_back(now);
+            let to_peer = state.to_peer.entry(peer.clone()).or_default();
+            if !has_room(to_peer, since, self.max_count.saturating_mul(FORWARD_BUDGET_FACTOR)) {
+                return false;
+            }
+            let pair = state
+                .from_source_to_peer
+                .entry((source.clone(), peer.clone()))
+                .or_default();
+            if !has_room(pair, since, self.max_count) {
+                return false;
+            }
+            pair.push_back(now);
+            to_peer.push_back(now);
+            state.from_source.entry(source.clone()).or_default().push_back(now);
             true
         });
-        state.dropped = state.dropped.saturating_add(num_before.saturating_sub(peers.len()));
-        if state.dropped > 0 &&
+        let num_dropped = num_before.saturating_sub(peers.len());
+        if num_dropped > 0 {
+            let dropped = state.dropped.entry(source.clone()).or_default();
+            *dropped = dropped.saturating_add(num_dropped);
+        }
+        if !state.dropped.is_empty() &&
             state
                 .logged_at
                 .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
         {
-            warn!(
-                target: LOG_TARGET,
-                "Dropped {} forwarded message(s) to peers over the forwarding budget of {} per {:.0?}",
-                state.dropped,
-                self.max_per_peer,
-                self.window
-            );
-            state.dropped = 0;
+            let total = state.dropped.values().fold(0usize, |acc, n| acc.saturating_add(*n));
+            if let Some((top_source, top_dropped)) = state.dropped.iter().max_by_key(|(_, n)| **n) {
+                warn!(
+                    target: LOG_TARGET,
+                    "Dropped {} forwarded message(s) over the forwarding budget in the last {:.0?}, {} of them from \
+                     source `{}`",
+                    total,
+                    self.window,
+                    top_dropped,
+                    top_source
+                );
+            }
+            state.dropped.clear();
             state.logged_at = Some(now);
         }
     }
@@ -353,6 +395,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             is_discovery_enabled,
             force_origin,
             dht_header,
+            forwarded_from,
             debug_info: _,
             tag,
         } = params;
@@ -413,6 +456,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         dht_message_type,
                         encryption,
                         dht_header,
+                        forwarded_from,
                         dht_message_flags,
                         force_origin,
                         is_broadcast,
@@ -495,6 +539,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         dht_message_type: DhtMessageType,
         encryption: OutboundEncryption,
         custom_header: Option<DhtMessageHeader>,
+        forwarded_from: Option<NodeId>,
         extra_flags: DhtMessageFlags,
         force_origin: bool,
         is_broadcast: bool,
@@ -515,9 +560,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             body,
         )?;
 
-        // A message sent with an existing header is being forwarded: only peers with forwarding budget left get it
-        if custom_header.is_some() {
-            self.forward_budget.take(&mut selected_peers);
+        // Another peer's message being forwarded: only peers with forwarding budget left for its source get it
+        if let Some(source) = &forwarded_from {
+            self.forward_budget.take(source, &mut selected_peers);
         }
 
         // A message sent with an existing header is being forwarded: the inbound path already recorded its key, and
@@ -684,7 +729,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{iter::repeat_with, time::Duration};
 
     use tari_comms::{
         multiaddr::Multiaddr,
@@ -777,31 +822,56 @@ mod test {
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 
-    /// Forwarded messages to one peer are capped per flood-ban timespan; messages this node originates are not
-    #[tokio::test(start_paused = true)]
-    async fn forwarded_messages_are_capped_per_peer() {
+    fn budget_for_one_message() -> (DhtConfig, ForwardBudget) {
         let config = DhtConfig {
             flood_ban_max_msg_count: 1,
             ..Default::default()
         };
         let budget = ForwardBudget::new(&config);
-        let max = FORWARD_BUDGET_FACTOR;
-        let (peer_a, peer_b) = (make_peer().node_id, make_peer().node_id);
+        (config, budget)
+    }
 
-        for _ in 0..max {
-            let mut peers = vec![peer_a.clone()];
-            budget.take(&mut peers);
-            assert_eq!(peers, vec![peer_a.clone()]);
+    fn take(budget: &ForwardBudget, source: &NodeId, peers: &[&NodeId]) -> Vec<NodeId> {
+        let mut peers = peers.iter().map(|p| (*p).clone()).collect();
+        budget.take(source, &mut peers);
+        peers
+    }
+
+    /// One source cannot use up a peer's forwarding budget and starve the forwards of other sources to it, and the
+    /// peer's total is still capped
+    #[tokio::test(start_paused = true)]
+    async fn one_source_does_not_starve_another_sources_forwards() {
+        let (config, budget) = budget_for_one_message();
+        let peer = make_peer().node_id;
+        let first_source = make_peer().node_id;
+
+        assert_eq!(take(&budget, &first_source, &[&peer]), vec![peer.clone()]);
+        // The first source has used its share of this peer's budget
+        assert!(take(&budget, &first_source, &[&peer]).is_empty());
+        for source in repeat_with(|| make_peer().node_id).take(FORWARD_BUDGET_FACTOR - 1) {
+            assert_eq!(take(&budget, &source, &[&peer]), vec![peer.clone()]);
         }
-        // `peer_a` has used its budget for this window, `peer_b` has not
-        let mut peers = vec![peer_a.clone(), peer_b.clone()];
-        budget.take(&mut peers);
-        assert_eq!(peers, vec![peer_b.clone()]);
+        // The peer's total budget is used up
+        assert!(take(&budget, &make_peer().node_id, &[&peer]).is_empty());
 
         tokio::time::advance(config.flood_ban_timespan + Duration::from_secs(1)).await;
-        let mut peers = vec![peer_a.clone()];
-        budget.take(&mut peers);
-        assert_eq!(peers, vec![peer_a]);
+        assert_eq!(take(&budget, &first_source, &[&peer]), vec![peer]);
+    }
+
+    /// A source fanning out messages for an unknown destination uses up its own total, not every peer's budget
+    #[tokio::test(start_paused = true)]
+    async fn one_source_cannot_use_up_the_budget_towards_every_peer() {
+        let (_, budget) = budget_for_one_message();
+        let peers = repeat_with(|| make_peer().node_id).take(20).collect::<Vec<_>>();
+        let peer_refs = peers.iter().collect::<Vec<_>>();
+        let (source, other_source) = (make_peer().node_id, make_peer().node_id);
+
+        assert_eq!(take(&budget, &source, &peer_refs).len(), FORWARD_SOURCE_BUDGET_FACTOR);
+        assert!(take(&budget, &source, &peer_refs).is_empty());
+        assert_eq!(
+            take(&budget, &other_source, &peer_refs).len(),
+            FORWARD_SOURCE_BUDGET_FACTOR
+        );
     }
 
     #[tokio::test]
@@ -832,6 +902,7 @@ mod test {
             DhtProtocolVersion::latest(),
             Arc::new(ForwardBudget::new(&config)),
         );
+        let source = make_peer().node_id;
         let header = DhtMessageHeader {
             version: DhtProtocolVersion::latest(),
             destination: NodeDestination::Unknown,
@@ -851,6 +922,7 @@ mod test {
                         SendMessageParams::new()
                             .propagate(NodeDestination::Unknown, vec![])
                             .with_dht_header(header.clone())
+                            .forwarded_from(source.clone())
                             .finish(),
                     ),
                     b"forwarded".as_slice().into(),
@@ -859,7 +931,8 @@ mod test {
                 .await
                 .unwrap();
         }
-        assert_eq!(spy.call_count(), FORWARD_BUDGET_FACTOR);
+        // One forwarded message from one source to one peer per window
+        assert_eq!(spy.call_count(), 1);
 
         for _ in 0..=FORWARD_BUDGET_FACTOR {
             let (reply_tx, _reply_rx) = oneshot::channel();
@@ -876,7 +949,7 @@ mod test {
                 .await
                 .unwrap();
         }
-        assert_eq!(spy.call_count(), FORWARD_BUDGET_FACTOR * 2 + 1);
+        assert_eq!(spy.call_count(), FORWARD_BUDGET_FACTOR + 2);
     }
 
     #[tokio::test]

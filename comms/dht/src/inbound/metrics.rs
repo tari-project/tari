@@ -30,11 +30,16 @@ use std::{
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
+use prost::Message;
 use tari_comms::{message::InboundMessage, peer_manager::NodeId, pipeline::PipelineError};
 use tokio::time::Instant;
 use tower::{Service, ServiceExt, layer::Layer};
 
-use crate::connectivity::{FloodSeries, MetricsCollectorHandle};
+use crate::{
+    connectivity::{FloodSeries, MetricsCollectorHandle},
+    inbound::DhtInboundMessage,
+    message_signature::{MessageSignature, ProtoMessageSignature},
+};
 
 const LOG_TARGET: &str = "comms::dht::metrics";
 
@@ -55,16 +60,32 @@ pub(crate) async fn record_flood_sample(counts: bool) {
 /// Sets the flood-ban series of the inbound message being handled. Messages count in the delivering peer's own series
 /// unless the decryption layer finds that the peer may only be relaying them.
 pub(crate) fn set_flood_series(series: FloodSeries) {
-    let _ignore = FLOOD_SAMPLE.try_with(|sample| {
-        sample
-            .forwarded
-            .store(series == FloodSeries::Forwarded, Ordering::Relaxed)
-    });
+    let _ignore = FLOOD_SAMPLE.try_with(|sample| set_series(&sample.forwarded, series));
+}
+
+/// The flood-ban series of a message by the signer its header names, without verifying the signature: the delivering
+/// peer's own only if it names that peer. Unsigned messages, other signers, signatures that do not decode and masked
+/// (encrypted) signers count as forwarded.
+pub(crate) fn claimed_flood_series(message: &DhtInboundMessage) -> FloodSeries {
+    let signer = ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
+        .ok()
+        .and_then(|signature| MessageSignature::try_from(signature).ok())
+        .map(MessageSignature::into_signer_public_key);
+    if signer.as_ref() == Some(&message.source_peer.public_key) {
+        FloodSeries::Own
+    } else {
+        FloodSeries::Forwarded
+    }
+}
+
+fn set_series(forwarded: &AtomicBool, series: FloodSeries) {
+    forwarded.store(series == FloodSeries::Forwarded, Ordering::Relaxed);
 }
 
 /// Marks the inbound message being handled as waiting on a local lookup (the peer database, the dedup cache) whose
-/// failure would not be the peer's fault. Until [`clear_outcome_unknown`] it does not count against the peer, even
-/// if the lookup fails or its handling is cancelled.
+/// failure would not be the peer's fault. Until [`clear_outcome_unknown`], if the lookup fails or its handling is
+/// cancelled, it counts in the peer's forwarded series: still bounded during a database stall, but at the limit that
+/// keeps honest relays unbanned.
 pub(crate) fn mark_outcome_unknown() {
     let _ignore = FLOOD_SAMPLE.try_with(|sample| {
         let _ignore = sample
@@ -84,7 +105,7 @@ pub(crate) fn clear_outcome_unknown() {
 
 /// `FloodSample::state`: undecided; counts against the peer
 const PENDING: u8 = 0;
-/// `FloodSample::state`: waiting on a local lookup; does not count against the peer
+/// `FloodSample::state`: waiting on a local lookup; counts in the forwarded series
 const OUTCOME_UNKNOWN: u8 = 1;
 /// `FloodSample::state`: counts against the peer, not written yet
 const COUNT: u8 = 2;
@@ -115,10 +136,12 @@ impl FloodSample {
     }
 
     /// Records the sample once the inner layers have returned. A message still waiting on a local lookup (the lookup
-    /// failed) does not count against the peer.
+    /// failed) counts in the forwarded series.
     async fn finish(&self) {
-        let counts = self.state.load(Ordering::Relaxed) != OUTCOME_UNKNOWN;
-        self.record(counts).await;
+        if self.state.load(Ordering::Relaxed) == OUTCOME_UNKNOWN {
+            set_series(&self.forwarded, FloodSeries::Forwarded);
+        }
+        self.record(true).await;
     }
 
     async fn record(&self, counts: bool) {
@@ -152,12 +175,16 @@ impl Drop for FloodSample {
         }
         let mut collector = self.collector.clone();
         let source_peer = self.source_peer.clone();
-        let series = self.series();
+        let series = if state == OUTCOME_UNKNOWN {
+            FloodSeries::Forwarded
+        } else {
+            self.series()
+        };
         let received_at = self.received_at;
         // Drop cannot wait for room in the queue, so the write is handed to a task
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
-                let _ignore = if matches!(state, OUTCOME_UNKNOWN | SKIP) {
+                let _ignore = if state == SKIP {
                     collector.write_metric_uncounted_message_received().await
                 } else {
                     collector
@@ -170,7 +197,7 @@ impl Drop for FloodSample {
 }
 
 /// Counts every inbound message against the peer that delivered it, for the flood ban, including messages the inner
-/// layers drop, except duplicates first delivered by another peer and messages whose dedup result is unknown.
+/// layers drop, except duplicates first delivered by another peer.
 #[derive(Clone)]
 pub struct Metrics<S> {
     next_service: S,
@@ -315,9 +342,9 @@ mod test {
         assert_eq!(ts.count(), 0);
     }
 
-    /// A message cancelled while it waits on its dedup result does not count against the peer, only in the total
+    /// A message cancelled while it waits on its dedup result counts in the peer's forwarded series, not its own
     #[tokio::test]
-    async fn a_message_cancelled_at_dedup_counts_in_the_total_only() {
+    async fn a_message_cancelled_at_dedup_counts_as_forwarded() {
         let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
         let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(|_: InboundMessage| async {
             mark_outcome_unknown();
@@ -337,6 +364,11 @@ mod test {
             max_attempts = 20,
             interval = Duration::from_millis(10),
         );
+        let ts = collector
+            .get_messages_received_timeseries(peer.clone(), FloodSeries::Forwarded)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
         let ts = collector
             .get_messages_received_timeseries(peer, FloodSeries::Own)
             .await

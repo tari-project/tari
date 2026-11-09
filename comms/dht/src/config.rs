@@ -88,6 +88,12 @@ pub(crate) const FORWARDED_FLOOD_BAN_FACTOR: usize = 10;
 /// messages.
 pub(crate) const FORWARD_BUDGET_FACTOR: usize = 5;
 const _: () = assert!(FORWARD_BUDGET_FACTOR < FORWARDED_FLOOD_BAN_FACTOR);
+/// This node forwards at most this many times `flood_ban_max_msg_count` messages delivered by any one source peer per
+/// `flood_ban_timespan`, across all destinations. A message for an unknown destination fans out to up to
+/// `propagation_factor` peers, so without this one source could use up the forwarding budget towards every peer. At 2,
+/// a source still gets twice its own message limit of forwarding, far above what an honest neighbour relays, while it
+/// takes more than twice as many sources as this node has peers to use up the budget towards all of them.
+pub(crate) const FORWARD_SOURCE_BUDGET_FACTOR: usize = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

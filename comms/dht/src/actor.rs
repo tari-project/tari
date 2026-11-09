@@ -486,7 +486,7 @@ impl DhtActor {
                                 );
                             }
                             drop(logged_at);
-                            // Whether it is a relayed duplicate is unknown, so it does not count against the peer
+                            // `u32::MAX` also tells the dedup layer that whether this is a duplicate is unknown
                             let _ = reply_tx.send((u32::MAX, false));
                         },
                     }
@@ -1079,13 +1079,14 @@ mod test {
     #[tokio::test]
     async fn dedup_db_error_discards_message() {
         use diesel::connection::SimpleConnection;
-        use tari_comms::{pipeline::PipelineError, wrap_in_envelope_body};
-        use tower::{Layer, Service};
+        use tari_comms::{Bytes, message::InboundMessage, pipeline::PipelineError, wrap_in_envelope_body};
+        use tower::{Layer, Service, ServiceExt, service_fn};
 
         use crate::{
+            connectivity::{FloodSeries, MetricsCollector},
             dedup::DedupLayer,
             envelope::DhtMessageFlags,
-            inbound::DecryptedDhtMessage,
+            inbound::{DecryptedDhtMessage, MetricsLayer},
             test_utils::{make_dht_inbound_message, service_spy},
         };
 
@@ -1123,16 +1124,36 @@ mod test {
             .await
             .unwrap();
         assert_eq!(num_hits, u32::MAX);
-        // Whether it is a relayed duplicate is unknown, so it does not count against the peer
         assert!(!from_first_sender);
 
         let spy = service_spy();
-        let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
+        let dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
         let inbound_message =
             make_dht_inbound_message(&node_identity, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
         let decrypted_msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
-        dedup.call(decrypted_msg).await.unwrap();
+        // The message goes through the flood-ban metric, as in the inbound pipeline
+        let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+        let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(move |_: InboundMessage| {
+            dedup.clone().oneshot(decrypted_msg.clone())
+        }));
+        service
+            .call(InboundMessage::new(node_identity.node_id().clone(), Bytes::new()))
+            .await
+            .unwrap();
         assert_eq!(spy.call_count(), 0);
+
+        // Whether it was a duplicate is unknown, so it counts in the forwarded series
+        let source = node_identity.node_id().clone();
+        let ts = collector
+            .get_messages_received_timeseries(source.clone(), FloodSeries::Forwarded)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
+        let ts = collector
+            .get_messages_received_timeseries(source, FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 0);
     }
 
     #[tokio::test]

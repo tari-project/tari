@@ -199,18 +199,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         message: DhtInboundMessage,
     ) -> Result<DecryptedDhtMessage, DecryptionError> {
+        // Before anything rejects it, the message counts by the signer it claims: the source's own only if it names
+        // the source. An encrypted message's signer is masked, so it is the source's own only once decryption shows
+        // the sender.
+        metrics::set_flood_series(metrics::claimed_flood_series(&message));
+        let source_public_key = message.source_peer.public_key.clone();
         // Perform initial checks and check the message signature if needed
         let validated_msg = Self::initial_validation(message)?;
-        // Whatever happens to it from here, a valid message is only the source's own if the source signed it. An
-        // encrypted message's signer is masked, so it is the source's own only once decryption shows the sender.
-        let source_public_key = validated_msg.message().source_peer.public_key.clone();
-        let signed_by_source = !validated_msg.header().flags.is_encrypted() &&
-            validated_msg.authenticated_origin() == Some(&source_public_key);
-        metrics::set_flood_series(if signed_by_source {
-            FloodSeries::Own
-        } else {
-            FloodSeries::Forwarded
-        });
 
         // The message is unencrypted and valid
         if !validated_msg.header().flags.is_encrypted() {
@@ -413,9 +408,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 Ok(validated.into_succeeded(deserialized, authenticated_pk))
             },
             Err(err) => {
-                // An honest relay on the same version drops a body that does not decode instead of passing it on, so
-                // it is the source's own however it is signed
-                metrics::set_flood_series(FloodSeries::Own);
                 // Message was not encrypted but failed to deserialize - immediately discard
                 debug!(
                     target: LOG_TARGET,

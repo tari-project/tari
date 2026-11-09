@@ -68,6 +68,9 @@ pub struct FinalSendMessageParams {
     pub dht_message_type: DhtMessageType,
     pub dht_message_flags: DhtMessageFlags,
     pub dht_header: Option<DhtMessageHeader>,
+    /// The peer that delivered the message being forwarded, which its forwarding budget is charged to. `None` for a
+    /// message this node originates.
+    pub forwarded_from: Option<NodeId>,
     pub debug_info: Option<String>,
     pub tag: Option<MessageTag>,
 }
@@ -83,6 +86,7 @@ impl Default for FinalSendMessageParams {
             force_origin: false,
             is_discovery_enabled: false,
             dht_header: None,
+            forwarded_from: None,
             debug_info: None,
             tag: Some(MessageTag::new()),
         }
@@ -192,6 +196,12 @@ impl SendMessageParams {
     /// The body passed with a custom header MUST be the exact bytes the header's signature was computed over.
     pub fn with_dht_header(&mut self, dht_header: DhtMessageHeader) -> &mut Self {
         self.params_mut().dht_header = Some(dht_header);
+        self
+    }
+
+    /// Mark the message as another peer's message being forwarded, delivered to this node by `source`
+    pub fn forwarded_from(&mut self, source: NodeId) -> &mut Self {
+        self.params_mut().forwarded_from = Some(source);
         self
     }
 

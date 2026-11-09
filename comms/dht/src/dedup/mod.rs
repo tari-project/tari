@@ -177,8 +177,11 @@ where
                 )
                 .await?;
             message.dedup_hit_count = hit_count;
-            // A relay passes on what others sent it, so only a peer's own repeats count against it
-            metrics::record_flood_sample(from_first_sender).await;
+            // A relay passes on what others sent it, so only a peer's own repeats count against it. `u32::MAX` is the
+            // reply when the cache failed: whether this is a duplicate is unknown, so the outcome stays unknown.
+            if hit_count != u32::MAX {
+                metrics::record_flood_sample(from_first_sender).await;
+            }
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
                 trace!(
