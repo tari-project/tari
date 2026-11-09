@@ -100,6 +100,15 @@ const _: () = assert!(FORWARD_BUDGET_FACTOR < FORWARDED_FLOOD_BAN_FACTOR);
 /// without a budget, where R would be banned. The factor is not raised to make this harder, because a higher factor
 /// would let a single identity push more through than it could without a budget.
 pub(crate) const FORWARD_SOURCE_BUDGET_FACTOR: usize = 1;
+/// Lower bound for `source_budget_window`.
+const MIN_SOURCE_BUDGET_WINDOW: Duration = Duration::from_secs(60);
+/// Bounds for `on_connect_sync_timeout`.
+const MIN_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_ON_CONNECT_SYNC_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Lower bound for `join_cooldown_interval`.
+const MIN_JOIN_COOLDOWN_INTERVAL: Duration = Duration::from_secs(60);
+/// Lower bound for `attempted_peers_ttl`.
+const MIN_ATTEMPTED_PEERS_TTL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -152,10 +161,14 @@ pub struct DhtConfig {
     pub auto_join: bool,
     /// The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
     /// enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
-    /// change happens again after this period, another join will be sent.
+    /// change happens again after this period, another join will be sent. It also governs receive-side
+    /// re-propagation: a Join from the same origin is relayed at most once per this interval. At least 1 minute.
     /// Default: 10 minutes
     #[serde(with = "serializers::seconds")]
     pub join_cooldown_interval: Duration,
+    /// The most Join origins remembered for the receive-side `join_cooldown_interval`. The oldest are forgotten first.
+    /// Default: 10,000
+    pub join_cooldown_capacity: usize,
     pub connectivity: DhtConnectivityConfig,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
@@ -247,6 +260,7 @@ impl DhtConfig {
 
     /// Brings the rebootstrap settings into a sane range, logging a warning for each one that was out of it. Applied
     /// when the DHT is initialized.
+    #[allow(clippy::too_many_lines)]
     pub fn clamp_rebootstrap_settings(&mut self) {
         let defaults = DhtConnectivityConfig::default();
         let connectivity = &mut self.connectivity;
@@ -314,6 +328,51 @@ impl DhtConfig {
             );
             discovery.on_connect_resync_ttl = MIN_ON_CONNECT_RESYNC_TTL;
         }
+        // Zero would also stop a rebootstrap storing anything
+        if discovery.max_stored_per_source < 1 {
+            warn!(target: LOG_TARGET, "max_stored_per_source must be at least 1. Using 1");
+            discovery.max_stored_per_source = 1;
+        }
+        if discovery.source_budget_window < MIN_SOURCE_BUDGET_WINDOW {
+            warn!(
+                target: LOG_TARGET,
+                "source_budget_window must be at least {MIN_SOURCE_BUDGET_WINDOW:.0?}. Using that"
+            );
+            discovery.source_budget_window = MIN_SOURCE_BUDGET_WINDOW;
+        }
+        if discovery.on_connect_sync_timeout < MIN_ON_CONNECT_SYNC_TIMEOUT {
+            warn!(
+                target: LOG_TARGET,
+                "on_connect_sync_timeout must be at least {MIN_ON_CONNECT_SYNC_TIMEOUT:.0?}. Using that"
+            );
+            discovery.on_connect_sync_timeout = MIN_ON_CONNECT_SYNC_TIMEOUT;
+        }
+        if discovery.on_connect_sync_timeout > MAX_ON_CONNECT_SYNC_TIMEOUT {
+            warn!(
+                target: LOG_TARGET,
+                "on_connect_sync_timeout must be at most {MAX_ON_CONNECT_SYNC_TIMEOUT:.0?}. Using that"
+            );
+            discovery.on_connect_sync_timeout = MAX_ON_CONNECT_SYNC_TIMEOUT;
+        }
+        if discovery.attempted_peers_ttl < MIN_ATTEMPTED_PEERS_TTL {
+            warn!(
+                target: LOG_TARGET,
+                "attempted_peers_ttl must be at least {MIN_ATTEMPTED_PEERS_TTL:.0?}. Using that"
+            );
+            discovery.attempted_peers_ttl = MIN_ATTEMPTED_PEERS_TTL;
+        }
+        // It also sets how often a Join from one origin is relayed
+        if self.join_cooldown_interval < MIN_JOIN_COOLDOWN_INTERVAL {
+            warn!(
+                target: LOG_TARGET,
+                "join_cooldown_interval must be at least {MIN_JOIN_COOLDOWN_INTERVAL:.0?}. Using that"
+            );
+            self.join_cooldown_interval = MIN_JOIN_COOLDOWN_INTERVAL;
+        }
+        if self.join_cooldown_capacity < 1 {
+            warn!(target: LOG_TARGET, "join_cooldown_capacity must be at least 1. Using 1");
+            self.join_cooldown_capacity = 1;
+        }
     }
 
     /// Returns a ban duration from the given severity
@@ -343,6 +402,7 @@ impl Default for DhtConfig {
             connectivity: DhtConnectivityConfig::default(),
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
+            join_cooldown_capacity: 10_000,
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(2 * 60 * 60),
             ban_duration_short: Duration::from_secs(10 * 60),
@@ -481,6 +541,30 @@ mod test {
             assert!((config.connectivity.pool_starved_threshold_ratio - 0.5).abs() < f32::EPSILON);
         }
 
+        let mut config = DhtConfig::default();
+        config.network_discovery.max_stored_per_source = 0;
+        config.network_discovery.source_budget_window = Duration::ZERO;
+        config.network_discovery.on_connect_sync_timeout = Duration::ZERO;
+        config.network_discovery.attempted_peers_ttl = Duration::ZERO;
+        config.join_cooldown_capacity = 0;
+        config.join_cooldown_interval = Duration::ZERO;
+        config.clamp_rebootstrap_settings();
+        assert_eq!(config.join_cooldown_interval, MIN_JOIN_COOLDOWN_INTERVAL);
+        assert_eq!(config.network_discovery.max_stored_per_source, 1);
+        assert_eq!(config.network_discovery.source_budget_window, MIN_SOURCE_BUDGET_WINDOW);
+        assert_eq!(
+            config.network_discovery.on_connect_sync_timeout,
+            MIN_ON_CONNECT_SYNC_TIMEOUT
+        );
+        assert_eq!(config.network_discovery.attempted_peers_ttl, MIN_ATTEMPTED_PEERS_TTL);
+        assert_eq!(config.join_cooldown_capacity, 1);
+        config.network_discovery.on_connect_sync_timeout = Duration::MAX;
+        config.clamp_rebootstrap_settings();
+        assert_eq!(
+            config.network_discovery.on_connect_sync_timeout,
+            MAX_ON_CONNECT_SYNC_TIMEOUT
+        );
+
         // Sane settings are left alone
         let mut config = DhtConfig::default();
         config.connectivity.pool_starved_threshold_ratio = 1.0;
@@ -490,5 +574,12 @@ mod test {
             config.connectivity.rebootstrap_cooldown_min,
             Duration::from_secs(10 * 60)
         );
+        let defaults = DhtConfig::default();
+        assert_eq!(
+            config.network_discovery.on_connect_sync_timeout,
+            defaults.network_discovery.on_connect_sync_timeout
+        );
+        assert_eq!(config.join_cooldown_capacity, defaults.join_cooldown_capacity);
+        assert_eq!(config.join_cooldown_interval, defaults.join_cooldown_interval);
     }
 }

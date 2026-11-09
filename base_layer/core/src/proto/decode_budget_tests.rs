@@ -55,8 +55,7 @@ mod max_size_payloads {
         },
     };
 
-    /// The decode budget of the methods that carry a block body or transaction (sync_blocks, get_state,
-    /// submit_transaction)
+    /// The decode budget of the methods that carry a block body or transaction (sync_blocks, submit_transaction)
     const BODY_MAX_ITEMS: usize = proto::BODY_MAX_DECODE_ITEMS;
 
     // The most of each that fits in a mainnet block (weight 90,000) on its own
@@ -374,22 +373,6 @@ mod max_size_payloads {
         let payload = empty_elements(1, FLOOD_ELEMENTS);
         assert!(payload.len() <= RPC_MAX_REQUEST_SIZE);
         check_decode_budget::<proto::base_node::FetchMatchingUtxos>(&payload, QUERY_MAX_ITEMS).unwrap_err();
-    }
-
-    /// The flood sits three messages deep (mempool state -> transaction -> body -> inputs), spread over transactions
-    /// that are each well within the budget.
-    #[test]
-    fn a_flood_deep_in_the_mempool_state_is_rejected() {
-        // Transaction.body (tag 2) holding 20,000 empty AggregateBody.inputs (tag 1)
-        let tx = len_field(2, &empty_elements(1, 20_000));
-        assert_eq!(
-            check_decode_budget::<proto::types::Transaction>(&tx, BODY_MAX_ITEMS).unwrap(),
-            20_001
-        );
-
-        // StateResponse.unconfirmed_pool is tag 1
-        let payload = len_field(1, &tx).repeat(20);
-        check_decode_budget::<proto::mempool::StateResponse>(&payload, BODY_MAX_ITEMS).unwrap_err();
     }
 }
 

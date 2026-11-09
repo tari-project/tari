@@ -71,6 +71,10 @@ impl DhtMockState {
         self.call_count.fetch_add(1, Ordering::SeqCst);
     }
 
+    pub fn call_count(&self) -> usize {
+        self.call_count.load(Ordering::SeqCst)
+    }
+
     pub fn get_setting(&self, key: DhtMetadataKey) -> Option<Vec<u8>> {
         self.settings.read().unwrap().get(&key.to_string()).cloned()
     }

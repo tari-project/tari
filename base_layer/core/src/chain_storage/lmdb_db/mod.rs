@@ -46,8 +46,6 @@ mod lmdb;
 #[allow(clippy::module_inception)]
 mod lmdb_db;
 pub mod row_data;
-#[cfg(test)]
-pub(crate) use lmdb_db::rewind_migration_version_for_test;
 pub use lmdb_db::{
     AccumulatedDataRebuildStatus,
     BREATHING_TIME_MS_MAX,
@@ -58,6 +56,8 @@ pub use lmdb_db::{
     CheckFailure,
     PayrefRebuildStatus,
 };
+#[cfg(test)]
+pub(crate) use lmdb_db::{MetadataKey, MetadataValue, rewind_migration_version_for_test};
 pub mod lmdb_tree_reader;
 pub(crate) mod lmdb_tree_writer;
 mod stats_collector;

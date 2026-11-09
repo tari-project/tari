@@ -110,8 +110,8 @@ impl DbTransaction {
         self
     }
 
-    /// Delete block accumulated data at the given height. Used during rewind past pruning horizon
-    /// where the full block body has already been pruned and `delete_tip_block` cannot be used.
+    /// Delete block accumulated data at the given height, for a block whose full body has already been pruned so that
+    /// `delete_tip_block` cannot be used.
     pub fn delete_block_accumulated_data(&mut self, height: u64) -> &mut Self {
         self.operations.push(WriteOperation::DeleteBlockAccumulatedData(height));
         self
@@ -337,6 +337,19 @@ impl DbTransaction {
         self
     }
 
+    /// Empties every chain table and the chain-derived metadata. Must be followed, in the same transaction, by the
+    /// operations that seed the genesis block, as `BlockchainDatabase::start` does for an empty database.
+    pub(crate) fn reset_chain_to_genesis(&mut self) -> &mut Self {
+        self.operations.push(WriteOperation::ResetChainToGenesis);
+        self
+    }
+
+    /// Records the strongest header lost to a rewind
+    pub(crate) fn set_lost_header_tip(&mut self, header: ChainHeader) -> &mut Self {
+        self.operations.push(WriteOperation::SetLostHeaderTip(Box::new(header)));
+        self
+    }
+
     /// Prunes the copy of an output stored under one block, leaving copies under other blocks. Only for horizon sync.
     pub(crate) fn prune_output_copy(
         &mut self,
@@ -479,6 +492,8 @@ pub enum WriteOperation {
     },
     ClearAllReorgs,
     ClearHorizonSyncOutputState,
+    ResetChainToGenesis,
+    SetLostHeaderTip(Box<ChainHeader>),
     DeleteUtxoCommitmentIndexEntry {
         commitment: CompressedCommitment,
     },
@@ -657,6 +672,8 @@ impl fmt::Display for WriteOperation {
             InsertReorg { .. } => write!(f, "Insert reorg"),
             ClearAllReorgs => write!(f, "Clear all reorgs"),
             ClearHorizonSyncOutputState => write!(f, "Clear horizon sync output state"),
+            ResetChainToGenesis => write!(f, "Reset chain to genesis"),
+            SetLostHeaderTip(header) => write!(f, "Set lost header tip to #{} {}", header.height(), header.hash()),
             DeleteUtxoCommitmentIndexEntry { commitment } => {
                 write!(f, "Delete commitment index entry {}", commitment.to_hex())
             },

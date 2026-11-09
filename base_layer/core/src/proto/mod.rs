@@ -23,7 +23,7 @@
 //! Imports of code generated from protobuf files
 
 /// The decode budget (see `tari_comms::decode_budget`) of the RPC methods that carry a whole block body or
-/// transaction: sync_blocks, mempool get_state and submit_transaction, and the wallet's submit_transaction. The
+/// transaction: sync_blocks, mempool submit_transaction, and the wallet's submit_transaction. The
 /// per-network test in `decode_budget_tests` checks a max-weight block fits it on every network.
 pub const BODY_MAX_DECODE_ITEMS: usize = 262_144;
 

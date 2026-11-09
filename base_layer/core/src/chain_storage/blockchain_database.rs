@@ -334,8 +334,6 @@ where B: BlockchainBackend
         Ok(blockchain_db)
     }
 
-    // Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
-    #[allow(clippy::arithmetic_side_effects)]
     pub fn start(&self) -> Result<(), ChainStorageError> {
         let (is_empty, config) = {
             let db = self.db_read_access()?;
@@ -352,27 +350,13 @@ where B: BlockchainBackend
             self.write(txn)?;
             txn = DbTransaction::new();
             self.insert_block(genesis_block.clone())?;
-            let body = &genesis_block.block().body;
-
-            let mut input_sum = UncompressedCommitment::default();
-            for input in body.inputs() {
-                input_sum = &input_sum + &input.commitment()?.to_commitment()?;
-            }
-            let mut output_sum = UncompressedCommitment::default();
-            for output in body.outputs() {
-                output_sum = &output_sum + &output.commitment.to_commitment()?;
-            }
-            let total_utxo_sum = CompressedCommitment::from_commitment(&output_sum - &input_sum);
-            let mut kernel_sum = UncompressedCommitment::default();
-            for kernel in body.kernels() {
-                kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
-            }
+            let (kernel_sum, total_utxo_sum) = genesis_horizon_sums(&genesis_block)?;
             txn.update_block_accumulated_data(*genesis_block.hash(), UpdateBlockAccumulatedData {
-                kernel_sum: Some(CompressedCommitment::from_commitment(kernel_sum.clone())),
+                kernel_sum: Some(kernel_sum.clone()),
                 ..Default::default()
             });
             txn.set_pruned_height(0);
-            txn.set_horizon_data(CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum);
+            txn.set_horizon_data(kernel_sum, total_utxo_sum);
             self.write(txn)?;
             self.store_pruning_horizon(config.pruning_horizon)?;
         } else if !self.chain_block_or_orphan_block_exists(genesis_block.accumulated_data().hash)? {
@@ -2414,12 +2398,78 @@ where B: BlockchainBackend
     /// Rewind the blockchain state to the block hash making the block at that hash the new tip.
     /// Returns the removed blocks.
     ///
-    /// The operation will fail if
-    /// * The block hash does not exist
-    /// * The block hash is before the horizon block height determined by the pruning horizon
+    /// The operation will fail if the block hash does not exist. On a pruned node, a block below the pruned height
+    /// resets the chain to the genesis block instead, as `rewind_to_height` does.
     pub fn rewind_to_hash(&self, hash: BlockHash) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
         let mut db = self.db_write_access()?;
         rewind_to_hash(&mut *db, hash)
+    }
+
+    /// Rewinds to `split_hash` to make way for a header chain ending at `pending_tip`. A rewind that would reset this
+    /// pruned node to the genesis block is refused unless the pending chain is stronger than the chain a reset has to
+    /// beat, and is done only as `reset` allows; none of these refusals writes anything. Checked under the same lock as
+    /// the rewind, so nothing can move in between.
+    pub(crate) fn rewind_for_pending_chain(
+        &self,
+        split_hash: BlockHash,
+        pending_tip: ChainHeader,
+        reset: ResetPermission,
+    ) -> Result<PendingChainRewind, ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let comparer = self.consensus_manager.chain_strength_comparer();
+        if let Some(reference) = reset_reference(&*db, comparer, split_hash)? {
+            if comparer.compare(&pending_tip, &reference) != Ordering::Greater {
+                return Ok(PendingChainRewind::Refused);
+            }
+            if reset == ResetPermission::NotYet {
+                return Ok(PendingChainRewind::WouldReset);
+            }
+        } else {
+            if reset == ResetPermission::Required {
+                return Ok(PendingChainRewind::NoLongerResets);
+            }
+            remember_lost_header_tip(&mut *db, comparer, split_hash)?;
+        }
+        let (blocks, was_reset) = rewind_or_reset_to_hash(&mut *db, split_hash)?;
+        if was_reset {
+            Ok(PendingChainRewind::Reset(blocks))
+        } else {
+            Ok(PendingChainRewind::Rewound(blocks))
+        }
+    }
+
+    /// Records the block `hash` at `height`, whose committed body failed validation, as bad. If it is our header at
+    /// that height above the block tip, the headers from it up are deleted in the same write: the chain they describe
+    /// is invalid from that block on.
+    pub(crate) fn insert_bad_body(
+        &self,
+        hash: BlockHash,
+        height: u64,
+        reason: String,
+    ) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        txn.delete_orphan(hash);
+        txn.insert_bad_block(hash, height, reason);
+        let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+        let is_our_header = db
+            .fetch_chain_header_by_height(height)
+            .optional()?
+            .is_some_and(|header| *header.hash() == hash);
+        if height > best_block_height && is_our_header {
+            let last_header_height = db.fetch_last_header()?.height;
+            for header_height in (height..=last_header_height).rev() {
+                txn.delete_header(header_height);
+            }
+        }
+        db.write(txn)
+    }
+
+    /// The chain a chain from the split at `split_hash` has to beat, if replacing ours would reset this pruned node to
+    /// the genesis block
+    pub(crate) fn reset_reference(&self, split_hash: BlockHash) -> Result<Option<ChainHeader>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        reset_reference(&*db, self.consensus_manager.chain_strength_comparer(), split_hash)
     }
 
     /// This method will compare all chain tips the node currently knows about. This includes
@@ -3073,6 +3123,48 @@ fn insert_best_block(txn: &mut DbTransaction, block: Arc<ChainBlock>) -> Result<
     Ok(())
 }
 
+/// The genesis block's kernel sum and UTXO sum, which a fresh database stores as its block accumulated data and
+/// horizon data.
+// Ristretto point arithmetic on commitments, not integer arithmetic: cannot overflow.
+#[allow(clippy::arithmetic_side_effects)]
+fn genesis_horizon_sums(
+    genesis: &ChainBlock,
+) -> Result<(CompressedCommitment, CompressedCommitment), ChainStorageError> {
+    let body = &genesis.block().body;
+    let mut input_sum = UncompressedCommitment::default();
+    for input in body.inputs() {
+        input_sum = &input_sum + &input.commitment()?.to_commitment()?;
+    }
+    let mut output_sum = UncompressedCommitment::default();
+    for output in body.outputs() {
+        output_sum = &output_sum + &output.commitment.to_commitment()?;
+    }
+    let total_utxo_sum = CompressedCommitment::from_commitment(&output_sum - &input_sum);
+    let mut kernel_sum = UncompressedCommitment::default();
+    for kernel in body.kernels() {
+        kernel_sum = &kernel_sum + &kernel.excess.to_commitment()?;
+    }
+    Ok((CompressedCommitment::from_commitment(kernel_sum), total_utxo_sum))
+}
+
+/// Replaces the whole chain with the genesis block in one write, leaving the database as `BlockchainDatabase::start`
+/// leaves an empty one. Bad blocks, reorgs, the migration version and the pruning horizon are kept.
+fn reset_chain_to_genesis<T: BlockchainBackend>(db: &mut T) -> Result<(), ChainStorageError> {
+    let genesis = Arc::new(db.fetch_genesis_block());
+    let genesis_hash = *genesis.hash();
+    let (kernel_sum, total_utxo_sum) = genesis_horizon_sums(&genesis)?;
+    let mut txn = DbTransaction::new();
+    txn.reset_chain_to_genesis();
+    insert_best_block(&mut txn, genesis)?;
+    txn.update_block_accumulated_data(genesis_hash, UpdateBlockAccumulatedData {
+        kernel_sum: Some(kernel_sum.clone()),
+        ..Default::default()
+    });
+    txn.set_pruned_height(0);
+    txn.set_horizon_data(kernel_sum, total_utxo_sum);
+    db.write(txn)
+}
+
 fn store_pruning_horizon<T: BlockchainBackend>(db: &mut T, pruning_horizon: u64) -> Result<(), ChainStorageError> {
     let mut txn = DbTransaction::new();
     txn.set_pruning_horizon(pruning_horizon);
@@ -3500,11 +3592,22 @@ fn check_for_valid_height<T: BlockchainBackend>(db: &T, height: u64) -> Result<(
 
 /// Removes blocks from the db from current tip to specified height.
 /// Returns the blocks removed, ordered from tip to height.
-#[allow(clippy::too_many_lines)]
+///
+/// On a pruned node, a rewind that reaches below the pruned height resets the chain to the genesis block in one
+/// write instead, and returns only the blocks above the pruned height.
 pub(crate) fn rewind_to_height<T: BlockchainBackend>(
     db: &mut T,
     target_height: u64,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+    rewind_or_reset_to_height(db, target_height).map(|(removed_blocks, _)| removed_blocks)
+}
+
+/// As `rewind_to_height`, and also returns whether the chain was reset to the genesis block
+#[allow(clippy::too_many_lines)]
+fn rewind_or_reset_to_height<T: BlockchainBackend>(
+    db: &mut T,
+    target_height: u64,
+) -> Result<(Vec<Arc<ChainBlock>>, bool), ChainStorageError> {
     let last_header = db.fetch_last_header()?;
     // Delete headers
     let last_header_height = last_header.height;
@@ -3521,6 +3624,23 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
                 last_header_height
             ))
         })?;
+
+    if rewind_resets_chain(&metadata, target_height) {
+        let effective_pruning_horizon = last_block_height.saturating_sub(metadata.pruned_height());
+        warn!(
+            target: LOG_TARGET,
+            "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), resetting the \
+             chain to the genesis block"
+        );
+        // Only the blocks above the pruned height can be rebuilt; the pruned ones are not returned.
+        let mut removed_blocks = Vec::with_capacity(usize::try_from(effective_pruning_horizon).unwrap_or(usize::MAX));
+        for h in 0..effective_pruning_horizon {
+            let block = fetch_block(db, last_block_height.saturating_sub(h), false)?;
+            removed_blocks.push(Arc::new(block.try_into_chain_block()?));
+        }
+        reset_chain_to_genesis(db)?;
+        return Ok((removed_blocks, true));
+    }
 
     if steps_back > 0 {
         info!(
@@ -3539,23 +3659,14 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             "Rewinding headers at height {}",
             height,
         );
-        // If block accumulated data exists at this height (e.g. from a previous incomplete rewind
-        // past pruning horizon), remove it and any remaining block data before deleting the header.
-        if db.fetch_block_accumulated_data_by_height(height)?.is_some() {
-            let header = fetch_header(db, height)?;
-            let header_hash = header.hash();
-            txn.delete_block_accumulated_data(height);
-            txn.delete_all_kernerls_in_block(header_hash);
-            txn.delete_all_inputs_in_block(header_hash);
-        }
         txn.delete_header(height);
     }
     db.write(txn)?;
     // Delete blocks
-    let mut steps_back = last_block_height.saturating_sub(target_height);
+    let steps_back = last_block_height.saturating_sub(target_height);
     // No blocks to remove, no need to update the best block
     if steps_back == 0 {
-        return Ok(vec![]);
+        return Ok((vec![], false));
     }
 
     let mut removed_blocks = Vec::with_capacity(usize::try_from(steps_back).unwrap_or(usize::MAX));
@@ -3563,16 +3674,6 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         target: LOG_TARGET,
         "Rewinding blocks from height {last_block_height} to {target_height}"
     );
-
-    let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
-    let prune_past_horizon = metadata.is_pruned_node() && steps_back > effective_pruning_horizon;
-    if prune_past_horizon {
-        warn!(
-            target: LOG_TARGET,
-            "WARNING, reorg past pruning horizon (more than {effective_pruning_horizon} blocks back), rewinding back to 0"
-        );
-        steps_back = effective_pruning_horizon;
-    }
 
     db.set_stats_total_height(steps_back);
     for h in 0..steps_back {
@@ -3587,7 +3688,7 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         let block_hash = *block.hash();
         txn.delete_tip_block(block_hash);
         txn.delete_header(block_height);
-        if !prune_past_horizon && !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
+        if !db.contains(&DbKey::OrphanBlock(*block.hash()))? {
             // Because we know we will remove blocks we can't recover, this will be a destructive rewind, so we
             // can't recover from this apart from resync from another peer. Failure here
             // should not be common as this chain has a valid proof of work that has been
@@ -3596,14 +3697,8 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         }
         let block_total_accumulated_difficulty = block.accumulated_data().total_accumulated_difficulty;
         removed_blocks.push(block);
-        // Set best block to one before, to keep DB consistent, or, if we reached pruned horizon, set best block to 0 as
-        // we have run out of headers.
-        let is_last_step = h.saturating_add(1) == steps_back;
-        let chain_header = db.fetch_chain_header_by_height(if prune_past_horizon && is_last_step {
-            0
-        } else {
-            block_height.saturating_sub(1)
-        })?;
+        // Set best block to one before, to keep DB consistent
+        let chain_header = db.fetch_chain_header_by_height(block_height.saturating_sub(1))?;
         let metadata = db.fetch_chain_metadata()?;
         let expected_block_hash = *metadata.best_block_hash();
         txn.set_best_block(
@@ -3613,14 +3708,8 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
             expected_block_hash,
             chain_header.timestamp(),
         );
-        // When rewinding past the pruning horizon to height 0, reset pruned_height in the same
-        // transaction to maintain the invariant that pruned_height <= best_block_height.
-        if prune_past_horizon && is_last_step {
-            txn.set_pruned_height(0);
-        }
-        // The rewound tip is the new orphan chain tip, with its own work. A rewind past the pruning horizon keeps no
-        // orphans, so there is no tip to index.
-        if h == 0 && !prune_past_horizon {
+        // The rewound tip is the new orphan chain tip, with its own work.
+        if h == 0 {
             debug!(target: LOG_TARGET, "Inserting new orphan chain tip: {block_hash}");
             txn.insert_orphan_chain_tip(block_hash, block_total_accumulated_difficulty);
         }
@@ -3636,48 +3725,90 @@ pub(crate) fn rewind_to_height<T: BlockchainBackend>(
         db.write(txn)?;
     }
 
-    if prune_past_horizon {
-        // We are rewinding past pruning horizon, so we need to remove all blocks and the UTXO's from them.
-        // We also delete headers above the target height since they belong to the old chain and will be
-        // replaced during re-sync. The header at target_height is preserved as it is the chain split point.
-        // We don't have these complete blocks, so we don't push them to the removed blocks.
-        for h in 0..last_block_height.saturating_sub(steps_back) {
-            let height = last_block_height.saturating_sub(h).saturating_sub(steps_back);
-            debug!(
-                target: LOG_TARGET,
-                "Deleting pruned block data at height {}",
-                height,
-            );
-            // For pruned blocks, we cannot use delete_tip_block because it requires JMT validation
-            // which is not possible for pruned data. Instead, directly delete the accumulated data,
-            // kernels, inputs and then the header (above the target height).
-            let header = fetch_header(db, height)?;
-            let header_hash = header.hash();
-            let mut txn = DbTransaction::new();
-            txn.delete_block_accumulated_data(height);
-            txn.delete_all_kernerls_in_block(header_hash);
-            txn.delete_all_inputs_in_block(header_hash);
-            if height > target_height {
-                txn.delete_header(height);
-            }
-            db.write(txn)?;
-        }
-    }
+    Ok((removed_blocks, false))
+}
 
-    Ok(removed_blocks)
+/// Whether rewinding to `target_height` reaches below a pruned node's pruned height, which resets the chain to the
+/// genesis block
+fn rewind_resets_chain(metadata: &ChainMetadata, target_height: u64) -> bool {
+    let effective_pruning_horizon = metadata.best_block_height().saturating_sub(metadata.pruned_height());
+    metadata.is_pruned_node() && metadata.best_block_height().saturating_sub(target_height) > effective_pruning_horizon
+}
+
+/// The chain a chain from the split at `split_hash` has to beat, if replacing ours would reset this pruned node to the
+/// genesis block: the stronger of our header tip and the strongest header we validated and then lost to a rewind.
+/// A reset loses everything we hold, so it needs a chain stronger than all of it.
+fn reset_reference<T: BlockchainBackend>(
+    db: &T,
+    comparer: &dyn ChainStrengthComparer,
+    split_hash: BlockHash,
+) -> Result<Option<ChainHeader>, ChainStorageError> {
+    if !rewind_would_reset(db, split_hash)? {
+        return Ok(None);
+    }
+    let header_tip = db.fetch_last_chain_header()?;
+    match db.fetch_lost_header_tip()? {
+        Some(lost) if comparer.compare(&lost, &header_tip) == Ordering::Greater => Ok(Some(lost)),
+        _ => Ok(Some(header_tip)),
+    }
+}
+
+/// Before a rewind to the split at `split_hash` deletes headers we hold above our block tip, remember the strongest of
+/// them, so that losing them cannot lower what a later reset has to beat
+fn remember_lost_header_tip<T: BlockchainBackend>(
+    db: &mut T,
+    comparer: &dyn ChainStrengthComparer,
+    split_hash: BlockHash,
+) -> Result<(), ChainStorageError> {
+    let split = fetch_header_by_block_hash(&*db, split_hash)?.ok_or(ChainStorageError::ValueNotFound {
+        entity: "BlockHeader",
+        field: "block_hash",
+        value: split_hash.to_hex(),
+    })?;
+    let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+    let header_tip = db.fetch_last_chain_header()?;
+    if header_tip.height() <= cmp::max(best_block_height, split.height) {
+        return Ok(());
+    }
+    if let Some(lost) = db.fetch_lost_header_tip()? &&
+        comparer.compare(&lost, &header_tip) != Ordering::Less
+    {
+        return Ok(());
+    }
+    let mut txn = DbTransaction::new();
+    txn.set_lost_header_tip(header_tip);
+    db.write(txn)
+}
+
+/// Whether rewinding to the block `block_hash` would reset the chain to the genesis block
+fn rewind_would_reset<T: BlockchainBackend>(db: &T, block_hash: BlockHash) -> Result<bool, ChainStorageError> {
+    let target_header = fetch_header_by_block_hash(db, block_hash)?.ok_or(ChainStorageError::ValueNotFound {
+        entity: "BlockHeader",
+        field: "block_hash",
+        value: block_hash.to_hex(),
+    })?;
+    Ok(rewind_resets_chain(&db.fetch_chain_metadata()?, target_header.height))
 }
 
 fn rewind_to_hash<T: BlockchainBackend>(
     db: &mut T,
     block_hash: BlockHash,
 ) -> Result<Vec<Arc<ChainBlock>>, ChainStorageError> {
+    rewind_or_reset_to_hash(db, block_hash).map(|(removed_blocks, _)| removed_blocks)
+}
+
+/// As `rewind_to_hash`, and also returns whether the chain was reset to the genesis block
+fn rewind_or_reset_to_hash<T: BlockchainBackend>(
+    db: &mut T,
+    block_hash: BlockHash,
+) -> Result<(Vec<Arc<ChainBlock>>, bool), ChainStorageError> {
     let block_hash_hex = block_hash.to_hex();
     let target_header = fetch_header_by_block_hash(&*db, block_hash)?.ok_or(ChainStorageError::ValueNotFound {
         entity: "BlockHeader",
         field: "block_hash",
         value: block_hash_hex,
     })?;
-    rewind_to_height(db, target_header.height)
+    rewind_or_reset_to_height(db, target_header.height)
 }
 
 /// How far above the GHSA-3qmx-q9pv-f3m4 activation height a node's own tip has to be before the deep reorg
@@ -3733,7 +3864,7 @@ pub const GHSA_DEEP_REORG_CONFIRMATION_WINDOW: u64 = 360;
 /// So an attacker forks below the activation height, re-uses one real high difficulty Monero solution to mint
 /// blocks for free under the legacy rules, ramps the LWMA target, out-accumulates the honest chain and unwinds
 /// everything above the fork point - including blocks mined after the fork under the new rules. On a pruned node
-/// the rewind additionally runs past `prune_past_horizon` and is destructive.
+/// a rewind below the pruned height additionally resets the chain to the genesis block.
 ///
 /// # The rule
 ///
@@ -4048,6 +4179,7 @@ struct CandidateBlock {
 ///
 /// Without this an attacker holding n invalid tips on top of a k block prefix that is not stronger than our chain had
 /// the prefix validated n times in one call.
+#[allow(clippy::too_many_lines)]
 fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     db: &mut T,
     config: &BlockchainDatabaseConfig,
@@ -4061,7 +4193,9 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     let mut removed: Vec<Arc<ChainBlock>> = Vec::new();
     let mut rejected: Vec<RejectedBlock> = Vec::new();
     let mut validated = HashSet::new();
-    let starting_tip = *db.fetch_tip_header()?.hash();
+    let starting_tip_header = db.fetch_tip_header()?;
+    let starting_tip = *starting_tip_header.hash();
+    let mut was_reset = false;
     loop {
         let attempt = match swap_to_strongest_orphan_tip(
             db,
@@ -4118,6 +4252,12 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
                 removed: attempt_removed,
                 added: attempt_added,
             } => (attempt_removed, attempt_added, true),
+            SwapAttempt::Reset {
+                removed: attempt_removed,
+            } => {
+                was_reset = true;
+                (attempt_removed, vec![], true)
+            },
             SwapAttempt::Failed {
                 removed: attempt_removed,
                 added: attempt_added,
@@ -4154,9 +4294,15 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         }
     }
 
+    // After a reset the chain is the genesis block alone, which is reported as added so listeners see the new tip. It
+    // is a reorg even if no removed block could be rebuilt.
+    if was_reset {
+        added = vec![Arc::new(db.fetch_genesis_block())];
+        log_and_track_reorg(db, config, &starting_tip_header, &added, &removed);
+    }
     // A reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
-    let result = if !removed.is_empty() || added.len() > 1 {
+    let result = if was_reset || !removed.is_empty() || added.len() > 1 {
         BlockAddResult::ChainReorg { added, removed }
     } else {
         match added.pop() {
@@ -4167,13 +4313,43 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     Ok(AddBlockOutcome { result, rejected })
 }
 
+/// What `BlockchainDatabase::rewind_for_pending_chain` did
+#[derive(Debug)]
+pub enum PendingChainRewind {
+    /// The chain was rewound to the split; these blocks were removed
+    Rewound(Vec<Arc<ChainBlock>>),
+    /// The rewind reset the chain to the genesis block; these blocks were removed
+    Reset(Vec<Arc<ChainBlock>>),
+    /// The rewind would have reset the chain and the pending chain is not stronger than the chain a reset has to beat,
+    /// so nothing was done
+    Refused,
+    /// The rewind would have reset the chain, which was not allowed yet, so nothing was done
+    WouldReset,
+    /// Only a reset was allowed, and the rewind would no longer reset the chain, so nothing was done
+    NoLongerResets,
+}
+
+/// Whether `BlockchainDatabase::rewind_for_pending_chain` may reset the chain
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResetPermission {
+    /// A rewind that would reset the chain is not done
+    NotYet,
+    /// The rewind may reset the chain
+    Allowed,
+    /// Only a reset is done: the pending headers no longer link to our chain except through the genesis block
+    Required,
+}
+
 /// What one attempt to swap to the strongest orphan tip did
 enum SwapAttempt {
     /// No orphan tip is stronger than the main chain. Nothing changed.
     NoStrongerTip,
-    /// The strongest tip's fork was refused by the deep reorg anchor, or does not link to the main chain, and was
-    /// dropped. Nothing else changed.
+    /// The strongest tip's fork was refused by the deep reorg anchor, would reset the chain without beating everything
+    /// we hold, or does not link to the main chain, and was dropped. Nothing else changed.
     Refused,
+    /// The rewind to the fork reset the chain to the genesis block, dropping the fork and every other orphan.
+    /// `removed` holds only the blocks above the pruned height.
+    Reset { removed: Vec<Arc<ChainBlock>> },
     /// The main chain was swapped to the strongest tip
     Reorged {
         removed: Vec<Arc<ChainBlock>>,
@@ -4266,16 +4442,41 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
 
     // GHSA-3qmx-q9pv-f3m4 deep reorg anchor. This is the choke point for the gossip driven reorg path: it is the
     // first place where both halves of the question are known - our own tip, and the full set of blocks the swap
-    // would add - and it is still *before* `reorganize_chain`, so nothing has been rewound and the pruned-node
-    // `prune_past_horizon` rewind has not been reached. The header sync path does not come through here and is
+    // would add - and it is still *before* `reorganize_chain`, so nothing has been rewound and a pruned node has not
+    // been reset to the genesis block. The header sync path does not come through here and is
     // anchored separately, in `HeaderSynchronizer::determine_sync_status`.
     if refuse_reorg_below_ghsa_activation(db, consensus_manager, &tip_header, &best_fork_header, &reorg_chain)? {
         remove_non_canonical_headers(db)?;
         return Ok(SwapAttempt::Refused);
     }
 
+    // A fork that resets a pruned node to the genesis block also has to beat everything we hold, so that a short fork
+    // cannot wipe a stronger header chain we validated. Drop it as the deep reorg anchor does.
+    let reset_reference = reset_reference(db, chain_strength_comparer, fork_hash)?;
+    if let Some(reference) = &reset_reference &&
+        chain_strength_comparer.compare(&best_fork_header, reference) != Ordering::Greater
+    {
+        warn!(
+            target: LOG_TARGET,
+            "Refusing fork tip #{} ({}): it would reset the chain to the genesis block but is not stronger than our \
+             header tip. Dropping it.",
+            best_fork_header.height(),
+            best_fork_header.hash(),
+        );
+        let mut txn = DbTransaction::new();
+        for hash in orphan_subtree_hashes(db, *lowest_new_block.hash())?.iter().rev() {
+            txn.delete_orphan(*hash);
+        }
+        db.write(txn)?;
+        remove_non_canonical_headers(db)?;
+        return Ok(SwapAttempt::Refused);
+    }
+    if reset_reference.is_none() {
+        remember_lost_header_tip(db, chain_strength_comparer, fork_hash)?;
+    }
+
     // Note: This will also remove ay surplus headers (i.e. headers that are not linked to any blocks)
-    let removed_blocks = rewind_to_hash(db, fork_hash)?;
+    let (removed_blocks, was_reset) = rewind_or_reset_to_hash(db, fork_hash)?;
     debug!(
         target: LOG_TARGET,
         "Validate and add {} chain block(s) from block {}. Rewound blocks: [{}]",
@@ -4287,6 +4488,18 @@ fn swap_to_strongest_orphan_tip<T: BlockchainBackend>(
             .collect::<Vec<_>>()
             .join(", ")
     );
+    // A rewind past a pruned node's horizon resets the chain to the genesis block, dropping the fork with it, so there
+    // is nothing to apply. The main chain has still changed.
+    if was_reset {
+        warn!(
+            target: LOG_TARGET,
+            "The rewind to fork block {fork_hash} reset the chain to the genesis block; the fork is dropped and will \
+             be synced again."
+        );
+        return Ok(SwapAttempt::Reset {
+            removed: removed_blocks,
+        });
+    }
     match reorganize_chain(db, block_validator, &reorg_chain, validated) {
         Ok(()) => {
             let added_blocks = Vec::from(reorg_chain);
@@ -5792,10 +6005,9 @@ fn strict_validate_header<B: BlockchainBackend>(
 /// Decide whether the rewind that is about to be performed is one this node is able to perform. Returns an error -
 /// and rewinds nothing - if it is not.
 ///
-/// The one refusal is a pruned node whose history no longer reaches the rewind target: `rewind_to_height` silently
-/// turns a rewind deeper than `best_block_height - pruned_height` into a rewind to height 0, a full destructive
-/// wipe, and in that branch it skips `insert_chained_orphan` but still calls `insert_orphan_chain_tip`, leaving a
-/// tip whose hash resolves to nothing. A background task must never do that on its own.
+/// The one refusal is a pruned node whose history no longer reaches the rewind target: `rewind_to_height` turns a
+/// rewind deeper than `best_block_height - pruned_height` into a reset of the whole chain to the genesis block, after
+/// which the node has to sync again from scratch. A background task must never do that on its own.
 ///
 /// Deliberately asked here, about the rewind actually being attempted, and deliberately *not* hoisted to the top of
 /// the walk. An earlier revision hoisted it by expanding the condition for the deepest rewind the walk could ever
@@ -5826,8 +6038,8 @@ fn refuse_if_rewind_is_impossible<B: BlockchainBackend>(db: &B, rewind_to: u64) 
             target: LOG_TARGET,
             "[AccData] The accumulated data repair needs to rewind this chain to height {rewind_to} \
             ({steps_back} blocks), which is past this pruned node's effective pruning horizon of \
-            {effective_pruning_horizon}; `rewind_to_height` would turn that into a wipe to height 0. Refusing the \
-            rewind: the chain is left as it is and the repair stops unfinished, so it is attempted again on the \
+            {effective_pruning_horizon}; `rewind_to_height` would turn that into a reset to the genesis block. Refusing \
+            the rewind: the chain is left as it is and the repair stops unfinished, so it is attempted again on the \
             next startup. The blocks it needs are genuinely gone, so this node has to be resynced to complete it."
         );
         return Err(ChainStorageError::InvalidOperation(format!(
@@ -6040,7 +6252,7 @@ fn verify_accumulated_data_for_height<B: BlockchainBackend>(
 }
 
 // Log the rewind the consistency check is about to do, and call out a pruned node rewinding past its horizon,
-// which `rewind_to_height` turns into a wipe to height 0.
+// which `rewind_to_height` turns into a reset to the genesis block.
 fn warn_before_consistency_rewind<B: BlockchainBackend>(db: &B, rewind_to: u64) -> Result<(), ChainStorageError> {
     let metadata = db.fetch_chain_metadata()?;
     let tip = metadata.best_block_height();
@@ -7494,6 +7706,41 @@ mod test {
                     source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidHeight { .. })
                 }),
                 "{err:?}"
+            );
+        }
+
+        #[tokio::test]
+        async fn it_rejects_an_orphan_whose_kernel_mmr_size_does_not_grow() {
+            let rules = create_consensus_rules();
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+            let validators = Validators::new(
+                MockValidator::new(true),
+                HeaderFullValidator::new(rules.clone(), difficulty_calculator),
+                MockValidator::new(true),
+            );
+            let db = crate::test_helpers::blockchain::create_store_with_consensus_and_validators(rules, validators);
+            let (_, main_chain) = create_main_chain(&db, block_specs!(["1a->GB"], ["2a->1a"]));
+
+            let fork_root = main_chain.get("1a").unwrap().clone();
+            let (_, fork) = create_chained_blocks(&db, block_specs!(["2b->GB"]), fork_root.clone());
+            let mut block = fork.get("2b").unwrap().block().clone();
+            block.header.kernel_mmr_size = fork_root.header().kernel_mmr_size;
+            let hash = block.hash();
+
+            let err = db.add_block(Arc::new(block)).unwrap_err();
+            assert!(
+                matches!(err, ChainStorageError::ValidationError {
+                    source: ValidationError::BlockHeaderError(
+                        BlockHeaderValidationError::KernelMmrSizeNotIncreasing { .. }
+                    )
+                }),
+                "{err:?}"
+            );
+            assert!(
+                !db.db_read_access()
+                    .unwrap()
+                    .contains(&DbKey::OrphanBlock(hash))
+                    .unwrap()
             );
         }
 
@@ -10538,9 +10785,8 @@ mod test {
         /// A background task must never wipe a pruned node's chain.
         ///
         /// `rewind_to_height` turns a rewind that reaches past a pruned node's effective pruning horizon into a
-        /// rewind to height 0 - a full destructive wipe - and in that branch it also writes an orphan chain tip
-        /// without the matching orphan block. `rewind_below_invalid_header` must recognise that case before it
-        /// starts, refuse it, and leave the rebuild unfinished so the operator sees it again.
+        /// reset of the whole chain to the genesis block. `rewind_below_invalid_header` must recognise that case before
+        /// it starts, refuse it, and leave the rebuild unfinished so the operator sees it again.
         #[tokio::test]
         async fn a_rewind_that_would_wipe_a_pruned_node_is_refused() {
             const INVALID_AT: u64 = ACTIVATION;

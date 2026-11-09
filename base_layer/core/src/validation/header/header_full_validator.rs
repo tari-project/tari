@@ -102,12 +102,18 @@ impl<B: BlockchainBackend> HeaderChainLinkedValidator<B> for HeaderFullValidator
                 .check_achieved_and_target_difficulty_with_vm_key(db, header, chain_context.vm_key())?
         };
 
+        // After the proof of work, so that a header without it is not recorded as a bad block. The header commits to
+        // `prev_hash`, so this verdict cannot change and the header can be blacklisted on it.
+        check_kernel_mmr_size(header, prev_header)?;
+
         // Deliberately last, and deliberately after the proof of work has been checked: the seed age is a chain
         // dependent verdict that a caller must not record against the header itself (see
         // `BlockHeaderSyncValidator::blacklist_unless_verdict_can_change`). A header that fails an absolute check
         // has to fail on that, so that it can still be blacklisted; only a header that is sound on its own terms
-        // gets to be judged against the chain it claims to extend. Height and previous hash are chain dependent too;
-        // header sync checks them against the previous header before calling this validator.
+        // gets to be judged against the chain it claims to extend. The kernel MMR size check above reads the
+        // previous header too, but its verdict is fixed by the header's own `prev_hash`, so it counts as absolute.
+        // Height and previous hash are chain dependent; header sync checks them against the previous header before
+        // calling this validator.
         let monero_seed = check_monero_seed_height(db, header, constants, &self.rules, chain_context)?;
 
         Ok(ValidatedHeader {
@@ -161,6 +167,20 @@ fn check_prev_hash(header: &BlockHeader, prev_header: &BlockHeader) -> Result<()
             BlockHeaderValidationError::InvalidPreviousHash {
                 expected: prev_header.hash(),
                 actual: header.prev_hash,
+            },
+        ));
+    }
+
+    Ok(())
+}
+
+/// Every block has exactly one coinbase kernel, so the kernel MMR must grow by at least one per block.
+fn check_kernel_mmr_size(header: &BlockHeader, prev_header: &BlockHeader) -> Result<(), ValidationError> {
+    if header.kernel_mmr_size <= prev_header.kernel_mmr_size {
+        return Err(ValidationError::BlockHeaderError(
+            BlockHeaderValidationError::KernelMmrSizeNotIncreasing {
+                prev: prev_header.kernel_mmr_size,
+                actual: header.kernel_mmr_size,
             },
         ));
     }
@@ -874,6 +894,7 @@ mod test {
         let fork_key = FixedHash::from([1u8; 32]);
         let mut header = BlockHeader::from_previous(genesis.header());
         header.timestamp = genesis.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+        header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
         header.pow = ProofOfWork::new(PowAlgorithm::RandomXT);
         // Most keys give the lowest difficulty, so find a nonce for which the two keys do not
         while tari_randomx_difficulty(&header, &factory, &fork_key).unwrap() ==
@@ -897,6 +918,121 @@ mod test {
         assert_eq!(
             validated.achieved_target.achieved(),
             tari_randomx_difficulty(&header, &factory, &fork_key).unwrap()
+        );
+    }
+
+    #[test]
+    fn a_header_whose_kernel_mmr_size_grows_passes() {
+        let mut prev = BlockHeader::new(0);
+        prev.kernel_mmr_size = 10;
+        for size in [11, 25] {
+            let mut header = BlockHeader::from_previous(&prev);
+            header.kernel_mmr_size = size;
+            check_kernel_mmr_size(&header, &prev).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_header_whose_kernel_mmr_size_does_not_grow_is_rejected() {
+        use tari_transaction_components::BanPeriod;
+
+        let mut prev = BlockHeader::new(0);
+        prev.kernel_mmr_size = 10;
+        for size in [10, 9, 0] {
+            let mut header = BlockHeader::from_previous(&prev);
+            header.kernel_mmr_size = size;
+            let err = check_kernel_mmr_size(&header, &prev).unwrap_err();
+            assert!(
+                matches!(
+                    err,
+                    ValidationError::BlockHeaderError(BlockHeaderValidationError::KernelMmrSizeNotIncreasing {
+                        prev: 10,
+                        actual,
+                    }) if actual == size
+                ),
+                "{err}"
+            );
+            assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        }
+    }
+
+    /// A LocalNet validator and database, and a Sha3x header on top of genesis with the given kernel MMR size
+    fn kernel_mmr_size_setup(
+        kernel_mmr_size: u64,
+    ) -> (
+        HeaderFullValidator,
+        crate::chain_storage::BlockchainDatabase<crate::test_helpers::blockchain::TempDatabase>,
+        BlockHeader,
+    ) {
+        use tari_common::configuration::Network;
+
+        use crate::test_helpers::blockchain::create_custom_blockchain;
+
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
+        let validator = HeaderFullValidator::new(
+            rules.clone(),
+            DifficultyCalculator::new(rules.clone(), Default::default()),
+        );
+        let db = create_custom_blockchain(rules);
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let mut header = BlockHeader::from_previous(genesis.header());
+        header.timestamp = genesis.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+        header.pow = ProofOfWork::new(PowAlgorithm::Sha3x);
+        header.kernel_mmr_size = kernel_mmr_size;
+        (validator, db, header)
+    }
+
+    fn validate_on_genesis(
+        kernel_mmr_size: u64,
+        target_difficulty: Option<AdjustedTarget>,
+    ) -> Result<ValidatedHeader, ValidationError> {
+        let (validator, db, header) = kernel_mmr_size_setup(kernel_mmr_size);
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let access = db.db_read_access().unwrap();
+        validator.validate(
+            &*access,
+            &header,
+            genesis.header(),
+            &[genesis.header().timestamp],
+            target_difficulty,
+            HeaderChainContext::candidate_chain(*genesis.hash(), 0, None),
+        )
+    }
+
+    #[test]
+    fn the_validator_checks_the_kernel_mmr_size() {
+        let (_, db, _) = kernel_mmr_size_setup(0);
+        let genesis_size = db.fetch_chain_header(0).unwrap().header().kernel_mmr_size;
+
+        validate_on_genesis(genesis_size + 1, None).unwrap();
+        validate_on_genesis(genesis_size + 5, None).unwrap();
+        let err = validate_on_genesis(genesis_size, None).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ValidationError::BlockHeaderError(BlockHeaderValidationError::KernelMmrSizeNotIncreasing { .. })
+            ),
+            "{err}"
+        );
+    }
+
+    /// A header with no proof of work fails on that, so it is never recorded as bad for its kernel MMR size
+    #[test]
+    fn proof_of_work_is_checked_before_the_kernel_mmr_size() {
+        use tari_transaction_components::tari_proof_of_work::Difficulty;
+
+        let (_, db, _) = kernel_mmr_size_setup(0);
+        let genesis_size = db.fetch_chain_header(0).unwrap().header().kernel_mmr_size;
+
+        let err = validate_on_genesis(genesis_size, Some(AdjustedTarget::unadjusted(Difficulty::max()))).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ValidationError::BlockHeaderError(BlockHeaderValidationError::ProofOfWorkError(
+                    PowError::AchievedDifficultyTooLow { .. }
+                ))
+            ),
+            "{err}"
         );
     }
 
