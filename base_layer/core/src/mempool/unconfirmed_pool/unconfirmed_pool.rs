@@ -4764,6 +4764,7 @@ mod test {
         let mut kernel = synthetic_tx(&base, 2, 10).body.kernels()[0].clone();
         kernel.burn_commitment = Some(pending.body.outputs()[0].commitment.clone());
         let other = with_kernels(&base, 3, vec![kernel]);
+        // This body fails block validation; it only exercises the pool
         let published_block = create_orphan_block(0, vec![(*other).clone()], &consensus);
         let removed = unconfirmed_pool
             .remove_published_and_discard_deprecated_transactions(&published_block)
@@ -4772,7 +4773,8 @@ mod test {
         assert_eq!(unconfirmed_pool.tx_by_key.len(), 2);
 
         // A mined burn of the same output (under a different kernel) still removes the pooled burn
-        let (_, other_burn_kernel) = burn_tx(4);
+        let (_, mut other_burn_kernel) = burn_tx(4);
+        other_burn_kernel.burn_commitment = Some(burned_output.commitment.clone());
         let mined_burn = Transaction::new(
             vec![],
             vec![burned_output],
@@ -4781,6 +4783,7 @@ mod test {
             Default::default(),
         );
         let published_block = create_orphan_block(1, vec![mined_burn], &consensus);
+        crate::validation::aggregate_body::check_total_burned(&published_block.body).unwrap();
         let removed = unconfirmed_pool
             .remove_published_and_discard_deprecated_transactions(&published_block)
             .unwrap();
