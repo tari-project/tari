@@ -34,7 +34,7 @@ use thiserror::Error;
 use crate::{
     base_node::{
         StateMachineHandle,
-        rpc::{BaseNodeWalletQueryService, height_at_time},
+        rpc::{BaseNodeWalletQueryService, HeightAtTimeError, height_at_time},
         state_machine_service::states::StateInfo,
     },
     chain_storage::{BlockchainBackend, ChainStorageError, MinedInfo, async_db::AsyncBlockchainDb},
@@ -426,10 +426,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletQueryService for Service<B> {
     async fn get_height_at_time(&self, epoch_time: u64) -> Result<u64, Self::Error> {
         trace!(target: LOG_TARGET, "requested_epoch_time: {}", epoch_time);
         height_at_time(&self.db, epoch_time).await.map_err(|e| match e {
-            ChainStorageError::ValueNotFound { value, .. } => Error::HeaderNotFound {
-                height: value.parse().unwrap_or_default(),
-            },
-            e => e.into(),
+            HeightAtTimeError::HeaderNotFound(height) => Error::HeaderNotFound { height },
+            HeightAtTimeError::Storage(e) => e.into(),
         })
     }
 

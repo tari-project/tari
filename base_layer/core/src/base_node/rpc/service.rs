@@ -16,6 +16,7 @@ use crate::{
         StateMachineHandle,
         rpc::{
             BaseNodeWalletService,
+            HeightAtTimeError,
             MAX_ALLOWED_QUERY_SIZE,
             height_at_time,
             sync_utxos_by_block_task::SyncUtxosByBlockTask,
@@ -587,13 +588,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus> {
         let requested_epoch_time: u64 = request.into_message();
         trace!(target: LOG_TARGET, "requested_epoch_time: {requested_epoch_time}");
-        let height = height_at_time(&self.db, requested_epoch_time).await.map_err(|e| {
-            if e.is_value_not_found() {
-                RpcStatus::not_found(&format!("Header not found during search: {e}"))
-            } else {
-                RpcStatus::log_internal_error(LOG_TARGET)(e)
-            }
-        })?;
+        let height = height_at_time(&self.db, requested_epoch_time)
+            .await
+            .map_err(|e| match e {
+                HeightAtTimeError::HeaderNotFound(_) => RpcStatus::not_found(&e.to_string()),
+                HeightAtTimeError::Storage(e) => RpcStatus::log_internal_error(LOG_TARGET)(e),
+            })?;
         Ok(Response::new(height))
     }
 

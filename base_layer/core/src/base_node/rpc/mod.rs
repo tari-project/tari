@@ -49,6 +49,15 @@ use crate::{
     },
 };
 
+/// Error from [height_at_time]: a header missing during the search is distinct from a failing database
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum HeightAtTimeError {
+    #[error(transparent)]
+    Storage(#[from] ChainStorageError),
+    #[error("Header not found during search at height {0}")]
+    HeaderNotFound(u64),
+}
+
 /// Returns the highest height `h` in `[0, tip]` with `timestamp(h) <= epoch_time`: 0 when `epoch_time` is before block
 /// 1, and the tip when `epoch_time` is at or after the tip.
 ///
@@ -57,7 +66,7 @@ use crate::{
 pub(crate) async fn height_at_time<B: BlockchainBackend + 'static>(
     db: &AsyncBlockchainDb<B>,
     epoch_time: u64,
-) -> Result<u64, ChainStorageError> {
+) -> Result<u64, HeightAtTimeError> {
     let tip = db.fetch_tip_header().await?;
     if tip.timestamp() <= epoch_time {
         return Ok(tip.height());
@@ -69,11 +78,7 @@ pub(crate) async fn height_at_time<B: BlockchainBackend + 'static>(
         let header = db
             .fetch_header(mid)
             .await?
-            .ok_or_else(|| ChainStorageError::ValueNotFound {
-                entity: "BlockHeader",
-                field: "height",
-                value: mid.to_string(),
-            })?;
+            .ok_or(HeightAtTimeError::HeaderNotFound(mid))?;
         if header.timestamp.as_u64() <= epoch_time {
             low = mid.saturating_add(1);
         } else {
