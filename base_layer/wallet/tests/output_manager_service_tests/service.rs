@@ -3992,6 +3992,7 @@ async fn test_scrape_wallet_batches_and_empty_wallet() {
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn test_htlc_claim_and_refund_succeed_and_encumber_refunded_input() {
     use sha2::{Digest, Sha256};
     use tari_transaction_components::{

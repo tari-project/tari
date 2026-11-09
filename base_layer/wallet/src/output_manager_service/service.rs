@@ -3286,6 +3286,8 @@ where
             };
             trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", finalized.tx_id);
 
+            // The claimed HTLC output was created by the counterparty and is not stored in the claimer's DB, so no
+            // existing DB inputs need to be encumbered here.
             self.resources
                 .db
                 .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;

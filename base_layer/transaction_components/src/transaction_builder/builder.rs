@@ -518,13 +518,10 @@ where KM: TransactionKeyManagerInterface
             });
         }
         if self.prevent_fee_gt_amount {
-            let sent = match self.tx_type {
-                TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund
-                    if self.total_output_value(pending)? == MicroMinotari::zero() =>
-                {
-                    fee_and_change.change.unwrap_or_default()
-                },
-                _ => self.total_output_value(pending)?,
+            let sent = if self.is_change_only_atomic_swap(pending) {
+                self.get_total_input_value()?
+            } else {
+                self.total_output_value(pending)?
             };
             if fee_and_change.fee > sent {
                 return Err(TransactionBuilderError::FeeGreaterThanAmount {
@@ -808,12 +805,25 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
+    fn is_change_only_atomic_swap(&self, pending: &[PendingOutput]) -> bool {
+        matches!(self.tx_type, TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund) &&
+            self.recipient_outputs.is_empty() &&
+            self.custom_outputs.is_empty() &&
+            self.recipient_specs.is_empty() &&
+            pending.is_empty()
+    }
+
+    /// Validate that the builder has a fee, inputs, and recipients within protocol limits.
+    ///
+    /// Atomic swap claim (`TxType::ClaimAtomicSwap`) and refund (`TxType::HtlcAtomicSwapRefund`) transactions that
+    /// have no recipient outputs are exempt from `NoRecipients` when a change output is produced, because the entire
+    /// input value (minus the fee) returns to the wallet via the change output.
     fn check_conditions(&self) -> Result<(), TransactionBuilderError> {
         if self.fee_per_gram.is_none() && self.fee == MicroMinotari::zero() {
             return Err(TransactionBuilderError::FeeNotSet);
         }
-        let is_change_only_atomic_swap = matches!(self.tx_type, TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund) &&
-            self.fee_and_change.and_then(|fc| fc.change).is_some();
+        let is_change_only_atomic_swap =
+            self.is_change_only_atomic_swap(&[]) && self.fee_and_change.and_then(|fc| fc.change).is_some();
         if self.recipient_outputs.is_empty() &&
             self.custom_outputs.is_empty() &&
             self.recipient_specs.is_empty() &&
@@ -1422,13 +1432,10 @@ where KM: TransactionKeyManagerInterface
 
         self.check_conditions()?;
 
-        let total_sent = match self.tx_type {
-            TxType::ClaimAtomicSwap | TxType::HtlcAtomicSwapRefund
-                if self.total_output_value(&[])? == MicroMinotari::zero() =>
-            {
-                change_amount.unwrap_or_default()
-            },
-            _ => self.total_output_value(&[])?,
+        let total_sent = if self.is_change_only_atomic_swap(&[]) {
+            self.get_total_input_value()?
+        } else {
+            self.total_output_value(&[])?
         };
         if total_fee > total_sent {
             warn!(
@@ -3790,6 +3797,62 @@ mod test {
             let change = finalized.change.expect("change-only atomic swap should produce change");
             assert_eq!(change.value() + finalized.fee, input.value());
             assert_validates(&finalized.transaction);
+
+            // Even when fee exceeds half the input value (so fee > change), a change-only claim/refund compares fee
+            // against the total input value and still succeeds.
+            let small_input = create_test_input(10_000 * uT, 0, &key_manager, vec![], None);
+            let mut high_fee_builder =
+                TransactionBuilder::new(constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+            high_fee_builder
+                .with_lock_height(0)
+                .with_fee(6_000 * uT)
+                .with_tx_type(tx_type)
+                .with_prevent_fee_gt_amount(true)
+                .with_input(small_input)
+                .unwrap();
+            high_fee_builder.check_offline_payload(&[]).unwrap();
+            high_fee_builder.reserve_sender_offset_keys(&[]).unwrap();
+            let high_fee_finalized = high_fee_builder.build().unwrap();
+            let high_fee_change = high_fee_finalized.change.unwrap();
+            assert!(high_fee_finalized.fee > high_fee_change.value());
         }
+    }
+
+    #[test]
+    fn zero_amount_atomic_swap_send_still_fails_prevent_fee_gt_amount() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let constants = create_consensus_constants(0);
+        let input = create_test_input(100_000 * uT, 0, &key_manager, vec![], None);
+        let view_key = key_manager.get_view_key();
+        let spend_key = key_manager.get_spend_key();
+        let destination =
+            TariAddress::new_dual_address_with_default_features(view_key.pub_key, spend_key.pub_key, Network::LocalNet)
+                .unwrap();
+
+        let mut builder = TransactionBuilder::new(constants, key_manager, Network::LocalNet).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari::from(1))
+            .with_tx_type(TxType::ClaimAtomicSwap)
+            .with_prevent_fee_gt_amount(true)
+            .with_input(input)
+            .unwrap()
+            .with_recipient_spec(RecipientSpec::stealth(
+                destination,
+                MicroMinotari::zero(),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            builder.check_offline_payload(&[]),
+            Err(TransactionBuilderError::FeeGreaterThanAmount { sent, .. }) if sent == MicroMinotari::zero()
+        ));
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        assert!(matches!(
+            builder.build(),
+            Err(TransactionBuilderError::FeeGreaterThanAmount { sent, .. }) if sent == MicroMinotari::zero()
+        ));
     }
 }
