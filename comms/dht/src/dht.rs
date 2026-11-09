@@ -286,10 +286,7 @@ impl Dht {
     {
         ServiceBuilder::new()
             .layer(MetricsLayer::new(self.metrics_collector.clone()))
-            .layer(inbound::DeserializeLayer::new(
-                self.peer_manager.clone(),
-                self.connectivity.clone(),
-            ))
+            .layer(inbound::DeserializeLayer::new(self.peer_manager.clone()))
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
@@ -413,7 +410,10 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
         expires < EpochTime::now()
     {
         // The signature of an expired message is not verified, so it counts by the signer it claims
-        metrics::set_flood_series(metrics::claimed_flood_series(msg));
+        metrics::set_flood_series(metrics::claimed_flood_series(
+            &msg.dht_header.message_signature,
+            &msg.source_peer.public_key,
+        ));
         debug!(
             target: LOG_TARGET,
             "[discard_expired_messages] Discarding expired message {msg}"
@@ -1268,6 +1268,31 @@ mod test {
             .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
             .await
             .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// A header that does not convert counts by the signer it claims: v6.2 relays check only the length of the
+    /// ephemeral key, so they pass on one that is not a curve point
+    #[tokio::test]
+    async fn a_header_that_does_not_convert_counts_by_its_claimed_signer() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let not_a_point = CommsPublicKey::from_canonical_bytes(&[0xffu8; 32]).unwrap();
+        let envelope = signed_envelope(
+            &sybil,
+            DhtMessageType::None,
+            NodeDestination::PublicKey(Box::new(sybil.public_key().clone())),
+            Some(not_a_point),
+            vec![1u8; 64],
+        );
+        let result = service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await;
+        assert!(result.is_err());
         assert_eq!(series_counts(&dht, &relay).await, (0, 1));
     }
 

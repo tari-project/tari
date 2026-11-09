@@ -20,12 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, task::Poll, time::Duration};
+use std::{convert::TryInto, sync::Arc, task::Poll};
 
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{PeerManager, connectivity::ConnectivityRequester, message::InboundMessage, pipeline::PipelineError};
+use tari_comms::{PeerManager, message::InboundMessage, pipeline::PipelineError};
 use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
@@ -70,14 +70,12 @@ fn inbound_decode_failures() -> tari_metrics::IntCounter {
 pub struct DhtDeserializeMiddleware<S> {
     next_service: S,
     peer_manager: Arc<PeerManager>,
-    connectivity: ConnectivityRequester,
 }
 
 impl<S> DhtDeserializeMiddleware<S> {
-    pub fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester, service: S) -> Self {
+    pub fn new(peer_manager: Arc<PeerManager>, service: S) -> Self {
         Self {
             peer_manager,
-            connectivity,
             next_service: service,
         }
     }
@@ -99,7 +97,6 @@ where
     fn call(&mut self, message: InboundMessage) -> Self::Future {
         let next_service = self.next_service.clone();
         let peer_manager = self.peer_manager.clone();
-        let mut connectivity = self.connectivity.clone();
         Box::pin(async move {
             trace!(target: LOG_TARGET, "Deserializing InboundMessage {}", message.tag);
 
@@ -134,15 +131,18 @@ where
                     let found = peer_manager.find_by_node_id(&source_peer).await?;
                     metrics::clear_outcome_unknown();
                     if let Some(source_peer) = found {
-                        // .or_not_found(&source_peer)
-                        // .map(Arc::new)?;
-
-                        let inbound_msg = DhtInboundMessage::new(
-                            tag,
-                            dht_envelope.header.try_into()?,
-                            Arc::new(source_peer),
-                            dht_envelope.body,
-                        );
+                        // A header that does not convert counts by the signer it claims: older relays check less of the
+                        // header (for example only the length of the ephemeral key), so they may forward it
+                        let claimed_series = dht_envelope.header.as_ref().map(|header| {
+                            metrics::claimed_flood_series(&header.message_signature, &source_peer.public_key)
+                        });
+                        let dht_header = dht_envelope.header.try_into().inspect_err(|_| {
+                            if let Some(series) = claimed_series {
+                                metrics::set_flood_series(series);
+                            }
+                        })?;
+                        let inbound_msg =
+                            DhtInboundMessage::new(tag, dht_header, Arc::new(source_peer), dht_envelope.body);
                         trace!(
                             target: LOG_TARGET,
                             "Deserialization succeeded. Passing message {} onto next service (Trace: {})",
@@ -153,23 +153,12 @@ where
                         let next_service = next_service.ready_oneshot().await?;
                         res = next_service.oneshot(inbound_msg).await;
                     } else {
+                        // Not banned: the flood ban catches a peer that keeps this up
                         debug!(
                             target: LOG_TARGET,
-                            "Received message from unknown peer '{source_peer}'. Message tag: {tag}"
+                            "Dropping message from unknown peer '{source_peer}'. Message tag: {tag}"
                         );
-                        // Banned through connectivity, which holds the ban in memory and disconnects the peer: the
-                        // peer database cannot ban a peer it does not store
-                        if let Err(err) = connectivity
-                            .ban_peer_until(
-                                source_peer.clone(),
-                                Duration::from_secs(60 * 5),
-                                "Received message from unknown peer",
-                            )
-                            .await
-                        {
-                            debug!(target: LOG_TARGET, "Failed to ban unknown peer '{source_peer}': {err}");
-                        }
-                        res = Err(anyhow::anyhow!("Received message from unknown peer '{}'", source_peer));
+                        res = Ok(());
                     }
                     res
                 },
@@ -186,15 +175,11 @@ where
 
 pub struct DeserializeLayer {
     peer_manager: Arc<PeerManager>,
-    connectivity: ConnectivityRequester,
 }
 
 impl DeserializeLayer {
-    pub fn new(peer_manager: Arc<PeerManager>, connectivity: ConnectivityRequester) -> Self {
-        Self {
-            peer_manager,
-            connectivity,
-        }
+    pub fn new(peer_manager: Arc<PeerManager>) -> Self {
+        Self { peer_manager }
     }
 }
 
@@ -202,16 +187,15 @@ impl<S> Layer<S> for DeserializeLayer {
     type Service = DhtDeserializeMiddleware<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        DhtDeserializeMiddleware::new(self.peer_manager.clone(), self.connectivity.clone(), service)
+        DhtDeserializeMiddleware::new(self.peer_manager.clone(), service)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use tari_comms::{
-        message::{MessageExt, MessageTag},
-        test_utils::mocks::create_connectivity_mock,
-    };
+    use std::time::Duration;
+
+    use tari_comms::message::{MessageExt, MessageTag};
 
     use super::*;
     use crate::{
@@ -233,8 +217,7 @@ mod test {
         let node_identity = make_node_identity();
         peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
 
-        let mut deserialize =
-            DeserializeLayer::new(peer_manager, create_connectivity_mock().0).layer(spy.to_service::<PipelineError>());
+        let mut deserialize = DeserializeLayer::new(peer_manager).layer(spy.to_service::<PipelineError>());
         assert_send_static_service(&deserialize);
 
         let dht_envelope = make_dht_envelope(
@@ -269,8 +252,7 @@ mod test {
         let peer_manager = build_peer_manager();
         let node_identity = make_node_identity();
         peer_manager.add_or_update_peer(node_identity.to_peer()).await.unwrap();
-        let mut deserialize = DeserializeLayer::new(peer_manager.clone(), create_connectivity_mock().0)
-            .layer(spy.to_service::<PipelineError>());
+        let mut deserialize = DeserializeLayer::new(peer_manager.clone()).layer(spy.to_service::<PipelineError>());
 
         let dht_envelope = make_dht_envelope(
             &node_identity,
@@ -328,10 +310,8 @@ mod test {
             .batch_execute("DROP TABLE multi_addresses; DROP TABLE peers;")
             .unwrap();
         let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
-        let mut service = MetricsLayer::new(collector.clone()).layer(
-            DeserializeLayer::new(peer_manager, create_connectivity_mock().0)
-                .layer(service_spy().to_service::<PipelineError>()),
-        );
+        let mut service = MetricsLayer::new(collector.clone())
+            .layer(DeserializeLayer::new(peer_manager).layer(service_spy().to_service::<PipelineError>()));
 
         let node_identity = make_node_identity();
         let dht_envelope = make_dht_envelope(
@@ -372,10 +352,10 @@ mod test {
         assert_eq!(ts.count(), 1);
     }
 
-    /// A peer that is not in a working peer database is to blame: it is banned for 5 minutes and the message counts as
-    /// its own
+    /// A message from a peer that is not in a working peer database is dropped, without a ban, and counts as the peer's
+    /// own
     #[tokio::test]
-    async fn an_unknown_peer_is_banned_and_counted_as_own() {
+    async fn an_unknown_peer_is_counted_as_own() {
         use tari_test_utils::async_assert;
 
         use crate::{
@@ -383,13 +363,9 @@ mod test {
             inbound::MetricsLayer,
         };
 
-        let (connectivity, mock) = create_connectivity_mock();
-        let connectivity_state = mock.spawn();
         let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
-        let mut service = MetricsLayer::new(collector.clone()).layer(
-            DeserializeLayer::new(build_peer_manager(), connectivity)
-                .layer(service_spy().to_service::<PipelineError>()),
-        );
+        let mut service = MetricsLayer::new(collector.clone())
+            .layer(DeserializeLayer::new(build_peer_manager()).layer(service_spy().to_service::<PipelineError>()));
 
         let node_identity = make_node_identity();
         let dht_envelope = make_dht_envelope(
@@ -407,20 +383,7 @@ mod test {
                 dht_envelope.to_encoded_bytes().into(),
             ))
             .await;
-        assert!(result.is_err());
-        let mut banned = Vec::new();
-        async_assert!(
-            {
-                banned.extend(connectivity_state.take_banned_peers().await);
-                !banned.is_empty()
-            },
-            max_attempts = 20,
-            interval = Duration::from_millis(10),
-        );
-        assert_eq!(banned.len(), 1);
-        assert!(banned.iter().all(|(node_id, duration, _)| {
-            node_id == node_identity.node_id() && *duration == Duration::from_secs(5 * 60)
-        }));
+        assert!(result.is_ok());
 
         async_assert!(
             collector

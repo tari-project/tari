@@ -75,11 +75,15 @@ const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 pub(crate) const MESSAGE_VALIDITY_WINDOW: Duration = Duration::from_secs(3 * 60 * 60);
 
 /// Caps how many messages of other peers this node forwards (sends under their original header), so that relaying for
-/// others never takes it over a neighbour's forwarded-traffic flood limit, and so that one source cannot use up the
-/// forwarding that other sources need. Per `flood_ban_timespan`, at most:
-/// - `FORWARD_BUDGET_FACTOR` x `flood_ban_max_msg_count` messages to any one peer,
-/// - `flood_ban_max_msg_count` of those from any one source (the peer that delivered them to this node), and
-/// - `FORWARD_SOURCE_BUDGET_FACTOR` x `flood_ban_max_msg_count` messages from any one source in total.
+/// others never takes it over a neighbour's forwarded-traffic flood limit, and so that a few sources cannot use up the
+/// forwarding that other sources need. Per `flood_ban_timespan`:
+/// - each source (the peer that delivered the messages to this node) gets `FORWARD_SOURCE_BUDGET_FACTOR` x
+///   `flood_ban_max_msg_count` forwarded messages, each counted once however many peers it goes to;
+/// - each peer gets at most `FORWARD_BUDGET_FACTOR` x `flood_ban_max_msg_count` forwarded messages. Until it has had
+///   `CONTENDED_PERCENT` of that, any source may use it. From then on it is shared fairly: a source is let through only
+///   while it has sent the peer fewer than the budget / (active sources + 1). The heaviest sources stop first, and the
+///   extra share stays free for a source that has sent little or nothing, so low-rate sources still get through while a
+///   few others flood the same peer.
 ///
 /// Messages this node originates are not capped.
 pub(crate) struct ForwardBudget {
@@ -88,12 +92,14 @@ pub(crate) struct ForwardBudget {
     state: Mutex<ForwardBudgetState>,
 }
 
+/// The share of a peer's forwarding budget after which it is split fairly between sources
+const CONTENDED_PERCENT: usize = 80;
+
 #[derive(Default)]
 struct ForwardBudgetState {
-    /// When forwarded messages were sent within the window, oldest first: to each peer, from each source to each
-    /// peer, and from each source in total
-    to_peer: HashMap<NodeId, VecDeque<Instant>>,
-    from_source_to_peer: HashMap<(NodeId, NodeId), VecDeque<Instant>>,
+    /// When forwarded messages were sent to each peer within the window, oldest first, in total and by source
+    to_peer: HashMap<NodeId, PeerForwards>,
+    /// When each source's forwarded messages were sent within the window, oldest first
     from_source: HashMap<NodeId, VecDeque<Instant>>,
     pruned_at: Option<Instant>,
     /// Forwarded messages dropped since the last log line, by source
@@ -101,12 +107,17 @@ struct ForwardBudgetState {
     logged_at: Option<Instant>,
 }
 
-/// Drops the times before `since` and returns whether there is room for one more below `max`
-fn has_room(sent: &mut VecDeque<Instant>, since: Instant, max: usize) -> bool {
+#[derive(Default)]
+struct PeerForwards {
+    sent: VecDeque<Instant>,
+    by_source: HashMap<NodeId, VecDeque<Instant>>,
+}
+
+/// Drops the times before `since`
+fn trim(sent: &mut VecDeque<Instant>, since: Instant) {
     while sent.front().is_some_and(|t| *t < since) {
         sent.pop_front();
     }
-    sent.len() < max
 }
 
 impl ForwardBudget {
@@ -118,8 +129,10 @@ impl ForwardBudget {
         }
     }
 
-    /// Keeps the peers that a message from `source` can still be forwarded to in this window, and uses up their budget
+    /// Keeps the peers that a message from `source` can still be forwarded to in this window, and uses up its budget
     fn take(&self, source: &NodeId, peers: &mut Vec<NodeId>) {
+        let max_per_peer = self.max_count.saturating_mul(FORWARD_BUDGET_FACTOR);
+        let contended_at = max_per_peer.saturating_mul(CONTENDED_PERCENT) / 100;
         let now = Instant::now();
         let since = now.checked_sub(self.window).unwrap_or(now);
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -128,38 +141,54 @@ impl ForwardBudget {
             .pruned_at
             .is_none_or(|at| now.saturating_duration_since(at) >= self.window)
         {
-            let is_live = |sent: &VecDeque<Instant>| sent.back().is_some_and(|t| *t >= since);
-            state.to_peer.retain(|_, sent| is_live(sent));
-            state.from_source_to_peer.retain(|_, sent| is_live(sent));
-            state.from_source.retain(|_, sent| is_live(sent));
+            state.to_peer.retain(|_, forwards| {
+                forwards.by_source.retain(|_, sent| {
+                    trim(sent, since);
+                    !sent.is_empty()
+                });
+                trim(&mut forwards.sent, since);
+                !forwards.sent.is_empty()
+            });
+            state.from_source.retain(|_, sent| {
+                trim(sent, since);
+                !sent.is_empty()
+            });
             state.pruned_at = Some(now);
         }
         let num_before = peers.len();
-        peers.retain(|peer| {
-            let from_source = state.from_source.entry(source.clone()).or_default();
-            if !has_room(
-                from_source,
-                since,
-                self.max_count.saturating_mul(FORWARD_SOURCE_BUDGET_FACTOR),
-            ) {
-                return false;
+        let from_source = state.from_source.entry(source.clone()).or_default();
+        trim(from_source, since);
+        if from_source.len() >= self.max_count.saturating_mul(FORWARD_SOURCE_BUDGET_FACTOR) {
+            peers.clear();
+        } else {
+            peers.retain(|peer| {
+                let forwards = state.to_peer.entry(peer.clone()).or_default();
+                trim(&mut forwards.sent, since);
+                if forwards.sent.len() >= max_per_peer {
+                    return false;
+                }
+                if forwards.sent.len() >= contended_at {
+                    forwards.by_source.retain(|_, sent| {
+                        trim(sent, since);
+                        !sent.is_empty()
+                    });
+                    let num_active = forwards
+                        .by_source
+                        .len()
+                        .saturating_add(usize::from(!forwards.by_source.contains_key(source)));
+                    let fair_share = max_per_peer.checked_div(num_active.saturating_add(1)).unwrap_or(0);
+                    if forwards.by_source.get(source).map_or(0, VecDeque::len) >= fair_share {
+                        return false;
+                    }
+                }
+                forwards.sent.push_back(now);
+                forwards.by_source.entry(source.clone()).or_default().push_back(now);
+                true
+            });
+            if !peers.is_empty() {
+                state.from_source.entry(source.clone()).or_default().push_back(now);
             }
-            let to_peer = state.to_peer.entry(peer.clone()).or_default();
-            if !has_room(to_peer, since, self.max_count.saturating_mul(FORWARD_BUDGET_FACTOR)) {
-                return false;
-            }
-            let pair = state
-                .from_source_to_peer
-                .entry((source.clone(), peer.clone()))
-                .or_default();
-            if !has_room(pair, since, self.max_count) {
-                return false;
-            }
-            pair.push_back(now);
-            to_peer.push_back(now);
-            state.from_source.entry(source.clone()).or_default().push_back(now);
-            true
-        });
+        }
         let num_dropped = num_before.saturating_sub(peers.len());
         if num_dropped > 0 {
             let dropped = state.dropped.entry(source.clone()).or_default();
@@ -822,9 +851,9 @@ mod test {
         assert!(requests.iter().any(|msg| msg.destination_node_id == other_peer.node_id));
     }
 
-    fn budget_for_one_message() -> (DhtConfig, ForwardBudget) {
+    fn budget(max_count: usize) -> (DhtConfig, ForwardBudget) {
         let config = DhtConfig {
-            flood_ban_max_msg_count: 1,
+            flood_ban_max_msg_count: max_count,
             ..Default::default()
         };
         let budget = ForwardBudget::new(&config);
@@ -837,41 +866,57 @@ mod test {
         peers
     }
 
-    /// One source cannot use up a peer's forwarding budget and starve the forwards of other sources to it, and the
-    /// peer's total is still capped
+    /// A source's budget is charged once per forwarded message, however many peers it goes to
     #[tokio::test(start_paused = true)]
-    async fn one_source_does_not_starve_another_sources_forwards() {
-        let (config, budget) = budget_for_one_message();
-        let peer = make_peer().node_id;
-        let first_source = make_peer().node_id;
+    async fn forwarding_is_charged_once_per_message() {
+        let (config, budget) = budget(1);
+        let peers = repeat_with(|| make_peer().node_id).take(6).collect::<Vec<_>>();
+        let peer_refs = peers.iter().collect::<Vec<_>>();
+        let source = make_peer().node_id;
 
-        assert_eq!(take(&budget, &first_source, &[&peer]), vec![peer.clone()]);
-        // The first source has used its share of this peer's budget
-        assert!(take(&budget, &first_source, &[&peer]).is_empty());
-        for source in repeat_with(|| make_peer().node_id).take(FORWARD_BUDGET_FACTOR - 1) {
-            assert_eq!(take(&budget, &source, &[&peer]), vec![peer.clone()]);
-        }
-        // The peer's total budget is used up
-        assert!(take(&budget, &make_peer().node_id, &[&peer]).is_empty());
+        assert_eq!(take(&budget, &source, &peer_refs), peers);
+        // The source's one message for this window is used up
+        assert!(take(&budget, &source, &peer_refs).is_empty());
 
         tokio::time::advance(config.flood_ban_timespan + Duration::from_secs(1)).await;
-        assert_eq!(take(&budget, &first_source, &[&peer]), vec![peer]);
+        assert_eq!(take(&budget, &source, &peer_refs), peers);
     }
 
-    /// A source fanning out messages for an unknown destination uses up its own total, not every peer's budget
+    /// While a peer has budget to spare, no source is held to a share of it
     #[tokio::test(start_paused = true)]
-    async fn one_source_cannot_use_up_the_budget_towards_every_peer() {
-        let (_, budget) = budget_for_one_message();
-        let peers = repeat_with(|| make_peer().node_id).take(20).collect::<Vec<_>>();
-        let peer_refs = peers.iter().collect::<Vec<_>>();
-        let (source, other_source) = (make_peer().node_id, make_peer().node_id);
+    async fn forwarding_is_not_throttled_without_contention() {
+        let max_count = 10;
+        let (_, budget) = budget(max_count);
+        let peer = make_peer().node_id;
+        for source in repeat_with(|| make_peer().node_id).take(9) {
+            assert_eq!(take(&budget, &source, &[&peer]), vec![peer.clone()]);
+        }
+        // Far more than a fair share of the 10 sources, but the peer's budget is not contended
+        let heavy = make_peer().node_id;
+        for _ in 0..max_count {
+            assert_eq!(take(&budget, &heavy, &[&peer]), vec![peer.clone()]);
+        }
+    }
 
-        assert_eq!(take(&budget, &source, &peer_refs).len(), FORWARD_SOURCE_BUDGET_FACTOR);
-        assert!(take(&budget, &source, &peer_refs).is_empty());
-        assert_eq!(
-            take(&budget, &other_source, &peer_refs).len(),
-            FORWARD_SOURCE_BUDGET_FACTOR
-        );
+    /// Sources flooding one peer up to their limits are held to a fair share once its budget is contended, leaving
+    /// room for a low-rate source, and the peer's total is never exceeded
+    #[tokio::test(start_paused = true)]
+    async fn heavy_sources_do_not_starve_a_low_rate_source() {
+        let max_count = 10;
+        let (_, budget) = budget(max_count);
+        let peer = make_peer().node_id;
+        let heavy = repeat_with(|| make_peer().node_id)
+            .take(FORWARD_BUDGET_FACTOR)
+            .collect::<Vec<_>>();
+        let mut sent = 0usize;
+        for _ in 0..max_count {
+            for source in &heavy {
+                sent = sent.saturating_add(take(&budget, source, &[&peer]).len());
+            }
+        }
+        assert!(sent < max_count * FORWARD_BUDGET_FACTOR);
+
+        assert_eq!(take(&budget, &make_peer().node_id, &[&peer]), vec![peer]);
     }
 
     #[tokio::test]

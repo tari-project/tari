@@ -31,13 +31,12 @@ use std::{
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use tari_comms::{message::InboundMessage, peer_manager::NodeId, pipeline::PipelineError};
+use tari_comms::{message::InboundMessage, peer_manager::NodeId, pipeline::PipelineError, types::CommsPublicKey};
 use tokio::time::Instant;
 use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
     connectivity::{FloodSeries, MetricsCollectorHandle},
-    inbound::DhtInboundMessage,
     message_signature::{MessageSignature, ProtoMessageSignature},
 };
 
@@ -66,12 +65,12 @@ pub(crate) fn set_flood_series(series: FloodSeries) {
 /// The flood-ban series of a message by the signer its header names, without verifying the signature: the delivering
 /// peer's own only if it names that peer. Unsigned messages, other signers, signatures that do not decode and masked
 /// (encrypted) signers count as forwarded.
-pub(crate) fn claimed_flood_series(message: &DhtInboundMessage) -> FloodSeries {
-    let signer = ProtoMessageSignature::decode(message.dht_header.message_signature.as_slice())
+pub(crate) fn claimed_flood_series(message_signature: &[u8], source: &CommsPublicKey) -> FloodSeries {
+    let signer = ProtoMessageSignature::decode(message_signature)
         .ok()
         .and_then(|signature| MessageSignature::try_from(signature).ok())
         .map(MessageSignature::into_signer_public_key);
-    if signer.as_ref() == Some(&message.source_peer.public_key) {
+    if signer.as_ref() == Some(source) {
         FloodSeries::Own
     } else {
         FloodSeries::Forwarded
