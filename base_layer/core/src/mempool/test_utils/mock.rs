@@ -49,7 +49,6 @@ pub fn create_mempool_service_mock() -> (MempoolHandle, MempoolMockState) {
 #[derive(Debug, Clone)]
 pub struct MempoolMockState {
     get_stats: Arc<Mutex<StatsResponse>>,
-    get_state: Arc<Mutex<StateResponse>>,
     get_tx_state_by_excess_sig: Arc<Mutex<TxStorageResponse>>,
     submit_transaction: Arc<Mutex<TxStorageResponse>>,
     submitted_transactions: Arc<Mutex<Vec<Transaction>>>,
@@ -64,10 +63,6 @@ impl Default for MempoolMockState {
                 reorg_txs: 0,
                 unconfirmed_weight: 0,
             })),
-            get_state: Arc::new(Mutex::new(StateResponse {
-                unconfirmed_pool: vec![],
-                reorg_pool: vec![],
-            })),
             get_tx_state_by_excess_sig: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
             submit_transaction: Arc::new(Mutex::new(TxStorageResponse::NotStored(None))),
             submitted_transactions: Arc::new(Mutex::new(Vec::new())),
@@ -79,10 +74,6 @@ impl Default for MempoolMockState {
 impl MempoolMockState {
     pub async fn set_get_stats_response(&self, stats: StatsResponse) {
         *self.get_stats.lock().await = stats;
-    }
-
-    pub async fn set_get_state_response(&self, state: StateResponse) {
-        *self.get_state.lock().await = state;
     }
 
     pub async fn set_get_tx_by_excess_sig_stats_response(&self, resp: TxStorageResponse) {
@@ -144,7 +135,10 @@ impl MempoolServiceMock {
         self.state.inc_call_count();
         match req {
             GetStats => Ok(MempoolResponse::Stats(self.state.get_stats.lock().await.clone())),
-            GetState => Ok(MempoolResponse::State(self.state.get_state.lock().await.clone())),
+            GetState => Ok(MempoolResponse::State(StateResponse {
+                unconfirmed_pool: vec![],
+                reorg_pool: vec![],
+            })),
             GetTxStateByExcessSig(_) => Ok(MempoolResponse::TxStorage(
                 self.state.get_tx_state_by_excess_sig.lock().await.clone(),
             )),

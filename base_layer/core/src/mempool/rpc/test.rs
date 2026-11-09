@@ -60,26 +60,69 @@ mod get_stats {
     }
 }
 
-mod get_state {
-    use std::convert::TryInto;
+mod retired_get_state {
+    use std::sync::Arc;
 
-    use super::*;
-    use crate::mempool::{MempoolService, StateResponse};
+    use tari_comms::{
+        peer_manager::PeerFeatures,
+        protocol::{
+            ProtocolId,
+            rpc::{NamedProtocolService, RPC_MAX_FRAME_SIZE, RpcClient, RpcError, RpcStatusCode, mock::MockRpcServer},
+        },
+        test_utils::node_identity::build_node_identity,
+    };
+
+    use crate::{
+        mempool::{
+            MempoolRpcClient,
+            StatsResponse,
+            rpc::create_mempool_rpc_service,
+            test_utils::mock::create_mempool_service_mock,
+        },
+        proto,
+    };
 
     #[tokio::test]
-    async fn it_returns_the_state() {
-        let (service, mempool, req_mock) = setup();
-        let expected_state = StateResponse {
-            unconfirmed_pool: vec![],
-
-            reorg_pool: vec![],
+    async fn method_2_is_unsupported_and_the_session_stays_usable() {
+        let (handle, mempool) = create_mempool_service_mock();
+        let expected_stats = StatsResponse {
+            unconfirmed_txs: 1,
+            reorg_txs: 2,
+            unconfirmed_weight: 3,
         };
-        mempool.set_get_state_response(expected_state.clone()).await;
+        mempool.set_get_stats_response(expected_stats.clone()).await;
 
-        let resp = service.get_state(req_mock.request_no_context(())).await.unwrap();
-        let stats = resp.into_message();
-        assert_eq!(stats, expected_state.try_into().unwrap());
-        assert_eq!(mempool.get_call_count(), 1);
+        let server_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let client_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let protocol = ProtocolId::from_static(MempoolRpcClient::PROTOCOL_NAME);
+        let mut server = MockRpcServer::new(create_mempool_rpc_service(handle), server_identity.clone());
+        server.serve();
+        let mut conn = server
+            .create_connection(client_identity.to_peer(), protocol.clone())
+            .await;
+        let framed = conn.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await.unwrap();
+        let mut client = RpcClient::connect(
+            Default::default(),
+            server_identity.node_id().clone(),
+            framed,
+            protocol,
+            None,
+            Arc::new(true.into()),
+        )
+        .await
+        .unwrap();
+
+        let err = client
+            .request_response::<_, proto::mempool::StatsResponse, _>((), 2u32, usize::MAX)
+            .await
+            .unwrap_err();
+        let RpcError::RequestFailed(status) = err else {
+            panic!("expected a request failure, got {err:?}");
+        };
+        assert_eq!(status.as_status_code(), RpcStatusCode::UnsupportedMethod);
+
+        let stats = MempoolRpcClient::from(client).get_stats().await.unwrap();
+        assert_eq!(stats, expected_stats.into());
     }
 }
 

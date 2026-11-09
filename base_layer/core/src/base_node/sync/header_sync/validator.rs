@@ -359,6 +359,16 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         Ok(total_accumulated_difficulty)
     }
 
+    /// Drops every validated header but the last. The validation state is kept, so validation carries on from the
+    /// tip.
+    pub fn keep_only_tip(&mut self) {
+        let valid_headers = &mut self.state_mut().valid_headers;
+        if let Some(tip) = valid_headers.pop() {
+            valid_headers.clear();
+            valid_headers.push(tip);
+        }
+    }
+
     /// Drains and returns all the headers that were validated.
     ///
     /// ## Panics
@@ -504,11 +514,13 @@ mod test {
             assert!(validator.valid_headers().is_empty());
             let mut next = BlockHeader::from_previous(tip.header());
             next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
+            next.kernel_mmr_size = next.kernel_mmr_size.saturating_add(1);
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 1);
             let tip = validator.valid_headers().last().cloned().unwrap();
             let mut next = BlockHeader::from_previous(tip.header());
             next.timestamp = tip.header().timestamp.checked_add(EpochTime::from(1)).unwrap();
+            next.kernel_mmr_size = next.kernel_mmr_size.saturating_add(1);
             validator.validate(next).await.unwrap();
             assert_eq!(validator.valid_headers().len(), 2);
         }
@@ -762,6 +774,7 @@ mod test {
             for offset in &offsets[1..] {
                 let mut header = BlockHeader::from_previous(&prev);
                 header.timestamp = EpochTime::from(genesis.header().timestamp.as_u64() + offset);
+                header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
                 validator.validate(header.clone()).await.unwrap();
                 prev = header;
             }
@@ -779,6 +792,7 @@ mod test {
             for (height, offset) in offsets.iter().enumerate().skip(1) {
                 let mut header = BlockHeader::from_previous(&prev);
                 header.timestamp = EpochTime::from(genesis_ts + offset);
+                header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
                 validator.validate(header.clone()).await.unwrap();
                 prev = header;
 
@@ -806,6 +820,7 @@ mod test {
 
             let mut header = BlockHeader::from_previous(&prev);
             header.timestamp = EpochTime::from(genesis.timestamp.as_u64() + 724);
+            header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
             validator.validate(header.clone()).await.unwrap();
 
             let (is_bad_block, reason) = db.bad_block_exists(header.hash()).await.unwrap();

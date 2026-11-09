@@ -72,6 +72,10 @@ pub enum BlockSyncError {
     PeerNotFound,
     #[error("Peer did not supply all the blocks they claimed they had: {0}")]
     PeerDidNotSupplyAllClaimedBlocks(String),
+    #[error("Block sync attempt with the peer did not deliver a valid block within {budget:.2?}")]
+    NoValidBlockWithinBudget { budget: Duration },
+    #[error("Block sync attempts with the peer ended {count} times without a block")]
+    RepeatedAttemptsWithoutBlock { count: usize },
     #[error("Peer does not have the blocks to our header tip, which it did not claim: {0}")]
     PeerDoesNotHaveHeaderTipBlocks(RpcError),
 }
@@ -106,6 +110,8 @@ impl BlockSyncError {
             BlockSyncError::PeerNotFound => "PeerNotFound",
             BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) => "PeerDidNotSupplyAllClaimedBlocks",
             BlockSyncError::PeerDoesNotHaveHeaderTipBlocks(_) => "PeerDoesNotHaveHeaderTipBlocks",
+            BlockSyncError::NoValidBlockWithinBudget { .. } => "NoValidBlockWithinBudget",
+            BlockSyncError::RepeatedAttemptsWithoutBlock { .. } => "RepeatedAttemptsWithoutBlock",
         }
     }
 }
@@ -127,7 +133,9 @@ impl BlockSyncError {
             err @ BlockSyncError::MaxLatencyExceeded { .. } |
             err @ BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(_) |
             err @ BlockSyncError::RpcError(_) |
-            err @ BlockSyncError::RpcRequestError(_) => Some(BanReason {
+            err @ BlockSyncError::RpcRequestError(_) |
+            err @ BlockSyncError::NoValidBlockWithinBudget { .. } |
+            err @ BlockSyncError::RepeatedAttemptsWithoutBlock { .. } => Some(BanReason {
                 reason: format!("{err}"),
                 ban_duration: BanPeriod::Short,
             }),

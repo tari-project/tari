@@ -25,3 +25,6 @@ pub use error::BlockSyncError;
 
 mod synchronizer;
 pub use synchronizer::BlockSynchronizer;
+
+#[cfg(test)]
+mod test;

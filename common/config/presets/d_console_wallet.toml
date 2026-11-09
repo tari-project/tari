@@ -378,8 +378,11 @@ minimize_connections = true
 #auto_join = true
 # The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
 # enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
-# change happens again after this period, another join will be sent. Default: 10 minutes
-#join_cooldown_interval = 120 # 10 * 60
+# change happens again after this period, another join will be sent. A Join received from the same origin is also
+# relayed at most once per this interval. At least 1 minute. Default: 10 minutes
+#join_cooldown_interval = 600 # 10 * 60
+# The most Join origins remembered for the receive-side join cooldown, oldest forgotten first. Default: 10,000
+#join_cooldown_capacity = 10_000
 
 # The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
 connectivity.update_interval = 300 # 2 * 60
@@ -447,9 +450,20 @@ network_discovery.initial_peer_sync_delay = 25
 # How long to remember that peers were synced from a connected peer before syncing from it again when it
 # reconnects. (Default: 1 hour)
 #network_discovery.on_connect_resync_ttl = 3_600 # 60 * 60
+# The longest one OnConnect peer sync may take, however its peer paces the stream. Between 5 seconds and 5 minutes.
+# (Default: 30 seconds)
+#network_discovery.on_connect_sync_timeout = 30
 # The maximum number of connected peers to request peers from during a rebootstrap, outbound ones first. At most 20.
 # (Default: 5)
 #network_discovery.rebootstrap_connected_peers = 5
+# The most new peer records one directly connected peer may have stored within `source_budget_window` through Join
+# gossip, and separately through OnConnect peer sync. Also the most peers stored from one source in a rebootstrap.
+# At least 1. (Default: 50)
+#network_discovery.max_stored_per_source = 50
+# The sliding window over which `max_stored_per_source` applies. At least 1 minute. (Default: 1 hour)
+#network_discovery.source_budget_window = 3_600 # 60 * 60
+# How long a peer synced from in a discovery round is left out of the following rounds. (Default: 1 hour)
+#network_discovery.attempted_peers_ttl = 3_600 # 60 * 60
 
 # Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
 ban_duration = 120 # 2 mins

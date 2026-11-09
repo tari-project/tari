@@ -138,13 +138,13 @@ impl FromStr for ApplicationType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
-        match s {
+        match s.trim().to_ascii_lowercase().as_str() {
             "base-node" | "base_node" => Ok(BaseNode),
-            "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
-            "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
+            "console-wallet" | "console_wallet" | "wallet" => Ok(ConsoleWallet),
+            "mm-proxy" | "mm_proxy" | "merge-mining-proxy" | "merge_mining_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(Miner),
-            "validator-node" => Ok(ValidatorNode),
-            "stratum-proxy" => Ok(StratumTranscoder),
+            "validator-node" | "validator_node" => Ok(ValidatorNode),
+            "stratum-proxy" | "stratum_proxy" | "stratum-transcoder" | "stratum_transcoder" => Ok(StratumTranscoder),
             "collectibles" => Ok(Collectibles),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
@@ -305,5 +305,18 @@ mod test {
 
         // in case of a non-specific message we should throw an error
         assert!(ApplicationType::from_str("random message").is_err());
+
+        // every `as_config_str()` value must round-trip through `from_str`
+        for app_type in [
+            ApplicationType::BaseNode,
+            ApplicationType::ConsoleWallet,
+            ApplicationType::MergeMiningProxy,
+            ApplicationType::Miner,
+            ApplicationType::StratumTranscoder,
+            ApplicationType::ValidatorNode,
+            ApplicationType::Collectibles,
+        ] {
+            assert_eq!(ApplicationType::from_str(app_type.as_config_str()).unwrap(), app_type);
+        }
     }
 }

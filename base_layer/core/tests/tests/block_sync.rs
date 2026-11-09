@@ -27,6 +27,7 @@ use tari_common::configuration::Network;
 use tari_core::{
     base_node::state_machine_service::states::{BlockSync, StateEvent},
     chain_storage::{BlockchainDatabaseConfig, DbTransaction},
+    validation::mocks::MockValidator,
 };
 use tari_node_components::blocks::{Block, ChainBlock};
 use tari_transaction_components::{
@@ -460,7 +461,52 @@ async fn test_block_sync_peer_supplies_a_body_that_does_not_match_the_header() {
     assert!(matches!(event, StateEvent::BlockSyncFailed), "{event:?}");
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
     assert!(!alice_node.blockchain_db.bad_block_exists(*tip.hash()).unwrap().0);
+    // Only a body the header commits to can show the header chain is invalid, so the headers stay
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 5);
     assert!(sync::wait_for_is_peer_banned(&alice_node, bob_node.node_identity.node_id(), 1).await);
+}
+
+/// A body the header commits to that fails validation shows the header chain is invalid from that block on, so the
+/// block is marked bad and the headers from it up are dropped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_block_sync_invalid_committed_body_drops_the_headers_from_it() {
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig::default(),
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        5,
+        &consensus_manager,
+        &key_manager,
+        &[3; 5],
+        &None,
+    );
+    let mut header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = sync::sync_headers_execute(&mut alice_state_machine, &mut header_sync).await;
+    assert!(matches!(event, StateEvent::HeadersSynchronized(..)), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 5);
+
+    // Alice finds every body invalid
+    let mut alice_state_machine = sync::create_state_machine_with_block_body_validator(
+        &alice_node,
+        &consensus_manager,
+        MockValidator::new(false),
+    );
+    let mut block_sync = sync::initialize_sync_blocks(&bob_node);
+    let event = sync::sync_blocks_execute(&mut alice_state_machine, &mut block_sync).await;
+
+    assert!(matches!(event, StateEvent::BlockSyncFailed), "{event:?}");
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 0);
+    assert!(alice_node.blockchain_db.bad_block_exists(*blocks[1].hash()).unwrap().0);
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 0);
 }
 
 /// A peer serving the honest bodies with the coinbase moved is banned, and the honest header is not marked as a bad
@@ -520,6 +566,8 @@ async fn test_block_sync_peer_supplies_the_body_with_its_coinbase_moved() {
     assert!(matches!(event, StateEvent::BlockSyncFailed), "{event:?}");
     assert_eq!(alice_node.blockchain_db.get_height().unwrap(), 4);
     assert!(!alice_node.blockchain_db.bad_block_exists(*tip.hash()).unwrap().0);
+    // Only a body the header commits to can show the header chain is invalid, so the headers stay
+    assert_eq!(alice_node.blockchain_db.fetch_last_header().unwrap().height, 5);
     let mallory_id = mallory_node.node_identity.node_id();
     assert!(sync::wait_for_is_peer_banned(&alice_node, mallory_id, 1).await);
     let mallory = alice_node

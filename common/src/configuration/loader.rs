@@ -139,39 +139,30 @@ pub trait ConfigPath {
     /// the env and `-p`/application overrides stored in `config` under [`CONFIG_OVERRIDES_KEY`] for this section
     /// again, so an explicit override beats the network-scoped table.
     fn merge_subconfig(config: &Config, defaults: config::Value) -> Result<Config, ConfigurationError> {
-        match Self::overload_key_prefix(config)? {
-            Some(key) => {
-                let overload: config::Value = config.get(key.as_str()).unwrap_or_default();
-                let mut config = Config::builder()
-                    .set_default(Self::main_key_prefix(), defaults)?
-                    .add_source(config.clone());
-                // If the override is not set, ignore it
-                if !matches!(overload.kind, ValueKind::Nil) {
-                    config = config.set_override(Self::main_key_prefix(), overload)?;
-                }
-                let config = config.build()?;
-
-                // Re-apply in a second step: overrides in one builder are applied in no particular order, so the
-                // section table above could otherwise land on top of them.
-                let overrides = config_overrides_for(&config, Self::main_key_prefix());
-                if overrides.is_empty() {
-                    return Ok(config);
-                }
-                let mut config = Config::builder().add_source(config);
-                for (key, value) in overrides {
-                    config = config.set_override(key.as_str(), value)?;
-                }
-                let config = config.build()?;
-                Ok(config)
-            },
-            None => {
-                let config = Config::builder()
-                    .set_default(Self::main_key_prefix(), defaults)?
-                    .add_source(config.clone())
-                    .build()?;
-                Ok(config)
-            },
+        let mut builder = Config::builder()
+            .set_default(Self::main_key_prefix(), defaults)?
+            .add_source(config.clone());
+        if let Some(key) = Self::overload_key_prefix(config)? {
+            let overload: config::Value = config.get(key.as_str()).unwrap_or_default();
+            // If the override is not set, ignore it
+            if !matches!(overload.kind, ValueKind::Nil) {
+                builder = builder.set_override(Self::main_key_prefix(), overload)?;
+            }
         }
+        let config = builder.build()?;
+
+        // Re-apply in a second step: overrides in one builder are applied in no particular order, so the
+        // section table above could otherwise land on top of them.
+        let overrides = config_overrides_for(&config, Self::main_key_prefix());
+        if overrides.is_empty() {
+            return Ok(config);
+        }
+        let mut config = Config::builder().add_source(config);
+        for (key, value) in overrides {
+            config = config.set_override(key.as_str(), value)?;
+        }
+        let config = config.build()?;
+        Ok(config)
     }
 }
 
@@ -235,6 +226,8 @@ impl<C: SubConfigPath> ConfigPath for C {
         let network_val: Option<String> = config
             .get_string(subconfig_key.as_str())
             .ok()
+            .map(|network| network.trim().to_string())
+            .filter(|network| !network.is_empty())
             .map(|network| format!("{}.{}", network, Self::main_key_prefix()));
         Ok(network_val)
     }
@@ -571,6 +564,23 @@ mod test {
         let loaded = <ReapplyConfig as DefaultConfigLoader>::load_from(&config)?;
         assert_eq!(loaded.overridden, "good");
         assert_eq!(loaded.scoped_only, "scoped");
+        Ok(())
+    }
+
+    #[test]
+    fn empty_override_from_is_ignored_and_reapplies_stored_overrides() -> anyhow::Result<()> {
+        let config = Config::builder()
+            .set_override(CONFIG_OVERRIDES_KEY, vec![
+                "reapply_test.overridden=from_stored_override",
+            ])?
+            .set_override("reapply_test.override_from", "   ")?
+            .set_override("reapply_test.overridden", "from_file")?
+            .set_override("reapply_test.scoped_only", "unscoped_value")?
+            .build()?;
+        assert_eq!(<ReapplyConfig as ConfigPath>::overload_key_prefix(&config)?, None);
+        let loaded = <ReapplyConfig as DefaultConfigLoader>::load_from(&config)?;
+        assert_eq!(loaded.overridden, "from_stored_override");
+        assert_eq!(loaded.scoped_only, "unscoped_value");
         Ok(())
     }
 

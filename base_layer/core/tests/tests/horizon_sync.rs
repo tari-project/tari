@@ -1009,3 +1009,71 @@ async fn test_horizon_sync_clears_checkpoint_on_completion() {
         "checkpoint should be cleared after successful sync"
     );
 }
+
+/// Alice is a node with `pruning_horizon` at tip `alice_tip` with headers up to `alice_header_tip`; Bob is an
+/// archival node five blocks ahead of Alice's tip. Returns Alice's pruned height after deciding the next sync step.
+async fn pruned_height_after_decide(pruning_horizon: u64, alice_tip: usize, alice_header_tip: usize) -> u64 {
+    let bob_tip = alice_tip.saturating_add(5);
+    let (mut state_machines, mut peer_nodes, initial_block, consensus_manager, key_manager, initial_coinbase) =
+        sync::create_network_with_multiple_nodes(vec![
+            BlockchainDatabaseConfig {
+                pruning_horizon,
+                // Keep the background pruner out of the way so only the sync decision prunes
+                pruning_interval: 1000,
+                ..Default::default()
+            },
+            BlockchainDatabaseConfig::default(),
+        ])
+        .await;
+    let mut alice_state_machine = state_machines.remove(0);
+    let alice_node = peer_nodes.remove(0);
+    let bob_node = peer_nodes.remove(0);
+
+    let (blocks, _coinbases) = sync::create_and_add_some_blocks(
+        &bob_node,
+        &initial_block,
+        &initial_coinbase,
+        bob_tip,
+        &consensus_manager,
+        &key_manager,
+        &vec![1; bob_tip],
+        &None,
+    );
+    sync::add_some_existing_blocks(&blocks[1..=alice_header_tip], &alice_node);
+    if alice_header_tip > alice_tip {
+        sync::delete_some_blocks_and_headers(&blocks[alice_tip..=alice_header_tip], WhatToDelete::Blocks, &alice_node);
+    }
+    assert_eq!(alice_node.blockchain_db.get_height().unwrap(), alice_tip as u64);
+    assert_eq!(
+        alice_node.blockchain_db.fetch_last_header().unwrap().height,
+        alice_header_tip as u64
+    );
+    assert_eq!(
+        alice_node.blockchain_db.get_chain_metadata().unwrap().pruned_height(),
+        0
+    );
+
+    let header_sync = sync::initialize_sync_headers_with_ping_pong_data(&alice_node, &bob_node);
+    let event = decide_horizon_sync(&mut alice_state_machine, header_sync).await;
+    assert!(matches!(event, StateEvent::ProceedToBlockSync(_)), "{event:?}");
+    alice_node.blockchain_db.get_chain_metadata().unwrap().pruned_height()
+}
+
+/// A peer claiming a tip `pruning_horizon` above our tip must not make us prune our own tip.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_decide_next_sync_prunes_from_validated_header_tip() {
+    assert_eq!(pruned_height_after_decide(5, 15, 15).await, 10);
+}
+
+/// Headers ahead of our tip would move the target to `header_tip - pruning_horizon`, but the target is clamped to
+/// `tip - pruning_horizon` so a full pruning horizon of blocks stays below our tip.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_decide_next_sync_prune_target_clamped_to_local_tip() {
+    assert_eq!(pruned_height_after_decide(5, 15, 17).await, 10);
+}
+
+/// An archival node never prunes when deciding the next sync step.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_decide_next_sync_archival_node_does_not_prune() {
+    assert_eq!(pruned_height_after_decide(0, 15, 15).await, 0);
+}
