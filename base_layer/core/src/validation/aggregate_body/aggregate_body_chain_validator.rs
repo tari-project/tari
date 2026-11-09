@@ -479,6 +479,11 @@ pub fn check_total_burned(body: &AggregateBody) -> Result<(), ValidationError> {
         }
     }
     for kernel in body.kernels() {
+        if !kernel.is_burned() && kernel.burn_commitment.is_some() {
+            return Err(ValidationError::InvalidBurnError(
+                "Non-burn kernel must not have a burn commitment".to_string(),
+            ));
+        }
         if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
             return Err(ValidationError::InvalidBurnError(
                 "Burned kernel does not match burned output".to_string(),
@@ -768,6 +773,18 @@ mod test {
             burn_kernel(commitment),
         ]);
         let err = validate_burn_commitment_not_in_db(&body, &db).unwrap_err();
+        assert!(matches!(err, ValidationError::InvalidBurnError(_)));
+    }
+
+    #[test]
+    fn check_total_burned_rejects_burn_commitment_on_non_burn_kernel() {
+        let kernel = TransactionKernel {
+            features: KernelFeatures::empty(),
+            burn_commitment: Some(random_commitment()),
+            ..Default::default()
+        };
+        let body = AggregateBody::new_unsorted(vec![], vec![], vec![kernel]);
+        let err = check_total_burned(&body).unwrap_err();
         assert!(matches!(err, ValidationError::InvalidBurnError(_)));
     }
 
