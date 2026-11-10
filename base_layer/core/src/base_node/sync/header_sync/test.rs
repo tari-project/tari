@@ -75,7 +75,7 @@ async fn sync_headers_with_history(
         connectivity,
         &mut sync_peers,
         RandomXFactory::default(),
-        &local_metadata,
+        local_metadata,
         chain_changes,
     );
     synchronizer.synchronize().await
