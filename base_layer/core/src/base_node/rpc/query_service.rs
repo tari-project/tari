@@ -207,11 +207,12 @@ impl<B: BlockchainBackend + 'static> Service<B> {
         let tip_header = self.db.fetch_tip_header().await?;
         // we only allow wallets to ask for a max of 100 blocks at a time and we want to cache the queries to ensure
         // they are in batch of 100 and we want to ensure they request goes to the nearest 100 block height so
-        // we can cache all wallet's queries
+        // we can cache all wallet's queries. The next multiple of 100 is excluded, so a batch that ends there hands
+        // the wallet a cursor back on the 100-block grid.
         let increase = (start_header.height.saturating_add(WALLET_MAX_BLOCKS_PER_REQUEST) /
             WALLET_MAX_BLOCKS_PER_REQUEST)
             .saturating_mul(WALLET_MAX_BLOCKS_PER_REQUEST);
-        let end_height = cmp::min(tip_header.header().height, increase);
+        let end_height = cmp::min(tip_header.header().height, increase.saturating_sub(1));
         // pagination
         let start_header_height = start_header
             .height
@@ -1132,12 +1133,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn end_of_batch_cursor_points_past_end_height() {
+    async fn batch_ends_before_next_multiple_of_100() {
         use crate::{consensus::BaseNodeConsensusManager, test_helpers::blockchain::TestBlockchain};
 
         let rules = BaseNodeConsensusManager::builder(Network::LocalNet).build().unwrap();
         let mut blockchain = TestBlockchain::create(rules);
-        for i in 1..=WALLET_MAX_BLOCKS_PER_REQUEST + 1 {
+        // Tip exactly on the 100-block grid
+        for i in 1..=WALLET_MAX_BLOCKS_PER_REQUEST {
             let name: &'static str = Box::leak(i.to_string().into_boxed_str());
             blockchain.add_next_tip(block_spec!(name)).unwrap();
         }
@@ -1146,21 +1148,34 @@ mod tests {
             make_state_machine_handle(),
             make_mempool_handle(),
         );
+        let header_hash = |height| blockchain.db().fetch_header(height).unwrap().unwrap().hash().to_vec();
+        let hash_100 = header_hash(100);
 
-        // Unaligned start: the batch ends at height 100, one below the tip
-        let start = service.db().fetch_header(95).await.unwrap().unwrap();
+        // Aligned start: the last page of the batch ends at 99 and points at 100
         let resp = service
-            .fetch_utxos(sync_request(start.hash().to_vec(), 25))
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                page: 3,
+                ..sync_request(header_hash(0), 25)
+            })
             .await
             .unwrap();
-        assert_eq!(resp.blocks.last().unwrap().height, WALLET_MAX_BLOCKS_PER_REQUEST);
-        let next = service
-            .db()
-            .fetch_header(WALLET_MAX_BLOCKS_PER_REQUEST + 1)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(resp.next_header_to_scan, next.hash().to_vec());
+        assert_eq!(resp.blocks.first().unwrap().height, 75);
+        assert_eq!(resp.blocks.last().unwrap().height, 99);
+        assert_eq!(resp.next_header_to_scan, hash_100);
+        assert!(!resp.has_next_page);
+
+        // Unaligned start: the batch also ends at 99 and points at 100
+        let resp = service.fetch_utxos(sync_request(header_hash(95), 25)).await.unwrap();
+        assert_eq!(resp.blocks.first().unwrap().height, 95);
+        assert_eq!(resp.blocks.last().unwrap().height, 99);
+        assert_eq!(resp.next_header_to_scan, hash_100);
+        assert!(!resp.has_next_page);
+
+        // From the cursor the tip is reached and the cursor is empty
+        let resp = service.fetch_utxos(sync_request(hash_100, 25)).await.unwrap();
+        assert_eq!(resp.blocks.len(), 1);
+        assert_eq!(resp.blocks[0].height, 100);
+        assert!(resp.next_header_to_scan.is_empty());
         assert!(!resp.has_next_page);
     }
 
