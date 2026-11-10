@@ -50,7 +50,6 @@ Please report any **non-sensitive** issue **unrelated to security** as a Github 
 
 Security issues can be disclosed using one of the following channels, in decreasing order of preference: 
   * A [Private Security Disclosure](https://github.com/tari-project/tari/security/advisories/new) on Github
-  * [The Tari Labs Security mailing list](mailto:security@tari.com) 
 
 
 Please follow the [requirements](#submission-requirements) below when making your submission.

@@ -11,6 +11,7 @@ import "common.proto";
 message GetPeersRequest {
   // The number of peers to return, 0 for all peers
   uint32 n = 1;
+  // Ignored by servers since v6.3.0: client peers are never returned.
   bool include_clients = 2;
   uint32 max_claims = 3;
   uint32 max_addresses_per_claim = 4;

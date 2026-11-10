@@ -81,7 +81,7 @@ pub struct HeaderSynchronizer<'a, B> {
     connectivity: ConnectivityRequester,
     sync_peers: &'a mut Vec<SyncPeer>,
     hooks: Hooks,
-    local_cached_metadata: &'a ChainMetadata,
+    local_cached_metadata: ChainMetadata,
     peer_ban_manager: PeerBanManager,
     consensus_rules: BaseNodeConsensusManager,
     /// Time spent on each peer by the strong dial before its attempt
@@ -106,7 +106,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         connectivity: ConnectivityRequester,
         sync_peers: &'a mut Vec<SyncPeer>,
         randomx_factory: RandomXFactory,
-        local_metadata: &'a ChainMetadata,
+        local_metadata: ChainMetadata,
         chain_changes: &'a mut HashMap<NodeId, Vec<Instant>>,
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
@@ -1284,6 +1284,8 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     if !blocks.is_empty() {
                         self.hooks.call_on_rewind_hooks(blocks);
                     }
+                    // Later attempts in this round check our block tip against this, and it is now lower
+                    self.local_cached_metadata = self.db.get_chain_metadata().await?;
                 },
                 // A reset drops the split unless it is the genesis block, and every peer in this round has a stale
                 // view of our chain
@@ -1542,7 +1544,7 @@ mod test {
             connectivity,
             sync_peers,
             RandomXFactory::default(),
-            metadata,
+            metadata.clone(),
             // Kept for the length of the test
             Box::leak(Box::default()),
         )
@@ -1942,6 +1944,15 @@ mod test {
             verdicts[HEADER_SYNC_INITIAL_MAX_HEADERS - 1],
             PendingChainVerdict::Refused
         );
+        let (peer_db, peer_tip) = serve_headers(&rules, headers);
+        (db, rules, peer_db, peer_tip, verdicts)
+    }
+
+    /// A peer database holding `headers` on the genesis block, serving them up to the last as its best block
+    fn serve_headers(
+        rules: &BaseNodeConsensusManager,
+        headers: Vec<ChainHeader>,
+    ) -> (BlockchainDatabase<TempDatabase>, ChainHeader) {
         let peer_db = create_store_with_consensus_and_validators_and_config(
             rules.clone(),
             Validators::new(
@@ -1963,7 +1974,60 @@ mod test {
             peer_tip.timestamp(),
         );
         peer_db.write(txn).unwrap();
-        (db, rules, peer_db, peer_tip, verdicts)
+        (peer_db, peer_tip)
+    }
+
+    /// An attempt that fails after rewinding our blocks to the split does not make the next peer's attempt see our
+    /// chain as inconsistent
+    #[tokio::test]
+    async fn the_next_peer_is_checked_against_our_chain_after_a_failed_attempt_rewound_it() {
+        let rules = create_consensus_rules();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        let db = create_store_with_consensus_and_validators_and_config(rules.clone(), validators, Default::default());
+        create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+        let split_info = ChainSplitInfo {
+            best_block_header: db.fetch_tip_header().unwrap(),
+            reorg_steps_back: 5,
+            chain_split_hash: *db.fetch_genesis_block().hash(),
+        };
+        let (headers, verdicts) =
+            grow_pending_chain(&db, &rules, &split_info, HEADER_SYNC_INITIAL_MAX_HEADERS + 5).await;
+        // The first batch is enough to switch, so the rewind happens before the rest is streamed
+        assert_eq!(
+            verdicts[HEADER_SYNC_INITIAL_MAX_HEADERS - 1],
+            PendingChainVerdict::Switch
+        );
+        let (peer_db, peer_tip) = serve_headers(&rules, headers);
+        let metadata = db.get_chain_metadata().unwrap();
+        let mut sync_peers = vec![];
+        let mut synchronizer = new_synchronizer(&db, &rules, &mut sync_peers, &metadata);
+        let difficulty = peer_tip.accumulated_data().total_accumulated_difficulty;
+
+        // The first peer overclaims, which is only found out after the rewind
+        let (client, sync_peer, _server, _conn) = connect_to_peer(&peer_db, peer_tip.height(), difficulty + 1).await;
+        let err = synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BlockHeaderSyncError::PeerSentInaccurateChainMetadata { .. }),
+            "{err}"
+        );
+        assert_eq!(synchronizer.rewind_attempts, 1);
+        assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 0);
+
+        let (client, sync_peer, _server, _conn) = connect_to_peer(&peer_db, peer_tip.height(), difficulty).await;
+        let result = synchronizer
+            .attempt_sync(&sync_peer, client, Duration::from_secs(60))
+            .await
+            .unwrap();
+
+        assert_eq!(result.header_sync_status, HeaderSyncStatus::InSyncOrAhead);
+        assert_eq!(db.fetch_last_header().unwrap().hash(), *peer_tip.hash());
     }
 
     #[tokio::test]

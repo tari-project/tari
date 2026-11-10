@@ -565,6 +565,11 @@ fn check_total_burned(body: &AggregateBody) -> Result<(), AggregatedBodyValidati
         }
     }
     for kernel in body.kernels() {
+        if !kernel.is_burned() && kernel.burn_commitment.is_some() {
+            return Err(AggregatedBodyValidationError::InvalidBurnError(
+                "Non-burn kernel must not have a burn commitment".to_string(),
+            ));
+        }
         if kernel.is_burned() && !burned_outputs.remove(kernel.get_burn_commitment()?) {
             return Err(AggregatedBodyValidationError::InvalidBurnError(
                 "Burned kernel does not match burned output".to_string(),
@@ -801,6 +806,27 @@ mod test {
         // Lets try one with a commitment with no kernel
         let body2 = AggregateBody::new_unsorted(Vec::new(), vec![output1, output2, output3], vec![kernel1, kernel2]);
         assert!(check_total_burned(&body2).is_err());
+    }
+
+    #[test]
+    fn check_burned_rejects_burn_commitment_on_non_burn_kernel() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (output, _, _) = test_helpers::create_utxo(
+            100.into(),
+            &key_manager,
+            &OutputFeatures::default(),
+            &script!(Nop).unwrap(),
+            &Covenant::default(),
+            0.into(),
+        );
+        let mut kernel = test_helpers::create_test_kernel(0.into(), 0, KernelFeatures::empty());
+        kernel.burn_commitment = Some(output.commitment.clone());
+
+        let body = AggregateBody::new_unsorted(Vec::new(), vec![output], vec![kernel]);
+        assert!(matches!(
+            check_total_burned(&body),
+            Err(AggregatedBodyValidationError::InvalidBurnError(_))
+        ));
     }
 
     /// `is_all_unique_and_sorted` is what makes an output commitment unique within a body: `Ord for

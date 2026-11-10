@@ -539,9 +539,12 @@ impl<'a, Txn: Deref<Target = ConstTransaction<'a>>> ValidatorNodeStore<'a, Txn> 
             }
 
             // next_key returns the landed key without moving the cursor, so count_dups below still counts it
-            let Some(landed) = cursor.next_key()? else {
-                break;
-            };
+            let landed = cursor
+                .next_key()?
+                .ok_or_else(|| ChainStorageError::DataInconsistencyDetected {
+                    function: "ValidatorNodeStore::get_next_activation_epoch",
+                    details: "seek_range returned true without a key".to_string(),
+                })?;
             // No activations for this sidechain in this epoch
             let mut sections = landed.section_iter(ACTIVATION_QUEUE_KEY_SECTIONS);
             if sections.next() != Some(sidechain_bytes) || sections.next_be_u64() != Some(activation_epoch.as_u64()) {
@@ -1164,6 +1167,40 @@ mod tests {
 
             let next = store.get_next_activation_epoch(None, VnEpoch(5), 1, 2).unwrap();
             assert_eq!(next, VnEpoch(7));
+        }
+
+        #[test]
+        fn it_assigns_first_empty_epoch_and_stops_at_sidechain_boundary_in_get_next_activation_epoch() {
+            // Same-sidechain empty epochs (6, 7, 8) are not skipped when a later epoch (9) is full.
+            {
+                let db = TempLmdbDatabase::with_dbs(DBS);
+                let txn = db.write_transaction();
+                let store = create_store(&db, &txn);
+
+                // Register 2 VNs in epoch 1 so the default sidechain (`None`) completes its initial_validators=2 phase.
+                insert_n_vns(&store, 1, 0, 2, None);
+                // Queue 1 VN in epoch 9 (`validators_per_epoch = 1`), leaving epochs 6, 7, 8 empty.
+                insert_n_vns(&store, 9, 0, 1, None);
+
+                let assigned_epoch = store.get_next_activation_epoch(None, VnEpoch(5), 2, 1).unwrap();
+                assert_eq!(assigned_epoch, VnEpoch(6));
+            }
+
+            // Cross-sidechain seek landing on another sidechain's full key stops at the sidechain boundary.
+            {
+                let db = TempLmdbDatabase::with_dbs(DBS);
+                let txn = db.write_transaction();
+                let store = create_store(&db, &txn);
+                let sidechain = sidechain_after_default();
+
+                // Default sidechain (`None`, prefix `[0u8; 32]`) has 2 VNs in epoch 1 (past initial_validators = 2).
+                insert_n_vns(&store, 1, 0, 2, None);
+                // `sidechain` (non-zero 32-byte key > `[0u8; 32]`) has 1 VN in epoch 6 (`>= validators_per_epoch = 1`).
+                insert_n_vns(&store, 6, 0, 1, Some(&sidechain));
+
+                let assigned_epoch = store.get_next_activation_epoch(None, VnEpoch(5), 2, 1).unwrap();
+                assert_eq!(assigned_epoch, VnEpoch(6));
+            }
         }
     }
 
