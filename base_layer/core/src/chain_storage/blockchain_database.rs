@@ -4854,6 +4854,25 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             .fetch_chain_header_in_all_chains(&candidate_block.header.prev_hash)
             .optional()?
         {
+            // The main chain cannot be reached through a header above the best block unless it is a linked orphan,
+            // so hold the block unlinked until the missing bodies arrive and the descendant walk links it.
+            Some(curr_parent)
+                if curr_parent.height() > db.fetch_chain_metadata()?.best_block_height() &&
+                    db.fetch_orphan_chain_block(candidate_block.header.prev_hash)?.is_none() =>
+            {
+                info!(
+                    target: LOG_TARGET,
+                    "Orphan #{} ({}) has a parent header #{} above the best block with no linked body yet. Inserting \
+                     as true orphan",
+                    candidate_block.header.height,
+                    hash,
+                    curr_parent.height(),
+                );
+                let mut txn = DbTransaction::new();
+                txn.insert_orphan(candidate_block);
+                db.write(txn)?;
+                return Ok(true);
+            },
             Some(curr_parent) => {
                 debug!(
                     target: LOG_TARGET,
@@ -7181,7 +7200,26 @@ mod test {
                 headers.push(create_chain_header(header, prev.accumulated_data()));
             }
             db.insert_valid_headers(headers[1..].to_vec()).unwrap();
+            set_best_block_to_last_header(db);
             headers
+        }
+
+        /// Makes the stored headers the main chain. Without this they sit above the best block and a fork built on
+        /// them is held unlinked.
+        fn set_best_block_to_last_header(db: &BlockchainDatabase<TempDatabase>) {
+            let access = db.db_read_access().unwrap();
+            let previous_best = *access.fetch_chain_metadata().unwrap().best_block_hash();
+            let last = access.fetch_last_chain_header().unwrap();
+            drop(access);
+            let mut txn = DbTransaction::new();
+            txn.set_best_block(
+                last.height(),
+                *last.hash(),
+                last.accumulated_data().total_accumulated_difficulty,
+                previous_best,
+                last.timestamp(),
+            );
+            db.write(txn).unwrap();
         }
 
         /// The same, on a chain long enough that the fork crosses a RandomX VM key band boundary (2112) above the
@@ -7426,6 +7464,7 @@ mod test {
                 headers.push(create_chain_header(header, prev.accumulated_data()));
             }
             db.insert_valid_headers(headers[1..].to_vec()).unwrap();
+            set_best_block_to_last_header(&db);
 
             // Heights 31, 32 and 33. The median before height 32 is 3120, so 3200 is valid there.
             let mut fork = vec![];
@@ -7452,6 +7491,50 @@ mod test {
             }
             let tip = access.fetch_orphan_chain_tip_by_hash(&fork[2].hash()).unwrap();
             assert_eq!(tip.unwrap().header(), &fork[2]);
+        }
+
+        /// A block whose parent is a header above the best block, and also a linked orphan that is no longer a tip,
+        /// links through that orphan.
+        #[tokio::test]
+        async fn it_links_a_block_on_a_linked_orphan_above_the_best_block() {
+            let db = create_new_blockchain();
+            let validator = MockValidator::new(true);
+            let mut headers = add_main_chain_headers(&db, 3);
+            for _ in 0..3 {
+                let prev = headers.last().unwrap();
+                let mut header = BlockHeader::from_previous(prev.header());
+                header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+                header.kernel_mmr_size += 1;
+                header.output_smt_size += 1;
+                headers.push(create_chain_header(header, prev.accumulated_data()));
+            }
+            db.insert_valid_headers(headers[4..].to_vec()).unwrap();
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 3);
+
+            let mut access = db.db_write_access().unwrap();
+            for header in &headers[4..=5] {
+                let block = Arc::new(header.header().clone().into_builder().build());
+                assert!(
+                    insert_orphan_and_find_new_tips(&mut *access, block, &validator, &db.consensus_manager).unwrap()
+                );
+            }
+            let h4 = headers[4].hash();
+            assert!(access.fetch_orphan_chain_block(*h4).unwrap().is_some());
+            assert!(access.fetch_orphan_chain_tip_by_hash(h4).unwrap().is_none());
+
+            let mut sibling = BlockHeader::from_previous(headers[4].header());
+            sibling.timestamp = headers[4].header().timestamp.checked_add(EpochTime::from(60)).unwrap();
+            sibling.nonce = 1;
+            let block = Arc::new(sibling.clone().into_builder().build());
+            assert!(insert_orphan_and_find_new_tips(&mut *access, block, &validator, &db.consensus_manager).unwrap());
+
+            assert!(access.fetch_orphan_chain_block(sibling.hash()).unwrap().is_some());
+            assert!(
+                access
+                    .fetch_orphan_chain_tip_by_hash(&sibling.hash())
+                    .unwrap()
+                    .is_some()
+            );
         }
     }
 
@@ -9953,6 +10036,162 @@ mod test {
                 .iter()
                 .all(|h| test.db.fetch_header_by_block_hash(*h.hash()).unwrap().is_none())
         );
+    }
+
+    #[tokio::test]
+    async fn out_of_order_blocks_on_synced_ahead_headers_link_when_gap_fills() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(
+                ["B1->GB"],
+                ["B2->B1"],
+                ["B3->B2"],
+                ["H4->B3"],
+                ["H5->H4"],
+                ["H6->H5"],
+                ["K7->H6"],
+                ["K8->K7"]
+            ),
+        );
+        let b3 = main_chain.get("B3").unwrap().clone();
+        let h4_block = main_chain.get("H4").unwrap().to_arc_block();
+        let h5_block = main_chain.get("H5").unwrap().to_arc_block();
+        let h6_block = main_chain.get("H6").unwrap().to_arc_block();
+        let k7_block = main_chain.get("K7").unwrap().to_arc_block();
+        let k8_block = main_chain.get("K8").unwrap().to_arc_block();
+        let synced_ahead_headers: Vec<_> = ["H4", "H5", "H6"]
+            .iter()
+            .map(|name| main_chain.get(*name).unwrap().to_chain_header())
+            .collect();
+
+        // Baseline: with no headers above the best block, the out-of-order blocks link up once H4 arrives
+        test.db.rewind_to_height(b3.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        for orphan in [&k8_block, &k7_block, &h6_block, &h5_block] {
+            test.db.add_block(orphan.clone()).unwrap().result.assert_orphaned();
+        }
+        assert_eq!(test.db.orphan_count().unwrap(), 4);
+        let control_h4 = test.db.add_block(h4_block.clone()).unwrap();
+        assert!(matches!(control_h4.result, BlockAddResult::ChainReorg { .. }));
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 8);
+        assert_eq!(test.db.fetch_last_header().unwrap().height, 8);
+        assert_eq!(test.db.orphan_count().unwrap(), 0);
+
+        // Same sequence with H4..H6 stored as headers above the best block
+        test.db.rewind_to_height(b3.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        test.db.insert_valid_headers(synced_ahead_headers).unwrap();
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 3);
+        assert_eq!(test.db.fetch_last_header().unwrap().height, 6);
+
+        test.db.add_block(k8_block.clone()).unwrap().result.assert_orphaned();
+        test.db.add_block(k7_block.clone()).unwrap().result.assert_orphaned();
+        assert!(test.db.fetch_orphan(k7_block.hash()).is_ok());
+        assert!(test.db.fetch_orphan(k8_block.hash()).is_ok());
+
+        test.db.add_block(h6_block.clone()).unwrap().result.assert_orphaned();
+        test.db.add_block(h5_block.clone()).unwrap().result.assert_orphaned();
+        assert!(test.db.fetch_orphan(h6_block.hash()).is_ok());
+        assert!(test.db.fetch_orphan(h5_block.hash()).is_ok());
+        assert_eq!(test.db.orphan_count().unwrap(), 4);
+
+        let h4_result = test.db.add_block(h4_block).unwrap();
+        assert!(matches!(h4_result.result, BlockAddResult::ChainReorg { .. }));
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 8);
+        assert_eq!(test.db.fetch_last_header().unwrap().height, 8);
+        assert_eq!(test.db.orphan_count().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn block_on_synced_ahead_header_is_held_without_tip() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(
+                ["B1->GB"],
+                ["B2->B1"],
+                ["B3->B2"],
+                ["H4->B3"],
+                ["H5->H4"],
+                ["H6->H5"],
+                ["K7->H6"]
+            ),
+        );
+        let b3 = main_chain.get("B3").unwrap().clone();
+        let k7_block = main_chain.get("K7").unwrap().to_arc_block();
+        let synced_ahead_headers: Vec<_> = ["H4", "H5", "H6"]
+            .iter()
+            .map(|name| main_chain.get(*name).unwrap().to_chain_header())
+            .collect();
+        test.db.rewind_to_height(b3.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        test.db.insert_valid_headers(synced_ahead_headers).unwrap();
+
+        test.db.add_block(k7_block.clone()).unwrap().result.assert_orphaned();
+
+        assert!(test.db.fetch_orphan(k7_block.hash()).is_ok());
+        assert!(
+            test.db
+                .db_read_access()
+                .unwrap()
+                .fetch_orphan_chain_tip_by_hash(&k7_block.hash())
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 3);
+        assert_eq!(test.db.fetch_last_header().unwrap().height, 6);
+    }
+
+    #[tokio::test]
+    async fn ascending_blocks_on_synced_ahead_headers_link_when_gap_fills() {
+        let test = TestHarness::setup();
+        let (_, main_chain) = create_main_chain(
+            &test.db,
+            block_specs!(
+                ["B1->GB"],
+                ["B2->B1"],
+                ["B3->B2"],
+                ["H4->B3"],
+                ["H5->H4"],
+                ["H6->H5"],
+                ["K7->H6"]
+            ),
+        );
+        let b3 = main_chain.get("B3").unwrap().clone();
+        let h4_block = main_chain.get("H4").unwrap().to_arc_block();
+        let synced_ahead_headers: Vec<_> = ["H4", "H5", "H6"]
+            .iter()
+            .map(|name| main_chain.get(*name).unwrap().to_chain_header())
+            .collect();
+        test.db.rewind_to_height(b3.height()).unwrap();
+        test.db.cleanup_all_orphans().unwrap();
+        test.db.insert_valid_headers(synced_ahead_headers).unwrap();
+
+        // Each parent is a header above the best block whose body, if held, is not linked to the main chain
+        for name in ["H5", "H6", "K7"] {
+            let block = main_chain.get(name).unwrap().to_arc_block();
+            test.db.add_block(block.clone()).unwrap().result.assert_orphaned();
+        }
+        for name in ["H5", "H6", "K7"] {
+            let hash = main_chain.get(name).unwrap().to_arc_block().hash();
+            assert!(test.db.fetch_orphan(hash).is_ok(), "{name} must be held");
+            assert!(
+                test.db
+                    .db_read_access()
+                    .unwrap()
+                    .fetch_orphan_chain_tip_by_hash(&hash)
+                    .unwrap()
+                    .is_none(),
+                "{name} must not be a tip"
+            );
+        }
+
+        let h4_result = test.db.add_block(h4_block).unwrap();
+        assert!(matches!(h4_result.result, BlockAddResult::ChainReorg { .. }));
+        assert_eq!(test.db.get_chain_metadata().unwrap().best_block_height(), 7);
+        assert_eq!(test.db.fetch_last_header().unwrap().height, 7);
+        assert_eq!(test.db.orphan_count().unwrap(), 0);
     }
 
     #[ignore]
