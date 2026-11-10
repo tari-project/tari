@@ -62,7 +62,7 @@ pub use configuration::{
     error::ConfigError,
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, SubConfigPath},
     name_server::DnsNameServer,
-    utils::{display_path, load_configuration, print_env_vars},
+    utils::{display_path, emit_warning, load_configuration, print_env_vars},
 };
 pub mod dir_utils;
 
@@ -81,3 +81,6 @@ pub(crate) const LOG_TARGET: &str = "common::config";
 /// Maximum gRPC message size for clients and servers:
 ///   2MiB (coinbases) + 4MiB (transaction payload) + 2MiB (spare capacity) = 8 MiB
 pub const MAX_GRPC_MESSAGE_SIZE: usize = 8 * 1024 * 1024;
+
+#[cfg(test)]
+pub(crate) mod test_logger;

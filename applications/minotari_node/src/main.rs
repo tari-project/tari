@@ -73,6 +73,7 @@ use std::{
     fs::File,
     io::Write,
     panic,
+    path::Path,
     process,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -213,22 +214,17 @@ fn main_inner() -> Result<(), ExitError> {
         }
     })?;
     #[cfg(not(all(unix, feature = "libtor")))]
-    let config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+    let config = ApplicationConfig::load_from(&cfg).inspect_err(|e| {
         if e.is_unknown_field_error() {
             eprintln!(
                 "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
                  field.\n    Run with --print-env to inspect active environment variables and -p overrides."
             );
         }
-        e
     })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
 
-    info!(target: LOG_TARGET, "Effective base path: {}", display_path(config.common.base_path()));
-    info!(target: LOG_TARGET, "Effective config path: {}", display_path(&config_path));
-    info!(target: LOG_TARGET, "Effective log config path: {}", display_path(cli.common.log_config_path("base_node")));
-    info!(target: LOG_TARGET, "Effective identity file: {}", display_path(&config.base_node.identity_file));
-    info!(target: LOG_TARGET, "Effective Tor identity file: {}", display_path(&config.base_node.tor_identity_file));
+    log_effective_paths_and_warnings(&cli, &config, &config_path);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
@@ -272,4 +268,30 @@ fn main_inner() -> Result<(), ExitError> {
     runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
 
     Ok(())
+}
+
+fn log_effective_paths_and_warnings(cli: &Cli, config: &ApplicationConfig, config_path: &Path) {
+    if let Some(fallback_dir) = tari_common::dir_utils::get_fallback_home_dir() {
+        let effective_base_path = tari_common::dir_utils::absolute_path(config.common.base_path());
+        if effective_base_path == fallback_dir.join(".tari") {
+            let fallback_shown = display_path(&fallback_dir);
+            tari_common::emit_warning(&format!(
+                "Could not determine user home directory; falling back to current working directory: {fallback_shown}"
+            ));
+        }
+    }
+
+    info!(target: LOG_TARGET, "Effective base path: {}", display_path(config.common.base_path()));
+    info!(target: LOG_TARGET, "Effective config path: {}", display_path(config_path));
+    info!(
+        target: LOG_TARGET,
+        "Effective log config path: {}",
+        display_path(cli.common.log_config_path("base_node"))
+    );
+    info!(target: LOG_TARGET, "Effective identity file: {}", display_path(&config.base_node.identity_file));
+    info!(
+        target: LOG_TARGET,
+        "Effective Tor identity file: {}",
+        display_path(&config.base_node.tor_identity_file)
+    );
 }
