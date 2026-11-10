@@ -49,7 +49,7 @@ pub use grpc_method::GrpcMethod;
 pub use http::HttpCacheConfig;
 use log::*;
 use minotari_app_grpc::{
-    authentication::ServerAuthenticationInterceptor,
+    authentication::GrpcAuthLayer,
     tari_rpc::{
         self,
         base_node_server::SERVICE_NAME as BASE_NODE_GRPC_SERVICE_NAME,
@@ -71,10 +71,7 @@ use tokio::{
     task::{self, JoinHandle},
     time::timeout,
 };
-use tonic::{
-    codegen::InterceptedService,
-    transport::{Identity, Server, ServerTlsConfig},
-};
+use tonic::transport::{Identity, Server, ServerTlsConfig};
 use tonic_health::{ServingStatus, server::HealthReporter};
 
 pub use crate::config::{ApplicationConfig, BaseNodeConfig, DatabaseType};
@@ -150,7 +147,7 @@ pub async fn run_base_node_with_cli(
         );
     }
 
-    let (grpc_address, auth, tls_identity) = prepare_grpc_params(&config).await?;
+    let (grpc_address, auth, health_requires_auth, tls_identity) = prepare_grpc_params(&config).await?;
 
     let (readiness_grpc_server, readiness_handler) = ReadinessGrpcServer::new();
     let readiness_grpc_shutdown = Shutdown::new();
@@ -160,6 +157,7 @@ pub async fn run_base_node_with_cli(
             readiness_grpc_server,
             grpc_address.clone(),
             auth.clone(),
+            health_requires_auth,
             tls_identity.clone(),
             None,
             readiness_grpc_shutdown.to_signal(),
@@ -237,6 +235,7 @@ pub async fn run_base_node_with_cli(
             grpc,
             grpc_address.clone(),
             auth.clone(),
+            health_requires_auth,
             tls_identity,
             Some(ctx.state_machine()),
             shutdown.to_signal(),
@@ -354,6 +353,7 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     grpc: T,
     grpc_address: Multiaddr,
     auth_config: GrpcAuthentication,
+    health_requires_auth: bool,
     tls_identity: Option<Identity>,
     health_state_machine: Option<StateMachineHandle>,
     interrupt_signal: ShutdownSignal,
@@ -361,13 +361,12 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
     info!(target: LOG_TARGET, "Starting GRPC on {grpc_address}");
 
     let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
-    let auth = ServerAuthenticationInterceptor::new(auth_config)
-        .ok_or(anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
+    let auth_layer = GrpcAuthLayer::new(auth_config, health_requires_auth)
+        .ok_or_else(|| anyhow::anyhow!("Unable to prepare server gRPC authentication"))?;
 
     let sized_server = minotari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc)
         .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
-    let service = InterceptedService::new(sized_server, auth);
 
     let mut server_builder = grpc_server_builder(
         GRPC_HTTP2_KEEPALIVE_INTERVAL,
@@ -378,6 +377,8 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         server_builder = server_builder.tls_config(ServerTlsConfig::new().identity(identity))?;
     }
 
+    let router = server_builder.layer(auth_layer).add_service(sized_server);
+
     if let Some(state_machine_handle) = health_state_machine {
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         let mut status_watch = state_machine_handle.get_status_info_watch();
@@ -385,14 +386,12 @@ async fn run_grpc<T: tari_rpc::base_node_server::BaseNode>(
         update_grpc_health_status(&mut health_reporter, is_serving).await;
         spawn_grpc_health_updater(health_reporter, status_watch, is_serving);
 
-        server_builder
-            .add_service(service)
+        router
             .add_service(health_service)
             .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
             .await
     } else {
-        server_builder
-            .add_service(service)
+        router
             .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
             .await
     }
@@ -463,13 +462,14 @@ fn is_grpc_health_serving(status: &StatusInfo) -> bool {
 /// Prepares the parameters required to call the `run_grpc` function
 async fn prepare_grpc_params(
     config: &ApplicationConfig,
-) -> Result<(Multiaddr, GrpcAuthentication, Option<Identity>), ExitError> {
+) -> Result<(Multiaddr, GrpcAuthentication, bool, Option<Identity>), ExitError> {
     let grpc_address = config.base_node.grpc_address.clone().unwrap_or_else(|| {
         let port = grpc_default_port(ApplicationType::BaseNode, config.base_node.network);
         format!("/ip4/127.0.0.1/tcp/{port}").parse().unwrap()
     });
 
     let auth = config.base_node.grpc_authentication.clone();
+    let health_requires_auth = config.base_node.grpc_health_requires_auth;
 
     let mut tls_identity = None;
     if config.base_node.grpc_tls_enabled {
@@ -479,7 +479,7 @@ async fn prepare_grpc_params(
             .map_err(|e| ExitError::new(ExitCode::TlsConfigurationError, e.to_string()))?;
     }
 
-    Ok((grpc_address, auth, tls_identity))
+    Ok((grpc_address, auth, health_requires_auth, tls_identity))
 }
 
 #[cfg(test)]

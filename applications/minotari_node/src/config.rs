@@ -109,6 +109,9 @@ pub struct BaseNodeConfig {
     pub grpc_server_allow_methods: ConfigList<GrpcMethod>,
     /// GRPC authentication mode
     pub grpc_authentication: GrpcAuthentication,
+    /// Whether gRPC health checks require authentication (defaults to false to support external probes)
+    #[serde(default)]
+    pub grpc_health_requires_auth: bool,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
     /// Enable the readiness gRPC server
@@ -230,6 +233,7 @@ impl Default for BaseNodeConfig {
             grpc_address: None,
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
             grpc_authentication: GrpcAuthentication::default(),
+            grpc_health_requires_auth: false,
             grpc_tls_enabled: false,
             grpc_readiness_enabled: true,
             mining_enabled: false,

@@ -4316,6 +4316,7 @@ dependencies = [
  "base64 0.22.1",
  "bincode",
  "borsh",
+ "http 1.4.2",
  "log",
  "prost 0.13.5",
  "rand 0.10.3",
@@ -4338,6 +4339,8 @@ dependencies = [
  "tokio",
  "tonic 0.13.1",
  "tonic-build",
+ "tower-layer",
+ "tower-service",
  "zeroize",
 ]
 

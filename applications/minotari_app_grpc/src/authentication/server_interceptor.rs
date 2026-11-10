@@ -20,317 +20,87 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt,
-    net::{IpAddr, SocketAddr},
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
-use log::*;
 use tari_common_types::grpc_authentication::GrpcAuthentication;
 use tonic::{Request, Status, codegen::http::header::AUTHORIZATION, service::Interceptor};
 
-use crate::authentication::{BasicAuthCredentials, BasicAuthError, basic_auth::MAX_USERNAME_LEN};
+use crate::authentication::server_auth::{PresentedAuthorization, ServerAuthCore};
 
-const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
-
-pub const MAX_TRACKED_PEERS: usize = 1024;
-pub const MAX_FAILURES_BEFORE_BACKOFF: u32 = 5;
-pub const FAILURE_WINDOW: Duration = Duration::from_secs(60);
-pub const INITIAL_BACKOFF: Duration = Duration::from_millis(50);
-pub const MAX_BACKOFF: Duration = Duration::from_secs(60);
-const AUTH_FAILURE_WARN_INTERVAL: Duration = Duration::from_secs(60);
-
-fn is_loopback_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => v4.is_loopback(),
-        IpAddr::V6(v6) => v6.is_loopback() || v6.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback()),
-    }
-}
-
-#[derive(Debug, Default)]
-struct WarnLimiter {
-    state: Mutex<(Option<Instant>, u64)>,
-}
-
-impl WarnLimiter {
-    fn should_warn(&self, now: Instant) -> Option<u64> {
-        let mut state = match self.state.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        let (last_warning, num_suppressed) = &mut *state;
-        let may_warn =
-            last_warning.is_none_or(|last| now.saturating_duration_since(last) >= AUTH_FAILURE_WARN_INTERVAL);
-        if may_warn {
-            *last_warning = Some(now);
-            let suppressed = *num_suppressed;
-            *num_suppressed = 0;
-            Some(suppressed)
-        } else {
-            *num_suppressed = num_suppressed.saturating_add(1);
-            None
-        }
-    }
-}
-
+/// Tonic Interceptor that delegates authentication to `ServerAuthCore`.
 #[derive(Debug, Clone)]
-struct PeerFailureState {
-    consecutive_failures: u32,
-    last_failure_at: Instant,
-    blocked_until: Option<Instant>,
-}
-
-/// Bounded tracker for per-source-IP failed authentication backoff using a `HashMap` + recency queue.
-#[derive(Debug, Default)]
-struct AuthBackoffTracker {
-    states: HashMap<IpAddr, PeerFailureState>,
-    order: VecDeque<IpAddr>,
-}
-
-impl AuthBackoffTracker {
-    fn is_blocked(&mut self, ip: IpAddr, now: Instant) -> bool {
-        let Some(state) = self.states.get_mut(&ip) else {
-            return false;
-        };
-        if let Some(until) = state.blocked_until {
-            if now < until {
-                return true;
-            }
-            state.blocked_until = None;
-        }
-        if now.saturating_duration_since(state.last_failure_at) > FAILURE_WINDOW {
-            state.consecutive_failures = 0;
-        }
-        false
-    }
-
-    fn record_failure(&mut self, ip: IpAddr, now: Instant) {
-        let mut state = if let Some(existing) = self.states.remove(&ip) {
-            self.order.retain(|addr| *addr != ip);
-            existing
-        } else {
-            while self.states.len() >= MAX_TRACKED_PEERS {
-                let Some(oldest) = self.order.pop_front() else {
-                    break;
-                };
-                self.states.remove(&oldest);
-            }
-            PeerFailureState {
-                consecutive_failures: 0,
-                last_failure_at: now,
-                blocked_until: None,
-            }
-        };
-
-        if now.saturating_duration_since(state.last_failure_at) > FAILURE_WINDOW {
-            state.consecutive_failures = 0;
-        }
-        state.consecutive_failures = state.consecutive_failures.saturating_add(1);
-        state.last_failure_at = now;
-
-        if state.consecutive_failures >= MAX_FAILURES_BEFORE_BACKOFF {
-            let exponent = state
-                .consecutive_failures
-                .saturating_sub(MAX_FAILURES_BEFORE_BACKOFF)
-                .min(10);
-            let factor = 1u32 << exponent;
-            let delay = INITIAL_BACKOFF.saturating_mul(factor).min(MAX_BACKOFF);
-            state.blocked_until = now.checked_add(delay);
-        }
-
-        self.order.push_back(ip);
-        self.states.insert(ip, state);
-    }
-
-    fn record_success(&mut self, ip: IpAddr) {
-        if self.states.remove(&ip).is_some() {
-            self.order.retain(|addr| *addr != ip);
-        }
-    }
-}
-
-fn verify_request_header(req: &Request<()>, valid_credentials: &BasicAuthCredentials) -> Result<(), String> {
-    let Some(t) = req.metadata().get(AUTHORIZATION.as_str()) else {
-        return Err("Missing authorization header".to_string());
-    };
-    let header = t.to_str().map_err(|e| e.to_string())?;
-    let (header_username, header_password) = BasicAuthCredentials::parse_header(header).map_err(|e| e.to_string())?;
-    valid_credentials
-        .constant_time_validate(&header_username, &header_password)
-        .map_err(|e| e.to_string())
-}
-
-#[derive(Debug)]
 pub struct ServerAuthenticationInterceptor {
-    credentials: Option<Arc<BasicAuthCredentials>>,
-    reject_all: bool,
-    backoff: Arc<Mutex<AuthBackoffTracker>>,
-    warn_limiter: Arc<WarnLimiter>,
+    core: Arc<ServerAuthCore>,
 }
 
 impl ServerAuthenticationInterceptor {
     pub fn new(auth: GrpcAuthentication) -> Option<Self> {
-        let (credentials, reject_all) = match auth {
-            GrpcAuthentication::None => (None, false),
-            GrpcAuthentication::Basic { username, password } => {
-                match BasicAuthCredentials::new(username.clone(), password.clone()) {
-                    Ok(creds) => (Some(Arc::new(creds)), false),
-                    Err(BasicAuthError::InvalidUsername)
-                        if username.contains(':') &&
-                            username.len() <= MAX_USERNAME_LEN &&
-                            std::str::from_utf8(password.reveal()).is_ok() =>
-                    {
-                        error!(
-                            target: LOG_TARGET,
-                            "gRPC username must not contain ':'; all gRPC requests will be rejected"
-                        );
-                        (None, true)
-                    },
-                    Err(_) => return None,
-                }
-            },
-        };
-
-        Some(Self {
-            credentials,
-            reject_all,
-            backoff: Arc::default(),
-            warn_limiter: Arc::default(),
-        })
+        let core = ServerAuthCore::new(auth)?;
+        Some(Self { core })
     }
 
-    #[allow(clippy::result_large_err)]
-    fn handle_basic_auth(
-        &self,
-        req: Request<()>,
-        valid_credentials: &BasicAuthCredentials,
-    ) -> Result<Request<()>, Status> {
-        self.handle_basic_auth_at(req, valid_credentials, Instant::now())
+    pub fn failure_count(&self) -> u64 {
+        self.core.failure_count()
     }
 
-    #[allow(clippy::result_large_err)]
-    fn handle_basic_auth_at(
-        &self,
-        req: Request<()>,
-        valid_credentials: &BasicAuthCredentials,
-        now: Instant,
-    ) -> Result<Request<()>, Status> {
-        let peer_addr = req.remote_addr();
-        let tracked_ip = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip));
-
-        if let Some(ip) = tracked_ip {
-            let mut tracker = match self.backoff.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            if tracker.is_blocked(ip, now) {
-                return Err(self.unauthenticated_at(
-                    peer_addr,
-                    "Too many failed authentication attempts; backing off",
-                    now,
-                ));
-            }
-        }
-
-        match verify_request_header(&req, valid_credentials) {
-            Ok(()) => {
-                if let Some(ip) = tracked_ip {
-                    let mut tracker = match self.backoff.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    tracker.record_success(ip);
-                }
-                Ok(req)
-            },
-            Err(err) => {
-                if let Some(ip) = tracked_ip {
-                    let mut tracker = match self.backoff.lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    tracker.record_failure(ip, now);
-                }
-                Err(self.unauthenticated_at(peer_addr, err, now))
-            },
-        }
-    }
-
-    /// Standard unauthenticated response with rate-limited warning
-    fn unauthenticated_at<E: fmt::Display>(&self, peer_addr: Option<SocketAddr>, err: E, now: Instant) -> Status {
-        if let Some(suppressed) = self.warn_limiter.should_warn(now) {
-            let peer = peer_addr
-                .map(|addr| addr.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            if suppressed == 0 {
-                warn!(
-                    target: LOG_TARGET,
-                    "GRPC authentication failed for peer {peer}: {err}"
-                );
-            } else {
-                warn!(
-                    target: LOG_TARGET,
-                    "GRPC authentication failed for peer {peer}: {err} ({suppressed} similar warnings suppressed)"
-                );
-            }
-        }
-        Status::unauthenticated("Auth failed")
+    pub fn core(&self) -> &Arc<ServerAuthCore> {
+        &self.core
     }
 
     #[cfg(test)]
-    fn tracked_peer_count(&self) -> usize {
-        self.backoff.lock().unwrap_or_else(|e| e.into_inner()).states.len()
+    pub fn tracked_peer_count(&self) -> usize {
+        self.core.tracked_peer_count()
     }
 }
 
 impl Interceptor for ServerAuthenticationInterceptor {
-    fn call(&mut self, request: Request<()>) -> Result<Request<()>, Status> {
-        if self.reject_all {
-            let now = Instant::now();
-            let peer_addr = request.remote_addr();
-            if let Some(ip) = peer_addr.map(|addr| addr.ip()).filter(|ip| !is_loopback_ip(*ip)) {
-                let mut tracker = match self.backoff.lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                tracker.record_failure(ip, now);
-            }
-            return Err(self.unauthenticated_at(
-                peer_addr,
-                "gRPC username must not contain ':'; all gRPC requests will be rejected",
-                now,
-            ));
-        }
-        match &self.credentials {
-            None => Ok(request),
-            Some(credentials) => self.handle_basic_auth(request, credentials),
-        }
-    }
-}
+    fn call(&mut self, mut request: Request<()>) -> Result<Request<()>, Status> {
+        let auth_header = match request.metadata().get(AUTHORIZATION.as_str()) {
+            Some(t) => match t.to_str() {
+                Ok(s) => PresentedAuthorization::Value(s),
+                Err(_) => PresentedAuthorization::InvalidAscii,
+            },
+            None => PresentedAuthorization::Missing,
+        };
 
-impl Clone for ServerAuthenticationInterceptor {
-    fn clone(&self) -> Self {
-        Self {
-            credentials: self.credentials.clone(),
-            reject_all: self.reject_all,
-            backoff: self.backoff.clone(),
-            warn_limiter: self.warn_limiter.clone(),
+        let peer_addr = request.remote_addr();
+
+        match self.core.verify(auth_header, peer_addr, None, Instant::now()) {
+            Ok(Some(user)) => {
+                request.extensions_mut().insert(user);
+                Ok(request)
+            },
+            Ok(None) => Ok(request),
+            Err(status) => Err(status),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, net::Ipv4Addr, sync::OnceLock};
+    use std::{
+        cell::Cell,
+        net::{IpAddr, Ipv4Addr, SocketAddr},
+        sync::{Mutex, OnceLock},
+        time::Duration,
+    };
 
     use tari_utilities::SafePassword;
     use tonic::{metadata::MetadataValue, transport::server::TcpConnectInfo};
 
     use super::*;
-    use crate::authentication::basic_auth::MAX_ECHOED_SCHEME_LEN;
+    use crate::authentication::{
+        BasicAuthCredentials,
+        server_auth::{
+            AuthenticatedUser,
+            INITIAL_BACKOFF,
+            MAX_ECHOED_SCHEME_LEN,
+            MAX_FAILURES_BEFORE_BACKOFF,
+            MAX_TRACKED_PEERS,
+        },
+    };
+
+    const LOG_TARGET: &str = "applications::minotari_app_grpc::authentication";
 
     thread_local! {
         static CAPTURE_THREAD: Cell<bool> = const { Cell::new(false) };
@@ -411,35 +181,45 @@ mod tests {
             password: SafePassword::from("secret"),
         })
         .unwrap();
-        let creds = interceptor.credentials.as_ref().unwrap().clone();
         let addr: SocketAddr = "198.51.100.7:43210".parse().unwrap();
         let t0 = Instant::now();
 
+        let header_str = BasicAuthCredentials::generate_header("admin", b"wrong").unwrap();
+        let header_val = header_str.to_str().unwrap();
+
         for _ in 0..MAX_FAILURES_BEFORE_BACKOFF {
-            let req = request_with_auth_and_addr("admin", b"wrong", addr);
-            let err = interceptor.handle_basic_auth_at(req, &creds, t0).unwrap_err();
+            let err = interceptor
+                .core
+                .verify(PresentedAuthorization::Value(header_val), Some(addr), None, t0)
+                .unwrap_err();
             assert_eq!(err.code(), tonic::Code::Unauthenticated);
         }
 
-        // Within the backoff window, even a request carrying valid credentials is rejected without comparison.
-        let valid_during_backoff = request_with_auth_and_addr("admin", b"secret", addr);
+        // Within backoff window, even valid credentials rejected
+        let good_header = BasicAuthCredentials::generate_header("admin", b"secret").unwrap();
+        let good_val = good_header.to_str().unwrap();
         let during_backoff = t0.checked_add(Duration::from_millis(25)).unwrap();
         let err = interceptor
-            .handle_basic_auth_at(valid_during_backoff, &creds, during_backoff)
+            .core
+            .verify(
+                PresentedAuthorization::Value(good_val),
+                Some(addr),
+                None,
+                during_backoff,
+            )
             .unwrap_err();
         assert_eq!(err.code(), tonic::Code::Unauthenticated);
 
-        // Once the backoff window expires, the valid request is accepted again.
-        let valid_after_expiry = request_with_auth_and_addr("admin", b"secret", addr);
+        // After expiry, valid request accepted
         let after_expiry = t0
             .checked_add(INITIAL_BACKOFF)
             .and_then(|t| t.checked_add(Duration::from_millis(1)))
             .unwrap();
-        assert!(
-            interceptor
-                .handle_basic_auth_at(valid_after_expiry, &creds, after_expiry)
-                .is_ok()
-        );
+        let ok = interceptor
+            .core
+            .verify(PresentedAuthorization::Value(good_val), Some(addr), None, after_expiry)
+            .unwrap();
+        assert_eq!(ok, Some(AuthenticatedUser("admin".to_string())));
     }
 
     #[test]
@@ -449,7 +229,6 @@ mod tests {
             password: SafePassword::from("secret"),
         })
         .unwrap();
-        let creds = interceptor.credentials.as_ref().unwrap().clone();
         let t0 = Instant::now();
 
         let loopback_addrs: [SocketAddr; 3] = [
@@ -458,17 +237,25 @@ mod tests {
             "[::ffff:127.0.0.1]:41002".parse().unwrap(),
         ];
 
+        let bad_header = BasicAuthCredentials::generate_header("admin", b"stale-password").unwrap();
+        let bad_val = bad_header.to_str().unwrap();
+        let good_header = BasicAuthCredentials::generate_header("admin", b"secret").unwrap();
+        let good_val = good_header.to_str().unwrap();
+
         for addr in loopback_addrs {
-            // Misconfigured local client fails repeatedly well beyond MAX_FAILURES_BEFORE_BACKOFF.
             for _ in 0..MAX_FAILURES_BEFORE_BACKOFF.saturating_mul(3) {
-                let bad_req = request_with_auth_and_addr("admin", b"stale-password", addr);
-                let err = interceptor.handle_basic_auth_at(bad_req, &creds, t0).unwrap_err();
+                let err = interceptor
+                    .core
+                    .verify(PresentedAuthorization::Value(bad_val), Some(addr), None, t0)
+                    .unwrap_err();
                 assert_eq!(err.code(), tonic::Code::Unauthenticated);
             }
 
-            // Correctly configured local client on the same loopback IP still authenticates immediately.
-            let good_req = request_with_auth_and_addr("admin", b"secret", addr);
-            assert!(interceptor.handle_basic_auth_at(good_req, &creds, t0).is_ok());
+            let ok = interceptor
+                .core
+                .verify(PresentedAuthorization::Value(good_val), Some(addr), None, t0)
+                .unwrap();
+            assert_eq!(ok, Some(AuthenticatedUser("admin".to_string())));
         }
 
         assert_eq!(interceptor.tracked_peer_count(), 0);
@@ -482,7 +269,7 @@ mod tests {
         })
         .unwrap();
 
-        let total = MAX_TRACKED_PEERS.saturating_mul(2).saturating_add(50);
+        let total = MAX_TRACKED_PEERS.saturating_mul(2);
         for i in 0..total {
             let ip = Ipv4Addr::from(u32::try_from(i.saturating_add(1)).unwrap());
             let addr = SocketAddr::new(IpAddr::V4(ip), 10_000);

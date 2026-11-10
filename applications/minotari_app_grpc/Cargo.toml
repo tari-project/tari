@@ -35,6 +35,9 @@ subtle = "2.5.0"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 tonic = { version = "0.13.1", features = ["tls-ring"] }
+http = "1"
+tower-layer = "0.3.3"
+tower-service = "0.3.3"
 zeroize = "1"
 
 [dev-dependencies]
