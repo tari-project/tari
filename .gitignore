@@ -1,5 +1,4 @@
 target
-.env
 
 .claude
 wallet*_data
@@ -12,7 +11,6 @@ wallet*_data
 *.iml
 .vs/
 *.userprefs
-.vscode/
 *.code-workspace
 .zed/
 tags
@@ -83,3 +81,4 @@ docker-compose.yml
 entrypoint.sh
 
 .cocoindex_code/
+config.bat

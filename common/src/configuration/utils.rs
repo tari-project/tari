@@ -844,7 +844,7 @@ pub(crate) fn untrusted_path_findings(path: &Path) -> Vec<(bool, String)> {
 /// it is are not listed as members, so a shared primary group such as `users` can have an empty member list. If the
 /// group or user cannot be looked up, the group is treated as shared.
 #[cfg(unix)]
-pub(crate) fn is_private_group(gid: u32) -> bool {
+pub fn is_private_group(gid: u32) -> bool {
     // SAFETY: getegid has no preconditions and cannot fail.
     let egid = unsafe { libc::getegid() };
     if gid != egid {
@@ -935,6 +935,11 @@ fn parent_or_current(path: &Path) -> PathBuf {
 #[cfg(not(unix))]
 pub fn untrusted_findings(_path: &Path) -> Vec<(bool, String)> {
     Vec::new()
+}
+
+#[cfg(not(unix))]
+pub fn is_private_group(_gid: u32) -> bool {
+    true
 }
 
 #[cfg(not(unix))]
