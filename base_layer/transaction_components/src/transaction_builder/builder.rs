@@ -1479,6 +1479,9 @@ where KM: TransactionKeyManagerInterface
             }
             core_tx_builder.add_output(output);
         }
+        if self.burn_commitment.is_some() && !self.kernel_features.is_burned() {
+            return Err(TransactionBuilderError::BurnCommitmentOnNonBurnKernel);
+        }
 
         let kernel_message = TransactionKernel::build_kernel_signature_message(
             TransactionKernelVersion::get_current_version(),
@@ -3025,6 +3028,35 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 2);
         assert_validates(&tx);
+    }
+
+    #[test]
+    fn burn_commitment_requires_burn_kernel_features() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None);
+        let commitment = input.commitment().clone();
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder
+            .with_lock_height(0)
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+        builder.with_burn_commitment(Some(commitment));
+        builder
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        let err = builder.build().unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::BurnCommitmentOnNonBurnKernel),
+            "got {err:?}"
+        );
     }
 
     #[test]

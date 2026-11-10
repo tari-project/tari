@@ -112,23 +112,26 @@ pub async fn handle<B: BlockchainBackend + 'static>(
             body.into_response()
         },
     };
-    let last_height = if exclude_spent {
-        // if we're excluding spent outputs we cannot cache for longer than a day, so we force the "height" so that the
-        // caching will only be a max of 1 day. Wallets will sent full without excluding spends the last 1000 blocks so
-        // this leaves a margin for wallets to get data if it changed.
-        cmp::min(height.unwrap_or(0), tip_height.saturating_add(2500))
-    } else {
-        height.unwrap_or(0)
-    };
-
     apply_cache_control(
         response.headers_mut(),
         &cache_cfg,
         RouteKey::SyncUtxosByBlock,
         tip_height,
-        last_height,
+        cache_height(exclude_spent, height, tip_height),
     );
     Ok(response)
+}
+
+/// Height the response is cached as.
+fn cache_height(exclude_spent: bool, last_block_height: Option<u64>, tip_height: u64) -> u64 {
+    let height = last_block_height.unwrap_or(0);
+    if exclude_spent {
+        // Spent state changes over time, so treat the response as at most 2500 blocks deep, which caches it for at
+        // most a day. Wallets scan the last 1000 blocks without excluding spends, which leaves a margin.
+        cmp::max(height, tip_height.saturating_sub(2500))
+    } else {
+        height
+    }
 }
 
 impl Display for SyncUtxosByBlockQueryParams {
@@ -145,5 +148,42 @@ impl Display for SyncUtxosByBlockQueryParams {
             self.exclude_spent,
             self.exclude_inputs
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s_maxage(tip_height: u64, height: u64) -> String {
+        HttpCacheConfig::default()
+            .cache_control_for(RouteKey::SyncUtxosByBlock, tip_height, height)
+            .split(", ")
+            .find(|part| part.starts_with("s-maxage="))
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn exclude_spent_deep_block_is_capped_at_one_day() {
+        let height = cache_height(true, Some(1_000), 100_000);
+        assert_eq!(height, 97_500);
+        assert_eq!(s_maxage(100_000, height), "s-maxage=86400");
+    }
+
+    #[test]
+    fn exclude_spent_near_tip_block_is_unchanged() {
+        assert_eq!(cache_height(true, Some(99_990), 100_000), 99_990);
+    }
+
+    #[test]
+    fn without_exclude_spent_height_is_unchanged() {
+        assert_eq!(cache_height(false, Some(1_000), 100_000), 1_000);
+    }
+
+    #[test]
+    fn missing_height_defaults_to_zero_before_the_cap() {
+        assert_eq!(cache_height(false, None, 100_000), 0);
+        assert_eq!(cache_height(true, None, 100_000), 97_500);
     }
 }
