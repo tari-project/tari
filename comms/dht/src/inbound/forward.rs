@@ -244,7 +244,8 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         send_params
             .with_debug_info(debug_info)
             .propagate(dht_header.destination.clone(), excluded_peers)
-            .with_dht_header(dht_header.clone());
+            .with_dht_header(dht_header.clone())
+            .forwarded_from(source_peer.node_id.clone());
         self.outbound_service
             .send_raw_no_wait(send_params.finish(), body)
             .await?;

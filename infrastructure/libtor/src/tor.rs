@@ -31,7 +31,7 @@ use std::{
 };
 
 use derivative::Derivative;
-use libtor::{LogDestination, LogLevel, TorFlag};
+use libtor::{LogLevel, TorFlag};
 use log::*;
 use rand::{RngExt, distr::Alphanumeric};
 use tari_common::exit_codes::{ExitCode, ExitError};
@@ -156,10 +156,16 @@ impl Tor {
             .flag(TorFlag::Custom("__DisableSignalHandlers 1".to_string()))
             // Prevent conflicts with multiple instances using the same listener port for Prometheus metrics
             .flag(TorFlag::Custom("MetricsPort 0".to_string()))
-            // Write the final control port to a file. This could be used to configure the node to use this port when auto is set.
-            .flag(TorFlag::ControlPortWriteToFile(data_dir.join("control_port").to_string_lossy().to_string()))
+            // Write the final control port to a file. This could be used to configure the node to use this port when
+            // auto is set.
+            .flag(TorFlag::ControlPortWriteToFile(
+                data_dir.join("control_port").to_string_lossy().to_string(),
+            ))
             .flag(TorFlag::Hush())
-            .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination.to_string_lossy().to_string())));
+            // Use a Custom flag instead of `TorFlag::LogTo` because upstream `tari-libtor-core`'s `log_expand`
+            // calls `.to_lowercase()` on `dest`, which converts uppercase letters in directory paths
+            // to lowercase, causing Tor to fail with `No such file or directory` on case-sensitive filesystems (#6888).
+            .flag(TorFlag::Custom(format_tor_log_directive(log_level, &log_destination)));
 
         if socks_port == 0 {
             tor.flag(TorFlag::SocksPortAuto);
@@ -218,4 +224,84 @@ fn create_secure_dir(path: &Path) -> Result<(), ExitError> {
 fn get_available_port() -> Result<u16, io::Error> {
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
     Ok(listener.local_addr()?.port())
+}
+
+/// Formats a Tor `Log` configuration argument string that preserves case-sensitivity (#6888)
+/// and safely handles paths.
+///
+/// Upstream `tari-libtor-core`'s `TorFlag::LogTo` expansion calls `.to_lowercase()` on the
+/// entire log destination argument (`dest.to_lowercase()`), converting uppercase letters in
+/// the file path to lowercase. On case-sensitive Unix filesystems, this causes Tor initialization
+/// to fail with `No such file or directory` whenever the path contains uppercase letters (#6888).
+/// Emitting the `Log` flag directly via `TorFlag::Custom` preserves the exact case of the path.
+pub fn format_tor_log_directive(level: LogLevel, path: &Path) -> String {
+    let level_str = match level {
+        LogLevel::Debug => "debug",
+        LogLevel::Info => "info",
+        LogLevel::Notice => "notice",
+        LogLevel::Warn => "warn",
+        LogLevel::Err => "err",
+    };
+
+    // Strip control characters and newlines to prevent directive injection
+    let clean_path: String = path.to_string_lossy().chars().filter(|c| !c.is_control()).collect();
+
+    format!("Log {} file {}", level_str, clean_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_tor_log_directive_preserves_uppercase_path() {
+        let path = Path::new(
+            "/home/User/Tari-2503-Tari-Diff/tari/_coin/nodes/tari_new_commit/localnet/libtor/base_node/tor.log",
+        );
+        let directive = format_tor_log_directive(LogLevel::Err, path);
+        assert_eq!(
+            directive,
+            "Log err file \
+             /home/User/Tari-2503-Tari-Diff/tari/_coin/nodes/tari_new_commit/localnet/libtor/base_node/tor.log"
+        );
+    }
+
+    #[test]
+    fn format_tor_log_directive_handles_all_log_levels() {
+        let path = Path::new("/var/log/tor.log");
+        assert_eq!(
+            format_tor_log_directive(LogLevel::Debug, path),
+            "Log debug file /var/log/tor.log"
+        );
+        assert_eq!(
+            format_tor_log_directive(LogLevel::Info, path),
+            "Log info file /var/log/tor.log"
+        );
+        assert_eq!(
+            format_tor_log_directive(LogLevel::Notice, path),
+            "Log notice file /var/log/tor.log"
+        );
+        assert_eq!(
+            format_tor_log_directive(LogLevel::Warn, path),
+            "Log warn file /var/log/tor.log"
+        );
+        assert_eq!(
+            format_tor_log_directive(LogLevel::Err, path),
+            "Log err file /var/log/tor.log"
+        );
+    }
+
+    #[test]
+    fn format_tor_log_directive_strips_control_characters() {
+        let path = Path::new("/var/log/tor\nLog debug file /etc/shadow\r.log");
+        let directive = format_tor_log_directive(LogLevel::Notice, path);
+        assert_eq!(directive, "Log notice file /var/log/torLog debug file /etc/shadow.log");
+    }
+
+    #[test]
+    fn format_tor_log_directive_preserves_spaces_and_special_chars() {
+        let path = Path::new("/home/user/My Tari Node/data-dir_123/tor.log");
+        let directive = format_tor_log_directive(LogLevel::Info, path);
+        assert_eq!(directive, "Log info file /home/user/My Tari Node/data-dir_123/tor.log");
+    }
 }

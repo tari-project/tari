@@ -66,7 +66,10 @@ impl FromStr for SeedWords {
     type Err = MnemonicError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let words = s.split(' ').map(|s| Hidden::hide(String::from(s))).collect::<Vec<_>>();
+        let words = s
+            .split_whitespace()
+            .map(|s| Hidden::hide(String::from(s)))
+            .collect::<Vec<_>>();
         Ok(Self { words })
     }
 }
@@ -75,6 +78,15 @@ impl FromStr for SeedWords {
 mod tests {
     #![allow(clippy::indexing_slicing)]
     use super::*;
+
+    #[test]
+    fn from_str_splits_on_any_whitespace() {
+        let seed_words = SeedWords::from_str("  a b\tc\n d  ").unwrap();
+        let words = (0..seed_words.len())
+            .map(|i| seed_words.get_word(i).unwrap().clone())
+            .collect::<Vec<_>>();
+        assert_eq!(words, vec!["a", "b", "c", "d"]);
+    }
 
     #[test]
     pub fn test_seed_words_len() {

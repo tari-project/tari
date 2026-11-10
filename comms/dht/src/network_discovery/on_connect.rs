@@ -30,14 +30,18 @@ use std::{
 use futures::StreamExt;
 use log::*;
 use tari_comms::{PeerConnection, connectivity::ConnectivityEvent, peer_manager::NodeId};
-use tokio::sync::broadcast;
+use tari_utilities::hex::Hex;
+use tokio::{sync::broadcast, time};
 
 use crate::{
     DhtConfig,
+    actor::OffenceSeverity,
     event::DhtEvent,
     network_discovery::{
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
+        admission::HostileClaims,
+        discovering::{ban_peer, is_bad_data_offence},
         state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
     },
     peer_validator::PeerValidator,
@@ -117,9 +121,7 @@ impl OnConnect {
                         );
                         continue;
                     }
-                    if let Some(event) = self.sync_from(*conn).await {
-                        return event;
-                    }
+                    self.sync_from(*conn).await;
                 },
                 Ok(_) => { /* Nothing to do */ },
                 Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -134,88 +136,134 @@ impl OnConnect {
         StateEvent::Shutdown
     }
 
-    /// Syncs peers from a newly connected peer. Returns an event if the state machine must stop.
+    /// Syncs peers from a newly connected peer.
     ///
     /// The peer is marked as synced before the sync, so that it is not synced from twice at once. If the sync fails it
     /// is marked for `FAILED_SYNC_BACKOFF` instead, so that a transient failure does not block a retry for
     /// `on_connect_resync_ttl`, while a peer that keeps reconnecting is not synced from on every connection. A peer
-    /// that sent invalid peer data is banned and stays marked.
-    pub(super) async fn sync_from(&mut self, conn: PeerConnection) -> Option<StateEvent> {
-        self.mark_synced(conn.peer_node_id().clone(), Instant::now());
+    /// that relayed too many claims with invalid signatures is banned and stays marked. A sync cut short because the
+    /// peer used up its OnConnect budget counts as failed, so that the rest of its peers can be synced later.
+    ///
+    /// Inbound peers are synced from too: the per-source budget bounds what any one of them can add, so the inbound
+    /// share limit of a rebootstrap is not applied here.
+    pub(super) async fn sync_from(&mut self, conn: PeerConnection) {
+        let node_id = conn.peer_node_id().clone();
+        self.mark_synced(node_id.clone(), Instant::now());
 
-        debug!(
-            target: LOG_TARGET,
-            "Node peer `{}` connected. Syncing peers...",
-            conn.peer_node_id()
-        );
+        debug!(target: LOG_TARGET, "Node peer `{node_id}` connected. Syncing peers...");
 
-        match self.sync_peers(conn.clone()).await {
-            Ok(_) => {},
-            Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
-                warn!(target: LOG_TARGET, "{err}. Banning peer.");
-                if let Err(err) = self
-                    .context
-                    .connectivity
-                    .ban_peer_until(conn.peer_node_id().clone(), self.config().ban_duration, err.to_string())
-                    .await
-                {
-                    return Some(err.into());
-                }
+        // The per-item timeouts alone let a peer drip records for minutes, holding up every other connection
+        let deadline = self.config().network_discovery.on_connect_sync_timeout;
+        // Counted outside the sync, so that peers stored before a timeout or error are still announced
+        let mut num_added = 0usize;
+        let result = time::timeout(deadline, self.sync_peers(conn, &mut num_added))
+            .await
+            .unwrap_or_else(|_| {
+                Err(NetworkDiscoveryError::Timeout {
+                    operation: "on_connect_sync".to_string(),
+                    peer: node_id.to_hex(),
+                    duration: format!("{deadline:.2?}"),
+                })
+            });
+        debug!(target: LOG_TARGET, "Added {num_added} peer(s) from peer `{node_id}`");
+        if num_added > 0 {
+            self.context
+                .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo {
+                    num_new_peers: num_added,
+                    num_duplicate_peers: 0,
+                    num_succeeded: num_added,
+                    sync_peers: vec![node_id.clone()],
+                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
+                }));
+        }
+        match result {
+            Ok(false) => {},
+            Ok(true) => self.mark_sync_failed(node_id, Instant::now()),
+            Err(err) if is_bad_data_offence(&err) => {
+                warn!(target: LOG_TARGET, "Peer `{node_id}` sent bad peer data: {err}. Banning peer.");
+                ban_peer(&self.context, node_id, OffenceSeverity::High, err).await;
             },
             Err(err) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Failed to peer sync from `{}`: {}",
-                    conn.peer_node_id(),
-                    err
-                );
-                self.mark_sync_failed(conn.peer_node_id().clone(), Instant::now());
+                debug!(target: LOG_TARGET, "Failed to peer sync from `{node_id}`: {err}");
+                self.mark_sync_failed(node_id, Instant::now());
             },
         }
-        None
     }
 
-    async fn sync_peers(&mut self, mut conn: PeerConnection) -> Result<(), NetworkDiscoveryError> {
-        let mut client = conn.connect_rpc::<rpc::DhtClient>().await?;
-        let peer_stream = client
-            .get_peers(GetPeersRequest {
-                n: NUM_FETCH_PEERS,
-                include_clients: false,
-                max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
-                    error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX claims per peer");
+    /// Counts the new peers stored in `num_added`. Returns true if the sync was cut short because the peer used up its
+    /// budget for new peers.
+    async fn sync_peers(&self, mut conn: PeerConnection, num_added: &mut usize) -> Result<bool, NetworkDiscoveryError> {
+        let sync_peer = conn.peer_node_id().clone();
+        let discovery_config = &self.config().network_discovery;
+        let timed_out = |operation: &str, duration: Duration| {
+            debug!(target: LOG_TARGET, "{operation} to `{sync_peer}` timed out after {duration:.0?}");
+            NetworkDiscoveryError::Timeout {
+                operation: operation.to_string(),
+                peer: sync_peer.to_hex(),
+                duration: format!("{duration:.2?}"),
+            }
+        };
+
+        let connect_timeout = discovery_config.bootstrap_rpc_connect_timeout;
+        let mut client = time::timeout(connect_timeout, conn.connect_rpc::<rpc::DhtClient>())
+            .await
+            .map_err(|_| timed_out("connect_rpc", connect_timeout))??;
+        let request = GetPeersRequest {
+            n: NUM_FETCH_PEERS,
+            include_clients: false,
+            max_claims: self.config().max_permitted_peer_claims.try_into().unwrap_or_else(|_| {
+                error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX claims per peer");
+                u32::MAX
+            }),
+            max_addresses_per_claim: self
+                .config()
+                .peer_validator_config
+                .max_permitted_peer_addresses_per_claim
+                .try_into()
+                .unwrap_or_else(|_| {
+                    error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
                     u32::MAX
                 }),
-                max_addresses_per_claim: self
-                    .config()
-                    .peer_validator_config
-                    .max_permitted_peer_addresses_per_claim
-                    .try_into()
-                    .unwrap_or_else(|_| {
-                        error!(target: LOG_TARGET, "Node configured to accept more than u32::MAX addresses per claim");
-                        u32::MAX
-                    }),
-            })
-            .await?;
+        };
+        let get_peers_timeout = discovery_config.bootstrap_rpc_get_peers_stream_timeout;
+        let peer_stream = time::timeout(get_peers_timeout, client.get_peers(request))
+            .await
+            .map_err(|_| timed_out("get_peers", get_peers_timeout))??;
 
         // Take up to `NUM_FETCH_PEERS` then close the stream.
         let mut peer_stream = peer_stream.take(NUM_FETCH_PEERS as usize);
 
-        let sync_peer = conn.peer_node_id();
-        let mut num_added = 0usize;
-        while let Some(resp) = peer_stream.next().await {
+        let streaming_timeout = discovery_config.bootstrap_rpc_streaming_timeout;
+        let mut hostile_claims = HostileClaims::default();
+        let mut budget_used_up = false;
+        while let Some(resp) = time::timeout(streaming_timeout, peer_stream.next())
+            .await
+            .map_err(|_| timed_out("get_peer_response", streaming_timeout))?
+        {
             match resp {
                 Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
                     Some(peer) => {
                         let pub_key = peer.public_key.clone();
-                        match self.validate_and_add_peer(peer).await {
-                            Ok(new_peer) => {
-                                if new_peer {
-                                    debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
-                                    num_added = num_added.saturating_add(1);
-                                }
+                        match self.validate_and_add_peer(&sync_peer, peer).await {
+                            Ok(Some(true)) => {
+                                debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
+                                *num_added = num_added.saturating_add(1);
+                            },
+                            Ok(Some(false)) => {},
+                            Ok(None) => {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Peer `{sync_peer}` has relayed its share of new peers. Ending the sync"
+                                );
+                                budget_used_up = true;
+                                break;
+                            },
+                            Err(NetworkDiscoveryError::PeerValidationError(e)) => {
+                                debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
+                                hostile_claims.record(&e)?;
                             },
                             Err(e) => {
-                                debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
+                                debug!(target: LOG_TARGET, "Failed to add peer `{pub_key}` from `{sync_peer}`: {e}");
                             },
                         }
                     },
@@ -229,32 +277,42 @@ impl OnConnect {
             }
         }
 
-        debug!(
-            target: LOG_TARGET,
-            "Added {num_added} peer(s) from peer `{sync_peer}`"
-        );
-        if num_added > 0 {
-            self.context
-                .publish_event(DhtEvent::NetworkDiscoveryPeersAdded(DhtNetworkDiscoveryRoundInfo {
-                    num_new_peers: num_added,
-                    num_duplicate_peers: 0,
-                    num_succeeded: num_added,
-                    sync_peers: vec![conn.peer_node_id().clone()],
-                    phase: DiscoveryPhase::General, // This is regular peer connection, not seed bootstrap
-                }));
-        }
-
-        Ok(())
+        Ok(budget_used_up)
     }
 
-    /// Returns true if the peer is a new peer
-    async fn validate_and_add_peer(&self, peer: UnvalidatedPeerInfo) -> Result<bool, NetworkDiscoveryError> {
+    /// Validates and stores a peer relayed by `sync_peer`, charging a new peer to `sync_peer`'s budget. Returns
+    /// whether the peer is new, or `None` (storing nothing) if that budget is used up.
+    async fn validate_and_add_peer(
+        &self,
+        sync_peer: &NodeId,
+        peer: UnvalidatedPeerInfo,
+    ) -> Result<Option<bool>, NetworkDiscoveryError> {
         let peer_validator = PeerValidator::new(self.config());
         let maybe_existing_peer = self.context.peer_manager.find_by_public_key(&peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
+        let config = &self.config().network_discovery;
+        // Checked before validation, so that records past the budget do not cost a signature check
+        if is_new_peer &&
+            !self
+                .context
+                .source_budget
+                .lock()
+                .is_ok_and(|budget| budget.has_headroom(sync_peer, Instant::now(), config))
+        {
+            return Ok(None);
+        }
         let valid_peer = peer_validator.validate_peer(peer, maybe_existing_peer)?;
+        if is_new_peer &&
+            !self
+                .context
+                .source_budget
+                .lock()
+                .is_ok_and(|mut budget| budget.try_charge(sync_peer, &valid_peer.node_id, Instant::now(), config))
+        {
+            return Ok(None);
+        }
         self.context.peer_manager.add_or_update_peer(valid_peer).await?;
-        Ok(is_new_peer)
+        Ok(Some(is_new_peer))
     }
 
     #[inline]
