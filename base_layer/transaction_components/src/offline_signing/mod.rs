@@ -2768,4 +2768,95 @@ mod test {
             "inputs[0].script_key_id",
         );
     }
+
+    #[test]
+    fn offline_deposit_multisig_enforces_threshold_and_participant_bounds() {
+        use crate::multisig::script::MAX_MULTISIG_LIMIT;
+
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let bob_key_manager = KeyManager::new_random().unwrap();
+        let bob_address = one_sided_address(&bob_key_manager);
+        let alice_address = one_sided_address(&alice_key_manager);
+        let valid_keys = vec![
+            alice_key_manager.get_spend_key().pub_key,
+            bob_key_manager.get_spend_key().pub_key,
+        ];
+
+        // 1. `multisig_pending_output` and `prepare_deposit_multisig_transaction` refuse party_number=0, party_number>n, n>MAX_MULTISIG_LIMIT, and duplicate keys
+        assert!(
+            multisig_pending_output(
+                rules.consensus_constants(0),
+                &bob_address,
+                MicroMinotari(5000),
+                &OutputFeatures::default(),
+                &MemoField::new_empty(),
+                0,
+                valid_keys.len(),
+            )
+            .is_err()
+        );
+        assert!(
+            multisig_pending_output(
+                rules.consensus_constants(0),
+                &bob_address,
+                MicroMinotari(5000),
+                &OutputFeatures::default(),
+                &MemoField::new_empty(),
+                2,
+                usize::from(MAX_MULTISIG_LIMIT) + 1,
+            )
+            .is_err()
+        );
+
+        let dup_keys = vec![valid_keys[0].clone(), valid_keys[0].clone()];
+        assert!(
+            prepare_deposit_multisig_transaction(
+                &alice_key_manager,
+                TxId::new_random(),
+                funded_builder(&alice_key_manager),
+                MicroMinotari(5000),
+                MemoField::new_empty(),
+                OutputFeatures::default(),
+                2,
+                dup_keys.clone(),
+                alice_address.clone(),
+                bob_address.clone(),
+            )
+            .is_err()
+        );
+
+        // 2. If a payload is forged/re-signed by a compromised view-wallet host with invalid party_number, duplicate
+        // keys, or > MAX_MULTISIG_LIMIT keys, `sign_locked_deposit_multisig_transaction` refuses it without panicking.
+        let mut prepared = prepare_deposit_multisig_transaction(
+            &alice_key_manager,
+            TxId::new_random(),
+            funded_builder(&alice_key_manager),
+            MicroMinotari(5000),
+            MemoField::new_empty(),
+            OutputFeatures::default(),
+            2,
+            valid_keys,
+            alice_address,
+            bob_address,
+        )
+        .unwrap();
+        prepared.info.party_number = 0;
+        let canonical = crate::offline_signing::models::borsh_canonical_multisig(
+            &prepared.version,
+            prepared.tx_id,
+            &prepared.info,
+        )
+        .unwrap();
+        prepared.payload_signature =
+            crate::offline_signing::offline_signer::sign_payload(&alice_key_manager, &canonical).unwrap();
+
+        let sign_res = sign_locked_deposit_multisig_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed(PayloadSummary::from_multisig(prepared)),
+        );
+        assert!(sign_res.is_err(), "cold signer must refuse party_number=0");
+    }
 }

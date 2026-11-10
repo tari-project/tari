@@ -36,7 +36,7 @@ use crate::{
     consensus::ConsensusConstants,
     fee::{Fee, addressed_output_memo, recipient_output_features_and_scripts_size},
     key_manager::TransactionKeyManagerInterface,
-    multisig::script::get_multi_sig_script_components,
+    multisig::script::{get_multi_sig_script_components, validate_multisig_parameters},
     transaction_builder::{FinalizedTransaction, RecipientSpec},
     transaction_components::{
         OutputFeatures,
@@ -79,14 +79,7 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         ),
         TransactionBuilderError,
     > {
-        if party_number == 0 || (party_number as usize) > public_keys.len() {
-            return Err(TransactionError::BuilderError(format!(
-                "Invalid multisig threshold party_number={}, participants={}",
-                party_number,
-                public_keys.len()
-            ))
-            .into());
-        }
+        validate_multisig_parameters(party_number, &public_keys)?;
 
         let mut message = Box::new([0u8; 32]);
         rand::rng().fill_bytes(message.as_mut());
@@ -144,9 +137,9 @@ where TKeyManagerInterface: TransactionKeyManagerInterface
         // Enforce correct signature count and ordering for the multisig script
         let (_ephemeral_pubkeys, threshold) = get_multi_sig_script_components(output.script())
             .ok_or(TransactionError::BuilderError("no keys found".to_string()))?;
-        if signatures.len() < threshold as usize {
+        if signatures.len() != threshold as usize {
             return Err(TransactionError::BuilderError(format!(
-                "Insufficient signatures: need at least {}, got {}",
+                "Invalid signature count for multisig spend: expected exactly {}, got {}",
                 threshold,
                 signatures.len()
             ))
@@ -311,6 +304,118 @@ mod test {
             finalized.transaction.body.outputs().len(),
             1,
             "there must be no change output"
+        );
+    }
+
+    #[test]
+    fn create_and_spend_multisig_enforce_script_bounds_and_exact_signature_count() {
+        use std::{
+            future::Future,
+            pin::pin,
+            task::{Context, Poll, Waker},
+        };
+        use uuid::Uuid;
+
+        use crate::{
+            TransactionBuilder,
+            multisig::script::MAX_MULTISIG_LIMIT,
+            test_helpers::create_test_input,
+        };
+
+        fn block_on_ready<F: Future>(fut: F) -> F::Output {
+            let mut fut = pin!(fut);
+            let mut cx = Context::from_waker(Waker::noop());
+            match fut.as_mut().poll(&mut cx) {
+                Poll::Ready(val) => val,
+                Poll::Pending => panic!("create_deposit_multisig_transaction is synchronous"),
+            }
+        }
+
+        let rules = create_consensus_manager();
+        let consensus_constants = rules.consensus_constants(0);
+        let key_manager = KeyManager::new_random().unwrap();
+        let recipient_key_manager = KeyManager::new_random().unwrap();
+        let recipient = TariAddress::new_dual_address(
+            recipient_key_manager.get_view_key().pub_key,
+            recipient_key_manager.get_spend_key().pub_key,
+            Network::LocalNet,
+            TariAddressFeatures::create_one_sided_only(),
+            None,
+        )
+        .unwrap();
+
+        let make_builder = || {
+            let input = create_test_input(MicroMinotari(100_000), 0, &key_manager, vec![], None);
+            let mut builder =
+                TransactionBuilder::new(consensus_constants.clone(), key_manager.clone(), Network::LocalNet).unwrap();
+            builder
+                .with_fee_per_gram(MicroMinotari(1))
+                .with_input(input)
+                .unwrap();
+            builder
+        };
+
+        let mut session = MultisigSession::new(key_manager.clone());
+        let k1 = key_manager.get_random_key(None, None).unwrap().pub_key;
+        let dup_res = block_on_ready(session.create_deposit_multisig_transaction(
+            MicroMinotari(10_000),
+            2,
+            vec![k1.clone(), k1],
+            recipient.clone(),
+            make_builder(),
+            Uuid::nil(),
+        ));
+        assert!(dup_res.is_err(), "duplicate multisig public keys must be rejected");
+
+        let oversized_keys = (0..=MAX_MULTISIG_LIMIT)
+            .map(|_| key_manager.get_random_key(None, None).unwrap().pub_key)
+            .collect::<Vec<_>>();
+        let oversized_res = block_on_ready(session.create_deposit_multisig_transaction(
+            MicroMinotari(10_000),
+            2,
+            oversized_keys,
+            recipient.clone(),
+            make_builder(),
+            Uuid::nil(),
+        ));
+        assert!(
+            oversized_res.is_err(),
+            "multisig participant count > MAX_MULTISIG_LIMIT must be rejected"
+        );
+
+        // Excess signatures (> threshold) must be rejected before building a transaction that would fail with StackNotEmpty
+        let amount = MicroMinotari(100_000);
+        let (commitment_mask, script_key) = key_manager.get_next_commitment_mask_and_script_key().unwrap();
+        let party_key = key_manager.get_random_key(None, None).unwrap();
+        let sender_offset = key_manager.get_random_key(None, None).unwrap();
+        let script = TariScript::new(vec![
+            Opcode::CheckMultiSigVerify(1, 1, vec![party_key.pub_key], Box::new([0u8; 32])),
+            Opcode::PushPubKey(Box::new(script_key.pub_key)),
+        ])
+        .unwrap();
+        let input = WalletOutputBuilder::new(amount, commitment_mask.key_id)
+            .with_script(script)
+            .with_features(OutputFeatures::default())
+            .with_input_data(ExecutionStack::default())
+            .encrypt_data_for_recovery(&key_manager, None, MemoField::default())
+            .unwrap()
+            .with_script_key(script_key.key_id)
+            .with_sender_offset_public_key(sender_offset.pub_key)
+            .sign_metadata_signature(&key_manager, &sender_offset.key_id)
+            .unwrap()
+            .try_build(&key_manager)
+            .unwrap();
+
+        let excess_sigs = vec![
+            CompressedCheckSigSchnorrSignature::default(),
+            CompressedCheckSigSchnorrSignature::default(),
+        ];
+        let spend_err = session
+            .spend_multisig_utxo(excess_sigs, recipient, input, consensus_constants)
+            .unwrap_err();
+        assert!(
+            spend_err.to_string().contains("Invalid signature count"),
+            "expected excess signatures to be rejected, got {spend_err:?}"
         );
     }
 }

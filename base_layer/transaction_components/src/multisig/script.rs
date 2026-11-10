@@ -28,16 +28,59 @@ use crate::{
     transaction_components::{TransactionError, one_sided::diffie_hellman_stealth_domain_hasher},
 };
 
+/// Maximum number of public keys permitted in a `CheckMultiSig*` opcode (`tari_script` enforces `n <= 32`).
+pub const MAX_MULTISIG_LIMIT: u8 = 32;
+
+/// Validates multisig threshold `party_number` (`m`) and participant count `key_count` (`n`) against `TariScript`
+/// execution bounds (`1 <= m <= n <= MAX_MULTISIG_LIMIT`).
+pub fn validate_multisig_bounds(party_number: u8, key_count: usize) -> Result<u8, TransactionError> {
+    let key_count_u8 = u8::try_from(key_count)
+        .ok()
+        .filter(|&n| (1..=MAX_MULTISIG_LIMIT).contains(&n))
+        .ok_or_else(|| {
+            TransactionError::BuilderError(format!(
+                "Invalid multisig participant count: expected 1..={}, got {}",
+                MAX_MULTISIG_LIMIT, key_count
+            ))
+        })?;
+    if party_number == 0 || party_number > key_count_u8 {
+        return Err(TransactionError::BuilderError(format!(
+            "Invalid multisig threshold party_number={}, participants={}",
+            party_number, key_count
+        )));
+    }
+    Ok(key_count_u8)
+}
+
+/// Validates multisig threshold `party_number` (`m`), participant count (`n <= MAX_MULTISIG_LIMIT`), and public key
+/// uniqueness so that a deposit cannot create an unspendable UTXO or duplicate a participant's threshold slot.
+pub fn validate_multisig_parameters(
+    party_number: u8,
+    public_keys: &[CompressedPublicKey],
+) -> Result<u8, TransactionError> {
+    let key_count = validate_multisig_bounds(party_number, public_keys.len())?;
+    for (idx, key) in public_keys.iter().enumerate() {
+        if let Some(rest) = public_keys.get(idx.saturating_add(1)..) &&
+            rest.contains(key)
+        {
+            return Err(TransactionError::BuilderError(
+                "Duplicate public keys are not allowed in multisig parameters".to_string(),
+            ));
+        }
+    }
+    Ok(key_count)
+}
+
 pub fn is_multisig_utxo(tari_script: &TariScript) -> bool {
-    tari_script
-        .as_slice()
-        .iter()
-        .any(|op| matches!(op, Opcode::CheckMultiSigVerify(..)))
+    get_multi_sig_script_components(tari_script).is_some()
 }
 
 pub fn get_multi_sig_script_components(script: &TariScript) -> Option<(Vec<CompressedPublicKey>, u8)> {
     for op in script.as_slice() {
-        if let Opcode::CheckMultiSigVerify(m, _n, keys, _msg) = op {
+        if let Opcode::CheckMultiSigVerify(m, n, keys, _msg) = op {
+            if usize::from(*n) != keys.len() || validate_multisig_bounds(*m, keys.len()).is_err() {
+                return None;
+            }
             return Some((keys.clone(), *m));
         }
     }
@@ -77,4 +120,96 @@ pub fn derive_multisig_ephemeral_pubkeys<KM: TransactionKeyManagerInterface>(
         )?);
     }
     Ok(ephemeral_pubkeys)
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::{CompressedPublicKey, PrivateKey};
+    use tari_script::{Opcode, TariScript};
+
+    use super::{
+        MAX_MULTISIG_LIMIT,
+        get_multi_sig_script_components,
+        is_multisig_utxo,
+        validate_multisig_bounds,
+        validate_multisig_parameters,
+    };
+
+    fn sample_keys(count: usize) -> Vec<CompressedPublicKey> {
+        (1..=count)
+            .map(|i| CompressedPublicKey::from_secret_key(&PrivateKey::from(i as u64)))
+            .collect()
+    }
+
+    #[test]
+    fn validate_multisig_parameters_enforces_bounds_and_uniqueness() {
+        let keys = sample_keys(3);
+        assert_eq!(validate_multisig_parameters(2, &keys).unwrap(), 3);
+        assert!(validate_multisig_bounds(0, 3).is_err());
+        assert!(validate_multisig_bounds(4, 3).is_err());
+        assert!(validate_multisig_bounds(1, 0).is_err());
+        assert!(validate_multisig_bounds(1, usize::from(MAX_MULTISIG_LIMIT) + 1).is_err());
+
+        let mut dup_keys = keys.clone();
+        dup_keys.push(keys[0].clone());
+        assert!(validate_multisig_parameters(2, &dup_keys).is_err());
+
+        let too_many_keys = sample_keys(usize::from(MAX_MULTISIG_LIMIT) + 1);
+        assert!(validate_multisig_parameters(2, &too_many_keys).is_err());
+    }
+
+    #[test]
+    fn get_multi_sig_script_components_rejects_malformed_multisig_opcodes() {
+        let keys = sample_keys(2);
+        let valid_script = TariScript::new(vec![Opcode::CheckMultiSigVerify(
+            2,
+            2,
+            keys.clone(),
+            Box::new([0u8; 32]),
+        )])
+        .unwrap();
+        assert!(is_multisig_utxo(&valid_script));
+        assert_eq!(get_multi_sig_script_components(&valid_script), Some((keys.clone(), 2)));
+
+        let zero_threshold = TariScript::new(vec![Opcode::CheckMultiSigVerify(
+            0,
+            2,
+            keys.clone(),
+            Box::new([0u8; 32]),
+        )])
+        .unwrap();
+        assert!(!is_multisig_utxo(&zero_threshold));
+        assert_eq!(get_multi_sig_script_components(&zero_threshold), None);
+
+        let threshold_exceeds_n = TariScript::new(vec![Opcode::CheckMultiSigVerify(
+            3,
+            2,
+            keys.clone(),
+            Box::new([0u8; 32]),
+        )])
+        .unwrap();
+        assert_eq!(get_multi_sig_script_components(&threshold_exceeds_n), None);
+
+        let duplicate_keys = TariScript::new(vec![Opcode::CheckMultiSigVerify(
+            2,
+            2,
+            vec![keys[0].clone(), keys[0].clone()],
+            Box::new([0u8; 32]),
+        )])
+        .unwrap();
+        assert_eq!(
+            get_multi_sig_script_components(&duplicate_keys),
+            Some((vec![keys[0].clone(), keys[0].clone()], 2))
+        );
+
+        let oversized_keys = sample_keys(usize::from(MAX_MULTISIG_LIMIT) + 1);
+        let oversized_script = TariScript::new(vec![Opcode::CheckMultiSigVerify(
+            2,
+            MAX_MULTISIG_LIMIT + 1,
+            oversized_keys,
+            Box::new([0u8; 32]),
+        )])
+        .unwrap();
+        assert_eq!(get_multi_sig_script_components(&oversized_script), None);
+    }
 }
