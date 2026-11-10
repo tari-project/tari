@@ -4886,6 +4886,32 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
         },
     };
 
+    let expected_height = parent.height().saturating_add(1);
+    // A header that is definitely invalid is marked bad, unless it already is. Nothing else is written, so the
+    // parent stays a tip.
+    let reject = |db: &mut T, e: ValidationError| -> Result<bool, ChainStorageError> {
+        if classify_header_failure(&e) == HeaderFailure::Invalid && !matches!(e, ValidationError::BadBlockFound { .. })
+        {
+            let mut txn = DbTransaction::new();
+            // The claimed height is untrusted and bad blocks are cleaned up by height, so the entry is recorded at
+            // the height the candidate must have: either it has it, or it is being rejected for not having it
+            txn.insert_bad_block(hash, expected_height, e.to_string());
+            db.write(txn)?;
+        }
+        Err(e.into())
+    };
+
+    // The VM key lookup below cannot resolve a key height above the stored tip, so the height is checked first
+    if candidate_block.header.height != expected_height {
+        return reject(
+            db,
+            ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidHeight {
+                expected: expected_height,
+                actual: candidate_block.header.height,
+            }),
+        );
+    }
+
     // validate the block header
     let mut prev_timestamps = get_previous_timestamps(db, &candidate_block.header, rules)?;
     let (vm_key, fork_height) = get_vm_key_for_candidate_block(db, candidate_block.clone())?;
@@ -4906,22 +4932,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     );
     let achieved_target_diff = match result {
         Ok(validated) => validated.achieved_target,
-        // A header that is definitely invalid is marked bad, unless it already is. Nothing else is written, so the
-        // parent stays a tip.
-        Err(e) => {
-            if classify_header_failure(&e) == HeaderFailure::Invalid &&
-                !matches!(e, ValidationError::BadBlockFound { .. })
-            {
-                let mut txn = DbTransaction::new();
-                txn.insert_bad_block(
-                    candidate_block.header.hash(),
-                    candidate_block.header.height,
-                    e.to_string(),
-                );
-                db.write(txn)?;
-            }
-            return Err(e.into());
-        },
+        Err(e) => return reject(db, e),
     };
 
     // Include the current block timestamp in the median window
@@ -7704,6 +7715,55 @@ mod test {
             assert!(
                 matches!(err, ChainStorageError::ValidationError {
                     source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidHeight { .. })
+                }),
+                "{err:?}"
+            );
+        }
+
+        /// A store whose header validator is the real one, with mock body validators
+        fn create_store_with_full_header_validator() -> BlockchainDatabase<TempDatabase> {
+            let rules = create_consensus_rules();
+            let difficulty_calculator = DifficultyCalculator::new(rules.clone(), Default::default());
+            let validators = Validators::new(
+                MockValidator::new(true),
+                HeaderFullValidator::new(rules.clone(), difficulty_calculator),
+                MockValidator::new(true),
+            );
+            crate::test_helpers::blockchain::create_store_with_consensus_and_validators(rules, validators)
+        }
+
+        /// A held parent and a height whose VM key height is above the tip: the height is rejected before any VM key
+        /// lookup, so the block is marked bad and the peer banned like any other wrong height
+        #[tokio::test]
+        async fn it_rejects_an_orphan_far_above_its_parent_as_invalid_height() {
+            let db = create_store_with_full_header_validator();
+            let (_, main_chain) = create_main_chain(&db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"]));
+            let fork_root = main_chain.get("1a").unwrap().clone();
+
+            assert_eq!(tari_rx_vm_key_height(3000), 2048);
+            let (_, fork) = create_chained_blocks(
+                &db,
+                block_specs!(["2b->GB", height: 3000, difficulty: Difficulty::from_u64(10).unwrap()]),
+                fork_root,
+            );
+            let block = fork.get("2b").unwrap().to_arc_block();
+            let err = db.add_block(block.clone()).unwrap_err();
+            assert!(
+                matches!(err, ChainStorageError::ValidationError {
+                    source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidHeight {
+                        expected: 2,
+                        actual: 3000,
+                    })
+                }),
+                "{err:?}"
+            );
+            assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
+            assert!(db.bad_block_exists(block.hash()).unwrap().0);
+
+            let err = db.add_block(block).unwrap_err();
+            assert!(
+                matches!(err, ChainStorageError::ValidationError {
+                    source: ValidationError::BadBlockFound { .. }
                 }),
                 "{err:?}"
             );
