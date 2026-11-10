@@ -24,6 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use minotari_app_grpc::tls::certs::{
+    check_target_files_do_not_exist,
     default_sans,
     generate_self_signed_certs,
     print_warning,
@@ -37,7 +38,8 @@ use super::{CommandContext, HandleCommand};
 /// Create self signed TLS certificates for use with gRPC
 #[derive(Debug, Parser)]
 pub struct Args {
-    /// Renew the leaf certificate while retaining the existing CA.
+    /// Renew the leaf certificate while retaining the existing CA. Note: --renew-leaf keeps the same CA, so it handles
+    /// certificate expiry but not a leaked config directory (which requires full regeneration).
     #[clap(long)]
     pub renew_leaf: bool,
     /// DNS names or IP addresses for the leaf certificate.
@@ -58,11 +60,19 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     pub fn create_tls_certs(&self, args: Args) -> Result<(), Error> {
-        let sans = sans_or_default(args.sans);
         if args.renew_leaf {
-            renew_leaf(self.config.base_node.config_dir.clone(), sans)?;
+            let sans = renew_leaf(self.config.base_node.config_dir.clone(), args.sans)?;
+            println!("Leaf certificate renewed with SANs: {}", sans.join(", "));
+            println!("Restart the base node to use the new certificate.");
             return Ok(());
         }
+        check_target_files_do_not_exist(&self.config.base_node.config_dir, &[
+            "node_ca.pem",
+            "node_ca.key",
+            "server.pem",
+            "server.key",
+        ])?;
+        let sans = sans_or_default(args.sans);
         match generate_self_signed_certs(sans) {
             Ok((cacert, ca_key, cert, private_key)) => {
                 print_warning();
@@ -75,7 +85,7 @@ impl CommandContext {
                 println!();
                 println!("Certificates generated successfully.");
                 println!(
-                    "To continue configuration move the `node_ca.pem` to the client service's `application/config/` \
+                    "To continue configuration copy the `node_ca.pem` to the client service's `application/config/` \
                      directory. Restart the base node with the configuration grpc_tls_enabled=true"
                 );
                 println!();

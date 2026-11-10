@@ -2287,11 +2287,10 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             CreateTlsCerts => match generate_self_signed_certs(default_sans()) {
-                Ok((cacert, ca_key, cert, private_key)) => {
+                Ok((cacert, _ca_key, cert, private_key)) => {
                     print_warning();
 
                     write_cert_to_disk(config.config_dir.clone(), "wallet_ca.pem", &cacert)?;
-                    write_key_to_disk(config.config_dir.clone(), "wallet_ca.key", &ca_key)?;
                     write_cert_to_disk(config.config_dir.clone(), "server.pem", &cert)?;
                     write_key_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
 

@@ -35,7 +35,29 @@ pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError
     let err = |file| move |e| GrpcTlsError::FileReadError(format!("Could not load the file `{file:?}`: {e}"));
 
     let cert_file = config_dir.join("server.pem");
-    let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file))?;
+    let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file.clone()))?;
+
+    // Check certificate expiry and warn or error accordingly
+    if let Ok((_, x509_pem)) = x509_parser::pem::parse_x509_pem(&cert) &&
+        let Ok(parsed_cert) = x509_pem.parse_x509()
+    {
+        let not_after = parsed_cert.validity().not_after.timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        if now >= not_after {
+            return Err(GrpcTlsError::CertExpired(
+                "server.pem has expired. Please run `minotari_node create-tls-certs --renew-leaf` to renew it."
+                    .to_string(),
+            ));
+        } else if not_after - now < 30 * 86_400 {
+            let days_left = (not_after - now) / 86_400;
+            log::warn!(
+                "TLS server certificate {:?} will expire in {} days. Run `minotari_node create-tls-certs \
+                 --renew-leaf` to renew it.",
+                cert_file,
+                days_left
+            );
+        }
+    }
 
     let key_file = config_dir.join("server.key");
     #[cfg(unix)]

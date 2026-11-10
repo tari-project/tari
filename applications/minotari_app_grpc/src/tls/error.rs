@@ -30,4 +30,14 @@ pub enum GrpcTlsError {
     CertGenerationError(#[from] rcgen::Error),
     #[error("Error opening or writing the file: {0}")]
     IoError(#[from] io::Error),
+    #[error("Date computation overflow")]
+    DateOverflow,
+    #[error("Target file `{0}` already exists. Use --renew-leaf or delete existing files.")]
+    FileAlreadyExists(String),
+    #[error("CA key does not match CA certificate public key")]
+    CaKeyMismatch,
+    #[error("Certificate has expired: {0}. Run with --renew-leaf.")]
+    CertExpired(String),
+    #[error("Error parsing certificate: {0}")]
+    CertParseError(String),
 }
