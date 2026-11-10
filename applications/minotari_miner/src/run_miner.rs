@@ -669,7 +669,12 @@ async fn mining_cycle(
 }
 
 pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
-    let mut hashrate = report.hashes as f64 / report.elapsed.as_secs() as f64;
+    let elapsed_secs = report.elapsed.as_secs_f64();
+    let mut hashrate = if elapsed_secs > 0.0 {
+        report.hashes as f64 / elapsed_secs
+    } else {
+        0.0
+    };
     let display_string = if hashrate > 1_000_000.0 {
         hashrate /= 1_000_000.0;
         "MH/s"
@@ -701,17 +706,14 @@ async fn validate_tip(
         .get_tip_info(minotari_app_grpc::tari_rpc::Empty {})
         .await?
         .into_inner();
-    let longest_height = tip.clone().metadata.unwrap().best_block_height;
+    if !tip.initial_sync_achieved {
+        return Err(MinerError::NodeNotReady);
+    }
+    let longest_height = tip.metadata.as_ref().ok_or(MinerError::NodeNotReady)?.best_block_height;
     if let Some(h) = mine_until_height &&
         longest_height >= h
     {
         return Err(MinerError::MineUntilHeightReached(h));
-    }
-    if height <= longest_height {
-        return Err(MinerError::MinerLostBlock(height));
-    }
-    if !tip.initial_sync_achieved || tip.metadata.is_none() {
-        return Err(MinerError::NodeNotReady);
     }
     if height <= longest_height {
         return Err(MinerError::MinerLostBlock(height));
