@@ -31,17 +31,7 @@ use digest::Digest;
 use crate::{
     Hash,
     backend::ArrayLike,
-    common::{
-        LeafIndex,
-        bintree_height,
-        checked_n_leaves,
-        find_peaks,
-        hash_together,
-        is_leaf,
-        leaf_index,
-        node_index,
-        peak_map_height,
-    },
+    common::{LeafIndex, bintree_height, checked_n_leaves, find_peaks, hash_together, node_index, peak_map_height},
     error::MerkleMountainRangeError,
     pruned_hashset::PrunedHashSet,
 };
@@ -123,7 +113,10 @@ where
             return Ok(Vec::new());
         }
         let count = max(1, count);
-        let last_leaf_index = min(leaf_index.0.saturating_add(count).saturating_sub(1), leaf_count);
+        let last_leaf_index = min(
+            leaf_index.0.saturating_add(count).saturating_sub(1),
+            leaf_count.saturating_sub(1),
+        );
         let mut leaf_hashes = Vec::with_capacity(last_leaf_index.saturating_sub(leaf_index.0).saturating_add(1));
         for leaf_index in leaf_index.0..=last_leaf_index {
             if let Some(hash) = self.get_leaf_hash(LeafIndex(leaf_index))? {
@@ -232,17 +225,16 @@ where
 
     /// Search for the leaf index of the given hash in the leaf nodes of the MMR.
     pub fn find_leaf_index(&self, hash: &[u8]) -> Result<Option<LeafIndex>, MerkleMountainRangeError> {
-        Ok(match self.find_node_index(hash)? {
-            Some(node_index) => {
-                if is_leaf(node_index) {
-                    let leaf_index = leaf_index(node_index).ok_or(MerkleMountainRangeError::InvalidLeafIndex)?;
-                    Some(LeafIndex(leaf_index))
-                } else {
-                    None
-                }
-            },
-            None => None,
-        })
+        let target = hash.to_vec();
+        let leaf_count = self.get_leaf_count()?;
+        for i in 0..leaf_count {
+            if let Some(leaf_hash) = self.get_leaf_hash(LeafIndex(i))? &&
+                leaf_hash == target
+            {
+                return Ok(Some(LeafIndex(i)));
+            }
+        }
+        Ok(None)
     }
 
     pub(crate) fn null_hash() -> Hash {

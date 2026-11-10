@@ -50,14 +50,15 @@ use crate::{
     SeedPeerProvider,
     actor::{DhtActor, DhtRequest, DhtRequester},
     connectivity::{DhtConnectivity, MetricsCollector, MetricsCollectorHandle},
+    dedup::SharedAcceptedJoins,
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester, DhtDiscoveryService},
     envelope::DhtMessageType,
     event::{DhtEventReceiver, DhtEventSender},
     filter,
     inbound,
-    inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer},
+    inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer, metrics},
     logging_middleware::MessageLoggingLayer,
-    network_discovery::DhtNetworkDiscovery,
+    network_discovery::{DhtNetworkDiscovery, SharedSourceBudget},
     outbound,
     outbound::DhtOutboundRequest,
     rpc,
@@ -103,6 +104,10 @@ pub struct Dht {
     metrics_collector: MetricsCollectorHandle,
     /// Re-resolves seed peers for a rebootstrap
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
+    /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
+    join_budget: SharedSourceBudget,
+    /// The Joins the DHT handler accepted, which the dedup layer then drops
+    accepted_joins: SharedAcceptedJoins,
 }
 
 impl Dht {
@@ -138,6 +143,8 @@ impl Dht {
             discovery_sender,
             event_publisher,
             seed_peer_provider,
+            join_budget: Default::default(),
+            accepted_joins: Default::default(),
         };
 
         // Each `:memory:` connection is a database of its own, so an in-memory DHT database gets exactly one. A
@@ -290,10 +297,10 @@ impl Dht {
             .layer(filter::FilterLayer::new(self.unsupported_saf_messages_filter()))
             .layer(filter::FilterLayer::new(discard_expired_messages))
             .layer(inbound::DecryptionLayer::new(self.node_identity.clone()))
-            .layer(DedupLayer::new(
-                self.dht_requester(),
-                self.config.dedup_allowed_message_occurrences,
-            ))
+            .layer(
+                DedupLayer::new(self.dht_requester(), self.config.dedup_allowed_message_occurrences)
+                    .with_accepted_joins(self.accepted_joins.clone()),
+            )
             .layer(filter::FilterLayer::new(filter_messages_to_rebroadcast))
             .layer(MessageLoggingLayer::new(format!(
                 "Inbound [{}]",
@@ -312,6 +319,8 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
+                self.join_budget.clone(),
+                self.accepted_joins.clone(),
             ))
             .into_inner()
     }
@@ -360,7 +369,8 @@ impl Dht {
     ) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send + 'static + use<> {
         move |msg: &DhtInboundMessage| match msg.dht_header.message_type {
             DhtMessageType::SafRequestMessages => {
-                warn!(
+                debug!(
+                    target: LOG_TARGET,
                     "Received store and forward message from PublicKey={}. Store and forward feature is not supported \
                      by this node. Discarding message.",
                     msg.source_peer.public_key
@@ -408,6 +418,11 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
     if let Some(expires) = msg.dht_header.expires &&
         expires < EpochTime::now()
     {
+        // The signature of an expired message is not verified, so it counts by the signer it claims
+        metrics::set_flood_series(metrics::claimed_flood_series(
+            &msg.dht_header.message_signature,
+            &msg.source_peer.public_key,
+        ));
         debug!(
             target: LOG_TARGET,
             "[discard_expired_messages] Discarding expired message {msg}"
@@ -419,10 +434,11 @@ fn discard_expired_messages(msg: &DhtInboundMessage) -> bool {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use futures::future;
     use tari_comms::{
+        Bytes,
         BytesMut,
         message::{MessageExt, MessageTag, OutboundMessage},
         peer_manager::NodeId,
@@ -438,9 +454,11 @@ mod test {
 
     use super::*;
     use crate::{
+        connectivity::FloodSeries,
         crypt,
         envelope::{DhtEnvelope, DhtMessageFlags, DhtMessageHeader, NodeDestination},
         outbound::{
+            OutboundEncryption,
             SendMessageParams,
             mock::{OutboundServiceMockState, create_outbound_service_mock},
         },
@@ -1032,6 +1050,461 @@ mod test {
         DhtEnvelope::new(header.into(), body)
     }
 
+    /// A clear text domain message signed by `signer`
+    fn signed_domain_envelope(signer: &NodeIdentity) -> DhtEnvelope {
+        signed_envelope(
+            signer,
+            DhtMessageType::None,
+            NodeDestination::Unknown,
+            None,
+            wrap_in_envelope_body!(b"flood".to_vec()).to_encoded_bytes(),
+        )
+    }
+
+    const FLOOD_TEST_MAX_COUNT: usize = 5;
+
+    /// Builds a DHT that knows `peers` and flags a peer for flooding after `FLOOD_TEST_MAX_COUNT` messages
+    async fn build_flood_test_dht(peers: &[&NodeIdentity], shutdown: &Shutdown) -> Dht {
+        let peer_manager = build_peer_manager();
+        for peer in peers {
+            peer_manager.add_or_update_peer(peer.to_peer()).await.unwrap();
+        }
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        Dht::builder()
+            .with_config(DhtConfig {
+                flood_ban_max_msg_count: FLOOD_TEST_MAX_COUNT,
+                ..DhtConfig::default_local_test()
+            })
+            .with_outbound_sender(out_tx)
+            .build(make_node_identity(), peer_manager, connectivity, shutdown.to_signal())
+            .await
+            .unwrap()
+    }
+
+    /// The peers the flood check would ban, and the series that got them banned
+    async fn flooding_peers(dht: &Dht) -> Vec<(NodeId, FloodSeries)> {
+        dht.metrics_collector()
+            .take_flooding_peers()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(node_id, _, series)| (node_id, series))
+            .collect()
+    }
+
+    /// Two sybils, each under the limit, send messages through relay H. H's neighbour does not ban H at the own
+    /// limit: the messages are signed by the sybils, so they count in H's forwarded series, which bans only at
+    /// `FORWARDED_FLOOD_BAN_FACTOR` x the limit.
+    #[tokio::test]
+    async fn relayed_messages_count_in_the_forwarded_series() {
+        let (sybil_a, sybil_b) = (make_node_identity(), make_node_identity());
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil_a, &sybil_b, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let forwarded_limit = FLOOD_TEST_MAX_COUNT * crate::config::FORWARDED_FLOOD_BAN_FACTOR;
+        let relay_signed = |i: usize| {
+            let sybil = if i.is_multiple_of(2) { &sybil_a } else { &sybil_b };
+            signed_domain_envelope(sybil).to_encoded_bytes()
+        };
+        for i in 0..forwarded_limit {
+            service
+                .call(make_comms_inbound_message(&relay, relay_signed(i).into()))
+                .await
+                .unwrap();
+        }
+        assert!(flooding_peers(&dht).await.is_empty());
+        let mut metrics = dht.metrics_collector();
+        let own = metrics
+            .get_messages_received_timeseries(relay.node_id().clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(own.count(), 0);
+        let forwarded = metrics
+            .get_messages_received_timeseries(relay.node_id().clone(), FloodSeries::Forwarded)
+            .await
+            .unwrap();
+        assert_eq!(forwarded.count(), forwarded_limit);
+
+        // A relay that forwards more than that is banned for it
+        service
+            .call(make_comms_inbound_message(&relay, relay_signed(0).into()))
+            .await
+            .unwrap();
+        assert_eq!(flooding_peers(&dht).await, vec![(
+            relay.node_id().clone(),
+            FloodSeries::Forwarded
+        )]);
+    }
+
+    /// The flood-ban series counts of `peer`: (own, forwarded)
+    async fn series_counts(dht: &Dht, peer: &NodeIdentity) -> (usize, usize) {
+        let mut metrics = dht.metrics_collector();
+        let node_id = peer.node_id().clone();
+        let own = metrics
+            .get_messages_received_timeseries(node_id.clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        let forwarded = metrics
+            .get_messages_received_timeseries(node_id, FloodSeries::Forwarded)
+            .await
+            .unwrap();
+        (own.count(), forwarded.count())
+    }
+
+    /// An expired message is dropped before its signature is verified. Relay H is charged on its own series only when
+    /// the message names H as its signer; one naming another signer counts in H's forwarded series.
+    #[tokio::test]
+    async fn an_expired_message_counts_by_the_signer_it_names() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let expired = |signer: &NodeIdentity| {
+            let body = wrap_in_envelope_body!(b"expired".to_vec()).to_encoded_bytes();
+            let mut header = DhtMessageHeader {
+                version: DhtProtocolVersion::latest(),
+                destination: NodeDestination::Unknown,
+                message_signature: Vec::new(),
+                ephemeral_public_key: None,
+                message_type: DhtMessageType::None,
+                flags: DhtMessageFlags::NONE,
+                message_tag: MessageTag::new(),
+                expires: Some(EpochTime::from_secs_since_epoch(1)),
+            };
+            let binding_hash = crypt::create_message_domain_separated_hash(&header, &body);
+            header.message_signature = make_valid_message_signature(signer.secret_key(), &binding_hash);
+            DhtEnvelope::new(header.into(), body).to_encoded_bytes()
+        };
+        for signer in [&sybil, &relay] {
+            service
+                .call(make_comms_inbound_message(&relay, expired(signer).into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(series_counts(&dht, &relay).await, (1, 1));
+    }
+
+    /// A validly signed cleartext message whose body does not decode counts by the signer it names: relay H's own if H
+    /// signed it, its forwarded series if another peer did
+    #[tokio::test]
+    async fn an_undecodable_signed_body_counts_by_its_signer() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        for signer in [&sybil, &relay] {
+            let envelope = signed_envelope(signer, DhtMessageType::None, NodeDestination::Unknown, None, vec![
+                0xff;
+                8
+            ]);
+            service
+                .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(series_counts(&dht, &relay).await, (1, 1));
+    }
+
+    /// A non-canonically encoded signature is rejected before it is verified. One naming another signer, delivered by
+    /// relay H (which an older relay without the canonical check would pass on), counts in H's forwarded series.
+    #[tokio::test]
+    async fn a_non_canonical_signature_from_another_signer_counts_as_forwarded() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_domain_envelope(&sybil);
+        // Unknown field 15 (varint) = 1: the signature decodes to the same value
+        envelope
+            .header
+            .as_mut()
+            .unwrap()
+            .message_signature
+            .extend_from_slice(&[0x78, 0x01]);
+        service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// A canonically encoded signature that fails to verify is rejected by relays of every version, so even one naming
+    /// another signer counts as relay H's own
+    #[tokio::test]
+    async fn a_signature_that_fails_to_verify_counts_as_own() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_domain_envelope(&sybil);
+        envelope.body = wrap_in_envelope_body!(b"not what was signed".to_vec()).to_encoded_bytes();
+        service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (1, 0));
+    }
+
+    /// v6.2 and older relays re-encode the Join body they propagate, which can break its signature, so a Join from
+    /// another signer that fails to verify counts in relay H's forwarded series
+    #[tokio::test]
+    async fn a_join_that_fails_to_verify_counts_as_forwarded() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut envelope = signed_envelope(
+            &sybil,
+            DhtMessageType::Join,
+            sybil.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&sybil)).to_encoded_bytes(),
+        );
+        // A trailing unknown field, as an older relay's re-encoding could differ from the signed bytes
+        envelope.body.extend_from_slice(&[0x78, 0x01]);
+        service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await
+            .unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// A header that does not convert counts by the signer it claims: v6.2 relays check only the length of the
+    /// ephemeral key, so they pass on one that is not a curve point
+    #[tokio::test]
+    async fn a_header_that_does_not_convert_counts_by_its_claimed_signer() {
+        let sybil = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sybil, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let not_a_point = CommsPublicKey::from_canonical_bytes(&[0xffu8; 32]).unwrap();
+        let envelope = signed_envelope(
+            &sybil,
+            DhtMessageType::None,
+            NodeDestination::PublicKey(Box::new(sybil.public_key().clone())),
+            Some(not_a_point),
+            vec![1u8; 64],
+        );
+        let result = service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await;
+        assert!(result.is_err());
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// An encrypted message for another node fails to decrypt here and is passed on: relay H may only be forwarding
+    /// it, so it counts in H's forwarded series
+    #[tokio::test]
+    async fn an_encrypted_message_for_another_node_counts_as_forwarded() {
+        let sender = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sender, &relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        // Encrypted for, and addressed to, `sender`
+        let envelope = make_dht_envelope(
+            &sender,
+            &wrap_in_envelope_body!(b"not for us".to_vec()),
+            DhtMessageFlags::ENCRYPTED,
+            true,
+            MessageTag::new(),
+            true,
+        )
+        .unwrap();
+        // Forwarding it on fails here (no outbound service), which does not matter for the count
+        let _result = service
+            .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+            .await;
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// A message `sender` encrypts for `recipient`, as `sender`'s outbound pipeline puts it on the wire
+    async fn encrypted_message(sender: Arc<NodeIdentity>, recipient: &NodeIdentity, shutdown: &Shutdown) -> Bytes {
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let dht = build_dht(sender, &[recipient], connectivity, out_tx, shutdown).await;
+        let (wire_tx, mut wire_rx) = mpsc::channel(1);
+        let mut outbound = dht.outbound_middleware_layer().layer(SinkService::new(wire_tx));
+        let (reply_tx, _reply_rx) = tokio::sync::oneshot::channel();
+        outbound
+            .call(DhtOutboundRequest::SendMessage(
+                Box::new(
+                    SendMessageParams::new()
+                        .direct_public_key(recipient.public_key().clone())
+                        .with_destination(recipient.public_key().clone().into())
+                        .with_encryption(OutboundEncryption::encrypt_for(recipient.public_key().clone()))
+                        .finish(),
+                ),
+                crypt::prepare_message(true, &wrap_in_envelope_body!(b"for you".to_vec())).unwrap(),
+                reply_tx,
+            ))
+            .await
+            .unwrap();
+        let message: OutboundMessage = time::timeout(Duration::from_secs(10), wire_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        message.body
+    }
+
+    /// An encrypted message for this node is the delivering peer's own once decryption shows that peer sent it, and
+    /// counts in the forwarded series when another peer delivers it
+    #[tokio::test]
+    async fn an_encrypted_message_for_this_node_counts_by_its_decrypted_sender() {
+        let sender = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&sender, &relay], &shutdown).await;
+        let spy = service_spy();
+        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
+
+        let bytes = encrypted_message(sender.clone(), &dht.node_identity, &shutdown).await;
+        service.call(make_comms_inbound_message(&sender, bytes)).await.unwrap();
+        assert_eq!(spy.call_count(), 1);
+        assert_eq!(series_counts(&dht, &sender).await, (1, 0));
+
+        let bytes = encrypted_message(sender, &dht.node_identity, &shutdown).await;
+        service.call(make_comms_inbound_message(&relay, bytes)).await.unwrap();
+        assert_eq!(series_counts(&dht, &relay).await, (0, 1));
+    }
+
+    /// A peer that sends more than the limit of messages it signed itself is banned on its own series
+    #[tokio::test]
+    async fn a_peer_flooding_messages_it_signed_is_banned_on_its_own_series() {
+        let peer = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&peer], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        for _ in 0..=FLOOD_TEST_MAX_COUNT {
+            let bytes = signed_domain_envelope(&peer).to_encoded_bytes();
+            service
+                .call(make_comms_inbound_message(&peer, bytes.into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(flooding_peers(&dht).await, vec![(
+            peer.node_id().clone(),
+            FloodSeries::Own
+        )]);
+    }
+
+    /// A duplicate first delivered by another peer does not count against the relay that delivers it again, but a
+    /// peer's own repeats do.
+    #[tokio::test]
+    async fn flood_ban_skips_only_duplicates_first_delivered_by_another_peer() {
+        let signer = make_node_identity();
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, _) = create_connectivity_mock();
+        let (out_tx, _) = mpsc::unbounded_channel();
+        let dht = build_dht(
+            make_node_identity(),
+            &[&signer, &relay],
+            connectivity,
+            out_tx,
+            &shutdown,
+        )
+        .await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let bytes = signed_domain_envelope(&signer).to_encoded_bytes();
+        for peer in [&signer, &signer, &relay, &relay] {
+            service
+                .call(make_comms_inbound_message(peer, bytes.clone().into()))
+                .await
+                .unwrap();
+        }
+
+        let mut metrics = dht.metrics_collector();
+        let ts = metrics
+            .get_messages_received_timeseries(signer.node_id().clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 2);
+        let ts = metrics
+            .get_messages_received_timeseries(relay.node_id().clone(), FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 0);
+        // The node-wide total still counts every message
+        let total = metrics
+            .get_total_message_count_in_timespan(Duration::from_secs(60))
+            .await
+            .unwrap();
+        assert_eq!(total, 4);
+    }
+
+    /// A peer replaying its own signed message is caught by the flood check even though dedup drops the replays
+    #[tokio::test]
+    async fn a_peer_replaying_its_own_message_is_flagged_for_flooding() {
+        let peer = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&peer], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let bytes = signed_domain_envelope(&peer).to_encoded_bytes();
+        for _ in 0..=FLOOD_TEST_MAX_COUNT {
+            service
+                .call(make_comms_inbound_message(&peer, bytes.clone().into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(flooding_peers(&dht).await, vec![(
+            peer.node_id().clone(),
+            FloodSeries::Own
+        )]);
+    }
+
+    /// Messages dropped before dedup (here: undecodable envelopes and bad signatures) count towards the flood ban
+    #[tokio::test]
+    async fn dropped_messages_count_towards_the_flood_ban() {
+        let undecodable_sender = make_node_identity();
+        let bad_signature_sender = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&undecodable_sender, &bad_signature_sender], &shutdown).await;
+        let spy = service_spy();
+        let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
+
+        for i in 0..=FLOOD_TEST_MAX_COUNT {
+            let result = service
+                .call(make_comms_inbound_message(&undecodable_sender, vec![0xff; 8].into()))
+                .await;
+            assert!(result.is_err());
+
+            // Each envelope is distinct, so dedup is not what drops them
+            let mut envelope = signed_domain_envelope(&bad_signature_sender);
+            envelope.body = wrap_in_envelope_body!(vec![u8::try_from(i).unwrap()]).to_encoded_bytes();
+            service
+                .call(make_comms_inbound_message(
+                    &bad_signature_sender,
+                    envelope.to_encoded_bytes().into(),
+                ))
+                .await
+                .unwrap();
+        }
+        assert_eq!(spy.call_count(), 0);
+        let flooding = flooding_peers(&dht).await;
+        assert!(flooding.contains(&(undecodable_sender.node_id().clone(), FloodSeries::Own)));
+        assert!(flooding.contains(&(bad_signature_sender.node_id().clone(), FloodSeries::Own)));
+    }
+
     /// Waits a little for bans to reach the connectivity mock, and returns the banned node ids
     async fn banned_peers(mock_state: &ConnectivityManagerMockState) -> Vec<NodeId> {
         time::sleep(Duration::from_millis(500)).await;
@@ -1041,6 +1514,13 @@ mod test {
             .into_iter()
             .map(|(node_id, _, _)| node_id)
             .collect()
+    }
+
+    /// Re-signs `identity` a second later, so that its Join carries a claim newer than the one already stored for it
+    /// and is propagated
+    async fn resign_later(identity: &NodeIdentity) {
+        time::sleep(Duration::from_millis(1100)).await;
+        identity.sign();
     }
 
     /// Builds relay H, whose outbound requests go to a mock so propagated messages can be captured
@@ -1057,6 +1537,201 @@ mod test {
         (dht, oms_mock_state)
     }
 
+    /// A source that uses up its Join budget at a node still has its whole OnConnect budget there: a Join flood
+    /// relayed by an honest neighbour does not stop OnConnect between the two
+    #[tokio::test]
+    async fn exhausting_the_join_budget_leaves_the_on_connect_budget() {
+        let source = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&source], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let max = dht.config.network_discovery.max_stored_per_source;
+
+        for _ in 0..max {
+            let signer = make_node_identity();
+            let envelope = signed_envelope(
+                &signer,
+                DhtMessageType::Join,
+                signer.public_key().clone().into(),
+                None,
+                wrap_in_envelope_body!(JoinMessage::from(&signer)).to_encoded_bytes(),
+            );
+            service
+                .call(make_comms_inbound_message(&source, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        oms_mock_state
+            .wait_call_count(max, Duration::from_secs(10))
+            .await
+            .unwrap();
+
+        let source_id = source.node_id();
+        let now = Instant::now();
+        let config = &dht.config.network_discovery;
+        assert!(!dht.join_budget.lock().unwrap().has_headroom(source_id, now, config));
+        let discovery = dht.network_discovery_service(shutdown.to_signal());
+        assert!(
+            discovery
+                .source_budget()
+                .lock()
+                .unwrap()
+                .has_headroom(source_id, now, config)
+        );
+    }
+
+    /// A source that has used up its Join budget delivers a Join first, twice at once, and keeps resending it: the
+    /// copy an honest source delivers next is still processed, so the origin is stored and propagated exactly once
+    #[tokio::test]
+    async fn a_capped_source_delivering_a_join_first_does_not_suppress_it() {
+        let capped = make_node_identity();
+        let honest = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest], &shutdown).await;
+        let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        let max = dht.config.network_discovery.max_stored_per_source;
+        {
+            let mut budget = dht.join_budget.lock().unwrap();
+            for _ in 0..max {
+                let peer = make_node_identity();
+                assert!(budget.try_charge(
+                    capped.node_id(),
+                    peer.node_id(),
+                    Instant::now(),
+                    &dht.config.network_discovery
+                ));
+            }
+        }
+
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
+        );
+        let deliver = |source: &NodeIdentity| {
+            service
+                .clone()
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+        };
+        // Two copies from the capped source at once, then repeats from both sources
+        let (first, second) = futures::join!(deliver(&capped), deliver(&capped));
+        first.unwrap();
+        second.unwrap();
+        for source in [&capped, &honest, &capped, &honest] {
+            deliver(source).await.unwrap();
+        }
+
+        assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
+    }
+
+    /// An honest copy of a Join arrives while a capped source's copy is being handled: the Join is still stored and
+    /// propagated exactly once, and once accepted a third source's copy is dropped by the dedup layer
+    #[tokio::test]
+    async fn an_honest_copy_racing_a_capped_copy_is_processed_once() {
+        let capped = make_node_identity();
+        let honest = make_node_identity();
+        let third = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest, &third], &shutdown).await;
+        let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+        {
+            let mut budget = dht.join_budget.lock().unwrap();
+            for _ in 0..dht.config.network_discovery.max_stored_per_source {
+                let peer = make_node_identity();
+                budget.try_charge(
+                    capped.node_id(),
+                    peer.node_id(),
+                    Instant::now(),
+                    &dht.config.network_discovery,
+                );
+            }
+        }
+
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(JoinMessage::from(&origin)).to_encoded_bytes(),
+        );
+        let deliver = |source: &NodeIdentity| {
+            service
+                .clone()
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+        };
+        let (capped_result, honest_result) = futures::join!(deliver(&capped), deliver(&honest));
+        capped_result.unwrap();
+        honest_result.unwrap();
+        assert!(dht.peer_manager.exists(origin.public_key()).await.unwrap());
+        assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
+
+        deliver(&third).await.unwrap();
+        deliver(&capped).await.unwrap();
+        oms_mock_state
+            .wait_call_count(1, Duration::from_secs(10))
+            .await
+            .unwrap();
+        time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(oms_mock_state.call_count().await, 1);
+        assert_eq!(dht.accepted_joins.lock().unwrap().len(), 1);
+    }
+
+    /// A Join whose claim fails validation, relayed by two sources, is validated (and its signer banned) once: the
+    /// second copy is dropped by the dedup layer
+    #[tokio::test]
+    async fn an_invalid_join_from_two_relays_is_validated_once() {
+        let first = make_node_identity();
+        let second = make_node_identity();
+        let origin = make_node_identity();
+        let shutdown = Shutdown::new();
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        let (out_tx, _out_rx) = mpsc::unbounded_channel();
+        let dht = build_dht(
+            make_node_identity(),
+            &[&first, &second],
+            connectivity,
+            out_tx,
+            &shutdown,
+        )
+        .await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        let mut join = JoinMessage::from(&origin);
+        // Still a parseable address, but not the one the identity signature covers
+        join.addresses = vec![
+            "/ip4/23.23.23.2/tcp/18189"
+                .parse::<tari_comms::multiaddr::Multiaddr>()
+                .unwrap()
+                .to_vec(),
+        ];
+        let envelope = signed_envelope(
+            &origin,
+            DhtMessageType::Join,
+            origin.public_key().clone().into(),
+            None,
+            wrap_in_envelope_body!(join).to_encoded_bytes(),
+        );
+        for source in [&first, &second] {
+            let _result = service
+                .call(make_comms_inbound_message(source, envelope.to_encoded_bytes().into()))
+                .await;
+        }
+
+        assert_eq!(banned_peers(&mock_state).await, vec![origin.node_id().clone()]);
+        assert!(!dht.peer_manager.exists(origin.public_key()).await.unwrap());
+    }
+
     /// An attacker X sends relay H a Join whose signed body carries an unknown field. H propagates the body bytes it
     /// received, so N verifies the Join and accepts it. N bans no one.
     #[tokio::test]
@@ -1068,6 +1743,7 @@ mod test {
 
         let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+        resign_later(&attacker).await;
 
         let mut body = wrap_in_envelope_body!(JoinMessage::from(&attacker)).to_encoded_bytes();
         body.extend_from_slice(&[0x10, 0x01]);
@@ -1163,6 +1839,7 @@ mod test {
 
         let (dht_h, oms_mock_state) = build_relay(relay.clone(), &[&attacker], &shutdown).await;
         let mut service_h = dht_h.inbound_middleware_layer().layer(service_spy().to_service());
+        resign_later(&attacker).await;
 
         let mut envelope = signed_envelope(
             &attacker,
