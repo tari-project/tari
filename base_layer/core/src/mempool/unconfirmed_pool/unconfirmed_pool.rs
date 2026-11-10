@@ -2639,7 +2639,7 @@ impl UnconfirmedPool {
 
     /// Returns false if there are any inconsistencies in the internal mempool state, otherwise true
     #[cfg(test)]
-    fn check_data_consistency(&self) -> bool {
+    pub(crate) fn check_data_consistency(&self) -> bool {
         self.tx_by_priority.len() == self.tx_by_key.len() &&
             self.tx_by_priority
                 .values()

@@ -2011,4 +2011,45 @@ mod test {
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         assert_eq!(pool_len(&storage), 2);
     }
+
+    #[test]
+    fn a_validator_node_transaction_invalidated_by_a_block_is_dropped_with_its_spenders() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let exit_features = || {
+            let vn_key = PrivateKey::random(&mut rand::rng());
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        };
+        // Valid when inserted, invalid when re-checked after the block
+        let validator = ScriptedValidator::new(vec![Ok(()), Ok(()), Err(ValidationError::ContainsSTxO)], vec![
+            FixedHash::zero(),
+        ]);
+        let storage = create_storage(&validator);
+        let (vn_tx, vn_outputs) =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .map(|(tx, _, outputs)| (Arc::new(tx), outputs))
+                .unwrap();
+        let child = spending(&create_tx(&key_manager), &vn_outputs[0], &key_manager);
+        for tx in [&vn_tx, &child] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+
+        // A block exiting another validator node re-checks the pool's validator node transactions
+        let other_vn_tx =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .unwrap()
+                .0;
+        let block = Block::new(
+            tari_node_components::blocks::BlockHeader::new(0),
+            other_vn_tx.body.clone(),
+        );
+        storage.write().unwrap().process_published_block(&block).unwrap();
+
+        assert_eq!(pool_len(&storage), 0);
+        assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
 }
