@@ -1020,13 +1020,16 @@ impl UnconfirmedPool {
         self.sweep_cursor = cursor;
     }
 
-    /// Removes the pool transaction `key` and every pool transaction that spends one of its outputs, directly or
-    /// through others: none of them can be valid without it. An output that another pool transaction also produces is
-    /// still available, so its spenders are kept. Each is found through the spent-output index and removed once, and
-    /// the index entries they share are pruned once at the end, so this is linear in the index entries touched. Returns
-    /// the number removed.
-    pub fn remove_transaction_and_descendants(&mut self, key: TransactionKey) -> Result<usize, UnconfirmedPoolError> {
-        let mut to_remove = vec![key];
+    /// Removes the pool transactions `keys` and every pool transaction that spends one of their outputs, directly or
+    /// through others: none of them can be valid without them. An output that another pool transaction also produces
+    /// is still available, so its spenders are kept. Each is found through the spent-output index and removed once,
+    /// and the index entries they share are pruned once at the end, so this is linear in the index entries touched.
+    /// Returns the number removed.
+    pub fn remove_transactions_and_descendants(
+        &mut self,
+        keys: impl IntoIterator<Item = TransactionKey>,
+    ) -> Result<usize, UnconfirmedPoolError> {
+        let mut to_remove = keys.into_iter().collect::<Vec<_>>();
         let mut removed = Vec::new();
         // The producers of each output still in the pool. The output index is only pruned at the end, so its entries
         // still list the producers removed so far.
@@ -2508,18 +2511,18 @@ impl UnconfirmedPool {
         }
 
         let mut visits = 0usize;
+        let mut out_of_sync = false;
         for sig in signatures {
-            // Every pool transaction is in the signature index, so a removed one must be found there
-            let keys = self
-                .txs_by_signature
-                .get_mut(&sig)
-                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            // Every pool transaction is in the signature index, so a removed one must be found there. The other indexes
+            // are still pruned, so that they do not keep keys of removed transactions.
+            let Some(keys) = self.txs_by_signature.get_mut(&sig) else {
+                out_of_sync = true;
+                continue;
+            };
             let len = keys.len();
             visits = visits.saturating_add(len);
             keys.retain(|k| self.tx_by_key.contains_key(k));
-            if keys.len() == len {
-                return Err(UnconfirmedPoolError::StorageOutofSync);
-            }
+            out_of_sync |= keys.len() == len;
             if keys.is_empty() {
                 self.txs_by_signature.remove(&sig);
             }
@@ -2542,6 +2545,9 @@ impl UnconfirmedPool {
         #[cfg(test)]
         {
             self.prune_visits = self.prune_visits.saturating_add(visits);
+        }
+        if out_of_sync {
+            return Err(UnconfirmedPoolError::StorageOutofSync);
         }
         Ok(())
     }
@@ -5937,7 +5943,7 @@ mod test {
                 .unwrap();
 
             let timer = std::time::Instant::now();
-            let removed = pool.remove_transaction_and_descendants(root_key).unwrap();
+            let removed = pool.remove_transactions_and_descendants([root_key]).unwrap();
             println!("Removed a chain of {DEPTH} transactions in {:.2?}", timer.elapsed());
             assert_eq!(removed, usize::try_from(DEPTH + 1).unwrap());
             assert_eq!(pool.len(), 1);
@@ -5964,7 +5970,7 @@ mod test {
                 .unwrap();
 
             let timer = std::time::Instant::now();
-            let removed = pool.remove_transaction_and_descendants(root_key).unwrap();
+            let removed = pool.remove_transactions_and_descendants([root_key]).unwrap();
             println!("Removed {SPENDERS} spenders of one output in {:.2?}", timer.elapsed());
             assert_eq!(removed, usize::try_from(SPENDERS + 1).unwrap());
             assert_eq!(pool.len(), 0);
@@ -6181,7 +6187,7 @@ mod test {
 
             // The parent still produces the child's input
             let removed = pool
-                .remove_transaction_and_descendants(key_of(&pool, &duplicate))
+                .remove_transactions_and_descendants([key_of(&pool, &duplicate)])
                 .unwrap();
             assert_eq!(removed, 1);
             assert!(pool.has_tx_with_excess_sig(&parent.body.kernels()[0].excess_sig));
@@ -6189,7 +6195,9 @@ mod test {
             assert!(pool.check_data_consistency());
 
             // Its last producer gone, the child goes too
-            let removed = pool.remove_transaction_and_descendants(key_of(&pool, &parent)).unwrap();
+            let removed = pool
+                .remove_transactions_and_descendants([key_of(&pool, &parent)])
+                .unwrap();
             assert_eq!(removed, 2);
             assert_eq!(pool.len(), 0);
             assert!(pool.check_data_consistency());
@@ -6310,7 +6318,9 @@ mod test {
                 pool.insert(child, None, &weight).unwrap();
             }
 
-            let removed = pool.remove_transaction_and_descendants(key_of(&pool, &root)).unwrap();
+            let removed = pool
+                .remove_transactions_and_descendants([key_of(&pool, &root)])
+                .unwrap();
             assert_eq!(removed, CHILDREN + 1);
             assert_eq!(pool.len(), 0);
             assert!(pool.check_data_consistency());
@@ -6388,7 +6398,8 @@ mod test {
                 .0;
             let weight = TransactionWeight::latest();
             let mut pool = pool();
-            let tx = synthetic_tx(&base, 0, 5);
+            let parent = synthetic_tx(&base, 0, 5);
+            let tx = child_of(&base, &parent, 1);
             pool.insert(tx.clone(), None, &weight).unwrap();
             let key = key_of(&pool, &tx);
             pool.txs_by_signature.clear();
@@ -6396,6 +6407,100 @@ mod test {
                 pool.remove_transaction(key),
                 Err(UnconfirmedPoolError::StorageOutofSync)
             ));
+            // The other indexes are still pruned
+            assert!(pool.txs_by_output.is_empty());
+            assert!(pool.txs_by_spent_output.is_empty());
+            assert!(pool.txs_by_output_commitment.is_empty());
+            assert!(pool.txs_by_kernel_excess.is_empty());
+        }
+
+        #[test]
+        fn removing_many_roots_sharing_inputs_prunes_each_shared_entry_once() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let root = synthetic_tx(&base, 0, 5);
+            pool.insert(root.clone(), None, &weight).unwrap();
+            let (children, _) = children_sharing_inputs(&base, &root);
+            for child in &children {
+                pool.insert(child.clone(), None, &weight).unwrap();
+            }
+
+            let keys = children.iter().map(|child| key_of(&pool, child)).collect::<Vec<_>>();
+            let removed = pool.remove_transactions_and_descendants(keys).unwrap();
+            assert_eq!(removed, CHILDREN);
+            assert_eq!(pool.len(), 1);
+            assert!(pool.has_tx_with_excess_sig(&root.body.kernels()[0].excess_sig));
+            assert!(pool.check_data_consistency());
+            assert!(pool.prune_visits <= MAX_PRUNE_VISITS, "{} visits", pool.prune_visits);
+        }
+
+        /// A transaction with the same inputs and outputs as `tx`, and the kernel of another synthetic transaction
+        fn same_spend_and_outputs_as(base: &Transaction, tx: &Transaction, n: u64) -> Arc<Transaction> {
+            let other = synthetic_tx(base, n, 5);
+            Arc::new(Transaction::new(
+                tx.body.inputs().clone(),
+                tx.body.outputs().clone(),
+                other.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        }
+
+        #[test]
+        fn an_output_whose_producers_are_all_removed_in_one_walk_loses_its_spenders() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let root = synthetic_tx(&base, 0, 5);
+            // Two children of the root that both produce the output the grandchild spends
+            let first = child_of(&base, &root, 1);
+            let second = same_spend_and_outputs_as(&base, &first, 2);
+            let grandchild = child_of(&base, &first, 3);
+            for tx in [&root, &first, &second, &grandchild] {
+                pool.insert(tx.clone(), None, &weight).unwrap();
+            }
+
+            let removed = pool
+                .remove_transactions_and_descendants([key_of(&pool, &root)])
+                .unwrap();
+            assert_eq!(removed, 4);
+            assert_eq!(pool.len(), 0);
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn an_output_with_a_producer_left_after_a_walk_keeps_its_spenders() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let root = synthetic_tx(&base, 0, 5);
+            let first = child_of(&base, &root, 1);
+            let second = same_spend_and_outputs_as(&base, &first, 2);
+            let grandchild = child_of(&base, &first, 3);
+            // An unrelated producer of the same output
+            let other_producer = same_outputs_as(&base, &first, 4, 5);
+            for tx in [&root, &first, &second, &grandchild, &other_producer] {
+                pool.insert(tx.clone(), None, &weight).unwrap();
+            }
+
+            let removed = pool
+                .remove_transactions_and_descendants([key_of(&pool, &root)])
+                .unwrap();
+            assert_eq!(removed, 3);
+            assert_eq!(pool.len(), 2);
+            assert!(pool.has_tx_with_excess_sig(&grandchild.body.kernels()[0].excess_sig));
+            assert!(pool.has_tx_with_excess_sig(&other_producer.body.kernels()[0].excess_sig));
+            assert!(pool.check_data_consistency());
         }
 
         #[test]
