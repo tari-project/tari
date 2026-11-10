@@ -4887,8 +4887,8 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
     };
 
     let expected_height = parent.height().saturating_add(1);
-    // A header that is definitely invalid is marked bad, unless it already is. Nothing else is written, so the
-    // parent stays a tip.
+    // A header that is definitely invalid is marked bad, unless it already is, and the orphans held on it are
+    // deleted, as the descendant walk does. Nothing else is written, so the parent stays a tip.
     let reject = |db: &mut T, e: ValidationError| -> Result<bool, ChainStorageError> {
         if classify_header_failure(&e) == HeaderFailure::Invalid && !matches!(e, ValidationError::BadBlockFound { .. })
         {
@@ -4896,6 +4896,10 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             // The claimed height is untrusted and bad blocks are cleaned up by height, so the entry is recorded at
             // the height the candidate must have: either it has it, or it is being rejected for not having it
             txn.insert_bad_block(hash, expected_height, e.to_string());
+            // The candidate itself is not held; `delete_orphan` ignores it
+            for orphan_hash in orphan_subtree_hashes(db, hash)?.iter().rev() {
+                txn.delete_orphan(*orphan_hash);
+            }
             db.write(txn)?;
         }
         Err(e.into())
@@ -7766,6 +7770,57 @@ mod test {
                     source: ValidationError::BadBlockFound { .. }
                 }),
                 "{err:?}"
+            );
+        }
+
+        /// Held orphans whose parent arrives late and is invalid are deleted with it; only the parent is marked bad
+        #[tokio::test]
+        async fn an_invalid_parent_arriving_late_deletes_its_held_descendants() {
+            let db = create_store_with_full_header_validator();
+            let (_, main_chain) = create_main_chain(&db, block_specs!(["1a->GB"], ["2a->1a"], ["3a->2a"]));
+            let fork_root = main_chain.get("1a").unwrap().clone();
+
+            let (_, fork) = create_chained_blocks(
+                &db,
+                block_specs!(["P->GB", height: 10], ["C->P", height: 11], ["D->C", height: 12]),
+                fork_root,
+            );
+            let block_p = fork.get("P").unwrap().to_arc_block();
+            let block_c = fork.get("C").unwrap().to_arc_block();
+            let block_d = fork.get("D").unwrap().to_arc_block();
+
+            db.add_block(block_c.clone()).unwrap().result.assert_orphaned();
+            db.add_block(block_d.clone()).unwrap().result.assert_orphaned();
+            assert!(db.fetch_orphan(block_c.hash()).is_ok());
+            assert!(db.fetch_orphan(block_d.hash()).is_ok());
+
+            let err = db.add_block(block_p.clone()).unwrap_err();
+            assert!(
+                matches!(err, ChainStorageError::ValidationError {
+                    source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidHeight {
+                        expected: 2,
+                        actual: 10,
+                    })
+                }),
+                "{err:?}"
+            );
+            assert!(db.bad_block_exists(block_p.hash()).unwrap().0);
+
+            assert!(db.fetch_orphan(block_c.hash()).is_err());
+            assert!(db.fetch_orphan(block_d.hash()).is_err());
+            let access = db.db_read_access().unwrap();
+            assert!(access.fetch_orphan_children_of(block_p.hash()).unwrap().is_empty());
+            assert!(
+                access
+                    .fetch_orphan_chain_tip_by_hash(&block_c.hash())
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                access
+                    .fetch_orphan_chain_tip_by_hash(&block_d.hash())
+                    .unwrap()
+                    .is_none()
             );
         }
 
