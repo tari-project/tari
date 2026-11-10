@@ -386,9 +386,10 @@ impl<B: BlockchainBackend + 'static> Service<B> {
             current_header = next_header;
 
             if current_header.height == next_page_start_height {
-                // we are on the limit, stop here
+                // we are on the limit, stop here; end_height is the last block of the batch, so there is a next
+                // page if it is not past it
                 next_header_to_request = current_header.hash().to_vec();
-                has_next_page = (end_height.saturating_sub(current_header.height)) > 0;
+                has_next_page = end_height >= current_header.height;
                 break;
             }
         }
@@ -1168,6 +1169,24 @@ mod tests {
         let resp = service.fetch_utxos(sync_request(header_hash(95), 25)).await.unwrap();
         assert_eq!(resp.blocks.first().unwrap().height, 95);
         assert_eq!(resp.blocks.last().unwrap().height, 99);
+        assert_eq!(resp.next_header_to_scan, hash_100);
+        assert!(!resp.has_next_page);
+
+        // A page that stops just before the last block of the batch still has a next page
+        let resp = service.fetch_utxos(sync_request(header_hash(74), 25)).await.unwrap();
+        assert_eq!(resp.blocks.first().unwrap().height, 74);
+        assert_eq!(resp.blocks.last().unwrap().height, 98);
+        assert_eq!(resp.next_header_to_scan, header_hash(99));
+        assert!(resp.has_next_page);
+        let resp = service
+            .fetch_utxos(SyncUtxosByBlockRequest {
+                page: 1,
+                ..sync_request(header_hash(74), 25)
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.blocks.len(), 1);
+        assert_eq!(resp.blocks[0].height, 99);
         assert_eq!(resp.next_header_to_scan, hash_100);
         assert!(!resp.has_next_page);
 
