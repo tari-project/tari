@@ -97,7 +97,12 @@ async fn main() {
     // Create and start the MCP server
     let server = match WalletMcpServer::new(config, &cli).await {
         Ok(server) => server,
-        Err(_) => {
+        Err(e) => {
+            log::error!(
+                "Failed to initialize wallet MCP server: {e}. If an orphaned wallet process from a previous run is \
+                 listening on the configured port, it was started with random per-run credentials that cannot be \
+                 matched; please stop that wallet process."
+            );
             process::exit(1);
         },
     };

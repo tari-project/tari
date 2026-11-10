@@ -133,51 +133,61 @@ impl WalletMcpServer {
         Ok(client)
     }
 
+    /// Probe whether an existing wallet is running and authenticated on the configured port
+    async fn probe_existing_wallet(config: &WalletMcpConfig, port: u16) -> McpResult<bool> {
+        let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
+        if !health_monitor.is_service_ready().await {
+            return Ok(false);
+        }
+
+        let wallet_grpc_url = if config.wallet_grpc.address.starts_with("http://") ||
+            config.wallet_grpc.address.starts_with("https://")
+        {
+            config.wallet_grpc.address.clone()
+        } else {
+            format!("http://{}", config.wallet_grpc.address)
+        };
+
+        let timeout_duration = std::time::Duration::from_secs(config.wallet_grpc.timeout_secs.max(1));
+        let probe = async {
+            let mut test_client =
+                WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.authentication)
+                    .await
+                    .map_err(|e| (tonic::Code::Unavailable, e.to_string()))?;
+            test_client
+                .identify(minotari_wallet_grpc_client::grpc::GetIdentityRequest {})
+                .await
+                .map_err(|status| (status.code(), status.to_string()))
+        };
+
+        match tokio::time::timeout(timeout_duration, probe).await {
+            Ok(Ok(_)) => {
+                log::info!("Wallet already running and authenticated on port {port}");
+                Ok(true)
+            },
+            Ok(Err((tonic::Code::Unauthenticated, _))) => Err(McpError::service_unavailable(format!(
+                "An orphaned or existing wallet is listening on port {port} with different authentication \
+                 credentials. Please stop the existing wallet process or provide matching credentials via \
+                 --wallet-grpc-username/--wallet-grpc-password."
+            ))),
+            Ok(Err((_, err_str))) => {
+                log::warn!("Wallet responded to probe with: {err_str}");
+                Ok(true)
+            },
+            Err(_) => {
+                log::warn!("Wallet identify probe timed out on port {port}");
+                Ok(true)
+            },
+        }
+    }
+
     /// Ensure wallet is running, auto-launch if needed
     async fn ensure_wallet_running(config: &mut WalletMcpConfig, cli: &Cli) -> McpResult<Option<Arc<ProcessLauncher>>> {
         // Extract port from gRPC address
         let port = CliIntegrationUtils::extract_port_from_address(&config.wallet_grpc.address).unwrap_or(18143);
 
-        // Check if already running using proper health monitor
-        let health_monitor = ServiceHealthMonitors::wallet(&config.wallet_grpc.address);
-        if health_monitor.is_service_ready().await {
-            // Verify if the running service can be authenticated with current credentials
-            let wallet_grpc_url = if config.wallet_grpc.address.starts_with("http://") ||
-                config.wallet_grpc.address.starts_with("https://")
-            {
-                config.wallet_grpc.address.clone()
-            } else {
-                format!("http://{}", config.wallet_grpc.address)
-            };
-
-            match WalletGrpcClient::connect_with_auth(&wallet_grpc_url, &config.wallet_grpc.authentication).await {
-                Ok(mut test_client) => {
-                    match test_client
-                        .identify(minotari_wallet_grpc_client::grpc::GetIdentityRequest {})
-                        .await
-                    {
-                        Ok(_) => {
-                            log::info!("Wallet already running and authenticated on port {port}");
-                            return Ok(None);
-                        },
-                        Err(status) if status.code() == tonic::Code::Unauthenticated => {
-                            return Err(McpError::service_unavailable(format!(
-                                "An orphaned or existing wallet is listening on port {port} with different \
-                                 authentication credentials. Please stop the existing wallet process or provide \
-                                 matching credentials via --wallet-grpc-username/--wallet-grpc-password."
-                            )));
-                        },
-                        Err(e) => {
-                            log::warn!("Wallet responded to probe with: {e}");
-                            return Ok(None);
-                        },
-                    }
-                },
-                Err(e) => {
-                    log::warn!("Could not connect client to probe running wallet: {e}");
-                    return Ok(None);
-                },
-            }
+        if Self::probe_existing_wallet(config, port).await? {
+            return Ok(None);
         }
 
         log::info!("Wallet not detected, auto-launching...");
