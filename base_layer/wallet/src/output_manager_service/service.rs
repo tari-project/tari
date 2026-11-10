@@ -1540,16 +1540,13 @@ where
 
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(
-                output_features,
-            )
+            .with_features(output_features)
             .with_script(script)
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
                 tx_payment_id.clone(),
-            )
-            ?
+            )?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(CompressedPublicKey::new_from_pk(sender_offset_public_key))
             .with_script_key(self.resources.key_manager.get_spend_key().key_id)
@@ -1560,9 +1557,9 @@ where
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?
             .try_build(&self.resources.key_manager)
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
 
         builder.add_recipient(
             recipient_address.clone(),

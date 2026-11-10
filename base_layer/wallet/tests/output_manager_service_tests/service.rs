@@ -2900,28 +2900,20 @@ async fn coin_split_even_allocates_full_remainder_when_remainder_exceeds_quotien
 
     // Choose aftertax_amount = 5 * 2 + 4 = 14 uT so the remainder R = 4 exceeds the quotient Q = 2.
     let aftertax_amount = MicroMinotari::from(14);
-    let (mut preview_oms, _preview_dir, preview_uo) =
-        oms_with_spendable_input(exact_split_fee + aftertax_amount).await;
+    let (mut preview_oms, _preview_dir, preview_uo) = oms_with_spendable_input(exact_split_fee + aftertax_amount).await;
     let (evaluated_outputs, evaluated_fee) = preview_oms
         .output_manager_handle
-        .preview_coin_split_with_commitments_no_amount(
-            vec![preview_uo.commitment().clone()],
-            split_count,
-            fee_per_gram,
-        )
+        .preview_coin_split_with_commitments_no_amount(vec![preview_uo.commitment().clone()], split_count, fee_per_gram)
         .await
         .unwrap();
     assert_eq!(evaluated_fee, exact_split_fee);
-    assert_eq!(
-        evaluated_outputs,
-        vec![
-            MicroMinotari::from(2),
-            MicroMinotari::from(2),
-            MicroMinotari::from(2),
-            MicroMinotari::from(2),
-            MicroMinotari::from(6),
-        ]
-    );
+    assert_eq!(evaluated_outputs, vec![
+        MicroMinotari::from(2),
+        MicroMinotari::from(2),
+        MicroMinotari::from(2),
+        MicroMinotari::from(2),
+        MicroMinotari::from(6),
+    ]);
     let evaluated_sum: MicroMinotari = evaluated_outputs.iter().copied().sum();
     assert_eq!(evaluated_sum, aftertax_amount);
 
