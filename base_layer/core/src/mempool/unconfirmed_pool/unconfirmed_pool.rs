@@ -2338,9 +2338,9 @@ impl UnconfirmedPool {
         let timer = Instant::now();
         let body = &published_block.body;
 
-        // The keys of every phase are removed in one batch, in key order: a child is only admitted after its parent, so
-        // a failed block's transactions are re-inserted parents first. Each phase looks up each distinct block item
-        // once, as an invalid block may repeat one.
+        // The keys of every phase are removed in one batch, in key order. Keys follow insertion order, so a parent
+        // comes before its child unless the parent was re-inserted later. Each phase looks up each distinct
+        // block item once, as an invalid block may repeat one.
         let mut to_remove = body
             .kernels()
             .iter()
