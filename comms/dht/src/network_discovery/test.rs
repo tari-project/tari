@@ -149,6 +149,7 @@ mod discovery_ready {
             seed_peer_provider: None,
             inbound_learned: Default::default(),
             pool_peers: Default::default(),
+            source_budget: Default::default(),
         };
 
         let ready = DiscoveryReady::new(context.clone());
@@ -250,6 +251,7 @@ mod rebootstrap {
     use crate::{
         BootstrapMethod,
         network_discovery::{
+            DhtNetworkDiscoveryRoundInfo,
             MAX_LEARNED_PEERS,
             NetworkDiscoveryError,
             RebootstrapInfo,
@@ -269,7 +271,7 @@ mod rebootstrap {
                 store_peers,
             },
             seed_strap::SeedStrap,
-            state_machine::{DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
+            state_machine::{AttemptedPeers, DiscoveryParams, NetworkDiscoveryContext, State, StateEvent},
         },
         proto::rpc::{GetPeersRequest, GetPeersResponse, PeerInfo},
         rpc::{DhtRpcService, DhtRpcServiceImpl, DhtService, UnvalidatedPeerInfo},
@@ -683,7 +685,7 @@ mod rebootstrap {
         assert_eq!(times_synced(&mock, &seed_id, counter).await, 1);
     }
 
-    /// Only the first `MAX_STORED_PER_SOURCE` valid peers from one source are written to the peer database.
+    /// Only the first `max_stored_per_source` valid peers from one source are written to the peer database.
     #[tokio::test]
     async fn a_source_can_store_only_so_many_peers() {
         let (context, _mock, _events) = context(None);
@@ -718,15 +720,17 @@ mod rebootstrap {
         assert_eq!(stored.len(), 10 - (MAX_HOSTILE_RELAYED_CLAIMS + 1));
     }
 
-    /// Serves a fixed list of peer records over get_peers, whatever was asked for
+    /// Serves a fixed list of peer records over get_peers, whatever was asked for. With `hold_open` the stream then
+    /// stays open without yielding anything more, until the client drops it.
     struct FixedPeersService {
         peers: Vec<PeerInfo>,
+        hold_open: bool,
     }
 
     #[tari_comms::async_trait]
     impl DhtRpcService for FixedPeersService {
         async fn get_peers(&self, _: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
-            let (tx, rx) = tokio::sync::mpsc::channel(self.peers.len());
+            let (tx, rx) = tokio::sync::mpsc::channel(self.peers.len().max(1));
             for peer in &self.peers {
                 tx.send(Ok(GetPeersResponse {
                     peer: Some(peer.clone()),
@@ -734,8 +738,325 @@ mod rebootstrap {
                 .await
                 .unwrap();
             }
+            if self.hold_open {
+                tokio::spawn(async move { tx.closed().await });
+            }
             Ok(Streaming::new(rx))
         }
+    }
+
+    /// A connection to a new peer that serves `peers` over get_peers. The server must be kept for as long as the
+    /// connection is used.
+    async fn peers_server(
+        peers: Vec<PeerInfo>,
+        hold_open: bool,
+    ) -> (MockRpcServer<DhtService<FixedPeersService>>, PeerConnection) {
+        let identity = make_node_identity();
+        let peer = identity.to_peer();
+        let mut server = MockRpcServer::new(DhtService::new(FixedPeersService { peers, hold_open }), identity);
+        server.serve();
+        let conn = server
+            .create_connection(peer, ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        (server, conn)
+    }
+
+    fn fresh_peer_infos(n: usize) -> Vec<PeerInfo> {
+        build_many_node_identities(n, PeerFeatures::COMMUNICATION_NODE)
+            .into_iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect()
+    }
+
+    fn with_streaming_timeout(context: &mut NetworkDiscoveryContext, timeout: Duration) {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_streaming_timeout = timeout;
+        context.config = Arc::new(config);
+    }
+
+    /// An OnConnect sync from a peer whose stream never yields ends at the streaming timeout, and is retried after
+    /// the failed-sync backoff
+    #[tokio::test]
+    async fn a_stalled_on_connect_sync_ends_at_the_streaming_timeout() {
+        let (mut context, _mock, _events) = context(None);
+        with_streaming_timeout(&mut context, Duration::from_millis(200));
+        let (_server, conn) = peers_server(vec![], true).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context);
+
+        let started = Instant::now();
+        tokio::time::timeout(Duration::from_secs(5), on_connect.sync_from(conn))
+            .await
+            .expect("the sync did not end");
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(!on_connect.is_recently_synced(&node_id, Instant::now() + Duration::from_secs(5 * 60)));
+    }
+
+    #[tokio::test]
+    async fn an_on_connect_sync_stores_at_most_the_source_budget() {
+        let (context, mock, _events) = context(None);
+        let (_server, conn) = peers_server(fresh_peer_infos(100), false).await;
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        assert_eq!(
+            context.peer_manager.count().await,
+            context.config.network_discovery.max_stored_per_source
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+    }
+
+    /// A sync cut short by the OnConnect budget is retried after the failed-sync backoff, not the resync TTL, so the
+    /// rest of the peer's peers can be synced once the budget frees up
+    #[tokio::test]
+    async fn an_on_connect_sync_cut_short_by_the_budget_is_backed_off() {
+        let (mut context, _mock, _events) = context(None);
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 2;
+        context.config = Arc::new(config);
+        let (_server, conn) = peers_server(fresh_peer_infos(5), false).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        assert_eq!(context.peer_manager.count().await, 2);
+        let now = Instant::now();
+        assert!(on_connect.is_recently_synced(&node_id, now));
+        assert!(!on_connect.is_recently_synced(&node_id, now + Duration::from_secs(5 * 60)));
+    }
+
+    #[tokio::test]
+    async fn a_peer_serving_forged_claims_on_connect_is_banned() {
+        let (context, mock, _events) = context(None);
+        let forged = (0..=MAX_HOSTILE_RELAYED_CLAIMS).map(|_| forged_peer_info()).collect();
+        let (_server, conn) = peers_server(forged, false).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        let mut banned = Vec::new();
+        for _ in 0..50 {
+            banned = mock.take_banned_peers().await;
+            if !banned.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(banned.len(), 1);
+        assert_eq!(banned[0].0, node_id);
+        assert_eq!(banned[0].1, context.config.ban_duration);
+        assert!(on_connect.is_recently_synced(&node_id, Instant::now()));
+    }
+
+    /// Attack G: fresh identities connect, each serving more fake peers than its budget and then holding the stream
+    /// open. Each stores at most its budget and is not waited on, so an honest peer connecting next is synced from
+    /// promptly.
+    #[tokio::test]
+    async fn fresh_identities_flooding_on_connect_are_capped_and_do_not_stall_it() {
+        const TIMEOUT: Duration = Duration::from_secs(2);
+        let (mut context, _mock, _events) = context(None);
+        with_streaming_timeout(&mut context, TIMEOUT);
+        let mut on_connect = OnConnect::new(context.clone());
+
+        let mut servers = Vec::new();
+        for _ in 0..5 {
+            servers.push(peers_server(fresh_peer_infos(100), true).await);
+        }
+        let honest = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let honest_peers = honest
+            .iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect();
+        let (_honest_server, honest_conn) = peers_server(honest_peers, false).await;
+
+        let started = Instant::now();
+        for (_, conn) in &servers {
+            on_connect.sync_from(conn.clone()).await;
+        }
+        on_connect.sync_from(honest_conn).await;
+        assert!(started.elapsed() < 2 * TIMEOUT, "took {:.1?}", started.elapsed());
+
+        let max = context.config.network_discovery.max_stored_per_source;
+        assert_eq!(context.peer_manager.count().await, 5 * max + 3);
+        for identity in &honest {
+            assert!(context.peer_manager.exists(identity.public_key()).await.unwrap());
+        }
+    }
+
+    /// Sends a record that does not convert (so is neither stored, charged nor hostile) every `interval`, until the
+    /// client hangs up
+    struct DripService {
+        interval: Duration,
+    }
+
+    #[tari_comms::async_trait]
+    impl DhtRpcService for DripService {
+        async fn get_peers(&self, _: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            let interval = self.interval;
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(interval).await;
+                    let record = GetPeersResponse {
+                        peer: Some(PeerInfo {
+                            public_key: vec![1u8; 3],
+                            claims: vec![],
+                        }),
+                    };
+                    if tx.send(Ok(record)).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            Ok(Streaming::new(rx))
+        }
+    }
+
+    async fn drip_server(interval: Duration) -> (MockRpcServer<DhtService<DripService>>, PeerConnection) {
+        let identity = make_node_identity();
+        let peer = identity.to_peer();
+        let mut server = MockRpcServer::new(DhtService::new(DripService { interval }), identity);
+        server.serve();
+        let conn = server
+            .create_connection(peer, ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        (server, conn)
+    }
+
+    fn with_sync_timeouts(context: &mut NetworkDiscoveryContext, streaming: Duration, sync: Duration) {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.bootstrap_rpc_streaming_timeout = streaming;
+        config.network_discovery.on_connect_sync_timeout = sync;
+        context.config = Arc::new(config);
+    }
+
+    /// A peer dripping records just inside the streaming timeout is cut off at the overall sync deadline, and backed
+    /// off rather than banned
+    #[tokio::test]
+    async fn a_drip_feeding_on_connect_sync_ends_at_the_sync_deadline() {
+        const SYNC_TIMEOUT: Duration = Duration::from_secs(1);
+        let (mut context, mock, _events) = context(None);
+        with_sync_timeouts(&mut context, Duration::from_millis(200), SYNC_TIMEOUT);
+        let (_server, conn) = drip_server(Duration::from_millis(150)).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context);
+
+        let started = Instant::now();
+        on_connect.sync_from(conn).await;
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= SYNC_TIMEOUT && elapsed < 2 * SYNC_TIMEOUT,
+            "took {elapsed:.1?}"
+        );
+        assert!(!on_connect.is_recently_synced(&node_id, Instant::now() + Duration::from_secs(5 * 60)));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(mock.take_banned_peers().await.is_empty());
+    }
+
+    /// A sync that stores some peers and then runs into its deadline still announces them
+    #[tokio::test]
+    async fn peers_stored_before_the_sync_deadline_are_announced() {
+        let (mut context, _mock, mut events) = context(None);
+        with_sync_timeouts(&mut context, Duration::from_secs(5), Duration::from_millis(500));
+        let (_server, conn) = peers_server(fresh_peer_infos(3), true).await;
+        let node_id = conn.peer_node_id().clone();
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+        assert_eq!(context.peer_manager.count().await, 3);
+        let event = events.try_recv().unwrap();
+        match &*event {
+            DhtEvent::NetworkDiscoveryPeersAdded(info) => {
+                assert_eq!(info.num_new_peers, 3);
+                assert_eq!(info.sync_peers, vec![node_id.clone()]);
+            },
+            event => panic!("unexpected event {event:?}"),
+        }
+        // The sync failed, so the peer is retried after the backoff
+        assert!(!on_connect.is_recently_synced(&node_id, Instant::now() + Duration::from_secs(5 * 60)));
+    }
+
+    /// Attack G with drip-feeding: five fresh identities each drip uncharged records just inside the streaming
+    /// timeout. Each sync is cut off at the sync deadline, so an honest sixth peer is synced from right after them
+    /// rather than after 5 x 100 items' worth of streaming timeouts.
+    #[tokio::test]
+    async fn drip_feeding_identities_hold_on_connect_only_until_the_sync_deadline() {
+        const STREAMING_TIMEOUT: Duration = Duration::from_millis(200);
+        const SYNC_TIMEOUT: Duration = Duration::from_millis(500);
+        let (mut context, _mock, _events) = context(None);
+        with_sync_timeouts(&mut context, STREAMING_TIMEOUT, SYNC_TIMEOUT);
+        let mut on_connect = OnConnect::new(context.clone());
+
+        let mut attackers = Vec::new();
+        for _ in 0..5 {
+            attackers.push(drip_server(STREAMING_TIMEOUT * 3 / 4).await);
+        }
+        let honest = build_many_node_identities(3, PeerFeatures::COMMUNICATION_NODE);
+        let honest_peers = honest
+            .iter()
+            .map(|identity| UnvalidatedPeerInfo::from_peer_limited_claims(identity.to_peer(), 5, 5).into())
+            .collect();
+        let (_honest_server, honest_conn) = peers_server(honest_peers, false).await;
+
+        let started = Instant::now();
+        for (_, conn) in &attackers {
+            on_connect.sync_from(conn.clone()).await;
+        }
+        let attackers_done = started.elapsed();
+        assert!(
+            attackers_done < 5 * SYNC_TIMEOUT + STREAMING_TIMEOUT,
+            "took {attackers_done:.1?}"
+        );
+        on_connect.sync_from(honest_conn).await;
+        let honest_took = started.elapsed() - attackers_done;
+        assert!(honest_took < 2 * STREAMING_TIMEOUT, "took {honest_took:.1?}");
+        for identity in &honest {
+            assert!(context.peer_manager.exists(identity.public_key()).await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn attempted_peers_are_bounded_and_forgotten_after_a_rebootstrap() {
+        let (context, _mock, _events) = context(None);
+        let shutdown = Shutdown::new();
+        let mut discovery = discovery(&context, &shutdown);
+        let attempted = discovery.context.all_attempted_peers.clone();
+
+        for _ in 0..3 {
+            discovery
+                .context
+                .set_last_round(DhtNetworkDiscoveryRoundInfo {
+                    sync_peers: node_ids(500),
+                    ..Default::default()
+                })
+                .await;
+        }
+        assert_eq!(attempted.read().await.len(), 1000);
+        assert_eq!(discovery.context.recently_attempted_peers().await.len(), 1000);
+
+        let state = State::Rebootstrap(Rebootstrap::new(discovery.context.clone()));
+        let _state = discovery
+            .transition(state, StateEvent::RebootstrapComplete(RebootstrapInfo::default()))
+            .await;
+        assert_eq!(attempted.read().await.len(), 0);
+    }
+
+    #[test]
+    fn attempted_peers_expire_after_the_ttl() {
+        let ttl = Duration::from_secs(60 * 60);
+        let mut attempted = AttemptedPeers::default();
+        let start = Instant::now();
+        let first = node_ids(2);
+        attempted.add(&first, start, ttl);
+        // Re-adding a peer refreshes it rather than duplicating it
+        attempted.add(&first[..1], start + Duration::from_secs(60), ttl);
+        assert_eq!(attempted.len(), 2);
+
+        let later = start + ttl;
+        assert_eq!(attempted.recent(later, ttl), vec![first[0].clone()]);
+        attempted.add(&[], later, ttl);
+        assert_eq!(attempted.len(), 1);
     }
 
     /// A sync peer whose get_peers stream carries more than `MAX_HOSTILE_RELAYED_CLAIMS` records that do not convert
@@ -757,7 +1078,13 @@ mod rebootstrap {
 
         let sync_identity = make_node_identity();
         let sync_peer = sync_identity.to_peer();
-        let mut server = MockRpcServer::new(DhtService::new(FixedPeersService { peers }), sync_identity);
+        let mut server = MockRpcServer::new(
+            DhtService::new(FixedPeersService {
+                peers,
+                hold_open: false,
+            }),
+            sync_identity,
+        );
         server.serve();
         let conn = server
             .create_connection(sync_peer.clone(), ProtocolId::from_static(b"t/dht/1"))
@@ -791,7 +1118,7 @@ mod rebootstrap {
         assert!(!context.peer_manager.is_peer_banned(&sync_peer.node_id).await.unwrap());
     }
 
-    /// Records after the first `MAX_STORED_PER_SOURCE` valid peers are still checked: hostile ones count towards a
+    /// Records after the first `max_stored_per_source` valid peers are still checked: hostile ones count towards a
     /// ban.
     #[tokio::test]
     async fn hostile_records_after_the_store_cap_still_count() {
@@ -824,7 +1151,7 @@ mod rebootstrap {
         drop(requests);
 
         let before = Instant::now();
-        assert!(on_connect.sync_from(conn).await.is_none());
+        on_connect.sync_from(conn).await;
         let after = Instant::now();
         assert!(on_connect.is_recently_synced(&node_id, after));
         assert!(on_connect.is_recently_synced(&node_id, before + BACKOFF - Duration::from_secs(1)));
@@ -1028,6 +1355,7 @@ mod rebootstrap {
             seed_peer_provider,
             inbound_learned: Default::default(),
             pool_peers: Default::default(),
+            source_budget: Default::default(),
         };
         (context, mock_state, event_rx)
     }
