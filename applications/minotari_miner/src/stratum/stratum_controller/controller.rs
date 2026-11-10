@@ -178,13 +178,17 @@ impl Controller {
                     },
                     types::miner_message::MinerMessage::StopJob => {
                         debug!(target: LOG_TARGET_FILE, "Stopping jobs");
-                        miner = None;
+                        if let Some(mut active_miner) = miner.take() {
+                            active_miner.kill_threads();
+                        }
                         self.forget_current_job();
                         continue;
                     },
                     types::miner_message::MinerMessage::ResumeJob => {
                         debug!(target: LOG_TARGET_FILE, "Resuming jobs");
-                        miner = None;
+                        if let Some(mut active_miner) = miner.take() {
+                            active_miner.kill_threads();
+                        }
                         self.forget_current_job();
                         continue;
                     },
@@ -193,7 +197,13 @@ impl Controller {
                             target: LOG_TARGET_FILE,
                             "Stopping jobs and Shutting down mining controller"
                         );
-                        miner = None;
+                        if let Some(mut active_miner) = miner.take() {
+                            active_miner.kill_threads();
+                        }
+                        if let Some(client_tx) = self.client_tx.as_ref() {
+                            let _ = try_send_to_client(client_tx, types::client_message::ClientMessage::Shutdown);
+                        }
+                        return Ok(());
                     },
                 };
             }
@@ -312,9 +322,9 @@ impl Controller {
             blob != self.current_blob
         {
             // Decode first so that a blob which is not a valid header leaves the current job untouched
-            let mut buffer = blob.as_bytes();
-            let tari_header: tari_node_components::blocks::BlockHeader = BorshDeserialize::deserialize(&mut buffer)
-                .map_err(|_| Error::General("Byte Blob is not a valid header".to_string()))?;
+            let tari_header: tari_node_components::blocks::BlockHeader =
+                BorshDeserialize::try_from_slice(blob.as_bytes())
+                    .map_err(|_| Error::General("Byte Blob is not a valid header".to_string()))?;
             self.current_height = height;
             self.current_job_id = job_id;
             self.current_blob = blob;
@@ -397,5 +407,42 @@ mod test {
 
         controller.forget_current_job();
         assert!(controller.should_we_update_job(5, 7, 11, blob).unwrap());
+    }
+
+    #[test]
+    fn header_blob_with_trailing_bytes_is_rejected() {
+        use borsh::BorshSerialize;
+
+        let mut controller = Controller::new(1).unwrap();
+        let mut valid_bytes = Vec::new();
+        tari_node_components::blocks::BlockHeader::new(0)
+            .serialize(&mut valid_bytes)
+            .unwrap();
+        let mut trailing_bytes = valid_bytes.clone();
+        trailing_bytes.extend_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
+
+        let trailing = CurrentBlob::try_from(trailing_bytes).unwrap();
+        assert!(controller.should_we_update_job(5, 7, 11, trailing).is_err());
+        assert!(controller.current_header.is_none());
+    }
+
+    #[tokio::test]
+    async fn shutdown_message_stops_mining_controller_and_notifies_client() {
+        let mut controller = Controller::new(1).unwrap();
+        let (client_tx, client_rx) = mpsc::sync_channel(1);
+        controller.set_client_tx(client_tx);
+        controller
+            .tx
+            .send(types::miner_message::MinerMessage::Shutdown)
+            .unwrap();
+
+        tokio::time::timeout(Duration::from_secs(1), controller.run())
+            .await
+            .expect("mining controller should exit promptly on Shutdown")
+            .unwrap();
+        assert!(matches!(
+            client_rx.try_recv().unwrap(),
+            types::client_message::ClientMessage::Shutdown
+        ));
     }
 }
