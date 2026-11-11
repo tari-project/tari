@@ -39,8 +39,7 @@ use crate::version::DhtProtocolVersion;
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
 pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
-    #[allow(clippy::cast_sign_loss)]
-    EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
+    EpochTime::from_secs_since_epoch(u64::try_from(datetime.timestamp()).unwrap_or(0))
 }
 
 /// Message errors that should be verified by every node
@@ -345,7 +344,10 @@ impl TryFrom<Destination> for NodeDestination {
         match destination {
             Destination::Unknown(_) => Ok(NodeDestination::Unknown),
             Destination::PublicKey(pk) => {
-                CommsPublicKey::from_canonical_bytes(&pk).map(|pk| NodeDestination::PublicKey(Box::new(pk)))
+                let key = CommsPublicKey::from_canonical_bytes(&pk)?;
+                // `from_canonical_bytes` only checks the length; reject bytes that are not a curve point
+                key.to_public_key()?;
+                Ok(NodeDestination::PublicKey(Box::new(key)))
             },
         }
     }
@@ -418,6 +420,26 @@ mod tests {
             let (_, pk) = CommsPublicKey::random_keypair(&mut rand::rng());
             let header = DhtMessageHeader::try_from(header_with_ephemeral_key(pk.to_vec())).unwrap();
             assert_eq!(header.ephemeral_public_key, Some(pk));
+        }
+
+        #[test]
+        fn a_destination_public_key_that_is_not_a_point_is_rejected() {
+            let not_a_point = vec![0xffu8; 32];
+            assert!(NodeDestination::try_from(Destination::PublicKey(not_a_point.clone())).is_err());
+
+            let mut header = header_with_ephemeral_key(Vec::new());
+            header.destination = Some(Destination::PublicKey(not_a_point));
+            let err = DhtMessageHeader::try_from(header).unwrap_err();
+            assert!(matches!(err, DhtMessageError::InvalidDestination));
+        }
+
+        #[test]
+        fn datetime_to_epochtime_clamps_negative_timestamps_to_zero() {
+            let pre_epoch = DateTime::<Utc>::from_timestamp(-100, 0).unwrap();
+            assert_eq!(datetime_to_epochtime(pre_epoch).as_u64(), 0);
+
+            let post_epoch = DateTime::<Utc>::from_timestamp(1_700_000_000, 0).unwrap();
+            assert_eq!(datetime_to_epochtime(post_epoch).as_u64(), 1_700_000_000);
         }
     }
 }
