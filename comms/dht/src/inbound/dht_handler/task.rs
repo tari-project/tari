@@ -567,6 +567,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 )
                 .await;
 
+            discovery_received("invalid");
             return Ok(());
         };
 
@@ -579,6 +580,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             )
             .await?
         else {
+            discovery_received("invalid");
             return Ok(());
         };
 
@@ -595,6 +597,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     "Signed a DiscoveryMessage with a public key that is not its own",
                 )
                 .await;
+            discovery_received("invalid");
             return Ok(());
         }
 
@@ -614,6 +617,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             )
             .await?
         else {
+            discovery_received("invalid");
             return Ok(());
         };
         if new_peer.public_key != *authenticated_pk {
@@ -629,6 +633,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                     "Signed a DiscoveryMessage with a public key that is not its own",
                 )
                 .await;
+            discovery_received("invalid");
             return Ok(());
         }
         let node_id = NodeId::from_public_key(&new_peer.public_key);
