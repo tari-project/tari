@@ -585,9 +585,12 @@ fn collect_sqlite_stats(db_path: &Path) -> Result<SqliteStatsOutput> {
             continue;
         }
 
-        // Get row count
+        // Get row count (quote identifier to handle reserved words or special characters)
+        let escaped_table_name = table_name.replace('"', "\"\"");
         let row_count: u64 = conn
-            .query_row(&format!("SELECT COUNT(*) FROM {table_name}"), [], |row| row.get(0))
+            .query_row(&format!("SELECT COUNT(*) FROM \"{escaped_table_name}\""), [], |row| {
+                row.get(0)
+            })
             .unwrap_or(0);
 
         // Estimate table size using database_list and page info
@@ -701,5 +704,21 @@ mod test {
         let stats = collect_database_stats(temp_dir.path()).unwrap();
         let found: Vec<_> = stats.databases.iter().map(|d| (d.name.as_str(), d.entries)).collect();
         assert_eq!(found, [("jmt_node_data", 1)]);
+    }
+
+    #[test]
+    fn sqlite_stats_handles_quoted_table_names() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute("CREATE TABLE \"order-items\" (id INTEGER PRIMARY KEY)", [])
+                .unwrap();
+            conn.execute("INSERT INTO \"order-items\" (id) VALUES (1), (2)", [])
+                .unwrap();
+        }
+        let stats = collect_sqlite_stats(&db_path).unwrap();
+        assert_eq!(stats.summary.total_tables, 1);
+        assert_eq!(stats.summary.total_rows, 2);
     }
 }

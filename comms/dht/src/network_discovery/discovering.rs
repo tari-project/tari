@@ -387,7 +387,7 @@ impl Discovering {
                         if is_offence {
                             hostile_claims = hostile_claims.saturating_add(1);
                         }
-                        warn!(
+                        debug!(
                             target: LOG_TARGET,
                             "Discovering: Skipping peer relayed by sync peer `{sync_peer}` after validation failed \
                              (hostile: {is_offence}): {err:?}"

@@ -316,64 +316,46 @@ listener_self_liveness_check_interval = 15
 [base_node.p2p.dht]
 # The `DbConnectionUrl` for the Dht database. Default: `dht.sqlite` under the data directory. `:memory:` is accepted only with a single connection and is lost on restart.
 database_url = "data/base_node/dht.db"
-# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 8
+# The maximum number of peer nodes that a message has to be closer to, to be considered a neighbour. Default: 6
 #num_neighbouring_nodes = 6
-# Number of random peers to include. Default: 4
+# Number of random peers to include. Default: 6
 #num_random_nodes = 6
 # Connections above the configured number of neighbouring and random nodes will be removed (default: false)
 #minimize_connections = false
 # Send to this many peers when using the broadcast strategy. Default: 8
 #broadcast_factor = 8
-# Send to this many peers when using the propagate strategy. Default: 4
-#propagation_factor = 4
+# Send to this many peers when using the propagate strategy. Default: 20
+#propagation_factor = 20
 
-# The amount of time added to the current time will be used to check if the message has expired or not. Default: 3 hours
-#saf.msg_validity = 10_800 # 3 * 60 * 60 // 3 hours
-# The maximum number of messages that can be stored using the Store-and-forward middleware. Default: 100,000
-#saf.msg_storage_capacity = 100_000
-# A request to retrieve stored messages will be ignored if the requesting node is not within one of this nodes _n_
-# closest nodes. Default 10
-#saf.num_closest_nodes = 10
-# The maximum number of messages to return from a store and forward retrieval request. Default: 100
-#saf.max_returned_messages = 50
-# The time-to-live duration used for storage of low priority messages by the Store-and-forward middleware.
-# Default: 6 hours
-#saf.low_priority_msg_storage_ttl = 21_600 # 6 * 60 * 60 // 6 hours
-# The time-to-live duration used for storage of high priority messages by the Store-and-forward middleware.
-# Default: 3 days
-#saf.high_priority_msg_storage_ttl = 259_200 # 3 * 24 * 60 * 60 // 3 days
-# The limit on the message size to store in SAF storage in bytes. Default 500 KiB
-#saf.max_message_size = 524_288 # 512 * 1024
-# When true, store and forward messages are requested from peers on connect (Default: true)
-#saf.auto_request = true
-# The maximum allowed time between asking for a message and accepting a response
-#saf.max_inflight_request_age = 120
-# The maximum number of peer nodes that a message must be closer than to get stored by SAF. Default: 8
-#saf.num_neighbouring_nodes = 8
-
-# The max capacity of the message hash cache. Default: 2,500
-#dedup_cache_capacity = 2_500
-# The periodic trim interval for items in the message hash cache. Default: 300s (5 mins)
-#dedup_cache_trim_interval = 300 # 5 * 60
+# The target capacity of the message hash cache. The cache is trimmed as it grows: signed entries are kept until
+# their message expires (3 h 10 min to 24 h), unsigned ones for 3 h 10 min, and the cache can grow to about 10 x this
+# before unexpired entries are evicted. Default: 50,000
+#dedup_cache_capacity = 50_000
+# The periodic trim interval for items in the message hash cache. A fallback; the cache is also trimmed as it grows.
+# Default: 43200s (12 hours)
+#dedup_cache_trim_interval = 43200 # 12 * 60 * 60
 # The number of occurrences of a message is allowed to pass through the DHT pipeline before being deduped/discarded
 # Default: 1
 #dedup_allowed_message_occurrences = 1
 # The duration to wait for a peer discovery to complete before giving up. Default: 2 minutes
 #discovery_request_timeout = 120 # 2 * 60
-# Set to true to automatically broadcast a join message when ready, otherwise false. Default: false
+# Set to true to automatically broadcast a join message when ready, otherwise false. Default: true
 #auto_join = true
 # The minimum time between sending a Join message to the network. Joins are only sent when the node establishes
 # enough connections to the network as determined by comms ConnectivityManager. If a join was sent and then state
-# change happens again after this period, another join will be sent. Default: 10 minutes
-#join_cooldown_interval = 120 # 10 * 60
+# change happens again after this period, another join will be sent. A Join received from the same origin is also
+# relayed at most once per this interval. At least 1 minute. Default: 10 minutes
+#join_cooldown_interval = 600 # 10 * 60
+# The most Join origins remembered for the receive-side join cooldown, oldest forgotten first. Default: 10,000
+#join_cooldown_capacity = 10_000
 
-# The interval to update the neighbouring and random pools, if necessary.
+# The interval to update the neighbouring and random pools, if necessary. Default: 2 minutes
 #connectivity.update_interval = 120 # 2 * 60
-# The interval to change the random pool peers. Default = 30 mins
-#connectivity.random_pool_refresh_interval = 1_800 # 30 * 60
+# The interval to change the random pool peers. Default: 2 hours
+#connectivity.random_pool_refresh_interval = 7_200 # 2 * 60 * 60
 # This is the percentage of nodes that we want to churn per refresh cycle
-# This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes
-# connectivity.churn_rate = 10
+# This percentage of nodes will be randomly chosen and disconnected, and then replaced by new nodes. Default: 10
+#connectivity.churn_rate = 10
 # Length of cooldown when high connection failure rates are encountered. Default: 45s
 #connectivity.high_failure_rate_cooldown = 45
 # The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
@@ -425,38 +407,51 @@ database_url = "data/base_node/dht.db"
 #network_discovery.min_successful_seed_contacts_for_early_exit = 5
 # Maximum time to wait for a dial during bootstrap before abandoning the attempt. (Default: 30 seconds)
 #network_discovery.bootstrap_dial_peer_timeout = 30
-# Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt. (Default: 15 seconds)
+# Maximum time to wait for an RPC connection during bootstrap before abandoning the attempt. (Default: 10 seconds)
 #network_discovery.bootstrap_rpc_connect_timeout = 10
 # Maximum time to wait for to obtain the RPC get peers stream during bootstrap before abandoning the attempt.
-# (Default: 15 seconds)
+# (Default: 5 seconds)
 #network_discovery.bootstrap_rpc_get_peers_stream_timeout = 5
 # Maximum time to wait for any item while streaming RPC peers during bootstrap before abandoning the attempt.
-# (Default: 10 seconds)
+# (Default: 5 seconds)
 #network_discovery.bootstrap_rpc_streaming_timeout = 5
 # Maximum time to wait for bootstrap to complete before forcing completion (Default: 5 minutes (300 second))
 #network_discovery.bootstrap_timeout = 300 # 5 * 60
 # How long to remember that peers were synced from a connected peer before syncing from it again when it
 # reconnects. (Default: 1 hour)
 #network_discovery.on_connect_resync_ttl = 3_600 # 60 * 60
+# The longest one OnConnect peer sync may take, however its peer paces the stream. Between 5 seconds and 5 minutes.
+# (Default: 30 seconds)
+#network_discovery.on_connect_sync_timeout = 30
 # The maximum number of connected peers to request peers from during a rebootstrap, outbound ones first. At most 20.
 # (Default: 5)
 #network_discovery.rebootstrap_connected_peers = 5
+# The most new peer records one directly connected peer may have stored within `source_budget_window` through Join
+# and Discovery gossip, and separately through OnConnect peer sync. Also the most peers stored from one source in a
+# rebootstrap. At least 1. (Default: 50)
+#network_discovery.max_stored_per_source = 50
+# The sliding window over which `max_stored_per_source` applies. At least 1 minute. (Default: 1 hour)
+#network_discovery.source_budget_window = 3_600 # 60 * 60
+# How long a peer synced from in a discovery round is left out of the following rounds. (Default: 1 hour)
+#network_discovery.attempted_peers_ttl = 3_600 # 60 * 60
 
-# Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 6 hrs
-#ban_duration = 21_600 # 6 * 60 * 60
-# Length of time to ban a peer for a "short" duration. Default: 60 mins
-#ban_duration_short = 3_600 # 60 * 60
+# Length of time to ban a peer if the peer misbehaves at the DHT-level. Default: 2 hrs
+#ban_duration = 7_200 # 2 * 60 * 60
+# Length of time to ban a peer for a "short" duration. Default: 10 mins
+#ban_duration_short = 600 # 10 * 60
 # The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration_short`)
-# Default: 1000 messages
+# Every inbound message from the peer counts, including invalid ones, except duplicates another peer delivered first.
+# Messages the peer may only be relaying (signed by another peer, or not attributable) count separately, against a
+# limit of 10 x this. Must be in 1..=1,000,000. Default: 1000 messages
 #flood_ban_max_msg_count = 1000
 # The timespan over which to calculate the max message rate.
 # `flood_ban_max_msg_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
-#  Default: 60 seconds
+# Must be in 1..=86,400 (1 day). Default: 60 seconds
 #flood_ban_timespan = 60
 # Once a peer has been marked as offline, wait at least this length of time before reconsidering them.
 # In a situation where a node is not well-connected and many nodes are locally marked as offline, we can retry
-# peers that were previously tried. Default: 2 hours
-#offline_peer_cooldown = 7_200 # 2 * 60 * 60
+# peers that were previously tried. Default: 24 hours
+#offline_peer_cooldown = 86_400 # 24 * 60 * 60
 # Addresses that should never be dialed (default value = []). This can be a specific address or an IPv4/TCP range.
 # Example: When used in conjunction with `allow_test_addresses = true` (but it could be any other range)
 #   `excluded_dial_addresses = ["/ip4/127.*.0:49.*/tcp/*", "/ip4/127.*.101:255.*/tcp/*"]`

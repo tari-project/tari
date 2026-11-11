@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     fmt::{Display, Write},
     future::Future,
@@ -29,7 +29,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use futures::{future, future::Either};
@@ -46,6 +46,7 @@ use crate::{
     event::DhtEvent,
     network_discovery::{
         NetworkDiscoveryError,
+        SharedSourceBudget,
         discovering::Discovering,
         initializing::Initializing,
         on_connect::OnConnect,
@@ -60,6 +61,58 @@ const LOG_TARGET: &str = "comms::dht::network_discovery";
 
 /// A shared, cheaply readable snapshot of the DHT pool's members.
 pub(crate) type PoolPeers = Arc<std::sync::RwLock<HashSet<NodeId>>>;
+
+/// The most peers remembered as attempted in discovery rounds. The oldest are forgotten first.
+const MAX_ATTEMPTED_PEERS: usize = 1000;
+
+/// Peers synced from in recent discovery rounds, and when. They are left out of the following rounds' selection for
+/// `attempted_peers_ttl`, so that discovery moves on to other peers without eventually excluding every peer.
+#[derive(Debug, Default)]
+pub(super) struct AttemptedPeers {
+    attempted_at: HashMap<NodeId, Instant>,
+}
+
+impl AttemptedPeers {
+    /// Records `node_ids` as attempted at `now`, forgetting entries older than `ttl` and then the oldest past
+    /// `MAX_ATTEMPTED_PEERS`.
+    pub fn add(&mut self, node_ids: &[NodeId], now: Instant, ttl: Duration) {
+        for node_id in node_ids {
+            self.attempted_at.insert(node_id.clone(), now);
+        }
+        self.attempted_at
+            .retain(|_, at| now.saturating_duration_since(*at) < ttl);
+        if self.attempted_at.len() > MAX_ATTEMPTED_PEERS {
+            let mut entries = self
+                .attempted_at
+                .iter()
+                .map(|(node_id, at)| (node_id.clone(), *at))
+                .collect::<Vec<_>>();
+            entries.sort_by_key(|(_, at)| *at);
+            let overflow = entries.len().saturating_sub(MAX_ATTEMPTED_PEERS);
+            for (node_id, _) in entries.into_iter().take(overflow) {
+                self.attempted_at.remove(&node_id);
+            }
+        }
+    }
+
+    /// The peers attempted within the last `ttl`.
+    pub fn recent(&self, now: Instant, ttl: Duration) -> Vec<NodeId> {
+        self.attempted_at
+            .iter()
+            .filter(|(_, at)| now.saturating_duration_since(**at) < ttl)
+            .map(|(node_id, _)| node_id.clone())
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.attempted_at.len()
+    }
+
+    pub fn clear(&mut self) {
+        self.attempted_at.clear();
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BootstrapMethod {
@@ -194,7 +247,7 @@ pub(super) struct NetworkDiscoveryContext {
     pub connectivity: ConnectivityRequester,
     pub node_identity: Arc<NodeIdentity>,
     pub num_rounds: Arc<AtomicUsize>,
-    pub all_attempted_peers: Arc<RwLock<Vec<NodeId>>>,
+    pub all_attempted_peers: Arc<RwLock<AttemptedPeers>>,
     pub event_tx: broadcast::Sender<Arc<DhtEvent>>,
     pub last_round: Arc<RwLock<Option<DhtNetworkDiscoveryRoundInfo>>>,
     pub bootstrap_method: Arc<RwLock<BootstrapMethod>>,
@@ -205,6 +258,9 @@ pub(super) struct NetworkDiscoveryContext {
     pub inbound_learned: Arc<std::sync::Mutex<InboundSuggested>>,
     /// The DHT pool's current members, as published by DhtConnectivity. Discovery leaves their connections up.
     pub pool_peers: PoolPeers,
+    /// New peer records stored per direct source by OnConnect. Separate from the DHT handler's gossip budget (Join and
+    /// Discovery).
+    pub source_budget: SharedSourceBudget,
 }
 
 impl NetworkDiscoveryContext {
@@ -285,20 +341,29 @@ impl NetworkDiscoveryContext {
     }
 
     pub(super) async fn set_last_round(&self, last_round: DhtNetworkDiscoveryRoundInfo) {
-        self.all_attempted_peers
-            .write()
-            .await
-            .append(&mut last_round.sync_peers.clone());
+        self.all_attempted_peers.write().await.add(
+            &last_round.sync_peers,
+            Instant::now(),
+            self.config.network_discovery.attempted_peers_ttl,
+        );
         *self.last_round.write().await = Some(last_round);
     }
 
     pub async fn last_round(&self) -> Option<DhtNetworkDiscoveryRoundInfo> {
         self.last_round.read().await.as_ref().cloned()
     }
+
+    /// The peers to leave out of a discovery round's selection.
+    pub(super) async fn recently_attempted_peers(&self) -> Vec<NodeId> {
+        self.all_attempted_peers
+            .read()
+            .await
+            .recent(Instant::now(), self.config.network_discovery.attempted_peers_ttl)
+    }
 }
 
 pub struct DhtNetworkDiscovery {
-    context: NetworkDiscoveryContext,
+    pub(super) context: NetworkDiscoveryContext,
     shutdown_signal: ShutdownSignal,
 }
 
@@ -327,6 +392,7 @@ impl DhtNetworkDiscovery {
                 seed_peer_provider,
                 inbound_learned: Default::default(),
                 pool_peers: Default::default(),
+                source_budget: Default::default(),
             },
             shutdown_signal,
         }
@@ -336,6 +402,11 @@ impl DhtNetworkDiscovery {
     pub(crate) fn with_pool_peers(mut self, pool_peers: PoolPeers) -> Self {
         self.context.pool_peers = pool_peers;
         self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn source_budget(&self) -> &SharedSourceBudget {
+        &self.context.source_budget
     }
 
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {
@@ -434,6 +505,7 @@ impl DhtNetworkDiscovery {
                 self.context.publish_event(DhtEvent::RebootstrapComplete(info));
                 // Start a fresh discovery cycle, now with fresh peers to work from.
                 self.context.reset_num_rounds();
+                self.context.all_attempted_peers.write().await.clear();
                 State::Ready(DiscoveryReady::new(self.context.clone()))
             },
             (_state, StateEvent::Errored(err)) => {

@@ -25,6 +25,7 @@ pub struct SyncUtxosByBlockRequest {
 pub struct SyncUtxosByBlockResponseV0 {
     pub blocks: Vec<BlockUtxoInfo>,
     pub has_next_page: bool,
+    /// Hash of the first block not included in this response; empty when the response reached the tip.
     pub next_header_to_scan: Vec<u8>,
 }
 
@@ -70,6 +71,7 @@ impl From<SyncUtxosByBlockResponseV1> for SyncUtxosByBlockResponseV0 {
 pub struct SyncUtxosByBlockResponseV1 {
     pub blocks: Vec<BlockUtxoInfoBase64>,
     pub has_next_page: bool,
+    /// Hash of the first block not included in this response; empty when the response reached the tip.
     pub next_header_to_scan: String,
 }
 
