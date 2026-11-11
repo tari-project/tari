@@ -1193,7 +1193,7 @@ mod test {
         }
 
         #[tokio::test]
-        async fn a_validator_node_slot_holder_replaced_by_a_subset_of_it_stores_the_subset() {
+        async fn a_union_of_pool_transactions_does_not_replace_a_validator_node_slot_holder() {
             let mut config = crate::mempool::MempoolConfig::default();
             config.unconfirmed_pool.min_fee = 0;
             let mempool = Mempool::new(
@@ -1228,14 +1228,16 @@ mod test {
                 );
             }
 
-            // The newcomer outbids the holder of its slot. Without the holder, the newcomer's kernels are spread over
-            // `plain` and `vn_kernel_only`, but it was not a union when it arrived, so it is stored.
+            // The newcomer would outbid the holder of its slot, but it is a union of `plain` and `vn_kernel_only`, so
+            // it counts as stored and the holder keeps the slot
             assert_eq!(
                 mempool.insert(newcomer.clone()).await.unwrap(),
                 TxStorageResponse::UnconfirmedPool
             );
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
-            assert!(mempool.snapshot().await.unwrap().contains(&newcomer));
+            let snapshot = mempool.snapshot().await.unwrap();
+            assert!(snapshot.contains(&holder));
+            assert!(!snapshot.contains(&newcomer));
         }
 
         #[tokio::test]

@@ -1093,55 +1093,36 @@ impl UnconfirmedPool {
     }
 
     /// True if `tx` counts as already in the pool: a pool transaction has exactly its kernel set, or `tx` is a union of
-    /// pool transactions (the pool transactions whose kernels are all in `tx` together have every kernel of `tx`).
-    /// Anyone can build such a union from other people's transactions at no cost, so it is not validated or relayed.
-    /// A subset of a pool transaction does not count: it is stored as its own producer of its outputs.
+    /// pool transactions (every kernel of `tx` is in a pool transaction whose kernels are all in `tx`). Anyone can
+    /// build such a union from other people's transactions at no cost, so it is not validated or relayed. Anything
+    /// else, including a subset of a pool transaction, is validated: a subset is stored as its own producer of its
+    /// outputs. One pass over the signature index lists of the kernels of `tx`.
     pub fn has_transaction(&self, tx: &Transaction) -> bool {
         let Some(set) = kernel_set(tx) else {
             return false;
         };
-        let mut candidates: Option<&Vec<TransactionKey>> = None;
-        for sig in &set {
-            let Some(keys) = self.txs_by_signature.get(sig) else {
-                return false;
-            };
-            if candidates.is_none_or(|c| keys.len() < c.len()) {
-                candidates = Some(keys);
-            }
-        }
+        let Some(lists) = set
+            .iter()
+            .map(|sig| self.txs_by_signature.get(sig))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
         if self.tx_by_kernel_set.contains_key(&set) {
             return true;
         }
-        let sigs = set.iter().collect::<HashSet<_>>();
-        let kernels_of = |key: &TransactionKey| self.tx_by_key.get(key).map(|e| e.transaction.body.kernels());
-        let in_one_entry = candidates.is_some_and(|keys| {
-            keys.iter().filter_map(kernels_of).any(|kernels| {
-                kernels
-                    .iter()
-                    .filter(|k| sigs.contains(k.excess_sig.get_signature()))
-                    .count() ==
-                    set.len()
-            })
-        });
-        if in_one_entry {
-            return false;
+        // A pool transaction is a subset of `tx` if each of its kernels is one of the kernels of `tx`
+        let mut hits = HashMap::<TransactionKey, usize>::new();
+        for key in lists.iter().copied().flatten() {
+            let hit = hits.entry(*key).or_default();
+            *hit = hit.saturating_add(1);
         }
-        let mut covered = HashSet::new();
-        for sig in &set {
-            if covered.contains(sig) {
-                continue;
-            }
-            let subset = self.txs_by_signature.get(sig).and_then(|keys| {
-                keys.iter()
-                    .filter_map(kernels_of)
-                    .find(|kernels| kernels.iter().all(|k| sigs.contains(k.excess_sig.get_signature())))
-            });
-            let Some(kernels) = subset else {
-                return false;
-            };
-            covered.extend(kernels.iter().map(|k| k.excess_sig.get_signature()));
-        }
-        true
+        let is_subset = |key: &TransactionKey| {
+            self.tx_by_key
+                .get(key)
+                .is_some_and(|e| hits.get(key) == Some(&e.transaction.body.kernels().len()))
+        };
+        lists.iter().all(|keys| keys.iter().any(is_subset))
     }
 
     /// Returns the subset of provided output hashes that exist in the unconfirmed pool.
@@ -6733,6 +6714,55 @@ mod test {
             assert!(!pool.has_transaction(&with_new_kernel));
             pool.insert(with_new_kernel, None, &weight).unwrap();
             assert_eq!(pool.tx_by_key.len(), 3);
+            assert!(pool.check_data_consistency());
+
+            // Still a union of `t1` and `t2`, although one pool transaction also contains it
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let union = Arc::new((*t1).clone() + (*t2).clone());
+            assert!(pool.has_transaction(&union));
+            pool.insert(union, None, &weight).unwrap();
+            assert_eq!(pool.tx_by_key.len(), 3);
+        }
+
+        #[test]
+        fn a_union_is_found_among_large_pool_transactions_sharing_its_kernels() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let singles = (0..200).map(|n| synthetic_tx(&base, n, 5)).collect::<Vec<_>>();
+            let kernels = singles
+                .iter()
+                .map(|tx| tx.body.kernels()[0].clone())
+                .collect::<Vec<_>>();
+            let with_kernels = |n: u64, kernels: Vec<_>| {
+                Arc::new(Transaction::new(
+                    vec![],
+                    synthetic_tx(&base, n, 5).body.outputs().clone(),
+                    kernels,
+                    Default::default(),
+                    Default::default(),
+                ))
+            };
+            // Large pool transactions with every kernel of the query and one more each, so not subsets of it
+            for n in 0..3 {
+                let mut large = kernels.clone();
+                large.push(synthetic_tx(&base, 1_000 + n, 5).body.kernels()[0].clone());
+                pool.insert(with_kernels(2_000 + n, large), None, &weight).unwrap();
+            }
+            let query = with_kernels(3_000, kernels);
+            assert!(!pool.has_transaction(&query));
+
+            for single in &singles {
+                pool.insert(single.clone(), None, &weight).unwrap();
+            }
+            assert!(pool.has_transaction(&query));
+
+            let key = pool.tx_by_kernel_set[&kernel_set(&singles[100]).unwrap()];
+            pool.remove_transaction(key).unwrap();
+            assert!(!pool.has_transaction(&query));
             assert!(pool.check_data_consistency());
         }
 
