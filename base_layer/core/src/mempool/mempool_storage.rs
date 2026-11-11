@@ -302,9 +302,9 @@ impl MempoolStorage {
     /// The near-free checks done before a new transaction is validated: its fee and its weight. Returns the response
     /// if the transaction is not to be validated.
     ///
-    /// This deliberately does not treat a transaction whose kernels are already in the pool as stored: a different
-    /// (and possibly invalid) body can reuse the kernels of a pooled transaction, and the response would cause it to be
-    /// propagated. Such a transaction is validated, and deduplicated by the unconfirmed pool once valid.
+    /// This does no kernel deduplication. Callers drop an exact kernel-set match or a union of pool transactions before
+    /// validation with [MempoolStorage::has_transaction], and `insert_into_unconfirmed_pool` does not store one; any
+    /// other reuse of pooled kernels is validated.
     pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
         if let Some(response) = self.check_fee(tx) {
             return Some(response);
