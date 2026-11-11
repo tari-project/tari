@@ -29,7 +29,7 @@ use chrono::{Days, Utc};
 use digest::consts::U32;
 use minotari_wallet::{
     base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     output_manager_service::{
         OutputManagerServiceInitializer,
         UtxoSelectionCriteria,
@@ -1683,7 +1683,7 @@ async fn test_htlc_send_and_refund() {
         PeerFeatures::COMMUNICATION_NODE,
     ));
     let shutdown = Shutdown::new();
-    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+    let (mut alice_ts, mut alice_oms, alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
         consensus_manager.clone(),
         factories.clone(),
@@ -1710,7 +1710,7 @@ async fn test_htlc_send_and_refund() {
     )
     .unwrap();
     let value = 10000.into();
-    let (_tx_id, _pre_image, output) = alice_ts
+    let (_tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
             value,
@@ -1726,6 +1726,19 @@ async fn test_htlc_send_and_refund() {
     alice_db.mark_outputs_as_unspent(vec![(hash, true)]).unwrap();
     let balance_before = alice_oms.get_balance().await.unwrap();
     assert_eq!(balance_before.available_balance, value);
+
+    // The sender knows the pre-image, but the claim branch is locked to the recipient's spend key.
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_utxos(vec![(hash, output)])
+        .await;
+    let err = alice_oms
+        .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(alice_oms.get_balance().await.unwrap(), balance_before);
 
     let (refund_tx_id, fee, refund_amount, refund_tx) =
         alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
