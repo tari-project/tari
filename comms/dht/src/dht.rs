@@ -746,7 +746,14 @@ mod test {
         outbound.call(request).await.unwrap();
 
         // The key recorded is the one the inbound path computes from the decoded body
-        let inbound_key = crate::dedup::create_message_hash(&[], &canonical);
+        let decoded = crate::inbound::decode_envelope_body(&body).unwrap();
+        let inbound_key = crate::dedup::message_key(
+            &[],
+            DhtMessageType::None,
+            DhtMessageFlags::empty(),
+            &body,
+            Some(&decoded),
+        );
         let hit_count = dht
             .dht_requester()
             .get_message_cache_hit_count(inbound_key.to_vec())
@@ -854,7 +861,8 @@ mod test {
         outbound.call(forward).await.unwrap();
 
         // No key was recorded for the ciphertext as an unsigned body
-        let unsigned_key = crate::dedup::create_message_hash(&[], &b_body);
+        let unsigned_key =
+            crate::dedup::message_key(&[], DhtMessageType::None, DhtMessageFlags::empty(), &b_body, None);
         let hit_count = dht
             .dht_requester()
             .get_message_cache_hit_count(unsigned_key.to_vec())
@@ -1210,6 +1218,37 @@ mod test {
                 .unwrap();
         }
         assert_eq!(series_counts(&dht, &relay).await, (1, 1));
+    }
+
+    /// Relays never forward an unsigned cleartext DHT protocol message, so dropping one counts as the source's own
+    #[tokio::test]
+    async fn an_unsigned_dht_protocol_message_counts_as_own() {
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        for message_type in [
+            DhtMessageType::Join,
+            DhtMessageType::Discovery,
+            DhtMessageType::DiscoveryResponse,
+        ] {
+            let mut envelope = make_dht_envelope(
+                &relay,
+                &wrap_in_envelope_body!(b"unsigned".to_vec()),
+                DhtMessageFlags::NONE,
+                false,
+                MessageTag::new(),
+                false,
+            )
+            .unwrap();
+            envelope.header.as_mut().unwrap().message_type = message_type as i32;
+            service
+                .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(series_counts(&dht, &relay).await, (3, 0));
     }
 
     /// A non-canonically encoded signature is rejected before it is verified. One naming another signer, delivered by
@@ -1936,6 +1975,87 @@ mod test {
             .unwrap();
 
         assert_eq!(banned_peers(&mock_state).await, vec![attacker.node_id().clone()]);
+    }
+
+    /// An unsigned cleartext Discovery or DiscoveryResponse carrying the body of an unsigned domain broadcast is
+    /// dropped at ingress without a ban, and does not stop the genuine broadcast from being delivered
+    #[tokio::test]
+    async fn unsigned_discovery_envelope_does_not_shadow_unsigned_domain_broadcast() {
+        for dht_type in [DhtMessageType::Discovery, DhtMessageType::DiscoveryResponse] {
+            let origin = make_node_identity();
+            let relay = make_node_identity();
+            let attacker = make_node_identity();
+            let target = make_node_identity();
+            let shutdown = Shutdown::new();
+
+            // The origin's broadcast, as its outbound pipeline puts it on the wire
+            let (connectivity, _) = create_connectivity_mock();
+            let (out_tx, mut out_rx) = mpsc::unbounded_channel();
+            let dht_origin = build_dht(origin.clone(), &[&relay], connectivity, out_tx, &shutdown).await;
+            let (wire_tx, mut wire_rx) = mpsc::channel(10);
+            let mut outbound = dht_origin.outbound_middleware_layer().layer(SinkService::new(wire_tx));
+            dht_origin
+                .outbound_requester()
+                .send_raw_no_wait(
+                    SendMessageParams::new()
+                        .direct_node_id(relay.node_id().clone())
+                        .finish(),
+                    wrap_in_envelope_body!(b"new block".to_vec()).encode_into_bytes_mut(),
+                )
+                .await
+                .unwrap();
+            let request = time::timeout(Duration::from_secs(10), out_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            outbound.call(request).await.unwrap();
+            let wire: OutboundMessage = time::timeout(Duration::from_secs(10), wire_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let genuine = <DhtEnvelope as prost::Message>::decode(wire.body.clone()).unwrap();
+            let header = genuine.header.as_ref().unwrap();
+            assert!(header.message_signature.is_empty());
+            assert_eq!(header.message_type, DhtMessageType::None as i32);
+
+            let (connectivity, mock) = create_connectivity_mock();
+            let mock_state = mock.spawn();
+            let (out_tx, _out_rx) = mpsc::unbounded_channel();
+            let dht_target = build_dht(target.clone(), &[&attacker, &relay], connectivity, out_tx, &shutdown).await;
+            let spy = service_spy();
+            let mut service = dht_target.inbound_middleware_layer().layer(spy.to_service());
+
+            // The same envelope re-typed as a DHT protocol message is dropped at ingress
+            let mut retyped = genuine.clone();
+            retyped.header.as_mut().unwrap().message_type = dht_type as i32;
+            service
+                .call(make_comms_inbound_message(&attacker, retyped.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+            assert_eq!(spy.call_count(), 0);
+            assert!(banned_peers(&mock_state).await.is_empty());
+            let decoded = crate::inbound::decode_envelope_body(&genuine.body).unwrap();
+            let none_key = crate::dedup::message_key(
+                &[],
+                DhtMessageType::None,
+                DhtMessageFlags::empty(),
+                &genuine.body,
+                Some(&decoded),
+            );
+            let hit_count = dht_target
+                .dht_requester()
+                .get_message_cache_hit_count(none_key.to_vec())
+                .await
+                .unwrap();
+            assert_eq!(hit_count, 0, "{dht_type:?}");
+
+            // An honest relay's copy of the genuine broadcast is delivered
+            service
+                .call(make_comms_inbound_message(&relay, wire.body))
+                .await
+                .unwrap();
+            assert_eq!(spy.call_count(), 1, "{dht_type:?}");
+        }
     }
 
     /// A validly signed encrypted message for V whose ephemeral key is not a curve point, delivered by relay R, is
