@@ -864,7 +864,8 @@ impl UnconfirmedPool {
     /// the pool (see [UnconfirmedPool::has_transaction]).
     pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
         let mut kernel_hits = None;
-        let mut parents = None;
+        // The producer lists of the outputs `tx` spends that pool transactions produce
+        let mut produced = None;
         let mut victims = Vec::new();
         let mut chosen = HashSet::new();
         for input in tx.body.inputs() {
@@ -876,42 +877,48 @@ impl UnconfirmedPool {
             }
             // A transaction repeating a kernel signature is a strict subset of nothing
             let (num_sigs, hits) = kernel_hits.get_or_insert_with(|| self.kernel_hits(tx)).as_ref()?;
-            let parents = parents.get_or_insert_with(|| {
-                tx.body
-                    .inputs()
-                    .iter()
-                    .filter_map(|input| self.txs_by_output.get(&input.output_hash()))
-                    .flatten()
-                    .copied()
-                    .collect::<HashSet<_>>()
-            });
-            let mut victim: Option<&PrioritizedTransaction> = None;
+            let mut candidates = Vec::with_capacity(spenders.len());
             for key in spenders {
                 let spender = self.tx_by_key.get(key)?;
                 // Every kernel of `tx` is one of the spender's, and the spender has more
                 if hits.get(key) != Some(num_sigs) || spender.kernel_signatures.len() <= *num_sigs {
                     return None;
                 }
-                if parents.contains(key) {
-                    continue;
-                }
-                let replaces = victim.is_none_or(|victim| {
-                    spender
-                        .kernel_signatures
-                        .len()
-                        .cmp(&victim.kernel_signatures.len())
-                        .then_with(|| victim.priority.cmp(&spender.priority))
-                        .is_gt()
-                });
-                if replaces {
-                    victim = Some(spender);
-                }
+                candidates.push(spender);
             }
-            let victim = victim?;
+            candidates.sort_by(|a, b| {
+                b.kernel_signatures
+                    .len()
+                    .cmp(&a.kernel_signatures.len())
+                    .then_with(|| a.priority.cmp(&b.priority))
+            });
+            let produced = produced.get_or_insert_with(|| {
+                tx.body
+                    .inputs()
+                    .iter()
+                    .filter_map(|input| self.txs_by_output.get(&input.output_hash()))
+                    .collect::<Vec<_>>()
+            });
+            let victim = candidates
+                .into_iter()
+                .find(|spender| !self.produces_any(spender, produced))?;
             chosen.insert(victim.key);
             victims.push(victim.key);
         }
         Some(victims)
+    }
+
+    /// True if `spender` is in any of the `producers` lists, each found by a binary search on its priority (the lists
+    /// are ordered by priority, highest first, and priorities are unique)
+    fn produces_any(&self, spender: &PrioritizedTransaction, producers: &[&Vec<TransactionKey>]) -> bool {
+        producers.iter().any(|keys| {
+            let position = keys.partition_point(|key| {
+                self.tx_by_key
+                    .get(key)
+                    .is_some_and(|producer| producer.priority > spender.priority)
+            });
+            keys.get(position) == Some(&spender.key)
+        })
     }
 
     /// The number of kernels of `tx`, and for each pool transaction the number of them it has (the walk
@@ -4926,6 +4933,18 @@ mod test {
             .unwrap();
         }
         let parent_output = parent.body.outputs()[0].hash();
+        // Many other producers of that output, ranked above and below it, around which it is found
+        for fee in (0..200).map(|i| 1 + 10 * i) {
+            let other_producer = Arc::new(Transaction::new(
+                vec![],
+                parent.body.outputs().clone(),
+                vec![kernel(fee)],
+                Default::default(),
+                Default::default(),
+            ));
+            pool.insert(other_producer, None, &tx_weight).unwrap();
+        }
+        assert_eq!(pool.txs_by_output[&parent_output].len(), 201);
         let spends_parent =
             TransactionInput::new_with_output_hash(parent_output, Default::default(), Default::default());
         let newcomer = spend(vec![input.clone(), spends_parent], 100, vec![owner.clone()]);
