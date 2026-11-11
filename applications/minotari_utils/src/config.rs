@@ -30,21 +30,33 @@ pub struct AppConfig {
     pub base_path: PathBuf,
     #[allow(dead_code)]
     pub network: String,
+    pub network_dir: PathBuf,
     #[allow(dead_code)]
     pub db_path: PathBuf,
 }
 
 impl AppConfig {
     pub fn from_cli(cli: &Cli) -> anyhow::Result<Self> {
-        let base_path = cli.base_path.clone().unwrap_or_else(|| PathBuf::from("."));
+        let base_path = cli.base_path.clone().unwrap_or_else(|| {
+            dirs_next::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".tari")
+        });
 
         let network = cli.network.clone().unwrap_or_else(|| "mainnet".to_string());
 
-        let db_path = base_path.join("data").join("base_node").join("db");
+        let network_dir = if base_path.ends_with(&network) {
+            base_path.clone()
+        } else {
+            base_path.join(&network)
+        };
+
+        let db_path = network_dir.join("data").join("base_node").join("db");
 
         Ok(Self {
             base_path,
             network,
+            network_dir,
             db_path,
         })
     }
