@@ -1226,8 +1226,8 @@ mod test {
             );
             let plain = tx_with(OutputFeatures::default(), 20, &key_manager);
             let cheap = tx_with(OutputFeatures::default(), 1, &key_manager);
-            let vn_kernel_only = Arc::new(Transaction::new(
-                vec![],
+            let vn_without_outputs = Arc::new(Transaction::new(
+                vn.body.inputs().clone(),
                 vec![],
                 vn.body.kernels().clone(),
                 Default::default(),
@@ -1238,15 +1238,15 @@ mod test {
                 Arc::new((*vn).clone() + (*plain).clone() + (*cheap).clone()),
                 Arc::new((*vn).clone() + (*plain).clone()),
             );
-            for tx in [&plain, &vn_kernel_only, &holder] {
+            for tx in [&plain, &vn_without_outputs, &holder] {
                 assert_eq!(
                     mempool.insert(tx.clone()).await.unwrap(),
                     TxStorageResponse::UnconfirmedPool
                 );
             }
 
-            // The newcomer would outbid the holder of its slot, but it is a union of `plain` and `vn_kernel_only`, so
-            // it counts as stored and the holder keeps the slot
+            // The newcomer would outbid the holder of its slot, but it is a union of `plain` and `vn_without_outputs`,
+            // so it counts as stored and the holder keeps the slot
             assert_eq!(
                 mempool.insert(newcomer.clone()).await.unwrap(),
                 TxStorageResponse::UnconfirmedPool

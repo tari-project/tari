@@ -419,6 +419,13 @@ impl MempoolStorage {
             debug!(target: LOG_TARGET, "Tx: ({tx_id}) is already in the unconfirmed pool");
             return Ok(TxStorageResponse::UnconfirmedPool);
         }
+        // A transaction without inputs moves no value, so pays no fee, and spends no output whose spenders are bounded
+        if tx.body.inputs().is_empty() {
+            debug!(target: LOG_TARGET, "Tx: ({tx_id}) has no inputs, rejecting");
+            return Ok(TxStorageResponse::NotStored(Some(
+                "Transaction has no inputs".to_string(),
+            )));
+        }
         // Checked before any validator node slot holder is replaced, so that a rejected transaction removes nothing
         let Some(victims) = self.unconfirmed_pool.conflict_set_victims(&tx) else {
             debug!(
@@ -1227,7 +1234,9 @@ mod test {
         MicroMinotari,
         covenant,
         key_manager::KeyManager,
+        test_helpers::create_kernel_only_transaction,
         transaction_components::{
+            KernelFeatures,
             SpentOutput,
             TransactionKernel,
             WalletOutput,
@@ -2109,6 +2118,24 @@ mod test {
             TxStorageResponse::UnconfirmedPool
         );
         assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    #[test]
+    fn a_transaction_without_inputs_is_not_stored() {
+        use tari_crypto::keys::SecretKey;
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let kernel_only = Arc::new(create_kernel_only_transaction(
+            &PrivateKey::random(&mut rand::rng()),
+            0,
+            KernelFeatures::empty(),
+        ));
+        let response = storage.write().unwrap().insert(kernel_only, None).unwrap();
+        assert!(
+            matches!(response, TxStorageResponse::NotStored(Some(_))),
+            "{response:?}"
+        );
+        assert_eq!(pool_len(&storage), 0);
     }
 
     #[test]
