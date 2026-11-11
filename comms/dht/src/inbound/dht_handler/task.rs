@@ -636,7 +636,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let peer_validator = PeerValidator::new(&self.config);
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
         let is_new_peer = maybe_existing_peer.is_none();
-        // Discovery shares the Join budget of new peers per direct source; a capped source costs no signature check
+        // Discovery shares the gossip budget of new peers per direct source; a capped source costs no signature check
         if is_new_peer &&
             !self.source_budget.lock().is_ok_and(|budget| {
                 budget.has_headroom(
