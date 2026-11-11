@@ -49,6 +49,7 @@ use crate::{
             SignedOneSidedWithdrawMultisigTransactionResult,
             borsh_canonical_multisig,
             borsh_canonical_one_sided,
+            borsh_canonical_signed,
             get_latest_version,
         },
         one_sided_signer::{build_and_sign_transaction, sign_multisig_transaction, sign_multisig_withdraw_transaction},
@@ -350,11 +351,40 @@ fn verify_and_sign_one_sided<KM: TransactionKeyManagerInterface>(
     let signed_transaction =
         build_and_sign_transaction(key_manager, consensus_constants, network, request.info.clone())?;
 
+    // The result goes back to the online wallet over the same medium, so it is signed the same way
+    let version = get_latest_version();
+    let signed_canonical =
+        borsh_canonical_signed(&version, &canonical, &request.payload_signature, &signed_transaction)
+            .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
+    let payload_signature = sign_payload(key_manager, &signed_canonical)?;
+
     Ok(SignedOneSidedTransactionResult {
-        version: get_latest_version(),
+        version,
         request,
         signed_transaction,
+        payload_signature,
     })
+}
+
+/// Verifies the [`PayloadIntegritySignature`] the offline signer put on a [`SignedOneSidedTransactionResult`]. The
+/// online wallet calls this before it records or broadcasts anything from the result. Like the check on the way out,
+/// this detects tampering by anyone without the view key; it is not an authorisation.
+pub fn verify_signed_one_sided_result<KM: TransactionKeyManagerInterface>(
+    key_manager: &KM,
+    result: &SignedOneSidedTransactionResult,
+) -> Result<(), TransactionBuilderError> {
+    let request = &result.request;
+    let canonical = borsh_canonical_one_sided(&request.version, request.tx_id, &request.info)
+        .and_then(|request_canonical| {
+            borsh_canonical_signed(
+                &result.version,
+                &request_canonical,
+                &request.payload_signature,
+                &result.signed_transaction,
+            )
+        })
+        .map_err(|e| TransactionBuilderError::Other(format!("Failed to compute canonical bytes: {e}")))?;
+    verify_payload_signature(key_manager, &result.payload_signature, &canonical)
 }
 
 pub fn sign_locked_deposit_multisig_transaction<KM: TransactionKeyManagerInterface>(

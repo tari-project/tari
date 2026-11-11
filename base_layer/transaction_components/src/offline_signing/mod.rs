@@ -32,6 +32,7 @@ pub use offline_signer::{
     sign_locked_deposit_multisig_transaction,
     sign_locked_transaction,
     sign_locked_withdraw_multisig_transaction,
+    verify_signed_one_sided_result,
 };
 pub use payload_summary::{
     Confirmation,
@@ -87,8 +88,8 @@ mod test {
             OfflinePayload,
             PayloadSummary,
             PaymentRecipient,
-            models::{SignedOneSidedTransactionResult, SignedTransaction},
-            offline_signer::sign_locked_transaction,
+            models::{SignedOneSidedTransactionResult, SignedTransaction, TransactionResult},
+            offline_signer::{sign_locked_transaction, verify_signed_one_sided_result},
             one_sided_signer::{multisig_pending_output, withdraw_pending_output},
             prepare_deposit_multisig_transaction,
             prepare_one_sided_transaction_for_signing,
@@ -1900,13 +1901,98 @@ mod test {
         );
     }
 
+    /// Sign a one-sided payment with a full key manager and return it as JSON, with a view-only key manager for the
+    /// same wallet.
+    fn signed_one_sided_json() -> (String, KeyManager) {
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_view_key_manager = create_view_key_manager(ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let signed = prepare_and_sign_one_sided(
+            &alice_key_manager,
+            &alice_view_key_manager,
+            &one_sided_address(&KeyManager::new_random().unwrap()),
+            MicroMinotari(10_000),
+            MicroMinotari(5_000),
+            MemoField::new_empty(),
+        )
+        .unwrap();
+        (signed.to_json().unwrap(), alice_view_key_manager)
+    }
+
+    fn assert_integrity_error(result: Result<(), TransactionBuilderError>, what: &str) {
+        let err = result.expect_err(what).to_string();
+        assert!(err.contains("integrity check failed"), "{what}: {err}");
+    }
+
+    #[test]
+    fn signed_one_sided_result_verifies_on_the_view_wallet() {
+        let (json, view_key_manager) = signed_one_sided_json();
+        let result = SignedOneSidedTransactionResult::from_json(&json).unwrap();
+        verify_signed_one_sided_result(&view_key_manager, &result).unwrap();
+    }
+
+    #[test]
+    fn signed_one_sided_result_rejects_tampering() {
+        let (json, view_key_manager) = signed_one_sided_json();
+        let original: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let other_address = one_sided_address(&KeyManager::new_random().unwrap()).to_base58();
+
+        let tampers: [(&str, serde_json::Value); 8] = [
+            ("/request/info/recipients/0/address", other_address.into()),
+            ("/request/info/recipients/0/amount", 4_000.into()),
+            ("/request/tx_id", 1.into()),
+            ("/signed_transaction/tx_id", 1.into()),
+            ("/signed_transaction/change_output/value", 1_000_000_000.into()),
+            ("/signed_transaction/outputs/0/value", 1_000_000_000.into()),
+            ("/signed_transaction/change_output", serde_json::Value::Null),
+            ("/signed_transaction/transaction/body/kernels/0/fee", 1.into()),
+        ];
+        for (path, new_value) in tampers {
+            let mut value = original.clone();
+            *value.pointer_mut(path).unwrap() = new_value;
+            assert_ne!(value, original, "{path}");
+            let tampered = SignedOneSidedTransactionResult::from_json(&value.to_string()).unwrap();
+            assert_integrity_error(verify_signed_one_sided_result(&view_key_manager, &tampered), path);
+        }
+    }
+
+    #[test]
+    fn signed_one_sided_result_rejects_a_borrowed_or_missing_signature() {
+        let (json, view_key_manager) = signed_one_sided_json();
+        let result = SignedOneSidedTransactionResult::from_json(&json).unwrap();
+
+        let mut forward = result.clone();
+        forward.payload_signature = forward.request.payload_signature.clone();
+        assert_integrity_error(
+            verify_signed_one_sided_result(&view_key_manager, &forward),
+            "request signature used for the result",
+        );
+
+        let (_, other_view_key_manager) = signed_one_sided_json();
+        assert_integrity_error(
+            verify_signed_one_sided_result(&other_view_key_manager, &result),
+            "another wallet's view key",
+        );
+
+        let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        value.as_object_mut().unwrap().remove("payload_signature");
+        assert!(SignedOneSidedTransactionResult::from_json(&value.to_string()).is_err());
+        value["version"] = "5.0.0".into();
+        let err = SignedOneSidedTransactionResult::from_json(&value.to_string()).unwrap_err();
+        assert!(err.to_string().contains("Unsupported version"), "{err}");
+    }
+
     #[test]
     fn payload_parse_error_is_rendered_escaped() {
         use crate::offline_signing::models::{PrepareOneSidedTransactionForSigningResult, TransactionResult};
 
         // An unknown enum variant: serde quotes the decoded string in its error
         let json =
-            r#"{"info":{"recipients":[{"output_features":{"output_type":"x\u001b[2J\u202e"}}]},"version":"5.0.0"}"#;
+            r#"{"info":{"recipients":[{"output_features":{"output_type":"x\u001b[2J\u202e"}}]},"version":"6.0.0"}"#;
         let err = PrepareOneSidedTransactionForSigningResult::from_json(json)
             .unwrap_err()
             .to_string();

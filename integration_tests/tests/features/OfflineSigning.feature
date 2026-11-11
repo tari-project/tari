@@ -66,6 +66,30 @@ Feature: Offline One-Sided Transaction Signing
     Then signing the tampered payload using standalone offline signer OFFLINE_SIGNER fails with an integrity error
 
   @security
+  Scenario: Tampered signed offline transaction is rejected by the view wallet
+    # Since v6.0.0 the offline signer also signs its result, and the view wallet checks that signature before it
+    # records or broadcasts anything. The untouched file must still go through afterwards.
+    Given I have a seed node NODE
+    When I have wallet WALLET_SENDER connected to all seed nodes
+    When I have wallet WALLET_RECEIVER connected to all seed nodes
+    When I have SHA3X mining node MINER connected to base node NODE and wallet WALLET_SENDER
+    When mining node MINER mines 4 blocks
+    Then all nodes are at height 4
+    When I wait for wallet WALLET_SENDER to have at least 1002000 uT
+    Then I initialize standalone offline signer OFFLINE_SIGNER from wallet WALLET_SENDER seed words
+    Then I export wallet WALLET_SENDER view and spend keys as SENDER_KEYS
+    Then I create view wallet VIEW_WALLET from view and spend keys SENDER_KEYS on node NODE
+    When I wait for wallet VIEW_WALLET to have at least 1002000 uT
+    When I prepare an offline one-sided transaction of 100000 uT from wallet VIEW_WALLET to wallet WALLET_RECEIVER at fee 20
+    Then I sign the prepared transaction using standalone offline signer OFFLINE_SIGNER
+    Then broadcasting the signed transaction via wallet VIEW_WALLET with a tampered recipient fails with an integrity error
+    Then broadcasting the signed transaction via wallet VIEW_WALLET with a tampered change fails with an integrity error
+    When I broadcast the signed transaction via wallet VIEW_WALLET
+    When mining node MINER mines 5 blocks
+    Then all nodes are at height 9
+    When I wait for wallet WALLET_RECEIVER to have at least 100000 uT
+
+  @security
   Scenario: Offline signer renders memo text escaped
     Given I have a seed node NODE
     When I have wallet WALLET_SENDER connected to all seed nodes
