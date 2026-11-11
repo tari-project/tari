@@ -857,33 +857,52 @@ impl UnconfirmedPool {
     /// strict subset of every copy of it padded with other kernels and is always stored, and each such replacement
     /// shrinks the kernels the spenders share. The caller checks that `tx` is not already in the pool.
     pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
-        let sigs = tx
-            .body
-            .kernels()
-            .iter()
-            .map(|k| k.excess_sig.get_signature())
-            .collect::<HashSet<_>>();
+        let mut sigs = None;
+        // Spenders already found to hold a strict superset of `tx`'s kernels; any other ends the check
+        let mut supersets = HashSet::new();
         let mut victims = Vec::new();
+        let mut chosen = HashSet::new();
         for input in tx.body.inputs() {
             let Some(spenders) = self.txs_by_spent_output.get(&input.output_hash()) else {
                 continue;
             };
             // A victim already chosen for another output may spend this one too
-            if spenders.len() < MAX_SPENDS_PER_OUTPUT || spenders.iter().any(|key| victims.contains(key)) {
+            if spenders.len() < MAX_SPENDS_PER_OUTPUT || spenders.iter().any(|key| chosen.contains(key)) {
                 continue;
             }
+            let sigs = sigs.get_or_insert_with(|| {
+                tx.body
+                    .kernels()
+                    .iter()
+                    .map(|k| k.excess_sig.get_signature())
+                    .collect::<HashSet<_>>()
+            });
             let mut lowest: Option<&PrioritizedTransaction> = None;
             for key in spenders {
                 let spender = self.tx_by_key.get(key)?;
-                let theirs = spender.kernel_signatures.iter().collect::<HashSet<_>>();
-                if theirs.len() <= sigs.len() || !sigs.iter().all(|sig| theirs.contains(sig)) {
-                    return None;
+                if !supersets.contains(key) {
+                    let theirs = &spender.kernel_signatures;
+                    // Counting matches needs distinct signatures; a spender repeating one is checked as a set
+                    let is_superset = if spender.has_internal_duplicates {
+                        let theirs = theirs.iter().collect::<HashSet<_>>();
+                        theirs.len() > sigs.len() && sigs.iter().all(|sig| theirs.contains(sig))
+                    } else {
+                        theirs.len() > sigs.len() &&
+                            theirs.iter().filter(|sig| sigs.contains(sig)).count() == sigs.len()
+                    };
+                    if !is_superset {
+                        return None;
+                    }
+                    supersets.insert(*key);
                 }
                 if lowest.is_none_or(|lowest| spender.priority < lowest.priority) {
                     lowest = Some(spender);
                 }
             }
-            victims.extend(lowest.map(|spender| spender.key));
+            if let Some(lowest) = lowest {
+                chosen.insert(lowest.key);
+                victims.push(lowest.key);
+            }
         }
         Some(victims)
     }
@@ -4681,6 +4700,52 @@ mod test {
             Default::default(),
             Default::default(),
         ))
+    }
+
+    #[tokio::test]
+    async fn a_newcomer_at_the_spend_cap_must_have_a_strict_subset_of_every_spenders_kernels() {
+        use tari_common_types::types::CompressedSignature;
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let kernel = |n: u64| synthetic_tx(&base, n, 10).body.kernels()[0].clone();
+        let spend = |n: u64, kernels| {
+            Arc::new(Transaction::new(
+                base.body.inputs().clone(),
+                synthetic_tx(&base, n, 1).body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let (owner, other) = (kernel(0), kernel(1));
+        // A distinct kernel with the same signature scalar as the owner's (another nonce)
+        let mut owner_again = owner.clone();
+        owner_again.excess_sig = CompressedSignature::new(
+            kernel(2).excess_sig.get_compressed_public_nonce().clone(),
+            owner.excess_sig.get_signature().clone(),
+        );
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        for n in 0..u64::try_from(MAX_SPENDS_PER_OUTPUT).unwrap() {
+            let kernels = vec![owner.clone(), owner_again.clone(), kernel(3 + n)];
+            unconfirmed_pool
+                .insert(spend(10 + n, kernels), None, &tx_weight)
+                .unwrap();
+        }
+        // Both of its signatures are among each spender's three, but `other` is in none of them
+        assert!(
+            unconfirmed_pool
+                .conflict_set_victims(&spend(100, vec![owner.clone(), other]))
+                .is_none()
+        );
+        // The owner's own transaction replaces one spender
+        assert_eq!(
+            unconfirmed_pool
+                .conflict_set_victims(&spend(101, vec![owner]))
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
