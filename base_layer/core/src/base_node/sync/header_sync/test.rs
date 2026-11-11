@@ -548,16 +548,23 @@ async fn no_headers_at_an_intermediate_split_weaker_than_our_header_tip_is_not_i
     )
     .await;
 
-    let (synced_peer, result) = sync_headers(&db, connectivity.clone(), BlockchainSyncConfig::default(), vec![
-        peer_a,
-        peer_b.clone(),
-    ])
+    let mut chain_changes = HashMap::new();
+
+    let (synced_peer, result) = sync_headers_with_history(
+        &db,
+        connectivity.clone(),
+        BlockchainSyncConfig::default(),
+        vec![peer_a.clone(), peer_b.clone()],
+        &mut chain_changes,
+    )
     .await
     .unwrap();
 
     assert_eq!(synced_peer.node_id(), peer_b.node_id());
     assert_eq!(result.header_sync_status, HeaderSyncStatus::InSyncOrAhead);
     assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+    // A weaker peer is not a chain change, so it gets no strike
+    assert!(!chain_changes.contains_key(peer_a.node_id()));
 }
 
 #[tokio::test]
