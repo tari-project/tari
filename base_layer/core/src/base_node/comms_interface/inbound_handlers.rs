@@ -39,6 +39,7 @@ use tari_node_components::blocks::{
     BlockHeader,
     BlockHeaderValidationError,
     ChainBlock,
+    ChainHeader,
     NewBlock,
     NewBlockTemplate,
 };
@@ -46,7 +47,7 @@ use tari_transaction_components::{
     aggregated_body::AggregateBody,
     consensus::{ConsensusConstants, consensus_constants::MAX_BLOCK_BODY_BYTES},
     helpers::borsh::SerializedSize,
-    tari_proof_of_work::{PowAlgorithm, PowError},
+    tari_proof_of_work::{Difficulty, PowAlgorithm, PowError},
     transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::hex::Hex;
@@ -85,7 +86,7 @@ use crate::{
     mempool::{Mempool, MempoolLastSeen},
     proof_of_work::{
         AdjustedTarget,
-        cuckaroo_pow::cuckaroo_difficulty,
+        cuckaroo_pow::{check_cuckaroo_pow_data, cuckaroo_difficulty},
         monero_randomx_difficulty_at_rules_height,
         randomx_factory::RandomXFactory,
         sha3x_difficulty,
@@ -294,6 +295,14 @@ impl UnknownAncestryRandomXChecks {
     }
 }
 
+/// The latest target difficulty of each permitted algorithm, as seen from one main-chain tip
+struct MinDifficultyCache {
+    tip_hash: FixedHash,
+    // accumulated_data.target_difficulty of the most recent main-chain header of each algo;
+    // None = not found within the cap
+    targets: HashMap<PowAlgorithm, Option<Difficulty>>,
+}
+
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
 pub struct InboundNodeCommsHandlers<B> {
     block_event_sender: BlockEventSender,
@@ -311,6 +320,7 @@ pub struct InboundNodeCommsHandlers<B> {
     // to MAX_MEMPOOL_TIMEOUT; overridable (mainly for tests) via `with_mempool_sync_timeout`.
     mempool_sync_timeout: Duration,
     unknown_ancestry_randomx_checks: Arc<Mutex<UnknownAncestryRandomXChecks>>,
+    min_difficulty_cache: Arc<std::sync::RwLock<Option<MinDifficultyCache>>>,
 }
 
 impl<B> InboundNodeCommsHandlers<B>
@@ -339,6 +349,7 @@ where B: BlockchainBackend + 'static
             mempool_last_seen,
             mempool_sync_timeout: Duration::from_millis(MAX_MEMPOOL_TIMEOUT),
             unknown_ancestry_randomx_checks: Arc::new(Mutex::new(UnknownAncestryRandomXChecks::default())),
+            min_difficulty_cache: Arc::new(std::sync::RwLock::new(None)),
         }
     }
 
@@ -819,6 +830,20 @@ where B: BlockchainBackend + 'static
                 .map_err(|e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)))
                 .inspect_err(log_pow_rejection)?;
         }
+        // The same pre-filter for Cuckaroo: the full header validator only accepts the canonical encoding, so a
+        // re-encoded proof is rejected here before any lookup or cycle verification.
+        if new_block.header.pow_algo() == PowAlgorithm::Cuckaroo {
+            // The claimed height is safe only while the C29 parameters are the same at every height, so a false height
+            // cannot loosen the check. If they ever change with height, this must use the corroborated rules height.
+            let constants = self.consensus_manager.consensus_constants(new_block.header.height);
+            check_cuckaroo_pow_data(
+                &new_block.header.pow.pow_data,
+                constants.cuckaroo_cycle_length(),
+                constants.cuckaroo_edge_bits(),
+            )
+            .map_err(|e| CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(e)))
+            .inspect_err(log_pow_rejection)?;
+        }
 
         // Lets check if the block exists before we try and ask for a complete block
         if self.check_exists_and_not_bad_block(block_hash).await? {
@@ -882,6 +907,55 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
+    /// Half the target difficulty of the most recent main-chain header of `algo` at or below `tip`, but never less than
+    /// the algorithm's minimum, which is also what an algorithm not found within the cap gets
+    async fn min_block_difficulty(
+        &self,
+        tip: ChainHeader,
+        algo: PowAlgorithm,
+        constants: &ConsensusConstants,
+    ) -> Result<Difficulty, CommsInterfaceError> {
+        let min_difficulty = constants.min_pow_difficulty(algo);
+        let target = self.latest_target(tip, algo).await?;
+        Ok(target
+            .and_then(|target| target.checked_div_u64(2))
+            .map_or(min_difficulty, |half| max(half, min_difficulty)))
+    }
+
+    /// The target difficulty of the most recent main-chain header of `algo`, from the cache when it is for `tip`
+    async fn latest_target(
+        &self,
+        tip: ChainHeader,
+        algo: PowAlgorithm,
+    ) -> Result<Option<Difficulty>, CommsInterfaceError> {
+        let tip_hash = *tip.hash();
+        if let Some(cache) = self
+            .min_difficulty_cache
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .filter(|cache| cache.tip_hash == tip_hash)
+        {
+            return Ok(cache.targets.get(&algo).copied().flatten());
+        }
+        let constants = self
+            .consensus_manager
+            .consensus_constants(tip.height().saturating_add(1));
+        let permitted = constants.current_permitted_pow_algos();
+        // The window that defines each algorithm's difficulty, once per algorithm
+        let cap = constants
+            .difficulty_block_window()
+            .saturating_mul(u64::try_from(permitted.len()).unwrap_or(u64::MAX));
+        let (targets, linked) = latest_targets_per_algo(&self.blockchain_db, tip, &permitted, cap).await?;
+        let target = targets.get(&algo).copied().flatten();
+        // A walk that raced a tip change may have read headers from two chains
+        if linked && *self.blockchain_db.fetch_last_chain_header().await?.hash() == tip_hash {
+            *self.min_difficulty_cache.write().unwrap_or_else(|e| e.into_inner()) =
+                Some(MinDifficultyCache { tip_hash, targets });
+        }
+        Ok(target)
+    }
+
     /// Pre-validation anti-spam gate for a gossiped block announcement.
     ///
     /// This runs on an *unlinked* header: nothing here has checked that `new_block.header.height` follows from
@@ -918,35 +992,16 @@ where B: BlockchainBackend + 'static
         new_block: &NewBlock,
         source_peer: &NodeId,
     ) -> Result<(), CommsInterfaceError> {
-        let mut header = self.blockchain_db.fetch_last_chain_header().await?;
-        let tip_height = header.height();
-        let rules_height = max(header.height(), new_block.header.height);
+        let tip = self.blockchain_db.fetch_last_chain_header().await?;
+        let tip_height = tip.height();
+        let rules_height = max(tip_height, new_block.header.height);
         let constants = self.consensus_manager.consensus_constants(rules_height);
         let gen_hash = *self.consensus_manager.get_genesis_block().hash();
-        let mut min_difficulty = constants.min_pow_difficulty(new_block.header.pow.pow_algo);
+        let min_difficulty = self
+            .min_block_difficulty(tip, new_block.header.pow_algo(), constants)
+            .await?;
         // Whether the proof of work is checked against the block's own chain
         let mut own_chain_checked = true;
-        loop {
-            if new_block.header.pow_algo() == header.header().pow_algo() {
-                min_difficulty = max(
-                    header
-                        .accumulated_data()
-                        .target_difficulty
-                        .checked_div_u64(2)
-                        .unwrap_or(min_difficulty),
-                    min_difficulty,
-                );
-                break;
-            }
-            if header.height() == 0 {
-                break;
-            }
-            // we have not reached gen block, and the pow algo does not match, so lets go further back
-            header = self
-                .blockchain_db
-                .fetch_chain_header(header.height().saturating_sub(1))
-                .await?;
-        }
         let achieved = match new_block.header.pow_algo() {
             PowAlgorithm::RandomXM => {
                 // A RandomX VM build can take most of a second, so keep it off the tokio worker threads
@@ -1751,6 +1806,39 @@ fn retain_requested_transactions(
     (retained, dropped)
 }
 
+#[cfg(test)]
+thread_local! {
+    static TARGET_WALKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// The target difficulty of the most recent of the at most `cap` main-chain headers ending at `tip` of each `permitted`
+/// algorithm, `None` for one that none of them has. The walk follows `tip`'s own ancestry by hash; false when it
+/// stopped at a parent that is no longer stored, which happens when the main chain changes under it.
+async fn latest_targets_per_algo<B: BlockchainBackend + 'static>(
+    db: &AsyncBlockchainDb<B>,
+    tip: ChainHeader,
+    permitted: &[PowAlgorithm],
+    cap: u64,
+) -> Result<(HashMap<PowAlgorithm, Option<Difficulty>>, bool), CommsInterfaceError> {
+    #[cfg(test)]
+    TARGET_WALKS.with(|walks| walks.set(walks.get().saturating_add(1)));
+    let mut targets: HashMap<_, _> = permitted.iter().map(|algo| (*algo, None)).collect();
+    let lowest = tip.height().saturating_sub(cap.saturating_sub(1));
+    let mut header = tip;
+    loop {
+        if let Some(target @ None) = targets.get_mut(&header.header().pow_algo()) {
+            *target = Some(header.accumulated_data().target_difficulty);
+        }
+        if header.height() <= lowest || targets.values().all(Option::is_some) {
+            return Ok((targets, true));
+        }
+        match db.fetch_chain_header_by_block_hash(header.header().prev_hash).await? {
+            Some(parent) => header = parent,
+            None => return Ok((targets, false)),
+        }
+    }
+}
+
 /// The Tari RandomX VM key to hash `header` with, and whether it is the key of the block's own chain, whose ancestry we
 /// hold. A block whose ancestry we do not hold takes the main chain's key and uses one of `peer`'s `checks`.
 ///
@@ -1828,6 +1916,7 @@ impl<B> Clone for InboundNodeCommsHandlers<B> {
             mempool_last_seen: self.mempool_last_seen.clone(),
             mempool_sync_timeout: self.mempool_sync_timeout,
             unknown_ancestry_randomx_checks: self.unknown_ancestry_randomx_checks.clone(),
+            min_difficulty_cache: self.min_difficulty_cache.clone(),
         }
     }
 }
@@ -1978,6 +2067,92 @@ mod test {
         let err = handlers.check_min_block_difficulty(&unknown, &peer).await.unwrap_err();
         assert!(matches!(err, CommsInterfaceError::UnknownRandomXKey { .. }), "{err:?}");
         assert!(err.get_ban_reason().is_none());
+    }
+
+    /// A Cuckaroo block whose `pow_data` is not in canonical form is rejected, with a ban, before the existence and
+    /// bad-block lookups: even with its hash already recorded as bad, the encoding error is what comes back.
+    #[tokio::test]
+    async fn a_non_canonical_cuckaroo_block_is_rejected_before_any_lookup() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tari_transaction_components::{BanPeriod, aggregated_body::AggregateBody, tari_proof_of_work::ProofOfWork};
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            chain_storage::DbTransaction,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{blockchain::create_new_blockchain, create_consensus_rules},
+            validation::mocks::MockValidator,
+        };
+
+        let db = create_new_blockchain();
+        let genesis = db.fetch_chain_header(0).unwrap();
+        let rules = create_consensus_rules();
+        let constants = rules.consensus_constants(1);
+        let size = crate::proof_of_work::cuckaroo_pow::cuckaroo_pow_data_size(
+            constants.cuckaroo_cycle_length(),
+            constants.cuckaroo_edge_bits(),
+        );
+        let block_with = |pow_data: Vec<u8>| {
+            let mut header = BlockHeader::from_previous(genesis.header());
+            header.pow = ProofOfWork {
+                pow_algo: PowAlgorithm::Cuckaroo,
+                pow_data: pow_data.try_into().unwrap(),
+            };
+            NewBlock::from(&Block::new(header, AggregateBody::empty()))
+        };
+        let canonical = block_with(vec![0u8; size]);
+        let padded = block_with(vec![0u8; size + 1]);
+        let mut txn = DbTransaction::new();
+        for block in [&canonical, &padded] {
+            txn.insert_bad_block(
+                block.header.hash(),
+                block.header.height,
+                "planted by a test".to_string(),
+            );
+        }
+        db.write(txn).unwrap();
+
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+        let peer = NodeId::default();
+
+        // Control: the canonical encoding passes the pre-filter and stops at the bad-block lookup
+        let err = handlers
+            .handle_new_block_message(canonical, peer.clone())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CommsInterfaceError::KnownBadBlock { .. }), "{err:?}");
+
+        let err = handlers.handle_new_block_message(padded, peer).await.unwrap_err();
+        assert!(
+            matches!(
+                err,
+                CommsInterfaceError::InvalidBlockHeader(BlockHeaderValidationError::ProofOfWorkError(
+                    PowError::CuckarooPowDataSizeMismatch { .. }
+                ))
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
     }
 
     /// Once a peer has used up its checks of unknown-ancestry RandomX blocks, the next one is dropped before it is
@@ -2650,5 +2825,223 @@ mod test {
                 .unwrap(),
             NodeCommsResponse::InputMinedInfo(None)
         ));
+    }
+
+    /// A header on `prev` mined with `algo` whose target difficulty is `target`
+    fn header_with_target(prev: &ChainHeader, algo: PowAlgorithm, target: u64, nonce: u64) -> ChainHeader {
+        use tari_transaction_components::tari_proof_of_work::ProofOfWork;
+        use tari_utilities::epoch_time::EpochTime;
+
+        use crate::test_helpers::create_chain_header;
+
+        let mut header = BlockHeader::from_previous(prev.header());
+        header.timestamp = prev.header().timestamp.checked_add(EpochTime::from(120)).unwrap();
+        // The MMR size indexes need a unique key per header
+        header.kernel_mmr_size = header.kernel_mmr_size.saturating_add(1);
+        header.output_smt_size = header.output_smt_size.saturating_add(1);
+        header.nonce = nonce;
+        header.pow = ProofOfWork::new(algo);
+        let (header, mut accumulated_data) = create_chain_header(header, prev.accumulated_data()).into_parts();
+        accumulated_data.target_difficulty = Difficulty::from_u64(target).unwrap();
+        ChainHeader::try_construct(header, accumulated_data).unwrap()
+    }
+
+    /// Extends `chain` with one header per algorithm in `algos`, the i-th at target `1000 + 10 * i`
+    async fn extend_chain(
+        db: &AsyncBlockchainDb<crate::test_helpers::blockchain::TempDatabase>,
+        chain: &mut Vec<ChainHeader>,
+        algos: &[PowAlgorithm],
+    ) {
+        let start = chain.len();
+        for (algo, target) in algos.iter().zip((1000..).step_by(10)) {
+            let header = header_with_target(chain.last().unwrap(), *algo, target, 0);
+            chain.push(header);
+        }
+        db.insert_valid_headers(chain[start..].to_vec()).await.unwrap();
+    }
+
+    fn target_walks() -> usize {
+        TARGET_WALKS.with(std::cell::Cell::get)
+    }
+
+    /// What the unbounded walk from the tip used to give: half the target of the most recent header of `algo`, never
+    /// below the algorithm's minimum
+    fn unbounded_min_difficulty(
+        chain: &[ChainHeader],
+        algo: PowAlgorithm,
+        constants: &ConsensusConstants,
+    ) -> Difficulty {
+        let min_difficulty = constants.min_pow_difficulty(algo);
+        chain
+            .iter()
+            .rev()
+            .find(|header| header.header().pow_algo() == algo)
+            .map_or(min_difficulty, |header| {
+                max(
+                    header
+                        .accumulated_data()
+                        .target_difficulty
+                        .checked_div_u64(2)
+                        .unwrap_or(min_difficulty),
+                    min_difficulty,
+                )
+            })
+    }
+
+    const ALGOS: [PowAlgorithm; 4] = [
+        PowAlgorithm::Sha3x,
+        PowAlgorithm::RandomXM,
+        PowAlgorithm::RandomXT,
+        PowAlgorithm::Cuckaroo,
+    ];
+
+    /// On a mixed chain every algorithm gets half its most recent target, as the unbounded walk gave, from a single
+    /// walk that later checks at the same tip reuse
+    #[tokio::test]
+    async fn min_difficulty_is_half_the_latest_target_from_one_walk_per_tip() {
+        let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
+        // Storing a Monero RandomX header needs real merge-mining data, so that algorithm is left unmined
+        let pattern = [
+            ALGOS[0], ALGOS[3], ALGOS[0], ALGOS[2], ALGOS[3], ALGOS[2], ALGOS[0], ALGOS[2],
+        ];
+        extend_chain(&db, &mut chain, &pattern).await;
+        let tip = chain.last().unwrap().clone();
+        let constants = handlers.consensus_manager.consensus_constants(tip.height());
+
+        let walks = target_walks();
+        for algo in ALGOS {
+            let min_difficulty = handlers
+                .min_block_difficulty(tip.clone(), algo, constants)
+                .await
+                .unwrap();
+            assert_eq!(
+                min_difficulty,
+                unbounded_min_difficulty(&chain, algo, constants),
+                "{algo}"
+            );
+        }
+        // Sha3x was last mined at height 7, the 7th header of the pattern, at target 1060
+        let sha3x = handlers
+            .min_block_difficulty(tip.clone(), PowAlgorithm::Sha3x, constants)
+            .await
+            .unwrap();
+        assert_eq!(sha3x, Difficulty::from_u64(530).unwrap());
+        assert_eq!(target_walks(), walks + 1);
+    }
+
+    /// A new header, and a reorg to another chain, change the tip, so the next check walks again and sees the new
+    /// targets
+    #[tokio::test]
+    async fn a_new_tip_or_a_reorg_refreshes_the_cached_targets() {
+        let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
+        extend_chain(&db, &mut chain, &[PowAlgorithm::Sha3x, PowAlgorithm::RandomXT]).await;
+        let constants = handlers.consensus_manager.consensus_constants(0);
+        let min_sha3x = |handlers: &InboundNodeCommsHandlers<_>, tip: ChainHeader| {
+            let handlers = handlers.clone();
+            async move {
+                handlers
+                    .min_block_difficulty(tip, PowAlgorithm::Sha3x, constants)
+                    .await
+                    .unwrap()
+            }
+        };
+
+        let walks = target_walks();
+        assert_eq!(
+            min_sha3x(&handlers, chain.last().unwrap().clone()).await,
+            Difficulty::from_u64(500).unwrap()
+        );
+        let new_tip = header_with_target(chain.last().unwrap(), PowAlgorithm::Sha3x, 5000, 0);
+        db.insert_valid_headers(vec![new_tip.clone()]).await.unwrap();
+        assert_eq!(min_sha3x(&handlers, new_tip).await, Difficulty::from_u64(2500).unwrap());
+        assert_eq!(target_walks(), walks + 2);
+
+        db.clear_all_pending_headers().await.unwrap();
+        let reorged = header_with_target(&chain[0], PowAlgorithm::Sha3x, 7000, 1);
+        db.insert_valid_headers(vec![reorged.clone()]).await.unwrap();
+        assert_eq!(min_sha3x(&handlers, reorged).await, Difficulty::from_u64(3500).unwrap());
+        assert_eq!(target_walks(), walks + 3);
+    }
+
+    /// An algorithm last mined further back than the cap gets its minimum difficulty, and is not looked for again at
+    /// the same tip
+    #[tokio::test]
+    async fn an_algorithm_beyond_the_cap_gets_the_minimum_difficulty() {
+        let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
+        let constants = handlers.consensus_manager.consensus_constants(1);
+        let cap = usize::try_from(constants.difficulty_block_window())
+            .unwrap()
+            .saturating_mul(constants.current_permitted_pow_algos().len());
+        let mut algos = vec![PowAlgorithm::RandomXT];
+        algos.extend(std::iter::repeat_n(PowAlgorithm::Sha3x, cap));
+        extend_chain(&db, &mut chain, &algos).await;
+        let tip = chain.last().unwrap().clone();
+
+        let walks = target_walks();
+        for _ in 0..2 {
+            let min_difficulty = handlers
+                .min_block_difficulty(tip.clone(), PowAlgorithm::RandomXT, constants)
+                .await
+                .unwrap();
+            assert_eq!(min_difficulty, constants.min_pow_difficulty(PowAlgorithm::RandomXT));
+        }
+        assert_eq!(target_walks(), walks + 1);
+        // One header closer and the unbounded walk's answer is back in reach
+        let below_tip = chain.iter().rev().nth(1).unwrap().clone();
+        let min_difficulty = handlers
+            .min_block_difficulty(below_tip, PowAlgorithm::RandomXT, constants)
+            .await
+            .unwrap();
+        assert_eq!(
+            min_difficulty,
+            unbounded_min_difficulty(&chain, PowAlgorithm::RandomXT, constants)
+        );
+        assert_eq!(min_difficulty, Difficulty::from_u64(500).unwrap());
+    }
+
+    /// A chain shorter than the cap is walked down to genesis without error
+    #[tokio::test]
+    async fn a_chain_shorter_than_the_cap_is_walked_to_genesis() {
+        let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
+        extend_chain(&db, &mut chain, &[PowAlgorithm::Sha3x, PowAlgorithm::Sha3x]).await;
+        let tip = chain.last().unwrap().clone();
+        let permitted = handlers
+            .consensus_manager
+            .consensus_constants(tip.height())
+            .current_permitted_pow_algos();
+
+        let (targets, linked) = latest_targets_per_algo(&db, tip, &permitted, u64::MAX).await.unwrap();
+        assert!(linked);
+        assert_eq!(targets.len(), 4);
+        for algo in ALGOS {
+            let expected = chain
+                .iter()
+                .rev()
+                .find(|header| header.header().pow_algo() == algo)
+                .map(|header| header.accumulated_data().target_difficulty);
+            assert_eq!(targets[&algo], expected, "{algo}");
+        }
+    }
+
+    /// A walk that reaches a parent which is not stored, as when the main chain changed under it, stops there and
+    /// says so, without reading the stored header at that height
+    #[tokio::test]
+    async fn a_walk_stops_at_a_parent_that_is_not_stored() {
+        let (handlers, mut chain, db) = handlers_on_a_header_chain(0);
+        extend_chain(&db, &mut chain, &[PowAlgorithm::Sha3x, PowAlgorithm::RandomXT]).await;
+        // A tip on a fork whose parent at height 2 is not stored
+        let fork_parent = header_with_target(&chain[1], PowAlgorithm::Cuckaroo, 9000, 1);
+        let fork_tip = header_with_target(&fork_parent, PowAlgorithm::Sha3x, 5000, 1);
+        let permitted = handlers
+            .consensus_manager
+            .consensus_constants(fork_tip.height())
+            .current_permitted_pow_algos();
+
+        let (targets, linked) = latest_targets_per_algo(&db, fork_tip, &permitted, u64::MAX)
+            .await
+            .unwrap();
+        assert!(!linked);
+        assert_eq!(targets[&PowAlgorithm::Sha3x], Some(Difficulty::from_u64(5000).unwrap()));
+        assert_eq!(targets[&PowAlgorithm::RandomXT], None);
     }
 }

@@ -140,6 +140,8 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
+/// The maximum number of full blocks one GetBlockSize/GetBlockFees request loads into memory.
+const BLOCK_GROUP_MAX_BLOCKS: u64 = 1_000;
 
 const MINING_METHODS: &[GrpcMethod] = &[
     GrpcMethod::GetVersion,
@@ -524,21 +526,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (start_height, end_height) = get_heights(&request, handler.clone())
             .await
             .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
-        let num_requested = end_height.checked_sub(start_height).ok_or_else(|| {
-            obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument("Start height is more than end height"),
-            )
-        })?;
-        if num_requested > GET_DIFFICULTY_MAX_HEIGHTS {
-            return Err(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!(
-                    "Number of headers requested exceeds maximum. Expected less than {GET_DIFFICULTY_MAX_HEIGHTS} but \
-                     got {num_requested}"
-                )),
-            ));
-        }
+        let num_requested = check_range_len(start_height, end_height, GET_DIFFICULTY_MAX_HEIGHTS)
+            .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
         let (mut tx, rx) = mpsc::channel(cmp::min(
             usize::try_from(num_requested).map_err(|e| {
                 obscure_error_if_true(
@@ -2593,21 +2582,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         let mut handler = self.node_service.clone();
-        let (start, end) = get_heights(&request, handler.clone()).await?;
+        let (start, end) = get_heights(&request, handler.clone())
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
 
-        let num_requested = end.saturating_sub(start);
-        if num_requested > BLOCK_TIMING_MAX_BLOCKS {
-            warn!(
-                target: LOG_TARGET,
-                "GetBlockTiming request for too many blocks. Requested: {num_requested}. Max: {BLOCK_TIMING_MAX_BLOCKS}."
-            );
-            return Err(obscure_error_if_true(
-                report_error_flag,
-                Status::invalid_argument(format!(
-                    "Exceeded max blocks request limit of {BLOCK_TIMING_MAX_BLOCKS}"
-                )),
-            ));
-        }
+        check_range_len(start, end, BLOCK_TIMING_MAX_BLOCKS).map_err(|e| {
+            warn!(target: LOG_TARGET, "GetBlockTiming request rejected: {}", e.message());
+            obscure_error_if_true(report_error_flag, e)
+        })?;
 
         let headers = handler.get_headers(start..=end).await.map_err(|err| {
             obscure_error_if_true(
@@ -3506,6 +3488,20 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     }
 }
 
+/// Returns the number of blocks in `start..=end`, rejecting an inverted range or one longer than `max`.
+fn check_range_len(start: u64, end: u64, max: u64) -> Result<u64, Status> {
+    let count = end
+        .checked_sub(start)
+        .ok_or_else(|| Status::invalid_argument("Start height is more than end height"))?
+        .saturating_add(1);
+    if count > max {
+        return Err(Status::invalid_argument(format!(
+            "Requested {count} blocks, maximum is {max}"
+        )));
+    }
+    Ok(count)
+}
+
 enum BlockGroupType {
     BlockFees,
     BlockSize,
@@ -3534,16 +3530,18 @@ async fn get_block_group(
         .await
         .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
 
-    let blocks = match handler.get_blocks(start..=end, false).await {
-        Err(err) => {
-            warn!(
-                target: LOG_TARGET,
-                "Error communicating with local base node: {err:?}"
-            );
-            vec![]
-        },
-        Ok(data) => data,
-    };
+    check_range_len(start, end, BLOCK_GROUP_MAX_BLOCKS).map_err(|e| obscure_error_if_true(report_error_flag, e))?;
+
+    let blocks = handler.get_blocks(start..=end, false).await.map_err(|err| {
+        warn!(
+            target: LOG_TARGET,
+            "Error communicating with local base node: {err:?}"
+        );
+        obscure_error_if_true(
+            report_error_flag,
+            Status::internal(format!("Could not fetch blocks: {err}")),
+        )
+    })?;
     let extractor = match block_group_type {
         BlockGroupType::BlockFees => block_fees,
         BlockGroupType::BlockSize => block_size,
@@ -3980,6 +3978,155 @@ mod test {
         }
 
         assert!(value_at_height_response(&values, 6).is_none());
+    }
+
+    /// A mock base node at `tip` that records every block range it is asked for and answers with one empty block per
+    /// height, or with an error when `fail_fetch` is set.
+    fn mock_node_service(
+        tip: u64,
+        fail_fetch: bool,
+    ) -> (
+        LocalNodeCommsInterface,
+        std::sync::Arc<std::sync::Mutex<Vec<std::ops::RangeInclusive<u64>>>>,
+    ) {
+        use futures::StreamExt;
+        use tari_common_types::chain_metadata::ChainMetadata;
+        use tari_core::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
+        use tari_node_components::blocks::{BlockHeaderAccumulatedData, HistoricalBlock};
+        use tari_service_framework::reply_channel;
+
+        let (request_tx, mut request_rx) = reply_channel::unbounded();
+        let (block_tx, _block_rx) = reply_channel::unbounded();
+        let (block_event_tx, _block_event_rx) = tokio::sync::broadcast::channel(1);
+        let requested = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = requested.clone();
+        task::spawn(async move {
+            while let Some(request) = request_rx.next().await {
+                let (request, reply) = request.split();
+                let response = match request {
+                    NodeCommsRequest::FetchMatchingBlocks { range, .. } => {
+                        recorded.lock().unwrap().push(range.clone());
+                        if fail_fetch {
+                            Err(CommsInterfaceError::UnexpectedApiResponse)
+                        } else {
+                            let blocks = range
+                                .map(|height| {
+                                    let mut header = BlockHeader::new(0);
+                                    header.height = height;
+                                    HistoricalBlock::new(
+                                        Block::new(header, AggregateBody::empty()),
+                                        1,
+                                        BlockHeaderAccumulatedData::genesis(FixedHash::zero(), PrivateKey::default()),
+                                    )
+                                })
+                                .collect();
+                            Ok(NodeCommsResponse::HistoricalBlocks(blocks))
+                        }
+                    },
+                    NodeCommsRequest::GetChainMetadata => Ok(NodeCommsResponse::ChainMetadata(
+                        ChainMetadata::new(tip, FixedHash::zero(), 0, 0, 1.into(), 0).unwrap(),
+                    )),
+                    _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+                };
+                let _result = reply.send(response);
+            }
+        });
+        (
+            LocalNodeCommsInterface::new(request_tx, block_tx, block_event_tx),
+            requested,
+        )
+    }
+
+    fn block_group_request(from_tip: u64, start_height: u64, end_height: u64) -> Request<tari_rpc::BlockGroupRequest> {
+        Request::new(tari_rpc::BlockGroupRequest {
+            from_tip,
+            start_height,
+            end_height,
+            calc_type: CalcType::Mean.into(),
+        })
+    }
+
+    #[tokio::test]
+    async fn block_group_rejects_a_range_over_the_limit_without_fetching() {
+        let (handler, requested) = mock_node_service(2_000, false);
+        let status = get_block_group(
+            handler,
+            block_group_request(0, 0, 1_000),
+            BlockGroupType::BlockSize,
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(requested.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn block_group_accepts_a_range_at_the_limit() {
+        let (handler, requested) = mock_node_service(2_000, false);
+        get_block_group(handler, block_group_request(0, 0, 999), BlockGroupType::BlockFees, true)
+            .await
+            .unwrap();
+        assert_eq!(*requested.lock().unwrap(), vec![0..=999]);
+    }
+
+    #[tokio::test]
+    async fn block_group_reports_a_fetch_error_as_internal() {
+        let (handler, _requested) = mock_node_service(2_000, true);
+        let status = get_block_group(handler, block_group_request(0, 0, 10), BlockGroupType::BlockSize, true)
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::Internal);
+    }
+
+    #[tokio::test]
+    async fn block_group_limit_applies_to_the_from_tip_range() {
+        let (handler, requested) = mock_node_service(2_000_000, false);
+        let status = get_block_group(
+            handler,
+            block_group_request(5_000, 0, 0),
+            BlockGroupType::BlockSize,
+            true,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert!(requested.lock().unwrap().is_empty());
+
+        let (handler, requested) = mock_node_service(2_000_000, false);
+        get_block_group(handler, block_group_request(999, 0, 0), BlockGroupType::BlockSize, true)
+            .await
+            .unwrap();
+        assert_eq!(*requested.lock().unwrap(), vec![1_999_001..=2_000_000]);
+    }
+
+    #[test]
+    fn check_range_len_counts_both_ends() {
+        let max = BLOCK_TIMING_MAX_BLOCKS;
+        assert_eq!(
+            check_range_len(1, 0, max).unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(check_range_len(5, 5, max).unwrap(), 1);
+        assert_eq!(check_range_len(0, max - 1, max).unwrap(), max);
+        assert_eq!(
+            check_range_len(0, max, max).unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(check_range_len(u64::MAX - (max - 1), u64::MAX, max).unwrap(), max);
+        assert_eq!(
+            check_range_len(0, u64::MAX, max).unwrap_err().code(),
+            tonic::Code::InvalidArgument
+        );
+        assert_eq!(
+            check_range_len(0, GET_DIFFICULTY_MAX_HEIGHTS, GET_DIFFICULTY_MAX_HEIGHTS)
+                .unwrap_err()
+                .message(),
+            format!(
+                "Requested {} blocks, maximum is {GET_DIFFICULTY_MAX_HEIGHTS}",
+                GET_DIFFICULTY_MAX_HEIGHTS + 1
+            )
+        );
     }
 
     #[test]

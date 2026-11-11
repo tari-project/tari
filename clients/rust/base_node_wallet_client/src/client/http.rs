@@ -350,12 +350,19 @@ impl BaseNodeWalletClient for Client {
                 // A stalled request or body read fails after HTTP_READ_TIMEOUT and ends the sync like any other error.
                 // Shutdown is raced separately so this task releases its shutdown signal promptly regardless.
                 let fetch_page = async {
-                    client
-                        .get(target_url.clone())
-                        .send()
-                        .await?
-                        .json::<SyncUtxosByBlockResponseV1>()
-                        .await
+                    let res = client.get(target_url.clone()).send().await?;
+                    if res.status().is_client_error() || res.status().is_server_error() {
+                        let status = res.status();
+                        let body = res.text().await.unwrap_or_else(|_| "No response body".to_string());
+                        warn!(
+                            target: LOG_TARGET,
+                            "Received error response from Base Node wallet service: {status}. {body}"
+                        );
+                        return Err(anyhow!(
+                            "Received error response from Base Node wallet service: {status}. {body}"
+                        ));
+                    }
+                    Ok(res.json::<SyncUtxosByBlockResponseV1>().await?)
                 };
                 let result = tokio::select! {
                     biased;
@@ -376,7 +383,7 @@ impl BaseNodeWalletClient for Client {
                         }
                     },
                     Err(error) => {
-                        if let Err(send_error) = resp_tx.send(Err(error.into())).await {
+                        if let Err(send_error) = resp_tx.send(Err(error)).await {
                             error!(target: LOG_TARGET, "Error sending error result: {send_error:?}");
                         }
                         break;
@@ -540,7 +547,13 @@ impl BaseNodeWalletClient for Client {
                 Ok(result)
             },
             None => {
-                let error_message = response.error.unwrap_or_else(|| "Unknown error".to_string());
+                let error_message = response
+                    .error
+                    .map(|e| match e {
+                        serde_json::Value::String(s) => s,
+                        other => other.to_string(),
+                    })
+                    .unwrap_or_else(|| "Unknown error".to_string());
                 warn!(target: LOG_TARGET, "Transaction submission failed: {error_message}");
                 Err(anyhow!("Transaction submission failed: {error_message}"))
             },
@@ -671,5 +684,21 @@ mod tests {
         let err = check_query_size(MAX_ALLOWED_QUERY_SIZE + 1, "output hashes")
             .expect_err("a query over the limit must be rejected before it is sent");
         assert!(err.to_string().contains(&MAX_ALLOWED_QUERY_SIZE.to_string()));
+    }
+
+    #[test]
+    fn json_rpc_response_accepts_string_and_object_errors_and_null_id() {
+        let obj_err = r#"{"jsonrpc":"2.0","result":null,"error":{"code":-32602,"message":"Invalid params"},"id":null}"#;
+        let parsed: JsonRpcResponse<serde_json::Value> = serde_json::from_str(obj_err).unwrap();
+        assert!(!parsed.is_success());
+        assert!(parsed.result.is_none());
+
+        let str_err = r#"{"jsonrpc":"2.0","result":null,"error":"Invalid transaction","id":"1"}"#;
+        let parsed: JsonRpcResponse<serde_json::Value> = serde_json::from_str(str_err).unwrap();
+        assert!(!parsed.is_success());
+        assert_eq!(
+            parsed.error.and_then(|v| v.as_str().map(str::to_string)),
+            Some("Invalid transaction".to_string())
+        );
     }
 }

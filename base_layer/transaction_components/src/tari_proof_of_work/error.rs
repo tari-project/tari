@@ -25,7 +25,7 @@ use thiserror::Error;
 use crate::{BanPeriod, BanReason, tari_proof_of_work::difficulty::Difficulty};
 
 /// Errors that can occur when validating a proof of work
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum PowError {
     #[error("ProofOfWorkFailed")]
     InvalidProofOfWork,
