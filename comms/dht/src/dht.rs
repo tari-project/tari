@@ -104,8 +104,8 @@ pub struct Dht {
     metrics_collector: MetricsCollectorHandle,
     /// Re-resolves seed peers for a rebootstrap
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
-    /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
-    join_budget: SharedSourceBudget,
+    /// New peer records stored per direct source through Join and Discovery gossip. Network discovery keeps its own.
+    gossip_budget: SharedSourceBudget,
     /// The Joins the DHT handler accepted, which the dedup layer then drops
     accepted_joins: SharedAcceptedJoins,
 }
@@ -143,7 +143,7 @@ impl Dht {
             discovery_sender,
             event_publisher,
             seed_peer_provider,
-            join_budget: Default::default(),
+            gossip_budget: Default::default(),
             accepted_joins: Default::default(),
         };
 
@@ -319,7 +319,7 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
-                self.join_budget.clone(),
+                self.gossip_budget.clone(),
                 self.accepted_joins.clone(),
             ))
             .into_inner()
@@ -1537,10 +1537,10 @@ mod test {
         (dht, oms_mock_state)
     }
 
-    /// A source that uses up its Join budget at a node still has its whole OnConnect budget there: a Join flood
+    /// A source that uses up its gossip budget at a node still has its whole OnConnect budget there: a Join flood
     /// relayed by an honest neighbour does not stop OnConnect between the two
     #[tokio::test]
-    async fn exhausting_the_join_budget_leaves_the_on_connect_budget() {
+    async fn exhausting_the_gossip_budget_leaves_the_on_connect_budget() {
         let source = make_node_identity();
         let shutdown = Shutdown::new();
         let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&source], &shutdown).await;
@@ -1569,7 +1569,7 @@ mod test {
         let source_id = source.node_id();
         let now = Instant::now();
         let config = &dht.config.network_discovery;
-        assert!(!dht.join_budget.lock().unwrap().has_headroom(source_id, now, config));
+        assert!(!dht.gossip_budget.lock().unwrap().has_headroom(source_id, now, config));
         let discovery = dht.network_discovery_service(shutdown.to_signal());
         assert!(
             discovery
@@ -1580,7 +1580,7 @@ mod test {
         );
     }
 
-    /// A source that has used up its Join budget delivers a Join first, twice at once, and keeps resending it: the
+    /// A source that has used up its gossip budget delivers a Join first, twice at once, and keeps resending it: the
     /// copy an honest source delivers next is still processed, so the origin is stored and propagated exactly once
     #[tokio::test]
     async fn a_capped_source_delivering_a_join_first_does_not_suppress_it() {
@@ -1592,7 +1592,7 @@ mod test {
         let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
         let max = dht.config.network_discovery.max_stored_per_source;
         {
-            let mut budget = dht.join_budget.lock().unwrap();
+            let mut budget = dht.gossip_budget.lock().unwrap();
             for _ in 0..max {
                 let peer = make_node_identity();
                 assert!(budget.try_charge(
@@ -1645,7 +1645,7 @@ mod test {
         let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest, &third], &shutdown).await;
         let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
         {
-            let mut budget = dht.join_budget.lock().unwrap();
+            let mut budget = dht.gossip_budget.lock().unwrap();
             for _ in 0..dht.config.network_discovery.max_stored_per_source {
                 let peer = make_node_identity();
                 budget.try_charge(
