@@ -1193,6 +1193,52 @@ mod test {
         }
 
         #[tokio::test]
+        async fn a_validator_node_slot_holder_replaced_by_a_subset_of_it_stores_the_subset() {
+            let mut config = crate::mempool::MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(
+                config,
+                create_consensus_rules(),
+                Box::new(crate::validation::mocks::MockValidator::new(true)),
+            );
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn = tx_with(
+                registration_features(&PrivateKey::random(&mut rand::rng())),
+                20,
+                &key_manager,
+            );
+            let plain = tx_with(OutputFeatures::default(), 20, &key_manager);
+            let cheap = tx_with(OutputFeatures::default(), 1, &key_manager);
+            let vn_kernel_only = Arc::new(Transaction::new(
+                vec![],
+                vec![],
+                vn.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ));
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let (holder, newcomer) = (
+                Arc::new((*vn).clone() + (*plain).clone() + (*cheap).clone()),
+                Arc::new((*vn).clone() + (*plain).clone()),
+            );
+            for tx in [&plain, &vn_kernel_only, &holder] {
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+
+            // The newcomer outbids the holder of its slot. Without the holder, the newcomer's kernels are spread over
+            // `plain` and `vn_kernel_only`, but it was not a union when it arrived, so it is stored.
+            assert_eq!(
+                mempool.insert(newcomer.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
+            assert!(mempool.snapshot().await.unwrap().contains(&newcomer));
+        }
+
+        #[tokio::test]
         async fn a_published_block_re_validates_validator_node_transactions_and_drops_invalid_ones() {
             // A validator node transaction's validity depends on chain state that changes at epoch boundaries and
             // when validator node transactions are mined (e.g. a cancelling spend becomes invalid once the registration

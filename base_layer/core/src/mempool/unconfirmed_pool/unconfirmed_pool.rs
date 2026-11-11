@@ -745,6 +745,9 @@ impl UnconfirmedPool {
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
     ) -> Result<(), UnconfirmedPoolError> {
+        if self.has_transaction(&tx) {
+            return Ok(());
+        }
         self.insert_with_height_validation(
             tx,
             dependent_outputs,
@@ -756,7 +759,8 @@ impl UnconfirmedPool {
     /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
     /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
     /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    /// `height_validation` is the block the transaction was validated for, if it reads the height.
+    /// `height_validation` is the block the transaction was validated for, if it reads the height. The caller checks
+    /// that `tx` is not already in the pool (see [UnconfirmedPool::has_transaction]).
     pub fn insert_with_height_validation(
         &mut self,
         tx: Arc<Transaction>,
@@ -764,10 +768,6 @@ impl UnconfirmedPool {
         transaction_weighting: &TransactionWeight,
         height_validation: HeightValidation,
     ) -> Result<(), UnconfirmedPoolError> {
-        if self.has_transaction(&tx) {
-            return Ok(());
-        }
-
         let new_key = self.get_next_key();
         let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs)?;
         if self.tx_by_key.len() >= self.config.storage_capacity {
@@ -832,12 +832,9 @@ impl UnconfirmedPool {
     /// The pool transactions holding a validator node registration/exit slot that `tx` also registers or exits. At most
     /// one pool transaction may hold a slot: two would each be valid on their own, so both would be selected into a
     /// block template, the template would fail validation (duplicate registration/exit in one body), and re-validating
-    /// them individually after the failed block would put both back, failing every later template the same way. Empty
-    /// if `tx` itself is already in the pool (`insert` deduplicates it).
+    /// them individually after the failed block would put both back, failing every later template the same way. The
+    /// caller checks that `tx` is not already in the pool (see [UnconfirmedPool::has_transaction]).
     pub fn validator_node_conflict_holders(&self, tx: &Transaction) -> Vec<TransactionKey> {
-        if self.has_transaction(tx) {
-            return Vec::new();
-        }
         let mut holders = validator_node_keys(&tx.body)
             .iter()
             .filter_map(|vn_key| self.txs_by_validator_node.get(vn_key))
@@ -850,7 +847,7 @@ impl UnconfirmedPool {
 
     #[cfg(test)]
     pub fn has_validator_node_conflict(&self, tx: &Transaction) -> bool {
-        !self.validator_node_conflict_holders(tx).is_empty()
+        !self.has_transaction(tx) && !self.validator_node_conflict_holders(tx).is_empty()
     }
 
     /// The fee per gram (x1000, as used for the stored priority) of the pool transaction `key`
@@ -1095,10 +1092,10 @@ impl UnconfirmedPool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
-    /// True if `tx` counts as already in the pool: a pool transaction has exactly its kernel set, or each of its
-    /// kernels is in the pool but no single pool transaction contains them all. Such a union of pool transactions can
-    /// be built by anyone from other people's transactions at no cost, so it is not validated or relayed. A subset of
-    /// a pool transaction does not count: it is stored as its own producer of its outputs.
+    /// True if `tx` counts as already in the pool: a pool transaction has exactly its kernel set, or `tx` is a union of
+    /// pool transactions (the pool transactions whose kernels are all in `tx` together have every kernel of `tx`).
+    /// Anyone can build such a union from other people's transactions at no cost, so it is not validated or relayed.
+    /// A subset of a pool transaction does not count: it is stored as its own producer of its outputs.
     pub fn has_transaction(&self, tx: &Transaction) -> bool {
         let Some(set) = kernel_set(tx) else {
             return false;
@@ -1116,20 +1113,35 @@ impl UnconfirmedPool {
             return true;
         }
         let sigs = set.iter().collect::<HashSet<_>>();
+        let kernels_of = |key: &TransactionKey| self.tx_by_key.get(key).map(|e| e.transaction.body.kernels());
         let in_one_entry = candidates.is_some_and(|keys| {
-            keys.iter().any(|key| {
-                self.tx_by_key.get(key).is_some_and(|e| {
-                    e.transaction
-                        .body
-                        .kernels()
-                        .iter()
-                        .filter(|k| sigs.contains(k.excess_sig.get_signature()))
-                        .count() ==
-                        set.len()
-                })
+            keys.iter().filter_map(kernels_of).any(|kernels| {
+                kernels
+                    .iter()
+                    .filter(|k| sigs.contains(k.excess_sig.get_signature()))
+                    .count() ==
+                    set.len()
             })
         });
-        !in_one_entry
+        if in_one_entry {
+            return false;
+        }
+        let mut covered = HashSet::new();
+        for sig in &set {
+            if covered.contains(sig) {
+                continue;
+            }
+            let subset = self.txs_by_signature.get(sig).and_then(|keys| {
+                keys.iter()
+                    .filter_map(kernels_of)
+                    .find(|kernels| kernels.iter().all(|k| sigs.contains(k.excess_sig.get_signature())))
+            });
+            let Some(kernels) = subset else {
+                return false;
+            };
+            covered.extend(kernels.iter().map(|k| k.excess_sig.get_signature()));
+        }
+        true
     }
 
     /// Returns the subset of provided output hashes that exist in the unconfirmed pool.
@@ -2603,7 +2615,7 @@ impl UnconfirmedPool {
 
     /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool.
     pub fn len(&self) -> usize {
-        self.txs_by_signature.len()
+        self.tx_by_key.len()
     }
 
     /// Returns all transaction stored in the UnconfirmedPool.
@@ -6721,6 +6733,28 @@ mod test {
             assert!(!pool.has_transaction(&with_new_kernel));
             pool.insert(with_new_kernel, None, &weight).unwrap();
             assert_eq!(pool.tx_by_key.len(), 3);
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn kernels_spread_over_pool_transactions_that_are_not_subsets_are_not_a_union() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let [h1, x1, h2, x2] = [0, 1, 2, 3].map(|n| (*synthetic_tx(&base, n, 5)).clone());
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let (p1, p2, t) = (h1.clone() + x1, h2.clone() + x2, Arc::new(h1 + h2));
+            pool.insert(Arc::new(p1), None, &weight).unwrap();
+            pool.insert(Arc::new(p2), None, &weight).unwrap();
+
+            // No pool transaction is a subset of `t`, so it is validated and stored
+            assert!(!pool.has_transaction(&t));
+            pool.insert(t.clone(), None, &weight).unwrap();
+            assert_eq!(pool.len(), 3);
+            assert!(pool.has_transaction(&t));
             assert!(pool.check_data_consistency());
         }
 

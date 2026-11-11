@@ -414,6 +414,10 @@ impl MempoolStorage {
     ) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
+        if self.unconfirmed_pool.has_transaction(&tx) {
+            debug!(target: LOG_TARGET, "Tx: ({tx_id}) is already in the unconfirmed pool");
+            return Ok(TxStorageResponse::UnconfirmedPool);
+        }
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
         // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
