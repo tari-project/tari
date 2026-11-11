@@ -165,10 +165,15 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         DifficultyCalculator::new(rules, Default::default()),
     )?;
     source_database.start()?;
-    let max_height = source_database
+    let source_tip = source_database
         .get_chain_metadata()
-        .map_err(|e| anyhow!("Could not get max chain height: {e}"))?
-        .best_block_height();
+        .map_err(|e| anyhow!("Could not get max chain height: {e}"))?;
+    let max_height = source_tip.best_block_height();
+    // The genesis block is already in the target, so a store with nothing above it has nothing to rebuild
+    if max_height == 0 {
+        info!(target: LOG_TARGET, "Done with recovery, chain height 0");
+        return Ok(());
+    }
     // we start at height 1
     let mut counter = 1;
     print!("Starting recovery at height: ");
@@ -176,8 +181,10 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         print!("{counter}");
         io::stdout().flush().unwrap();
         trace!(target: LOG_TARGET, "Asking for block with height: {counter}");
+        // The target validates every input against the output it spends, so the inputs are read in full. The
+        // source still holds the spent outputs.
         let block = source_database
-            .fetch_block(counter, true)
+            .fetch_block(counter, false)
             .map_err(|e| anyhow!("Could not get block from recovery db: {e}"))?
             .into_block();
         trace!(target: LOG_TARGET, "Adding block: {block}");
@@ -207,6 +214,19 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         print!("\x1B[{}D\x1B[K", counter.to_string().len());
         counter = counter.saturating_add(1);
     }
+    // The caller deletes the source next, so it has to be certain the target now holds the same chain
+    let target_tip = db
+        .get_chain_metadata()
+        .await
+        .map_err(|e| anyhow!("Could not get the rebuilt chain height: {e}"))?;
+    if target_tip.best_block_height() != max_height || target_tip.best_block_hash() != source_tip.best_block_hash() {
+        return Err(anyhow!(
+            "The rebuilt chain ends at height {} ({}), the source at height {max_height} ({}). The source is kept",
+            target_tip.best_block_height(),
+            target_tip.best_block_hash(),
+            source_tip.best_block_hash()
+        ));
+    }
     Ok(())
 }
 
@@ -216,11 +236,24 @@ mod test {
 
     use tari_common::configuration::Network;
     use tari_core::{
+        block_spec,
         block_specs,
         chain_storage::{LMDBDatabase, create_lmdb_database},
-        test_helpers::blockchain::create_chained_blocks,
+        test_helpers::blockchain::{
+            TempDatabase,
+            TestBlockchain,
+            create_chained_blocks,
+            create_custom_blockchain_at_path,
+            create_store_with_consensus_and_validators,
+        },
     };
     use tari_storage::lmdb_store::LMDBConfig;
+    use tari_transaction_components::{
+        consensus::ConsensusConstantsBuilder,
+        tari_amount::T,
+        test_helpers::schema_to_transaction,
+        txn_schema,
+    };
 
     use super::*;
     use crate::grpc::readiness_grpc_server::ReadinessGrpcServer;
@@ -254,7 +287,8 @@ mod test {
             let genesis = Arc::new(source.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
             let (names, blocks) = create_chained_blocks(&source, block_specs!(["A->GB"], ["B->A"], ["C->B"]), genesis);
             for name in names {
-                source.add_block(blocks[&name].to_arc_block()).unwrap();
+                let block = blocks.get(&name).unwrap();
+                source.add_block(block.to_arc_block()).unwrap();
             }
             assert_eq!(source.get_height().unwrap(), 3);
         }
@@ -267,5 +301,45 @@ mod test {
             .unwrap();
 
         assert_eq!(target.get_height().unwrap(), 3);
+    }
+
+    /// The target validates each input against the output it spends, so the blocks have to be read from the source
+    /// with their inputs in full. A chain of coinbases alone has no inputs and would not show it.
+    #[tokio::test]
+    async fn rebuild_adds_a_block_that_spends_an_earlier_output() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build()
+            .unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        {
+            let source = create_custom_blockchain_at_path(source_dir.path(), rules.clone(), false);
+            let mut source = TestBlockchain::new(source, rules.clone());
+            let (_, coinbase_a) = source.add_next_tip(block_spec!("A")).unwrap();
+            let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![coinbase_a], to: vec![50 * T])], &source.km);
+            let txs = txs.into_iter().map(|tx| Arc::try_unwrap(tx).unwrap()).collect();
+            let (block_b, _) = source.add_next_tip(block_spec!("B", transactions: txs)).unwrap();
+            assert_eq!(block_b.block().body.inputs().len(), 1);
+            assert_eq!(source.db().get_height().unwrap(), 2);
+        }
+        let mut source_backend = TempDatabase::from_path_with_rules(source_dir.path(), rules.clone());
+        source_backend.disable_delete_on_drop();
+        let validators = Validators::new(
+            BlockBodyFullValidator::new(rules.clone(), true),
+            MockValidator::new(true),
+            BlockBodyInternalConsistencyValidator::new(rules.clone(), false, CryptoFactories::default()),
+        );
+        let target = create_store_with_consensus_and_validators(rules.clone(), validators);
+        let (_server, readiness) = ReadinessGrpcServer::new();
+
+        do_recovery(target.clone().into(), source_backend, rules, &readiness)
+            .await
+            .unwrap();
+
+        assert_eq!(target.get_height().unwrap(), 2);
     }
 }

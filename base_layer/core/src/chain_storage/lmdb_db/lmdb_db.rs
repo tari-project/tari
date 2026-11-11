@@ -3465,12 +3465,17 @@ pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), Chai
     let new_data_file = new_path.join("data.mdb");
 
     // A store already here was left by a rebuild that did not finish, and the store in `path` is then only as far as
-    // that rebuild got. Moving it over the left-over one would throw away the only complete copy.
-    if new_data_file.exists() {
+    // that rebuild got. Moving it over the left-over one would throw away the only complete copy. A rebuild killed
+    // while it compacted the store leaves it as `data.mdb.bak`, with or without the compacted copy in `.compact_tmp`.
+    if let Some(left_over) = ["data.mdb", "data.mdb.bak", ".compact_tmp"]
+        .iter()
+        .map(|name| new_path.join(name))
+        .find(|left_over| left_over.exists())
+    {
         return Err(ChainStorageError::CriticalError(format!(
-            "{} was left by a rebuild that did not finish and may be the only complete copy of the chain. Move it \
-             back to {} to rebuild from it, or delete it to rebuild from the current store",
-            new_data_file.display(),
+            "{} was left by a rebuild that did not finish and may be the only complete copy of the chain. Move the \
+             store in it back to {} to rebuild from it, or delete it to rebuild from the current store",
+            left_over.display(),
             data_file.display()
         )));
     }
@@ -7007,5 +7012,26 @@ mod recovery_path_test {
         assert!(err.to_string().contains("did not finish"), "{err}");
         assert_eq!(fs::read(recovery.join("data.mdb")).unwrap(), b"complete store");
         assert_eq!(fs::read(db_dir.path().join("data.mdb")).unwrap(), b"partial store");
+    }
+
+    /// A rebuild killed between the two renames of the compaction step leaves the complete store as `data.mdb.bak`,
+    /// and possibly the compacted copy in `.compact_tmp`, but no `data.mdb`.
+    #[test]
+    fn create_recovery_refuses_to_run_over_an_interrupted_compaction() {
+        for left_over in ["data.mdb.bak", ".compact_tmp/data.mdb"] {
+            let db_dir = tempfile::tempdir().unwrap();
+            let recovery = recovery_lmdb_path(db_dir.path());
+            let left_over = recovery.join(left_over);
+            fs::create_dir_all(left_over.parent().unwrap()).unwrap();
+            fs::write(&left_over, b"complete store").unwrap();
+            fs::write(db_dir.path().join("data.mdb"), b"partial store").unwrap();
+
+            let err = create_recovery_lmdb_database(db_dir.path()).unwrap_err();
+
+            assert!(err.to_string().contains("did not finish"), "{err}");
+            assert_eq!(fs::read(&left_over).unwrap(), b"complete store");
+            assert_eq!(fs::read(db_dir.path().join("data.mdb")).unwrap(), b"partial store");
+            assert!(!recovery.join("data.mdb").exists());
+        }
     }
 }
