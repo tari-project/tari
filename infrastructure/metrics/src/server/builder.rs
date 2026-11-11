@@ -53,8 +53,13 @@ impl MetricsServerBuilder {
     }
 
     pub fn with_push_gateway<T: IntoUrl>(mut self, endpoint: T) -> Self {
-        let endpoint = endpoint.into_url().unwrap();
+        let endpoint = endpoint.into_url().expect("bad metric push gateway URL");
         self.push_endpoint = Some(endpoint);
+        self
+    }
+
+    pub fn with_push_interval(mut self, interval: Duration) -> Self {
+        self.push_interval = interval.max(Duration::from_millis(1));
         self
     }
 
@@ -83,5 +88,19 @@ impl Default for MetricsServerBuilder {
             push_endpoint: None,
             push_interval: Duration::from_secs(10),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn with_push_interval_clamps_zero_duration() {
+        let builder = MetricsServerBuilder::new().with_push_interval(Duration::ZERO);
+        assert_eq!(builder.push_interval, Duration::from_millis(1));
+
+        let builder = MetricsServerBuilder::new().with_push_interval(Duration::from_secs(30));
+        assert_eq!(builder.push_interval, Duration::from_secs(30));
     }
 }

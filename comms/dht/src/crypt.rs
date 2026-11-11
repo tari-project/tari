@@ -47,7 +47,7 @@ use crate::{
 };
 
 // `ChaCha20` key used to encrypt messages
-hidden_type!(CommsMessageKey, SafeArray<u8, { size_of::<chacha20::Key>() }>);
+hidden_type!(CommsMessageKey, SafeArray<u8, { size_of::<chacha20poly1305::Key>() }>);
 
 // Mask used (as a secret key) for sender key offset; we fix it to 64 bytes for wide reduction
 // Note that this is not fully generic!

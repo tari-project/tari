@@ -33,7 +33,7 @@
 #[cfg(test)]
 mod test;
 
-mod metrics;
+pub(crate) mod metrics;
 use std::{
     cmp,
     collections::{HashMap, HashSet},
@@ -42,7 +42,7 @@ use std::{
 };
 
 use log::*;
-pub use metrics::{MetricsCollector, MetricsCollectorHandle};
+pub use metrics::{FloodSeries, MetricsCollector, MetricsCollectorHandle};
 use rand::RngExt;
 use tari_comms::{
     Minimized,
@@ -75,6 +75,7 @@ use crate::{
     DhtConfig,
     DhtConnectivityConfig,
     DhtRequester,
+    config::FORWARDED_FLOOD_BAN_FACTOR,
     connectivity::metrics::MetricsError,
     event::{DhtEvent, DhtEventSender},
     network_discovery::{InboundSuggested, MAX_LEARNED_PEERS, REBOOTSTRAP_LOG_TARGET, state_machine::PoolPeers},
@@ -121,6 +122,9 @@ const INBOUND_LEARNED_DIAL_DIVISOR: usize = 4;
 
 /// How long to wait before retrying when the initial pool refresh fails at start-up.
 const INITIAL_REFRESH_RETRY_DELAY: Duration = Duration::from_secs(30);
+/// How often flooding peers detected by the metrics collector are banned, at most. Shorter if the flood-ban timespan
+/// is.
+const FLOOD_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Per-peer dial backoff state.
 ///
@@ -430,6 +434,13 @@ impl DhtConnectivity {
         self.pool_fill_started = Some(now.into_std());
         let mut ticker = time::interval_at(first_tick, self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+        // The collector detects floods as messages arrive, so this tick only sets how soon a flooding peer is banned
+        let flood_check_interval = FLOOD_CHECK_INTERVAL.min(self.config.flood_ban_timespan);
+        let mut flood_ticker = time::interval_at(
+            now.checked_add(flood_check_interval).unwrap_or(now),
+            flood_check_interval,
+        );
+        flood_ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         let mut connectivity_events_closed = false;
         loop {
             tokio::select! {
@@ -447,9 +458,7 @@ impl DhtConnectivity {
                             }
                         },
                         Err(RecvError::Lagged(num_missed)) => {
-                            if let Err(err) = self.handle_connectivity_events_lagged(num_missed).await {
-                                error!(target: LOG_TARGET, "Error resyncing message metrics after missed connectivity events: {err:?}");
-                            }
+                            warn!(target: LOG_TARGET, "Missed {num_missed} connectivity event(s)");
                         },
                         Err(RecvError::Closed) => {
                             warn!(target: LOG_TARGET, "Connectivity event stream closed");
@@ -464,10 +473,13 @@ impl DhtConnectivity {
                     }
                },
 
-               _ = ticker.tick() => {
+               _ = flood_ticker.tick() => {
                     if let Err(err) = self.check_and_ban_flooding_peers().await {
                         error!(target: LOG_TARGET, "Error checking for peer flooding: {err:?}");
                     }
+               },
+
+               _ = ticker.tick() => {
                     match self.refresh_random_pool_if_required().await {
                         Ok(()) => self.check_pool_starved(),
                         Err(err) => error!(target: LOG_TARGET, "Error refreshing random peer pool: {err:?}"),
@@ -486,22 +498,6 @@ impl DhtConnectivity {
             self.publish_pool_peers();
         }
 
-        Ok(())
-    }
-
-    /// Missed connectivity events may include disconnects, whose message metrics would then never be cleared. Drop the
-    /// metrics of every peer that is not currently connected. The pool is left alone.
-    async fn handle_connectivity_events_lagged(&mut self, num_missed: u64) -> Result<(), DhtConnectivityError> {
-        warn!(
-            target: LOG_TARGET,
-            "Missed {num_missed} connectivity event(s). Dropping message metrics for peers that are no longer connected."
-        );
-        let conns = self.connectivity.get_active_connections().await?;
-        let mut connected = HashSet::with_capacity(conns.len());
-        for conn in conns {
-            connected.insert(conn.peer_node_id().clone());
-        }
-        self.metrics_collector.retain_only(connected).await?;
         Ok(())
     }
 
@@ -694,23 +690,27 @@ impl DhtConnectivity {
     }
 
     async fn check_and_ban_flooding_peers(&mut self) -> Result<(), DhtConnectivityError> {
-        let nodes = self
-            .metrics_collector
-            .get_message_rates_exceeding(self.config.flood_ban_max_msg_count, self.config.flood_ban_timespan)
-            .await?;
+        let nodes = self.metrics_collector.take_flooding_peers().await?;
 
-        for (peer, mps) in nodes {
+        for (peer, mps, series) in nodes {
+            let max_count = match series {
+                FloodSeries::Own => self.config.flood_ban_max_msg_count,
+                FloodSeries::Forwarded => self
+                    .config
+                    .flood_ban_max_msg_count
+                    .saturating_mul(FORWARDED_FLOOD_BAN_FACTOR),
+            };
             warn!(
                 target: LOG_TARGET,
-                "Banning peer `{peer}` because of flooding. Message rate: {mps:.2}m/s"
+                "Banning peer `{peer}` because of flooding ({series} messages). Message rate: {mps:.2}m/s"
             );
             self.connectivity
                 .ban_peer_until(
                     peer,
                     self.config.ban_duration_short,
                     format!(
-                        "Exceeded maximum message rate. Config: {}/{:#?}. Rate: {:.2} m/s",
-                        self.config.flood_ban_max_msg_count, self.config.flood_ban_timespan, mps
+                        "Exceeded maximum {} message rate. Config: {}/{:#?}. Rate: {:.2} m/s",
+                        series, max_count, self.config.flood_ban_timespan, mps
                     ),
                 )
                 .await?;
@@ -1261,12 +1261,6 @@ impl DhtConnectivity {
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 self.pending_dials.remove(&node_id);
                 self.record_dial_failure(&node_id);
-                if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Failed to clear metrics for peer `{node_id}`. Metric collector is shut down."
-                    );
-                };
                 if !self.is_pool_peer(&node_id) {
                     debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());
@@ -1283,12 +1277,6 @@ impl DhtConnectivity {
                 );
                 self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 self.pending_dials.remove(&node_id);
-                if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Failed to clear metrics for peer `{node_id}`. Metric collector is shut down."
-                    );
-                };
                 if !self.is_pool_peer(&node_id) {
                     debug!(target: LOG_TARGET, "{node_id} is not managed by the DHT. Ignoring");
                     return Ok(());

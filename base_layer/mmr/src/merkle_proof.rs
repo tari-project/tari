@@ -165,6 +165,12 @@ impl MerkleProof {
 
     /// Verifies the Merkle proof against the provided root hash, element and position in the MMR.
     pub fn verify<D: Digest>(&self, root: &HashSlice, hash: &HashSlice, pos: usize) -> Result<(), MerkleProofError> {
+        if !is_leaf(pos) {
+            return Err(MerkleProofError::NonLeafNode);
+        }
+        if pos >= self.mmr_size {
+            return Err(MerkleProofError::HashNotFound(pos));
+        }
         let mut proof = self.clone();
         // calculate the peaks once as these are based on overall MMR size (and will not change)
         let peaks = find_peaks(self.mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;

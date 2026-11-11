@@ -222,9 +222,7 @@ impl DhtDiscoveryService {
                         );
 
                         for request in self.collect_all_discovery_requests(&public_key) {
-                            if !reply_tx.is_closed() {
-                                let _result = request.reply_tx.send(Ok(peer.clone()));
-                            }
+                            let _result = request.reply_tx.send(Ok(peer.clone()));
                         }
 
                         debug!(
@@ -472,5 +470,73 @@ mod test {
             request => panic!("unexpected request {request}"),
         }
         assert!(dht_rx.try_recv().is_err());
+    }
+
+    fn service_with_two_requests_for(
+        peer: &NodeIdentity,
+    ) -> (
+        DhtDiscoveryService,
+        oneshot::Receiver<Result<Peer, DhtDiscoveryError>>,
+        oneshot::Receiver<Result<Peer, DhtDiscoveryError>>,
+    ) {
+        let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(DhtConfig::default_local_test()),
+            make_node_identity(),
+            build_peer_manager(),
+            dht,
+            outbound_requester,
+            receiver,
+            Shutdown::new().to_signal(),
+        );
+        let (first_tx, first_rx) = oneshot::channel();
+        let (second_tx, second_rx) = oneshot::channel();
+        for (nonce, reply_tx) in [(1, first_tx), (2, second_tx)] {
+            service.inflight_discoveries.insert(
+                nonce,
+                DiscoveryRequestState::new(Box::new(peer.public_key().clone()), reply_tx),
+            );
+        }
+        (service, first_rx, second_rx)
+    }
+
+    fn discovery_response_from(identity: &NodeIdentity, nonce: u64) -> Box<DiscoveryResponseMessage> {
+        Box::new(DiscoveryResponseMessage {
+            public_key: identity.public_key().to_vec(),
+            addresses: identity.public_addresses().iter().map(|a| a.to_vec()).collect(),
+            peer_features: identity.features().bits(),
+            nonce,
+            identity_signature: identity.identity_signature_read().as_ref().map(Into::into),
+        })
+    }
+
+    #[tokio::test]
+    async fn a_response_resolves_other_requests_when_the_first_requester_has_gone() {
+        let peer = make_node_identity();
+        let (mut service, first_rx, second_rx) = service_with_two_requests_for(&peer);
+        drop(first_rx);
+
+        service
+            .handle_discovery_response(discovery_response_from(&peer, 1))
+            .await
+            .unwrap();
+
+        assert_eq!(second_rx.await.unwrap().unwrap().public_key, *peer.public_key());
+    }
+
+    #[tokio::test]
+    async fn a_response_resolves_every_request_for_the_same_peer() {
+        let peer = make_node_identity();
+        let (mut service, first_rx, second_rx) = service_with_two_requests_for(&peer);
+
+        service
+            .handle_discovery_response(discovery_response_from(&peer, 1))
+            .await
+            .unwrap();
+
+        assert_eq!(first_rx.await.unwrap().unwrap().public_key, *peer.public_key());
+        assert_eq!(second_rx.await.unwrap().unwrap().public_key, *peer.public_key());
     }
 }

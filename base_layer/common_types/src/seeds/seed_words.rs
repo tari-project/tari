@@ -80,6 +80,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn from_str_splits_on_any_whitespace() {
+        let seed_words = SeedWords::from_str("  a b\tc\n d  ").unwrap();
+        let words = (0..seed_words.len())
+            .map(|i| seed_words.get_word(i).unwrap().clone())
+            .collect::<Vec<_>>();
+        assert_eq!(words, vec!["a", "b", "c", "d"]);
+    }
+
+    #[test]
     pub fn test_seed_words_len() {
         let seed_words = SeedWords::new(vec![]);
         assert_eq!(seed_words.len(), 0_usize);

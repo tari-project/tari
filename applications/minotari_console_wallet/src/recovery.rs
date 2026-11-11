@@ -131,7 +131,12 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                 time_taken,
                 ..
             }) => {
-                let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
+                let elapsed_secs = time_taken.as_secs_f32();
+                let rate = if elapsed_secs > 0.0 {
+                    (final_height as f32) / elapsed_secs
+                } else {
+                    0.0
+                };
                 let stats = format!(
                     "Recovery complete! Scanned {final_height} blocks in {time_taken:.2?} ({rate:.2?} blocks/s)",
                 );
