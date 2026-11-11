@@ -112,6 +112,9 @@ where D: Digest
     }
 
     pub fn get_leaf(&self, leaf_index: usize) -> Option<&Hash> {
+        if leaf_index >= self.num_leaf_nodes() {
+            return None;
+        }
         self.get_hash(self.get_node_index(leaf_index))
     }
 
@@ -148,6 +151,7 @@ mod test {
         let leaves = vec![];
         let bmt = BalancedBinaryMerkleTree::<DomainSeparatedHasher<Blake2b<U32>, TestDomain>>::create(leaves);
         assert_eq!(bmt.num_leaf_nodes(), 0);
+        assert_eq!(bmt.get_leaf(0), None);
         let root = bmt.get_merkle_root();
         assert_eq!(root, vec![
             203, 169, 22, 71, 203, 110, 122, 67, 142, 42, 83, 145, 95, 216, 75, 195, 46, 141, 76, 90, 101, 42, 69, 124,

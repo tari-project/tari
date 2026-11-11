@@ -102,10 +102,12 @@ impl HashRateMovingAverage {
             return 0;
         }
 
-        let sum: u64 = self.hash_rates.iter().sum();
-        let count = self.hash_rates.len() as u64;
+        let sum: u128 = self.hash_rates.iter().copied().map(u128::from).sum();
+        let count = self.hash_rates.len() as u128;
         // The `is_empty` guard above proves the count is non-zero.
-        sum.checked_div(count).unwrap_or(0)
+        sum.checked_div(count)
+            .and_then(|v| u64::try_from(v).ok())
+            .unwrap_or(u64::MAX)
     }
 
     pub fn average(&self) -> u64 {
@@ -215,26 +217,35 @@ mod test {
     fn should_not_overflow() {
         let mut sha3x_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3x);
         let mut randomx_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::RandomXM);
+        let mut cuckaroo_hash_rate_ma = create_hash_rate_ma_with_scaling(PowAlgorithm::Cuckaroo, false);
+        let mut scaled_sha3x_hash_rate_ma = create_hash_rate_ma_with_scaling(PowAlgorithm::Sha3x, true);
         try_to_overflow(&mut sha3x_hash_rate_ma);
         try_to_overflow(&mut randomx_hash_rate_ma);
+        try_to_overflow(&mut cuckaroo_hash_rate_ma);
+        try_to_overflow(&mut scaled_sha3x_hash_rate_ma);
     }
 
     fn try_to_overflow(hash_rate_ma: &mut HashRateMovingAverage) {
         let window_size = hash_rate_ma.window_size;
 
         for _ in 0..window_size {
-            hash_rate_ma.add(0, Difficulty::max());
+            hash_rate_ma.add(100_000, Difficulty::max());
         }
+        assert!(hash_rate_ma.average() > 0);
     }
 
     fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
-        let mut constants = ConsensusConstants::esmeralda()[0].clone();
+        create_hash_rate_ma_with_scaling(pow_algo, false)
+    }
+
+    fn create_hash_rate_ma_with_scaling(pow_algo: PowAlgorithm, use_scaling: bool) -> HashRateMovingAverage {
+        let mut constants = ConsensusConstants::esmeralda()[ConsensusConstants::esmeralda().len() - 1].clone();
         constants.set_pow_target_block_interval(pow_algo, 240);
         let consensus_manager = BaseNodeConsensusManagerBuilder::new(Network::Esmeralda)
             .add_consensus_constants(constants)
             .build()
             .unwrap();
-        HashRateMovingAverage::new(pow_algo, consensus_manager, false)
+        HashRateMovingAverage::new(pow_algo, consensus_manager, use_scaling)
     }
 
     fn assert_hash_rate(
