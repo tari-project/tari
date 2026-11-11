@@ -258,7 +258,8 @@ pub(super) struct NetworkDiscoveryContext {
     pub inbound_learned: Arc<std::sync::Mutex<InboundSuggested>>,
     /// The DHT pool's current members, as published by DhtConnectivity. Discovery leaves their connections up.
     pub pool_peers: PoolPeers,
-    /// New peer records stored per direct source by OnConnect. Separate from the DHT handler's Join gossip budget.
+    /// New peer records stored per direct source by OnConnect. Separate from the DHT handler's gossip budget (Join and
+    /// Discovery).
     pub source_budget: SharedSourceBudget,
 }
 
