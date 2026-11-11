@@ -420,9 +420,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             ));
         }
 
-        // Blocks keep landing while the round runs, so a peer chosen at its start may no longer be ahead of us
+        // Blocks keep landing while the round runs, so a peer chosen at its start may no longer be ahead of us. Checked
+        // against the header the pending chain verdict uses, so the two cannot disagree.
         let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
-        let local = best_block_metadata.accumulated_difficulty();
+        let local = best_block_header.accumulated_data().total_accumulated_difficulty;
         if claimed <= local {
             return Err(BlockHeaderSyncError::PeerClaimNoLongerAhead { claimed, local });
         }
