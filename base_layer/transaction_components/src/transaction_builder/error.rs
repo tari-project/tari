@@ -102,6 +102,8 @@ pub enum TransactionBuilderError {
     RecipientAddressNotDualForDevice { address: String },
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
+    #[error("A burn commitment was set but the kernel features are not a burn")]
+    BurnCommitmentOnNonBurnKernel,
     #[error(
         "The offline signer only signs transactions that carry a change output, but this one would not: the \
          {remainder} left over after the outputs and fee does not exceed the {change_fee} a change output would cost. \

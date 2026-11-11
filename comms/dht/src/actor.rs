@@ -114,7 +114,7 @@ pub enum DhtRequest {
     /// Send a Join request to the network
     SendJoin,
     /// Inserts a message signature to the msg hash cache. This operation replies with the number of times this message
-    /// has previously been seen (hit count)
+    /// has been seen (hit count) and whether `received_from` is the peer that first delivered it
     MsgHashCacheInsert {
         message_hash: Vec<u8>,
         received_from: CommsPublicKey,
@@ -122,7 +122,7 @@ pub enum DhtRequest {
         expires: Option<EpochTime>,
         /// True if the message carries a signature
         is_signed: bool,
-        reply_tx: oneshot::Sender<u32>,
+        reply_tx: oneshot::Sender<(u32, bool)>,
     },
     GetMsgHashHitCount(Vec<u8>, oneshot::Sender<u32>),
     /// Fetch selected peers according to the broadcast strategy
@@ -206,14 +206,15 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
-    /// Adds a message hash to the dedup cache.
+    /// Adds a message hash to the dedup cache. Returns the hit count and whether `received_from` is the peer that first
+    /// delivered the message.
     pub async fn add_message_to_dedup_cache(
         &mut self,
         message_hash: Vec<u8>,
         received_from: CommsPublicKey,
         expires: Option<EpochTime>,
         is_signed: bool,
-    ) -> Result<u32, DhtActorError> {
+    ) -> Result<(u32, bool), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender.send(DhtRequest::MsgHashCacheInsert {
             message_hash,
@@ -464,8 +465,8 @@ impl DhtActor {
                     .await
                     .map_err(StorageError::from);
                     match result.and_then(|r| r) {
-                        Ok(hit_count) => {
-                            let _ = reply_tx.send(hit_count);
+                        Ok(hit) => {
+                            let _ = reply_tx.send(hit);
                         },
                         Err(err) => {
                             // Fail closed: a hit count above any allowed number of occurrences makes the dedup
@@ -485,7 +486,8 @@ impl DhtActor {
                                 );
                             }
                             drop(logged_at);
-                            let _ = reply_tx.send(u32::MAX);
+                            // `u32::MAX` also tells the dedup layer that whether this is a duplicate is unknown
+                            let _ = reply_tx.send((u32::MAX, false));
                         },
                     }
                     Ok(())
@@ -1077,13 +1079,14 @@ mod test {
     #[tokio::test]
     async fn dedup_db_error_discards_message() {
         use diesel::connection::SimpleConnection;
-        use tari_comms::{pipeline::PipelineError, wrap_in_envelope_body};
-        use tower::{Layer, Service};
+        use tari_comms::{Bytes, message::InboundMessage, pipeline::PipelineError, wrap_in_envelope_body};
+        use tower::{Layer, Service, ServiceExt, service_fn};
 
         use crate::{
+            connectivity::{FloodSeries, MetricsCollector},
             dedup::DedupLayer,
             envelope::DhtMessageFlags,
-            inbound::DecryptedDhtMessage,
+            inbound::{DecryptedDhtMessage, MetricsLayer},
             test_utils::{make_dht_inbound_message, service_spy},
         };
 
@@ -1116,19 +1119,41 @@ mod test {
             .batch_execute("DROP TABLE dedup_cache;")
             .unwrap();
 
-        let num_hits = requester
+        let (num_hits, from_first_sender) = requester
             .add_message_to_dedup_cache(vec![1u8, 2, 3], CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, u32::MAX);
+        assert!(!from_first_sender);
 
         let spy = service_spy();
-        let mut dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
+        let dedup = DedupLayer::new(requester, 1).layer(spy.to_service::<PipelineError>());
         let inbound_message =
             make_dht_inbound_message(&node_identity, &vec![], DhtMessageFlags::empty(), false, false).unwrap();
         let decrypted_msg = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, inbound_message);
-        dedup.call(decrypted_msg).await.unwrap();
+        // The message goes through the flood-ban metric, as in the inbound pipeline
+        let mut collector = MetricsCollector::spawn(11, Duration::from_secs(60));
+        let mut service = MetricsLayer::new(collector.clone()).layer(service_fn(move |_: InboundMessage| {
+            dedup.clone().oneshot(decrypted_msg.clone())
+        }));
+        service
+            .call(InboundMessage::new(node_identity.node_id().clone(), Bytes::new()))
+            .await
+            .unwrap();
         assert_eq!(spy.call_count(), 0);
+
+        // Whether it was a duplicate is unknown, so it counts in the forwarded series
+        let source = node_identity.node_id().clone();
+        let ts = collector
+            .get_messages_received_timeseries(source.clone(), FloodSeries::Forwarded)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 1);
+        let ts = collector
+            .get_messages_received_timeseries(source, FloodSeries::Own)
+            .await
+            .unwrap();
+        assert_eq!(ts.count(), 0);
     }
 
     #[tokio::test]
@@ -1158,17 +1183,17 @@ mod test {
         actor.spawn();
 
         let signature = vec![1u8, 2, 3];
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(signature.clone(), CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 1);
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(signature, CommsPublicKey::default(), None, true)
             .await
             .unwrap();
         assert_eq!(num_hits, 2);
-        let num_hits = requester
+        let (num_hits, _) = requester
             .add_message_to_dedup_cache(Vec::new(), CommsPublicKey::default(), None, true)
             .await
             .unwrap();
@@ -1215,7 +1240,7 @@ mod test {
 
         // Pre-populate the dedup cache; everything should be accepted because the cleanup ticker has not run yet
         for key in &signatures {
-            let num_hits = actor
+            let (num_hits, _) = actor
                 .msg_hash_dedup_cache
                 .add_msg_hash(key, &CommsPublicKey::default(), None, true)
                 .unwrap();
@@ -1223,7 +1248,7 @@ mod test {
         }
         // Try to re-insert all; all hashes should have incremented their hit count
         for key in &signatures {
-            let num_hits = actor
+            let (num_hits, _) = actor
                 .msg_hash_dedup_cache
                 .add_msg_hash(key, &CommsPublicKey::default(), None, true)
                 .unwrap();
@@ -1239,7 +1264,7 @@ mod test {
 
         // Verify that the last half of the signatures are still present in the cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {
-            let num_hits = requester
+            let (num_hits, _) = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
@@ -1247,7 +1272,7 @@ mod test {
         }
         // Verify that the first half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity) {
-            let num_hits = requester
+            let (num_hits, _) = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();
@@ -1259,7 +1284,7 @@ mod test {
 
         // Verify that the last half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {
-            let num_hits = requester
+            let (num_hits, _) = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default(), None, true)
                 .await
                 .unwrap();

@@ -474,11 +474,9 @@ impl MempoolStorage {
         &mut self,
         transactions: Vec<(TransactionKey, Arc<Transaction>)>,
     ) -> Result<(), MempoolError> {
-        for (tx_key, _) in &transactions {
-            self.unconfirmed_pool
-                .remove_transaction(*tx_key)
-                .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        }
+        self.unconfirmed_pool
+            .remove_transactions(transactions.iter().map(|(tx_key, _)| *tx_key))
+            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         self.insert_txs(transactions.iter().map(|(_, tx)| tx.clone()).collect())
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
 
@@ -565,7 +563,7 @@ impl MempoolStorage {
             .consensus_constants(published_block.header.height)
             .block_height_to_epoch(published_block.header.height);
         if block_epoch != next_epoch || UnconfirmedPool::body_touches_validator_nodes(&published_block.body) {
-            let mut dropped = 0usize;
+            let mut invalid = Vec::new();
             for (key, tx) in self.unconfirmed_pool.validator_node_transactions() {
                 let still_valid = match validate_chain_linked(self.validator.as_ref(), &tx) {
                     Ok(None) => true,
@@ -581,14 +579,16 @@ impl MempoolStorage {
                     },
                 };
                 if !still_valid {
-                    self.unconfirmed_pool.remove_transaction(key)?;
-                    dropped = dropped.saturating_add(1);
+                    invalid.push(key);
                 }
             }
-            if dropped > 0 {
+            if !invalid.is_empty() {
+                // Descendants go too: each was checked against a pool that still held the others, so one spending an
+                // invalidated transaction's outputs may have passed
+                let dropped = self.unconfirmed_pool.remove_transactions_and_descendants(invalid)?;
                 debug!(
                     target: LOG_TARGET,
-                    "Dropped {dropped} validator node transaction(s) invalidated by block #{}",
+                    "Dropped {dropped} validator node transaction(s) invalidated by block #{}, with their descendants",
                     published_block.header.height
                 );
             }
@@ -634,11 +634,10 @@ impl MempoolStorage {
         if self.last_seen_hash != prev_hash {
             return Ok(None);
         }
-        let mut removed = 0usize;
-        for key in failed {
-            removed = removed.saturating_add(self.unconfirmed_pool.remove_transaction_and_descendants(*key)?);
-        }
-        Ok(Some(removed))
+        Ok(Some(
+            self.unconfirmed_pool
+                .remove_transactions_and_descendants(failed.iter().copied())?,
+        ))
     }
 
     pub fn clear_transactions_for_failed_block(&mut self, failed_block: &Block) -> Result<(), MempoolError> {
@@ -2011,5 +2010,46 @@ mod test {
         let response = MempoolStorage::insert_unlocked(&storage, child).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
         assert_eq!(pool_len(&storage), 2);
+    }
+
+    #[test]
+    fn a_validator_node_transaction_invalidated_by_a_block_is_dropped_with_its_spenders() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let exit_features = || {
+            let vn_key = PrivateKey::random(&mut rand::rng());
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        };
+        // Valid when inserted, invalid when re-checked after the block
+        let validator = ScriptedValidator::new(vec![Ok(()), Ok(()), Err(ValidationError::ContainsSTxO)], vec![
+            FixedHash::zero(),
+        ]);
+        let storage = create_storage(&validator);
+        let (vn_tx, vn_outputs) =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .map(|(tx, _, outputs)| (Arc::new(tx), outputs))
+                .unwrap();
+        let child = spending(&create_tx(&key_manager), &vn_outputs[0], &key_manager);
+        for tx in [&vn_tx, &child] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+
+        // A block exiting another validator node re-checks the pool's validator node transactions
+        let other_vn_tx =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .unwrap()
+                .0;
+        let block = Block::new(
+            tari_node_components::blocks::BlockHeader::new(0),
+            other_vn_tx.body.clone(),
+        );
+        storage.write().unwrap().process_published_block(&block).unwrap();
+
+        assert_eq!(pool_len(&storage), 0);
+        assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
     }
 }

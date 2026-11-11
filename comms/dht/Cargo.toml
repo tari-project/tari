@@ -22,7 +22,6 @@ tari_metrics = { workspace = true, optional = true }
 anyhow = { workspace = true }
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
-chacha20 = "0.7.1"
 chacha20poly1305 = "0.10.1"
 chrono = { version = "0.4", default-features = false }
 diesel = { version = "2.3.10", features = [
@@ -49,7 +48,7 @@ zeroize = "1"
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 # tower-filter dependencies
-pin-project = "0.4"
+pin-project = "1"
 
 [dev-dependencies]
 tari_test_utils = { workspace = true }
