@@ -3346,11 +3346,32 @@ where
             .db
             .get_unspent_output(output_hash, &self.resources.key_manager)?;
 
+        let own_spend_key = self.resources.key_manager.get_spend_key().pub_key;
+        let is_our_htlc = matches!(
+            db_output.wallet_output.script().as_slice(),
+            [
+                Opcode::HashSha256,
+                Opcode::PushHash(_),
+                Opcode::Equal,
+                Opcode::IfThen,
+                Opcode::PushPubKey(_),
+                Opcode::Else,
+                Opcode::CheckHeightVerify(_),
+                Opcode::PushPubKey(refund_key),
+                Opcode::EndIf,
+            ] if **refund_key == own_spend_key
+        );
+        if !is_our_htlc {
+            return Err(OutputManagerError::InvalidArgument(
+                "Output is not an HTLC refundable by this wallet".to_string(),
+            ));
+        }
+
         let amount = db_output.wallet_output.value();
         // The HTLC script hashes the top stack item before branching; any value that is not the pre-image takes the
         // refund branch, so push our own spend key as the dummy.
         let mut input = db_output.wallet_output.clone();
-        input.set_input_data(inputs!(self.resources.key_manager.get_spend_key().pub_key));
+        input.set_input_data(inputs!(own_spend_key));
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = TransactionBuilder::new(

@@ -1770,6 +1770,33 @@ async fn test_htlc_send_and_refund() {
         balance_after.pending_incoming_balance,
         balance_before.pending_incoming_balance + refund_amount
     );
+
+    // A normal output is not an HTLC, so it is refused and left unspent.
+    let uo2 = make_input(
+        &mut rand::rng(),
+        5000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo2.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo2.output_hash(), true)])
+        .unwrap();
+    let balance_before = alice_oms.get_balance().await.unwrap();
+    let err = alice_oms
+        .create_htlc_refund_transaction(uo2.output_hash(), 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(alice_oms.get_balance().await.unwrap(), balance_before);
+    assert!(
+        alice_oms
+            .get_unspent_outputs()
+            .await
+            .unwrap()
+            .iter()
+            .any(|o| o.hash == uo2.output_hash())
+    );
 }
 
 #[tokio::test]
