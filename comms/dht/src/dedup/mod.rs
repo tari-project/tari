@@ -109,7 +109,7 @@ pub fn message_key(
     decoded_body: Option<&EnvelopeBody>,
 ) -> [u8; 32] {
     if sig_canonical.is_empty() {
-        // The tag takes the signature's slot, which a signed key fills with far more than 4 bytes
+        // The hasher length-prefixes each input and a canonical signature is never 4 bytes, so no signed key matches
         let type_tag = (message_type as i32).to_le_bytes();
         return match decoded_body {
             Some(decoded) if !flags.is_encrypted() => create_message_hash(&type_tag, &decoded.encode_to_vec()),

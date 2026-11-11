@@ -368,7 +368,7 @@ impl Dht {
         &self,
     ) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send + 'static + use<> {
         move |msg: &DhtInboundMessage| match msg.dht_header.message_type {
-            DhtMessageType::SafRequestMessages => {
+            DhtMessageType::SafRequestMessages | DhtMessageType::SafStoredMessages => {
                 debug!(
                     target: LOG_TARGET,
                     "Received store and forward message from PublicKey={}. Store and forward feature is not supported \
@@ -2052,6 +2052,15 @@ mod test {
             // An honest relay's copy of the genuine broadcast is delivered
             service
                 .call(make_comms_inbound_message(&relay, wire.body))
+                .await
+                .unwrap();
+            assert_eq!(spy.call_count(), 1, "{dht_type:?}");
+
+            // Its body re-typed as stored SAF messages, which has its own dedup key, is not delivered again
+            let mut retyped = genuine.clone();
+            retyped.header.as_mut().unwrap().message_type = DhtMessageType::SafStoredMessages as i32;
+            service
+                .call(make_comms_inbound_message(&attacker, retyped.to_encoded_bytes().into()))
                 .await
                 .unwrap();
             assert_eq!(spy.call_count(), 1, "{dht_type:?}");
