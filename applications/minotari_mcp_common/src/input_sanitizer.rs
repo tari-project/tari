@@ -135,10 +135,19 @@ impl InputSanitizer {
             )));
         }
 
-        // Decode HTML entities
+        // Decode HTML entities in a deterministic order with `&amp;` last to prevent double-decoding
         let mut sanitized = s.to_string();
-        for (entity, replacement) in &self.allowed_html_entities {
+        let mut entities: Vec<(&String, &String)> = self
+            .allowed_html_entities
+            .iter()
+            .filter(|(entity, _)| entity.as_str() != "&amp;")
+            .collect();
+        entities.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (entity, replacement) in entities {
             sanitized = sanitized.replace(entity, replacement);
+        }
+        if let Some(amp_replacement) = self.allowed_html_entities.get("&amp;") {
+            sanitized = sanitized.replace("&amp;", amp_replacement);
         }
 
         // Remove null bytes and other control characters (except newlines and tabs)
@@ -203,6 +212,11 @@ impl InputSanitizer {
 
             // Sanitize the value
             let sanitized_value = self.sanitize_value(value, depth.saturating_add(1))?;
+            if sanitized_obj.contains_key(trimmed_key) {
+                return Err(McpError::invalid_request(format!(
+                    "Duplicate object key after sanitization: '{trimmed_key}'"
+                )));
+            }
             sanitized_obj.insert(trimmed_key.to_string(), sanitized_value);
         }
 
@@ -211,26 +225,34 @@ impl InputSanitizer {
 
     /// Validate file paths to prevent directory traversal attacks
     pub fn validate_file_path(&self, path: &str) -> McpResult<String> {
+        if path.contains('\0') {
+            return Err(McpError::invalid_request("Path cannot contain null bytes"));
+        }
+        if path.contains('\r') || path.contains('\n') || path.contains('\t') {
+            return Err(McpError::invalid_request("Path cannot contain control characters"));
+        }
+
         // Sanitize the path string first
         let sanitized_path = match self.sanitize_string(path)? {
             Value::String(s) => s,
             _ => return Err(McpError::invalid_request("Path must be a string")),
         };
 
+        if sanitized_path.trim().is_empty() {
+            return Err(McpError::invalid_request("Path cannot be empty"));
+        }
+
         // Check for directory traversal attempts
-        if sanitized_path.contains("..") {
+        if sanitized_path.contains("..") || sanitized_path.contains('\\') {
             return Err(McpError::invalid_request(
-                "Path cannot contain '..' (directory traversal not allowed)",
+                "Path cannot contain '..' or backslashes (directory traversal not allowed)",
             ));
         }
 
-        if sanitized_path.starts_with('/') && !sanitized_path.starts_with("/tmp/") {
+        let has_windows_drive = sanitized_path.as_bytes().get(1) == Some(&b':') &&
+            sanitized_path.as_bytes().first().is_some_and(u8::is_ascii_alphabetic);
+        if has_windows_drive || (sanitized_path.starts_with('/') && !sanitized_path.starts_with("/tmp/")) {
             return Err(McpError::invalid_request("Absolute paths not allowed (except /tmp/)"));
-        }
-
-        // Check for suspicious characters
-        if sanitized_path.contains('\0') {
-            return Err(McpError::invalid_request("Path cannot contain null bytes"));
         }
 
         // Limit path length
@@ -243,14 +265,28 @@ impl InputSanitizer {
 
     /// Validate and sanitize URLs
     pub fn validate_url(&self, url: &str) -> McpResult<String> {
+        if url.contains('\0') || url.contains('\r') || url.contains('\n') {
+            return Err(McpError::invalid_request("URL contains invalid characters"));
+        }
+
         let sanitized_url = match self.sanitize_string(url)? {
             Value::String(s) => s,
             _ => return Err(McpError::invalid_request("URL must be a string")),
         };
 
         // Basic URL validation
-        if !sanitized_url.starts_with("http://") && !sanitized_url.starts_with("https://") {
+        let rest = if let Some(r) = sanitized_url.strip_prefix("http://") {
+            r
+        } else if let Some(r) = sanitized_url.strip_prefix("https://") {
+            r
+        } else {
             return Err(McpError::invalid_request("URL must start with http:// or https://"));
+        };
+
+        if rest.is_empty() || rest.starts_with('/') || sanitized_url.chars().any(char::is_whitespace) {
+            return Err(McpError::invalid_request(
+                "URL contains invalid characters or empty host",
+            ));
         }
 
         // Check for reasonable length
@@ -258,25 +294,26 @@ impl InputSanitizer {
             return Err(McpError::invalid_request("URL too long (max 2048 characters)"));
         }
 
-        // Check for suspicious characters
-        if sanitized_url.contains('\0') || sanitized_url.contains('\r') || sanitized_url.contains('\n') {
-            return Err(McpError::invalid_request("URL contains invalid characters"));
-        }
-
         Ok(sanitized_url)
     }
 
     /// Validate numeric ranges
     pub fn validate_number_range(&self, value: f64, min: f64, max: f64, name: &str) -> McpResult<f64> {
-        if value < min || value > max {
-            return Err(McpError::invalid_request(format!(
-                "{name} must be between {min} and {max} (got {value})"
-            )));
-        }
-
         if !value.is_finite() {
             return Err(McpError::invalid_request(format!(
                 "{name} must be a finite number (got {value})"
+            )));
+        }
+
+        if !min.is_finite() || !max.is_finite() || min > max {
+            return Err(McpError::invalid_request(format!(
+                "Invalid range bounds [{min}, {max}] for {name}"
+            )));
+        }
+
+        if value < min || value > max {
+            return Err(McpError::invalid_request(format!(
+                "{name} must be between {min} and {max} (got {value})"
             )));
         }
 
@@ -285,6 +322,12 @@ impl InputSanitizer {
 
     /// Validate integer ranges
     pub fn validate_integer_range(&self, value: i64, min: i64, max: i64, name: &str) -> McpResult<i64> {
+        if min > max {
+            return Err(McpError::invalid_request(format!(
+                "Invalid range bounds [{min}, {max}] for {name}"
+            )));
+        }
+
         if value < min || value > max {
             return Err(McpError::invalid_request(format!(
                 "{name} must be between {min} and {max} (got {value})"
@@ -353,10 +396,10 @@ mod tests {
     fn test_html_entity_sanitization() {
         let sanitizer = InputSanitizer::default();
 
-        let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot;");
+        let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot; &amp;lt;escaped&amp;gt;");
         let result = sanitizer.sanitize_input(&input).unwrap();
 
-        assert_eq!(result, json!("AT&T <test> \"quote\""));
+        assert_eq!(result, json!("AT&T <test> \"quote\" &lt;escaped&gt;"));
     }
 
     #[test]
@@ -411,7 +454,11 @@ mod tests {
 
         // Invalid paths
         assert!(sanitizer.validate_file_path("../../../etc/passwd").is_err());
+        assert!(sanitizer.validate_file_path("..\\..\\Windows\\System32").is_err());
         assert!(sanitizer.validate_file_path("/etc/passwd").is_err());
+        assert!(sanitizer.validate_file_path("C:/Windows/System32").is_err());
+        assert!(sanitizer.validate_file_path("config.toml\0.bak").is_err());
+        assert!(sanitizer.validate_file_path("config.toml\n/etc/passwd").is_err());
     }
 
     #[test]
@@ -426,6 +473,8 @@ mod tests {
         assert!(sanitizer.validate_url("javascript:alert(1)").is_err());
         assert!(sanitizer.validate_url("file:///etc/passwd").is_err());
         assert!(sanitizer.validate_url("https://example.com\nmalicious").is_err());
+        assert!(sanitizer.validate_url("https://example.com\0malicious").is_err());
+        assert!(sanitizer.validate_url("https://").is_err());
     }
 
     #[test]
