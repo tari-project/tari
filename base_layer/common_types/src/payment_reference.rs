@@ -148,7 +148,14 @@ pub fn generate_payment_reference(block_hash: &BlockHash, output_hash: &HashOutp
 /// }
 /// ```
 pub fn parse_payment_reference_hex(hex_str: &str) -> Result<PaymentReference, PayRefError> {
-    let hash = FixedHash::from_hex(hex_str)?;
+    let trimmed = hex_str.trim();
+    if trimmed.len() != 64 {
+        return Err(PayRefError::InvalidFormat(trimmed.len().to_string()));
+    }
+    if !trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(PayRefError::InvalidHex);
+    }
+    let hash = FixedHash::from_hex(trimmed)?;
     Ok(hash)
 }
 
@@ -165,7 +172,7 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
     match format {
         PayRefDisplayFormat::Full => hex,
         PayRefDisplayFormat::Shortened => {
-            if hex.len() >= 16 {
+            if hex.len() > 16 {
                 format!("{}...{}", &hex[0..8], &hex[hex.len().saturating_sub(8)..])
             } else {
                 hex
@@ -177,7 +184,7 @@ pub fn format_payment_reference(payref: &PaymentReference, format: &PayRefDispla
         } => {
             let prefix = *prefix_chars as usize;
             let suffix = *suffix_chars as usize;
-            if hex.len() >= prefix.saturating_add(suffix) {
+            if hex.len() > prefix.saturating_add(suffix) {
                 format!("{}...{}", &hex[0..prefix], &hex[hex.len().saturating_sub(suffix)..])
             } else {
                 hex
@@ -244,5 +251,22 @@ mod tests {
         let payref = parse_payment_reference_hex(original_hex).unwrap();
         let converted_hex = payref.to_hex();
         assert_eq!(original_hex, converted_hex);
+    }
+
+    #[test]
+    fn test_parse_payment_reference_hex_errors_and_custom_boundary() {
+        assert_eq!(
+            parse_payment_reference_hex("1234"),
+            Err(PayRefError::InvalidFormat("4".to_string()))
+        );
+        let invalid_hex = "z234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+        assert_eq!(parse_payment_reference_hex(invalid_hex), Err(PayRefError::InvalidHex));
+
+        let payref = FixedHash::from([0xabu8; 32]);
+        let exact_fit = format_payment_reference(&payref, &PayRefDisplayFormat::Custom {
+            prefix_chars: 32,
+            suffix_chars: 32,
+        });
+        assert_eq!(exact_fit, payref.to_hex());
     }
 }
