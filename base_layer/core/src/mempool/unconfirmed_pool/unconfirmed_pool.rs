@@ -1096,21 +1096,28 @@ impl UnconfirmedPool {
 
     fn find_exact_kernel_set(&self, tx: &Transaction) -> Option<TransactionKey> {
         let kernels = tx.body.kernels();
-        let (first, rest) = kernels.split_first()?;
-        self.txs_by_signature
-            .get(first.excess_sig.get_signature())?
+        // Candidates come from the shortest index list, and each is checked in O(kernels), so entries sharing kernels
+        // do not make a lookup quadratic
+        let mut candidates: Option<&Vec<TransactionKey>> = None;
+        for kernel in kernels {
+            let keys = self.txs_by_signature.get(kernel.excess_sig.get_signature())?;
+            if candidates.is_none_or(|c| keys.len() < c.len()) {
+                candidates = Some(keys);
+            }
+        }
+        let sigs = kernels
             .iter()
-            .copied()
-            .find(|key| {
-                self.tx_by_key
-                    .get(key)
-                    .is_some_and(|e| e.transaction.body.kernels().len() == kernels.len()) &&
-                    rest.iter().all(|k| {
-                        self.txs_by_signature
-                            .get(k.excess_sig.get_signature())
-                            .is_some_and(|keys| keys.contains(key))
-                    })
+            .map(|k| k.excess_sig.get_signature())
+            .collect::<HashSet<_>>();
+        if sigs.len() != kernels.len() {
+            return None;
+        }
+        candidates?.iter().copied().find(|key| {
+            self.tx_by_key.get(key).is_some_and(|e| {
+                let stored = e.transaction.body.kernels();
+                stored.len() == kernels.len() && stored.iter().all(|k| sigs.contains(k.excess_sig.get_signature()))
             })
+        })
     }
 
     /// Returns the subset of provided output hashes that exist in the unconfirmed pool.
@@ -6621,6 +6628,46 @@ mod test {
                 assert!(!pool.has_transaction(&a));
                 assert!(pool.check_data_consistency());
             }
+        }
+
+        #[test]
+        fn the_exact_kernel_set_is_found_among_many_entries_sharing_kernels() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let shared = synthetic_tx(&base, 0, 5).body.kernels()[0].clone();
+            let with_kernels =
+                |n: u64, kernels: Vec<tari_transaction_components::transaction_components::TransactionKernel>| {
+                    let tx = synthetic_tx(&base, n, 5);
+                    Arc::new(Transaction::new(
+                        vec![],
+                        tx.body.outputs().clone(),
+                        kernels,
+                        Default::default(),
+                        Default::default(),
+                    ))
+                };
+            let mut pool = pool();
+            let entries = (1..=300)
+                .map(|n| {
+                    let own = synthetic_tx(&base, n, 5).body.kernels()[0].clone();
+                    let tx = with_kernels(n, vec![shared.clone(), own]);
+                    pool.insert(tx.clone(), None, &weight).unwrap();
+                    tx
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(pool.tx_by_key.len(), 300);
+
+            let target = &entries[150];
+            assert!(pool.has_transaction(target));
+            assert!(!pool.has_transaction(&with_kernels(0, vec![shared.clone()])));
+            let mut superset = target.body.kernels().clone();
+            superset.push(entries[151].body.kernels()[1].clone());
+            assert!(!pool.has_transaction(&with_kernels(0, superset)));
+            // A query repeating a kernel does not match an entry with that kernel and another one
+            assert!(!pool.has_transaction(&with_kernels(0, vec![shared.clone(), shared])));
         }
     }
 }

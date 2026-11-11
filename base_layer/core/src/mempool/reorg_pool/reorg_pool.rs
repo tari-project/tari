@@ -170,21 +170,28 @@ impl ReorgPool {
 
     fn find_exact_kernel_set(&self, tx: &Transaction) -> Option<TransactionId> {
         let kernels = tx.body.kernels();
-        let (first, rest) = kernels.split_first()?;
-        self.txs_by_signature
-            .get(first.excess_sig.get_signature())?
+        // Candidates come from the shortest index list, and each is checked in O(kernels), so entries sharing kernels
+        // do not make a lookup quadratic
+        let mut candidates: Option<&Vec<TransactionId>> = None;
+        for kernel in kernels {
+            let keys = self.txs_by_signature.get(kernel.excess_sig.get_signature())?;
+            if candidates.is_none_or(|c| keys.len() < c.len()) {
+                candidates = Some(keys);
+            }
+        }
+        let sigs = kernels
             .iter()
-            .copied()
-            .find(|key| {
-                self.tx_by_key
-                    .get(key)
-                    .is_some_and(|e| e.body.kernels().len() == kernels.len()) &&
-                    rest.iter().all(|k| {
-                        self.txs_by_signature
-                            .get(k.excess_sig.get_signature())
-                            .is_some_and(|keys| keys.contains(key))
-                    })
+            .map(|k| k.excess_sig.get_signature())
+            .collect::<HashSet<_>>();
+        if sigs.len() != kernels.len() {
+            return None;
+        }
+        candidates?.iter().copied().find(|key| {
+            self.tx_by_key.get(key).is_some_and(|e| {
+                let stored = e.body.kernels();
+                stored.len() == kernels.len() && stored.iter().all(|k| sigs.contains(k.excess_sig.get_signature()))
             })
+        })
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
