@@ -80,7 +80,7 @@ pub fn is_database_locked<E: DbLockedError>(err: &E) -> bool {
     match err.diesel_error() {
         Some(DieselError::DatabaseError(_, info)) => {
             let msg = info.message().to_lowercase();
-            msg == "database is locked" || msg == "database table is locked"
+            msg == "database is locked" || msg == "database table is locked" || msg == "database schema is locked"
         },
         _ => false,
     }
@@ -241,6 +241,10 @@ mod test {
     #[test]
     fn storage_error_classifies_by_variant() {
         assert!(is_database_locked(&StorageError::DieselResultError(locked_error())));
+        assert!(is_database_locked(&DieselError::DatabaseError(
+            DatabaseErrorKind::Unknown,
+            Box::new("database schema is locked".to_string())
+        )));
         assert!(!is_database_locked(&StorageError::UnexpectedResult(
             "database is locked".to_string()
         )));
