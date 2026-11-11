@@ -2582,7 +2582,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         );
 
         let mut handler = self.node_service.clone();
-        let (start, end) = get_heights(&request, handler.clone()).await?;
+        let (start, end) = get_heights(&request, handler.clone())
+            .await
+            .map_err(|e| obscure_error_if_true(report_error_flag, e))?;
 
         check_range_len(start, end, BLOCK_TIMING_MAX_BLOCKS).map_err(|e| {
             warn!(target: LOG_TARGET, "GetBlockTiming request rejected: {}", e.message());
