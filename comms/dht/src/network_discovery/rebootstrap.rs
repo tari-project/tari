@@ -48,7 +48,8 @@ use crate::{
     actor::OffenceSeverity,
     network_discovery::{
         NetworkDiscoveryError,
-        discovering::{MAX_HOSTILE_RELAYED_CLAIMS, ban_peer, is_bad_data_offence, is_connected},
+        admission::HostileClaims,
+        discovering::{ban_peer, is_bad_data_offence, is_connected},
         seed_strap::fetch_peers_from_connection,
         state_machine::{NetworkDiscoveryContext, StateEvent},
     },
@@ -119,10 +120,6 @@ pub const MAX_LEARNED_PEERS: usize = 200;
 
 /// The least time a rebootstrap gets, whatever `bootstrap_timeout` is.
 const MIN_REBOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// At most this many peers from one source are written to the peer database. No source can contribute more than a
-/// quarter of the learned list once there are a few sources, so storing more only adds peer DB writes.
-const MAX_STORED_PER_SOURCE: usize = 50;
 
 /// Each source contributes at most `MAX_LEARNED_PEERS / number of sources` peers, but never fewer than this.
 const MIN_PEERS_PER_SOURCE: usize = 10;
@@ -259,7 +256,7 @@ impl Rebootstrap {
         // Every peer an inbound source told us about, not only the ones kept in the learned list: the others are in
         // the peer database too, and could be dialled from there. Remembered across rebootstraps, so that such a
         // peer is still treated as inbound-sourced if we have since dialled it (see `sync_from_connected_peers`).
-        // At most `rebootstrap_connected_peers` sources x `MAX_STORED_PER_SOURCE` peers.
+        // At most `rebootstrap_connected_peers` sources x `max_stored_per_source` peers.
         let mut seen = HashSet::new();
         let learned_from_inbound = sources
             .iter()
@@ -713,8 +710,9 @@ async fn sync_from_connection(
 
 /// Validates and stores peers received from `source`. Returns the node ids of the peers stored.
 ///
-/// Only the first `MAX_STORED_PER_SOURCE` valid peers are stored; the rest are still validated. Like Discovering, an
-/// occasional unusable claim is skipped, but a source that relays more than
+/// Only the first `max_stored_per_source` valid peers are stored; the rest are still validated. No source can
+/// contribute more than a quarter of the learned list once there are a few sources, so storing more only adds peer DB
+/// writes. Like Discovering, an occasional unusable claim is skipped, but a source that relays more than
 /// `MAX_HOSTILE_RELAYED_CLAIMS` claims only a broken or hostile node could produce fails with
 /// `TooManyInvalidPeersReceived`, which is a ban offence.
 pub(super) async fn store_peers(
@@ -723,8 +721,9 @@ pub(super) async fn store_peers(
     peers: Vec<PeerInfo>,
 ) -> Result<Vec<NodeId>, NetworkDiscoveryError> {
     let validator = PeerValidator::new(&context.config);
+    let max_stored = context.config.network_discovery.max_stored_per_source;
     let mut stored = Vec::new();
-    let mut hostile_claims = 0usize;
+    let mut hostile_claims = HostileClaims::default();
     for peer_info in peers {
         let peer = match UnvalidatedPeerInfo::try_from(peer_info) {
             Ok(peer) => peer,
@@ -742,28 +741,23 @@ pub(super) async fn store_peers(
             Ok(valid_peer) => valid_peer,
             Err(err) => {
                 debug!(target: REBOOTSTRAP_LOG_TARGET, "Invalid peer from '{source}': {err}");
-                if err.is_ban_offence() {
-                    hostile_claims = hostile_claims.saturating_add(1);
-                    if hostile_claims > MAX_HOSTILE_RELAYED_CLAIMS {
-                        return Err(NetworkDiscoveryError::TooManyInvalidPeersReceived);
-                    }
-                }
+                hostile_claims.record(&err)?;
                 continue;
             },
         };
         // Past the cap the rest of the (already bounded) response is still validated, so that hostile records after
         // the first valid ones count towards a ban, but nothing more is stored
-        if stored.len() >= MAX_STORED_PER_SOURCE {
+        if stored.len() >= max_stored {
             continue;
         }
         let node_id = valid_peer.node_id.clone();
         context.peer_manager.add_or_update_peer(valid_peer).await?;
         stored.push(node_id);
     }
-    if stored.len() >= MAX_STORED_PER_SOURCE {
+    if stored.len() >= max_stored {
         debug!(
             target: REBOOTSTRAP_LOG_TARGET,
-            "Stored the first {MAX_STORED_PER_SOURCE} valid peer(s) from '{source}'; ignored the rest"
+            "Stored the first {max_stored} valid peer(s) from '{source}'; ignored the rest"
         );
     }
     Ok(stored)

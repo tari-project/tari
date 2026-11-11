@@ -718,7 +718,7 @@ pub fn prompt_wallet_type(
         },
         WalletBoot::New | WalletBoot::Recovery => {
             #[cfg(not(feature = "ledger"))]
-            return Ok(Some(WalletType::default()));
+            return Ok(Some(LegacyWalletType::default()));
 
             #[cfg(feature = "ledger")]
             {

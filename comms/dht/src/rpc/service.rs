@@ -90,10 +90,8 @@ impl DhtRpcService for DhtRpcServiceImpl {
     async fn get_peers(&self, request: Request<GetPeersRequest>) -> Result<Streaming<GetPeersResponse>, RpcStatus> {
         let message = request.message();
         let excluded_peers = vec![request.context().peer_node_id().clone()];
-        let mut features = Some(PeerFeatures::COMMUNICATION_NODE);
-        if message.include_clients {
-            features = None;
-        }
+        // `include_clients` is ignored: client (wallet) records are never served, so they cannot be enumerated
+        let features = Some(PeerFeatures::COMMUNICATION_NODE);
 
         let max_claims = message.max_claims.try_into().map_err(|_|
             // This can't happen on a >= 32-bit arch

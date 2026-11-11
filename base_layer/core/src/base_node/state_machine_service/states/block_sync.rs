@@ -112,6 +112,7 @@ impl BlockSync {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Blocks synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
+                swap_to_highest_pow_chain_and_publish(shared).await;
                 // Cleanup
                 if let Err(e) = shared.db.cleanup_orphans().await {
                     warn!(target: LOG_TARGET, "Failed to remove orphan blocks: {e}");
@@ -153,8 +154,8 @@ impl BlockSync {
     }
 }
 
-/// After a failed sync, swap to the strongest chain we hold, and publish a chain change as `handle_block` does, so that
-/// the mempool and other listeners follow it
+/// After a sync, swap to the strongest chain we hold, including orphans held on the synced tip, and publish a chain
+/// change as `handle_block` does, so that the mempool and other listeners follow it
 async fn swap_to_highest_pow_chain_and_publish<B: BlockchainBackend + 'static>(shared: &BaseNodeStateMachine<B>) {
     match shared.db.swap_to_highest_pow_chain().await {
         Ok(outcome) => {
