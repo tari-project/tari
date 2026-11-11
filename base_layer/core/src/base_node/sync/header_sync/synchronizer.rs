@@ -72,7 +72,7 @@ const LOG_TARGET: &str = "c::bn::header_sync";
 const MAX_LATENCY_INCREASES: usize = 5;
 
 /// A peer whose attempts end because our chain changed this many times within the window is banned.
-const MAX_CHAIN_CHANGES_PER_PEER: usize = 3;
+pub(super) const MAX_CHAIN_CHANGES_PER_PEER: usize = 3;
 
 pub struct HeaderSynchronizer<'a, B> {
     config: BlockchainSyncConfig,
@@ -418,6 +418,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             return Err(BlockHeaderSyncError::ChainStorageError(
                 ChainStorageError::CorruptedDatabase("Inconsistent block and header data".to_string()),
             ));
+        }
+
+        // Blocks keep landing while the round runs, so a peer chosen at its start may no longer be ahead of us
+        let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
+        let local = best_block_metadata.accumulated_difficulty();
+        if claimed <= local {
+            return Err(BlockHeaderSyncError::PeerClaimNoLongerAhead { claimed, local });
         }
 
         // - At this point we may have more (InSyncOrAhead), equal (InSyncOrAhead), or less headers (Lagging) than the
@@ -874,15 +881,16 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         if pending_len < HEADER_SYNC_INITIAL_MAX_HEADERS {
             // Peer returned less than the max number of requested headers. This indicates that we have all the
             // available headers from the peer, so they must cover what the peer claimed before we commit them.
-            if verdict == PendingChainVerdict::Weaker || total_accumulated_difficulty < claimed_total_accumulated_diff {
+            let local_total_accumulated_diff = split_info
+                .best_block_header
+                .accumulated_data()
+                .total_accumulated_difficulty;
+            if total_accumulated_difficulty < claimed_total_accumulated_diff {
                 debug!(target: LOG_TARGET, "No further headers to download");
                 return Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                     claimed: claimed_total_accumulated_diff,
                     actual: Some(total_accumulated_difficulty),
-                    local: split_info
-                        .best_block_header
-                        .accumulated_data()
-                        .total_accumulated_difficulty,
+                    local: local_total_accumulated_diff,
                 });
             }
             // More difficulty than claimed at a lower height means the claim is stale (a reorg), not a lie
@@ -892,6 +900,17 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     claimed: claimed_height,
                     actual: start_header_height,
                 });
+            }
+            // The peer delivered its claim, so our chain overtook it after the round chose this peer
+            if verdict == PendingChainVerdict::Weaker {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer `{}` delivered its claimed difficulty {}, but our chain is stronger at {}",
+                    sync_peer.node_id(),
+                    claimed_total_accumulated_diff,
+                    local_total_accumulated_diff,
+                );
+                return Err(BlockHeaderSyncError::ChainChangedDuringSync);
             }
             // The peer's claim holds, but our headers are stronger still
             if verdict == PendingChainVerdict::Refused {
