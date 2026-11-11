@@ -142,6 +142,7 @@ use tari_transaction_components::{
             public_key_to_output_spending_key,
         },
     },
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 use tari_transaction_key_manager::{
     legacy_key_manager::{
@@ -1520,7 +1521,7 @@ async fn test_htlc_send_and_claim() {
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
-        consensus_manager,
+        consensus_manager.clone(),
         factories.clone(),
         alice_connection,
         shutdown.to_signal(),
@@ -1554,10 +1555,12 @@ async fn test_htlc_send_and_claim() {
         .unwrap();
 
     let value = 10000.into();
-    let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key();
-    let bob_address =
-        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network).unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_ts_interface.key_manager_handle.get_view_key().pub_key,
+        bob_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        network,
+    )
+    .unwrap();
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -1615,6 +1618,10 @@ async fn test_htlc_send_and_claim() {
     };
     assert_eq!(claim_change.source, OutputSource::AtomicSwap);
     assert_eq!(claim_change.wallet_output.value(), htlc_amount);
+    // The pre-image unlocks the claim branch at any height.
+    TransactionInternalConsistencyValidator::new(false, consensus_manager, factories)
+        .validate(&tx, None, None, 0)
+        .expect("the claim must validate");
 
     bob_ts_interface
         .transaction_service_handle
@@ -1645,8 +1652,8 @@ async fn test_htlc_send_and_refund() {
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
-        consensus_manager,
-        factories,
+        consensus_manager.clone(),
+        factories.clone(),
         make_wallet_database_memory_connection(),
         shutdown.to_signal(),
     )
@@ -1687,9 +1694,17 @@ async fn test_htlc_send_and_refund() {
     let balance_before = alice_oms.get_balance().await.unwrap();
     assert_eq!(balance_before.available_balance, value);
 
-    let (refund_tx_id, fee, refund_amount, _tx) =
+    let (refund_tx_id, fee, refund_amount, refund_tx) =
         alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
     assert_eq!(refund_amount, value - fee);
+    // The send locks the refund branch until 720 blocks past the wallet's last scanned height, which is 0 here.
+    let validator = TransactionInternalConsistencyValidator::new(false, consensus_manager, factories);
+    validator
+        .validate(&refund_tx, None, None, 719)
+        .expect_err("the refund must not validate before the lock height");
+    validator
+        .validate(&refund_tx, None, None, 720)
+        .expect("the refund must validate at the lock height");
 
     let outputs = alice_oms.fetch_outputs_by_tx_id(refund_tx_id).await.unwrap();
     let htlc = outputs

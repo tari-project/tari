@@ -3315,6 +3315,10 @@ where
             .get_unspent_output(output_hash, &self.resources.key_manager)?;
 
         let amount = db_output.wallet_output.value();
+        // The HTLC script hashes the top stack item before branching; any value that is not the pre-image takes the
+        // refund branch, so push our own spend key as the dummy.
+        let mut input = db_output.wallet_output.clone();
+        input.set_input_data(inputs!(self.resources.key_manager.get_spend_key().pub_key));
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = TransactionBuilder::new(
@@ -3332,7 +3336,7 @@ where
             .with_tx_type(TxType::HtlcAtomicSwapRefund)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_input(db_output.wallet_output.clone())?;
+            .with_input(input)?;
         // Everything left after the fee goes to a change output, and its sender offset key comes from the one
         // reservation this transaction makes.
         builder.reserve_sender_offset_keys(&[])?;
