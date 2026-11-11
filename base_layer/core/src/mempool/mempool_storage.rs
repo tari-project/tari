@@ -789,7 +789,8 @@ impl MempoolStorage {
         }
     }
 
-    /// Check if the specified transaction is stored in the Mempool, i.e. one pool entry has exactly its kernel set.
+    /// Check if the specified transaction is stored in the Mempool (see `UnconfirmedPool::has_transaction` and
+    /// `ReorgPool::has_transaction`).
     pub fn has_transaction(&self, tx: &Transaction) -> Result<TxStorageResponse, MempoolError> {
         if tx.body.kernels().is_empty() {
             return Err(MempoolError::TransactionNoKernels);

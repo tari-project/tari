@@ -47,6 +47,7 @@ use tokio::time::Instant;
 
 use crate::mempool::{
     MempoolError,
+    kernel_set,
     priority::{FeePriority, PrioritizedTransaction},
     shrink_hashmap::shrink_hashmap,
     unconfirmed_pool::UnconfirmedPoolError,
@@ -230,6 +231,8 @@ pub struct UnconfirmedPool {
     key_counter: usize,
     tx_by_key: HashMap<TransactionKey, PrioritizedTransaction>,
     txs_by_signature: HashMap<PrivateKey, Vec<TransactionKey>>,
+    /// The pool transaction with each kernel set (see [kernel_set]). Insert refuses an exact match, so there is one.
+    tx_by_kernel_set: HashMap<Vec<PrivateKey>, TransactionKey>,
     tx_by_priority: BTreeMap<FeePriority, TransactionKey>,
     txs_by_output: HashMap<HashOutput, Vec<TransactionKey>>,
     /// For each output spent by a pool transaction, the pool transactions spending it (from their stored input hashes)
@@ -710,6 +713,7 @@ impl UnconfirmedPool {
             key_counter: 0,
             tx_by_key: HashMap::new(),
             txs_by_signature: HashMap::new(),
+            tx_by_kernel_set: HashMap::new(),
             tx_by_priority: BTreeMap::new(),
             txs_by_output: HashMap::new(),
             txs_by_spent_output: HashMap::new(),
@@ -800,6 +804,9 @@ impl UnconfirmedPool {
         for kernel in prioritized_tx.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
             self.txs_by_signature.entry(sig.clone()).or_default().push(new_key);
+        }
+        if let Some(set) = kernel_set(&prioritized_tx.transaction) {
+            self.tx_by_kernel_set.insert(set, new_key);
         }
 
         for vn_key in validator_node_keys(&prioritized_tx.transaction.body) {
@@ -1088,36 +1095,41 @@ impl UnconfirmedPool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
-    /// True if a single pool transaction has exactly the kernel set of `tx`. Kernels spread over several entries, or
-    /// a subset/superset of one entry, do not count: that transaction would not produce the same outputs.
+    /// True if `tx` counts as already in the pool: a pool transaction has exactly its kernel set, or each of its
+    /// kernels is in the pool but no single pool transaction contains them all. Such a union of pool transactions can
+    /// be built by anyone from other people's transactions at no cost, so it is not validated or relayed. A subset of
+    /// a pool transaction does not count: it is stored as its own producer of its outputs.
     pub fn has_transaction(&self, tx: &Transaction) -> bool {
-        self.find_exact_kernel_set(tx).is_some()
-    }
-
-    fn find_exact_kernel_set(&self, tx: &Transaction) -> Option<TransactionKey> {
-        let kernels = tx.body.kernels();
-        // Candidates come from the shortest index list, and each is checked in O(kernels), so entries sharing kernels
-        // do not make a lookup quadratic
+        let Some(set) = kernel_set(tx) else {
+            return false;
+        };
         let mut candidates: Option<&Vec<TransactionKey>> = None;
-        for kernel in kernels {
-            let keys = self.txs_by_signature.get(kernel.excess_sig.get_signature())?;
+        for sig in &set {
+            let Some(keys) = self.txs_by_signature.get(sig) else {
+                return false;
+            };
             if candidates.is_none_or(|c| keys.len() < c.len()) {
                 candidates = Some(keys);
             }
         }
-        let sigs = kernels
-            .iter()
-            .map(|k| k.excess_sig.get_signature())
-            .collect::<HashSet<_>>();
-        if sigs.len() != kernels.len() {
-            return None;
+        if self.tx_by_kernel_set.contains_key(&set) {
+            return true;
         }
-        candidates?.iter().copied().find(|key| {
-            self.tx_by_key.get(key).is_some_and(|e| {
-                let stored = e.transaction.body.kernels();
-                stored.len() == kernels.len() && stored.iter().all(|k| sigs.contains(k.excess_sig.get_signature()))
+        let sigs = set.iter().collect::<HashSet<_>>();
+        let in_one_entry = candidates.is_some_and(|keys| {
+            keys.iter().any(|key| {
+                self.tx_by_key.get(key).is_some_and(|e| {
+                    e.transaction
+                        .body
+                        .kernels()
+                        .iter()
+                        .filter(|k| sigs.contains(k.excess_sig.get_signature()))
+                        .count() ==
+                        set.len()
+                })
             })
-        })
+        });
+        !in_one_entry
     }
 
     /// Returns the subset of provided output hashes that exist in the unconfirmed pool.
@@ -2336,6 +2348,7 @@ impl UnconfirmedPool {
     /// Remove all current mempool transactions from the UnconfirmedPoolStorage, returning that which have been removed
     pub fn drain_all_mempool_transactions(&mut self) -> Vec<Arc<Transaction>> {
         self.txs_by_signature.clear();
+        self.tx_by_kernel_set.clear();
         self.tx_by_priority.clear();
         self.txs_by_output.clear();
         self.txs_by_spent_output.clear();
@@ -2511,6 +2524,11 @@ impl UnconfirmedPool {
     fn take_transaction(&mut self, tx_key: TransactionKey) -> Option<PrioritizedTransaction> {
         let prioritized_transaction = self.tx_by_key.remove(&tx_key)?;
         self.tx_by_priority.remove(&prioritized_transaction.priority);
+        if let Some(set) = kernel_set(&prioritized_transaction.transaction) &&
+            self.tx_by_kernel_set.get(&set) == Some(&tx_key)
+        {
+            self.tx_by_kernel_set.remove(&set);
+        }
         for vn_key in validator_node_keys(&prioritized_transaction.transaction.body) {
             if self.txs_by_validator_node.get(&vn_key) == Some(&tx_key) {
                 self.txs_by_validator_node.remove(&vn_key);
@@ -2717,6 +2735,12 @@ impl UnconfirmedPool {
             self.txs_by_validator_node
                 .values()
                 .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
+            self.tx_by_kernel_set
+                .values()
+                .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
+            self.tx_by_key.iter().all(|(key, tx)| {
+                kernel_set(&tx.transaction).is_none_or(|set| self.tx_by_kernel_set.get(&set) == Some(key))
+            }) &&
             self.txs_reading_height
                 .keys()
                 .all(|tx_key| self.tx_by_key.contains_key(tx_key)) &&
@@ -2736,6 +2760,7 @@ impl UnconfirmedPool {
     pub fn compact(&mut self) {
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
+        shrink_hashmap(&mut self.tx_by_kernel_set);
         shrink_hashmap(&mut self.txs_by_output);
         shrink_hashmap(&mut self.txs_by_spent_output);
         shrink_hashmap(&mut self.txs_by_output_commitment);
@@ -6621,7 +6646,7 @@ mod test {
                 pool.insert(c.clone(), Some(vec![h_output]), &weight).unwrap();
                 assert!(pool.check_data_consistency());
 
-                let a_key = pool.find_exact_kernel_set(&a).unwrap();
+                let a_key = pool.tx_by_kernel_set[&kernel_set(&a).unwrap()];
                 assert_eq!(pool.remove_transactions_and_descendants([a_key]).unwrap(), 1);
                 assert!(pool.has_transaction(&h));
                 assert!(pool.has_transaction(&c));
@@ -6665,9 +6690,89 @@ mod test {
             assert!(!pool.has_transaction(&with_kernels(0, vec![shared.clone()])));
             let mut superset = target.body.kernels().clone();
             superset.push(entries[151].body.kernels()[1].clone());
-            assert!(!pool.has_transaction(&with_kernels(0, superset)));
+            // A union of pool transactions counts as stored
+            assert!(pool.has_transaction(&with_kernels(0, superset)));
             // A query repeating a kernel does not match an entry with that kernel and another one
             assert!(!pool.has_transaction(&with_kernels(0, vec![shared.clone(), shared])));
+        }
+
+        #[test]
+        fn a_union_of_pool_transactions_counts_as_stored() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = pool();
+            let t1 = synthetic_tx(&base, 0, 5);
+            let t2 = synthetic_tx(&base, 1, 5);
+            pool.insert(t1.clone(), None, &weight).unwrap();
+            pool.insert(t2.clone(), None, &weight).unwrap();
+
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let union = Arc::new((*t1).clone() + (*t2).clone());
+            assert!(pool.has_transaction(&union));
+            pool.insert(union, None, &weight).unwrap();
+            assert_eq!(pool.tx_by_key.len(), 2);
+
+            // With a kernel that is not in the pool, it is a new transaction
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let with_new_kernel = Arc::new((*t1).clone() + (*t2).clone() + (*synthetic_tx(&base, 2, 5)).clone());
+            assert!(!pool.has_transaction(&with_new_kernel));
+            pool.insert(with_new_kernel, None, &weight).unwrap();
+            assert_eq!(pool.tx_by_key.len(), 3);
+            assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn the_kernel_set_index_follows_every_removal() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                storage_capacity: 3,
+                weight_tx_skip_count: 3,
+                min_fee: 0,
+            });
+            for n in 0..3 {
+                pool.insert(synthetic_tx(&base, n, 5), None, &weight).unwrap();
+            }
+            let assert_index_consistent = |pool: &UnconfirmedPool| {
+                assert!(pool.check_data_consistency());
+                assert_eq!(pool.tx_by_kernel_set.len(), pool.tx_by_key.len());
+            };
+
+            // Eviction of the lowest priority transaction from a full pool
+            let high_fee = synthetic_tx(&base, 3, 50);
+            pool.insert(high_fee.clone(), None, &weight).unwrap();
+            assert_eq!(pool.tx_by_key.len(), 3);
+            assert_index_consistent(&pool);
+
+            let high_fee_key = pool.tx_by_kernel_set[&kernel_set(&high_fee).unwrap()];
+            pool.remove_transactions_and_descendants([high_fee_key]).unwrap();
+            assert!(!pool.has_transaction(&high_fee));
+            assert_index_consistent(&pool);
+
+            let published = pool.snapshot().remove(0);
+            let block = Block::new(
+                tari_node_components::blocks::BlockHeader::new(0),
+                published.body.clone(),
+            );
+            pool.remove_published_and_discard_deprecated_transactions(&block)
+                .unwrap();
+            assert!(!pool.has_transaction(&published));
+            assert_index_consistent(&pool);
+
+            // A removed transaction can be stored again
+            pool.insert(published.clone(), None, &weight).unwrap();
+            assert!(pool.has_transaction(&published));
+            assert_index_consistent(&pool);
+
+            pool.drain_all_mempool_transactions();
+            assert!(pool.tx_by_kernel_set.is_empty());
+            assert_index_consistent(&pool);
         }
     }
 }

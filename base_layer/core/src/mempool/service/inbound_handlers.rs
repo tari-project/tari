@@ -442,6 +442,34 @@ mod test {
         assert_eq!(excluded, vec![source]);
     }
 
+    #[tokio::test]
+    async fn a_union_of_pool_transactions_is_not_relayed() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let key_manager = KeyManager::new_random().unwrap();
+        let [t1, t2] = [(); 2].map(|_| {
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0
+        });
+        #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+        let mut union = t1.clone() + t2.clone();
+        union.body.sort();
+
+        for tx in [t1, t2, union] {
+            let body = proto::types::Transaction::try_from(Arc::new(tx))
+                .unwrap()
+                .encode_to_vec();
+            handlers
+                .handle_transaction_message(create_peer_message(TariMessageType::NewTransaction, body))
+                .await
+                .unwrap();
+        }
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+        assert!(propagated.try_recv().is_ok());
+        assert!(propagated.try_recv().is_ok());
+        assert!(propagated.try_recv().is_err());
+    }
+
     mod peer_bans {
         use std::time::Duration;
 
