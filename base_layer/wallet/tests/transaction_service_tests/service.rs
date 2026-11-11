@@ -38,6 +38,8 @@ use minotari_wallet::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
+            OutputSource,
+            OutputStatus,
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
             sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
@@ -1490,8 +1492,6 @@ async fn recover_stealth_one_sided_transaction() {
     assert!(recovered_outputs_2.is_empty());
 }
 
-// test is broken
-#[ignore]
 #[tokio::test]
 async fn test_htlc_send_and_claim() {
     let network = Network::LocalNet;
@@ -1598,12 +1598,23 @@ async fn test_htlc_send_and_claim() {
         }
     }
     let hash = output.hash();
-    bob_ts_interface.base_node_rpc_mock_state.set_utxos(vec![output]);
+    bob_ts_interface.base_node_mock.set_utxos(vec![output]).await;
     let (tx_id_htlc, _htlc_fee, htlc_amount, tx) = bob_ts_interface
         .output_manager_service_handle
         .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
         .await
         .unwrap();
+    // The claimed HTLC output was never in Bob's output DB; the claim records only its change.
+    let claim_outputs = bob_ts_interface
+        .output_manager_service_handle
+        .fetch_outputs_by_tx_id(tx_id_htlc)
+        .await
+        .unwrap();
+    let [claim_change] = claim_outputs.as_slice() else {
+        panic!("expected only the claim's change output, got {claim_outputs:?}");
+    };
+    assert_eq!(claim_change.source, OutputSource::AtomicSwap);
+    assert_eq!(claim_change.wallet_output.value(), htlc_amount);
 
     bob_ts_interface
         .transaction_service_handle
@@ -1618,6 +1629,85 @@ async fn test_htlc_send_and_claim() {
             .unwrap()
             .pending_incoming_balance,
         htlc_amount
+    );
+}
+
+#[tokio::test]
+async fn test_htlc_send_and_refund() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager,
+        factories,
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+
+    let uo1 = make_input(
+        &mut rand::rng(),
+        25000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let value = 10000.into();
+    let (_tx_id, _pre_image, output) = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address,
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("Alice sending HTLC transaction");
+
+    // The HTLC output is mined and unspent, and so spendable by the refund.
+    let hash = output.hash();
+    alice_db.mark_outputs_as_unspent(vec![(hash, true)]).unwrap();
+    let balance_before = alice_oms.get_balance().await.unwrap();
+    assert_eq!(balance_before.available_balance, value);
+
+    let (refund_tx_id, fee, refund_amount, _tx) =
+        alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
+    assert_eq!(refund_amount, value - fee);
+
+    let outputs = alice_oms.fetch_outputs_by_tx_id(refund_tx_id).await.unwrap();
+    let htlc = outputs
+        .iter()
+        .find(|o| o.hash == hash)
+        .expect("HTLC output is spent by the refund");
+    assert_eq!(htlc.status, OutputStatus::EncumberedToBeSpent);
+    let change = outputs.iter().find(|o| o.hash != hash).expect("refund change output");
+    assert_eq!(change.source, OutputSource::HtlcRefund);
+    assert_eq!(change.payment_id.get_type(), TxType::HtlcAtomicSwapRefund);
+    assert_eq!(change.status, OutputStatus::EncumberedToBeReceived);
+    assert_eq!(change.wallet_output.value(), refund_amount);
+
+    let balance_after = alice_oms.get_balance().await.unwrap();
+    assert_eq!(balance_after.available_balance, MicroMinotari::zero());
+    assert_eq!(
+        balance_after.pending_incoming_balance,
+        balance_before.pending_incoming_balance + refund_amount
     );
 }
 
