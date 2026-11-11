@@ -789,36 +789,18 @@ impl MempoolStorage {
         }
     }
 
-    /// Check if the specified transaction is stored in the Mempool.
+    /// Check if the specified transaction is stored in the Mempool, i.e. one pool entry has exactly its kernel set.
     pub fn has_transaction(&self, tx: &Transaction) -> Result<TxStorageResponse, MempoolError> {
-        tx.body
-            .kernels()
-            .iter()
-            .fold(None, |stored, kernel| {
-                if stored.is_none() {
-                    return Some(self.has_tx_with_excess_sig(&kernel.excess_sig));
-                }
-                let stored = stored.unwrap();
-                match (self.has_tx_with_excess_sig(&kernel.excess_sig), stored) {
-                    // All (so far) in unconfirmed pool
-                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::UnconfirmedPool) => {
-                        Some(TxStorageResponse::UnconfirmedPool)
-                    },
-                    // Some kernels from the transaction have already been processed, and others exist in the
-                    // unconfirmed pool, therefore this specific transaction has not been stored (already spent)
-                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::ReorgPool) |
-                    (TxStorageResponse::ReorgPool, TxStorageResponse::UnconfirmedPool) => {
-                        Some(TxStorageResponse::NotStoredAlreadySpent)
-                    },
-                    // All (so far) in reorg pool
-                    (TxStorageResponse::ReorgPool, TxStorageResponse::ReorgPool) => Some(TxStorageResponse::ReorgPool),
-                    // Not stored
-                    (TxStorageResponse::UnconfirmedPool, other) |
-                    (TxStorageResponse::ReorgPool, other) |
-                    (other, _) => Some(other),
-                }
-            })
-            .ok_or(MempoolError::TransactionNoKernels)
+        if tx.body.kernels().is_empty() {
+            return Err(MempoolError::TransactionNoKernels);
+        }
+        if self.unconfirmed_pool.has_transaction(tx) {
+            Ok(TxStorageResponse::UnconfirmedPool)
+        } else if self.reorg_pool.has_transaction(tx) {
+            Ok(TxStorageResponse::ReorgPool)
+        } else {
+            Ok(TxStorageResponse::NotStored(None))
+        }
     }
 
     /// Gathers and returns the stats of the Mempool.

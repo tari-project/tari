@@ -760,12 +760,7 @@ impl UnconfirmedPool {
         transaction_weighting: &TransactionWeight,
         height_validation: HeightValidation,
     ) -> Result<(), UnconfirmedPoolError> {
-        if tx
-            .body
-            .kernels()
-            .iter()
-            .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
-        {
+        if self.has_transaction(&tx) {
             return Ok(());
         }
 
@@ -833,12 +828,7 @@ impl UnconfirmedPool {
     /// them individually after the failed block would put both back, failing every later template the same way. Empty
     /// if `tx` itself is already in the pool (`insert` deduplicates it).
     pub fn validator_node_conflict_holders(&self, tx: &Transaction) -> Vec<TransactionKey> {
-        if tx
-            .body
-            .kernels()
-            .iter()
-            .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
-        {
+        if self.has_transaction(tx) {
             return Vec::new();
         }
         let mut holders = validator_node_keys(&tx.body)
@@ -1096,6 +1086,31 @@ impl UnconfirmedPool {
     /// Check if a transaction is available in the UnconfirmedPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
+    }
+
+    /// True if a single pool transaction has exactly the kernel set of `tx`. Kernels spread over several entries, or
+    /// a subset/superset of one entry, do not count: that transaction would not produce the same outputs.
+    pub fn has_transaction(&self, tx: &Transaction) -> bool {
+        self.find_exact_kernel_set(tx).is_some()
+    }
+
+    fn find_exact_kernel_set(&self, tx: &Transaction) -> Option<TransactionKey> {
+        let kernels = tx.body.kernels();
+        let (first, rest) = kernels.split_first()?;
+        self.txs_by_signature
+            .get(first.excess_sig.get_signature())?
+            .iter()
+            .copied()
+            .find(|key| {
+                self.tx_by_key
+                    .get(key)
+                    .is_some_and(|e| e.transaction.body.kernels().len() == kernels.len()) &&
+                    rest.iter().all(|k| {
+                        self.txs_by_signature
+                            .get(k.excess_sig.get_signature())
+                            .is_some_and(|keys| keys.contains(key))
+                    })
+            })
     }
 
     /// Returns the subset of provided output hashes that exist in the unconfirmed pool.
@@ -6565,6 +6580,47 @@ mod test {
             assert_eq!(pool.len(), 1);
             assert!(pool.has_tx_with_excess_sig(&unrelated.body.kernels()[0].excess_sig));
             assert!(pool.check_data_consistency());
+        }
+
+        #[test]
+        fn only_a_transaction_with_the_same_kernel_set_is_a_duplicate() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let base = tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .unwrap()
+                .0;
+            let weight = TransactionWeight::latest();
+            let h = synthetic_tx(&base, 0, 5);
+            let x = synthetic_tx(&base, 1, 5);
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let mut a = (*h).clone() + (*x).clone();
+            a.body.sort();
+            let a = Arc::new(a);
+            let c = child_of(&base, &h, 2);
+            let h_output = h.body.outputs()[0].hash();
+
+            for (first, second) in [(&a, &h), (&h, &a)] {
+                let mut pool = pool();
+                pool.insert(first.clone(), None, &weight).unwrap();
+                assert!(pool.has_transaction(first));
+                assert!(!pool.has_transaction(second));
+                assert!(!pool.has_transaction(&x));
+                pool.insert(first.clone(), None, &weight).unwrap();
+                assert_eq!(pool.tx_by_key.len(), 1);
+
+                pool.insert(second.clone(), None, &weight).unwrap();
+                assert_eq!(pool.tx_by_key.len(), 2);
+                assert!(pool.has_transaction(second));
+                assert_eq!(pool.txs_by_output[&h_output].len(), 2);
+                pool.insert(c.clone(), Some(vec![h_output]), &weight).unwrap();
+                assert!(pool.check_data_consistency());
+
+                let a_key = pool.find_exact_kernel_set(&a).unwrap();
+                assert_eq!(pool.remove_transactions_and_descendants([a_key]).unwrap(), 1);
+                assert!(pool.has_transaction(&h));
+                assert!(pool.has_transaction(&c));
+                assert!(!pool.has_transaction(&a));
+                assert!(pool.check_data_consistency());
+            }
         }
     }
 }

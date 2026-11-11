@@ -78,12 +78,7 @@ impl ReorgPool {
     /// Insert a new transaction into the ReorgPool. Published transactions will be discarded once they are
     /// `config.expiry_height` blocks old.
     fn insert(&mut self, height: u64, tx: Arc<Transaction>) {
-        if tx
-            .body
-            .kernels()
-            .iter()
-            .all(|k| self.txs_by_signature.contains_key(k.excess_sig.get_signature()))
-        {
+        if self.has_transaction(&tx) {
             let excess_hex = tx
                 .first_kernel_excess_sig()
                 .map(|s| s.get_signature().to_hex())
@@ -166,6 +161,30 @@ impl ReorgPool {
     /// Check if a transaction is stored in the ReorgPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
         self.txs_by_signature.contains_key(excess_sig.get_signature())
+    }
+
+    /// True if a single reorg pool transaction has exactly the kernel set of `tx`
+    pub fn has_transaction(&self, tx: &Transaction) -> bool {
+        self.find_exact_kernel_set(tx).is_some()
+    }
+
+    fn find_exact_kernel_set(&self, tx: &Transaction) -> Option<TransactionId> {
+        let kernels = tx.body.kernels();
+        let (first, rest) = kernels.split_first()?;
+        self.txs_by_signature
+            .get(first.excess_sig.get_signature())?
+            .iter()
+            .copied()
+            .find(|key| {
+                self.tx_by_key
+                    .get(key)
+                    .is_some_and(|e| e.body.kernels().len() == kernels.len()) &&
+                    rest.iter().all(|k| {
+                        self.txs_by_signature
+                            .get(k.excess_sig.get_signature())
+                            .is_some_and(|keys| keys.contains(key))
+                    })
+            })
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions
@@ -508,5 +527,33 @@ mod test {
         assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
+    }
+
+    #[test]
+    fn only_a_transaction_with_the_same_kernel_set_is_a_duplicate() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let h = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .unwrap()
+            .0;
+        let x = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .unwrap()
+            .0;
+        #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+        let mut a = h.clone() + x.clone();
+        a.body.sort();
+
+        for (first, second) in [(&a, &h), (&h, &a)] {
+            let mut reorg_pool = ReorgPool::new(ReorgPoolConfig { expiry_height: 10 });
+            reorg_pool.insert(1, Arc::new(first.clone()));
+            assert!(reorg_pool.has_transaction(first));
+            assert!(!reorg_pool.has_transaction(second));
+            assert!(!reorg_pool.has_transaction(&x));
+            reorg_pool.insert(1, Arc::new(first.clone()));
+            assert_eq!(reorg_pool.len(), 1);
+
+            reorg_pool.insert(1, Arc::new(second.clone()));
+            assert_eq!(reorg_pool.len(), 2);
+            assert!(reorg_pool.has_transaction(second));
+        }
     }
 }

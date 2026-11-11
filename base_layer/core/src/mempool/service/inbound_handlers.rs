@@ -445,6 +445,7 @@ mod test {
     mod peer_bans {
         use std::time::Duration;
 
+        use tari_common::configuration::Network;
         use tari_common_types::{
             chain_metadata::ChainMetadata,
             types::{CompressedPublicKey, PrivateKey},
@@ -454,14 +455,18 @@ mod test {
         use tari_crypto::keys::SecretKey;
         use tari_script::script;
         use tari_transaction_components::{
+            consensus::ConsensusConstantsBuilder,
             crypto_factories::CryptoFactories,
-            test_helpers::{create_kernel_only_transaction, create_signature},
+            tari_amount::T,
+            test_helpers::{create_kernel_only_transaction, create_signature, spend_utxos},
             transaction_components::{KernelFeatures, SpentOutput, TransactionError, covenants::CovenantError},
+            txn_schema,
             validation::AggregatedBodyValidationError,
         };
 
         use super::*;
         use crate::{
+            consensus::BaseNodeConsensusManager,
             mempool::test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
             test_helpers::blockchain::{TestBlockchain, create_test_blockchain_db},
             validation::{TransactionValidator, ValidationError, transaction::TransactionFullValidator},
@@ -925,6 +930,94 @@ mod test {
 
             assert!(bans.take().await.is_empty());
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        }
+
+        /// `h` is honest, `a` aggregates `h` with a transaction whose input script fails once a block above height 5
+        /// is mined, and `c` spends an output of `h`. `h` is stored and relayed whichever of `h` and `a` arrives first,
+        /// so `h` and `c` survive the eviction of `a`.
+        async fn honest_transaction_survives_eviction_of_an_aggregate(h_first: bool) {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(
+                    ConsensusConstantsBuilder::new(Network::LocalNet)
+                        .with_coinbase_lockheight(0)
+                        .build(),
+                )
+                .build()
+                .unwrap();
+            let mut blockchain = TestBlockchain::create(rules.clone());
+            let validator =
+                TransactionFullValidator::new(CryptoFactories::default(), true, blockchain.db().clone(), rules);
+            let (mut handlers, mempool, mut propagated, _bans) = create_handlers_with_bans(Box::new(validator));
+
+            let (block, coinbase_1) = blockchain.add_next_tip(block_spec!("1")).unwrap();
+            mempool.process_published_block(block.to_arc_block()).await.unwrap();
+            let (block, coinbase_2) = blockchain.add_next_tip(block_spec!("2")).unwrap();
+            mempool.process_published_block(block.to_arc_block()).await.unwrap();
+            let mut schema = txn_schema!(from: vec![coinbase_2], to: vec![T]);
+            schema.script = script!(CheckHeight(5) LeZero IfThen Nop Else Return EndIf).unwrap();
+            let (setup, setup_outputs) = spend_utxos(schema, &blockchain.km);
+            let (block, _) = blockchain
+                .add_next_tip(block_spec!("3", transactions: vec![setup]))
+                .unwrap();
+            mempool.process_published_block(block.to_arc_block()).await.unwrap();
+
+            let (h, h_outputs) = spend_utxos(txn_schema!(from: vec![coinbase_1], to: vec![T]), &blockchain.km);
+            let (x, _) = spend_utxos(
+                txn_schema!(from: vec![setup_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
+                &blockchain.km,
+            );
+            let (c, _) = spend_utxos(
+                txn_schema!(from: vec![h_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
+                &blockchain.km,
+            );
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let mut a = h.clone() + x;
+            a.body.sort();
+            let (h, a, c) = (Arc::new(h), Arc::new(a), Arc::new(c));
+
+            let arrivals = if h_first { [&h, &a, &c] } else { [&a, &h, &c] };
+            for tx in arrivals {
+                handlers
+                    .handle_transaction_message(Arc::new(transaction_message((**tx).clone())))
+                    .await
+                    .unwrap();
+            }
+            let mut relayed = Vec::new();
+            while let Ok((tx, _)) = propagated.try_recv() {
+                relayed.push(tx);
+            }
+            assert!(relayed.contains(&h));
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
+
+            for name in ["4", "5"] {
+                let (block, _) = blockchain.add_next_tip(block_spec!(name)).unwrap();
+                mempool.process_published_block(block.to_arc_block()).await.unwrap();
+            }
+            for tx in [&h, &c] {
+                assert_eq!(
+                    mempool.has_transaction(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+            assert_eq!(
+                mempool.has_transaction(a.clone()).await.unwrap(),
+                TxStorageResponse::NotStored(None)
+            );
+
+            let (_, tip) = blockchain.get_tip_block();
+            let template = mempool.retrieve(u64::MAX, 6, *tip.hash()).await.unwrap();
+            assert!(template.contains(&h));
+            assert!(template.contains(&c));
+        }
+
+        #[tokio::test]
+        async fn honest_transaction_arriving_after_an_aggregate_is_stored() {
+            honest_transaction_survives_eviction_of_an_aggregate(false).await;
+        }
+
+        #[tokio::test]
+        async fn honest_transaction_arriving_before_an_aggregate_is_stored() {
+            honest_transaction_survives_eviction_of_an_aggregate(true).await;
         }
     }
 
