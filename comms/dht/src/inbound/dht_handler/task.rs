@@ -72,6 +72,34 @@ fn drop_capped_join(source: &NodeId, origin: &CommsPublicKey) {
     join_received("capped");
 }
 
+/// Drops a Discovery for a new peer that its source had no budget for
+fn drop_capped_discovery(source: &NodeId, origin: &CommsPublicKey) {
+    debug!(
+        target: LOG_TARGET,
+        "Source peer '{}' has relayed its share of new peers. Dropping the Discovery from '{origin}'.",
+        source.short_str()
+    );
+    discovery_received("capped");
+}
+
+/// Counts received Discoveries by what became of them
+fn discovery_received(outcome: &'static str) {
+    #[cfg(feature = "metrics")]
+    {
+        static METER: std::sync::LazyLock<tari_metrics::IntCounterVec> = std::sync::LazyLock::new(|| {
+            tari_metrics::register_int_counter_vec(
+                "dht_discovery_received_total",
+                "Discovery messages received, by outcome",
+                &["outcome"],
+            )
+            .unwrap()
+        });
+        METER.with_label_values(&[outcome]).inc();
+    }
+    #[cfg(not(feature = "metrics"))]
+    let _ = outcome;
+}
+
 /// Counts received Joins by what became of them
 fn join_received(outcome: &'static str) {
     #[cfg(feature = "metrics")]
@@ -607,17 +635,43 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let peer_validator = PeerValidator::new(&self.config);
         let maybe_existing_peer = self.peer_manager.find_by_public_key(&new_peer.public_key).await?;
+        let is_new_peer = maybe_existing_peer.is_none();
+        // Discovery shares the Join budget of new peers per direct source; a capped source costs no signature check
+        if is_new_peer &&
+            !self.source_budget.lock().is_ok_and(|budget| {
+                budget.has_headroom(
+                    &message.source_peer.node_id,
+                    Instant::now(),
+                    &self.config.network_discovery,
+                )
+            })
+        {
+            drop_capped_discovery(&message.source_peer.node_id, authenticated_pk);
+            return Ok(());
+        }
+        let validated = peer_validator.validate_peer(new_peer, maybe_existing_peer);
+        if validated.is_err() {
+            discovery_received("invalid");
+        }
         let Some(peer) = self
-            .ban_on_offence(
-                authenticated_pk,
-                peer_validator
-                    .validate_peer(new_peer, maybe_existing_peer)
-                    .map_err(Into::into),
-            )
+            .ban_on_offence(authenticated_pk, validated.map_err(Into::into))
             .await?
         else {
             return Ok(());
         };
+        if is_new_peer &&
+            !self.source_budget.lock().is_ok_and(|mut budget| {
+                budget.try_charge(
+                    &message.source_peer.node_id,
+                    &peer.node_id,
+                    Instant::now(),
+                    &self.config.network_discovery,
+                )
+            })
+        {
+            drop_capped_discovery(&message.source_peer.node_id, authenticated_pk);
+            return Ok(());
+        }
         self.peer_manager.add_or_update_peer(peer).await?;
         let origin_peer = self
             .peer_manager
@@ -631,11 +685,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
                 target: LOG_TARGET,
                 "Received Discovery request for banned peer '{node_id}'. Not propagating further."
             );
+            discovery_received("banned_origin");
             return Ok(());
         }
 
         // Send the origin the current nodes latest contact info
         self.send_discovery_response(origin_peer.public_key, nonce).await?;
+        discovery_received("accepted");
 
         Ok(())
     }
@@ -1235,5 +1291,103 @@ mod test {
         assert!(received.bans.is_empty());
         assert_eq!(received.outbound_sends, 0);
         assert!(!received.peer_manager.exists(signer.public_key()).await.unwrap());
+    }
+
+    fn relayed_discovery(relay: &NodeIdentity, signer: &NodeIdentity) -> DecryptedDhtMessage {
+        make_message(relay, signer, DhtMessageType::Discovery, discovery_from(signer))
+    }
+
+    fn fresh_identities(count: usize) -> Vec<Arc<NodeIdentity>> {
+        (0..count)
+            .map(|i| identity_with_addresses(&[format!("/ip4/23.23.{i}.1/tcp/18189").as_str()]))
+            .collect()
+    }
+
+    /// One relay delivering Discoveries from fresh identities stores and answers only its budget of new peers
+    #[tokio::test]
+    async fn one_source_relaying_fresh_discoveries_is_capped() {
+        let handler = Handler::new(DhtConfig::default_local_test());
+        let relay = make_node_identity();
+        let max = handler.config.network_discovery.max_stored_per_source;
+
+        let mut answered = Vec::new();
+        for signer in fresh_identities(max + 5) {
+            let received = handler.process(relayed_discovery(&relay, &signer)).await;
+            assert!(received.result.is_ok());
+            assert!(received.bans.is_empty());
+            answered.push(received.outbound_sends);
+        }
+
+        assert_eq!(handler.peer_manager.count().await, max);
+        assert!(answered.iter().take(max).all(|n| *n == 1));
+        assert!(answered.iter().skip(max).all(|n| *n == 0));
+    }
+
+    /// A Discovery from a known peer is stored and answered even once its relay is capped
+    #[tokio::test]
+    async fn a_discovery_from_a_known_peer_is_not_capped() {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 1;
+        let handler = Handler::new(config);
+        let relay = make_node_identity();
+        let known = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        let fresh = identity_with_addresses(&["/ip4/23.23.23.2/tcp/18189"]);
+
+        assert_eq!(
+            handler.process(relayed_discovery(&relay, &known)).await.outbound_sends,
+            1
+        );
+        assert_eq!(
+            handler.process(relayed_discovery(&relay, &fresh)).await.outbound_sends,
+            0
+        );
+        next_second().await;
+        known.sign();
+        let received = handler.process(relayed_discovery(&relay, &known)).await;
+        assert!(received.bans.is_empty());
+        assert_eq!(received.outbound_sends, 1);
+    }
+
+    /// Joins and Discoveries relayed by one source share one budget of new peers
+    #[tokio::test]
+    async fn joins_and_discoveries_share_the_source_budget() {
+        let handler = Handler::new(DhtConfig::default_local_test());
+        let relay = make_node_identity();
+        let max = handler.config.network_discovery.max_stored_per_source;
+
+        for (i, signer) in fresh_identities(max + 5).iter().enumerate() {
+            let message = if i % 2 == 0 {
+                join_from(&relay, signer)
+            } else {
+                relayed_discovery(&relay, signer)
+            };
+            assert!(handler.process(message).await.result.is_ok());
+        }
+
+        assert_eq!(handler.peer_manager.count().await, max);
+    }
+
+    /// A Discovery whose claim fails validation is not charged to its relay
+    #[tokio::test]
+    async fn an_invalid_discovery_is_not_charged() {
+        let mut config = DhtConfig::default_local_test();
+        config.network_discovery.max_stored_per_source = 1;
+        let handler = Handler::new(config);
+        let relay = make_node_identity();
+
+        let signer = identity_with_addresses(&["/ip4/23.23.23.1/tcp/18189"]);
+        let mut discovery = discovery_from(&signer);
+        discovery.addresses = vec!["/ip4/23.23.23.2/tcp/18189".parse::<Multiaddr>().unwrap().to_vec()];
+        let received = handler
+            .process(make_message(&relay, &signer, DhtMessageType::Discovery, discovery))
+            .await;
+        assert_eq!(received.outbound_sends, 0);
+        assert!(!received.peer_manager.exists(signer.public_key()).await.unwrap());
+
+        let valid = identity_with_addresses(&["/ip4/23.23.23.3/tcp/18189"]);
+        assert_eq!(
+            handler.process(relayed_discovery(&relay, &valid)).await.outbound_sends,
+            1
+        );
     }
 }
