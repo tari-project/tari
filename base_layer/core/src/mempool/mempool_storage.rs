@@ -59,6 +59,7 @@ use crate::{
         unconfirmed_pool::{
             HeightValidation,
             MAX_BLOCK_TEMPLATE_BODY_BYTES,
+            MAX_SPENDS_PER_OUTPUT,
             RetrieveResults,
             TemplateFilter,
             TransactionKey,
@@ -418,6 +419,17 @@ impl MempoolStorage {
             debug!(target: LOG_TARGET, "Tx: ({tx_id}) is already in the unconfirmed pool");
             return Ok(TxStorageResponse::UnconfirmedPool);
         }
+        // Checked before any validator node slot holder is replaced, so that a rejected transaction removes nothing
+        let Some(victims) = self.unconfirmed_pool.conflict_set_victims(&tx) else {
+            debug!(
+                target: LOG_TARGET,
+                "Tx: ({tx_id}) spends an output that {MAX_SPENDS_PER_OUTPUT} pool transactions already spend, and is not \
+                 a strict kernel subset of each of them, rejecting"
+            );
+            return Ok(TxStorageResponse::NotStored(Some(format!(
+                "{MAX_SPENDS_PER_OUTPUT} mempool transactions already spend one of its inputs"
+            ))));
+        };
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
         // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
@@ -454,6 +466,9 @@ impl MempoolStorage {
                 }
             }
         }
+        // Evicting first also keeps a full pool from evicting its lowest priority transaction for `tx`. Descendants are
+        // kept: their inputs may also be produced by the transaction `tx` is a subset of.
+        self.unconfirmed_pool.remove_transactions(victims)?;
         self.unconfirmed_pool
             .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?;
         debug!(
@@ -1214,6 +1229,7 @@ mod test {
         key_manager::KeyManager,
         transaction_components::{
             SpentOutput,
+            TransactionKernel,
             WalletOutput,
             covenants::{Covenant, CovenantError},
         },
@@ -1996,6 +2012,116 @@ mod test {
             vec![Err(ValidationError::UnknownInputs(vec![parent_output]))].into();
         let response = MempoolStorage::insert_unlocked(&storage, child).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        assert_eq!(pool_len(&storage), 2);
+    }
+
+    /// A copy of `tx` with the given kernels
+    fn with_kernels(tx: &Transaction, kernels: Vec<TransactionKernel>) -> Arc<Transaction> {
+        Arc::new(Transaction::new(
+            tx.body.inputs().clone(),
+            tx.body.outputs().clone(),
+            kernels,
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ))
+    }
+
+    /// `n` fresh kernels
+    fn fresh_kernels(n: usize, key_manager: &KeyManager) -> Vec<TransactionKernel> {
+        (0..n)
+            .map(|_| create_tx(key_manager).body.kernels()[0].clone())
+            .collect()
+    }
+
+    #[test]
+    fn copies_of_a_spend_padded_with_other_kernels_are_bounded_and_do_not_block_it() {
+        let key_manager = KeyManager::new_random().unwrap();
+        for honest_first in [true, false] {
+            let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+            let storage = create_storage(&validator);
+            let honest = create_tx(&key_manager);
+            let mut arrivals = fresh_kernels(2 * MAX_SPENDS_PER_OUTPUT, &key_manager)
+                .into_iter()
+                .map(|kernel| with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat()))
+                .collect::<Vec<_>>();
+            arrivals.insert(if honest_first { 0 } else { arrivals.len() }, honest.clone());
+            let mut responses = arrivals
+                .iter()
+                .map(|tx| storage.write().unwrap().insert(tx.clone(), None).unwrap())
+                .collect::<Vec<_>>();
+
+            assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT, "{honest_first}");
+            assert_eq!(
+                storage.read().unwrap().has_transaction(&honest).unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            // The padded copies are stored until the cap is reached and rejected after it; the honest transaction is
+            // always stored
+            let honest_response = if honest_first {
+                responses.remove(0)
+            } else {
+                responses.pop().unwrap()
+            };
+            assert_eq!(honest_response, TxStorageResponse::UnconfirmedPool, "{honest_first}");
+            let stored = MAX_SPENDS_PER_OUTPUT - usize::from(honest_first);
+            assert!(responses[..stored].iter().all(TxStorageResponse::is_stored));
+            assert!(
+                responses[stored..]
+                    .iter()
+                    .all(|response| matches!(response, TxStorageResponse::NotStored(Some(_)))),
+                "{honest_first}"
+            );
+            assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+        }
+    }
+
+    #[test]
+    fn the_strict_subsets_of_an_aggregate_are_bounded_and_do_not_block_the_honest_spend() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        let extra = fresh_kernels(4, &key_manager);
+        // Every spend of the honest input carries the honest kernel: the aggregate with all extra kernels, then its
+        // strict subsets, largest first, and the honest transaction last
+        let mut masks = (0..1u32 << extra.len()).collect::<Vec<_>>();
+        masks.sort_by_key(|mask| std::cmp::Reverse(mask.count_ones()));
+        for mask in masks {
+            let mut kernels = honest.body.kernels().clone();
+            kernels.extend(
+                (0..extra.len())
+                    .filter(|i| mask & (1 << i) != 0)
+                    .map(|i| extra[i].clone()),
+            );
+            let response = storage
+                .write()
+                .unwrap()
+                .insert(with_kernels(&honest, kernels), None)
+                .unwrap();
+            assert!(pool_len(&storage) <= MAX_SPENDS_PER_OUTPUT);
+            if mask == 0 {
+                assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+            }
+        }
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+        assert_eq!(
+            storage.read().unwrap().has_transaction(&honest).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    #[test]
+    fn conflicting_spends_with_disjoint_kernels_are_both_stored_under_the_cap() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let first = create_tx(&key_manager);
+        let second = with_kernels(&first, fresh_kernels(1, &key_manager));
+        for tx in [&first, &second] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
         assert_eq!(pool_len(&storage), 2);
     }
 

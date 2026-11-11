@@ -131,6 +131,11 @@ pub const MAX_LINKS_PER_CANDIDATE: usize =
 /// this the branch is left out instead.
 pub const MAX_EXTRA_PRODUCERS_PER_LOOKUP: usize = 8;
 
+/// The most pool transactions that may spend one output (see [UnconfirmedPool::conflict_set_victims]). Only one of them
+/// can ever be mined; this bounds the pool capacity and lookup work that copies of a transaction padded with other
+/// kernels can take. Mempool policy, not a consensus rule.
+pub const MAX_SPENDS_PER_OUTPUT: usize = 8;
+
 /// The outcome of a branch's internal-duplicate check
 enum DuplicateCheck {
     Clean,
@@ -843,6 +848,44 @@ impl UnconfirmedPool {
         holders.sort_unstable();
         holders.dedup();
         holders
+    }
+
+    /// The pool transactions to evict so that `tx` can be stored, or None if it may not be stored: at most
+    /// [MAX_SPENDS_PER_OUTPUT] pool transactions may spend one output. Where that many already spend an output `tx`
+    /// spends, `tx` is stored only if its kernel set is a strict subset of each of theirs, and then replaces the lowest
+    /// priority of them. Any valid spend of an output carries its owner's kernels, so the owner's transaction is a
+    /// strict subset of every copy of it padded with other kernels and is always stored, and each such replacement
+    /// shrinks the kernels the spenders share. The caller checks that `tx` is not already in the pool.
+    pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
+        let sigs = tx
+            .body
+            .kernels()
+            .iter()
+            .map(|k| k.excess_sig.get_signature())
+            .collect::<HashSet<_>>();
+        let mut victims = Vec::new();
+        for input in tx.body.inputs() {
+            let Some(spenders) = self.txs_by_spent_output.get(&input.output_hash()) else {
+                continue;
+            };
+            // A victim already chosen for another output may spend this one too
+            if spenders.len() < MAX_SPENDS_PER_OUTPUT || spenders.iter().any(|key| victims.contains(key)) {
+                continue;
+            }
+            let mut lowest: Option<&PrioritizedTransaction> = None;
+            for key in spenders {
+                let spender = self.tx_by_key.get(key)?;
+                let theirs = spender.kernel_signatures.iter().collect::<HashSet<_>>();
+                if theirs.len() <= sigs.len() || !sigs.iter().all(|sig| theirs.contains(sig)) {
+                    return None;
+                }
+                if lowest.is_none_or(|lowest| spender.priority < lowest.priority) {
+                    lowest = Some(spender);
+                }
+            }
+            victims.extend(lowest.map(|spender| spender.key));
+        }
+        Some(victims)
     }
 
     #[cfg(test)]

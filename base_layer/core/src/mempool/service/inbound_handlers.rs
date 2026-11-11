@@ -495,7 +495,10 @@ mod test {
         use super::*;
         use crate::{
             consensus::BaseNodeConsensusManager,
-            mempool::test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
+            mempool::{
+                test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
+                unconfirmed_pool::MAX_SPENDS_PER_OUTPUT,
+            },
             test_helpers::blockchain::{TestBlockchain, create_test_blockchain_db},
             validation::{TransactionValidator, ValidationError, transaction::TransactionFullValidator},
         };
@@ -960,9 +963,10 @@ mod test {
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
         }
 
-        /// `h` is honest, `a` aggregates `h` with a transaction whose input script fails once a block above height 5
-        /// is mined, and `c` spends an output of `h`. `h` is stored and relayed whichever of `h` and `a` arrives first,
-        /// so `h` and `c` survive the eviction of `a`.
+        /// `h` is honest, each of more than [MAX_SPENDS_PER_OUTPUT] aggregates `a` combines `h` with a different spend
+        /// of an output whose input script fails once a block above height 5 is mined, and `c` spends an output of `h`.
+        /// Only [MAX_SPENDS_PER_OUTPUT] of them spend `h`'s input at a time, but `h` is stored and relayed whether it
+        /// arrives before or after the aggregates, so `h` and `c` survive the eviction of every aggregate.
         async fn honest_transaction_survives_eviction_of_an_aggregate(h_first: bool) {
             let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
                 .add_consensus_constants(
@@ -975,7 +979,7 @@ mod test {
             let mut blockchain = TestBlockchain::create(rules.clone());
             let validator =
                 TransactionFullValidator::new(CryptoFactories::default(), true, blockchain.db().clone(), rules);
-            let (mut handlers, mempool, mut propagated, _bans) = create_handlers_with_bans(Box::new(validator));
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(Box::new(validator));
 
             let (block, coinbase_1) = blockchain.add_next_tip(block_spec!("1")).unwrap();
             mempool.process_published_block(block.to_arc_block()).await.unwrap();
@@ -990,20 +994,27 @@ mod test {
             mempool.process_published_block(block.to_arc_block()).await.unwrap();
 
             let (h, h_outputs) = spend_utxos(txn_schema!(from: vec![coinbase_1], to: vec![T]), &blockchain.km);
-            let (x, _) = spend_utxos(
-                txn_schema!(from: vec![setup_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
-                &blockchain.km,
-            );
+            let aggregates = (0..=MAX_SPENDS_PER_OUTPUT)
+                .map(|_| {
+                    let (x, _) = spend_utxos(
+                        txn_schema!(from: vec![setup_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
+                        &blockchain.km,
+                    );
+                    #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+                    let mut a = h.clone() + x;
+                    a.body.sort();
+                    Arc::new(a)
+                })
+                .collect::<Vec<_>>();
             let (c, _) = spend_utxos(
                 txn_schema!(from: vec![h_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
                 &blockchain.km,
             );
-            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
-            let mut a = h.clone() + x;
-            a.body.sort();
-            let (h, a, c) = (Arc::new(h), Arc::new(a), Arc::new(c));
+            let (h, c) = (Arc::new(h), Arc::new(c));
 
-            let arrivals = if h_first { [&h, &a, &c] } else { [&a, &h, &c] };
+            // `c` arrives before `h` when the aggregates come first, so it is in the pool when `h` replaces one of them
+            let mut arrivals = aggregates.iter().chain([&c]).collect::<Vec<_>>();
+            arrivals.insert(if h_first { 0 } else { arrivals.len() }, &h);
             for tx in arrivals {
                 handlers
                     .handle_transaction_message(Arc::new(transaction_message((**tx).clone())))
@@ -1015,7 +1026,11 @@ mod test {
                 relayed.push(tx);
             }
             assert!(relayed.contains(&h));
-            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
+            assert_eq!(
+                mempool.stats().await.unwrap().unconfirmed_txs,
+                u64::try_from(MAX_SPENDS_PER_OUTPUT + 1).unwrap()
+            );
+            assert!(bans.take().await.is_empty());
 
             for name in ["4", "5"] {
                 let (block, _) = blockchain.add_next_tip(block_spec!(name)).unwrap();
@@ -1027,10 +1042,12 @@ mod test {
                     TxStorageResponse::UnconfirmedPool
                 );
             }
-            assert_eq!(
-                mempool.has_transaction(a.clone()).await.unwrap(),
-                TxStorageResponse::NotStored(None)
-            );
+            for a in &aggregates {
+                assert_eq!(
+                    mempool.has_transaction(a.clone()).await.unwrap(),
+                    TxStorageResponse::NotStored(None)
+                );
+            }
 
             let (_, tip) = blockchain.get_tip_block();
             let template = mempool.retrieve(u64::MAX, 6, *tip.hash()).await.unwrap();

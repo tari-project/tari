@@ -2709,7 +2709,8 @@ fn signature_heavy_script(num_signatures: usize) -> (TariScript, Vec<StackItem>)
 #[allow(clippy::too_many_lines)]
 async fn template_re_checks_only_selected_height_reading_transactions_once_per_tip() {
     const NUM_OUTPUTS: usize = 20;
-    const NUM_CONFLICTING: usize = 100;
+    // The most pool transactions that may spend one output
+    const NUM_CONFLICTING: usize = 8;
     // 3 + 15 * 33 bytes, within the 512 byte script limit
     const NUM_SIGNATURES: usize = 15;
     let key_manager = KeyManager::new_random().unwrap();
