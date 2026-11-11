@@ -1601,7 +1601,40 @@ async fn test_htlc_send_and_claim() {
         }
     }
     let hash = output.hash();
-    bob_ts_interface.base_node_mock.set_utxos(vec![output]).await;
+    let bob_oms = &mut bob_ts_interface.output_manager_service_handle;
+
+    // A base node answering with some other output for the requested hash is refused.
+    let other_output = completed_tx
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .find(|o| o.hash() != hash)
+        .unwrap()
+        .clone();
+    bob_ts_interface
+        .base_node_mock
+        .set_utxos(vec![(hash, other_output)])
+        .await;
+    let err = bob_oms
+        .create_claim_sha_atomic_swap_transaction(hash, pre_image.clone(), 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::BaseNodeClientError(_)), "got {err:?}");
+
+    // The HTLC is refused with a pre-image it is not locked to.
+    bob_ts_interface.base_node_mock.set_utxos(vec![(hash, output)]).await;
+    let wrong_pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let err = bob_oms
+        .create_claim_sha_atomic_swap_transaction(hash, wrong_pre_image, 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(
+        bob_oms.get_balance().await.unwrap().pending_incoming_balance,
+        MicroMinotari::zero()
+    );
+
     let (tx_id_htlc, _htlc_fee, htlc_amount, tx) = bob_ts_interface
         .output_manager_service_handle
         .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())

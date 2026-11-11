@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::types::{CompressedCommitment, FixedHash};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
@@ -152,9 +152,9 @@ impl HttpBaseNodeMock {
             .collect();
     }
 
-    /// Return these outputs from `fetch_utxo`.
-    pub async fn set_utxos(&self, utxos: Vec<TransactionOutput>) {
-        self.state.write().await.utxos = utxos.into_iter().map(|o| (o.hash().to_vec(), o)).collect();
+    /// Return each output from `fetch_utxo` when asked for the hash it is paired with.
+    pub async fn set_utxos(&self, utxos: Vec<(FixedHash, TransactionOutput)>) {
+        self.state.write().await.utxos = utxos.into_iter().map(|(hash, o)| (hash.to_vec(), o)).collect();
     }
 
     /// Run `hook` on every `get_utxos_mined_info` query.

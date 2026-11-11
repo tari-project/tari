@@ -28,11 +28,13 @@ use std::{
 };
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use digest::Digest;
 use futures::{StreamExt, pin_mut};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::{Rng, RngExt};
+use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -741,6 +743,13 @@ where
             .ok_or_else(|| {
                 OutputManagerError::BaseNodeClientError(format!("No output found for hash {}", output_hash.to_hex()))
             })?;
+        if output.hash() != output_hash {
+            return Err(OutputManagerError::BaseNodeClientError(format!(
+                "Base node returned output {} for requested hash {}",
+                output.hash().to_hex(),
+                output_hash.to_hex()
+            )));
+        }
 
         self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .map(OutputManagerResponse::ClaimHtlcTransaction)
@@ -3231,6 +3240,29 @@ where
         pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
+        // Only claim the HTLC shape this wallet sends, locked to this pre-image and claimable by our spend key; the
+        // output comes from the base node and is otherwise untrusted.
+        let lock_hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+        let own_spend_key = self.resources.key_manager.get_spend_key().pub_key;
+        let is_our_htlc = matches!(
+            output.script.as_slice(),
+            [
+                Opcode::HashSha256,
+                Opcode::PushHash(hash),
+                Opcode::Equal,
+                Opcode::IfThen,
+                Opcode::PushPubKey(claim_key),
+                Opcode::Else,
+                Opcode::CheckHeightVerify(_),
+                Opcode::PushPubKey(_),
+                Opcode::EndIf,
+            ] if **hash == lock_hash && **claim_key == own_spend_key
+        );
+        if !is_our_htlc {
+            return Err(OutputManagerError::InvalidArgument(
+                "Output is not an HTLC claimable by this wallet with the given pre-image".to_string(),
+            ));
+        }
         let shared_secret = self.resources.key_manager.get_diffie_hellman_shared_secret(
             &self.resources.key_manager.get_view_key().key_id,
             &output.sender_offset_public_key,
