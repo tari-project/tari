@@ -320,6 +320,12 @@ fn decrypt_key(data: &EncryptedKeyData, passphrase: &str) -> Result<PrivateKey, 
 
     let nonce_bytes =
         Vec::from_hex(&data.nonce).map_err(|e| OfflineSignerError::DecryptionError(format!("Invalid nonce: {}", e)))?;
+    if nonce_bytes.len() != 12 {
+        return Err(OfflineSignerError::DecryptionError(format!(
+            "Invalid nonce length: expected 12 bytes, got {}",
+            nonce_bytes.len()
+        )));
+    }
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = Vec::from_hex(&data.ciphertext)
@@ -365,4 +371,18 @@ pub fn clear_keystore() -> Result<(), OfflineSignerError> {
 /// Returns a human-readable description of the active keystore backend.
 pub fn storage_description() -> &'static str {
     Keystore::new().description()
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn decrypt_key_rejects_invalid_nonce_length_without_panicking() {
+        let key = PrivateKey::default();
+        let mut encrypted = encrypt_key(&key, "passphrase").unwrap();
+        encrypted.nonce = "001122".to_string();
+        let err = decrypt_key(&encrypted, "passphrase").unwrap_err();
+        assert!(matches!(err, OfflineSignerError::DecryptionError(_)));
+    }
 }
