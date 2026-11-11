@@ -425,6 +425,13 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let claimed = sync_peer.claimed_chain_metadata().accumulated_difficulty();
         let local = best_block_header.accumulated_data().total_accumulated_difficulty;
         if claimed <= local {
+            debug!(
+                target: LOG_TARGET,
+                "Skipping peer `{}`: its claimed difficulty {} is no longer above ours at {}",
+                sync_peer.node_id(),
+                claimed,
+                local,
+            );
             return Err(BlockHeaderSyncError::PeerClaimNoLongerAhead { claimed, local });
         }
 
