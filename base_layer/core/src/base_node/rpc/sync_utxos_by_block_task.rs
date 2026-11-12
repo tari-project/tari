@@ -141,28 +141,28 @@ where B: BlockchainBackend + 'static
                 header_hash.to_hex(),
             );
 
-            let to_response = |outputs: &[proto::types::TransactionOutput]| SyncUtxosByBlockResponse {
-                outputs: outputs.to_vec(),
-                height,
-                header_hash: header_hash.to_vec(),
-                mined_timestamp: header.timestamp.as_u64(),
-            };
-            // An empty block still gets one response, with no outputs
-            let responses = if outputs.is_empty() {
-                vec![to_response(&[])]
-            } else {
-                outputs.chunks(2000).map(to_response).collect()
-            };
-            for response in responses {
+            // Each chunk is moved into its response only once the budget has room for it. An empty block still gets
+            // one response, with no outputs.
+            let mut outputs = outputs.into_iter();
+            loop {
                 // Ensure task stops if the peer prematurely stops their RPC session
                 if budget.wait_for_room(tx).await.is_err() {
                     return Ok(());
                 }
+                let response = SyncUtxosByBlockResponse {
+                    outputs: outputs.by_ref().take(2000).collect(),
+                    height,
+                    header_hash: header_hash.to_vec(),
+                    mined_timestamp: header.timestamp.as_u64(),
+                };
                 let num_bytes = response.encoded_len();
                 if tx.send(Ok(response)).await.is_err() {
                     return Ok(());
                 }
                 budget.record_sent(num_bytes);
+                if outputs.len() == 0 {
+                    break;
+                }
             }
 
             trace!(
@@ -182,8 +182,8 @@ where B: BlockchainBackend + 'static
     }
 
     /// Returns the header and outputs of the block at `height`, or None if it is no longer an ancestor of the requested
-    /// end block. The check reads the headers at `height` and `end_height` after the outputs, from one chain state, so
-    /// the outputs are those of a block on the requested chain whatever reorgs happened in between.
+    /// end block. The outputs and the headers at `height` and `end_height` are read under one read lock, so the check
+    /// holds for the chain state the outputs were read from, whatever reorgs happened before.
     async fn fetch_block_on_requested_chain(
         &self,
         height: u64,
@@ -200,15 +200,14 @@ where B: BlockchainBackend + 'static
             }
         };
         let hash = header.hash();
-        let outputs = self.db.fetch_outputs_in_block_with_spend_state(hash, None).await?;
-        let (header_at_height, end_header) = self.db.fetch_header_pair(height, end_height).await?;
+        let (outputs, header_at_height, end_header) = self
+            .db
+            .fetch_outputs_in_block_and_header_pair(hash, height, end_height)
+            .await?;
         if !is_on_requested_chain(&hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) {
             return Ok(None);
         }
-        Ok(Some((
-            header,
-            outputs.into_iter().map(|(output, _spent)| output).collect(),
-        )))
+        Ok(Some((header, outputs)))
     }
 }
 
