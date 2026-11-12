@@ -32,9 +32,15 @@ impl FromStr for DnsNameServerList {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let dns_list = s
+        let s = s.trim();
+        let effective_s = s
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+            .map(str::trim)
+            .unwrap_or(s);
+        let dns_list = effective_s
             .split(',')
-            .map(|s| s.trim())
+            .map(|s| s.trim().trim_matches('"').trim_matches('\''))
             .filter(|s| !s.is_empty())
             .map(DnsNameServer::from_str)
             .collect::<Result<Vec<_>, _>>()?;
@@ -193,5 +199,26 @@ mod tests {
             DnsNameServer::from_str("system").unwrap(),
             DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
         ]);
+    }
+
+    #[test]
+    fn it_deserializes_from_json_array_string() {
+        let config = Config::builder()
+            .set_override(
+                "something",
+                r#"["8.8.8.8:53", "system", "1.1.1.1:853/cloudflare-dns.com"]"#,
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let test = config.try_deserialize::<Test>().unwrap();
+        assert_eq!(test.something.into_vec(), vec![
+            DnsNameServer::from_str("8.8.8.8:53").unwrap(),
+            DnsNameServer::from_str("system").unwrap(),
+            DnsNameServer::from_str("1.1.1.1:853/cloudflare-dns.com").unwrap(),
+        ]);
+
+        let empty = DnsNameServerList::from_str("[]").unwrap();
+        assert!(empty.is_empty());
     }
 }

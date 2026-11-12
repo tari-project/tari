@@ -125,5 +125,15 @@ mod test {
         let parsed = DnsNameServer::System.to_string().parse::<DnsNameServer>().unwrap();
         assert_eq!(parsed, DnsNameServer::System);
         assert!("system/cloudflare-dns.com".parse::<DnsNameServer>().is_err());
+
+        // Plain UDP name servers without a `/dns_name` suffix remain valid in config
+        assert_eq!(
+            "8.8.8.8:53".parse::<DnsNameServer>().unwrap(),
+            DnsNameServer::custom("8.8.8.8:53".parse().unwrap(), String::new())
+        );
+        assert_eq!(
+            "1.1.1.1:53/".parse::<DnsNameServer>().unwrap(),
+            DnsNameServer::custom("1.1.1.1:53".parse().unwrap(), String::new())
+        );
     }
 }

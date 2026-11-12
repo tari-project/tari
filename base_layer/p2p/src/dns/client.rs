@@ -56,6 +56,9 @@ impl DnsClient {
                 .with_options(Self::resolver_opts(true))
                 .build()?,
             DnsNameServer::Custom { addr, dns_name } => {
+                if dns_name.trim().is_empty() {
+                    return Err(DnsClientError::DnsNameRequiredForDnsSec);
+                }
                 Self::create_resolver(NameServerConfig::tls(addr.ip(), Arc::from(dns_name.as_str())), true)?
             },
         };
@@ -174,6 +177,16 @@ mod test {
     fn connect_does_not_require_dnssec() {
         let client = DnsClient::connect(test_name_server()).unwrap();
         assert!(!client.require_dnssec);
+    }
+
+    #[test]
+    fn connect_secure_rejects_custom_server_without_dns_name() {
+        let plain_udp_server: DnsNameServer = "8.8.8.8:53".parse().unwrap();
+        assert!(DnsClient::connect(plain_udp_server.clone()).is_ok());
+        assert!(matches!(
+            DnsClient::connect_secure(plain_udp_server),
+            Err(DnsClientError::DnsNameRequiredForDnsSec)
+        ));
     }
 
     #[test]
