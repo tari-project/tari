@@ -93,7 +93,8 @@ pub const MAX_PROOF_HASHES: usize = serde_support::hash::MAX_HASHES;
 /// verify the same hash, and a two-peak root is indistinguishable from an internal node hash.
 ///
 /// Consumers must therefore:
-/// - use a leaf-hash domain distinct from the MMR hasher;
+/// - hash the bottom of the proof chain in a leaf domain distinct from the MMR hasher; a nested MMR root used as a leaf
+///   is fine only if its own leaves are domain-separated, and it is then indistinguishable from an internal node;
 /// - never key uniqueness, dedup or position logic on proof fields;
 /// - treat [`MerkleProof::verify_leaf`] as "is this hash in this tree", nothing more.
 ///
