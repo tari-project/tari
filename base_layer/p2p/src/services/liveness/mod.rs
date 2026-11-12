@@ -79,7 +79,7 @@ pub use crate::proto::liveness::MetadataKey;
 use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
-    services::{liveness::state::LivenessState, utils::map_decode_with_max_items},
+    services::liveness::state::LivenessState,
     tari_message::TariMessageType,
 };
 
@@ -89,6 +89,39 @@ const LOG_TARGET: &str = "p2p::services::liveness";
 /// `metadata` map, which is charged one item per entry and legitimately holds one entry per `MetadataKey` (two today).
 /// Without it, one 8 MiB messaging frame decodes into a map of ~1M entries.
 pub const PING_PONG_MAX_DECODE_ITEMS: usize = 64;
+
+/// Upper bound on the serialized byte length of an inbound `PingPongMessage`.
+///
+/// `PING_PONG_MAX_DECODE_ITEMS` bounds the number of `metadata` map entries, not the size of each `bytes` value: a
+/// single multi-megabyte entry carries only one item yet allocates that buffer and clones it onto the liveness event
+/// broadcast channel. An honest `PingPongMessage` with all defined metadata keys is under 256 bytes, so 4 KiB leaves
+/// ample headroom while rejecting oversized frames before prost allocates anything.
+pub const PING_PONG_MAX_PAYLOAD_BYTES: usize = 4096;
+
+/// True if the message was encrypted, or signed by an identity other than the peer that delivered it. Honest nodes
+/// send Ping and Pong messages directly in clear text and only on their own behalf, so such a message was relayed on
+/// someone else's behalf. Decoding or handling it would blame or credit the delivering neighbour for someone else's
+/// payload or `ChainMetadata`.
+fn is_relayed_or_encrypted(msg: &PeerMessage) -> bool {
+    msg.dht_header.flags.is_encrypted() ||
+        msg.authenticated_origin
+            .as_ref()
+            .is_some_and(|origin| *origin != msg.source_peer.public_key)
+}
+
+fn decode_inbound_ping_pong(msg: Arc<PeerMessage>) -> DomainMessage<Result<PingPongMessage, prost::DecodeError>> {
+    let inner = if msg.body.len() > PING_PONG_MAX_PAYLOAD_BYTES {
+        Err(prost::DecodeError::new("PingPong payload exceeds maximum byte size"))
+    } else {
+        msg.decode_message_with_max_items(PING_PONG_MAX_DECODE_ITEMS)
+    };
+    DomainMessage {
+        source_peer: msg.source_peer.clone(),
+        dht_header: msg.dht_header.clone(),
+        authenticated_origin: msg.authenticated_origin.clone(),
+        inner,
+    }
+}
 
 /// Initializer for the Liveness service handle and service future.
 pub struct LivenessInitializer {
@@ -112,7 +145,21 @@ impl LivenessInitializer {
     fn ping_stream(&self) -> impl Stream<Item = DomainMessage<Result<PingPongMessage, prost::DecodeError>>> + use<> {
         self.inbound_message_subscription_factory
             .get_subscription(TariMessageType::PingPong, "Liveness")
-            .map(map_decode_with_max_items::<PingPongMessage>(PING_PONG_MAX_DECODE_ITEMS))
+            .filter(|msg| {
+                let relayed = is_relayed_or_encrypted(msg);
+                if relayed {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Dropping encrypted or relayed PingPong message {} from peer '{}' (flags: {:?}, origin: {:?})",
+                        msg.dht_header.message_tag,
+                        msg.source_peer.node_id.short_str(),
+                        msg.dht_header.flags,
+                        msg.authenticated_origin,
+                    );
+                }
+                futures::future::ready(!relayed)
+            })
+            .map(decode_inbound_ping_pong)
     }
 }
 
@@ -204,5 +251,83 @@ mod decode_budget_test {
         );
         let decoded = decode_with_max_items::<PingPongMessage>(&ping, PING_PONG_MAX_DECODE_ITEMS).unwrap();
         assert_eq!(decoded.metadata.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn ping_stream_drops_encrypted_or_relayed_messages_and_rejects_oversized_direct_payloads() {
+        use std::time::Duration;
+
+        use tari_comms::{message::MessageExt, wrap_in_envelope_body};
+        use tari_comms_dht::{domain_message::MessageHeader, envelope::DhtMessageFlags, inbound::DecryptedDhtMessage};
+        use tower::Service;
+
+        use crate::{
+            comms_connector::pubsub_connector,
+            test_utils::{make_dht_inbound_message, make_node_identity},
+        };
+
+        let (mut connector, subscription_factory) = pubsub_connector(16);
+        let initializer = LivenessInitializer::new(LivenessConfig::default(), Arc::new(subscription_factory));
+        let mut stream = Box::pin(initializer.ping_stream());
+
+        let relay_identity = make_node_identity();
+        let other_origin = make_node_identity().public_key().clone();
+
+        let make_decrypted = |flags: DhtMessageFlags, origin, body: Vec<u8>| {
+            let header = MessageHeader::new(TariMessageType::PingPong as i32);
+            let mut envelope = wrap_in_envelope_body!(header);
+            envelope.push_part(body);
+            let mut inbound = make_dht_inbound_message(&relay_identity, envelope.to_encoded_bytes());
+            inbound.dht_header.flags = flags;
+            DecryptedDhtMessage::succeeded(envelope, origin, inbound)
+        };
+
+        // Encrypted or foreign-signed frames (even with malformed/oversized bodies) are dropped before decoding so the
+        // delivering neighbour is never blamed or answered.
+        for (flags, origin) in [
+            (DhtMessageFlags::ENCRYPTED, Some(other_origin.clone())),
+            (DhtMessageFlags::ENCRYPTED, None),
+            (DhtMessageFlags::ENCRYPTED, Some(relay_identity.public_key().clone())),
+            (DhtMessageFlags::NONE, Some(other_origin)),
+        ] {
+            connector
+                .call(make_decrypted(flags, origin, vec![
+                    0xff;
+                    PING_PONG_MAX_PAYLOAD_BYTES
+                        .saturating_add(1)
+                ]))
+                .await
+                .unwrap();
+        }
+
+        // An oversized clear-text direct frame is yielded as a DecodeError without allocating a multi-KB metadata map,
+        // so LivenessService bans the direct sender.
+        let oversized_direct = ping_with_metadata([(MetadataKey::ChainMetadata as i32, vec![7u8; 8192])].into());
+        assert!(oversized_direct.len() > PING_PONG_MAX_PAYLOAD_BYTES);
+        connector
+            .call(make_decrypted(DhtMessageFlags::NONE, None, oversized_direct))
+            .await
+            .unwrap();
+
+        let first = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await
+            .expect("direct message did not arrive")
+            .expect("stream ended");
+        assert!(first.inner.is_err(), "oversized direct PingPong should fail decode");
+
+        // Honest direct clear-text messages (unsigned or signed by `source_peer`) pass through cleanly.
+        let valid_body = ping_with_metadata([(MetadataKey::ChainMetadata as i32, vec![1u8; 64])].into());
+        for origin in [None, Some(relay_identity.public_key().clone())] {
+            connector
+                .call(make_decrypted(DhtMessageFlags::NONE, origin, valid_body.clone()))
+                .await
+                .unwrap();
+            let msg = tokio::time::timeout(Duration::from_secs(2), stream.next())
+                .await
+                .expect("valid direct message did not arrive")
+                .expect("stream ended");
+            let decoded = msg.inner.expect("valid direct PingPong should decode");
+            assert_eq!(decoded.nonce, 1);
+        }
     }
 }
