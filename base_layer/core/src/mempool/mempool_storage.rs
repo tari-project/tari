@@ -2308,6 +2308,111 @@ mod test {
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
     }
 
+    /// The spend cap is checked before a validator node slot holder is replaced, so a newcomer refused by the cap
+    /// leaves the holder it would have outbid
+    #[test]
+    fn a_newcomer_refused_by_the_spend_cap_does_not_replace_the_validator_node_slot_holder() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let exit_features = || {
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        };
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let holder =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .map(|(tx, _, _)| Arc::new(tx))
+                .unwrap();
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(holder.clone(), None)
+                .unwrap()
+                .is_stored()
+        );
+        let honest = create_tx(&key_manager);
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let padded = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(padded, None).unwrap().is_stored());
+        }
+        // Outbids the holder for its slot, but spends the capped input and is no kernel subset of its spenders
+        let outbidding =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .unwrap()
+                .0;
+        let newcomer = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            outbidding.body.outputs().clone(),
+            outbidding.body.kernels().clone(),
+            Default::default(),
+            Default::default(),
+        ));
+
+        let response = storage.write().unwrap().insert(newcomer, None).unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+            "{response:?}"
+        );
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
+        assert_eq!(
+            storage.read().unwrap().has_transaction(&holder).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    /// The spender a newcomer replaces at the spend cap is removed before the newcomer is inserted, so a full pool does
+    /// not refuse a newcomer whose priority is below all of its transactions
+    #[test]
+    fn a_spend_cap_replacement_makes_room_in_a_full_pool() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        config.unconfirmed_pool.storage_capacity = MAX_SPENDS_PER_OUTPUT + 2;
+        let storage = RwLock::new(MempoolStorage::new(
+            config,
+            create_consensus_rules(),
+            Box::new(validator.clone()),
+        ));
+        // Each padded copy pays the honest fee plus a whole other transaction's fee for one more kernel, and the others
+        // pay ten times the honest fee per gram, so the honest transaction ranks below every pool transaction
+        let honest = create_tx(&key_manager);
+        let mut padded = Vec::new();
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let tx = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+            padded.push(tx);
+        }
+        let others = (0..2)
+            .map(|_| {
+                let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, &key_manager)
+                    .unwrap()
+                    .0;
+                let tx = Arc::new(tx);
+                assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+                tx
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 2);
+
+        let response = storage.write().unwrap().insert(honest.clone(), None).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        let lock = storage.read().unwrap();
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT + 2);
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&honest));
+        assert_eq!(
+            padded.iter().filter(|tx| in_pool(tx)).count(),
+            MAX_SPENDS_PER_OUTPUT - 1
+        );
+        assert!(others.iter().all(in_pool));
+    }
+
     #[test]
     fn conflicting_spends_with_disjoint_kernels_are_both_stored_under_the_cap() {
         let key_manager = KeyManager::new_random().unwrap();
