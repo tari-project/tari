@@ -38,7 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use std::{
-    cmp::Ordering,
+    cmp::Reverse,
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
@@ -189,22 +189,28 @@ impl BlockHeader {
     }
 
     /// Given a slice of headers, calculate the maximum, minimum and average periods between them.
-    /// Expects the slice of headers to be ordered from youngest to oldest, but will reverse them if not.
-    /// This function always allocates a vec of the slice length. This is in case it needs to reverse the list.
+    /// Expects the slice of headers to be ordered from youngest to oldest; sorts them by descending height when
+    /// heights are distinct, or falls back to reversing the slice when all heights are equal and the first timestamp
+    /// is older than the last.
+    /// This function always allocates a vec of the slice length.
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
             (0, 0, 0.0)
         } else {
             let mut headers = headers.to_vec();
 
-            // ensure the slice is in reverse order
-            let ordering = headers
-                .first()
-                .expect("Already checked")
-                .timestamp
-                .cmp(&headers.last().expect("Already checked").timestamp);
-            if ordering == Ordering::Less {
+            // Order from youngest to oldest: sort by height descending when heights are distinct
+            // (stable sort keeps any duplicate heights in their input order), otherwise fall back
+            // to reversing when all heights match and the first timestamp is older than the last.
+            let has_distinct_heights = headers.windows(2).any(|w| matches!(w, [a, b] if a.height != b.height));
+            if has_distinct_heights {
+                headers.sort_by_key(|h| Reverse(h.height));
+            } else if headers.first().expect("Already checked").timestamp <
+                headers.last().expect("Already checked").timestamp
+            {
                 headers.reverse();
+            } else {
+                // Identical heights and already ordered from newest to oldest timestamp
             }
 
             let last_ts = headers.first().expect("Already checked").timestamp;
@@ -505,5 +511,50 @@ mod test {
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn timing_stats_orders_by_height_when_youngest_timestamp_is_smaller() {
+        let headers = vec![
+            BlockHeader {
+                height: 1,
+                timestamp: 150.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 2,
+                timestamp: 100.into(),
+                ..BlockHeader::new(0)
+            },
+        ];
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!((max, min), (0, 0));
+        assert!((avg - 0f64).abs() < f64::EPSILON);
+
+        let shuffled = vec![
+            BlockHeader {
+                height: 2,
+                timestamp: 200.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 4,
+                timestamp: 470.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 1,
+                timestamp: 140.into(),
+                ..BlockHeader::new(0)
+            },
+            BlockHeader {
+                height: 3,
+                timestamp: 320.into(),
+                ..BlockHeader::new(0)
+            },
+        ];
+        let (max, min, avg) = BlockHeader::timing_stats(&shuffled);
+        assert_eq!((max, min), (150, 60));
+        assert!((avg - 110f64).abs() < f64::EPSILON);
     }
 }
