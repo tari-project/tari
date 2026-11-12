@@ -27,7 +27,7 @@ pub fn query_service_error_to_status_code(error: query_service::Error) -> Status
     match error {
         Error::HeaderNotFound { .. } => StatusCode::NOT_FOUND,
         Error::FailedToGetChainMetadata(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        Error::SignatureConversion(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        Error::SignatureConversion(_) => StatusCode::BAD_REQUEST,
         Error::MempoolService(_) => StatusCode::INTERNAL_SERVER_ERROR,
         Error::SerdeValidation(_) => StatusCode::BAD_REQUEST,
         Error::HashConversion(_) => StatusCode::BAD_REQUEST,
