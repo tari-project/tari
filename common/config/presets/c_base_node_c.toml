@@ -427,8 +427,8 @@ database_url = "data/base_node/dht.db"
 # (Default: 5)
 #network_discovery.rebootstrap_connected_peers = 5
 # The most new peer records one directly connected peer may have stored within `source_budget_window` through Join
-# gossip, and separately through OnConnect peer sync. Also the most peers stored from one source in a rebootstrap.
-# At least 1. (Default: 50)
+# and Discovery gossip, and separately through OnConnect peer sync. Also the most peers stored from one source in a
+# rebootstrap. At least 1. (Default: 50)
 #network_discovery.max_stored_per_source = 50
 # The sliding window over which `max_stored_per_source` applies. At least 1 minute. (Default: 1 hour)
 #network_discovery.source_budget_window = 3_600 # 60 * 60
