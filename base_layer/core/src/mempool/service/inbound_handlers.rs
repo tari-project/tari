@@ -735,9 +735,12 @@ mod test {
 
         #[tokio::test]
         async fn encrypted_transaction_is_dropped_without_ban() {
-            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            // Unencrypted, this transaction would fail internal validation and get the source banned (see
+            // `gossiped_transaction_signed_by_other_key_bans_source`)
+            let (_chain, validator, spend) = chain_validator_with_spend();
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(validator);
             let permits = mempool.available_validation_permits();
-            let mut msg = transaction_message(coinbase_kernel_tx());
+            let mut msg = transaction_message(spending_the_chain(coinbase_kernel_tx(), &spend));
             let (_, other_origin) = CompressedPublicKey::random_keypair(&mut rand::rng());
             assert_ne!(other_origin, msg.source_peer.public_key);
             msg.authenticated_origin = Some(other_origin);
@@ -873,16 +876,35 @@ mod test {
                     .into()
                 },
             ];
+            // The validator ignores the body; with an input, it is validated rather than refused for having none
+            let key_manager = KeyManager::new_random().unwrap();
+            let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0;
             for error in errors {
                 let (mut handlers, mempool, _propagated, mut bans) =
                     create_handlers_with_bans(Box::new(InternalFailureValidator(error)));
                 handlers
-                    .handle_transaction_message(Arc::new(transaction_message(unbalanced_tx())))
+                    .handle_transaction_message(Arc::new(transaction_message(tx.clone())))
                     .await
                     .unwrap();
                 assert!(bans.take().await.is_empty());
                 assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);
             }
+
+            // The same transaction failing in a way that does not depend on the tip bans
+            let (mut handlers, _mempool, _propagated, mut bans) =
+                create_handlers_with_bans(Box::new(InternalFailureValidator(|| {
+                    AggregatedBodyValidationError::TransactionError(TransactionError::InvalidSignatureError(
+                        "Verifying kernel signature".to_string(),
+                    ))
+                    .into()
+                })));
+            handlers
+                .handle_transaction_message(Arc::new(transaction_message(tx)))
+                .await
+                .unwrap();
+            assert_eq!(bans.take().await.len(), 1);
         }
 
         /// A copy of a fresh transaction whose input script reads the block height
@@ -958,21 +980,30 @@ mod test {
 
         #[tokio::test]
         async fn submitted_transaction_failing_internal_validation_does_not_ban() {
-            let (mut handlers, mempool, _propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let (_chain, validator, spend) = chain_validator_with_spend();
+            let (mut handlers, mempool, _propagated, mut bans) = create_handlers_with_bans(validator);
+            // Fails internal validation, which bans the source when it is gossiped (see
+            // `gossiped_transaction_failing_internal_validation_bans_source`)
+            let tx = spending_the_chain(coinbase_kernel_tx(), &spend);
 
             handlers
-                .handle_request(MempoolRequest::SubmitTransaction(coinbase_kernel_tx()))
+                .handle_request(MempoolRequest::SubmitTransaction(tx.clone()))
                 .await
                 .unwrap();
             let permit = handlers.acquire_validation_permit().await.unwrap();
+            handlers.submit_transaction_request(tx.clone(), permit).await.unwrap();
             handlers
-                .submit_transaction_request(coinbase_kernel_tx(), permit)
+                .handle_transaction(tx.clone(), Some(NodeId::default()))
                 .await
                 .unwrap();
-            handlers
-                .handle_transaction(coinbase_kernel_tx(), Some(NodeId::default()))
-                .await
-                .unwrap();
+            let response = mempool.insert(Arc::new(tx)).await.unwrap();
+            assert!(
+                matches!(
+                    response,
+                    TxStorageResponse::NotStoredConsensus(_) | TxStorageResponse::NotStored(_)
+                ) && response != TxStorageResponse::NotStored(Some("Transaction has no inputs".to_string())),
+                "{response:?}"
+            );
 
             assert!(bans.take().await.is_empty());
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 0);

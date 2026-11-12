@@ -1875,11 +1875,29 @@ async fn block_template_validates_after_rejected_admissions() {
         txn_schema!(from: vec![height_limited_outputs[0].clone()], to: vec![500_000 * uT]),
         &key_manager,
     );
-    let same_excess_tx = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
-    for tx in [coinbase_kernel_tx, height_limited_spend, same_excess_tx] {
+    // With an input, so that it is validated rather than refused for having none
+    let same_excess = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+    let same_excess_tx = Transaction::new(
+        tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .unwrap()
+            .0
+            .body
+            .inputs()
+            .clone(),
+        vec![],
+        same_excess.body.kernels().clone(),
+        same_excess.offset,
+        same_excess.script_offset,
+    );
+    for tx in [coinbase_kernel_tx, height_limited_spend] {
         let response = mempool.insert(Arc::new(tx)).await.unwrap();
         assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
     }
+    let response = mempool.insert(Arc::new(same_excess_tx)).await.unwrap();
+    assert!(
+        matches!(&response, TxStorageResponse::NotStored(Some(msg)) if msg.contains("already exists in the chain")),
+        "{response:?}"
+    );
     let (ordinary_tx, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![1 * T]),
         &key_manager,
