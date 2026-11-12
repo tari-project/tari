@@ -858,8 +858,9 @@ impl UnconfirmedPool {
     ///
     /// It then replaces the spender with the most kernels (the lowest priority of those): a padded copy has more
     /// kernels than what it pads, so an honest transaction or aggregate is never replaced by a part of itself while a
-    /// copy padding it remains, whatever fee the copy promises. A spender already chosen for one output frees every
-    /// other output it spends. The caller checks that `tx` is not already in the pool (see
+    /// copy padding it remains, whatever fee the copy promises. The outputs `tx` spends are taken in its input order,
+    /// and a capped output that a spender already chosen for an earlier one also spends is passed over, with neither a
+    /// subset check nor a replacement of its own. The caller checks that `tx` is not already in the pool (see
     /// [UnconfirmedPool::has_transaction]), and that replacing them does not orphan it (see
     /// [UnconfirmedPool::would_orphan]).
     pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
