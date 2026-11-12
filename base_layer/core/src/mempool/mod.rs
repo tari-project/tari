@@ -64,8 +64,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 pub use sync_protocol::MempoolSyncInitializer;
-use tari_common_types::types::CompressedSignature;
+use tari_common_types::types::{CompressedSignature, PrivateKey};
 use tari_transaction_components::transaction_components::Transaction;
+use tari_utilities::ByteArray;
 
 use crate::proto::base_node as base_node_proto;
 
@@ -155,4 +156,19 @@ impl From<base_node_proto::MempoolFeePerGramStat> for FeePerGramStat {
             max_fee_per_gram: value.max_fee_per_gram.into(),
         }
     }
+}
+
+/// The sorted kernel signatures of `tx`, the key of the pools' kernel-set indexes. None if `tx` has no kernels or
+/// repeats a kernel signature: such a transaction is never a duplicate of a pool entry.
+fn kernel_set(tx: &Transaction) -> Option<Vec<PrivateKey>> {
+    let mut sigs = tx
+        .body
+        .kernels()
+        .iter()
+        .map(|k| k.excess_sig.get_signature().clone())
+        .collect::<Vec<_>>();
+    sigs.sort_unstable_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+    let len = sigs.len();
+    sigs.dedup();
+    (len > 0 && sigs.len() == len).then_some(sigs)
 }

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [6.3.0-pre.4](https://github.com/tari-project/tari/compare/v6.3.0-pre.3...v6.3.0-pre.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **header-sync:** refresh cached chain metadata after a rewind ([#8329](https://github.com/tari-project/tari/issues/8329)) ([86cd133](https://github.com/tari-project/tari/commit/86cd133d1d695d2b167c7c48295116317b950c12))
+* **mmr:** validate leaf position and bounds in MerkleProof::verify and fix leaf index lookups ([#8294](https://github.com/tari-project/tari/issues/8294)) ([254f716](https://github.com/tari-project/tari/commit/254f716e08a42b42b92424ce2d2b36c80858fa17))
+
 ## [6.3.0-pre.3](https://github.com/tari-project/tari/compare/v6.3.0-pre.2...v6.3.0-pre.3) (2026-11-09)
 
 
