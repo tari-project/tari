@@ -1053,12 +1053,6 @@ fn validate_attempt(
     }
 }
 
-/// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
-/// never be valid, and gets a long ban. Covenant failures are not banned, whether or not the failing covenant reads the
-/// height (see `is_tip_dependent`), and exceeding the covenant work limit is not banned either. An input script failure
-/// (see `is_tip_dependent`) is only excluded if the input that failed reads the block height. Such a failure cannot be
-/// told apart from the height having moved on, so it is never banned, even if the script could never have succeeded;
-/// reaching it means passing every earlier check first.
 /// The response to a transaction refused by the spend cap (see [UnconfirmedPool::conflict_set_victims])
 fn spend_cap_refusal(tx: &Transaction) -> TxStorageResponse {
     debug!(
@@ -1072,6 +1066,12 @@ fn spend_cap_refusal(tx: &Transaction) -> TxStorageResponse {
     )))
 }
 
+/// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
+/// never be valid, and gets a long ban. Covenant failures are not banned, whether or not the failing covenant reads the
+/// height (see `is_tip_dependent`), and exceeding the covenant work limit is not banned either. An input script failure
+/// (see `is_tip_dependent`) is only excluded if the input that failed reads the block height. Such a failure cannot be
+/// told apart from the height having moved on, so it is never banned, even if the script could never have succeeded;
+/// reaching it means passing every earlier check first.
 fn internal_failure_ban_reason(error: &ValidationError) -> Option<BanReason> {
     match error {
         ValidationError::AggregatedBodyValidationError(
@@ -1300,6 +1300,9 @@ mod test {
         // If set, the next chain-linked validation simulates the mempool processing a block that mines every pooled
         // transaction
         mine_pool_during_chain_linked: std::sync::atomic::AtomicBool,
+        // Transactions the next chain-linked validation adds to the pool (without checks), as if they arrived
+        // meanwhile
+        pool_during_chain_linked: Mutex<Vec<Arc<Transaction>>>,
         chain_linked_calls: AtomicUsize,
         internal_calls: AtomicUsize,
     }
@@ -1343,6 +1346,14 @@ mod test {
                 let mut lock = storage.write().unwrap();
                 let _mined = lock.unconfirmed_pool.drain_all_mempool_transactions();
                 lock.chain_generation = lock.chain_generation.wrapping_add(1);
+            }
+            let arriving = std::mem::take(&mut *self.pool_during_chain_linked.lock().unwrap());
+            if !arriving.is_empty() &&
+                let Some(storage) = self.storage.lock().unwrap().upgrade()
+            {
+                let mut lock = storage.write().unwrap();
+                let weight = lock.get_transaction_weighting();
+                lock.unconfirmed_pool.insert_many(arriving, &weight).unwrap();
             }
             self.chain_linked_results.lock().unwrap().pop_front().unwrap_or(Ok(()))
         }
@@ -2328,8 +2339,36 @@ mod test {
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
     }
 
-    /// The spend cap is checked before a validator node slot holder is replaced, so a newcomer refused by the cap
-    /// leaves the holder it would have outbid
+    /// Spends of `honest`'s input padded with a fresh kernel each, filling it to the spend cap
+    fn padded_copies(honest: &Transaction, key_manager: &KeyManager) -> Vec<Arc<Transaction>> {
+        fresh_kernels(MAX_SPENDS_PER_OUTPUT, key_manager)
+            .into_iter()
+            .map(|kernel| with_kernels(honest, [honest.body.kernels().clone(), vec![kernel]].concat()))
+            .collect()
+    }
+
+    /// The input of a newcomer fills to the spend cap while it is being validated: the check before validation passes,
+    /// and the check on insert refuses it
+    #[test]
+    fn a_spend_cap_reached_during_validation_refuses_the_newcomer_on_insert() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        *validator.pool_during_chain_linked.lock().unwrap() = padded_copies(&honest, &key_manager);
+        let newcomer = with_kernels(&honest, fresh_kernels(1, &key_manager));
+
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+            "{response:?}"
+        );
+        assert_eq!(validator.chain_linked_calls(), 1);
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    /// The spend cap is checked on insert before a validator node slot holder is replaced, so a newcomer refused by the
+    /// cap (reached while it was being validated) leaves the holder it would have outbid
     #[test]
     fn a_newcomer_refused_by_the_spend_cap_does_not_replace_the_validator_node_slot_holder() {
         use tari_common_types::epoch::VnEpoch;
@@ -2356,11 +2395,8 @@ mod test {
                 .is_stored()
         );
         let honest = create_tx(&key_manager);
-        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
-            let padded = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
-            assert!(storage.write().unwrap().insert(padded, None).unwrap().is_stored());
-        }
-        // Outbids the holder for its slot, but spends the capped input and is no kernel subset of its spenders
+        *validator.pool_during_chain_linked.lock().unwrap() = padded_copies(&honest, &key_manager);
+        // Outbids the holder for its slot, but spends the input that fills up and is no kernel subset of its spenders
         let outbidding =
             tx!(MicroMinotari(100_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
                 .unwrap()
@@ -2373,11 +2409,13 @@ mod test {
             Default::default(),
         ));
 
-        let response = storage.write().unwrap().insert(newcomer, None).unwrap();
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
         assert!(
             matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
             "{response:?}"
         );
+        // The holder's and the newcomer's validations
+        assert_eq!(validator.chain_linked_calls(), 2);
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
         assert_eq!(
             storage.read().unwrap().has_transaction(&holder).unwrap(),
