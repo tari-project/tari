@@ -2488,6 +2488,104 @@ mod test {
         assert!(copies[1..].iter().all(in_pool));
     }
 
+    /// The spender replaced at the spend cap is removed alone: a pool transaction spending an output only it produced
+    /// stays
+    #[test]
+    fn a_spend_cap_replacement_keeps_the_children_of_the_replaced_spender() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        // The largest spender, and the only producer of `y`, which `child` spends
+        let (y_source, y_outputs) = create_tx_with_outputs(&key_manager);
+        let largest = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            [honest.body.outputs().clone(), y_source.body.outputs().clone()].concat(),
+            [honest.body.kernels().clone(), fresh_kernels(2, &key_manager)].concat(),
+            Default::default(),
+            Default::default(),
+        ));
+        let copies = padded_copies(&honest, &key_manager);
+        let child = spending(&create_tx(&key_manager), &y_outputs[0], &key_manager);
+        for tx in [&largest].into_iter().chain(&copies[1..]).chain([&child]) {
+            assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+        }
+
+        let response = MempoolStorage::insert_unlocked(&storage, honest.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        let lock = storage.read().unwrap();
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&honest));
+        assert!(!in_pool(&largest));
+        assert!(in_pool(&child));
+        assert!(copies[1..].iter().all(in_pool));
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT + 1);
+    }
+
+    /// A validator node slot holder that a newcomer outbids can also be the spender it replaces at the spend cap: only
+    /// the holder leaves the pool
+    #[test]
+    fn an_outbid_slot_holder_can_be_the_spend_cap_replacement() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let exit_outputs = || {
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            let features = OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10));
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+                .unwrap()
+                .0
+                .body
+                .outputs()
+                .clone()
+        };
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        // The holder pads the newcomer's kernel with two free ones: the largest spender, paying less per gram
+        let mut padding = fresh_kernels(2, &key_manager);
+        for kernel in &mut padding {
+            kernel.fee = MicroMinotari(0);
+        }
+        let holder = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            exit_outputs(),
+            [honest.body.kernels().clone(), padding].concat(),
+            Default::default(),
+            Default::default(),
+        ));
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(holder.clone(), None)
+                .unwrap()
+                .is_stored()
+        );
+        let copies = padded_copies(&honest, &key_manager);
+        for copy in &copies[1..] {
+            assert!(storage.write().unwrap().insert(copy.clone(), None).unwrap().is_stored());
+        }
+        let newcomer = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            exit_outputs(),
+            honest.body.kernels().clone(),
+            Default::default(),
+            Default::default(),
+        ));
+
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        let lock = storage.read().unwrap();
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&newcomer));
+        assert!(!in_pool(&holder));
+        assert!(copies[1..].iter().all(in_pool));
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT);
+    }
+
     /// The spender a newcomer replaces at the spend cap is removed before the newcomer is inserted, so a full pool does
     /// not refuse a newcomer whose priority is below all of its transactions
     #[test]
