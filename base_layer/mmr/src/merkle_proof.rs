@@ -32,7 +32,17 @@ use crate::{
     HashSlice,
     MerkleMountainRange,
     backend::ArrayLike,
-    common::{LeafIndex, family, family_branch, find_peaks, hash_together, is_leaf, is_left_sibling, node_index},
+    common::{
+        LeafIndex,
+        checked_node_index,
+        family,
+        family_branch,
+        find_peaks,
+        hash_together,
+        is_leaf,
+        is_left_sibling,
+        node_index,
+    },
     error::MerkleMountainRangeError,
     serde_support,
 };
@@ -52,9 +62,43 @@ pub enum MerkleProofError {
     Unexpected,
     #[error("Merkle mountain range error: `{0}`")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+    #[error("Leaf index {0} is too large to address a node")]
+    LeafIndexOutOfRange(usize),
+    #[error("Position {pos} is not inside an MMR of size {mmr_size}")]
+    PositionOutOfRange { pos: usize, mmr_size: usize },
+    #[error(
+        "Proof path has {actual} hashes but a leaf at position {pos} in an MMR of size {mmr_size} needs {expected}"
+    )]
+    PathLengthMismatch {
+        pos: usize,
+        mmr_size: usize,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("Proof has {actual} {field} hashes, the maximum is {max}")]
+    TooManyHashes {
+        field: &'static str,
+        actual: usize,
+        max: usize,
+    },
 }
 
-/// A Merkle proof that proves a particular element at a particular position exists in an MMR.
+/// Maximum number of hashes accepted in a proof's `path` or `peaks`.
+pub const MAX_PROOF_HASHES: usize = serde_support::hash::MAX_HASHES;
+
+/// A Merkle proof that a hash is included in an MMR.
+///
+/// The proof shows that `hash` sits under a root formed by bagging the peaks, `D(p1‖…‖pk)`. That root does not
+/// commit to `mmr_size` or to the position, so several (`mmr_size`, `leaf_index`, `path`, `peaks`) combinations can
+/// verify the same hash, and a two-peak root is indistinguishable from an internal node hash.
+///
+/// Consumers must therefore:
+/// - use a leaf-hash domain distinct from the MMR hasher;
+/// - never key uniqueness, dedup or position logic on proof fields;
+/// - treat [`MerkleProof::verify_leaf`] as "is this hash in this tree", nothing more.
+///
+/// The shape checks in [`MerkleProof::verify`] reject proofs that are impossible for the claimed size; they do not
+/// make proofs unique.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, PartialOrd, Ord, Default)]
 pub struct MerkleProof {
     /// The size of the MMR at the time the proof was created.
@@ -159,21 +203,45 @@ impl MerkleProof {
         hash: &HashSlice,
         leaf_index: LeafIndex,
     ) -> Result<(), MerkleProofError> {
-        let pos = node_index(leaf_index);
+        let pos = checked_node_index(leaf_index).ok_or(MerkleProofError::LeafIndexOutOfRange(leaf_index.0))?;
         self.verify::<D>(root, hash, pos)
     }
 
     /// Verifies the Merkle proof against the provided root hash, element and position in the MMR.
+    ///
+    /// `pos` must be a leaf position inside `mmr_size`, and the path length must equal the number of steps from that
+    /// leaf up to its peak.
     pub fn verify<D: Digest>(&self, root: &HashSlice, hash: &HashSlice, pos: usize) -> Result<(), MerkleProofError> {
+        for (field, hashes) in [("path", &self.path), ("peaks", &self.peaks)] {
+            if hashes.len() > MAX_PROOF_HASHES {
+                return Err(MerkleProofError::TooManyHashes {
+                    field,
+                    actual: hashes.len(),
+                    max: MAX_PROOF_HASHES,
+                });
+            }
+        }
+        // calculate the peaks once as these are based on overall MMR size (and will not change)
+        let peaks = find_peaks(self.mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
+        if pos >= self.mmr_size {
+            return Err(MerkleProofError::PositionOutOfRange {
+                pos,
+                mmr_size: self.mmr_size,
+            });
+        }
         if !is_leaf(pos) {
             return Err(MerkleProofError::NonLeafNode);
         }
-        if pos >= self.mmr_size {
-            return Err(MerkleProofError::HashNotFound(pos));
+        let expected = family_branch(pos, self.mmr_size).len();
+        if self.path.len() != expected {
+            return Err(MerkleProofError::PathLengthMismatch {
+                pos,
+                mmr_size: self.mmr_size,
+                expected,
+                actual: self.path.len(),
+            });
         }
         let mut proof = self.clone();
-        // calculate the peaks once as these are based on overall MMR size (and will not change)
-        let peaks = find_peaks(self.mmr_size).ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
         proof.verify_consume::<D>(root, hash, pos, &peaks)
     }
 
