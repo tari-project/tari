@@ -3676,19 +3676,85 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
             last_header_height,
             last_header_height.saturating_sub(steps_back)
         );
+        // We might have more headers than blocks, so we first delete the extra headers top-down in bounded chunks,
+        // pruning any horizon-synced outputs (both table rows and JMT leaves) and clearing the output sync checkpoint
+        // when horizon-synced data is removed. Earlier outputs that those tranches spent are not restored here; the
+        // next horizon sync starts from height 1 and calls `reset_output_state_to_genesis` to heal the output state.
+        let mut checkpoint = db.fetch_horizon_sync_output_checkpoint()?;
+        let mut clear_checkpoint = false;
+        let mut txn = DbTransaction::new();
+        let mut pending_headers = 0usize;
+        let mut pending_outputs = 0usize;
+        let flush = |db: &mut T,
+                     txn: &mut DbTransaction,
+                     pending_headers: &mut usize,
+                     pending_outputs: &mut usize,
+                     clear_checkpoint: &mut bool|
+         -> Result<(), ChainStorageError> {
+            if *clear_checkpoint {
+                txn.clear_horizon_sync_output_checkpoint();
+                *clear_checkpoint = false;
+            }
+            db.write(std::mem::take(txn))?;
+            *pending_headers = 0;
+            *pending_outputs = 0;
+            Ok(())
+        };
+
+        for h in 0..steps_back {
+            let height = last_header_height.saturating_sub(h);
+            info!(
+                target: LOG_TARGET,
+                "Rewinding headers at height {}",
+                height,
+            );
+            let header = fetch_header(db, height)?;
+            let header_hash = header.hash();
+            let outputs = db.fetch_outputs_in_block(&header_hash)?;
+            if !outputs.is_empty() || checkpoint.as_ref().is_some_and(|cp| height <= cp.sync_target_height) {
+                clear_checkpoint = true;
+                checkpoint = None;
+            }
+            for chunk in outputs.chunks(100) {
+                if pending_outputs.saturating_add(chunk.len()) > 100 {
+                    flush(
+                        db,
+                        &mut txn,
+                        &mut pending_headers,
+                        &mut pending_outputs,
+                        &mut clear_checkpoint,
+                    )?;
+                }
+                txn.prune_horizon_synced_outputs(header_hash, chunk);
+                pending_outputs = pending_outputs.saturating_add(chunk.len());
+            }
+            if db.fetch_block_accumulated_data_by_height(height)?.is_some() {
+                txn.delete_block_accumulated_data(height);
+                txn.delete_all_kernerls_in_block(header_hash);
+            }
+            txn.delete_header(height);
+            pending_headers = pending_headers.saturating_add(1);
+
+            if pending_headers >= 100 || pending_outputs >= 100 {
+                flush(
+                    db,
+                    &mut txn,
+                    &mut pending_headers,
+                    &mut pending_outputs,
+                    &mut clear_checkpoint,
+                )?;
+            }
+        }
+        if pending_headers > 0 || pending_outputs > 0 || clear_checkpoint {
+            flush(
+                db,
+                &mut txn,
+                &mut pending_headers,
+                &mut pending_outputs,
+                &mut clear_checkpoint,
+            )?;
+        }
     }
-    // We might have more headers than blocks, so we first see if we need to delete the extra headers.
-    let mut txn = DbTransaction::new();
-    for h in 0..steps_back {
-        let height = last_header_height.saturating_sub(h);
-        info!(
-            target: LOG_TARGET,
-            "Rewinding headers at height {}",
-            height,
-        );
-        txn.delete_header(height);
-    }
-    db.write(txn)?;
     // Delete blocks
     let steps_back = last_block_height.saturating_sub(target_height);
     // No blocks to remove, no need to update the best block

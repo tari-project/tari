@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, CompressedCommitment, FixedHash, HashOutput};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     blocks::UpdateBlockAccumulatedData,
@@ -364,6 +364,36 @@ impl DbTransaction {
             commitment,
             output_type,
         });
+        self
+    }
+
+    /// Prunes a slice of horizon-synced outputs stored under `header_hash` from both the output tables and the output
+    /// state tree (JMT).
+    pub(crate) fn prune_horizon_synced_outputs(
+        &mut self,
+        header_hash: HashOutput,
+        outputs: &[TransactionOutput],
+    ) -> &mut Self {
+        let mut state_tree_updates = Vec::new();
+        for output in outputs {
+            self.prune_output_copy(
+                header_hash,
+                output.hash(),
+                output.commitment.clone(),
+                output.features.output_type,
+            );
+            if !output.is_burned() {
+                let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+                state_tree_updates.push(HorizonStateTreeUpdate {
+                    key: FixedHash::from(key_bytes),
+                    value: None,
+                    replaces_value: false,
+                });
+            }
+        }
+        if !state_tree_updates.is_empty() {
+            self.apply_horizon_state_tree_updates(state_tree_updates);
+        }
         self
     }
 
