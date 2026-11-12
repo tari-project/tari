@@ -235,6 +235,9 @@ pub struct UnconfirmedPool {
     pub(crate) config: UnconfirmedPoolConfig,
     key_counter: usize,
     tx_by_key: HashMap<TransactionKey, PrioritizedTransaction>,
+    /// Each list is in ascending key order: keys come from [UnconfirmedPool::get_next_key], which only counts up, are
+    /// pushed on insert, and removal keeps the order (see [UnconfirmedPool::prune_indexes]). The spend cap binary
+    /// searches them (see [UnconfirmedPool::conflict_set_victims]).
     txs_by_signature: HashMap<PrivateKey, Vec<TransactionKey>>,
     /// The pool transaction with each kernel set (see [kernel_set]). Insert refuses an exact match, so there is one.
     tx_by_kernel_set: HashMap<Vec<PrivateKey>, TransactionKey>,
@@ -852,19 +855,26 @@ impl UnconfirmedPool {
 
     /// The pool transactions to evict so that `tx` can be stored, or None if it may not be stored: at most
     /// [MAX_SPENDS_PER_OUTPUT] pool transactions may spend one output. Where that many already spend an output `tx`
-    /// spends, `tx` is stored only if its kernel set is a strict subset of each of theirs. Any valid spend of an output
-    /// carries its owner's kernels, so the owner's transaction is a strict subset of every copy of it padded with other
-    /// kernels and is always stored, and each such replacement shrinks the kernels the spenders share.
+    /// spends, `tx` is stored only if the spenders that share a kernel with it all hold a strict superset of its
+    /// kernels, and there is at least one. Any valid spend of an output carries its owner's kernels, so the owner's
+    /// transaction shares kernels only with copies of it padded with other kernels, of which it is a strict subset, and
+    /// is stored; spenders sharing none of its kernels (another variant the owner signed) neither block it nor are
+    /// replaced by it. A transaction sharing no kernel with any spender (such as an owner's new fee bump) is not
+    /// stored.
     ///
-    /// It then replaces the spender with the most kernels (the lowest priority of those): a padded copy has more
-    /// kernels than what it pads, so an honest transaction or aggregate is never replaced by a part of itself while a
-    /// copy padding it remains, whatever fee the copy promises. The outputs `tx` spends are taken in its input order,
-    /// and a capped output that a spender already chosen for an earlier one also spends is passed over, with neither a
-    /// subset check nor a replacement of its own. The caller checks that `tx` is not already in the pool (see
-    /// [UnconfirmedPool::has_transaction]), and that replacing them does not orphan it (see
-    /// [UnconfirmedPool::would_orphan]).
+    /// It then replaces the sharing spender with the most kernels (the lowest priority of those): a padded copy has
+    /// more kernels than what it pads, so an honest transaction or aggregate is never replaced by a part of itself
+    /// while a copy padding it remains, whatever fee the copy promises, and a smallest one is never replaced. Each
+    /// replacement shrinks the kernels the spenders sharing them have in common, which bounds how often it can happen.
+    /// The outputs `tx` spends are taken in its input order, and a capped output that a spender already chosen for an
+    /// earlier one also spends is passed over, with neither a subset check nor a replacement of its own. The caller
+    /// checks that `tx` is not already in the pool (see [UnconfirmedPool::has_transaction]), and that replacing them
+    /// does not orphan it (see [UnconfirmedPool::would_orphan]).
+    ///
+    /// Each spender is matched against the signature index list of each kernel of `tx` by a binary search, so a
+    /// spender costs a logarithmic number of steps per kernel of `tx`, whatever the size of the spender or the lists.
     pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
-        let mut kernel_hits = None;
+        let mut signature_lists = None;
         let mut victims = Vec::new();
         let mut chosen = HashSet::new();
         for input in tx.body.inputs() {
@@ -874,12 +884,19 @@ impl UnconfirmedPool {
             if spenders.len() < MAX_SPENDS_PER_OUTPUT || spenders.iter().any(|key| chosen.contains(key)) {
                 continue;
             }
-            let (num_sigs, hits) = kernel_hits.get_or_insert_with(|| self.kernel_hits(tx)).as_ref()?;
+            // A transaction repeating a kernel signature is a strict subset of nothing
+            let lists = signature_lists
+                .get_or_insert_with(|| self.signature_lists(tx))
+                .as_ref()?;
             let mut victim: Option<&PrioritizedTransaction> = None;
             for key in spenders {
                 let spender = self.tx_by_key.get(key)?;
+                let shared = lists.iter().filter(|keys| keys.binary_search(key).is_ok()).count();
+                if shared == 0 {
+                    continue;
+                }
                 // Every kernel of `tx` is one of the spender's, and the spender has more
-                if hits.get(key) != Some(num_sigs) || spender.kernel_signatures.len() <= *num_sigs {
+                if shared < lists.len() || spender.kernel_signatures.len() <= lists.len() {
                     return None;
                 }
                 let replaces = victim.is_none_or(|victim| {
@@ -901,6 +918,11 @@ impl UnconfirmedPool {
         Some(victims)
     }
 
+    /// True if a pool transaction has exactly the kernels of `tx`
+    pub fn has_kernel_set(&self, tx: &Transaction) -> bool {
+        kernel_set(tx).is_some_and(|set| self.tx_by_kernel_set.contains_key(&set))
+    }
+
     /// True if `removed` holds every pool producer of an output `tx` spends, so that removing them would leave `tx`
     /// without its parent. A producer list longer than `removed` is passed over without reading it.
     pub fn would_orphan(&self, tx: &Transaction, removed: &HashSet<TransactionKey>) -> bool {
@@ -912,29 +934,15 @@ impl UnconfirmedPool {
             })
     }
 
-    /// The number of kernels of `tx`, and for each pool transaction the number of them it has (the walk
-    /// [UnconfirmedPool::has_transaction] does). None if `tx` repeats a kernel signature or has one that no pool
-    /// transaction has: then no pool transaction has a strict superset of its kernels.
-    fn kernel_hits(&self, tx: &Transaction) -> Option<(usize, HashMap<TransactionKey, usize>)> {
-        let sigs = kernel_set(tx)?;
-        let lists = sigs
-            .iter()
-            .map(|sig| self.txs_by_signature.get(sig))
-            .collect::<Option<Vec<_>>>()?;
-        let mut hits = HashMap::<TransactionKey, usize>::new();
-        for keys in lists {
-            // A transaction repeating this signature is listed once per repeat, next to each other (one insert pushes
-            // them all), so it is counted once
-            let mut previous = None;
-            for key in keys {
-                if previous != Some(key) {
-                    let hit = hits.entry(*key).or_default();
-                    *hit = hit.saturating_add(1);
-                }
-                previous = Some(key);
-            }
-        }
-        Some((sigs.len(), hits))
+    /// The signature index list of each kernel of `tx` (empty for a kernel no pool transaction has), or None if `tx`
+    /// repeats a kernel signature
+    fn signature_lists(&self, tx: &Transaction) -> Option<Vec<&[TransactionKey]>> {
+        Some(
+            kernel_set(tx)?
+                .iter()
+                .map(|sig| self.txs_by_signature.get(sig).map_or(&[][..], Vec::as_slice))
+                .collect(),
+        )
     }
 
     #[cfg(test)]
@@ -2781,6 +2789,7 @@ impl UnconfirmedPool {
             self.txs_by_signature
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
+            self.txs_by_signature.values().all(|tx_keys| tx_keys.is_sorted()) &&
             self.txs_by_output
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
@@ -4733,7 +4742,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn a_newcomer_at_the_spend_cap_must_have_a_strict_subset_of_every_spenders_kernels() {
+    async fn a_newcomer_at_the_spend_cap_must_have_a_strict_subset_of_the_kernels_of_every_spender_sharing_one() {
         use tari_common_types::types::CompressedSignature;
         let key_manager = KeyManager::new_random().unwrap();
         let tx_weight = TransactionWeight::latest();
@@ -4792,8 +4801,8 @@ mod test {
             1
         );
 
-        // A newcomer must be a strict subset of every spender, not only of most of them: `{o, a}` is one of seven
-        // spenders `{o, a, x_i}` but not of `{o, b}`
+        // A newcomer must be a strict subset of every spender it shares a kernel with, not only of most of them: `{o,
+        // a}` is one of seven spenders `{o, a, x_i}`, and shares `o` with `{o, b}` but is not a subset of it
         let (o, a, b) = (kernel(0), kernel(1), kernel(2));
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
         for n in 0..u64::try_from(MAX_SPENDS_PER_OUTPUT - 1).unwrap() {
