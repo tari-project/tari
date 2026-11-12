@@ -270,7 +270,7 @@ impl Shutdown {
     /// and never dropped keeps this pending forever, so callers should bound it with a timeout.
     ///
     /// Any number of drain futures may be awaited concurrently; all of them resolve when the last listener drops.
-    pub fn wait_for_listeners(&self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn wait_for_listeners(&self) -> impl FusedFuture<Output = ()> + Send + 'static {
         drain(self.trigger.state.clone())
     }
 }
@@ -281,8 +281,12 @@ impl Default for Shutdown {
     }
 }
 
-fn drain(state: Arc<State>) -> impl Future<Output = ()> + Send + 'static {
-    Drain { state, slot: None }
+fn drain(state: Arc<State>) -> impl FusedFuture<Output = ()> + Send + 'static {
+    Drain {
+        state,
+        slot: None,
+        terminated: false,
+    }
 }
 
 /// Future returned by [`Shutdown::wait_for_listeners`] and [`ShutdownSignal::drained`]. Owns one waker slot in the
@@ -290,6 +294,7 @@ fn drain(state: Arc<State>) -> impl Future<Output = ()> + Send + 'static {
 struct Drain {
     state: Arc<State>,
     slot: Option<usize>,
+    terminated: bool,
 }
 
 impl Drain {
@@ -304,8 +309,12 @@ impl Future for Drain {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+        if self.terminated {
+            return Poll::Ready(());
+        }
         if self.state.is_drained() {
             self.release_slot();
+            self.terminated = true;
             return Poll::Ready(());
         }
         let slot = self.state.register_drain_waker(self.slot, cx.waker());
@@ -313,10 +322,17 @@ impl Future for Drain {
         // Re-check after registering so a drop between the first check and the registration is not missed
         if self.state.is_drained() {
             self.release_slot();
+            self.terminated = true;
             Poll::Ready(())
         } else {
             Poll::Pending
         }
+    }
+}
+
+impl FusedFuture for Drain {
+    fn is_terminated(&self) -> bool {
+        self.terminated
     }
 }
 
@@ -388,7 +404,7 @@ impl ShutdownSignal {
     /// shutdown has been dropped. Equivalent to [`Shutdown::wait_for_listeners`] for holders that only have a signal.
     ///
     /// This does not trigger the shutdown, and callers should bound it with a timeout.
-    pub fn drained(self) -> impl Future<Output = ()> + Send + 'static {
+    pub fn drained(self) -> impl FusedFuture<Output = ()> + Send + 'static {
         let state = self.listener.state.clone();
         drop(self);
         drain(state)
@@ -663,8 +679,19 @@ mod test {
         let signal = shutdown.to_signal();
         let other = shutdown.to_signal();
         let mut drain = Box::pin(signal.drained());
+        assert!(!drain.is_terminated());
         assert!(poll_once(&mut drain).is_pending());
+        assert!(!drain.is_terminated());
         drop(other);
         assert!(poll_once(&mut drain).is_ready());
+        assert!(drain.is_terminated());
+        assert!(poll_once(&mut drain).is_ready());
+
+        // An immediately-ready drain must not report terminated before its first poll
+        let empty_shutdown = Shutdown::new();
+        let mut ready_drain = Box::pin(empty_shutdown.wait_for_listeners());
+        assert!(!ready_drain.is_terminated());
+        assert!(poll_once(&mut ready_drain).is_ready());
+        assert!(ready_drain.is_terminated());
     }
 }
