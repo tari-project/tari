@@ -302,9 +302,9 @@ impl MempoolStorage {
     /// The near-free checks done before a new transaction is validated: its fee and its weight. Returns the response
     /// if the transaction is not to be validated.
     ///
-    /// This deliberately does not treat a transaction whose kernels are already in the pool as stored: a different
-    /// (and possibly invalid) body can reuse the kernels of a pooled transaction, and the response would cause it to be
-    /// propagated. Such a transaction is validated, and deduplicated by the unconfirmed pool once valid.
+    /// This does no kernel deduplication. Callers drop an exact kernel-set match or a union of pool transactions before
+    /// validation with [MempoolStorage::has_transaction], and `insert_into_unconfirmed_pool` does not store one; any
+    /// other reuse of pooled kernels is validated.
     pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
         if let Some(response) = self.check_fee(tx) {
             return Some(response);
@@ -414,6 +414,10 @@ impl MempoolStorage {
     ) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
         let tx_id = tx_id(&tx);
+        if self.unconfirmed_pool.has_transaction(&tx) {
+            debug!(target: LOG_TARGET, "Tx: ({tx_id}) is already in the unconfirmed pool");
+            return Ok(TxStorageResponse::UnconfirmedPool);
+        }
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
         // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
@@ -789,36 +793,19 @@ impl MempoolStorage {
         }
     }
 
-    /// Check if the specified transaction is stored in the Mempool.
+    /// Check if the specified transaction is stored in the Mempool (see `UnconfirmedPool::has_transaction` and
+    /// `ReorgPool::has_transaction`).
     pub fn has_transaction(&self, tx: &Transaction) -> Result<TxStorageResponse, MempoolError> {
-        tx.body
-            .kernels()
-            .iter()
-            .fold(None, |stored, kernel| {
-                if stored.is_none() {
-                    return Some(self.has_tx_with_excess_sig(&kernel.excess_sig));
-                }
-                let stored = stored.unwrap();
-                match (self.has_tx_with_excess_sig(&kernel.excess_sig), stored) {
-                    // All (so far) in unconfirmed pool
-                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::UnconfirmedPool) => {
-                        Some(TxStorageResponse::UnconfirmedPool)
-                    },
-                    // Some kernels from the transaction have already been processed, and others exist in the
-                    // unconfirmed pool, therefore this specific transaction has not been stored (already spent)
-                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::ReorgPool) |
-                    (TxStorageResponse::ReorgPool, TxStorageResponse::UnconfirmedPool) => {
-                        Some(TxStorageResponse::NotStoredAlreadySpent)
-                    },
-                    // All (so far) in reorg pool
-                    (TxStorageResponse::ReorgPool, TxStorageResponse::ReorgPool) => Some(TxStorageResponse::ReorgPool),
-                    // Not stored
-                    (TxStorageResponse::UnconfirmedPool, other) |
-                    (TxStorageResponse::ReorgPool, other) |
-                    (other, _) => Some(other),
-                }
-            })
-            .ok_or(MempoolError::TransactionNoKernels)
+        if tx.body.kernels().is_empty() {
+            return Err(MempoolError::TransactionNoKernels);
+        }
+        if self.unconfirmed_pool.has_transaction(tx) {
+            Ok(TxStorageResponse::UnconfirmedPool)
+        } else if self.reorg_pool.has_transaction(tx) {
+            Ok(TxStorageResponse::ReorgPool)
+        } else {
+            Ok(TxStorageResponse::NotStored(None))
+        }
     }
 
     /// Gathers and returns the stats of the Mempool.
