@@ -4761,7 +4761,21 @@ mod test {
                 .insert(spend(10 + n, kernels), None, &tx_weight)
                 .unwrap();
         }
-        // Both of its signatures are among each spender's three, but `other` is in none of them
+        // `other` is in the pool, but in none of the spenders: each has the owner's signature twice, which counts once
+        let other_input = distinct_inputs(&base.body.inputs()[0], 1).pop().unwrap();
+        unconfirmed_pool
+            .insert(
+                Arc::new(Transaction::new(
+                    vec![other_input],
+                    synthetic_tx(&base, 50, 1).body.outputs().clone(),
+                    vec![other.clone(), kernel(3)],
+                    Default::default(),
+                    Default::default(),
+                )),
+                None,
+                &tx_weight,
+            )
+            .unwrap();
         assert!(
             unconfirmed_pool
                 .conflict_set_victims(&spend(100, vec![owner.clone(), other]))
@@ -4770,11 +4784,25 @@ mod test {
         // The owner's own transaction replaces one spender
         assert_eq!(
             unconfirmed_pool
-                .conflict_set_victims(&spend(101, vec![owner]))
+                .conflict_set_victims(&spend(101, vec![owner.clone()]))
                 .unwrap()
                 .len(),
             1
         );
+
+        // A newcomer must be a strict subset of every spender, not only of most of them: `{o, a}` is one of seven
+        // spenders `{o, a, x_i}` but not of `{o, b}`
+        let (o, a, b) = (kernel(0), kernel(1), kernel(2));
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        for n in 0..u64::try_from(MAX_SPENDS_PER_OUTPUT - 1).unwrap() {
+            unconfirmed_pool
+                .insert(spend(10 + n, vec![o.clone(), a.clone(), kernel(3)]), None, &tx_weight)
+                .unwrap();
+        }
+        unconfirmed_pool
+            .insert(spend(20, vec![o.clone(), b]), None, &tx_weight)
+            .unwrap();
+        assert!(unconfirmed_pool.conflict_set_victims(&spend(100, vec![o, a])).is_none());
     }
 
     /// Spends of several inputs at the spend cap: `(a)` the same spenders on both, `(b)` different spenders, `(c)` the
@@ -4836,6 +4864,19 @@ mod test {
         pool.insert(newcomer.clone(), None, &tx_weight).unwrap();
         assert_eq!(spenders(&pool, &a), MAX_SPENDS_PER_OUTPUT);
         assert_eq!(spenders(&pool, &b), MAX_SPENDS_PER_OUTPUT);
+
+        // (a), with the lowest fee inserted last: it is still the one replaced
+        let mut pool = new_pool();
+        let keys = (0..MAX_SPENDS_PER_OUTPUT)
+            .rev()
+            .flat_map(|i| {
+                let fee = 1_000 + 100 * u64::try_from(i).unwrap();
+                fill(&mut pool, vec![a.clone(), b.clone()], true, 1, fee)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pool.conflict_set_victims(&newcomer).unwrap(), vec![
+            *keys.last().unwrap()
+        ]);
 
         // (b)
         let mut pool = new_pool();

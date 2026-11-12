@@ -2118,6 +2118,7 @@ mod test {
                     .filter(|i| mask & (1 << i) != 0)
                     .map(|i| extra[i].clone()),
             );
+            let capped = pool_len(&storage) == MAX_SPENDS_PER_OUTPUT;
             let response = storage
                 .write()
                 .unwrap()
@@ -2126,6 +2127,12 @@ mod test {
             assert!(pool_len(&storage) <= MAX_SPENDS_PER_OUTPUT);
             if mask == 0 {
                 assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+            }
+            if capped && mask != 0 {
+                assert!(
+                    matches!(response, TxStorageResponse::NotStored(Some(_))),
+                    "{mask}: {response:?}"
+                );
             }
         }
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
@@ -2258,6 +2265,47 @@ mod test {
         );
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
         assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    #[test]
+    fn a_spend_that_is_no_kernel_subset_does_not_replace_a_spender_at_the_cap_whatever_its_fee() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let padded = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(padded, None).unwrap().is_stored());
+        }
+        // Its kernel is in the pool (in a transaction spending something else), so it is checked against the spenders
+        let mut kernels = fresh_kernels(2, &key_manager);
+        let unrelated = create_tx(&key_manager);
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(with_kernels(&unrelated, kernels.clone()), None)
+                .unwrap()
+                .is_stored()
+        );
+        kernels.truncate(1);
+        kernels[0].fee = MicroMinotari(1_000_000);
+        let newcomer = with_kernels(&honest, kernels);
+
+        assert!(
+            storage
+                .read()
+                .unwrap()
+                .unconfirmed_pool
+                .conflict_set_victims(&newcomer)
+                .is_none()
+        );
+        let response = storage.write().unwrap().insert(newcomer, None).unwrap();
+        assert!(
+            matches!(response, TxStorageResponse::NotStored(Some(_))),
+            "{response:?}"
+        );
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
     }
 
     #[test]
