@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, convert::TryInto};
+use std::{collections::HashSet, convert::TryInto, time::Instant};
 
 use futures::{Stream, StreamExt, stream::FuturesUnordered};
 use log::*;
@@ -30,7 +30,7 @@ use tari_comms::{
     RefKind,
     connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer, PeerId},
-    protocol::rpc::{ClientStreaming, RpcError},
+    protocol::rpc::{ClientStreaming, RpcError, RpcHandshakeError},
     types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
@@ -216,14 +216,28 @@ impl Discovering {
             conn.peer_node_id()
         );
 
-        let peer_node_id = conn.peer_node_id();
+        let peer_node_id = conn.peer_node_id().clone();
 
         debug!(
             target: LOG_TARGET,
             "Discovering: Established RPC connection to sync peer `{peer_node_id}`"
         );
-        let result = self.request_peers(peer_node_id, client).await;
-        self.ban_on_offence(peer_node_id.clone(), result, was_connected).await?;
+        // Per-item streaming timeouts alone let a peer drip non-converting records for minutes, stalling the round
+        let sync_deadline = self.config().network_discovery.on_connect_sync_timeout;
+        let result = tokio::time::timeout(sync_deadline, self.request_peers(&peer_node_id, client))
+            .await
+            .unwrap_or_else(|_| {
+                debug!(
+                    target: LOG_TARGET,
+                    "Discovering: Peer sync from '{peer_node_id}' timed out after {sync_deadline:?}"
+                );
+                Err(NetworkDiscoveryError::Timeout {
+                    operation: "discovering_sync".to_string(),
+                    peer: peer_node_id.to_hex(),
+                    duration: format!("{sync_deadline:.2?}"),
+                })
+            });
+        self.ban_on_offence(peer_node_id, result, was_connected).await?;
         self.hang_up_if_ours(&mut conn, created_here, "Discovering sync complete")
             .await;
 
@@ -377,7 +391,7 @@ impl Discovering {
                 warn!(target: LOG_TARGET, "Discovering: Sync peer `{sync_peer}` sent duplicate peer: {err:?}");
                 return Err(err);
             }
-            match self.validate_and_add_peer(new_peer).await {
+            match self.validate_and_add_peer(sync_peer, new_peer).await {
                 Ok(()) => {},
                 Err(err) => match classify_relay_failure(&err) {
                     // A sync peer merely relays signed claims. Skip a bad or unusable claim without
@@ -418,7 +432,11 @@ impl Discovering {
         Ok(())
     }
 
-    async fn validate_and_add_peer(&mut self, new_peer: UnvalidatedPeerInfo) -> Result<(), NetworkDiscoveryError> {
+    async fn validate_and_add_peer(
+        &mut self,
+        sync_peer: &NodeId,
+        new_peer: UnvalidatedPeerInfo,
+    ) -> Result<(), NetworkDiscoveryError> {
         let node_id = NodeId::from_public_key(&new_peer.public_key);
         if self.context.node_identity.node_id() == &node_id {
             debug!(target: LOG_TARGET, "Discovering: Received our own node from peer sync. Ignoring.");
@@ -426,21 +444,33 @@ impl Discovering {
         }
 
         let maybe_existing_peer = self.find_by_public_key(new_peer.public_key.clone()).await?;
-        let peer_exists = maybe_existing_peer.is_some();
+        let is_new_peer = maybe_existing_peer.is_none();
+        let discovery_config = &self.config().network_discovery;
+        // Checked before validation, so that new records past the per-source budget do not cost a signature check
+        if is_new_peer &&
+            !self
+                .context
+                .source_budget
+                .lock()
+                .is_ok_and(|budget| budget.has_headroom(sync_peer, Instant::now(), discovery_config))
+        {
+            return Ok(());
+        }
 
         let peer_validator = PeerValidator::new(self.config());
-        match peer_validator.validate_peer(new_peer, maybe_existing_peer) {
-            Ok(valid_peer) => {
-                if peer_exists {
-                    self.stats.num_duplicate_peers = self.stats.num_duplicate_peers.saturating_add(1);
-                } else {
-                    self.stats.num_new_peers = self.stats.num_new_peers.saturating_add(1);
-                }
-                self.add_peer(valid_peer).await?;
-                Ok(())
-            },
-            Err(err) => Err(err.into()),
+        let valid_peer = peer_validator.validate_peer(new_peer, maybe_existing_peer)?;
+        if is_new_peer {
+            if !self.context.source_budget.lock().is_ok_and(|mut budget| {
+                budget.try_charge(sync_peer, &valid_peer.node_id, Instant::now(), discovery_config)
+            }) {
+                return Ok(());
+            }
+            self.stats.num_new_peers = self.stats.num_new_peers.saturating_add(1);
+        } else {
+            self.stats.num_duplicate_peers = self.stats.num_duplicate_peers.saturating_add(1);
         }
+        self.add_peer(valid_peer).await?;
+        Ok(())
     }
 
     /// Bans `peer` if `result` is its fault. A peer we were already connected to (`was_connected`) may be one of a
@@ -494,15 +524,24 @@ impl Discovering {
     }
 }
 
-/// Returns true if the sync peer sent bad peer data, as opposed to an RPC failure (no free sessions, timeouts) that
-/// can happen to any honest peer.
+/// Returns true if the sync peer sent bad peer data or malformed/oversized RPC frames, as opposed to an RPC failure
+/// (no free sessions, timeouts, closed substreams) that can happen to any honest peer.
 pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
     matches!(
         err,
         NetworkDiscoveryError::EmptyPeerMessageReceived |
             NetworkDiscoveryError::DuplicatePeerReceived |
             NetworkDiscoveryError::TooManyPeersReceived |
-            NetworkDiscoveryError::TooManyInvalidPeersReceived
+            NetworkDiscoveryError::TooManyInvalidPeersReceived |
+            NetworkDiscoveryError::RpcError(
+                RpcError::DecodeError(_) |
+                    RpcError::DecodeBudgetExceeded { .. } |
+                    RpcError::MaxResponseSizeExceeded { .. } |
+                    RpcError::RemotePeerExceededMaxChunkCount { .. } |
+                    RpcError::HandshakeError(
+                        RpcHandshakeError::DecodeError(_) | RpcHandshakeError::FrameTooLarge { .. }
+                    )
+            )
     )
 }
 
@@ -579,18 +618,42 @@ mod test {
 
     #[test]
     fn a_bad_get_peers_stream_item_is_a_high_offence_but_a_status_stays_low() {
-        use tari_comms::protocol::rpc::RpcStatus;
+        use tari_comms::protocol::rpc::{HandshakeRejectReason, RpcStatus};
 
         let over_budget = NetworkDiscoveryError::from_stream_error(RpcError::DecodeBudgetExceeded { items: 2, max: 1 });
         assert!(matches!(offence_severity(&over_budget), Some(OffenceSeverity::High)));
+        assert!(is_bad_data_offence(&over_budget));
 
         let undecodable =
             NetworkDiscoveryError::from_stream_error(RpcError::DecodeError(prost::DecodeError::new("bad item")));
         assert!(matches!(offence_severity(&undecodable), Some(OffenceSeverity::High)));
+        assert!(is_bad_data_offence(&undecodable));
+
+        let oversized_handshake =
+            NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::FrameTooLarge { max: 1024 }));
+        assert!(is_bad_data_offence(&oversized_handshake));
+
+        // Timeouts, busy RPC session pools and status replies are not bad peer data on an existing connection
+        let reply_timeout = NetworkDiscoveryError::RpcError(RpcError::ReplyTimeout);
+        assert!(!is_bad_data_offence(&reply_timeout));
+
+        let no_sessions = NetworkDiscoveryError::RpcError(RpcError::HandshakeError(RpcHandshakeError::Rejected(
+            HandshakeRejectReason::NoServerSessionsAvailable("busy"),
+        )));
+        assert!(!is_bad_data_offence(&no_sessions));
 
         let status = NetworkDiscoveryError::from_stream_error(RpcError::RequestFailed(RpcStatus::bad_request("no")));
         assert!(matches!(status, NetworkDiscoveryError::RpcStatus(_)));
         assert!(matches!(offence_severity(&status), Some(OffenceSeverity::Low)));
+        assert!(!is_bad_data_offence(&status));
+
+        let timeout = NetworkDiscoveryError::Timeout {
+            operation: "discovering_sync".to_string(),
+            peer: "abc".to_string(),
+            duration: "30s".to_string(),
+        };
+        assert_eq!(timeout, timeout);
+        assert!(!is_bad_data_offence(&timeout));
     }
 
     #[test]
