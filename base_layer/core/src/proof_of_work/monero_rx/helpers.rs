@@ -303,8 +303,8 @@ fn shadow_check_merkle_tree_params(merge_mining_params: &VarInt, height: u64, bl
 ///
 /// `strict_merkle_tree_params` selects the merge mining parameter decoder (GHSA-3qmx-q9pv-f3m4 item 3). On the
 /// strict path a varint that is not the canonical encoding of the parameters it decodes to is rejected, and that
-/// rejection is reported as `MergeMineError::MerkleTreeParamsError` rather than as a `ValidationError`, because it
-/// is the one failure in this function that must never ban the relaying peer. See the comment at the decode site.
+/// rejection is reported as `MergeMineError::MerkleTreeParamsError` rather than as a `ValidationError`, so the log
+/// and the error message name the real fault. It bans Long like the other `pow_data` rejections.
 // Ristretto point/scalar arithmetic, not integer arithmetic: cannot overflow.
 #[allow(clippy::arithmetic_side_effects)]
 fn check_aux_chains(
@@ -346,15 +346,8 @@ fn check_aux_chains(
                     "Merge mining parameters in the Monero coinbase of the block at height {height} could not be \
                      decoded: {e}"
                 );
-                // Deliberately *not* a `ValidationError`: `get_ban_reason` maps `MerkleTreeParamsError` to `None`,
-                // which is the pre-existing judgement that merge mining parameter problems are not peer
-                // misbehaviour, and it is the right one here. The relaying peer did not author this varint and
-                // cannot alter it - it is committed to by the Monero proof of work - and it has no way to know
-                // that we disagree with it about the activation height. Banning on this turns a height
-                // disagreement into an eclipse of the upgraded minority: it would ban the honest, not yet upgraded
-                // peers relaying the majority chain, and because ban/no-ban is a clean binary signal (the pre-fork
-                // decoder is infallible and can never produce this error) it would also hand any observer a free
-                // remote probe for which build a node is running.
+                // This check runs before any proof of work is verified, so nothing commits the sender to this
+                // varint, and a non-canonical one at or above activation earns a Long ban.
                 return Err(e.into());
             },
         }
@@ -686,6 +679,7 @@ mod test {
     use tari_common::configuration::Network;
     use tari_test_utils::unpack_enum;
     use tari_transaction_components::{
+        BanPeriod,
         consensus::consensus_constants::{
             ESMERALDA_DERIVED_MONERO_COINBASE_ACTIVATION_HEIGHT,
             MAINNET_STRICT_MERKLE_TREE_PARAMS_ACTIVATION_HEIGHT,
@@ -2387,7 +2381,7 @@ mod test {
             "non-canonical must still be accepted on the legacy path, or historical blocks are invalidated"
         );
         // The rejection is a `MerkleTreeParamsError` rather than the `ValidationError` every other rejection in
-        // this function uses, because that variant is the one `get_ban_reason` maps to `None`. See the decode site.
+        // this function uses, so the error names the real fault. It still bans Long.
         let err = check(non_canonical.clone(), true).unwrap_err();
         match &err {
             MergeMineError::MerkleTreeParamsError(MerkleTreeParametersError::NonCanonicalEncoding {
@@ -2399,10 +2393,7 @@ mod test {
             },
             other => panic!("non-canonical must be rejected as a decode error, got {other:?}"),
         }
-        assert!(
-            err.get_ban_reason().is_none(),
-            "a height disagreement about merge mining parameters must never ban the relaying peer"
-        );
+        assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
     }
 
     /// GHSA-3qmx-q9pv-f3m4 item 3. The out-of-range aux chain count is a verification failure rather than a panic or
@@ -2575,15 +2566,8 @@ mod test {
             "the tag was found and decoded; reporting it as missing misdirects whoever is on call: {err}"
         );
 
-        // The regression guard that matters: this must NOT ban the peer. The relaying peer did not author the
-        // varint and cannot alter it - it is committed to by the Monero proof of work - and it has no way to know
-        // that we disagree with it about the activation height. Banning here would eclipse the upgraded minority by
-        // banning the honest peers relaying the majority chain, and would hand any observer a free binary probe for
-        // which build a node is running, because the pre-fork decoder can never produce this error at all.
-        assert!(
-            err.get_ban_reason().is_none(),
-            "a height disagreement about merge mining parameters must never ban the relaying peer"
-        );
+        // No proof of work has been checked yet, so the sender is not committed to the varint: ban it Long.
+        assert_eq!(err.get_ban_reason().map(|r| r.ban_duration), Some(BanPeriod::Long));
     }
 
     /// GHSA-3qmx-q9pv-f3m4 item 3, shadow mode. Below the activation height the strict decoder runs for its
