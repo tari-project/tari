@@ -104,8 +104,8 @@ pub struct Dht {
     metrics_collector: MetricsCollectorHandle,
     /// Re-resolves seed peers for a rebootstrap
     seed_peer_provider: Option<Arc<dyn SeedPeerProvider>>,
-    /// New peer records stored per direct source through Join gossip. Network discovery keeps its own.
-    join_budget: SharedSourceBudget,
+    /// New peer records stored per direct source through Join and Discovery gossip. Network discovery keeps its own.
+    gossip_budget: SharedSourceBudget,
     /// The Joins the DHT handler accepted, which the dedup layer then drops
     accepted_joins: SharedAcceptedJoins,
 }
@@ -143,7 +143,7 @@ impl Dht {
             discovery_sender,
             event_publisher,
             seed_peer_provider,
-            join_budget: Default::default(),
+            gossip_budget: Default::default(),
             accepted_joins: Default::default(),
         };
 
@@ -319,7 +319,7 @@ impl Dht {
                 self.dht_requester(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
-                self.join_budget.clone(),
+                self.gossip_budget.clone(),
                 self.accepted_joins.clone(),
             ))
             .into_inner()
@@ -368,7 +368,7 @@ impl Dht {
         &self,
     ) -> impl filter::Predicate<DhtInboundMessage> + Clone + Send + 'static + use<> {
         move |msg: &DhtInboundMessage| match msg.dht_header.message_type {
-            DhtMessageType::SafRequestMessages => {
+            DhtMessageType::SafRequestMessages | DhtMessageType::SafStoredMessages => {
                 debug!(
                     target: LOG_TARGET,
                     "Received store and forward message from PublicKey={}. Store and forward feature is not supported \
@@ -746,7 +746,14 @@ mod test {
         outbound.call(request).await.unwrap();
 
         // The key recorded is the one the inbound path computes from the decoded body
-        let inbound_key = crate::dedup::create_message_hash(&[], &canonical);
+        let decoded = crate::inbound::decode_envelope_body(&body).unwrap();
+        let inbound_key = crate::dedup::message_key(
+            &[],
+            DhtMessageType::None,
+            DhtMessageFlags::empty(),
+            &body,
+            Some(&decoded),
+        );
         let hit_count = dht
             .dht_requester()
             .get_message_cache_hit_count(inbound_key.to_vec())
@@ -854,7 +861,8 @@ mod test {
         outbound.call(forward).await.unwrap();
 
         // No key was recorded for the ciphertext as an unsigned body
-        let unsigned_key = crate::dedup::create_message_hash(&[], &b_body);
+        let unsigned_key =
+            crate::dedup::message_key(&[], DhtMessageType::None, DhtMessageFlags::empty(), &b_body, None);
         let hit_count = dht
             .dht_requester()
             .get_message_cache_hit_count(unsigned_key.to_vec())
@@ -1212,6 +1220,37 @@ mod test {
         assert_eq!(series_counts(&dht, &relay).await, (1, 1));
     }
 
+    /// Relays never forward an unsigned cleartext DHT protocol message, so dropping one counts as the source's own
+    #[tokio::test]
+    async fn an_unsigned_dht_protocol_message_counts_as_own() {
+        let relay = make_node_identity();
+        let shutdown = Shutdown::new();
+        let dht = build_flood_test_dht(&[&relay], &shutdown).await;
+        let mut service = dht.inbound_middleware_layer().layer(service_spy().to_service());
+
+        for message_type in [
+            DhtMessageType::Join,
+            DhtMessageType::Discovery,
+            DhtMessageType::DiscoveryResponse,
+        ] {
+            let mut envelope = make_dht_envelope(
+                &relay,
+                &wrap_in_envelope_body!(b"unsigned".to_vec()),
+                DhtMessageFlags::NONE,
+                false,
+                MessageTag::new(),
+                false,
+            )
+            .unwrap();
+            envelope.header.as_mut().unwrap().message_type = message_type as i32;
+            service
+                .call(make_comms_inbound_message(&relay, envelope.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+        }
+        assert_eq!(series_counts(&dht, &relay).await, (3, 0));
+    }
+
     /// A non-canonically encoded signature is rejected before it is verified. One naming another signer, delivered by
     /// relay H (which an older relay without the canonical check would pass on), counts in H's forwarded series.
     #[tokio::test]
@@ -1537,10 +1576,10 @@ mod test {
         (dht, oms_mock_state)
     }
 
-    /// A source that uses up its Join budget at a node still has its whole OnConnect budget there: a Join flood
+    /// A source that uses up its gossip budget at a node still has its whole OnConnect budget there: a Join flood
     /// relayed by an honest neighbour does not stop OnConnect between the two
     #[tokio::test]
-    async fn exhausting_the_join_budget_leaves_the_on_connect_budget() {
+    async fn exhausting_the_gossip_budget_leaves_the_on_connect_budget() {
         let source = make_node_identity();
         let shutdown = Shutdown::new();
         let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&source], &shutdown).await;
@@ -1569,7 +1608,7 @@ mod test {
         let source_id = source.node_id();
         let now = Instant::now();
         let config = &dht.config.network_discovery;
-        assert!(!dht.join_budget.lock().unwrap().has_headroom(source_id, now, config));
+        assert!(!dht.gossip_budget.lock().unwrap().has_headroom(source_id, now, config));
         let discovery = dht.network_discovery_service(shutdown.to_signal());
         assert!(
             discovery
@@ -1580,7 +1619,7 @@ mod test {
         );
     }
 
-    /// A source that has used up its Join budget delivers a Join first, twice at once, and keeps resending it: the
+    /// A source that has used up its gossip budget delivers a Join first, twice at once, and keeps resending it: the
     /// copy an honest source delivers next is still processed, so the origin is stored and propagated exactly once
     #[tokio::test]
     async fn a_capped_source_delivering_a_join_first_does_not_suppress_it() {
@@ -1592,7 +1631,7 @@ mod test {
         let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
         let max = dht.config.network_discovery.max_stored_per_source;
         {
-            let mut budget = dht.join_budget.lock().unwrap();
+            let mut budget = dht.gossip_budget.lock().unwrap();
             for _ in 0..max {
                 let peer = make_node_identity();
                 assert!(budget.try_charge(
@@ -1645,7 +1684,7 @@ mod test {
         let (dht, oms_mock_state) = build_relay(make_node_identity(), &[&capped, &honest, &third], &shutdown).await;
         let service = dht.inbound_middleware_layer().layer(service_spy().to_service());
         {
-            let mut budget = dht.join_budget.lock().unwrap();
+            let mut budget = dht.gossip_budget.lock().unwrap();
             for _ in 0..dht.config.network_discovery.max_stored_per_source {
                 let peer = make_node_identity();
                 budget.try_charge(
@@ -1936,6 +1975,96 @@ mod test {
             .unwrap();
 
         assert_eq!(banned_peers(&mock_state).await, vec![attacker.node_id().clone()]);
+    }
+
+    /// An unsigned cleartext Discovery or DiscoveryResponse carrying the body of an unsigned domain broadcast is
+    /// dropped at ingress without a ban, and does not stop the genuine broadcast from being delivered
+    #[tokio::test]
+    async fn unsigned_discovery_envelope_does_not_shadow_unsigned_domain_broadcast() {
+        for dht_type in [DhtMessageType::Discovery, DhtMessageType::DiscoveryResponse] {
+            let origin = make_node_identity();
+            let relay = make_node_identity();
+            let attacker = make_node_identity();
+            let target = make_node_identity();
+            let shutdown = Shutdown::new();
+
+            // The origin's broadcast, as its outbound pipeline puts it on the wire
+            let (connectivity, _) = create_connectivity_mock();
+            let (out_tx, mut out_rx) = mpsc::unbounded_channel();
+            let dht_origin = build_dht(origin.clone(), &[&relay], connectivity, out_tx, &shutdown).await;
+            let (wire_tx, mut wire_rx) = mpsc::channel(10);
+            let mut outbound = dht_origin.outbound_middleware_layer().layer(SinkService::new(wire_tx));
+            dht_origin
+                .outbound_requester()
+                .send_raw_no_wait(
+                    SendMessageParams::new()
+                        .direct_node_id(relay.node_id().clone())
+                        .finish(),
+                    wrap_in_envelope_body!(b"new block".to_vec()).encode_into_bytes_mut(),
+                )
+                .await
+                .unwrap();
+            let request = time::timeout(Duration::from_secs(10), out_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            outbound.call(request).await.unwrap();
+            let wire: OutboundMessage = time::timeout(Duration::from_secs(10), wire_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let genuine = <DhtEnvelope as prost::Message>::decode(wire.body.clone()).unwrap();
+            let header = genuine.header.as_ref().unwrap();
+            assert!(header.message_signature.is_empty());
+            assert_eq!(header.message_type, DhtMessageType::None as i32);
+
+            let (connectivity, mock) = create_connectivity_mock();
+            let mock_state = mock.spawn();
+            let (out_tx, _out_rx) = mpsc::unbounded_channel();
+            let dht_target = build_dht(target.clone(), &[&attacker, &relay], connectivity, out_tx, &shutdown).await;
+            let spy = service_spy();
+            let mut service = dht_target.inbound_middleware_layer().layer(spy.to_service());
+
+            // The same envelope re-typed as a DHT protocol message is dropped at ingress
+            let mut retyped = genuine.clone();
+            retyped.header.as_mut().unwrap().message_type = dht_type as i32;
+            service
+                .call(make_comms_inbound_message(&attacker, retyped.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+            assert_eq!(spy.call_count(), 0);
+            assert!(banned_peers(&mock_state).await.is_empty());
+            let decoded = crate::inbound::decode_envelope_body(&genuine.body).unwrap();
+            let none_key = crate::dedup::message_key(
+                &[],
+                DhtMessageType::None,
+                DhtMessageFlags::empty(),
+                &genuine.body,
+                Some(&decoded),
+            );
+            let hit_count = dht_target
+                .dht_requester()
+                .get_message_cache_hit_count(none_key.to_vec())
+                .await
+                .unwrap();
+            assert_eq!(hit_count, 0, "{dht_type:?}");
+
+            // An honest relay's copy of the genuine broadcast is delivered
+            service
+                .call(make_comms_inbound_message(&relay, wire.body))
+                .await
+                .unwrap();
+            assert_eq!(spy.call_count(), 1, "{dht_type:?}");
+
+            // Its body re-typed as stored SAF messages, which has its own dedup key, is not delivered again
+            let mut retyped = genuine.clone();
+            retyped.header.as_mut().unwrap().message_type = DhtMessageType::SafStoredMessages as i32;
+            service
+                .call(make_comms_inbound_message(&attacker, retyped.to_encoded_bytes().into()))
+                .await
+                .unwrap();
+            assert_eq!(spy.call_count(), 1, "{dht_type:?}");
+        }
     }
 
     /// A validly signed encrypted message for V whose ephemeral key is not a curve point, delivered by relay R, is

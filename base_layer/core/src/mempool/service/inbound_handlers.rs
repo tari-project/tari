@@ -442,9 +442,38 @@ mod test {
         assert_eq!(excluded, vec![source]);
     }
 
+    #[tokio::test]
+    async fn a_union_of_pool_transactions_is_not_relayed() {
+        let (mut handlers, mempool, mut propagated) = create_handlers();
+        let key_manager = KeyManager::new_random().unwrap();
+        let [t1, t2] = [(); 2].map(|_| {
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+                .0
+        });
+        #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+        let mut union = t1.clone() + t2.clone();
+        union.body.sort();
+
+        for tx in [t1, t2, union] {
+            let body = proto::types::Transaction::try_from(Arc::new(tx))
+                .unwrap()
+                .encode_to_vec();
+            handlers
+                .handle_transaction_message(create_peer_message(TariMessageType::NewTransaction, body))
+                .await
+                .unwrap();
+        }
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
+        assert!(propagated.try_recv().is_ok());
+        assert!(propagated.try_recv().is_ok());
+        assert!(propagated.try_recv().is_err());
+    }
+
     mod peer_bans {
         use std::time::Duration;
 
+        use tari_common::configuration::Network;
         use tari_common_types::{
             chain_metadata::ChainMetadata,
             types::{CompressedPublicKey, PrivateKey},
@@ -454,14 +483,18 @@ mod test {
         use tari_crypto::keys::SecretKey;
         use tari_script::script;
         use tari_transaction_components::{
+            consensus::ConsensusConstantsBuilder,
             crypto_factories::CryptoFactories,
-            test_helpers::{create_kernel_only_transaction, create_signature},
+            tari_amount::T,
+            test_helpers::{create_kernel_only_transaction, create_signature, spend_utxos},
             transaction_components::{KernelFeatures, SpentOutput, TransactionError, covenants::CovenantError},
+            txn_schema,
             validation::AggregatedBodyValidationError,
         };
 
         use super::*;
         use crate::{
+            consensus::BaseNodeConsensusManager,
             mempool::test_utils::{covenant_over_token_limit, transaction_proto_with_covenant},
             test_helpers::blockchain::{TestBlockchain, create_test_blockchain_db},
             validation::{TransactionValidator, ValidationError, transaction::TransactionFullValidator},
@@ -926,6 +959,94 @@ mod test {
             assert!(bans.take().await.is_empty());
             assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
         }
+
+        /// `h` is honest, `a` aggregates `h` with a transaction whose input script fails once a block above height 5
+        /// is mined, and `c` spends an output of `h`. `h` is stored and relayed whichever of `h` and `a` arrives first,
+        /// so `h` and `c` survive the eviction of `a`.
+        async fn honest_transaction_survives_eviction_of_an_aggregate(h_first: bool) {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(
+                    ConsensusConstantsBuilder::new(Network::LocalNet)
+                        .with_coinbase_lockheight(0)
+                        .build(),
+                )
+                .build()
+                .unwrap();
+            let mut blockchain = TestBlockchain::create(rules.clone());
+            let validator =
+                TransactionFullValidator::new(CryptoFactories::default(), true, blockchain.db().clone(), rules);
+            let (mut handlers, mempool, mut propagated, _bans) = create_handlers_with_bans(Box::new(validator));
+
+            let (block, coinbase_1) = blockchain.add_next_tip(block_spec!("1")).unwrap();
+            mempool.process_published_block(block.to_arc_block()).await.unwrap();
+            let (block, coinbase_2) = blockchain.add_next_tip(block_spec!("2")).unwrap();
+            mempool.process_published_block(block.to_arc_block()).await.unwrap();
+            let mut schema = txn_schema!(from: vec![coinbase_2], to: vec![T]);
+            schema.script = script!(CheckHeight(5) LeZero IfThen Nop Else Return EndIf).unwrap();
+            let (setup, setup_outputs) = spend_utxos(schema, &blockchain.km);
+            let (block, _) = blockchain
+                .add_next_tip(block_spec!("3", transactions: vec![setup]))
+                .unwrap();
+            mempool.process_published_block(block.to_arc_block()).await.unwrap();
+
+            let (h, h_outputs) = spend_utxos(txn_schema!(from: vec![coinbase_1], to: vec![T]), &blockchain.km);
+            let (x, _) = spend_utxos(
+                txn_schema!(from: vec![setup_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
+                &blockchain.km,
+            );
+            let (c, _) = spend_utxos(
+                txn_schema!(from: vec![h_outputs.first().unwrap().clone()], to: vec![MicroMinotari(500_000)]),
+                &blockchain.km,
+            );
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let mut a = h.clone() + x;
+            a.body.sort();
+            let (h, a, c) = (Arc::new(h), Arc::new(a), Arc::new(c));
+
+            let arrivals = if h_first { [&h, &a, &c] } else { [&a, &h, &c] };
+            for tx in arrivals {
+                handlers
+                    .handle_transaction_message(Arc::new(transaction_message((**tx).clone())))
+                    .await
+                    .unwrap();
+            }
+            let mut relayed = Vec::new();
+            while let Ok((tx, _)) = propagated.try_recv() {
+                relayed.push(tx);
+            }
+            assert!(relayed.contains(&h));
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
+
+            for name in ["4", "5"] {
+                let (block, _) = blockchain.add_next_tip(block_spec!(name)).unwrap();
+                mempool.process_published_block(block.to_arc_block()).await.unwrap();
+            }
+            for tx in [&h, &c] {
+                assert_eq!(
+                    mempool.has_transaction(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+            assert_eq!(
+                mempool.has_transaction(a.clone()).await.unwrap(),
+                TxStorageResponse::NotStored(None)
+            );
+
+            let (_, tip) = blockchain.get_tip_block();
+            let template = mempool.retrieve(u64::MAX, 6, *tip.hash()).await.unwrap();
+            assert!(template.contains(&h));
+            assert!(template.contains(&c));
+        }
+
+        #[tokio::test]
+        async fn honest_transaction_arriving_after_an_aggregate_is_stored() {
+            honest_transaction_survives_eviction_of_an_aggregate(false).await;
+        }
+
+        #[tokio::test]
+        async fn honest_transaction_arriving_before_an_aggregate_is_stored() {
+            honest_transaction_survives_eviction_of_an_aggregate(true).await;
+        }
     }
 
     mod add_block_errored {
@@ -1069,6 +1190,54 @@ mod test {
             let signature =
                 ValidatorNodeSignature::sign_for_registration(vn_secret_key, NETWORK, None, &claim, max_epoch);
             OutputFeatures::for_validator_node_registration(signature, claim, None, max_epoch)
+        }
+
+        #[tokio::test]
+        async fn a_union_of_pool_transactions_does_not_replace_a_validator_node_slot_holder() {
+            let mut config = crate::mempool::MempoolConfig::default();
+            config.unconfirmed_pool.min_fee = 0;
+            let mempool = Mempool::new(
+                config,
+                create_consensus_rules(),
+                Box::new(crate::validation::mocks::MockValidator::new(true)),
+            );
+            let key_manager = KeyManager::new_random().unwrap();
+            let vn = tx_with(
+                registration_features(&PrivateKey::random(&mut rand::rng())),
+                20,
+                &key_manager,
+            );
+            let plain = tx_with(OutputFeatures::default(), 20, &key_manager);
+            let cheap = tx_with(OutputFeatures::default(), 1, &key_manager);
+            let vn_kernel_only = Arc::new(Transaction::new(
+                vec![],
+                vec![],
+                vn.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ));
+            #[allow(clippy::arithmetic_side_effects)] // Transaction aggregation, not integer arithmetic
+            let (holder, newcomer) = (
+                Arc::new((*vn).clone() + (*plain).clone() + (*cheap).clone()),
+                Arc::new((*vn).clone() + (*plain).clone()),
+            );
+            for tx in [&plain, &vn_kernel_only, &holder] {
+                assert_eq!(
+                    mempool.insert(tx.clone()).await.unwrap(),
+                    TxStorageResponse::UnconfirmedPool
+                );
+            }
+
+            // The newcomer would outbid the holder of its slot, but it is a union of `plain` and `vn_kernel_only`, so
+            // it counts as stored and the holder keeps the slot
+            assert_eq!(
+                mempool.insert(newcomer.clone()).await.unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 3);
+            let snapshot = mempool.snapshot().await.unwrap();
+            assert!(snapshot.contains(&holder));
+            assert!(!snapshot.contains(&newcomer));
         }
 
         #[tokio::test]

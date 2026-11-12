@@ -928,6 +928,10 @@ pub unsafe extern "C" fn tari_utxo_get_commitment(utxo: *const TariUtxo, error_o
             *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
             return ptr::null_mut();
         }
+        if (*utxo).commitment.is_null() {
+            *error_out = LibWalletError::from(InterfaceError::NullError("commitment".to_string())).code;
+            return CString::into_raw(result);
+        }
         let commitment_str = match CStr::from_ptr((*utxo).commitment).to_str() {
             Ok(s) => s,
             Err(_) => {
@@ -1117,6 +1121,10 @@ pub unsafe extern "C" fn tari_utxo_get_coinbase_extra(utxo: *const TariUtxo, err
             *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
             return ptr::null_mut();
         }
+        if (*utxo).coinbase_extra.is_null() {
+            *error_out = LibWalletError::from(InterfaceError::NullError("coinbase_extra".to_string())).code;
+            return CString::into_raw(result);
+        }
 
         let coinbase_extra_str = match CStr::from_ptr((*utxo).coinbase_extra).to_str() {
             Ok(s) => s,
@@ -1200,6 +1208,10 @@ pub unsafe extern "C" fn tari_utxo_get_user_payment_id(utxo: *const TariUtxo, er
             *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
             return ptr::null_mut();
         }
+        if (*utxo).user_payment_id.is_null() {
+            *error_out = LibWalletError::from(InterfaceError::NullError("user_payment_id".to_string())).code;
+            return CString::into_raw(result);
+        }
 
         let payment_id_str = match CStr::from_ptr((*utxo).user_payment_id).to_str() {
             Ok(s) => s,
@@ -1238,6 +1250,10 @@ pub unsafe extern "C" fn tari_utxo_get_mined_in_block(utxo: *const TariUtxo, err
         if utxo.is_null() {
             *error_out = LibWalletError::from(InterfaceError::NullError("utxo".to_string())).code;
             return ptr::null_mut();
+        }
+        if (*utxo).mined_in_block.is_null() {
+            *error_out = LibWalletError::from(InterfaceError::NullError("mined_in_block".to_string())).code;
+            return CString::into_raw(result);
         }
 
         let mined_in_block_str = match CStr::from_ptr((*utxo).mined_in_block).to_str() {
@@ -4757,20 +4773,13 @@ pub unsafe extern "C" fn completed_transaction_get_user_payment_id(
         }
         *error_out = 0;
 
-        let mut result = CString::new("").expect("Blank CString will not fail.");
+        let result = CString::new("").expect("Blank CString will not fail.");
         if transaction.is_null() {
             *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
             return result.into_raw();
         }
         let payment_id = (*transaction).payment_id.clone();
-        match CString::new(payment_id.payment_id_as_string()) {
-            Ok(v) => result = v,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
-            },
-        }
-
-        result.into_raw()
+        c_string_lossy(payment_id.payment_id_as_string()).into_raw()
     }
 }
 
@@ -5285,21 +5294,14 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_payment_id(
         }
         *error_out = 0;
 
-        let mut result = CString::new("").expect("Blank CString will not fail.");
+        let result = CString::new("").expect("Blank CString will not fail.");
         if transaction.is_null() {
             *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
             return result.into_raw();
         }
 
         let payment_id = (*transaction).payment_id.clone();
-        match CString::new(payment_id.payment_id_as_string()) {
-            Ok(v) => result = v,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
-            },
-        }
-
-        result.into_raw()
+        c_string_lossy(payment_id.payment_id_as_string()).into_raw()
     }
 }
 
@@ -5591,21 +5593,14 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_payment_id(
         }
         *error_out = 0;
 
-        let mut result = CString::new("").expect("Blank CString will not fail.");
+        let result = CString::new("").expect("Blank CString will not fail.");
         if transaction.is_null() {
             *error_out = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
             return result.into_raw();
         }
         let payment_id = (*transaction).payment_id.clone();
 
-        match CString::new(payment_id.payment_id_as_string()) {
-            Ok(v) => result = v,
-            Err(e) => {
-                *error_out = LibWalletError::from(InterfaceError::InternalError(e.to_string())).code;
-            },
-        }
-
-        result.into_raw()
+        c_string_lossy(payment_id.payment_id_as_string()).into_raw()
     }
 }
 
@@ -6254,21 +6249,21 @@ pub unsafe extern "C" fn wallet_create(
             *error_out = LibWalletError::from(InterfaceError::NullError("passphrase".to_string())).code;
             return ptr::null_mut();
         } else {
-            let pf = CStr::from_ptr(passphrase)
-                .to_str()
-                .expect("A non-null passphrase should be able to be converted to string")
-                .to_owned();
-            SafePassword::from(pf)
+            let Ok(pf) = CStr::from_ptr(passphrase).to_str() else {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("passphrase".to_string())).code;
+                return ptr::null_mut();
+            };
+            SafePassword::from(pf.to_owned())
         };
 
         let seed_passphrase = if seed_passphrase.is_null() {
             None
         } else {
-            let seed_passphrase = CStr::from_ptr(seed_passphrase)
-                .to_str()
-                .expect("A non-null seed passphrase should be able to be converted to string")
-                .to_owned();
-            Some(SafePassword::from(seed_passphrase))
+            let Ok(seed_passphrase) = CStr::from_ptr(seed_passphrase).to_str() else {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("seed_passphrase".to_string())).code;
+                return ptr::null_mut();
+            };
+            Some(SafePassword::from(seed_passphrase.to_owned()))
         };
 
         let recovery_seed = if seed_words.is_null() {
@@ -6293,9 +6288,10 @@ pub unsafe extern "C" fn wallet_create(
             *error_out = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
             return ptr::null_mut();
         } else {
-            let network = CStr::from_ptr(network_str)
-                .to_str()
-                .expect("A non-null network should be able to be converted to string");
+            let Ok(network) = CStr::from_ptr(network_str).to_str() else {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("network".to_string())).code;
+                return ptr::null_mut();
+            };
             info!(target: LOG_TARGET, "network set to {network}");
 
             match Network::from_str(network) {
@@ -6317,10 +6313,11 @@ pub unsafe extern "C" fn wallet_create(
             *error_out = LibWalletError::from(InterfaceError::InvalidArgument("base node url".to_string())).code;
             return ptr::null_mut();
         } else {
-            CStr::from_ptr(http_base_node)
-                .to_str()
-                .expect("A non-null base node should be able to be converted to string")
-                .to_owned()
+            let Ok(url) = CStr::from_ptr(http_base_node).to_str() else {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("http_base_node".to_string())).code;
+                return ptr::null_mut();
+            };
+            url.to_owned()
         };
 
         let runtime = match Runtime::new() {
@@ -7217,10 +7214,13 @@ pub unsafe extern "C" fn wallet_sign_message(
 
         let mut result = CString::new("").expect("Blank CString will not fail.");
         let secret = (*wallet).wallet.node_identity.secret_key().clone();
-        let message = CStr::from_ptr(msg)
-            .to_str()
-            .expect("CString should not fail here.")
-            .to_owned();
+        let message = match CStr::from_ptr(msg).to_str() {
+            Ok(v) => v.to_owned(),
+            Err(_) => {
+                *error_out = LibWalletError::from(InterfaceError::PointerError("msg".to_string())).code;
+                return result.into_raw();
+            },
+        };
 
         let signature = (*wallet).wallet.sign_message(&secret, &message);
 
@@ -13483,6 +13483,50 @@ mod test {
             // Trigger wallet shutdown (same as `pub unsafe extern "C" fn wallet_destroy(wallet: *mut TariWallet)`
             wallet_destroy(alice_wallet_ptr);
             wallet_destroy(bob_wallet_ptr);
+        }
+    }
+
+    #[test]
+    fn test_tari_utxo_accessors_reject_null_field_pointers() {
+        let utxo = TariUtxo {
+            commitment: ptr::null(),
+            value: 42,
+            mined_height: 10,
+            mined_timestamp: 100,
+            lock_height: 5,
+            status: 0,
+            coinbase_extra: ptr::null(),
+            raw_payment_id: ptr::null(),
+            user_payment_id: ptr::null(),
+            mined_in_block: ptr::null(),
+        };
+        let expected_err = LibWalletError::from(InterfaceError::NullError(String::new())).code;
+
+        unsafe {
+            let mut err = 0;
+            let s = tari_utxo_get_commitment(&utxo, &mut err);
+            assert_eq!(err, expected_err);
+            string_destroy(s);
+
+            err = 0;
+            let s = tari_utxo_get_coinbase_extra(&utxo, &mut err);
+            assert_eq!(err, expected_err);
+            string_destroy(s);
+
+            err = 0;
+            let s = tari_utxo_get_raw_payment_id(&utxo, &mut err);
+            assert_eq!(err, expected_err);
+            string_destroy(s);
+
+            err = 0;
+            let s = tari_utxo_get_user_payment_id(&utxo, &mut err);
+            assert_eq!(err, expected_err);
+            string_destroy(s);
+
+            err = 0;
+            let s = tari_utxo_get_mined_in_block(&utxo, &mut err);
+            assert_eq!(err, expected_err);
+            string_destroy(s);
         }
     }
 }

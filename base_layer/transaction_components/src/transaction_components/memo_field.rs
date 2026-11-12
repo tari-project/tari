@@ -1101,7 +1101,7 @@ impl MemoField {
     fn check_padding(bytes: &[u8], start_index: usize) -> bool {
         if bytes.len() > PADDING_SIZE_NO_TAG {
             // larger than the minimum size, so no padding here
-            return true;
+            return start_index == bytes.len();
         }
 
         // Check if the last bytes are zeroed out
@@ -1387,6 +1387,7 @@ impl MemoField {
         match &self.inner {
             InnerMemoField::AddressAndData {
                 sender_address,
+                sender_one_sided,
                 tx_type,
                 ..
             } => Some((
@@ -1394,7 +1395,7 @@ impl MemoField {
                 TariAddress::default(), // Will be set by caller based on context
                 MicroMinotari::zero(),  // Amount not available in AddressAndData
                 *tx_type,
-                false, // Default for AddressAndData
+                *sender_one_sided,
             )),
             InnerMemoField::TransactionInfo {
                 recipient_address,
@@ -3264,5 +3265,77 @@ mod test {
         let memo = MemoField::from_bytes(&bytes);
         assert!(memo.is_address_and_data());
         assert_eq!(memo.get_payment_id(), vec![1u8; 10]);
+    }
+
+    #[test]
+    fn from_bytes_rejects_trailing_bytes_past_padding_size() {
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+
+        let small_addr_memo = MemoField::new_address_and_data(
+            address.clone(),
+            MicroMinotari::from(100),
+            true,
+            TxType::PaymentToOther,
+            vec![1, 2, 3],
+        )
+        .unwrap();
+        let large_addr_memo = MemoField::new_address_and_data(
+            address.clone(),
+            MicroMinotari::from(100),
+            true,
+            TxType::PaymentToOther,
+            vec![7u8; 80],
+        )
+        .unwrap();
+        let large_tx_info = MemoField::new_transaction_info(
+            address.clone(),
+            MicroMinotari::from(500),
+            MicroMinotari::from(100),
+            true,
+            TxType::PaymentToOther,
+            vec![create_random_fixed_hash()],
+            vec![9u8; 60],
+        )
+        .unwrap();
+
+        for memo in [small_addr_memo, large_addr_memo, large_tx_info] {
+            let valid_bytes = memo.to_bytes();
+            assert_eq!(MemoField::from_bytes(&valid_bytes), memo);
+
+            let mut with_trailing = valid_bytes;
+            with_trailing.push(0xfe);
+            assert!(with_trailing.len() > PADDING_SIZE);
+            let parsed = MemoField::from_bytes(&with_trailing);
+            assert!(parsed.is_raw());
+            assert_eq!(parsed.get_raw_bytes(), Some(with_trailing.as_slice()));
+        }
+    }
+
+    #[test]
+    fn get_transaction_info_preserves_sender_one_sided_for_address_and_data() {
+        let address = TariAddress::from_base58(
+            "f425UWsDp714RiN53c1G6ek57rfFnotB5NCMyrn4iDgbR8i2sXVHa4xSsedd66o9KmkRgErQnyDdCaAdNLzcKrj7eUb",
+        )
+        .unwrap();
+
+        for one_sided in [false, true] {
+            let memo = MemoField::new_address_and_data(
+                address.clone(),
+                MicroMinotari::from(100),
+                one_sided,
+                TxType::PaymentToOther,
+                vec![1, 2, 3],
+            )
+            .unwrap();
+            let (sender, recipient, amount, tx_type, actual_one_sided) = memo.get_transaction_info().unwrap();
+            assert_eq!(sender, address);
+            assert_eq!(recipient, TariAddress::default());
+            assert_eq!(amount, MicroMinotari::zero());
+            assert_eq!(tx_type, TxType::PaymentToOther);
+            assert_eq!(actual_one_sided, one_sided);
+        }
     }
 }
