@@ -2473,10 +2473,11 @@ mod test {
                 .unwrap()
                 .is_stored()
         );
+        // The copies arrive while the newcomer is being validated, so it is refused on insert, where it outbids the
+        // holder
         let copies = padded_copies(&with_kernels(&honest, newcomer_kernels.clone()), &key_manager);
-        for copy in &copies[1..] {
-            assert!(storage.write().unwrap().insert(copy.clone(), None).unwrap().is_stored());
-        }
+        *validator.pool_during_chain_linked.lock().unwrap() = copies[1..].to_vec();
+        let chain_linked_calls = validator.chain_linked_calls();
         // A strict kernel subset of the seven copies, but not of the holder it outbids, with which it shares a kernel
         let newcomer = Arc::new(Transaction::new(
             honest.body.inputs().clone(),
@@ -2491,6 +2492,7 @@ mod test {
             matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
             "{response:?}"
         );
+        assert_eq!(validator.chain_linked_calls(), chain_linked_calls + 1);
         let lock = storage.read().unwrap();
         assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT);
         let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
@@ -2654,6 +2656,30 @@ mod test {
         let disjoint = with_kernels(&h1, fresh_kernels(1, &key_manager));
         let response = MempoolStorage::insert_unlocked(&storage, disjoint).unwrap();
         assert!(is_cap_refusal(&response), "{response:?}");
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    /// A spender of a capped input submitted again is let past the spend cap and answered as already stored
+    #[test]
+    fn a_pooled_spender_of_a_capped_input_is_answered_as_already_stored() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let copies = padded_copies(&create_tx(&key_manager), &key_manager);
+        for copy in &copies {
+            assert!(storage.write().unwrap().insert(copy.clone(), None).unwrap().is_stored());
+        }
+        let again = copies[0].clone();
+
+        assert_eq!(storage.read().unwrap().pre_check(&again), None);
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, again.clone()).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            storage.write().unwrap().insert(again, None).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
     }
 

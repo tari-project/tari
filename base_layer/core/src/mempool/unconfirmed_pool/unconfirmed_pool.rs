@@ -4817,8 +4817,9 @@ mod test {
     }
 
     /// Spends of several inputs at the spend cap: `(a)` the same spenders on both, `(b)` different spenders, `(c)` the
-    /// victim chosen for one input also spends the other, whose other spenders the newcomer is no subset of, and `(d)`
-    /// a newcomer that is no subset of the spenders of one of them
+    /// victim chosen for one input also spends the other, whose other spenders partly overlap the newcomer's kernels
+    /// (the second input is passed over, so they are not checked), and `(d)` a capped input none of whose spenders
+    /// shares a kernel with the newcomer
     #[tokio::test]
     async fn a_newcomer_spending_several_capped_inputs_evicts_the_lowest_spender_of_each() {
         let key_manager = KeyManager::new_random().unwrap();
@@ -4897,14 +4898,28 @@ mod test {
             a_keys[0], b_keys[0]
         ]);
 
-        // (c)
+        // (c) The newcomer `{owner, z}`; the largest spender of `a`, `{owner, z, w, w2}`, also spends `b`, whose other
+        // spenders `{owner, y_i}` partly overlap the newcomer
         let mut pool = new_pool();
-        let shared = fill(&mut pool, vec![a.clone(), b.clone()], true, 1, 100);
-        fill(&mut pool, vec![a.clone()], true, MAX_SPENDS_PER_OUTPUT - 1, 1_000);
-        fill(&mut pool, vec![b.clone()], false, MAX_SPENDS_PER_OUTPUT - 1, 1_000);
-        assert_eq!(pool.conflict_set_victims(&newcomer).unwrap(), shared);
+        let z = kernel(1);
+        let shared = spend(vec![a.clone(), b.clone()], vec![
+            owner.clone(),
+            z.clone(),
+            kernel(1),
+            kernel(1),
+        ]);
+        pool.insert(shared.clone(), None, &tx_weight).unwrap();
+        for _ in 1..MAX_SPENDS_PER_OUTPUT {
+            let a_spender = spend(vec![a.clone()], vec![owner.clone(), z.clone(), kernel(1)]);
+            pool.insert(a_spender, None, &tx_weight).unwrap();
+            let b_spender = spend(vec![b.clone()], vec![owner.clone(), kernel(1)]);
+            pool.insert(b_spender, None, &tx_weight).unwrap();
+        }
+        let shared_key = *pool.tx_by_key.iter().find(|(_, p)| p.transaction == shared).unwrap().0;
+        let newcomer_with_z = spend(vec![a.clone(), b.clone()], vec![owner.clone(), z]);
+        assert_eq!(pool.conflict_set_victims(&newcomer_with_z).unwrap(), vec![shared_key]);
 
-        // (d), with the input it is no subset of spent first or second
+        // (d), with the input none of whose spenders shares a kernel with the newcomer spent first or second
         for no_subset_first in [true, false] {
             let mut pool = new_pool();
             fill(&mut pool, vec![a.clone()], true, MAX_SPENDS_PER_OUTPUT, 1_000);
