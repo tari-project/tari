@@ -92,12 +92,20 @@ pub trait KeyValueStore<K, V> {
     /// Return a `Vec<(K, V)>` filtered by the predicate.
     ///
     /// Bare in mind that this is not an `Iterator` and filter will fetch data eagerly.
-    fn filter<F>(&self, predicate: F) -> Result<Vec<(K, V)>, KeyValStoreError>
+    fn filter<F>(&self, mut predicate: F) -> Result<Vec<(K, V)>, KeyValStoreError>
     where
         Self: Sized,
         F: FnMut(&(K, V)) -> bool,
     {
-        self.filter_take(self.size()?, predicate)
+        let mut values = Vec::new();
+        self.for_each_ok(|pair| {
+            if predicate(&pair) {
+                values.push(pair);
+            }
+            IterationResult::Continue
+        })?;
+
+        Ok(values)
     }
 
     /// Return a `Vec<(K, V)>` filtered by the predicate. At most `n` pairs are returned.
@@ -106,12 +114,15 @@ pub trait KeyValueStore<K, V> {
         Self: Sized,
         F: FnMut(&(K, V)) -> bool,
     {
+        if n == 0 {
+            return Ok(Vec::new());
+        }
         let mut values = Vec::with_capacity(n);
         self.for_each_ok(|pair| {
             if predicate(&pair) {
                 values.push(pair);
             }
-            if values.len() == n {
+            if values.len() >= n {
                 return IterationResult::Break;
             }
             IterationResult::Continue
