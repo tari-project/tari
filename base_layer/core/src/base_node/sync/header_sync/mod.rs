@@ -26,6 +26,8 @@ pub use error::BlockHeaderSyncError;
 mod validator;
 
 mod synchronizer;
+#[cfg(test)]
+pub(super) use synchronizer::test::{connect_to_service, sync_service};
 pub use synchronizer::{AttemptSyncResult, HeaderSyncStatus, HeaderSynchronizer};
 
 #[cfg(test)]

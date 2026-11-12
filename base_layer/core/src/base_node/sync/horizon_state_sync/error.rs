@@ -50,6 +50,8 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
+    #[error("Synced output count does not match the output_smt_size of the sync target: {0}")]
+    FinalOutputCountMismatch(String),
     #[error("Peer kept sync waiting for most of its budget, then failed it: {0}")]
     SlowPeerFailure(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
@@ -175,6 +177,7 @@ impl HorizonSyncError {
             HorizonSyncError::OutputAlreadyStored(_) |
             // An honest pruned peer cannot serve the target state if it has pruned past the target
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch(_) |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
@@ -217,6 +220,7 @@ impl HorizonSyncError {
     pub fn is_unblamed_peer_failure(&self) -> bool {
         match self {
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch(_) |
             HorizonSyncError::OutputAlreadyStored(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
             HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
@@ -240,6 +244,7 @@ impl HorizonSyncError {
             HorizonSyncError::UnknownSpentOutput(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch(_) |
             HorizonSyncError::OutputAlreadyStored(_) |
             // A resumed attempt only earns the budget of the tranches it streams
             HorizonSyncError::PeerWaitBudgetExceeded { .. } |
@@ -276,6 +281,7 @@ mod connect_error_test {
             }),
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput),
             HorizonSyncError::FinalOutputRootMismatch(String::new()),
+            HorizonSyncError::FinalOutputCountMismatch(String::new()),
             HorizonSyncError::OutputAlreadyStored(String::new()),
         ] {
             assert!(!err.is_local_failure(), "{err}");

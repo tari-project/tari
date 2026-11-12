@@ -1725,6 +1725,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Err(e) => return Err(e.into()),
         }
 
+        let output_leaf_count = db.fetch_horizon_sync_output_leaf_count().await?;
+        if output_leaf_count != to_header.output_smt_size {
+            return Err(HorizonSyncError::FinalOutputCountMismatch(format!(
+                "Target header at height {} commits to output_smt_size {}, but the synced output tree has \
+                 {output_leaf_count} leaves",
+                to_header.height, to_header.output_smt_size
+            )));
+        }
+
         // Mark output sync as complete
         db.write_transaction()
             .set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
@@ -2493,13 +2502,34 @@ mod tests {
             request: SyncUtxosRequest,
         ) -> Result<BoxStream<'static, Result<SyncUtxosResponse, RpcError>>, RpcError> {
             let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
+            let requested_end = request.end_header_hash.clone();
+            let mut task_request = request;
+            let mapped_end = FixedHash::try_from(requested_end.as_slice()).ok().and_then(|hash| {
+                if self.db.fetch_header_by_block_hash(hash).unwrap().is_none() {
+                    Some(self.db.fetch_last_header().unwrap().hash().to_vec())
+                } else {
+                    None
+                }
+            });
+            if let Some(ref tip_hash) = mapped_end {
+                if task_request.start_header_hash == requested_end {
+                    task_request.start_header_hash = tip_hash.clone();
+                }
+                task_request.end_header_hash = tip_hash.clone();
+            }
             SyncUtxosTask::new(self.db.clone().into(), Arc::new(NodeId::new()))
-                .run(Request::new(0.into(), request), tx)
+                .run(Request::new(0.into(), task_request), tx)
                 .await
                 .unwrap();
             let mut items = Vec::new();
             while let Some(item) = rx.recv().await {
-                items.push(item.unwrap());
+                let mut item = item.unwrap();
+                if let Some(ref tip_hash) = mapped_end &&
+                    item.mined_header == *tip_hash
+                {
+                    item.mined_header = requested_end.clone();
+                }
+                items.push(item);
             }
             self.requests = self.requests.saturating_add(1);
             if self.refused_requests.contains(&self.requests) {
@@ -2530,7 +2560,12 @@ mod tests {
                 .unwrap()
                 .height();
             let end_hash = FixedHash::try_from(request.end_header_hash).unwrap();
-            let end = self.db.fetch_header_by_block_hash(end_hash).unwrap().unwrap().height;
+            let end = self
+                .db
+                .fetch_header_by_block_hash(end_hash)
+                .unwrap()
+                .unwrap_or_else(|| self.db.fetch_last_header().unwrap())
+                .height;
             let mut kernels = Vec::new();
             for height in start..=end {
                 let hash = self.db.fetch_header(height).unwrap().unwrap().hash();
@@ -4404,5 +4439,297 @@ mod tests {
         apply_tranche_output_updates(updates, deletes, Vec::new(), &mut txn);
         txn.commit().await.unwrap();
         assert_only_genesis_row_left(&db, &genesis_output);
+    }
+
+    /// As `headers_only_db` for `["A", "1", "2", "3", "4"]`, with block `"4"`'s header modified by `edit` before it is
+    /// stored as the sync target
+    fn headers_only_db_with_edited_target(
+        chain: &TestBlockchain,
+        edit: impl FnOnce(&mut BlockHeader),
+    ) -> (BlockchainDatabase<TempDatabase>, BlockHeader) {
+        let db = headers_only_db(chain, &["A", "1", "2", "3"]);
+        let chain_header = chain.get_block_and_smt_by_name("4").unwrap().to_chain_header();
+        let mut target = chain_header.header().clone();
+        edit(&mut target);
+        let mut accumulated_data = chain_header.accumulated_data().clone();
+        accumulated_data.hash = target.hash();
+        let mut txn = DbTransaction::new();
+        txn.insert_chain_header(ChainHeader::try_construct(target.clone(), accumulated_data).unwrap());
+        db.write(txn).unwrap();
+        (db, target)
+    }
+
+    #[tokio::test]
+    async fn target_with_deflated_output_smt_size_fails_without_ban_and_cleans_up() {
+        let (chain, _) = duplicate_output_sync_setup();
+        let (db, target) = headers_only_db_with_edited_target(&chain, |header| {
+            header.output_smt_size -= 1;
+        });
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::FinalOutputCountMismatch(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(honest.requests, 5);
+        assert_eq!(checkpoint_height(&db), None);
+        assert_eq!(db.fetch_horizon_sync_output_leaf_count().unwrap(), 0);
+        for name in ["A", "1", "2", "3"] {
+            let block_hash = chain.get_block_and_smt_by_name(name).unwrap().header().hash();
+            assert!(db.fetch_outputs_in_block(block_hash).unwrap().is_empty());
+        }
+        assert!(db.fetch_outputs_in_block(target.hash()).unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_output_tree_checks_zero_output_smt_size() {
+        let (chain, _) = duplicate_output_sync_setup();
+        let genesis_mr = chain.get_block_and_smt_by_name("GB").unwrap().header().output_mr;
+
+        let (empty_db, zero_target) = headers_only_db_with_edited_target(&chain, |header| {
+            header.output_mr = genesis_mr;
+            header.output_smt_size = 0;
+        });
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(empty_db.clone(), &mut peers, zero_target.height);
+        let mut empty_source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(|_, items| {
+                items.retain(|item| item.txo.is_none());
+                Ok(())
+            }),
+        );
+        sync.synchronize_outputs(test_sync_peer(), &mut empty_source, &zero_target, 1)
+            .await
+            .unwrap();
+        assert_eq!(empty_db.fetch_horizon_sync_output_leaf_count().unwrap(), 0);
+        assert_eq!(checkpoint_height(&empty_db), Some(zero_target.height));
+
+        let (mismatch_db, nonzero_target) = headers_only_db_with_edited_target(&chain, |header| {
+            header.output_mr = genesis_mr;
+            header.output_smt_size = 1;
+        });
+        let mut sync = build_synchronizer(mismatch_db.clone(), &mut peers, nonzero_target.height);
+        let mut empty_source = DbTrancheSource::new(
+            chain.db(),
+            Box::new(|_, items| {
+                items.retain(|item| item.txo.is_none());
+                Ok(())
+            }),
+        );
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut empty_source, &nonzero_target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::FinalOutputCountMismatch(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(mismatch_db.fetch_horizon_sync_output_leaf_count().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn checkpoint_at_target_verifies_output_smt_size_without_running_tranches() {
+        let (chain, _) = duplicate_output_sync_setup();
+        let honest_target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let (db, target) = headers_only_db_with_edited_target(&chain, |header| {
+            header.output_smt_size -= 1;
+        });
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        // `synchronize_outputs` commits every tranche before checking the final leaf count, leaving the full output
+        // tree in `db` when called directly.
+        let mut initial = DbTrancheSource::honest(chain.db());
+        let first_err = sync
+            .synchronize_outputs(test_sync_peer(), &mut initial, &target, 1)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(first_err, HorizonSyncError::FinalOutputCountMismatch(_)),
+            "{first_err}"
+        );
+        assert_eq!(
+            db.fetch_horizon_sync_output_leaf_count().unwrap(),
+            honest_target.output_smt_size
+        );
+
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: target.height,
+            checkpoint_hash: target.hash(),
+            sync_target_height: target.height,
+            sync_target_hash: target.hash(),
+        });
+        db.write(txn).unwrap();
+
+        let mut resumed_source = DbTrancheSource::honest(chain.db());
+        let start_height = sync.calculate_output_sync_start(&target).await.unwrap();
+        assert_eq!(start_height, target.height + 1);
+        let direct_err = sync
+            .synchronize_outputs(test_sync_peer(), &mut resumed_source, &target, start_height)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(direct_err, HorizonSyncError::FinalOutputCountMismatch(_)),
+            "{direct_err}"
+        );
+        assert_eq!(resumed_source.requests, 0);
+
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut resumed_source, &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::FinalOutputCountMismatch(_)), "{err}");
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(
+            resumed_source.requests, 5,
+            "the checkpoint at the target runs no tranche, then the retry runs all five from height 1"
+        );
+        assert_eq!(checkpoint_height(&db), None);
+        assert_eq!(db.fetch_horizon_sync_output_leaf_count().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn horizon_sync_rejects_target_header_with_inflated_output_smt_size() {
+        use tari_node_components::blocks::BlockValidationError;
+        use tari_transaction_components::tari_proof_of_work::Difficulty;
+
+        use crate::{
+            base_node::sync::{
+                HeaderSynchronizer,
+                header_sync::{connect_to_service, sync_service},
+            },
+            proof_of_work::randomx_factory::RandomXFactory,
+            validation::{BlockBodyValidator, ChainBalanceValidator, ValidationError},
+        };
+
+        let (chain, body_validator, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let rules = chain.rules().clone();
+        let honest_b3 = chain.get_block_and_smt_by_name("3").unwrap().block().clone();
+
+        // Construct and mine block at height 4 ("3") identical to `honest_b3` except `output_smt_size` is inflated by
+        // +1.
+        let mut inflated_b3 = honest_b3.clone();
+        inflated_b3.header.output_smt_size = honest_b3.header.output_smt_size.saturating_add(1);
+        let inflated_chain_block = chain.mine_block("2", inflated_b3, Difficulty::min());
+        let inflated_header = inflated_chain_block.header().clone();
+
+        // 1. A full/archival node validating `inflated_chain_block` on top of height 3 ("2") rejects it in
+        //    BlockBodyFullValidator.
+        let peer_db = create_custom_blockchain(rules.clone());
+        for name in ["A", "1", "2"] {
+            let blk = chain.get_block_and_smt_by_name(name).unwrap().to_arc_block();
+            peer_db.add_block(blk).unwrap().result.assert_added();
+        }
+        let full_err = body_validator
+            .validate_body(
+                &*peer_db.db_read_access().unwrap(),
+                inflated_chain_block.block().clone(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(
+                full_err,
+                ValidationError::BlockError(BlockValidationError::MismatchedMmrSize {
+                    ref mmr_tree,
+                    expected,
+                    actual,
+                }) if mmr_tree == "UTXO"
+                    && expected == honest_b3.header.output_smt_size
+                    && actual == inflated_header.output_smt_size
+            ),
+            "full node must reject inflated output_smt_size, got: {full_err:?}"
+        );
+
+        // 2. Prepare the serving peer DB with heights 1..=3 and `inflated_chain_block` at height 4.
+        let mut peer_txn = DbTransaction::new();
+        peer_txn.insert_chain_header(inflated_chain_block.to_chain_header());
+        peer_txn.insert_tip_block_body(inflated_chain_block.clone());
+        peer_txn.set_best_block(
+            inflated_chain_block.height(),
+            *inflated_chain_block.hash(),
+            inflated_chain_block.accumulated_data().total_accumulated_difficulty,
+            inflated_header.prev_hash,
+            inflated_header.timestamp.as_u64(),
+        );
+        peer_db.write(peer_txn).unwrap();
+
+        // 3. Drive a fresh syncing node from genesis through `HeaderSynchronizer::synchronize()` and
+        // `HorizonStateSynchronization::synchronize()` with default config and the real `ChainBalanceValidator`.
+        let syncing_db = create_custom_blockchain(rules.clone());
+        let genesis_hash = *syncing_db.get_chain_metadata().unwrap().best_block_hash();
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        connectivity_mock.spawn();
+        let peer_meta = peer_db.get_chain_metadata().unwrap();
+        let (mut client, mut sync_peer, _mock_server, conn) = connect_to_service(
+            sync_service(&peer_db),
+            peer_meta.best_block_height(),
+            peer_meta.accumulated_difficulty(),
+        )
+        .await;
+        sync_peer.set_connection(conn);
+        let mut peers = vec![sync_peer];
+
+        let local_meta = syncing_db.get_chain_metadata().unwrap();
+        let mut chain_changes = std::collections::HashMap::new();
+        HeaderSynchronizer::new(
+            BlockchainSyncConfig::default(),
+            syncing_db.clone().into(),
+            rules.clone(),
+            connectivity.clone(),
+            &mut peers,
+            RandomXFactory::default(),
+            local_meta,
+            &mut chain_changes,
+        )
+        .synchronize()
+        .await
+        .unwrap();
+        assert_eq!(syncing_db.fetch_last_header().unwrap().hash(), inflated_header.hash());
+
+        let real_balance_validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> =
+            Arc::new(ChainBalanceValidator::new(rules.clone(), CryptoFactories::default()));
+        let mut horizon_sync = HorizonStateSynchronization::new(
+            BlockchainSyncConfig::default(),
+            syncing_db.clone().into(),
+            connectivity,
+            rules,
+            &mut peers,
+            inflated_header.height,
+            CryptoFactories::default().range_proof,
+            real_balance_validator,
+        );
+        let inner_err = horizon_sync
+            .sync_outputs_and_finalize(horizon_sync.sync_peers[0].clone(), &mut client, &inflated_header)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(inner_err, HorizonSyncError::FinalOutputCountMismatch(_)),
+            "{inner_err:?}"
+        );
+        assert!(inner_err.get_ban_reason().is_none());
+        drop(client);
+
+        let err = horizon_sync.synchronize().await.unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::NoMoreSyncPeers(ref msg) if msg.contains("output_smt_size")),
+            "horizon sync must reject mismatched output_smt_size, got: {err:?}"
+        );
+        assert_eq!(syncing_db.fetch_horizon_sync_output_leaf_count().unwrap(), 0);
+        assert_eq!(checkpoint_height(&syncing_db), None);
+        for height in 1..=inflated_header.height {
+            let hash = syncing_db.fetch_header(height).unwrap().unwrap().hash();
+            assert!(syncing_db.fetch_outputs_in_block(hash).unwrap().is_empty());
+        }
+        assert_eq!(
+            syncing_db.get_chain_metadata().unwrap().best_block_hash(),
+            &genesis_hash
+        );
     }
 }

@@ -4622,6 +4622,30 @@ impl BlockchainBackend for LMDBDatabase {
         Ok(())
     }
 
+    fn fetch_horizon_sync_output_leaf_count(&self) -> Result<u64, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        let k = MetadataKey::JMTVersion;
+        let val = match lmdb_get(&txn, &self.metadata_db, &k.as_u32())? {
+            Some(MetadataValue::JMTVersion(v)) => v,
+            _ => 0u64,
+        };
+
+        let reader = OwnedLmdbTreeReader::new(txn, self.jmt_node_data.clone(), self.jmt_value_data.clone());
+        let output_smt = JellyfishMerkleTree::<_, SmtHasher>::new(&reader);
+        if output_smt
+            .get_root_hash_option(val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+            .is_none()
+        {
+            // The tree writer deletes null nodes, so an empty tree has no root node at any version.
+            return Ok(0);
+        }
+        let leaf_count = output_smt
+            .get_leaf_count(val)
+            .map_err(ChainStorageError::JellyfishMerkleTreeError)?;
+        u64::try_from(leaf_count).map_err(|e| ChainStorageError::ConversionError(e.to_string()))
+    }
+
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let global = self.env.stat()?;
         let env_info = self.env.info()?;
