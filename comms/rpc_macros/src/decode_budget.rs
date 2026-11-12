@@ -175,8 +175,12 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
     let mut map_of_messages = false;
     let mut tag = None;
     let mut tags = Vec::new();
+    let mut first_prost_attr = None;
 
     for attr in attrs.iter().filter(|attr| attr.path().is_ident("prost")) {
+        if first_prost_attr.is_none() {
+            first_prost_attr = Some(attr);
+        }
         attr.parse_nested_meta(|meta| {
             let name = meta.path.get_ident().map(ToString::to_string).unwrap_or_default();
             // Values are string or integer literals; a few prost options take a parenthesised list, which is skipped
@@ -208,10 +212,13 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
                 ("tags", Some(syn::Lit::Str(list))) => {
                     for part in list.value().split(',') {
                         let part = part.trim();
-                        tags.push(
-                            part.parse::<u32>()
-                                .map_err(|_| syn::Error::new_spanned(&list, format!("invalid tag `{part}`")))?,
-                        );
+                        let parsed = part
+                            .parse::<u32>()
+                            .map_err(|_| syn::Error::new_spanned(&list, format!("invalid tag `{part}`")))?;
+                        if parsed == 0 {
+                            return Err(syn::Error::new_spanned(&list, "tag must be greater than 0"));
+                        }
+                        tags.push(parsed);
                     }
                 },
                 _ => {},
@@ -220,8 +227,27 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
         })?;
     }
 
+    if is_oneof {
+        if tags.is_empty() {
+            let span_tokens = first_prost_attr.expect("is_oneof is only set when a prost attribute is present");
+            return Err(syn::Error::new_spanned(
+                span_tokens,
+                "#[prost(oneof)] requires non-empty `tags = \"...\"`",
+            ));
+        }
+        return Ok(FieldKind::Oneof(tags));
+    }
+
+    let needs_tag = is_message || is_map || (is_repeated && (is_bytes || is_scalar));
+    if needs_tag && tag.is_none() {
+        let span_tokens = first_prost_attr.expect("needs_tag is only set when a prost attribute is present");
+        return Err(syn::Error::new_spanned(
+            span_tokens,
+            "#[prost(...)] field requires `tag = \"...\"`",
+        ));
+    }
+
     Ok(match tag {
-        _ if is_oneof => FieldKind::Oneof(tags),
         Some(tag) if is_message => FieldKind::Message(tag),
         Some(tag) if map_of_messages => FieldKind::MessageMap(tag),
         Some(tag) if is_map => FieldKind::ScalarMap(tag),
@@ -232,19 +258,35 @@ fn field_kind(attrs: &[syn::Attribute]) -> syn::Result<FieldKind> {
 }
 
 fn parse_tag(lit: &syn::Lit) -> syn::Result<u32> {
-    match lit {
+    let tag: u32 = match lit {
         syn::Lit::Str(s) => s
             .value()
             .trim()
             .parse()
-            .map_err(|_| syn::Error::new_spanned(lit, "invalid tag")),
-        syn::Lit::Int(i) => i.base10_parse(),
-        _ => Err(syn::Error::new_spanned(lit, "invalid tag")),
+            .map_err(|_| syn::Error::new_spanned(lit, "invalid tag"))?,
+        syn::Lit::Int(i) => i.base10_parse()?,
+        _ => return Err(syn::Error::new_spanned(lit, "invalid tag")),
+    };
+    if tag == 0 {
+        return Err(syn::Error::new_spanned(lit, "tag must be greater than 0"));
+    }
+    Ok(tag)
+}
+
+/// Unwraps invisible `Type::Group` (emitted by `macro_rules!` `:ty` metavariables) and `Type::Paren` wrappers.
+fn unwrap_type(mut ty: &Type) -> &Type {
+    loop {
+        match ty {
+            Type::Group(group) => ty = &group.elem,
+            Type::Paren(paren) => ty = &paren.elem,
+            _ => return ty,
+        }
     }
 }
 
 /// Strips `Option<_>`, `Box<_>` and `Vec<_>` wrappers: `Option<Box<T>>` and `Vec<T>` give `T`.
 fn inner_type(ty: &Type) -> &Type {
+    let ty = unwrap_type(ty);
     match last_segment_args(ty) {
         Some((ident, args)) if ident == "Option" || ident == "Box" || ident == "Vec" => match args.first() {
             Some(inner) => inner_type(inner),
@@ -270,7 +312,7 @@ fn map_value_type(ty: &Type) -> syn::Result<&Type> {
 
 /// The last path segment's name and type arguments, e.g. `("Option", [T])` for `::core::option::Option<T>`.
 fn last_segment_args(ty: &Type) -> Option<(&syn::Ident, Vec<&Type>)> {
-    let Type::Path(path) = ty else {
+    let Type::Path(path) = unwrap_type(ty) else {
         return None;
     };
     let segment = path.path.segments.last()?;
@@ -286,4 +328,76 @@ fn last_segment_args(ty: &Type) -> Option<(&syn::Ident, Vec<&Type>)> {
         _ => Vec::new(),
     };
     Some((&segment.ident, args))
+}
+
+#[cfg(test)]
+mod tests {
+    use proc_macro2::{Delimiter, Group, TokenTree};
+    use syn::parse_quote;
+
+    use super::*;
+
+    fn group_type(ty: Type) -> Type {
+        let tokens = quote!(#ty);
+        let grouped = TokenStream::from(TokenTree::Group(Group::new(Delimiter::None, tokens)));
+        syn::parse2(grouped).unwrap()
+    }
+
+    #[test]
+    fn rejects_oneof_without_tags() {
+        let input: DeriveInput = parse_quote! {
+            struct Msg {
+                #[prost(oneof = "Kind")]
+                kind: Option<Kind>,
+            }
+        };
+        let err = expand_inner(&input).unwrap_err();
+        assert!(err.to_string().contains("requires non-empty `tags"));
+    }
+
+    #[test]
+    fn rejects_message_field_without_tag() {
+        let input: DeriveInput = parse_quote! {
+            struct Msg {
+                #[prost(message)]
+                child: Option<Child>,
+            }
+        };
+        let err = expand_inner(&input).unwrap_err();
+        assert!(err.to_string().contains("requires `tag"));
+    }
+
+    #[test]
+    fn rejects_zero_tag_and_zero_oneof_tags() {
+        let msg_zero: DeriveInput = parse_quote! {
+            struct Msg {
+                #[prost(message, tag = "0")]
+                child: Option<Child>,
+            }
+        };
+        let err = expand_inner(&msg_zero).unwrap_err();
+        assert!(err.to_string().contains("tag must be greater than 0"));
+
+        let oneof_zero: DeriveInput = parse_quote! {
+            struct Msg {
+                #[prost(oneof = "Kind", tags = "1, 0")]
+                kind: Option<Kind>,
+            }
+        };
+        let err = expand_inner(&oneof_zero).unwrap_err();
+        assert!(err.to_string().contains("tag must be greater than 0"));
+    }
+
+    #[test]
+    fn unwraps_grouped_and_parenthesized_types() {
+        let inner: Type = parse_quote!(ChildMsg);
+        let grouped_inner = group_type(inner.clone());
+        let wrapped: Type = parse_quote!(Option<(Box<#grouped_inner>)>);
+        let grouped_outer = group_type(wrapped);
+        assert_eq!(inner_type(&grouped_outer), &inner);
+
+        let map_ty: Type = parse_quote!(::std::collections::HashMap<String, (Box<#grouped_inner>)>);
+        let grouped_map = group_type(map_ty);
+        assert_eq!(map_value_type(&grouped_map).unwrap(), &inner);
+    }
 }
