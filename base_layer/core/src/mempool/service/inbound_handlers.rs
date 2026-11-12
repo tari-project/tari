@@ -580,6 +580,37 @@ mod test {
             tx
         }
 
+        /// A full validator over a chain with a mature coinbase, a valid transaction spending it, and the chain (to
+        /// keep its database)
+        fn chain_validator_with_spend() -> (TestBlockchain, Box<dyn TransactionValidator>, Transaction) {
+            let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+                .add_consensus_constants(
+                    ConsensusConstantsBuilder::new(Network::LocalNet)
+                        .with_coinbase_lockheight(0)
+                        .build(),
+                )
+                .build()
+                .unwrap();
+            let mut blockchain = TestBlockchain::create(rules.clone());
+            let (_, coinbase) = blockchain.add_next_tip(block_spec!("1")).unwrap();
+            blockchain.add_next_tip(block_spec!("2")).unwrap();
+            let validator =
+                TransactionFullValidator::new(CryptoFactories::default(), true, blockchain.db().clone(), rules);
+            let (spend, _) = spend_utxos(txn_schema!(from: vec![coinbase], to: vec![T]), &blockchain.km);
+            (blockchain, Box::new(validator), spend)
+        }
+
+        /// `tx` with the inputs and outputs of `spend`, so that it passes chain validation but not internal validation
+        fn spending_the_chain(tx: Transaction, spend: &Transaction) -> Transaction {
+            Transaction::new(
+                spend.body.inputs().clone(),
+                spend.body.outputs().clone(),
+                tx.body.kernels().clone(),
+                tx.offset,
+                tx.script_offset,
+            )
+        }
+
         fn transaction_message(tx: Transaction) -> PeerMessage {
             let body = proto::types::Transaction::try_from(tx).unwrap().encode_to_vec();
             Arc::try_unwrap(create_peer_message(TariMessageType::NewTransaction, body)).unwrap()
@@ -587,11 +618,12 @@ mod test {
 
         #[tokio::test]
         async fn gossiped_transaction_failing_internal_validation_bans_source() {
-            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(chain_validator());
+            let (_chain, validator, spend) = chain_validator_with_spend();
+            let (mut handlers, mempool, mut propagated, mut bans) = create_handlers_with_bans(validator);
             let permits = mempool.available_validation_permits();
 
             for tx in [coinbase_kernel_tx(), unbalanced_tx()] {
-                let msg = transaction_message(tx);
+                let msg = transaction_message(spending_the_chain(tx, &spend));
                 let source = msg.source_peer.node_id.clone();
                 handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
 
@@ -606,7 +638,7 @@ mod test {
             assert_eq!(mempool.available_validation_permits(), permits);
 
             // Signed by the sending peer itself
-            let mut msg = transaction_message(coinbase_kernel_tx());
+            let mut msg = transaction_message(spending_the_chain(coinbase_kernel_tx(), &spend));
             msg.authenticated_origin = Some(msg.source_peer.public_key.clone());
             let source = msg.source_peer.node_id.clone();
             handlers.handle_transaction_message(Arc::new(msg)).await.unwrap();
@@ -686,8 +718,9 @@ mod test {
 
         #[tokio::test]
         async fn gossiped_transaction_signed_by_other_key_bans_source() {
-            let (mut handlers, _mempool, _propagated, mut bans) = create_handlers_with_bans(chain_validator());
-            let mut msg = transaction_message(coinbase_kernel_tx());
+            let (_chain, validator, spend) = chain_validator_with_spend();
+            let (mut handlers, _mempool, _propagated, mut bans) = create_handlers_with_bans(validator);
+            let mut msg = transaction_message(spending_the_chain(coinbase_kernel_tx(), &spend));
             let (_, other_origin) = CompressedPublicKey::random_keypair(&mut rand::rng());
             assert!(!msg.dht_header.flags.is_encrypted());
             msg.authenticated_origin = Some(other_origin);
@@ -778,7 +811,7 @@ mod test {
                 KernelFeatures::empty(),
             );
             let excess_in_chain = Transaction::new(
-                vec![],
+                orphan.body.inputs().clone(),
                 vec![],
                 vec![excess_in_chain],
                 PrivateKey::default(),

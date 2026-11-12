@@ -859,9 +859,9 @@ impl UnconfirmedPool {
     /// It then replaces the spender with the most kernels (the lowest priority of those): a padded copy has more
     /// kernels than what it pads, so an honest transaction or aggregate is never replaced by a part of itself while a
     /// copy padding it remains, whatever fee the copy promises. A spender already chosen for one output frees every
-    /// other output it spends. `tx` is not stored if the replaced spenders are all the pool producers of an output it
-    /// spends, since it would lose its parent. The caller checks that `tx` is not already in the pool (see
-    /// [UnconfirmedPool::has_transaction]).
+    /// other output it spends. The caller checks that `tx` is not already in the pool (see
+    /// [UnconfirmedPool::has_transaction]), and that replacing them does not orphan it (see
+    /// [UnconfirmedPool::would_orphan]).
     pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
         let mut kernel_hits = None;
         let mut victims = Vec::new();
@@ -897,18 +897,18 @@ impl UnconfirmedPool {
             chosen.insert(victim.key);
             victims.push(victim.key);
         }
-        if victims.is_empty() {
-            return Some(victims);
-        }
-        for input in tx.body.inputs() {
-            if let Some(producers) = self.txs_by_output.get(&input.output_hash()) &&
-                producers.len() <= victims.len() &&
-                producers.iter().all(|key| chosen.contains(key))
-            {
-                return None;
-            }
-        }
         Some(victims)
+    }
+
+    /// True if `removed` holds every pool producer of an output `tx` spends, so that removing them would leave `tx`
+    /// without its parent. A producer list longer than `removed` is passed over without reading it.
+    pub fn would_orphan(&self, tx: &Transaction, removed: &HashSet<TransactionKey>) -> bool {
+        !removed.is_empty() &&
+            tx.body.inputs().iter().any(|input| {
+                self.txs_by_output.get(&input.output_hash()).is_some_and(|producers| {
+                    producers.len() <= removed.len() && producers.iter().all(|key| removed.contains(key))
+                })
+            })
     }
 
     /// The number of kernels of `tx`, and for each pool transaction the number of them it has (the walk
@@ -4929,6 +4929,9 @@ mod test {
         // Stores `tx` as the mempool does: None if it is not stored, else the spenders it replaced
         let admit = |pool: &mut UnconfirmedPool, tx: &Arc<Transaction>| {
             let victims = pool.conflict_set_victims(tx)?;
+            if pool.would_orphan(tx, &victims.iter().copied().collect()) {
+                return None;
+            }
             pool.remove_transactions(victims.clone()).unwrap();
             pool.insert(tx.clone(), None, &tx_weight).unwrap();
             Some(victims)
