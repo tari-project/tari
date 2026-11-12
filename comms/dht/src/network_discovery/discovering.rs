@@ -30,7 +30,7 @@ use tari_comms::{
     RefKind,
     connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer, PeerId},
-    protocol::rpc::{ClientStreaming, RpcError, RpcHandshakeError},
+    protocol::rpc::{ClientStreaming, RpcError, RpcHandshakeError, RpcStatus, RpcStatusCode},
     types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
@@ -160,7 +160,7 @@ impl Discovering {
     /// `was_connected` is true if the connection existed before this round dialled it. Only a connection this round
     /// created is hung up, and not if it has since become a DHT pool peer (or is strongly held): anything else belongs
     /// to someone else.
-    async fn request_from_peers(
+    pub(super) async fn request_from_peers(
         &mut self,
         mut conn: PeerConnection,
         was_connected: bool,
@@ -188,9 +188,12 @@ impl Discovering {
                     conn.peer_node_id(),
                     e
                 );
+                let result = self
+                    .ban_on_offence(conn.peer_node_id().clone(), Err(e.into()), was_connected)
+                    .await;
                 self.hang_up_if_ours(&mut conn, created_here, "Discovering RPC connect failed")
                     .await;
-                return Err(e.into());
+                return result;
             },
             Err(_) => {
                 // the peer most likely is not online or has an old address.
@@ -237,11 +240,11 @@ impl Discovering {
                     duration: format!("{sync_deadline:.2?}"),
                 })
             });
-        self.ban_on_offence(peer_node_id, result, was_connected).await?;
+        let result = self.ban_on_offence(peer_node_id, result, was_connected).await;
         self.hang_up_if_ours(&mut conn, created_here, "Discovering sync complete")
             .await;
 
-        Ok(())
+        result
     }
 
     /// Hangs up a connection this round created, unless the DHT pool has taken it (or it is strongly held).
@@ -524,25 +527,32 @@ impl Discovering {
     }
 }
 
-/// Returns true if the sync peer sent bad peer data or malformed/oversized RPC frames, as opposed to an RPC failure
-/// (no free sessions, timeouts, closed substreams) that can happen to any honest peer.
-pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
+fn is_protocol_violation_status(status: &RpcStatus) -> bool {
     matches!(
-        err,
-        NetworkDiscoveryError::EmptyPeerMessageReceived |
-            NetworkDiscoveryError::DuplicatePeerReceived |
-            NetworkDiscoveryError::TooManyPeersReceived |
-            NetworkDiscoveryError::TooManyInvalidPeersReceived |
-            NetworkDiscoveryError::RpcError(
-                RpcError::DecodeError(_) |
-                    RpcError::DecodeBudgetExceeded { .. } |
-                    RpcError::MaxResponseSizeExceeded { .. } |
-                    RpcError::RemotePeerExceededMaxChunkCount { .. } |
-                    RpcError::HandshakeError(
-                        RpcHandshakeError::DecodeError(_) | RpcHandshakeError::FrameTooLarge { .. }
-                    )
-            )
+        status.as_status_code(),
+        RpcStatusCode::ProtocolError | RpcStatusCode::MalformedResponse | RpcStatusCode::InvalidRpcStatusCode
     )
+}
+
+/// Returns true if the sync peer sent bad peer data or malformed/oversized RPC frames, as opposed to an RPC failure
+/// (no free sessions, timeouts, closed substreams, ordinary service status replies) that can happen to any honest peer.
+pub(super) fn is_bad_data_offence(err: &NetworkDiscoveryError) -> bool {
+    match err {
+        NetworkDiscoveryError::EmptyPeerMessageReceived |
+        NetworkDiscoveryError::DuplicatePeerReceived |
+        NetworkDiscoveryError::TooManyPeersReceived |
+        NetworkDiscoveryError::TooManyInvalidPeersReceived |
+        NetworkDiscoveryError::RpcError(
+            RpcError::DecodeError(_) |
+            RpcError::DecodeBudgetExceeded { .. } |
+            RpcError::MaxResponseSizeExceeded { .. } |
+            RpcError::HandshakeError(RpcHandshakeError::DecodeError(_) | RpcHandshakeError::FrameTooLarge { .. }),
+        ) => true,
+        // `RpcClientWorker` converts oversized streamed responses (`MaxResponseSizeExceeded`) and invalid response
+        // headers/flags into `RpcStatusCode::ProtocolError` on the response channel.
+        NetworkDiscoveryError::RpcStatus(status) => is_protocol_violation_status(status),
+        _ => false,
+    }
 }
 
 /// Returns how severely to ban a sync peer for this error, or `None` if it is not the sync peer's fault.
@@ -553,6 +563,7 @@ pub(super) fn offence_severity(err: &NetworkDiscoveryError) -> Option<OffenceSev
         NetworkDiscoveryError::TooManyPeersReceived |
         NetworkDiscoveryError::TooManyInvalidPeersReceived => Some(OffenceSeverity::High),
         NetworkDiscoveryError::RpcError(rpc_err) if rpc_err.is_caused_by_server() => Some(OffenceSeverity::High),
+        NetworkDiscoveryError::RpcStatus(status) if is_protocol_violation_status(status) => Some(OffenceSeverity::High),
         NetworkDiscoveryError::RpcStatus(status) if !status.is_ok() => Some(OffenceSeverity::Low),
         // Other errors - no banning needed
         NetworkDiscoveryError::RpcStatus(_) |

@@ -232,6 +232,7 @@ mod rebootstrap {
         time::Instant,
     };
 
+    use futures::StreamExt;
     use tari_comms::{
         PeerConnection,
         connection_manager::{ConnectionDirection, PeerConnectionRequest},
@@ -250,13 +251,14 @@ mod rebootstrap {
     use super::*;
     use crate::{
         BootstrapMethod,
+        DhtClient,
         network_discovery::{
             DhtNetworkDiscoveryRoundInfo,
             MAX_LEARNED_PEERS,
             NetworkDiscoveryError,
             RebootstrapInfo,
             SeedPeerProvider,
-            discovering::{Discovering, MAX_HOSTILE_RELAYED_CLAIMS},
+            discovering::{Discovering, MAX_HOSTILE_RELAYED_CLAIMS, is_bad_data_offence},
             on_connect::OnConnect,
             ready::DiscoveryReady,
             rebootstrap::{
@@ -1758,7 +1760,7 @@ mod rebootstrap {
 
         let mut discovering = Discovering::new(
             DiscoveryParams {
-                peers: vec![sync_peer.node_id],
+                peers: vec![sync_peer.node_id.clone()],
                 num_peers_to_request: 500,
             },
             context,
@@ -1776,6 +1778,18 @@ mod rebootstrap {
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(mock.take_banned_peers().await.is_empty());
+
+        // When Discovering created the connection itself (`was_connected = false`), deadline expiry also hangs it up
+        let temp_conn = server
+            .create_connection(sync_peer, ProtocolId::from_static(b"t/dht/1"))
+            .await;
+        assert!(temp_conn.is_connected());
+        let res = discovering.request_from_peers(temp_conn.clone(), false).await;
+        assert!(matches!(res, Err(NetworkDiscoveryError::Timeout { .. })));
+        assert!(
+            !temp_conn.is_connected(),
+            "temporary discovery connection must be hung up on sync timeout"
+        );
     }
 
     struct StreamItemsService {
@@ -1884,14 +1898,32 @@ mod rebootstrap {
             NetworkDiscoveryError::from_stream_error(RpcError::DecodeError(prost::DecodeError::new("corrupt frame")));
         ban_on_offence(&context, peer2.clone(), &bad_decode).await;
 
+        // Oversized streamed responses are surfaced by `RpcClientWorker` as `RpcStatusCode::ProtocolError`; verify an
+        // actual streamed violation is classified as a high-severity bad-data offence and bans a connected peer too.
+        let (_oversize_server, mut oversize_conn) = peers_server(fresh_peer_infos(1), false).await;
+        let peer3 = oversize_conn.peer_node_id().clone();
+        let mut tiny_client = oversize_conn
+            .connect_rpc_using_builder(
+                tari_comms::protocol::rpc::RpcClientBuilder::<DhtClient>::new().with_max_response_size(1),
+            )
+            .await
+            .unwrap();
+        let mut stream = tiny_client.get_peers(GetPeersRequest::default()).await.unwrap();
+        let stream_err = stream.next().await.unwrap().unwrap_err();
+        let mapped = NetworkDiscoveryError::from_stream_error(stream_err);
+        assert!(is_bad_data_offence(&mapped));
+        let _ignore = discovering
+            .ban_on_offence(peer3.clone(), Err::<(), _>(mapped), true)
+            .await;
+
         let mut banned = Vec::new();
         for _ in 0..50 {
             banned.extend(mock.take_banned_peers().await.into_iter().map(|(id, ..)| id));
-            if banned.len() >= 2 {
+            if banned.len() >= 3 {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert_eq!(banned, vec![peer1, peer2]);
+        assert_eq!(banned, vec![peer1, peer2, peer3]);
     }
 }
