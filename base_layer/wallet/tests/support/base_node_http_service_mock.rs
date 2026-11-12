@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use itertools::Itertools;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use minotari_wallet::client::http_client_factory::HttpClientFactory;
-use tari_common_types::types::CompressedCommitment;
+use tari_common_types::types::{CompressedCommitment, FixedHash};
 use tari_shutdown::ShutdownSignal;
 use tari_transaction_components::{
     rpc::models::{
@@ -67,6 +67,8 @@ struct State {
     on_mined_info_query: Option<Arc<dyn Fn() + Send + Sync>>,
     /// Outputs `query_deleted_utxos` reports as spent: output hash -> (height, block hash)
     spent_utxos: HashMap<Vec<u8>, (u64, Vec<u8>)>,
+    /// Outputs `fetch_utxo` returns, keyed by output hash
+    utxos: HashMap<Vec<u8>, TransactionOutput>,
 }
 
 impl State {
@@ -150,6 +152,11 @@ impl HttpBaseNodeMock {
             .collect();
     }
 
+    /// Return each output from `fetch_utxo` when asked for the hash it is paired with.
+    pub async fn set_utxos(&self, utxos: Vec<(FixedHash, TransactionOutput)>) {
+        self.state.write().await.utxos = utxos.into_iter().map(|(hash, o)| (hash.to_vec(), o)).collect();
+    }
+
     /// Run `hook` on every `get_utxos_mined_info` query.
     pub async fn set_on_mined_info_query(&self, hook: Arc<dyn Fn() + Send + Sync>) {
         self.state.write().await.on_mined_info_query = Some(hook);
@@ -208,8 +215,8 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
         })
     }
 
-    async fn fetch_utxo(&self, _hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
-        todo!()
+    async fn fetch_utxo(&self, hash: Vec<u8>) -> Result<Option<TransactionOutput>, Error> {
+        Ok(self.state.read().await.utxos.get(&hash).cloned())
     }
 
     async fn query_deleted_utxos(
