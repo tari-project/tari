@@ -4751,9 +4751,10 @@ mod test {
         // A distinct kernel with the same signature scalar as the owner's (another nonce)
         let mut owner_again = owner.clone();
         owner_again.excess_sig = CompressedSignature::new(
-            kernel(2).excess_sig.get_compressed_public_nonce().clone(),
+            crate::test_helpers::new_public_key(),
             owner.excess_sig.get_signature().clone(),
         );
+        assert_ne!(owner_again, owner);
         let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
         for n in 0..u64::try_from(MAX_SPENDS_PER_OUTPUT).unwrap() {
             let kernels = vec![owner.clone(), owner_again.clone(), kernel(3 + n)];

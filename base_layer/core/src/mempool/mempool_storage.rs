@@ -126,6 +126,7 @@ impl MempoolStorage {
             .or_else(|| self.check_fee(&tx))
             .or_else(|| Self::check_body_size(&tx))
             .or_else(|| Self::check_kernel_excesses(&tx))
+            .or_else(|| self.check_spend_cap(&tx))
         {
             return Ok(response);
         }
@@ -301,8 +302,8 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
-    /// The near-free checks done before a new transaction is validated: its fee and its weight. Returns the response
-    /// if the transaction is not to be validated.
+    /// The cheap checks done before a new transaction is validated: its inputs, fee, weight, body size, kernel
+    /// excesses and the spend cap. Returns the response if the transaction is not to be validated.
     ///
     /// This does no kernel deduplication. Callers drop an exact kernel-set match or a union of pool transactions before
     /// validation with [MempoolStorage::has_transaction], and `insert_into_unconfirmed_pool` does not store one; any
@@ -325,7 +326,20 @@ impl MempoolStorage {
                 ))));
             },
         }
-        Self::check_body_size(tx).or_else(|| Self::check_kernel_excesses(tx))
+        Self::check_body_size(tx)
+            .or_else(|| Self::check_kernel_excesses(tx))
+            .or_else(|| self.check_spend_cap(tx))
+    }
+
+    /// Refuses a transaction spending an output that [MAX_SPENDS_PER_OUTPUT] pool transactions already spend, if it
+    /// may not replace one of them (see [UnconfirmedPool::conflict_set_victims]), unless it is already in the pool.
+    /// Such a copy costs nothing to build, so it is not validated. Checked again on insert, since the pool may
+    /// change.
+    fn check_spend_cap(&self, tx: &Transaction) -> Option<TxStorageResponse> {
+        if self.unconfirmed_pool.conflict_set_victims(tx).is_some() || self.unconfirmed_pool.has_transaction(tx) {
+            return None;
+        }
+        Some(spend_cap_refusal(tx))
     }
 
     /// Rejects a transaction without inputs: it moves no value, so pays no fee, and spends no output whose pool
@@ -434,14 +448,7 @@ impl MempoolStorage {
         }
         // Checked before any validator node slot holder is replaced, so that a rejected transaction removes nothing
         let Some(victims) = self.unconfirmed_pool.conflict_set_victims(&tx) else {
-            debug!(
-                target: LOG_TARGET,
-                "Tx: ({tx_id}) spends an output that {MAX_SPENDS_PER_OUTPUT} pool transactions already spend, and is not \
-                 a strict kernel subset of each of them, rejecting"
-            );
-            return Ok(TxStorageResponse::NotStored(Some(format!(
-                "{MAX_SPENDS_PER_OUTPUT} mempool transactions already spend one of its inputs"
-            ))));
+            return Ok(spend_cap_refusal(&tx));
         };
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
@@ -1052,6 +1059,19 @@ fn validate_attempt(
 /// (see `is_tip_dependent`) is only excluded if the input that failed reads the block height. Such a failure cannot be
 /// told apart from the height having moved on, so it is never banned, even if the script could never have succeeded;
 /// reaching it means passing every earlier check first.
+/// The response to a transaction refused by the spend cap (see [UnconfirmedPool::conflict_set_victims])
+fn spend_cap_refusal(tx: &Transaction) -> TxStorageResponse {
+    debug!(
+        target: LOG_TARGET,
+        "Tx: ({}) spends an output that {MAX_SPENDS_PER_OUTPUT} pool transactions already spend, and is not a strict \
+         kernel subset of each of them, rejecting",
+        tx_id(tx)
+    );
+    TxStorageResponse::NotStored(Some(format!(
+        "{MAX_SPENDS_PER_OUTPUT} mempool transactions already spend one of its inputs"
+    )))
+}
+
 fn internal_failure_ban_reason(error: &ValidationError) -> Option<BanReason> {
     match error {
         ValidationError::AggregatedBodyValidationError(
@@ -2411,6 +2431,35 @@ mod test {
             MAX_SPENDS_PER_OUTPUT - 1
         );
         assert!(others.iter().all(in_pool));
+    }
+
+    #[test]
+    fn a_spend_refused_by_the_spend_cap_is_not_validated() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let padded = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(padded, None).unwrap().is_stored());
+        }
+        let (chain_linked_calls, internal_calls) = (validator.chain_linked_calls(), validator.internal_calls());
+        let copy = with_kernels(&honest, fresh_kernels(1, &key_manager));
+
+        for locked in [false, true] {
+            let response = if locked {
+                storage.write().unwrap().insert(copy.clone(), None).unwrap()
+            } else {
+                MempoolStorage::insert_unlocked(&storage, copy.clone()).unwrap()
+            };
+            assert!(
+                matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+                "{response:?}"
+            );
+        }
+        assert_eq!(validator.chain_linked_calls(), chain_linked_calls);
+        assert_eq!(validator.internal_calls(), internal_calls);
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
     }
 
     #[test]
