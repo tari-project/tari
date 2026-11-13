@@ -393,8 +393,8 @@ mod tests {
             .not_after
             .timestamp()
             .saturating_sub(leaf.validity().not_before.timestamp());
-        assert!(ca_duration.saturating_sub(3651 * 86_400).abs() <= 2);
-        assert!(leaf_duration.saturating_sub(731 * 86_400).abs() <= 2);
+        assert!(ca_duration.abs_diff(3651 * 86_400) <= 2);
+        assert!(leaf_duration.abs_diff(731 * 86_400) <= 2);
         let ca_exts = ca.extensions().iter().map(|e| e.parsed_extension()).collect::<Vec<_>>();
         let bc = ca_exts
             .iter()
