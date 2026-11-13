@@ -71,6 +71,7 @@ use crate::{
         proto,
         sync_protocol::{
             INVENTORY_INDEXES_MAX_DECODE_ITEMS,
+            MAX_CONCURRENT_RESPONDERS,
             MAX_FRAME_SIZE,
             MEMPOOL_SYNC_PROTOCOL,
             MempoolPeerProtocol,
@@ -1151,4 +1152,99 @@ async fn validate_and_insert_reports_a_covenant_over_the_token_limit_as_a_conver
         other => panic!("unexpected error: {other}"),
     }
     assert!(get_snapshot(&mempool).await.is_empty());
+}
+
+/// Only one inbound responder substream per peer is permitted at a time; a duplicate substream from
+/// the same peer is dropped immediately without queueing, and a subsequent substream succeeds once
+/// the active exchange finishes.
+#[tokio::test]
+async fn responder_rejects_duplicate_inbound_substream_from_same_peer_and_recovers_after_completion() {
+    let (protocol_notif, _, _, _transactions, _shutdown) = setup(1).await;
+    let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+
+    let mut first_framed = park_responder_awaiting_transactions(&protocol_notif, &peer).await;
+
+    let (dup_in, dup_out) = MemorySocket::new_pair();
+    protocol_notif
+        .send(ProtocolNotification::new(
+            MEMPOOL_SYNC_PROTOCOL.clone(),
+            ProtocolEvent::NewInboundSubstream(peer.node_id().clone(), dup_in),
+        ))
+        .await
+        .unwrap();
+    let mut dup_framed = framing::canonical(dup_out, MAX_FRAME_SIZE);
+    let dup_next = tokio::time::timeout(Duration::from_secs(5), dup_framed.next())
+        .await
+        .expect("duplicate inbound substream was not dropped promptly");
+    assert!(
+        dup_next.is_none(),
+        "expected duplicate substream from same peer to close with EOF, got {dup_next:?}"
+    );
+
+    // Finish the first exchange cleanly so its peer session token drops.
+    write_message(&mut first_framed, proto::TransactionItem::empty()).await;
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), first_framed.next())
+            .await
+            .expect("first responder stream did not close")
+            .is_none()
+    );
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+
+    // A fresh inbound substream from the same peer is now accepted again.
+    let mut recovered_framed = park_responder_awaiting_transactions(&protocol_notif, &peer).await;
+    write_message(&mut recovered_framed, proto::TransactionItem::empty()).await;
+    assert!(recovered_framed.next().await.is_none());
+}
+
+/// Concurrent inbound responder exchanges across distinct peers are capped at
+/// `MAX_CONCURRENT_RESPONDERS`; an extra substream declines immediately rather than queueing, and a
+/// new substream succeeds once a slot is released.
+#[tokio::test]
+async fn responder_enforces_max_concurrent_responders_cap_and_recovers_when_slot_frees() {
+    let (protocol_notif, _, _, _transactions, _shutdown) = setup(1).await;
+
+    let mut parked = Vec::with_capacity(MAX_CONCURRENT_RESPONDERS);
+    for _ in 0..MAX_CONCURRENT_RESPONDERS {
+        let peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let framed = park_responder_awaiting_transactions(&protocol_notif, &peer).await;
+        parked.push(framed);
+    }
+
+    let overflow_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    let (over_in, over_out) = MemorySocket::new_pair();
+    protocol_notif
+        .send(ProtocolNotification::new(
+            MEMPOOL_SYNC_PROTOCOL.clone(),
+            ProtocolEvent::NewInboundSubstream(overflow_peer.node_id().clone(), over_in),
+        ))
+        .await
+        .unwrap();
+    let mut over_framed = framing::canonical(over_out, MAX_FRAME_SIZE);
+    let over_next = tokio::time::timeout(Duration::from_secs(5), over_framed.next())
+        .await
+        .expect("overflow inbound substream was not dropped promptly");
+    assert!(
+        over_next.is_none(),
+        "expected overflow responder substream to close with EOF, got {over_next:?}"
+    );
+
+    // Release one slot and verify `overflow_peer` can now establish a responder session.
+    let mut released = parked.pop().unwrap();
+    write_message(&mut released, proto::TransactionItem::empty()).await;
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), released.next())
+            .await
+            .expect("released responder stream did not close")
+            .is_none()
+    );
+    for _ in 0..8 {
+        tokio::task::yield_now().await;
+    }
+
+    let mut accepted = park_responder_awaiting_transactions(&protocol_notif, &overflow_peer).await;
+    write_message(&mut accepted, proto::TransactionItem::empty()).await;
+    assert!(accepted.next().await.is_none());
 }
