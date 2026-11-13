@@ -1174,34 +1174,45 @@ fn check_block(base: &Block, sample: &Sample) {
         results.push(("original", Some(block.clone())));
     }
 
-    // Range proofs: gRPC rejects non-empty proofs that are not exactly MAX_RANGE_PROOF_BYTES (577 bytes),
-    // whereas shared decoders maintain historical backwards compatibility by accepting any size <=
-    // MAX_RANGE_PROOF_BYTES.
-    if let Mutation::OutputRangeProof(bytes) = mutation
-        && !bytes.is_empty()
-        && bytes.len() != MAX_RANGE_PROOF_BYTES
-        && bytes.len() <= MAX_RANGE_PROOF_BYTES
-    {
-        assert!(
-            grpc_proto_result.is_none(),
-            "{sample}: expected gRPC proto to reject non-canonical range proof of {} bytes",
-            bytes.len()
-        );
-        let shared_results = results
-            .into_iter()
-            .filter(|(name, _)| *name != "gRPC proto")
-            .map(|(name, block)| (name, block.map(|b| borsh::to_vec(&b).unwrap())))
-            .collect::<Vec<_>>();
-        assert_parity(&sample, true, &shared_results);
-        return;
-    }
-
     // `PartialEq` of an input only compares the output it spends, so compare the full encodings instead
     let results = results
         .into_iter()
         .map(|(name, block)| (name, block.map(|b| borsh::to_vec(&b).unwrap())))
         .collect::<Vec<_>>();
-    assert_parity(&sample, *accept, &results);
+    assert_decoded_parity(&sample, *accept, mutation, grpc_proto_result.is_none(), results);
+}
+
+fn is_grpc_only_range_proof_reject(mutation: &Mutation) -> bool {
+    matches!(
+        mutation,
+        Mutation::OutputRangeProof(bytes)
+            if !bytes.is_empty() && bytes.len() != MAX_RANGE_PROOF_BYTES && bytes.len() <= MAX_RANGE_PROOF_BYTES
+    )
+}
+
+fn assert_decoded_parity(
+    sample: &str,
+    accept: bool,
+    mutation: &Mutation,
+    grpc_rejected: bool,
+    results: Vec<(&'static str, Option<Vec<u8>>)>,
+) {
+    // Range proofs: gRPC rejects non-empty proofs that are not exactly MAX_RANGE_PROOF_BYTES (577 bytes),
+    // whereas shared decoders maintain historical backwards compatibility by accepting any size <=
+    // MAX_RANGE_PROOF_BYTES.
+    if is_grpc_only_range_proof_reject(mutation) {
+        assert!(
+            grpc_rejected,
+            "{sample}: expected gRPC proto to reject non-canonical range proof"
+        );
+        let shared_results = results
+            .into_iter()
+            .filter(|(name, _)| *name != "gRPC proto")
+            .collect::<Vec<_>>();
+        assert_parity(sample, true, &shared_results);
+        return;
+    }
+    assert_parity(sample, accept, &results);
 }
 
 fn check_transaction(base: &Transaction, sample: &Sample) {
@@ -1250,34 +1261,12 @@ fn check_transaction(base: &Transaction, sample: &Sample) {
         results.push(("original", Some(transaction.clone())));
     }
 
-    // Range proofs: gRPC rejects non-empty proofs that are not exactly MAX_RANGE_PROOF_BYTES (577 bytes),
-    // whereas shared decoders maintain historical backwards compatibility by accepting any size <=
-    // MAX_RANGE_PROOF_BYTES.
-    if let Mutation::OutputRangeProof(bytes) = mutation
-        && !bytes.is_empty()
-        && bytes.len() != MAX_RANGE_PROOF_BYTES
-        && bytes.len() <= MAX_RANGE_PROOF_BYTES
-    {
-        assert!(
-            grpc_proto_result.is_none(),
-            "{sample}: expected gRPC proto to reject non-canonical range proof of {} bytes",
-            bytes.len()
-        );
-        let shared_results = results
-            .into_iter()
-            .filter(|(name, _)| *name != "gRPC proto")
-            .map(|(name, transaction)| (name, transaction.map(|t| bincode::serialize(&t).unwrap())))
-            .collect::<Vec<_>>();
-        assert_parity(&sample, true, &shared_results);
-        return;
-    }
-
     // `PartialEq` of an input only compares the output it spends, so compare the full encodings instead
     let results = results
         .into_iter()
         .map(|(name, transaction)| (name, transaction.map(|t| bincode::serialize(&t).unwrap())))
         .collect::<Vec<_>>();
-    assert_parity(&sample, *accept, &results);
+    assert_decoded_parity(&sample, *accept, mutation, grpc_proto_result.is_none(), results);
 }
 
 /// A change to a block or transaction, and whether every decoder must accept it

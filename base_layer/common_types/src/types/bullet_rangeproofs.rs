@@ -182,11 +182,13 @@ mod test {
         assert_eq!(expected, 577);
         assert_eq!(MAX_RANGE_PROOF_BYTES, expected);
 
+        // Shared decoders accept any size <= MAX_RANGE_PROOF_BYTES for backwards compatibility;
+        // exact 577-byte enforcement lives only at the gRPC boundary.
         assert!(BulletRangeProof::from_canonical_bytes(&[]).is_ok());
         assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected)).is_ok());
-        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected - 1)).is_err());
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected - 1)).is_ok());
         assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(expected + 1)).is_err());
-        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(1)).is_err());
+        assert!(BulletRangeProof::from_canonical_bytes(&proof_bytes(1)).is_ok());
     }
 
     #[test]
