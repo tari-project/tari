@@ -1549,16 +1549,13 @@ where
 
         // Create the output with a partially signed metadata signature
         let output = WalletOutputBuilder::new(amount, spending_key_id)
-            .with_features(
-                output_features,
-            )
+            .with_features(output_features)
             .with_script(script)
             .encrypt_data_for_recovery(
                 &self.resources.key_manager,
                 Some(&encryption_key_id),
                 tx_payment_id.clone(),
-            )
-            ?
+            )?
             .with_input_data(ExecutionStack::default()) // Just a placeholder in the wallet
             .with_sender_offset_public_key(CompressedPublicKey::new_from_pk(sender_offset_public_key))
             .with_script_key(self.resources.key_manager.get_spend_key().key_id)
@@ -1569,9 +1566,9 @@ where
                 &CompressedPublicKey::new_from_pk(aggregated_sender_offset_public_key_shares),
                 &CompressedPublicKey::new_from_pk(aggregated_metadata_ephemeral_public_key_shares.clone()),
             )
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?
             .try_build(&self.resources.key_manager)
-            .map_err(|e|service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
+            .map_err(|e| service_error_with_id(TxId::from(0u64), e.to_string(), true))?;
 
         builder.add_recipient(
             recipient_address.clone(),
@@ -2614,7 +2611,7 @@ where
         let unspent_remainder = MicroMinotari(
             aftertax_amount
                 .as_u64()
-                .checked_rem(amount_per_split.as_u64())
+                .checked_rem(number_of_splits as u64)
                 .unwrap_or(0),
         );
         let mut expected_outputs = vec![];
@@ -2733,7 +2730,7 @@ where
         let unspent_remainder = MicroMinotari(
             accumulated_amount
                 .as_u64()
-                .checked_rem(amount_per_split.as_u64())
+                .checked_rem(number_of_splits as u64)
                 .unwrap_or(0),
         );
 
@@ -2793,7 +2790,7 @@ where
         tx_builder.reserve_sender_offset_keys(&[])?;
 
         let finalized = tx_builder.build()?;
-        let dest_outputs = spec_outputs_to_db_outputs(&finalized);
+        let mut dest_outputs = spec_outputs_to_db_outputs(&finalized);
 
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -2801,6 +2798,16 @@ where
             self.resources.key_manager.get_view_key().pub_key.as_bytes(),
             finalized.transaction.body.outputs(),
         );
+
+        if let Some(change) = finalized.change {
+            dest_outputs.push(DbWalletOutput::from_wallet_output(
+                change,
+                None,
+                OutputSource::default(),
+                Some(tx_id),
+                None,
+            ));
+        }
 
         trace!(
             target: LOG_TARGET,
