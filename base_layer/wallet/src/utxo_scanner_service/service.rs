@@ -89,7 +89,7 @@ where
             shutdown_signal,
             event_sender,
             key_manager,
-            scanning_interval,
+            scanning_interval: scanning_interval.max(1),
         }
     }
 

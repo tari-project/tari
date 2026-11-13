@@ -140,11 +140,15 @@ where
                         target: LOG_TARGET,
                         "Failed to scan UTXO's from base node: {e}"
                     );
+                    let (attempt, exceeded_limit) = record_failed_round(&mut self.num_retries, self.retry_limit);
                     self.publish_event(UtxoScannerEvent::ScanningRoundFailed {
-                        num_retries: self.num_retries,
+                        num_retries: attempt,
                         retry_limit: self.retry_limit,
                         error: e.to_string(),
                     });
+                    if exceeded_limit {
+                        return Err(e);
+                    }
                     // Wait a bit of time otherwise we spam the node with requests, but do not hold the shutdown drain
                     // for it
                     tokio::select! {
@@ -210,19 +214,10 @@ where
         wallet_service_client: &TWalletClientFactory::Client,
     ) -> Result<ScannedBlock, anyhow::Error> {
         if let Some(last_scanned_block) = last_scanned_block {
-            let mut height = last_scanned_block.height;
-            let mut next_header;
-            // Keep going backwards until we find a header that is known to the base node
-            loop {
-                next_header = wallet_service_client
-                    .get_header_by_height(height.saturating_add(1))
-                    .await?;
-                if next_header.is_some() {
-                    break;
-                }
-                height = height.saturating_sub(1);
-            }
-            let next_header = next_header.expect("we check this above");
+            let next_header = find_next_header_to_scan(last_scanned_block.height, |h| {
+                wallet_service_client.get_header_by_height(h)
+            })
+            .await?;
             let next_header_hash = next_header.hash;
 
             Ok(ScannedBlock {
@@ -506,35 +501,12 @@ where
                         stopped_by_shutdown = true;
                         break 'pages;
                     }
-                    if let Some(previous_block) = &prev_scanned_block {
-                        if response.height < previous_block.height {
-                            // We do not accept blocks that go backwards in height - fork block re-validation forced.
-                            return Err(anyhow!(
-                                "Non-monotonic block heights received during UTXO scan: {} followed by {}",
-                                previous_block.height,
-                                response.height
-                            ));
-                        }
-                        if response.height > previous_block.height.saturating_add(1) {
-                            // Missing block(s) detected between previous_block and response height - fork block
-                            // re-validation forced.
-                            return Err(anyhow!(
-                                "Non-consecutive block heights received during UTXO scan: {} followed by {}",
-                                previous_block.height,
-                                response.height
-                            ));
-                        }
-                        if response.height == previous_block.height &&
-                            response.header_hash != previous_block.header_hash.to_vec()
-                        {
-                            // Conflicting block detected for the same height - fork block re-validation forced.
-                            return Err(anyhow!(
-                                "Conflicting blocks for same height {} during UTXO scan: response {} vs expected {}",
-                                response.height,
-                                BlockHash::try_from(response.header_hash).unwrap_or_default(),
-                                previous_block.header_hash,
-                            ));
-                        }
+                    if !validate_next_block_sequence(
+                        prev_scanned_block.as_ref(),
+                        response.height,
+                        &response.header_hash,
+                    )? {
+                        continue;
                     }
                     blocks_scanned = blocks_scanned.saturating_add(1);
                     let current_height = response.height;
@@ -973,6 +945,77 @@ fn is_birthday_in_the_future(birthday: u16, now: u64) -> bool {
     get_birthday_from_unix_epoch_in_seconds(birthday, 0) > now
 }
 
+fn record_failed_round(num_retries: &mut usize, retry_limit: usize) -> (usize, bool) {
+    let attempt = *num_retries;
+    let exceeded_limit = retry_limit > 0 && attempt > retry_limit;
+    *num_retries = num_retries.saturating_add(1);
+    (attempt, exceeded_limit)
+}
+
+async fn find_next_header_to_scan<THeader, F, Fut>(
+    last_scanned_height: u64,
+    mut fetch_header: F,
+) -> Result<THeader, anyhow::Error>
+where
+    F: FnMut(u64) -> Fut,
+    Fut: Future<Output = Result<Option<THeader>, anyhow::Error>>,
+{
+    let mut height = last_scanned_height;
+    loop {
+        if let Some(header) = fetch_header(height.saturating_add(1)).await? {
+            return Ok(header);
+        }
+        if height == 0 {
+            if let Some(genesis_header) = fetch_header(0).await? {
+                return Ok(genesis_header);
+            }
+            return Err(anyhow!(
+                "No block header found on base node when determining next block to scan"
+            ));
+        }
+        height = height.saturating_sub(1);
+    }
+}
+
+fn validate_next_block_sequence(
+    previous_block: Option<&ScannedBlock>,
+    response_height: u64,
+    response_header_hash: &[u8],
+) -> Result<bool, anyhow::Error> {
+    if let Some(previous_block) = previous_block {
+        if response_height < previous_block.height {
+            // We do not accept blocks that go backwards in height - fork block re-validation forced.
+            return Err(anyhow!(
+                "Non-monotonic block heights received during UTXO scan: {} followed by {}",
+                previous_block.height,
+                response_height
+            ));
+        }
+        if response_height > previous_block.height.saturating_add(1) {
+            // Missing block(s) detected between previous_block and response height - fork block
+            // re-validation forced.
+            return Err(anyhow!(
+                "Non-consecutive block heights received during UTXO scan: {} followed by {}",
+                previous_block.height,
+                response_height
+            ));
+        }
+        if response_height == previous_block.height {
+            if response_header_hash != previous_block.header_hash.as_slice() {
+                // Conflicting block detected for the same height - fork block re-validation forced.
+                return Err(anyhow!(
+                    "Conflicting blocks for same height {} during UTXO scan: response {} vs expected {}",
+                    response_height,
+                    BlockHash::try_from(response_header_hash).unwrap_or_default(),
+                    previous_block.header_hash,
+                ));
+            }
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
 struct HeightHash {
     height: u64,
     header_hash: HashOutput,
@@ -1001,12 +1044,22 @@ where F: Future<Output = Result<T, anyhow::Error>> {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::seeds::{
-        cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
-        seed_words::get_birthday_from_unix_epoch_in_seconds,
+    use chrono::Utc;
+    use tari_common_types::{
+        seeds::{
+            cipher_seed::BIRTHDAY_GENESIS_FROM_UNIX_EPOCH,
+            seed_words::get_birthday_from_unix_epoch_in_seconds,
+        },
+        types::FixedHash,
     };
 
-    use super::is_birthday_in_the_future;
+    use super::{
+        ScannedBlock,
+        find_next_header_to_scan,
+        is_birthday_in_the_future,
+        record_failed_round,
+        validate_next_block_sequence,
+    };
 
     #[test]
     fn a_birthday_after_now_is_in_the_future() {
@@ -1016,5 +1069,83 @@ mod test {
         assert!(is_birthday_in_the_future(101, now));
         assert!(is_birthday_in_the_future(u16::MAX, now));
         assert_eq!(get_birthday_from_unix_epoch_in_seconds(100, 0), now);
+    }
+
+    #[test]
+    fn record_failed_round_increments_attempts_and_enforces_nonzero_retry_limit() {
+        let mut retries = 1;
+        let retry_limit = 2;
+        let mut published_attempts = Vec::new();
+        loop {
+            let (attempt, exceeded_limit) = record_failed_round(&mut retries, retry_limit);
+            published_attempts.push(attempt);
+            if exceeded_limit {
+                break;
+            }
+        }
+        assert_eq!(published_attempts, vec![1, 2, 3]);
+
+        let mut unlimited_retries = 1;
+        for expected in 1..=5 {
+            assert_eq!(record_failed_round(&mut unlimited_retries, 0), (expected, false));
+        }
+    }
+
+    #[tokio::test]
+    async fn find_next_header_to_scan_walks_back_to_genesis_and_errors_instead_of_looping_forever() {
+        let mut queried_heights = Vec::new();
+        let found = find_next_header_to_scan(2, |h| {
+            queried_heights.push(h);
+            async move { Ok(if h == 0 { Some(0u64) } else { None }) }
+        })
+        .await
+        .expect("falls back to height 0 when heights 3..=1 are missing");
+        assert_eq!(found, 0);
+        assert_eq!(queried_heights, vec![3, 2, 1, 0]);
+
+        let mut empty_queries = Vec::new();
+        let err = find_next_header_to_scan::<u64, _, _>(0, |h| {
+            empty_queries.push(h);
+            async move { Ok(None) }
+        })
+        .await;
+        assert!(err.is_err());
+        assert_eq!(empty_queries, vec![1, 0]);
+    }
+
+    #[test]
+    fn validate_next_block_sequence_skips_identical_duplicates_and_rejects_gaps_or_conflicts() {
+        let hash_a = FixedHash::from([0x11; FixedHash::byte_size()]);
+        let hash_b = FixedHash::from([0x22; FixedHash::byte_size()]);
+        let prev = ScannedBlock {
+            header_hash: hash_a,
+            height: 10,
+            timestamp: Utc::now().naive_utc(),
+        };
+
+        assert!(validate_next_block_sequence(None, 0, hash_a.as_slice()).unwrap());
+        assert!(validate_next_block_sequence(Some(&prev), 11, hash_b.as_slice()).unwrap());
+        assert!(!validate_next_block_sequence(Some(&prev), 10, hash_a.as_slice()).unwrap());
+
+        assert!(validate_next_block_sequence(Some(&prev), 9, hash_b.as_slice()).is_err());
+        assert!(validate_next_block_sequence(Some(&prev), 12, hash_b.as_slice()).is_err());
+        assert!(validate_next_block_sequence(Some(&prev), 10, hash_b.as_slice()).is_err());
+
+        // Simulate scan_utxos_to_tip loop where prev_scanned_block starts as None on each stream
+        let mut prev_scanned_block: Option<ScannedBlock> = None;
+        let mut blocks_scanned = 0u64;
+        for (height, hash) in [(10u64, hash_a), (10u64, hash_a), (11u64, hash_b)] {
+            if !validate_next_block_sequence(prev_scanned_block.as_ref(), height, hash.as_slice()).unwrap() {
+                continue;
+            }
+            blocks_scanned = blocks_scanned.saturating_add(1);
+            prev_scanned_block = Some(ScannedBlock {
+                header_hash: hash,
+                height,
+                timestamp: Utc::now().naive_utc(),
+            });
+        }
+        assert_eq!(blocks_scanned, 2);
+        assert_eq!(prev_scanned_block.unwrap().height, 11);
     }
 }
