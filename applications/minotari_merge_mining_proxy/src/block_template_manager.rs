@@ -119,6 +119,21 @@ impl BlockTemplateManager<'_> {
                     .ok_or(MmProxyError::GrpcResponseMissingField("block"))?;
                 verify_p2pool_block_coinbase(tari_block, &self.wallet_payment_address, LOG_TARGET)
                     .map_err(MmProxyError::FailedToGetBlockTemplate)?;
+                let header_proto = tari_block
+                    .header
+                    .as_ref()
+                    .ok_or(MmProxyError::GrpcResponseMissingField("header"))?;
+                let core_header = tari_node_components::blocks::BlockHeader::try_from(header_proto.clone())
+                    .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
+                let computed_merge_mining_hash = core_header.merge_mining_hash();
+                let provided_hash = FixedHash::try_from(tari_block_result.merge_mining_hash.clone())
+                    .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
+                if provided_hash != computed_merge_mining_hash {
+                    return Err(MmProxyError::FailedToGetBlockTemplate(format!(
+                        "mismatched merge mining hash: p2pool provided {provided_hash}, computed from header \
+                         {computed_merge_mining_hash}"
+                    )));
+                }
                 tari_block_result
             },
             None => {
@@ -287,29 +302,8 @@ fn add_monero_data(
     monero_mining_data: MoneroMiningData,
     miner_data: MinerData,
 ) -> Result<FinalBlockTemplateData, MmProxyError> {
-    let tari_block = tari_block_result
-        .block
-        .as_ref()
-        .ok_or(MmProxyError::GrpcResponseMissingField("block"))?;
-    let header_proto = tari_block
-        .header
-        .as_ref()
-        .ok_or(MmProxyError::GrpcResponseMissingField("header"))?;
-    let core_header = tari_node_components::blocks::BlockHeader::try_from(header_proto.clone())
+    let merge_mining_hash = FixedHash::try_from(tari_block_result.merge_mining_hash.clone())
         .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
-    let computed_merge_mining_hash = core_header.merge_mining_hash();
-
-    let provided_hash = FixedHash::try_from(tari_block_result.merge_mining_hash.clone())
-        .map_err(|e| MmProxyError::ConversionError(e.to_string()))?;
-
-    if provided_hash != computed_merge_mining_hash {
-        return Err(MmProxyError::FailedToGetBlockTemplate(format!(
-            "mismatched merge mining hash: p2pool provided {}, computed from header {}",
-            provided_hash, computed_merge_mining_hash
-        )));
-    }
-
-    let merge_mining_hash = computed_merge_mining_hash;
 
     let aux_chain_hashes = AuxChainHashes::try_from(vec![monero::Hash::from_slice(merge_mining_hash.as_slice())])?;
     let tari_difficulty = miner_data.target_difficulty;
@@ -759,5 +753,27 @@ mod tests {
         }
 
         server_handle.abort();
+    }
+
+    #[test]
+    fn test_base_node_path_passes_through_node_provided_merge_mining_hash() {
+        let configured_address = make_test_address();
+        let mut resp = make_p2pool_block(&configured_address, 1_000_000);
+        let mut block_result = resp.block.take().unwrap();
+        block_result.merge_mining_hash = vec![0xaa; 32];
+        let miner_data = block_result.miner_data.unwrap();
+        let monero_data = MoneroMiningData {
+            seed_hash: FixedByteArray::default(),
+            blocktemplate_blob: "".to_string(),
+            difficulty: 1,
+        };
+
+        let result = add_monero_data(block_result, monero_data, miner_data);
+        // Base-node path must pass the node-provided hash straight through without header re-derivation.
+        // The downstream error here is purely from the empty dummy Monero blocktemplate_blob.
+        let err = result.unwrap_err();
+        if let MmProxyError::FailedToGetBlockTemplate(msg) = err {
+            panic!("Base-node path must not reject node-provided merge_mining_hash: {msg}");
+        }
     }
 }
