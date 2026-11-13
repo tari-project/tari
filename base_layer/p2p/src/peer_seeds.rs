@@ -110,7 +110,7 @@ fn unparsable_seed_record_message(txt: &str, err: &anyhow::Error) -> String {
 }
 
 /// Parsed information from a DNS seed record
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct SeedPeer {
     pub public_key: CommsPublicKey,
@@ -136,17 +136,81 @@ impl TryFrom<String> for SeedPeer {
     }
 }
 
+const MAX_SEED_PEER_STR_LEN: usize = 1024;
+const MAX_SEED_ADDRESSES: usize = 10;
+const MAX_SEED_SPLIT_ATTEMPTS: usize = 20;
+
+fn parse_seed_addresses(mut rest: &str) -> Result<Vec<Multiaddr>, anyhow::Error> {
+    if rest.is_empty() {
+        return Err(anyhow!("Invalid address string: empty address"));
+    }
+    if rest.len() > MAX_SEED_PEER_STR_LEN {
+        return Err(anyhow!(
+            "Invalid address string: exceeds maximum length of {MAX_SEED_PEER_STR_LEN} bytes"
+        ));
+    }
+    if rest.ends_with("::") {
+        return Err(anyhow!("Invalid address string: trailing '::' delimiter"));
+    }
+    let mut addresses = Vec::new();
+    let mut split_attempts: usize = 0;
+    loop {
+        if addresses.len() >= MAX_SEED_ADDRESSES {
+            return Err(anyhow!(
+                "Invalid address string: exceeds maximum of {MAX_SEED_ADDRESSES} addresses"
+            ));
+        }
+        let mut split_at = None;
+        for (idx, _) in rest.char_indices() {
+            if let Some(remainder) = rest[idx..].strip_prefix("::") &&
+                remainder.starts_with('/')
+            {
+                let candidate = &rest[..idx];
+                if !candidate.is_empty() {
+                    split_attempts = split_attempts.saturating_add(1);
+                    if split_attempts > MAX_SEED_SPLIT_ATTEMPTS {
+                        return Err(anyhow!("Invalid address string: too many '::' split attempts"));
+                    }
+                    if let Ok(addr) = Multiaddr::from_str(candidate) &&
+                        !addr.is_empty()
+                    {
+                        split_at = Some((addr, remainder));
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some((addr, remainder)) = split_at {
+            addresses.push(addr);
+            rest = remainder;
+        } else {
+            let addr = Multiaddr::from_str(rest).map_err(|e| anyhow!("Invalid address string:{e}"))?;
+            if addr.is_empty() {
+                return Err(anyhow!("Invalid address string: empty address"));
+            }
+            addresses.push(addr);
+            break;
+        }
+    }
+    Ok(addresses)
+}
+
 impl FromStr for SeedPeer {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() > MAX_SEED_PEER_STR_LEN {
+            return Err(anyhow!(
+                "Invalid seed peer string: exceeds maximum length of {MAX_SEED_PEER_STR_LEN} bytes"
+            ));
+        }
         let (part_a, part_b) = s
             .split_once("::")
             .ok_or_else(|| anyhow!("Invalid seed peer string, missing '::' delimiter"))?;
         let public_key = UncompressedCommsPublicKey::from_hex(part_a)
             .ok()
             .ok_or_else(|| anyhow!("Invalid public key string"))?;
-        let addresses = vec![Multiaddr::from_str(part_b).map_err(|e| anyhow!("Invalid address string:{e}"))?];
+        let addresses = parse_seed_addresses(part_b)?;
         Ok(SeedPeer {
             public_key: CommsPublicKey::new_from_pk(public_key),
             addresses,
@@ -196,6 +260,8 @@ mod test {
     use super::*;
 
     mod peer_seed {
+        use std::time::{Duration, Instant};
+
         use super::*;
 
         #[test]
@@ -208,6 +274,25 @@ mod test {
             );
             assert_eq!(seed.addresses.len(), 1);
             assert_eq!(seed.addresses[0].to_string(), "/ip4/127.0.0.1/tcp/8000");
+        }
+
+        #[test]
+        fn it_parses_multiple_addresses_and_roundtrips_display() {
+            let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::/\
+                          ip6/::1/tcp/8001::/ip6/2001:db8::/tcp/8002::/onion3/\
+                          bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234";
+            let seed = SeedPeer::from_str(sample).unwrap();
+            assert_eq!(seed.addresses.len(), 4);
+            assert_eq!(seed.addresses[0].to_string(), "/ip4/127.0.0.1/tcp/8000");
+            assert_eq!(seed.addresses[1].to_string(), "/ip6/::1/tcp/8001");
+            assert_eq!(seed.addresses[2].to_string(), "/ip6/2001:db8::/tcp/8002");
+            assert_eq!(
+                seed.addresses[3].to_string(),
+                "/onion3/bsmuof2cn4y2ysz253gzsvg3s72fcgh4f3qcm3hdlxdtcwe6al2dicyd:1234"
+            );
+            let formatted = seed.to_string();
+            assert_eq!(formatted, sample);
+            assert_eq!(SeedPeer::from_str(&formatted).unwrap(), seed);
         }
 
         #[test]
@@ -231,6 +316,38 @@ mod test {
         fn it_errors_invalid_address() {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/invalid/tcp/8000";
             SeedPeer::from_str(sample).unwrap_err();
+            let empty_addr = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::";
+            SeedPeer::from_str(empty_addr).unwrap_err();
+            let trailing_delim =
+                "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/127.0.0.1/tcp/8000::";
+            SeedPeer::from_str(trailing_delim).unwrap_err();
+        }
+
+        #[test]
+        fn it_rejects_overlong_and_crafted_p2p_colon_payloads_quickly() {
+            let pk = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a";
+
+            let start = Instant::now();
+            let overlong_colons = format!("{pk}::/p2p/{}{}", "2".repeat(3000), "::".repeat(1500));
+            SeedPeer::from_str(&overlong_colons).unwrap_err();
+
+            let under_cap_colons = format!("{pk}::/p2p/{}{}", "2".repeat(400), "::".repeat(200));
+            assert!(under_cap_colons.len() <= MAX_SEED_PEER_STR_LEN);
+            SeedPeer::from_str(&under_cap_colons).unwrap_err();
+
+            let under_cap_slash_colons = format!("{pk}::/p2p/{}{}", "2".repeat(400), "::/".repeat(150));
+            assert!(under_cap_slash_colons.len() <= MAX_SEED_PEER_STR_LEN);
+            SeedPeer::from_str(&under_cap_slash_colons).unwrap_err();
+
+            let too_many_addrs = format!(
+                "{pk}::{}",
+                (0..=MAX_SEED_ADDRESSES)
+                    .map(|i| format!("/ip4/127.0.0.1/tcp/{}", 8000 + i))
+                    .collect::<Vec<_>>()
+                    .join("::")
+            );
+            SeedPeer::from_str(&too_many_addrs).unwrap_err();
+            assert!(start.elapsed() < Duration::from_millis(100));
         }
     }
 

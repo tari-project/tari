@@ -28,7 +28,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_comms::socks;
 
-#[derive(Default, Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SocksAuthentication {
     #[default]
@@ -45,6 +45,7 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
         parts
             .next()
             .expect("splitn always emits at least one part")
+            .trim()
             .to_lowercase(),
         parts.next(),
     )
@@ -56,21 +57,25 @@ impl FromStr for SocksAuthentication {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (auth_type, maybe_value) = parse_key_value(s, '=');
         match auth_type.as_str() {
-            "none" => Ok(SocksAuthentication::None),
+            "none" => {
+                if maybe_value.is_some() {
+                    return Err(
+                        "invalid format for 'none' socks authentication type. It should be 'none'.".to_string(),
+                    );
+                }
+                Ok(SocksAuthentication::None)
+            },
             "username_password" => {
                 let (username, password) = maybe_value
-                    .and_then(|value| {
-                        let (un, pwd) = parse_key_value(value, ':');
-                        // If pwd is None, return None
-                        pwd.map(|p| (un, p))
-                    })
+                    .and_then(|value| value.split_once(':'))
+                    .filter(|(username, _)| !username.is_empty())
                     .ok_or_else(|| {
                         "invalid format for 'username-password' socks authentication type. It should be in the format \
                          'username_password=my_username:xxxxxx'."
                             .to_string()
                     })?;
                 Ok(SocksAuthentication::UsernamePassword {
-                    username,
+                    username: username.to_string(),
                     password: password.to_string(),
                 })
             },
@@ -99,5 +104,37 @@ impl From<SocksAuthentication> for socks::Authentication {
                 socks::Authentication::Password { username, password }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn socks_parser_valid_cases() {
+        assert_eq!(
+            SocksAuthentication::from_str("none").unwrap(),
+            SocksAuthentication::None
+        );
+        assert_eq!(
+            SocksAuthentication::from_str("NONE").unwrap(),
+            SocksAuthentication::None
+        );
+
+        let auth = SocksAuthentication::from_str("username_password=Alice_User:Secret:Pass123").unwrap();
+        assert_eq!(auth, SocksAuthentication::UsernamePassword {
+            username: "Alice_User".to_string(),
+            password: "Secret:Pass123".to_string(),
+        });
+    }
+
+    #[test]
+    fn socks_parser_invalid_cases() {
+        SocksAuthentication::from_str("").unwrap_err();
+        SocksAuthentication::from_str("none=extra").unwrap_err();
+        SocksAuthentication::from_str("username_password").unwrap_err();
+        SocksAuthentication::from_str("username_password=alice").unwrap_err();
+        SocksAuthentication::from_str("username_password=:secret").unwrap_err();
     }
 }
