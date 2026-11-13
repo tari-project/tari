@@ -243,7 +243,7 @@ impl TorTransportConfig {
         self.control_auth
             .clone()
             .make_tor_auth()
-            .map_err(CommsInitializationError::from)
+            .map_err(|err| tor::HiddenServiceControllerError::FailedToLoadCookieFile(err).into())
     }
 
     pub fn to_socks_auth(&self) -> socks::Authentication {
