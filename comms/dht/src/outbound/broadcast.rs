@@ -612,7 +612,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             } else {
                 None
             };
-            let hash = dedup::message_key(sig_canonical, dht_flags, &body, decoded_body.as_ref());
+            let hash = dedup::message_key(sig_canonical, dht_message_type, dht_flags, &body, decoded_body.as_ref());
             self.add_to_dedup_cache(hash, expires_epochtime, is_signed).await?;
         }
 

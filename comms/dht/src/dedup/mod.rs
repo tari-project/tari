@@ -48,7 +48,7 @@ use tower::{Service, ServiceExt, layer::Layer};
 
 use crate::{
     actor::DhtRequester,
-    envelope::DhtMessageFlags,
+    envelope::{DhtMessageFlags, DhtMessageType},
     inbound::{DecryptedDhtMessage, DhtInboundMessage, metrics},
     message_signature::{MessageSignature, ProtoMessageSignature},
 };
@@ -71,37 +71,52 @@ pub fn canonical_signature_bytes(signature: &MessageSignature) -> Vec<u8> {
 }
 
 /// Returns the dedup key of a message whose signature has not been decoded yet, or `None` if it has a signature that
-/// does not decode. `decoded_body` is the message's decoded cleartext body, if there is one.
+/// does not decode. `decoded_body` is the message's decoded cleartext body, if there is one. An unsigned message's key
+/// binds its message type.
 pub fn hash_inbound_message(msg: &DhtInboundMessage, decoded_body: Option<&EnvelopeBody>) -> Option<[u8; 32]> {
     let signature = &msg.dht_header.message_signature;
+    let message_type = msg.dht_header.message_type;
     if signature.is_empty() {
-        return Some(message_key(&[], msg.dht_header.flags, &msg.body, decoded_body));
+        return Some(message_key(
+            &[],
+            message_type,
+            msg.dht_header.flags,
+            &msg.body,
+            decoded_body,
+        ));
     }
     let signature = MessageSignature::try_from(ProtoMessageSignature::decode(signature.as_slice()).ok()?).ok()?;
     Some(message_key(
         &canonical_signature_bytes(&signature),
+        message_type,
         msg.dht_header.flags,
         &msg.body,
         decoded_body,
     ))
 }
 
-/// The dedup key of a message, inbound or outbound, with the given canonical signature bytes, flags and raw body. A
-/// signed body is bound by the signature (and may be ciphertext), so its raw bytes are hashed. An unsigned body is
-/// not, so the canonical encoding of its decoded body is hashed instead, and re-encoding the body does not give the
-/// message a new key. Without a decoded body the raw bytes are hashed.
+/// The dedup key of a message, inbound or outbound, with the given canonical signature bytes, message type, flags and
+/// raw body. A signed body is bound by the signature (and may be ciphertext), so its raw bytes are hashed; the
+/// signature already binds the message type. An unsigned body is not bound, so its key binds the message type, and a
+/// body under one type never shares a key with the same body under another. The canonical encoding of its decoded body
+/// is hashed, so re-encoding the body does not give the message a new key. Without a decoded body the raw bytes are
+/// hashed.
 pub fn message_key(
     sig_canonical: &[u8],
+    message_type: DhtMessageType,
     flags: DhtMessageFlags,
     body: &[u8],
     decoded_body: Option<&EnvelopeBody>,
 ) -> [u8; 32] {
-    match decoded_body {
-        Some(decoded) if sig_canonical.is_empty() && !flags.is_encrypted() => {
-            create_message_hash(&[], &decoded.encode_to_vec())
-        },
-        _ => create_message_hash(sig_canonical, body),
+    if sig_canonical.is_empty() {
+        // The hasher length-prefixes each input and a canonical signature is never 4 bytes, so no signed key matches
+        let type_tag = (message_type as i32).to_le_bytes();
+        return match decoded_body {
+            Some(decoded) if !flags.is_encrypted() => create_message_hash(&type_tag, &decoded.encode_to_vec()),
+            _ => create_message_hash(&type_tag, body),
+        };
     }
+    create_message_hash(sig_canonical, body)
 }
 
 /// Hashes the canonical signature bytes (empty for an unsigned message) and the body into a dedup key.
@@ -517,7 +532,7 @@ mod test {
     #[test]
     fn deterministic_hash() {
         const TEST_MSG: &[u8] = b"test123";
-        const EXPECTED_HASH: &str = "64f1db1039353cf2ff7e09889d14ffd9885766c3dc494a59823a499edfe6997c";
+        const EXPECTED_HASH: &str = "bf68a529d1f84edc2825e26d8b43dab7b9a38de59adc5266469fd005dd2f54bf";
 
         let node_identity = make_node_identity();
         let dht_message = make_dht_inbound_message(
@@ -579,7 +594,10 @@ mod test {
         let expected = unsigned_key(canonical.clone());
 
         // An honest body is already canonical, so its key is the one an outbound broadcast of it records
-        assert_eq!(expected, create_message_hash(&[], &canonical));
+        assert_eq!(
+            expected,
+            message_key(&[], DhtMessageType::None, DhtMessageFlags::empty(), &canonical, None)
+        );
 
         // Unknown field appended
         let mut appended = canonical.clone();
@@ -601,6 +619,38 @@ mod test {
         let mut duplicated = canonical.clone();
         duplicated.extend(encode_field(1, &second));
         assert_ne!(unsigned_key(duplicated), expected);
+    }
+
+    /// An unsigned body under one message type never shares a key with the same body under another
+    #[test]
+    fn unsigned_key_binds_the_message_type() {
+        let body = wrap_in_envelope_body!(b"block".to_vec()).encode_to_vec();
+        let decoded = EnvelopeBody::decode(body.as_slice()).unwrap();
+        let types = [
+            DhtMessageType::None,
+            DhtMessageType::Join,
+            DhtMessageType::Discovery,
+            DhtMessageType::DiscoveryResponse,
+        ];
+        for decoded_body in [Some(&decoded), None] {
+            let keys =
+                types.map(|message_type| message_key(&[], message_type, DhtMessageFlags::empty(), &body, decoded_body));
+            assert_eq!(keys.iter().collect::<HashSet<_>>().len(), types.len());
+        }
+    }
+
+    /// The signature already binds the message type, so a signed key is the same under every type
+    #[test]
+    fn signed_key_is_independent_of_message_type() {
+        let msg = signed_message();
+        let sig = msg.dht_header.message_signature.clone();
+        let decoded = EnvelopeBody::decode(msg.body.as_slice()).unwrap();
+        for message_type in [DhtMessageType::None, DhtMessageType::Discovery, DhtMessageType::Join] {
+            assert_eq!(
+                message_key(&sig, message_type, DhtMessageFlags::empty(), &msg.body, Some(&decoded)),
+                create_message_hash(&sig, &msg.body)
+            );
+        }
     }
 
     #[test]
