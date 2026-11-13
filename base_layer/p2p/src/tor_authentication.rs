@@ -20,12 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, fmt, fmt::Formatter, fs, io::Error, str::FromStr};
+use std::{convert::TryFrom, fmt, fmt::Formatter, io::Error, str::FromStr};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use tari_comms::tor;
-use tari_utilities::hex::Hex;
 
 const DEFAULT_TOR_COOKIE_PATH: &str = "/run/tor/control.authcookie";
 
@@ -57,10 +56,7 @@ impl TorControlAuthentication {
             TorControlAuthentication::Password(passwd) => Ok(tor::Authentication::HashedPassword(passwd)),
             TorControlAuthentication::Cookie(cookie) => match cookie {
                 TorCookie::Hex(hex) => Ok(tor::Authentication::Cookie(hex)),
-                TorCookie::FilePath(path) => {
-                    let data = fs::read(path)?.to_hex();
-                    Ok(tor::Authentication::Cookie(data))
-                },
+                TorCookie::FilePath(path) => Ok(tor::Authentication::CookieFile(std::path::PathBuf::from(path))),
             },
         }
     }
@@ -176,6 +172,11 @@ mod tests {
         assert_eq!(
             auth,
             TorControlAuthentication::Cookie(TorCookie::FilePath("/path/to/file".into()))
+        );
+        let tor_auth = auth.make_tor_auth().unwrap();
+        assert_eq!(
+            tor_auth,
+            tor::Authentication::CookieFile(std::path::PathBuf::from("/path/to/file"))
         );
     }
 

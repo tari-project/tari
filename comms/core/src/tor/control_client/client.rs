@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
+use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16, path::PathBuf};
 
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -100,6 +100,11 @@ impl TorControlPortClient {
                     .await?;
             },
             Authentication::Cookie(cookie) => {
+                self.send_line(format!("AUTHENTICATE {cookie}")).await?;
+            },
+            Authentication::CookieFile(path) => {
+                let bytes = std::fs::read(path)?;
+                let cookie = tari_utilities::hex::to_hex(&bytes);
                 self.send_line(format!("AUTHENTICATE {cookie}")).await?;
             },
         }
@@ -255,16 +260,19 @@ pub enum Authentication {
     HashedPassword(String),
     /// Cookie authentication. The contents of the cookie file encoded as hex
     Cookie(String),
+    /// Cookie authentication via file path. The file is read dynamically on each authentication attempt.
+    CookieFile(PathBuf),
 }
 
 impl fmt::Display for Authentication {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Authentication::{Auto, Cookie, HashedPassword, None};
+        use Authentication::{Auto, Cookie, CookieFile, HashedPassword, None};
         match self {
             Auto => write!(f, "Auto"),
             None => write!(f, "None"),
             HashedPassword(_) => write!(f, "HashedPassword"),
             Cookie(_) => write!(f, "Cookie"),
+            CookieFile(path) => write!(f, "CookieFile({})", path.display()),
         }
     }
 }
@@ -328,6 +336,32 @@ mod test {
         let mut req = mock_state.take_requests().await;
         assert_eq!(req.len(), 1);
         assert_eq!(req.remove(0), "AUTHENTICATE NOTACTUALLYHEXENCODED");
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cookie_file = temp_dir.path().join("control.authcookie");
+        std::fs::write(&cookie_file, b"test_cookie_123").unwrap();
+
+        tor.authenticate(&Authentication::CookieFile(cookie_file.clone()))
+            .await
+            .unwrap();
+        let mut req = mock_state.take_requests().await;
+        assert_eq!(req.len(), 1);
+        assert_eq!(
+            req.remove(0),
+            format!("AUTHENTICATE {}", tari_utilities::hex::to_hex(b"test_cookie_123"))
+        );
+
+        // Verify dynamic re-read on subsequent authentication (e.g. after Tor restart)
+        std::fs::write(&cookie_file, b"rotated_cookie_456").unwrap();
+        tor.authenticate(&Authentication::CookieFile(cookie_file))
+            .await
+            .unwrap();
+        let mut req = mock_state.take_requests().await;
+        assert_eq!(req.len(), 1);
+        assert_eq!(
+            req.remove(0),
+            format!("AUTHENTICATE {}", tari_utilities::hex::to_hex(b"rotated_cookie_456"))
+        );
     }
 
     #[tokio::test]
