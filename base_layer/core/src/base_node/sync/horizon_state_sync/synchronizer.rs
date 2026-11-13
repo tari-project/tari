@@ -590,7 +590,23 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .synchronize_outputs(sync_peer.clone(), source, to_header, start_height)
             .await
         {
-            Ok(()) => self.finalize_horizon_sync(&sync_peer, to_header).await,
+            Ok(()) => {
+                let res = self.finalize_horizon_sync(&sync_peer, to_header).await;
+                if res.is_err() &&
+                    let Err(e) = self
+                        .db
+                        .write_transaction()
+                        .clear_horizon_sync_output_checkpoint()
+                        .commit()
+                        .await
+                {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Could not clear the output sync checkpoint after finalization failed: {}", e
+                    );
+                }
+                res
+            },
             Err(err) => Err(err),
         };
         let Err(mut err) = result else {
@@ -658,28 +674,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
 
             let outputs = self.db.fetch_outputs_in_block(current_header.hash()).await?;
-            let mut state_tree_updates = Vec::new();
-            for (count, output) in (1..=outputs.len()).zip(outputs.iter()) {
-                txn.prune_output_copy(
-                    current_header.hash(),
-                    output.hash(),
-                    output.commitment.clone(),
-                    output.features.output_type,
-                );
-                if !output.is_burned() {
-                    let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
-                    state_tree_updates.push(HorizonStateTreeUpdate {
-                        key: FixedHash::from(key_bytes),
-                        value: None,
-                        replaces_value: false,
-                    });
-                }
+            for chunk in outputs.chunks(100) {
+                txn.prune_horizon_synced_outputs(current_header.hash(), chunk);
                 // Each commit removes its outputs from the tables and the output tree together, so a failed commit
                 // leaves both in step.
-                if count % 100 == 0 || count == outputs.len() {
-                    txn.apply_horizon_state_tree_updates(std::mem::take(&mut state_tree_updates));
-                    txn.commit().await?;
-                }
+                txn.commit().await?;
             }
             current_height = current_height.saturating_add(1);
         }
@@ -4404,5 +4403,251 @@ mod tests {
         apply_tranche_output_updates(updates, deletes, Vec::new(), &mut txn);
         txn.commit().await.unwrap();
         assert_only_genesis_row_left(&db, &genesis_output);
+    }
+
+    async fn spawn_sync_rpc_peer(
+        peer_db: &BlockchainDatabase<TempDatabase>,
+    ) -> (
+        SyncPeer,
+        tari_comms::protocol::rpc::mock::MockRpcServer<
+            crate::base_node::sync::rpc::BaseNodeSyncRpcServer<
+                crate::base_node::sync::rpc::BaseNodeSyncRpcService<TempDatabase>,
+            >,
+        >,
+    ) {
+        use tari_comms::{
+            NodeIdentity,
+            peer_manager::PeerFeatures,
+            protocol::{ProtocolId, rpc::mock::MockRpcServer},
+        };
+        use tari_service_framework::reply_channel;
+        use tokio::sync::broadcast;
+
+        use crate::base_node::{LocalNodeCommsInterface, sync::rpc::create_base_node_sync_rpc_service};
+
+        let (req_tx, _) = reply_channel::unbounded();
+        let (block_tx, _) = reply_channel::unbounded();
+        let (block_event_tx, _) = broadcast::channel(1);
+        let service = create_base_node_sync_rpc_service(
+            peer_db.clone().into(),
+            LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+            BlockchainSyncConfig::default().rpc_block_batch_size,
+        );
+        let server_node = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/memory/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let client_node = NodeIdentity::random(
+            &mut rand::rng(),
+            "/memory/0".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        );
+        let mut mock_server = MockRpcServer::new(service, server_node.clone());
+        mock_server.serve();
+        let conn = mock_server
+            .create_connection(client_node.to_peer(), ProtocolId::from_static(b"t/blksync/1"))
+            .await;
+        let mut sync_peer = SyncPeer::from(PeerChainMetadata::new(
+            server_node.node_id().clone(),
+            peer_db.get_chain_metadata().unwrap(),
+            None,
+        ));
+        sync_peer.set_connection(conn);
+        (sync_peer, mock_server)
+    }
+
+    async fn sync_headers_from_peer_db(
+        node_db: &BlockchainDatabase<TempDatabase>,
+        peer_db: &BlockchainDatabase<TempDatabase>,
+        rules: &BaseNodeConsensusManager,
+        connectivity: &ConnectivityRequester,
+    ) {
+        use std::collections::HashMap;
+
+        use crate::{base_node::sync::HeaderSynchronizer, proof_of_work::randomx_factory::RandomXFactory};
+
+        let (peer, _server) = spawn_sync_rpc_peer(peer_db).await;
+        let mut peers = vec![peer];
+        let local_meta = node_db.get_chain_metadata().unwrap();
+        let mut chain_changes = HashMap::new();
+        let mut header_sync = HeaderSynchronizer::new(
+            BlockchainSyncConfig::default(),
+            node_db.clone().into(),
+            rules.clone(),
+            connectivity.clone(),
+            &mut peers,
+            RandomXFactory::default(),
+            local_meta,
+            &mut chain_changes,
+        );
+        header_sync.synchronize().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn checkpointed_horizon_output_tranche_allows_header_rewind_on_stronger_fork() {
+        use tari_common_types::types::PrivateKey;
+        use tari_transaction_components::tari_proof_of_work::Difficulty;
+
+        use crate::validation::ChainBalanceValidator;
+
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let rules = chain.rules().clone();
+        let block_a = chain.get_block_and_smt_by_name("A").unwrap();
+        let honest_b1 = chain.get_block_and_smt_by_name("1").unwrap();
+
+        let peer_a_db = create_custom_blockchain(rules.clone());
+        peer_a_db
+            .add_block(Arc::new(block_a.block().clone()))
+            .unwrap()
+            .result
+            .assert_added();
+        let mut mutated_b1 = honest_b1.block().clone();
+        mutated_b1.header.total_kernel_offset = &mutated_b1.header.total_kernel_offset + PrivateKey::from(1u64);
+        let bad_b1_chain = chain.mine_block("A", mutated_b1, Difficulty::min());
+        let bad_b1_hash = *bad_b1_chain.hash();
+        let mut peer_a_txn = DbTransaction::new();
+        peer_a_txn.insert_chain_header(bad_b1_chain.to_chain_header());
+        peer_a_txn.insert_tip_block_body(bad_b1_chain.clone());
+        peer_a_txn.set_best_block(
+            bad_b1_chain.height(),
+            bad_b1_hash,
+            bad_b1_chain.accumulated_data().total_accumulated_difficulty,
+            bad_b1_chain.header().prev_hash,
+            bad_b1_chain.header().timestamp.as_u64(),
+        );
+        peer_a_db.write(peer_a_txn).unwrap();
+
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        connectivity_mock.spawn();
+
+        let node_db = create_custom_blockchain(rules.clone());
+        sync_headers_from_peer_db(&node_db, &peer_a_db, &rules, &connectivity).await;
+        assert_eq!(node_db.fetch_last_header().unwrap().hash(), bad_b1_hash);
+
+        // 1. When `finalize_horizon_sync` fails `ChainBalanceValidator`, no target-height checkpoint is kept and
+        // synced outputs at `bad_b1_hash` are reset to genesis.
+        let (peer_a_horizon, _server_a_horizon) = spawn_sync_rpc_peer(&peer_a_db).await;
+        let mut horizon_peers = vec![peer_a_horizon];
+        let prover = CryptoFactories::default().range_proof;
+        let real_balance_validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> =
+            Arc::new(ChainBalanceValidator::new(rules.clone(), CryptoFactories::default()));
+        let mut horizon_sync = HorizonStateSynchronization::new(
+            BlockchainSyncConfig::default(),
+            node_db.clone().into(),
+            connectivity.clone(),
+            rules.clone(),
+            &mut horizon_peers,
+            bad_b1_chain.height(),
+            prover,
+            real_balance_validator,
+        );
+        let horizon_err = horizon_sync.synchronize().await.unwrap_err();
+        assert!(
+            matches!(&horizon_err, HorizonSyncError::NoMoreSyncPeers(msg) if msg.contains("did not balance with the expected emission at height 2")),
+            "expected ChainBalanceValidationFailed during finalize_horizon_sync, got: {horizon_err:?}"
+        );
+        assert_eq!(checkpoint_height(&node_db), None);
+        assert!(node_db.fetch_outputs_in_block(bad_b1_hash).unwrap().is_empty());
+
+        // 2. Even if an interrupted horizon sync leaves a committed intermediate output tranche and checkpoint at
+        // height 2 (`bad_b1_hash`) above `best_block_height == 0`, `HeaderSynchronizer::synchronize()` against an
+        // honest peer with a stronger chain (Peer B at height 5, splitting at height 1) prunes the header-only
+        // outputs and switches to the stronger chain cleanly.
+        let mut peers = Vec::new();
+        let tranche_sync =
+            build_synchronizer_with_rules(node_db.clone(), &mut peers, bad_b1_chain.height(), rules.clone());
+        sync_tranche_from(&tranche_sync, &peer_a_db, block_a.header(), bad_b1_chain.header()).await;
+        assert_eq!(checkpoint_height(&node_db), Some(2));
+        assert!(!node_db.fetch_outputs_in_block(bad_b1_hash).unwrap().is_empty());
+
+        sync_headers_from_peer_db(&node_db, chain.db(), &rules, &connectivity).await;
+        assert_eq!(node_db.fetch_last_header().unwrap().height, 5);
+        assert!(node_db.fetch_outputs_in_block(bad_b1_hash).unwrap().is_empty());
+        assert_eq!(checkpoint_height(&node_db), None);
+        assert!(tranche_sync.output_state_is_genesis().await.unwrap());
+        let (_, roots) = node_db.calculate_mmr_roots(block_a.block().clone()).unwrap();
+        assert_eq!(roots.output_mr, block_a.header().output_mr);
+    }
+
+    #[tokio::test]
+    async fn tip_only_header_rewind_keeps_horizon_sync_output_checkpoint() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("2").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut DbTrancheSource::drops_at(chain.db(), 2), &target)
+            .await
+            .unwrap_err();
+        assert_eq!(checkpoint_height(&db), Some(1));
+
+        // Rewinding header-only heights above `sync_target_height` (heights 5 and 4) preserves the checkpoint so the
+        // interrupted output sync can resume from height 2 instead of starting over from height 1.
+        db.rewind_to_height(4).unwrap();
+        assert_eq!(checkpoint_height(&db), Some(1));
+        db.rewind_to_height(target.height).unwrap();
+        assert_eq!(checkpoint_height(&db), Some(1));
+
+        // Rewinding to height 2 deletes the `sync_target_height` header (height 3), clearing the checkpoint even
+        // though height 3 had no synced outputs yet.
+        let checkpoint = db.fetch_horizon_sync_output_checkpoint().unwrap().unwrap();
+        db.rewind_to_height(target.height - 1).unwrap();
+        assert_eq!(checkpoint_height(&db), None);
+
+        // Restore header 3 and the checkpoint to verify the resumed sync finishes in 2 tranche requests (heights
+        // 2..=3).
+        let mut txn = DbTransaction::new();
+        txn.insert_chain_header(chain.get_block_and_smt_by_name("2").unwrap().to_chain_header());
+        txn.set_horizon_sync_output_checkpoint(checkpoint);
+        db.write(txn).unwrap();
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap();
+        assert_eq!(honest.requests, 2, "output sync must resume after the kept checkpoint");
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    #[tokio::test]
+    async fn header_rewind_prunes_over_one_hundred_outputs_at_a_single_height() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let header_two = chain.get_block_and_smt_by_name("1").unwrap().header().clone();
+        let base_output = block_one_coinbase(&chain);
+        let mut txn = DbTransaction::new();
+        let mut tree_updates = Vec::with_capacity(150);
+        for i in 0..150u64 {
+            let mut output = base_output.clone();
+            let mut commitment_bytes = [0u8; 32];
+            commitment_bytes[..8].copy_from_slice(&(i + 1).to_le_bytes());
+            output.commitment = CompressedCommitment::from_canonical_bytes(&commitment_bytes).unwrap();
+            output.minimum_value_promise = MicroMinotari::from(i + 1);
+            txn.insert_utxo(output.clone(), header_two.hash(), header_two.height, 0);
+            tree_updates.push(HorizonStateTreeUpdate {
+                key: FixedHash::from(commitment_bytes),
+                value: Some(output.smt_hash(header_two.height)),
+                replaces_value: false,
+            });
+        }
+        txn.apply_horizon_state_tree_updates(tree_updates);
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: header_two.height,
+            checkpoint_hash: header_two.hash(),
+            sync_target_height: header_two.height,
+            sync_target_hash: header_two.hash(),
+        });
+        db.write(txn).unwrap();
+        assert_eq!(db.fetch_outputs_in_block(header_two.hash()).unwrap().len(), 150);
+
+        let mut peers = Vec::new();
+        let sync = build_synchronizer(db.clone(), &mut peers, header_two.height);
+        assert!(!sync.output_state_is_genesis().await.unwrap());
+
+        db.rewind_to_height(1).unwrap();
+        assert_eq!(db.fetch_last_header().unwrap().height, 1);
+        assert!(db.fetch_outputs_in_block(header_two.hash()).unwrap().is_empty());
+        assert_eq!(checkpoint_height(&db), None);
+        assert!(sync.output_state_is_genesis().await.unwrap());
     }
 }

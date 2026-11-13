@@ -679,6 +679,15 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
+    pub(crate) fn prune_horizon_synced_outputs(
+        &mut self,
+        header_hash: HashOutput,
+        outputs: &[TransactionOutput],
+    ) -> &mut Self {
+        self.transaction.prune_horizon_synced_outputs(header_hash, outputs);
+        self
+    }
+
     pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
         self.transaction.delete_utxo_commitment_index_entry(commitment);
         self
