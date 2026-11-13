@@ -344,7 +344,8 @@ impl MempoolStorage {
     }
 
     /// Rejects a transaction without inputs: it moves no value, so pays no fee, and spends no output whose pool
-    /// spenders are bounded (see [MAX_SPENDS_PER_OUTPUT]). Relay policy, not a consensus rule.
+    /// spenders are bounded (see [MAX_SPENDS_PER_OUTPUT]). Relay policy, not a consensus rule, but final (it is never
+    /// stored later), so it is not reported as a retryable mempool policy refusal.
     fn check_inputs(tx: &Transaction) -> Option<TxStorageResponse> {
         if !tx.body.inputs().is_empty() {
             return None;
@@ -352,9 +353,9 @@ impl MempoolStorage {
         debug!(target: LOG_TARGET, "Tx: ({}) has no inputs, rejecting", tx_id(tx));
         #[cfg(feature = "metrics")]
         metrics::policy_refused_transactions("no_inputs").inc();
-        Some(TxStorageResponse::NotStoredMempoolPolicy(
+        Some(TxStorageResponse::NotStored(Some(
             "Transaction has no inputs".to_string(),
-        ))
+        )))
     }
 
     /// Rejects a transaction with two kernels with the same excess (they may differ in their signatures, so they sort
@@ -2198,7 +2199,7 @@ mod test {
                 MempoolStorage::insert_unlocked(&storage, kernel_only.clone()).unwrap()
             };
             assert!(
-                matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_)),
+                matches!(response, TxStorageResponse::NotStored(Some(_))),
                 "{response:?}"
             );
         }
