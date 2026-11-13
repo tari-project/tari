@@ -26,8 +26,8 @@ use std::{
 
 use crate::multiaddr::{Multiaddr, Protocol};
 
-/// Convert a multiaddr to a socket address required for `TcpStream`
-/// This function resolves DNS4 addresses to an ip address.
+/// Convert a multiaddr to a socket address required for `TcpStream`.
+/// Resolves `/dns`, `/dns4`, and `/dns6` hostnames to a matching IP socket address.
 pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     let mut addr_iter = addr.iter();
     let network_proto = addr_iter
@@ -44,28 +44,32 @@ pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
         ));
     }
 
-    match (network_proto, transport_proto) {
-        (Protocol::Dns4(domain), Protocol::Tcp(port)) => {
-            let addr = format!("{domain}:{port}");
-            addr.to_socket_addrs()
-                .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{domain}'")))?
-                .next()
-                .map_or_else(
-                    || {
-                        Err(io::Error::new(
-                            io::ErrorKind::InvalidInput,
-                            format!("Invalid domain '{domain}'"),
-                        ))
-                    },
-                    Ok,
-                )
+    match (&network_proto, transport_proto) {
+        (Protocol::Dns(domain) | Protocol::Dns4(domain) | Protocol::Dns6(domain), Protocol::Tcp(port)) => {
+            let resolved = (domain.as_ref(), port)
+                .to_socket_addrs()
+                .map_err(|_e| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{domain}'")))?;
+            select_dns_socketaddr(&network_proto, resolved)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Invalid domain '{domain}'")))
         },
-        (Protocol::Ip4(host), Protocol::Tcp(port)) => Ok((host, port).into()),
-        (Protocol::Ip6(host), Protocol::Tcp(port)) => Ok((host, port).into()),
+        (Protocol::Ip4(host), Protocol::Tcp(port)) => Ok((*host, port).into()),
+        (Protocol::Ip6(host), Protocol::Tcp(port)) => Ok((*host, port).into()),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("Invalid address '{addr}'"),
         )),
+    }
+}
+
+fn select_dns_socketaddr(
+    network_proto: &Protocol<'_>,
+    mut resolved: impl Iterator<Item = SocketAddr>,
+) -> Option<SocketAddr> {
+    match network_proto {
+        Protocol::Dns(_) => resolved.next(),
+        Protocol::Dns4(_) => resolved.find(SocketAddr::is_ipv4),
+        Protocol::Dns6(_) => resolved.find(SocketAddr::is_ipv6),
+        _ => None,
     }
 }
 
@@ -97,8 +101,42 @@ mod test {
 
         expect_success("/ip4/254.0.1.2/tcp/1234", &["254.0.1.2"]);
         expect_success("/ip6/::1/tcp/1234", &["::1"]);
-        // Test DNS name resolution
-        expect_success("/dns4/localhost/tcp/1234", &["127.0.0.1", "::1"]);
+        // Test DNS name resolution across Dns, Dns4, and Dns6
+        expect_success("/dns/localhost/tcp/1234", &["127.0.0.1", "::1"]);
+        expect_success("/dns4/localhost/tcp/1234", &["127.0.0.1"]);
+
+        // `/dns6/localhost` must never return an IPv4 address such as `127.0.0.1`
+        let dns6_localhost = Multiaddr::from_str("/dns6/localhost/tcp/1234").unwrap();
+        let host_has_ipv6_localhost = ("localhost", 1234u16)
+            .to_socket_addrs()
+            .map(|mut addrs| addrs.any(|a| a.is_ipv6()))
+            .unwrap_or(false);
+        if host_has_ipv6_localhost {
+            let sock_addr = super::multiaddr_to_socketaddr(&dns6_localhost).unwrap();
+            assert!(
+                sock_addr.is_ipv6(),
+                "expected IPv6 for /dns6/localhost, got {sock_addr}"
+            );
+            assert_ne!(sock_addr.ip().to_string(), "127.0.0.1");
+        } else {
+            assert!(super::multiaddr_to_socketaddr(&dns6_localhost).is_err());
+        }
+
+        // Deterministic dual-stack filtering checks for Dns4 and Dns6
+        let v4: SocketAddr = "127.0.0.1:1234".parse().unwrap();
+        let v6: SocketAddr = "[::1]:1234".parse().unwrap();
+        assert_eq!(
+            super::select_dns_socketaddr(&Protocol::Dns6("localhost".into()), [v4, v6].into_iter()),
+            Some(v6)
+        );
+        assert_eq!(
+            super::select_dns_socketaddr(&Protocol::Dns6("localhost".into()), [v4].into_iter()),
+            None
+        );
+        assert_eq!(
+            super::select_dns_socketaddr(&Protocol::Dns4("localhost".into()), [v6, v4].into_iter()),
+            Some(v4)
+        );
     }
 
     #[test]
@@ -106,6 +144,7 @@ mod test {
         let addr = Multiaddr::from_str("/dns4/localhost/tcp/1234").unwrap();
         let sock_addr = super::multiaddr_to_socketaddr(&addr).unwrap();
         assert!(sock_addr.ip().is_loopback());
+        assert!(sock_addr.is_ipv4());
     }
 
     #[test]
@@ -119,6 +158,7 @@ mod test {
         expect_fail("/ip4/254.0.1.2/tcp/1234/quic");
         expect_fail("/ip4/254.0.1.2");
         expect_fail("/p2p/QmcgpsyWgH8Y8ajJz1Cu72KnS5uo2Aa2LpzU7kinSupNKC");
+        expect_fail("/dnsaddr/tari.com/tcp/1234");
         expect_fail("/dns4/doesntexist.theresnotldlikethis/tcp/1234")
     }
 
