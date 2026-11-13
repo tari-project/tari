@@ -37,21 +37,23 @@
 macro_rules! async_assert_eventually {
     ($check_expr:expr, expect = $expect:expr, max_attempts = $max_attempts:expr, interval = $interval:expr $(,)?) => {{
         let mut value = $check_expr;
+        let max_attempts = $max_attempts;
+        let interval = $interval;
         let mut attempts = 0;
         while value != $expect {
             attempts += 1;
             assert!(
-                attempts <= $max_attempts,
+                attempts <= max_attempts,
                 "assert_eventually assertion failed. Expression did not equal value after {} attempts.",
                 attempts - 1
             );
-            tokio::time::sleep($interval).await;
+            tokio::time::sleep(interval).await;
             value = $check_expr;
         }
     }};
 
     ($check_expr:expr, expect = $expect:expr, max_attempts = $max_attempts:expr, $(,)?) => {{
-        async_assert_eventually!(
+        $crate::async_assert_eventually!(
             $check_expr,
             expect = $expect,
             max_attempts = $max_attempts,
@@ -60,7 +62,7 @@ macro_rules! async_assert_eventually {
     }};
 
     ($check_expr:expr, expect = $expect:expr $(,)?) => {{
-        async_assert_eventually!(
+        $crate::async_assert_eventually!(
             $check_expr,
             expect = $expect,
             max_attempts = 10,
@@ -72,19 +74,21 @@ macro_rules! async_assert_eventually {
 #[macro_export]
 macro_rules! async_assert {
     ($check_expr:expr, max_attempts = $max_attempts:expr, interval = $interval:expr $(,)?) => {{
+        let max_attempts = $max_attempts;
+        let interval = $interval;
         let mut attempts = 0;
         while !($check_expr) {
             attempts += 1;
             assert!(
-                attempts <= $max_attempts,
+                attempts <= max_attempts,
                 "Assertion failed. Expression was not true after {} attempts.",
-                $max_attempts
+                attempts - 1
             );
-            tokio::time::sleep($interval).await;
+            tokio::time::sleep(interval).await;
         }
     }};
     ($check_expr:expr$(,)?) => {{
-        async_assert!(
+        $crate::async_assert!(
             $check_expr,
             max_attempts = 10,
             interval = std::time::Duration::from_millis(100)
