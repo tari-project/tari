@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc, thread::sleep};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use log::*;
 use prost::Message;
@@ -41,6 +41,8 @@ use crate::{
 };
 
 const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
+/// Maximum encoded byte length of a `MetadataKey::ChainMetadata` entry (~130 bytes for a valid `proto::ChainMetadata`).
+pub(super) const MAX_CHAIN_METADATA_BYTES: usize = 512;
 
 pub(super) struct ChainMetadataService {
     liveness: LivenessHandle,
@@ -74,43 +76,78 @@ impl ChainMetadataService {
 
     /// Run the service
     pub async fn run(mut self) {
-        let mut liveness_event_stream = self.liveness.get_event_stream();
-        let mut block_event_stream = self.base_node.get_block_event_stream();
+        let liveness_event_stream = self.liveness.get_event_stream();
+        let block_event_stream = self.base_node.get_block_event_stream();
 
-        // just wait till the base node can create the chain metadata. This is to suppresses a warning about it not
-        // being found. If this passes before the base node has created the chain metadata, the warning will be logged.
-        sleep(std::time::Duration::from_secs(2));
+        // Wait briefly for the base node to create chain metadata on startup without blocking a Tokio worker thread.
+        tokio::time::sleep(Duration::from_secs(2)).await;
         log_if_error!(
             target: LOG_TARGET,
             "Error when updating liveness chain metadata: '{}'",
             self.update_liveness_chain_metadata().await
         );
 
+        self.run_event_loop(liveness_event_stream, block_event_stream).await;
+    }
+
+    async fn run_event_loop(
+        &mut self,
+        mut liveness_event_stream: broadcast::Receiver<Arc<LivenessEvent>>,
+        mut block_event_stream: broadcast::Receiver<Arc<BlockEvent>>,
+    ) {
         loop {
             tokio::select! {
-                Ok(block_event) = block_event_stream.recv() => {
-                    log_if_error!(
-                        level: info,
-                        target: LOG_TARGET,
-                        "Failed to handle block event because '{}'",
-                        self.handle_block_event(&block_event).await
-                    );
+                block_event = block_event_stream.recv() => {
+                    match block_event {
+                        Ok(block_event) => {
+                            log_if_error!(
+                                level: info,
+                                target: LOG_TARGET,
+                                "Failed to handle block event because '{}'",
+                                self.handle_block_event(&block_event).await
+                            );
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "ChainMetadataService lagged behind by {n} block event(s); refreshing chain metadata"
+                            );
+                            log_if_error!(
+                                target: LOG_TARGET,
+                                "Error when refreshing liveness chain metadata after lag: '{}'",
+                                self.update_liveness_chain_metadata().await
+                            );
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!(target: LOG_TARGET, "Block event stream closed; shutting down ChainMetadataService");
+                            break;
+                        },
+                    }
                 },
 
-                Ok(event) = liveness_event_stream.recv() => {
-                    match
-                        self.handle_liveness_event(&event).await {
-                        Ok(_) => {}
-                        Err(e) => {
-                           info!( target: LOG_TARGET, "Failed to handle liveness event because '{e}'");
-                           if let ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id,reason) = e {
-                               log_if_error!(
-                                 level: info,
-                                 target: LOG_TARGET, "Failed to ban node '{}'",
-                                 self.connectivity.ban_peer_until(node_id, BAN_DURATION_LONG, reason).await);                                           }
-                        }
+                liveness_event = liveness_event_stream.recv() => {
+                    match liveness_event {
+                        Ok(event) => {
+                            if let Err(e) = self.handle_liveness_event(&event).await {
+                                info!(target: LOG_TARGET, "Failed to handle liveness event because '{e}'");
+                                if let ChainMetadataSyncError::ReceivedInvalidChainMetadata(node_id, reason) = e {
+                                    log_if_error!(
+                                        level: info,
+                                        target: LOG_TARGET,
+                                        "Failed to ban node '{}'",
+                                        self.connectivity.ban_peer_until(node_id, BAN_DURATION_LONG, reason).await
+                                    );
+                                }
+                            }
+                        },
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "ChainMetadataService lagged behind by {n} liveness event(s)");
+                        },
+                        Err(broadcast::error::RecvError::Closed) => {
+                            debug!(target: LOG_TARGET, "Liveness event stream closed; shutting down ChainMetadataService");
+                            break;
+                        },
                     }
-
                 },
             }
         }
@@ -190,7 +227,23 @@ impl ChainMetadataService {
             .get(MetadataKey::ChainMetadata)
             .ok_or(ChainMetadataSyncError::NoChainMetadata)?;
 
-        let chain_metadata = ChainMetadata::try_from(proto::ChainMetadata::decode(chain_metadata_bytes.as_slice())?)
+        if chain_metadata_bytes.len() > MAX_CHAIN_METADATA_BYTES {
+            return Err(ChainMetadataSyncError::ReceivedInvalidChainMetadata(
+                event.node_id.clone(),
+                format!(
+                    "ChainMetadata entry of {} bytes exceeds limit of {MAX_CHAIN_METADATA_BYTES}",
+                    chain_metadata_bytes.len()
+                ),
+            ));
+        }
+
+        let proto_metadata = proto::ChainMetadata::decode(chain_metadata_bytes.as_slice()).map_err(|err| {
+            ChainMetadataSyncError::ReceivedInvalidChainMetadata(
+                event.node_id.clone(),
+                format!("Failed to decode ChainMetadata protobuf: {err}"),
+            )
+        })?;
+        let chain_metadata = ChainMetadata::try_from(proto_metadata)
             .map_err(|err| ChainMetadataSyncError::ReceivedInvalidChainMetadata(event.node_id.clone(), err))?;
         debug!(
             target: LOG_TARGET,
@@ -355,19 +408,163 @@ mod test {
     async fn handle_liveness_event_bad_metadata() {
         let (mut service, _, _, mut event_rx) = setup();
 
-        let mut metadata = Metadata::new();
-        metadata.insert(MetadataKey::ChainMetadata, b"no-good".to_vec());
-        let node_id = NodeId::new();
-        let pong_event = PingPongEvent {
-            metadata,
-            node_id,
-            latency: None,
-            nonce: 0,
-        };
+        for payload in [b"no-good".to_vec(), vec![
+            0u8;
+            MAX_CHAIN_METADATA_BYTES.saturating_add(1)
+        ]] {
+            let mut metadata = Metadata::new();
+            metadata.insert(MetadataKey::ChainMetadata, payload);
+            let node_id = NodeId::new();
+            let pong_event = PingPongEvent {
+                metadata,
+                node_id: node_id.clone(),
+                latency: None,
+                nonce: 0,
+            };
 
-        let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
-        let err = service.handle_liveness_event(&sample_event).await.unwrap_err();
-        unpack_enum!(ChainMetadataSyncError::DecodeError(_err) = err);
-        assert!(event_rx.try_recv().is_err());
+            let sample_event = LivenessEvent::ReceivedPong(Box::new(pong_event));
+            let err = service.handle_liveness_event(&sample_event).await.unwrap_err();
+            unpack_enum!(ChainMetadataSyncError::ReceivedInvalidChainMetadata(offender, _reason) = err);
+            assert_eq!(offender, node_id);
+            assert!(event_rx.try_recv().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn run_event_loop_bans_peers_sending_corrupt_or_oversized_chain_metadata_and_exits_on_stream_close() {
+        let (liveness_handle, liveness_mock, _unused_liveness_tx) = create_p2p_liveness_mock(8);
+        task::spawn(liveness_mock.run());
+
+        let (base_node, _base_node_receiver) = create_base_node_nci();
+        let (mut connectivity, connectivity_mock) = create_connectivity_mock();
+        let connectivity_state = connectivity_mock.spawn();
+        let (publisher, _event_rx) = broadcast::channel(10);
+
+        let mut service = ChainMetadataService::new(liveness_handle, base_node, connectivity.clone(), publisher);
+        let (liveness_events_tx, liveness_events_rx) = broadcast::channel(8);
+        let (_block_events_tx, block_events_rx) = broadcast::channel(8);
+
+        let bad_peer_decode = NodeId::new();
+        let mut meta1 = Metadata::new();
+        meta1.insert(MetadataKey::ChainMetadata, b"corrupt-protobuf".to_vec());
+        liveness_events_tx
+            .send(Arc::new(LivenessEvent::ReceivedPing(Box::new(PingPongEvent {
+                metadata: meta1,
+                node_id: bad_peer_decode.clone(),
+                latency: None,
+                nonce: 1,
+            }))))
+            .unwrap();
+
+        let bad_peer_oversized = NodeId::new();
+        let mut meta2 = Metadata::new();
+        meta2.insert(MetadataKey::ChainMetadata, vec![
+            0xaa;
+            MAX_CHAIN_METADATA_BYTES
+                .saturating_add(1)
+        ]);
+        liveness_events_tx
+            .send(Arc::new(LivenessEvent::ReceivedPong(Box::new(PingPongEvent {
+                metadata: meta2,
+                node_id: bad_peer_oversized.clone(),
+                latency: None,
+                nonce: 2,
+            }))))
+            .unwrap();
+
+        // Dropping the sender causes `recv()` to yield both queued events and then `RecvError::Closed`, exiting cleanly
+        drop(liveness_events_tx);
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            service.run_event_loop(liveness_events_rx, block_events_rx),
+        )
+        .await
+        .expect("run_event_loop must exit cleanly when liveness stream closes");
+
+        connectivity.get_connectivity_status().await.unwrap();
+        let banned = connectivity_state.take_banned_peers().await;
+        let [first_ban, second_ban] = banned.as_slice() else {
+            panic!("expected 2 banned peers, got {banned:?}");
+        };
+        assert_eq!(first_ban.0, bad_peer_decode);
+        assert_eq!(first_ban.1, BAN_DURATION_LONG);
+        assert_eq!(second_ban.0, bad_peer_oversized);
+        assert_eq!(second_ban.1, BAN_DURATION_LONG);
+    }
+
+    #[tokio::test]
+    async fn run_event_loop_refreshes_liveness_metadata_after_lagged_block_events() {
+        let (liveness_handle, liveness_mock, _unused_liveness_tx) = create_p2p_liveness_mock(8);
+        let liveness_mock_state = liveness_mock.get_mock_state();
+        task::spawn(liveness_mock.run());
+
+        let (base_node, mut base_node_receiver) = create_base_node_nci();
+        let sample_chain_metadata: ChainMetadata = create_sample_proto_chain_metadata().try_into().unwrap();
+        task::spawn(async move {
+            while let Some(req) = base_node_receiver.next().await {
+                let _ignore = req.reply(Ok(NodeCommsResponse::ChainMetadata(sample_chain_metadata.clone())));
+            }
+        });
+
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        connectivity_mock.spawn();
+        let (publisher, _event_rx) = broadcast::channel(10);
+
+        let mut service = ChainMetadataService::new(liveness_handle, base_node, connectivity, publisher);
+        let (_liveness_events_tx, liveness_events_rx) = broadcast::channel(8);
+        // Capacity 1: sending 3 events queues `RecvError::Lagged(2)` followed by 1 `BlockSyncRewind` (a no-op on `Ok`)
+        let (block_events_tx, block_events_rx) = broadcast::channel(1);
+        for _ in 0..3 {
+            let _ignore = block_events_tx.send(Arc::new(BlockEvent::BlockSyncRewind(Vec::new())));
+        }
+        drop(block_events_tx);
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            service.run_event_loop(liveness_events_rx, block_events_rx),
+        )
+        .await
+        .expect("run_event_loop must exit cleanly when block event stream closes");
+
+        assert_eq!(liveness_mock_state.call_count(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn run_updates_initial_metadata_after_non_blocking_startup_delay() {
+        let (liveness_handle, liveness_mock, _liveness_events_tx) = create_p2p_liveness_mock(8);
+        let liveness_mock_state = liveness_mock.get_mock_state();
+        task::spawn(liveness_mock.run());
+
+        let (base_node, mut base_node_receiver) = create_base_node_nci();
+        let sample_chain_metadata: ChainMetadata = create_sample_proto_chain_metadata().try_into().unwrap();
+        let (updated_tx, updated_rx) = tokio::sync::oneshot::channel();
+        task::spawn(async move {
+            if let Some(req) = base_node_receiver.next().await {
+                let _ignore = req.reply(Ok(NodeCommsResponse::ChainMetadata(sample_chain_metadata)));
+                let _ignore = updated_tx.send(());
+            }
+        });
+
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        connectivity_mock.spawn();
+        let (publisher, _event_rx) = broadcast::channel(10);
+
+        let service = ChainMetadataService::new(liveness_handle, base_node, connectivity, publisher);
+        let run_handle = task::spawn(service.run());
+
+        tokio::task::yield_now().await;
+        assert_eq!(liveness_mock_state.call_count(), 0);
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            updated_rx.await.unwrap();
+            while liveness_mock_state.call_count() < 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("startup metadata update should complete once virtual clock advances 2s");
+        assert_eq!(liveness_mock_state.call_count(), 1);
+
+        run_handle.abort();
     }
 }
