@@ -216,6 +216,9 @@ impl LMDBBuilder {
 
     /// Create a new LMDBStore instance and open the underlying database environment
     pub fn build(mut self) -> Result<LMDBStore, LMDBError> {
+        if self.db_names.is_empty() {
+            self = self.add_database("default", db::CREATE);
+        }
         let max_dbs = max(self.db_names.len(), self.max_dbs).try_into().unwrap();
         if !self.path.exists() {
             return Err(LMDBError::InvalidPath);
@@ -246,9 +249,6 @@ impl LMDBBuilder {
         );
 
         let mut databases: HashMap<String, LMDBDatabase> = HashMap::new();
-        if self.db_names.is_empty() {
-            self = self.add_database("default", db::CREATE);
-        }
         for (name, flags) in &self.db_names {
             let db = Database::open(env.clone(), Some(name), &DatabaseOptions::new(*flags))?;
             let db = LMDBDatabase {
@@ -859,28 +859,66 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
 
 #[cfg(test)]
 mod test {
-    use std::env;
+    use std::{env, path::PathBuf};
 
     use lmdb_zero::db;
 
     use crate::lmdb_store::{LMDBBuilder, LMDBConfig};
 
+    fn get_test_path(name: &str) -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/data");
+        path.push(name);
+        let _ignore = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        path
+    }
+
     #[test]
     fn test_lmdb_builder() {
-        let store = LMDBBuilder::new()
-            .set_path(env::temp_dir())
-            .set_env_config(LMDBConfig::default())
-            .set_max_number_of_databases(10)
-            .add_database("db1", db::CREATE)
-            .add_database("db2", db::CREATE)
-            .build()
-            .unwrap();
-        assert_eq!(store.databases.len(), 2);
-        let db1 = store.get_handle("db1").unwrap();
-        assert!(db1.is_empty().unwrap());
-        db1.insert(&1u64, &42u64).unwrap();
-        assert!(!db1.is_empty().unwrap());
-        db1.remove(&1u64).unwrap();
-        assert!(db1.is_empty().unwrap());
+        let path = get_test_path("test_lmdb_builder_named");
+        {
+            let store = LMDBBuilder::new()
+                .set_path(&path)
+                .set_env_config(LMDBConfig::default())
+                .set_max_number_of_databases(10)
+                .add_database("db1", db::CREATE)
+                .add_database("db2", db::CREATE)
+                .build()
+                .unwrap();
+            assert_eq!(store.databases.len(), 2);
+            let db1 = store.get_handle("db1").unwrap();
+            assert!(db1.is_empty().unwrap());
+            db1.insert(&1u64, &42u64).unwrap();
+            assert!(!db1.is_empty().unwrap());
+            db1.remove(&1u64).unwrap();
+            assert!(db1.is_empty().unwrap());
+        }
+        std::fs::remove_dir_all(path).unwrap();
+    }
+
+    #[test]
+    fn test_lmdb_is_empty_and_default_db_with_zero_max_dbs() {
+        let path = get_test_path("test_lmdb_is_empty_and_default_db");
+        {
+            let store = LMDBBuilder::new()
+                .set_path(&path)
+                .set_env_config(LMDBConfig::default())
+                .set_max_number_of_databases(0)
+                .build()
+                .unwrap();
+            let db = store.get_handle("default").unwrap();
+            assert!(db.is_empty().unwrap());
+            assert_eq!(db.len().unwrap(), 0);
+
+            db.insert(&1u64, &"alpha".to_string()).unwrap();
+            assert!(!db.is_empty().unwrap());
+            assert_eq!(db.len().unwrap(), 1);
+
+            db.remove(&1u64).unwrap();
+            assert!(db.is_empty().unwrap());
+            assert_eq!(db.len().unwrap(), 0);
+        }
+        std::fs::remove_dir_all(path).unwrap();
     }
 }
