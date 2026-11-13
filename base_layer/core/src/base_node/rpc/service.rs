@@ -1,18 +1,25 @@
 // Copyright 2025 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::{Arc, Weak},
+};
 
 use log::*;
 use tari_common_types::types::{CompressedSignature, FixedHash};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
+};
 use tari_transaction_components::transaction_components::Transaction;
 use tari_utilities::hex::Hex;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
 use crate::{
     base_node::{
+        RPC_STREAM_MAX_BUFFERED_BYTES,
         StateMachineHandle,
         rpc::{
             BaseNodeWalletService,
@@ -61,6 +68,10 @@ pub struct BaseNodeWalletRpcService<B> {
     mempool: MempoolHandle,
     state_machine: StateMachineHandle,
     wallet_query_service_address: Option<Url>,
+    /// Peers with an open `sync_utxos_by_block` stream
+    active_sessions: Mutex<Vec<Weak<NodeId>>>,
+    /// The most bytes buffered per `sync_utxos_by_block` stream (see [RPC_STREAM_MAX_BUFFERED_BYTES])
+    max_buffered_bytes: usize,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
@@ -75,7 +86,31 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             mempool,
             state_machine,
             wallet_query_service_address,
+            active_sessions: Mutex::new(Vec::new()),
+            max_buffered_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
         }
+    }
+
+    #[cfg(test)]
+    fn with_max_buffered_bytes(mut self, max_bytes: usize) -> Self {
+        self.max_buffered_bytes = max_bytes;
+        self
+    }
+
+    async fn try_add_exclusive_session(&self, peer: NodeId) -> Result<Arc<NodeId>, RpcStatus> {
+        let mut lock = self.active_sessions.lock().await;
+        *lock = lock.drain(..).filter(|l| l.strong_count() > 0).collect();
+        debug!(target: LOG_TARGET, "Number of active sync_utxos_by_block sessions: {}", lock.len());
+
+        if lock.iter().any(|p| p.upgrade().filter(|p| **p == peer).is_some()) {
+            return Err(RpcStatus::forbidden(
+                "Existing sync_utxos_by_block session found for this client. Only a single session is permitted",
+            ));
+        }
+
+        let token = Arc::new(peer);
+        lock.push(Arc::downgrade(&token));
+        Ok(token)
     }
 
     #[inline]
@@ -597,6 +632,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(height))
     }
 
+    /// The range is not capped: genesis to tip is a normal wallet recovery, and the client pulls the stream. One stream
+    /// per peer and the byte budget on its queued responses bound what a peer costs.
     async fn sync_utxos_by_block(
         &self,
         request: Request<SyncUtxosByBlockRequest>,
@@ -614,9 +651,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         // Number of blocks to load and push to the stream before loading the next batch. Most blocks have 1 output but
         // full blocks will have 500
         const BATCH_SIZE: usize = 5;
+        let task = SyncUtxosByBlockTask::new(self.db(), self.max_buffered_bytes);
+        let (start_header, end_header) = task.validate(req).await?;
+        let session_token = self.try_add_exclusive_session(peer.clone()).await?;
         let (tx, rx) = mpsc::channel(BATCH_SIZE);
-        let task = SyncUtxosByBlockTask::new(self.db());
-        task.run(request.into_message(), tx).await?;
+        task.run(start_header, end_header, tx, session_token);
 
         Ok(Streaming::new(rx))
     }
@@ -732,5 +771,254 @@ mod test {
         assert_eq!(data.mined_at_height, remined.height());
         assert_eq!(data.height_deleted_at, 0);
         assert!(data.block_deleted_in.is_empty());
+    }
+
+    mod sync_utxos_by_block {
+        use std::{collections::HashMap, time::Duration};
+
+        use tari_comms::{
+            peer_manager::PeerFeatures,
+            protocol::rpc::mock::RpcRequestMock,
+            test_utils::node_identity::build_node_identity,
+        };
+        use tari_node_components::blocks::ChainBlock;
+
+        use super::*;
+        use crate::{
+            chain_storage::BlockchainDatabase,
+            test_helpers::{
+                blockchain::{TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain},
+                create_peer_manager,
+            },
+        };
+
+        type Responses = mpsc::Receiver<Result<SyncUtxosByBlockResponse, RpcStatus>>;
+
+        /// A service over GB, A to E, and a request mock
+        fn setup() -> (
+            BaseNodeWalletRpcService<TempDatabase>,
+            BlockchainDatabase<TempDatabase>,
+            HashMap<String, Arc<ChainBlock>>,
+            RpcRequestMock,
+        ) {
+            let db = create_new_blockchain();
+            let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"], ["D->C"], ["E->D"]));
+            let (mempool, _) = create_mempool_service_mock();
+            let (state_tx, _state_rx) = broadcast::channel(10);
+            let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+            let state_machine = StateMachineHandle::new(state_tx, status_rx, Shutdown::new().to_signal());
+            let service = BaseNodeWalletRpcService::new(db.clone().into(), mempool, state_machine, None);
+            (service, db, chain, RpcRequestMock::new(create_peer_manager()))
+        }
+
+        fn new_peer() -> NodeId {
+            build_node_identity(PeerFeatures::COMMUNICATION_CLIENT)
+                .node_id()
+                .clone()
+        }
+
+        async fn open_stream(
+            service: &BaseNodeWalletRpcService<TempDatabase>,
+            mock: &RpcRequestMock,
+            peer: NodeId,
+            start: &ChainBlock,
+            end: &ChainBlock,
+        ) -> Result<Responses, RpcStatus> {
+            let msg = SyncUtxosByBlockRequest {
+                start_header_hash: start.hash().to_vec(),
+                end_header_hash: end.hash().to_vec(),
+            };
+            let streaming = service
+                .sync_utxos_by_block(mock.request_with_context(peer, msg))
+                .await?;
+            Ok(streaming.into_inner())
+        }
+
+        async fn drain(responses: &mut Responses) -> Vec<Result<SyncUtxosByBlockResponse, RpcStatus>> {
+            let mut all = Vec::new();
+            while let Some(response) = responses.recv().await {
+                all.push(response);
+            }
+            all
+        }
+
+        /// Waits until the stream has queued `num` responses and gives it time to queue more
+        async fn wait_for_queued(responses: &Responses, num: usize) {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                while responses.len() < num {
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        /// Retries opening a stream for `peer` until the previous stream's task has ended
+        async fn open_stream_when_released(
+            service: &BaseNodeWalletRpcService<TempDatabase>,
+            mock: &RpcRequestMock,
+            peer: &NodeId,
+            start: &ChainBlock,
+            end: &ChainBlock,
+        ) -> Responses {
+            tokio::time::timeout(Duration::from_secs(10), async {
+                loop {
+                    match open_stream(service, mock, peer.clone(), start, end).await {
+                        Ok(responses) => return responses,
+                        Err(err) => assert_eq!(err.as_status_code(), RpcStatusCode::Forbidden),
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        #[tokio::test]
+        async fn it_streams_one_response_per_block_in_height_order() {
+            let (service, db, chain, mock) = setup();
+            let (gb, e) = (chain.get("GB").unwrap(), chain.get("E").unwrap());
+            let mut responses = open_stream(&service, &mock, new_peer(), gb, e).await.unwrap();
+            let responses = drain(&mut responses).await;
+
+            assert_eq!(responses.len(), 6, "{responses:?}");
+            // The genesis block has no outputs and still gets a response
+            assert!(responses.first().unwrap().as_ref().unwrap().outputs.is_empty());
+            for (height, response) in (0u64..).zip(responses) {
+                let response = response.unwrap();
+                let block = db.fetch_block(height, true).unwrap();
+                assert_eq!(response.height, height);
+                assert_eq!(response.header_hash, block.hash().to_vec());
+                assert_eq!(response.mined_timestamp, block.header().timestamp.as_u64());
+                assert_eq!(response.outputs.len(), block.block().body.outputs().len());
+            }
+        }
+
+        #[tokio::test]
+        async fn it_rejects_invalid_requests() {
+            let (service, _db, chain, mock) = setup();
+            let a = chain.get("A").unwrap();
+            let e = chain.get("E").unwrap();
+            let request = |start: Vec<u8>, end: Vec<u8>| {
+                mock.request_with_context(new_peer(), SyncUtxosByBlockRequest {
+                    start_header_hash: start,
+                    end_header_hash: end,
+                })
+            };
+
+            for (start, end) in [
+                (vec![1; 3], e.hash().to_vec()),
+                (a.hash().to_vec(), vec![1; 3]),
+                (e.hash().to_vec(), a.hash().to_vec()),
+            ] {
+                let err = service.sync_utxos_by_block(request(start, end)).await.unwrap_err();
+                assert_eq!(err.as_status_code(), RpcStatusCode::BadRequest);
+            }
+            for (start, end) in [(vec![0; 32], e.hash().to_vec()), (a.hash().to_vec(), vec![0; 32])] {
+                let err = service.sync_utxos_by_block(request(start, end)).await.unwrap_err();
+                assert_eq!(err.as_status_code(), RpcStatusCode::NotFound);
+            }
+        }
+
+        #[tokio::test]
+        async fn it_allows_one_stream_per_peer() {
+            let (service, _db, chain, mock) = setup();
+            let service = service.with_max_buffered_bytes(1);
+            let (a, e) = (chain.get("A").unwrap(), chain.get("E").unwrap());
+            let peer_a = new_peer();
+
+            let _open = open_stream(&service, &mock, peer_a.clone(), a, e).await.unwrap();
+            let err = open_stream(&service, &mock, peer_a, a, e).await.unwrap_err();
+            assert_eq!(err.as_status_code(), RpcStatusCode::Forbidden);
+            open_stream(&service, &mock, new_peer(), a, e).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn it_releases_the_session_when_the_stream_ends() {
+            let (service, _db, chain, mock) = setup();
+            let service = service.with_max_buffered_bytes(1);
+            let (a, e) = (chain.get("A").unwrap(), chain.get("E").unwrap());
+            let peer_a = new_peer();
+
+            // The stream completes
+            let mut responses = open_stream(&service, &mock, peer_a.clone(), a, e).await.unwrap();
+            assert_eq!(drain(&mut responses).await.len(), 5);
+            let responses = open_stream_when_released(&service, &mock, &peer_a, a, e).await;
+
+            // The client goes away mid-stream
+            wait_for_queued(&responses, 1).await;
+            drop(responses);
+            open_stream_when_released(&service, &mock, &peer_a, a, e).await;
+        }
+
+        #[tokio::test]
+        async fn it_stops_producing_while_the_byte_budget_is_full() {
+            let (service, _db, chain, mock) = setup();
+            // Any response fills the budget, so at most one is queued however many the channel holds
+            let service = service.with_max_buffered_bytes(1);
+            let mut responses = open_stream(
+                &service,
+                &mock,
+                new_peer(),
+                chain.get("A").unwrap(),
+                chain.get("E").unwrap(),
+            )
+            .await
+            .unwrap();
+
+            wait_for_queued(&responses, 1).await;
+            assert_eq!(responses.len(), 1);
+            let responses = drain(&mut responses).await;
+            assert_eq!(responses.len(), 5);
+            assert!(responses.iter().all(Result::is_ok));
+        }
+
+        #[tokio::test]
+        async fn it_sends_conflict_when_the_end_block_is_replaced() {
+            let (service, db, chain, mock) = setup();
+            let service = service.with_max_buffered_bytes(1);
+            let mut responses = open_stream(
+                &service,
+                &mock,
+                new_peer(),
+                chain.get("A").unwrap(),
+                chain.get("E").unwrap(),
+            )
+            .await
+            .unwrap();
+            wait_for_queued(&responses, 1).await;
+
+            // The fork is longer than E, so it wins over E, which the rewind leaves as an orphan
+            db.rewind_to_height(4).unwrap();
+            let (fork_names, fork) = create_chained_blocks(
+                &db,
+                block_specs!(["E2->GB"], ["F2->E2"]),
+                chain.get("D").unwrap().clone(),
+            );
+            for name in &fork_names {
+                db.add_block(fork.get(name).unwrap().to_arc_block()).unwrap();
+            }
+            let e2 = fork.get("E2").unwrap();
+            assert_eq!(db.fetch_header(5).unwrap().unwrap().hash(), *e2.hash());
+            assert_ne!(e2.hash(), chain.get("E").unwrap().hash());
+
+            let mut responses = drain(&mut responses).await;
+            let err = responses.pop().unwrap().unwrap_err();
+            assert_eq!(err.as_status_code(), RpcStatusCode::Conflict);
+            assert_eq!(
+                err.details(),
+                "Reorg detected: the requested end block is no longer on the chain"
+            );
+            // Only blocks fetched before the reorg, all from the original chain, came before the conflict
+            assert!(!responses.is_empty() && responses.len() < 5, "{responses:?}");
+            for response in responses {
+                let response = response.unwrap();
+                let name = ["A", "B", "C", "D"]
+                    .get(usize::try_from(response.height - 1).unwrap())
+                    .unwrap();
+                assert_eq!(response.header_hash, chain.get(*name).unwrap().hash().to_vec());
+            }
+        }
     }
 }

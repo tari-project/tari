@@ -21,9 +21,10 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_mmr::{
+    MAX_PROOF_HASHES,
     MerkleProof,
     MerkleProofError,
-    common::{LeafIndex, is_leaf, node_index},
+    common::{LeafIndex, family_branch, is_leaf, node_index},
 };
 use tari_utilities::hex::{self, Hex};
 
@@ -95,9 +96,7 @@ fn for_leaf_node() {
     )
 }
 
-/// A proof whose sibling path has been truncated must be rejected with an error, not panic. The truncated path
-/// terminates the walk at a position that is not a canonical peak, so the peak hashes given in the proof are not
-/// enough to hash the peaks together.
+/// A proof whose sibling path has been truncated must be rejected with an error, not panic.
 #[test]
 fn truncated_path_is_rejected() {
     let mmr = create_mmr(4);
@@ -111,12 +110,16 @@ fn truncated_path_is_rejected() {
     truncated.path.pop();
     assert_eq!(
         truncated.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
-        Err(MerkleProofError::IncorrectPeakMap)
+        Err(MerkleProofError::PathLengthMismatch {
+            pos: 0,
+            mmr_size: 7,
+            expected: 2,
+            actual: 1
+        })
     );
 }
 
-/// A proof with extra siblings appended to the path must be rejected with an error, not panic. The walk continues
-/// past the local peak, ending up outside of the MMR.
+/// A proof with extra siblings appended to the path must be rejected with an error, not panic.
 #[test]
 fn padded_path_is_rejected() {
     let mmr = create_mmr(4);
@@ -127,7 +130,12 @@ fn padded_path_is_rejected() {
     padded.path.push(int_to_hash(1024));
     assert_eq!(
         padded.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
-        Err(MerkleProofError::Unexpected)
+        Err(MerkleProofError::PathLengthMismatch {
+            pos: 0,
+            mmr_size: 7,
+            expected: 2,
+            actual: 3
+        })
     );
 }
 
@@ -146,7 +154,12 @@ fn empty_hand_crafted_proof_is_rejected() {
     };
     assert_eq!(
         proof.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
-        Err(MerkleProofError::IncorrectPeakMap)
+        Err(MerkleProofError::PathLengthMismatch {
+            pos: 0,
+            mmr_size: 3,
+            expected: 1,
+            actual: 0
+        })
     );
 }
 
@@ -217,6 +230,178 @@ fn proof_that_walks_past_height_31_is_rejected() {
         proof
             .verify_leaf::<MmrTestHasherBlake256>(&root, &hash, LeafIndex(1usize << 31))
             .is_err()
+    );
+}
+
+#[test]
+fn honest_proofs_still_verify() {
+    for n in 1..=20 {
+        let mmr = create_mmr(n);
+        let root = mmr.get_merkle_root().unwrap();
+        let mmr_size = mmr.len().unwrap();
+        for i in 0..n {
+            let proof = MerkleProof::for_leaf_node(&mmr, LeafIndex(i)).unwrap();
+            assert_eq!(
+                proof.path.len(),
+                family_branch(node_index(LeafIndex(i)), mmr_size).len()
+            );
+            assert!(
+                proof
+                    .verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(i), LeafIndex(i))
+                    .is_ok()
+            );
+        }
+    }
+}
+
+/// `node_index` saturates, so without a checked conversion these huge leaf indices alias onto one position near
+/// `usize::MAX` and verify a real leaf.
+#[test]
+fn rejects_saturating_leaf_index() {
+    let mmr = create_mmr(2);
+    let root = mmr.get_merkle_root().unwrap();
+    let proof = MerkleProof {
+        mmr_size: usize::MAX,
+        path: vec![int_to_hash(0)],
+        peaks: vec![],
+    };
+    for leaf_index in [0x8000_0000_0000_0001usize, 0x8000_0000_0000_0002, 0xc000_0000_0000_0000] {
+        assert_eq!(
+            proof.verify_leaf::<MmrTestHasherBlake256>(&root, &int_to_hash(1), LeafIndex(leaf_index)),
+            Err(MerkleProofError::LeafIndexOutOfRange(leaf_index))
+        );
+    }
+}
+
+#[test]
+fn rejects_position_outside_mmr() {
+    let mmr = create_mmr(3);
+    let root = mmr.get_merkle_root().unwrap();
+    let proof = MerkleProof::for_leaf_node(&mmr, LeafIndex(2)).unwrap();
+    assert_eq!(
+        proof.verify::<MmrTestHasherBlake256>(&root, &int_to_hash(2), proof.mmr_size),
+        Err(MerkleProofError::PositionOutOfRange { pos: 4, mmr_size: 4 })
+    );
+}
+
+#[test]
+fn rejects_non_leaf_position() {
+    let mmr = create_mmr(3);
+    let root = mmr.get_merkle_root().unwrap();
+    let proof = MerkleProof::for_leaf_node(&mmr, LeafIndex(0)).unwrap();
+    let n2 = mmr.get_node_hash(2).unwrap().unwrap();
+    assert_eq!(
+        proof.verify::<MmrTestHasherBlake256>(&root, &n2, 2),
+        Err(MerkleProofError::NonLeafNode)
+    );
+}
+
+#[test]
+fn rejects_wrong_path_length() {
+    let mmr = create_mmr(5);
+    let root = mmr.get_merkle_root().unwrap();
+    let hash = int_to_hash(1);
+    let proof = MerkleProof::for_leaf_node(&mmr, LeafIndex(1)).unwrap();
+
+    let mut longer = proof.clone();
+    longer.path.push(int_to_hash(1024));
+    assert!(matches!(
+        longer.verify_leaf::<MmrTestHasherBlake256>(&root, &hash, LeafIndex(1)),
+        Err(MerkleProofError::PathLengthMismatch { .. })
+    ));
+
+    let mut shorter = proof;
+    shorter.path.pop();
+    assert!(matches!(
+        shorter.verify_leaf::<MmrTestHasherBlake256>(&root, &hash, LeafIndex(1)),
+        Err(MerkleProofError::PathLengthMismatch { .. })
+    ));
+}
+
+#[test]
+fn rejects_more_than_max_hashes() {
+    let root = create_mmr(2).get_merkle_root().unwrap();
+    let hash = int_to_hash(0);
+    let too_many = vec![int_to_hash(0); MAX_PROOF_HASHES + 1];
+
+    let long_path = MerkleProof {
+        mmr_size: usize::MAX,
+        path: too_many.clone(),
+        peaks: vec![],
+    };
+    assert_eq!(
+        long_path.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
+        Err(MerkleProofError::TooManyHashes {
+            field: "path",
+            actual: MAX_PROOF_HASHES + 1,
+            max: MAX_PROOF_HASHES
+        })
+    );
+
+    let many_peaks = MerkleProof {
+        mmr_size: usize::MAX,
+        path: vec![],
+        peaks: too_many,
+    };
+    assert_eq!(
+        many_peaks.verify::<MmrTestHasherBlake256>(&root, &hash, 0),
+        Err(MerkleProofError::TooManyHashes {
+            field: "peaks",
+            actual: MAX_PROOF_HASHES + 1,
+            max: MAX_PROOF_HASHES
+        })
+    );
+}
+
+/// Peak reinterpretation is an accepted residual (see the `MerkleProof` rustdoc): the bagged root does not commit to
+/// `mmr_size` or position, so each of these well-formed proofs verifies. Flip these if a consensus change closes it.
+#[test]
+fn peak_reinterpretation_is_accepted_residual() {
+    // Leaves [a,b,c] (size 4, peaks [2,3]): c also verifies as leaf 4 of a size-8 MMR whose other peak is H(a‖b)
+    let mmr = create_mmr(3);
+    let root = mmr.get_merkle_root().unwrap();
+    let n2 = mmr.get_node_hash(2).unwrap().unwrap();
+    let c = int_to_hash(2);
+    let proof = MerkleProof {
+        mmr_size: 8,
+        path: vec![],
+        peaks: vec![n2],
+    };
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &c, LeafIndex(4))
+            .is_ok()
+    );
+
+    // Leaves [a,b,c,d] (size 7): the internal peak verifies as leaf 0 of a size-1 MMR
+    let mmr = create_mmr(4);
+    let root = mmr.get_merkle_root().unwrap();
+    let n6 = mmr.get_node_hash(6).unwrap().unwrap();
+    let proof = MerkleProof {
+        mmr_size: 1,
+        path: vec![],
+        peaks: vec![],
+    };
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &n6, LeafIndex(0))
+            .is_ok()
+    );
+
+    // 6 leaves (size 10, peaks [6,9]): internal node 9 verifies as leaf 2 of a size-4 MMR
+    let mmr = create_mmr(6);
+    let root = mmr.get_merkle_root().unwrap();
+    let n6 = mmr.get_node_hash(6).unwrap().unwrap();
+    let n9 = mmr.get_node_hash(9).unwrap().unwrap();
+    let proof = MerkleProof {
+        mmr_size: 4,
+        path: vec![],
+        peaks: vec![n6],
+    };
+    assert!(
+        proof
+            .verify_leaf::<MmrTestHasherBlake256>(&root, &n9, LeafIndex(2))
+            .is_ok()
     );
 }
 
