@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    collections::HashSet,
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -59,6 +60,7 @@ use crate::{
         unconfirmed_pool::{
             HeightValidation,
             MAX_BLOCK_TEMPLATE_BODY_BYTES,
+            MAX_SPENDS_PER_OUTPUT,
             RetrieveResults,
             TemplateFilter,
             TransactionKey,
@@ -120,10 +122,11 @@ impl MempoolStorage {
         tip: Option<&ChainMetadata>,
     ) -> Result<TxStorageResponse, UnconfirmedPoolError> {
         let timer = Instant::now();
-        if let Some(response) = self
-            .check_fee(&tx)
+        if let Some(response) = Self::check_inputs(&tx)
+            .or_else(|| self.check_fee(&tx))
             .or_else(|| Self::check_body_size(&tx))
             .or_else(|| Self::check_kernel_excesses(&tx))
+            .or_else(|| self.check_spend_cap(&tx))
         {
             return Ok(response);
         }
@@ -299,14 +302,14 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
-    /// The near-free checks done before a new transaction is validated: its fee and its weight. Returns the response
-    /// if the transaction is not to be validated.
+    /// The cheap checks done before a new transaction is validated: its inputs, fee, weight, body size, kernel
+    /// excesses and the spend cap. Returns the response if the transaction is not to be validated.
     ///
     /// This does no kernel deduplication. Callers drop an exact kernel-set match or a union of pool transactions before
     /// validation with [MempoolStorage::has_transaction], and `insert_into_unconfirmed_pool` does not store one; any
     /// other reuse of pooled kernels is validated.
     pub fn pre_check(&self, tx: &Transaction) -> Option<TxStorageResponse> {
-        if let Some(response) = self.check_fee(tx) {
+        if let Some(response) = Self::check_inputs(tx).or_else(|| self.check_fee(tx)) {
             return Some(response);
         }
         let constants = self.rules.consensus_constants(self.last_seen_height);
@@ -323,7 +326,36 @@ impl MempoolStorage {
                 ))));
             },
         }
-        Self::check_body_size(tx).or_else(|| Self::check_kernel_excesses(tx))
+        Self::check_body_size(tx)
+            .or_else(|| Self::check_kernel_excesses(tx))
+            .or_else(|| self.check_spend_cap(tx))
+    }
+
+    /// Refuses a transaction spending an output that [MAX_SPENDS_PER_OUTPUT] pool transactions already spend, if it
+    /// may not replace one of them (see [UnconfirmedPool::conflict_set_victims]), unless it is already in the pool.
+    /// Such a copy costs nothing to build, so it is not validated. Checked again on insert, since the pool may
+    /// change.
+    fn check_spend_cap(&self, tx: &Transaction) -> Option<TxStorageResponse> {
+        // Callers drop a union of pool transactions first; an exact duplicate is answered as already stored on insert
+        if self.unconfirmed_pool.conflict_set_victims(tx).is_some() || self.unconfirmed_pool.has_kernel_set(tx) {
+            return None;
+        }
+        Some(spend_cap_refusal(tx))
+    }
+
+    /// Rejects a transaction without inputs: it moves no value, so pays no fee, and spends no output whose pool
+    /// spenders are bounded (see [MAX_SPENDS_PER_OUTPUT]). Relay policy, not a consensus rule, but final (it is never
+    /// stored later), so it is not reported as a retryable mempool policy refusal.
+    fn check_inputs(tx: &Transaction) -> Option<TxStorageResponse> {
+        if !tx.body.inputs().is_empty() {
+            return None;
+        }
+        debug!(target: LOG_TARGET, "Tx: ({}) has no inputs, rejecting", tx_id(tx));
+        #[cfg(feature = "metrics")]
+        metrics::policy_refused_transactions("no_inputs").inc();
+        Some(TxStorageResponse::NotStored(Some(
+            "Transaction has no inputs".to_string(),
+        )))
     }
 
     /// Rejects a transaction with two kernels with the same excess (they may differ in their signatures, so they sort
@@ -418,6 +450,10 @@ impl MempoolStorage {
             debug!(target: LOG_TARGET, "Tx: ({tx_id}) is already in the unconfirmed pool");
             return Ok(TxStorageResponse::UnconfirmedPool);
         }
+        // Checked before any validator node slot holder is replaced, so that a rejected transaction removes nothing
+        let Some(victims) = self.unconfirmed_pool.conflict_set_victims(&tx) else {
+            return Ok(spend_cap_refusal(&tx));
+        };
         let weight = self.get_transaction_weighting();
         // At most one pool transaction may register or exit a given validator node (two would make every template
         // invalid). A transaction for a slot that is already held replaces the holder only if it pays a strictly higher
@@ -441,19 +477,34 @@ impl MempoolStorage {
                 );
                 return Ok(TxStorageResponse::NotStoredValidatorNodeSlotTaken);
             }
-            for key in holders {
-                if let Some(replaced) = self.unconfirmed_pool.remove_transaction(key)? {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Tx: ({tx_id}) replaces pool transaction {} in its validator node slot with a higher fee",
-                        replaced
-                            .first_kernel_excess_sig()
-                            .map(|sig| sig.get_signature().to_hex())
-                            .unwrap_or_default()
-                    );
-                }
+        }
+        let removed = victims.iter().chain(&holders).copied().collect::<HashSet<_>>();
+        if self.unconfirmed_pool.would_orphan(&tx, &removed) {
+            debug!(
+                target: LOG_TARGET,
+                "Tx: ({tx_id}) would replace every pool producer of an output it spends, rejecting"
+            );
+            #[cfg(feature = "metrics")]
+            metrics::policy_refused_transactions("would_orphan").inc();
+            return Ok(TxStorageResponse::NotStoredMempoolPolicy(
+                "The mempool transactions it would replace produce an output it spends".to_string(),
+            ));
+        }
+        for key in holders {
+            if let Some(replaced) = self.unconfirmed_pool.remove_transaction(key)? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({tx_id}) replaces pool transaction {} in its validator node slot with a higher fee",
+                    replaced
+                        .first_kernel_excess_sig()
+                        .map(|sig| sig.get_signature().to_hex())
+                        .unwrap_or_default()
+                );
             }
         }
+        // Evicting first also keeps a full pool from evicting its lowest priority transaction for `tx`. Descendants are
+        // kept: their inputs may also be produced by the transaction `tx` is a subset of.
+        self.unconfirmed_pool.remove_transactions(victims)?;
         self.unconfirmed_pool
             .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?;
         debug!(
@@ -1008,6 +1059,21 @@ fn validate_attempt(
     }
 }
 
+/// The response to a transaction refused by the spend cap (see [UnconfirmedPool::conflict_set_victims])
+fn spend_cap_refusal(tx: &Transaction) -> TxStorageResponse {
+    debug!(
+        target: LOG_TARGET,
+        "Tx: ({}) spends an output that {MAX_SPENDS_PER_OUTPUT} pool transactions already spend, and is not a strict \
+         kernel subset of each of them, rejecting",
+        tx_id(tx)
+    );
+    #[cfg(feature = "metrics")]
+    metrics::policy_refused_transactions("spend_cap").inc();
+    TxStorageResponse::NotStoredMempoolPolicy(format!(
+        "{MAX_SPENDS_PER_OUTPUT} mempool transactions already spend one of its inputs"
+    ))
+}
+
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
 /// never be valid, and gets a long ban. Covenant failures are not banned, whether or not the failing covenant reads the
 /// height (see `is_tip_dependent`), and exceeding the covenant work limit is not banned either. An input script failure
@@ -1212,8 +1278,11 @@ mod test {
         MicroMinotari,
         covenant,
         key_manager::KeyManager,
+        test_helpers::create_kernel_only_transaction,
         transaction_components::{
+            KernelFeatures,
             SpentOutput,
+            TransactionKernel,
             WalletOutput,
             covenants::{Covenant, CovenantError},
         },
@@ -1239,6 +1308,9 @@ mod test {
         // If set, the next chain-linked validation simulates the mempool processing a block that mines every pooled
         // transaction
         mine_pool_during_chain_linked: std::sync::atomic::AtomicBool,
+        // Transactions the next chain-linked validation adds to the pool (without checks), as if they arrived
+        // meanwhile
+        pool_during_chain_linked: Mutex<Vec<Arc<Transaction>>>,
         chain_linked_calls: AtomicUsize,
         internal_calls: AtomicUsize,
     }
@@ -1282,6 +1354,14 @@ mod test {
                 let mut lock = storage.write().unwrap();
                 let _mined = lock.unconfirmed_pool.drain_all_mempool_transactions();
                 lock.chain_generation = lock.chain_generation.wrapping_add(1);
+            }
+            let arriving = std::mem::take(&mut *self.pool_during_chain_linked.lock().unwrap());
+            if !arriving.is_empty() &&
+                let Some(storage) = self.storage.lock().unwrap().upgrade()
+            {
+                let mut lock = storage.write().unwrap();
+                let weight = lock.get_transaction_weighting();
+                lock.unconfirmed_pool.insert_many(arriving, &weight).unwrap();
             }
             self.chain_linked_results.lock().unwrap().pop_front().unwrap_or(Ok(()))
         }
@@ -1996,6 +2076,702 @@ mod test {
             vec![Err(ValidationError::UnknownInputs(vec![parent_output]))].into();
         let response = MempoolStorage::insert_unlocked(&storage, child).unwrap();
         assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        assert_eq!(pool_len(&storage), 2);
+    }
+
+    /// A copy of `tx` with the given kernels
+    fn with_kernels(tx: &Transaction, kernels: Vec<TransactionKernel>) -> Arc<Transaction> {
+        Arc::new(Transaction::new(
+            tx.body.inputs().clone(),
+            tx.body.outputs().clone(),
+            kernels,
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ))
+    }
+
+    /// `n` fresh kernels
+    fn fresh_kernels(n: usize, key_manager: &KeyManager) -> Vec<TransactionKernel> {
+        (0..n)
+            .map(|_| create_tx(key_manager).body.kernels()[0].clone())
+            .collect()
+    }
+
+    #[test]
+    fn copies_of_a_spend_padded_with_other_kernels_are_bounded_and_do_not_block_it() {
+        let key_manager = KeyManager::new_random().unwrap();
+        for honest_first in [true, false] {
+            let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+            let storage = create_storage(&validator);
+            let honest = create_tx(&key_manager);
+            let mut arrivals = fresh_kernels(2 * MAX_SPENDS_PER_OUTPUT, &key_manager)
+                .into_iter()
+                .map(|kernel| with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat()))
+                .collect::<Vec<_>>();
+            arrivals.insert(if honest_first { 0 } else { arrivals.len() }, honest.clone());
+            let mut responses = arrivals
+                .iter()
+                .map(|tx| storage.write().unwrap().insert(tx.clone(), None).unwrap())
+                .collect::<Vec<_>>();
+
+            assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT, "{honest_first}");
+            assert_eq!(
+                storage.read().unwrap().has_transaction(&honest).unwrap(),
+                TxStorageResponse::UnconfirmedPool
+            );
+            // The padded copies are stored until the cap is reached and rejected after it; the honest transaction is
+            // always stored
+            let honest_response = if honest_first {
+                responses.remove(0)
+            } else {
+                responses.pop().unwrap()
+            };
+            assert_eq!(honest_response, TxStorageResponse::UnconfirmedPool, "{honest_first}");
+            let stored = MAX_SPENDS_PER_OUTPUT - usize::from(honest_first);
+            assert!(responses[..stored].iter().all(TxStorageResponse::is_stored));
+            assert!(
+                responses[stored..]
+                    .iter()
+                    .all(|response| matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_))),
+                "{honest_first}"
+            );
+            assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+        }
+    }
+
+    #[test]
+    fn the_strict_subsets_of_an_aggregate_are_bounded_and_do_not_block_the_honest_spend() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        let extra = fresh_kernels(4, &key_manager);
+        // Every spend of the honest input carries the honest kernel: the aggregate with all extra kernels, then its
+        // strict subsets, largest first, and the honest transaction last
+        let mut masks = (0..1u32 << extra.len()).collect::<Vec<_>>();
+        masks.sort_by_key(|mask| std::cmp::Reverse(mask.count_ones()));
+        for mask in masks {
+            let mut kernels = honest.body.kernels().clone();
+            kernels.extend(
+                (0..extra.len())
+                    .filter(|i| mask & (1 << i) != 0)
+                    .map(|i| extra[i].clone()),
+            );
+            let capped = pool_len(&storage) == MAX_SPENDS_PER_OUTPUT;
+            let response = storage
+                .write()
+                .unwrap()
+                .insert(with_kernels(&honest, kernels), None)
+                .unwrap();
+            assert!(pool_len(&storage) <= MAX_SPENDS_PER_OUTPUT);
+            if mask == 0 {
+                assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+            }
+            if capped && mask != 0 {
+                assert!(
+                    matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_)),
+                    "{mask}: {response:?}"
+                );
+            }
+        }
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+        assert_eq!(
+            storage.read().unwrap().has_transaction(&honest).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    #[test]
+    fn a_transaction_without_inputs_is_not_stored() {
+        use tari_crypto::keys::SecretKey;
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let kernel_only = Arc::new(create_kernel_only_transaction(
+            &PrivateKey::random(&mut rand::rng()),
+            0,
+            KernelFeatures::empty(),
+        ));
+        for locked in [false, true] {
+            let response = if locked {
+                storage.write().unwrap().insert(kernel_only.clone(), None).unwrap()
+            } else {
+                MempoolStorage::insert_unlocked(&storage, kernel_only.clone()).unwrap()
+            };
+            assert!(
+                matches!(response, TxStorageResponse::NotStored(Some(_))),
+                "{response:?}"
+            );
+        }
+        // Without being validated
+        assert_eq!(validator.chain_linked_calls(), 0);
+        assert_eq!(validator.internal_calls(), 0);
+        assert_eq!(pool_len(&storage), 0);
+    }
+
+    /// `holder` holds a validator node slot and produces `y`; a newcomer spending `y` that outbids it for the slot
+    /// would be orphaned, alone or together with a spend-cap replacement `v` that is the only other producer of `y`
+    #[test]
+    fn a_newcomer_is_not_stored_if_the_transactions_it_replaces_produce_all_of_an_output_it_spends() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let exit_features = || {
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        };
+        let (holder, holder_outputs) =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .map(|(tx, _, outputs)| (Arc::new(tx), outputs))
+                .unwrap();
+        let y = holder.body.outputs()[0].clone();
+        let spends_y = holder_outputs[0].to_transaction_input(&key_manager).unwrap();
+        let outbidding =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .unwrap()
+                .0;
+        let newcomer = |inputs| {
+            Arc::new(Transaction::new(
+                inputs,
+                outbidding.body.outputs().clone(),
+                outbidding.body.kernels().clone(),
+                Default::default(),
+                Default::default(),
+            ))
+        };
+
+        // The holder alone
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        storage.write().unwrap().insert(holder.clone(), None).unwrap();
+        let response = storage
+            .write()
+            .unwrap()
+            .insert(newcomer(vec![spends_y.clone()]), None)
+            .unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("produce an output it spends")),
+            "{response:?}"
+        );
+        assert_eq!(pool_len(&storage), 1);
+
+        // The holder and `v`, the largest of the spenders of the newcomer's other input
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        storage.write().unwrap().insert(holder.clone(), None).unwrap();
+        let input = outbidding.body.inputs()[0].clone();
+        let mut kernels = outbidding.body.kernels().clone();
+        kernels.extend(fresh_kernels(2, &key_manager));
+        let v = Arc::new(Transaction::new(
+            vec![input.clone()],
+            vec![y.clone()],
+            kernels,
+            Default::default(),
+            Default::default(),
+        ));
+        let mut spenders = vec![v];
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT - 1, &key_manager) {
+            spenders.push(with_kernels(
+                &create_tx(&key_manager),
+                [outbidding.body.kernels().clone(), vec![kernel]].concat(),
+            ));
+        }
+        {
+            let mut lock = storage.write().unwrap();
+            for spender in spenders {
+                let spender = Arc::new(Transaction::new(
+                    vec![input.clone()],
+                    spender.body.outputs().clone(),
+                    spender.body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ));
+                let weight = lock.get_transaction_weighting();
+                lock.unconfirmed_pool.insert(spender, None, &weight).unwrap();
+            }
+        }
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
+        let response = storage
+            .write()
+            .unwrap()
+            .insert(newcomer(vec![input, spends_y]), None)
+            .unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("produce an output it spends")),
+            "{response:?}"
+        );
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
+        assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    #[test]
+    fn a_spend_that_is_no_kernel_subset_does_not_replace_a_spender_at_the_cap_whatever_its_fee() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let padded = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(padded, None).unwrap().is_stored());
+        }
+        // Its kernel is in the pool (in a transaction spending something else), so it is checked against the spenders
+        let mut kernels = fresh_kernels(2, &key_manager);
+        let unrelated = create_tx(&key_manager);
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(with_kernels(&unrelated, kernels.clone()), None)
+                .unwrap()
+                .is_stored()
+        );
+        kernels.truncate(1);
+        kernels[0].fee = MicroMinotari(1_000_000);
+        let newcomer = with_kernels(&honest, kernels);
+
+        assert!(
+            storage
+                .read()
+                .unwrap()
+                .unconfirmed_pool
+                .conflict_set_victims(&newcomer)
+                .is_none()
+        );
+        let response = storage.write().unwrap().insert(newcomer, None).unwrap();
+        assert!(
+            matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_)),
+            "{response:?}"
+        );
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
+    }
+
+    /// Spends of `honest`'s input padded with a fresh kernel each, filling it to the spend cap
+    fn padded_copies(honest: &Transaction, key_manager: &KeyManager) -> Vec<Arc<Transaction>> {
+        fresh_kernels(MAX_SPENDS_PER_OUTPUT, key_manager)
+            .into_iter()
+            .map(|kernel| with_kernels(honest, [honest.body.kernels().clone(), vec![kernel]].concat()))
+            .collect()
+    }
+
+    /// The input of a newcomer fills to the spend cap while it is being validated: the check before validation passes,
+    /// and the check on insert refuses it
+    #[test]
+    fn a_spend_cap_reached_during_validation_refuses_the_newcomer_on_insert() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        *validator.pool_during_chain_linked.lock().unwrap() = padded_copies(&honest, &key_manager);
+        let newcomer = with_kernels(&honest, fresh_kernels(1, &key_manager));
+
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
+            "{response:?}"
+        );
+        assert_eq!(validator.chain_linked_calls(), 1);
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    /// The spend cap is checked on insert before a validator node slot holder is replaced, so a newcomer refused by the
+    /// cap (reached while it was being validated) leaves the holder it would have outbid
+    #[test]
+    fn a_newcomer_refused_by_the_spend_cap_does_not_replace_the_validator_node_slot_holder() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let exit_features = || {
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10))
+        };
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let holder =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .map(|(tx, _, _)| Arc::new(tx))
+                .unwrap();
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(holder.clone(), None)
+                .unwrap()
+                .is_stored()
+        );
+        let honest = create_tx(&key_manager);
+        *validator.pool_during_chain_linked.lock().unwrap() = padded_copies(&honest, &key_manager);
+        // Outbids the holder for its slot, but spends the input that fills up and is no kernel subset of its spenders
+        let outbidding =
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, features: exit_features(), &key_manager)
+                .unwrap()
+                .0;
+        let newcomer = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            outbidding.body.outputs().clone(),
+            outbidding.body.kernels().clone(),
+            Default::default(),
+            Default::default(),
+        ));
+
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
+            "{response:?}"
+        );
+        // The holder's and the newcomer's validations
+        assert_eq!(validator.chain_linked_calls(), 2);
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
+        assert_eq!(
+            storage.read().unwrap().has_transaction(&holder).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+    }
+
+    /// A validator node slot holder that spends a capped input is one of its spenders even when a newcomer outbids it
+    /// for the slot: sharing a kernel with the newcomer, it must hold a strict superset of the newcomer's kernels too
+    #[test]
+    fn an_outbid_slot_holder_still_counts_among_the_spenders_at_the_spend_cap() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let exit_outputs = || {
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            let features = OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10));
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+                .unwrap()
+                .0
+                .body
+                .outputs()
+                .clone()
+        };
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        // The newcomer's kernels: the honest one and another
+        let newcomer_kernels = [honest.body.kernels().clone(), fresh_kernels(1, &key_manager)].concat();
+        // The holder spends the honest input with the honest kernel and one of its own (not the newcomer's other one),
+        // paying less per gram than the newcomer
+        let mut holder_kernel = fresh_kernels(1, &key_manager).pop().unwrap();
+        holder_kernel.fee = MicroMinotari(1);
+        let holder = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            exit_outputs(),
+            [honest.body.kernels().clone(), vec![holder_kernel]].concat(),
+            Default::default(),
+            Default::default(),
+        ));
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(holder.clone(), None)
+                .unwrap()
+                .is_stored()
+        );
+        // The copies arrive while the newcomer is being validated, so it is refused on insert, where it outbids the
+        // holder
+        let copies = padded_copies(&with_kernels(&honest, newcomer_kernels.clone()), &key_manager);
+        *validator.pool_during_chain_linked.lock().unwrap() = copies[1..].to_vec();
+        let chain_linked_calls = validator.chain_linked_calls();
+        // A strict kernel subset of the seven copies, but not of the holder it outbids, with which it shares a kernel
+        let newcomer = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            exit_outputs(),
+            newcomer_kernels,
+            Default::default(),
+            Default::default(),
+        ));
+
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
+        assert!(
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
+            "{response:?}"
+        );
+        assert_eq!(validator.chain_linked_calls(), chain_linked_calls + 1);
+        let lock = storage.read().unwrap();
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT);
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&holder));
+        assert!(copies[1..].iter().all(in_pool));
+    }
+
+    /// The spender replaced at the spend cap is removed alone: a pool transaction spending an output only it produced
+    /// stays
+    #[test]
+    fn a_spend_cap_replacement_keeps_the_children_of_the_replaced_spender() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        // The largest spender, and the only producer of `y`, which `child` spends
+        let (y_source, y_outputs) = create_tx_with_outputs(&key_manager);
+        let largest = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            [honest.body.outputs().clone(), y_source.body.outputs().clone()].concat(),
+            [honest.body.kernels().clone(), fresh_kernels(2, &key_manager)].concat(),
+            Default::default(),
+            Default::default(),
+        ));
+        let copies = padded_copies(&honest, &key_manager);
+        let child = spending(&create_tx(&key_manager), &y_outputs[0], &key_manager);
+        for tx in [&largest].into_iter().chain(&copies[1..]).chain([&child]) {
+            assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+        }
+
+        let response = MempoolStorage::insert_unlocked(&storage, honest.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        let lock = storage.read().unwrap();
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&honest));
+        assert!(!in_pool(&largest));
+        assert!(in_pool(&child));
+        assert!(copies[1..].iter().all(in_pool));
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT + 1);
+    }
+
+    /// A validator node slot holder that a newcomer outbids can also be the spender it replaces at the spend cap: only
+    /// the holder leaves the pool
+    #[test]
+    fn an_outbid_slot_holder_can_be_the_spend_cap_replacement() {
+        use tari_common_types::epoch::VnEpoch;
+        use tari_crypto::keys::SecretKey;
+        use tari_transaction_components::transaction_components::{OutputFeatures, ValidatorNodeSignature};
+        let key_manager = KeyManager::new_random().unwrap();
+        let vn_key = PrivateKey::random(&mut rand::rng());
+        let exit_outputs = || {
+            let signature = ValidatorNodeSignature::sign_for_exit(&vn_key, 0x10, None, VnEpoch(0), VnEpoch(10));
+            let features = OutputFeatures::for_validator_node_exit(signature, None, VnEpoch(0), VnEpoch(10));
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, features: features, &key_manager)
+                .unwrap()
+                .0
+                .body
+                .outputs()
+                .clone()
+        };
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        // The holder pads the newcomer's kernel with two free ones: the largest spender, paying less per gram
+        let mut padding = fresh_kernels(2, &key_manager);
+        for kernel in &mut padding {
+            kernel.fee = MicroMinotari(0);
+        }
+        let holder = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            exit_outputs(),
+            [honest.body.kernels().clone(), padding].concat(),
+            Default::default(),
+            Default::default(),
+        ));
+        assert!(
+            storage
+                .write()
+                .unwrap()
+                .insert(holder.clone(), None)
+                .unwrap()
+                .is_stored()
+        );
+        let copies = padded_copies(&honest, &key_manager);
+        for copy in &copies[1..] {
+            assert!(storage.write().unwrap().insert(copy.clone(), None).unwrap().is_stored());
+        }
+        let newcomer = Arc::new(Transaction::new(
+            honest.body.inputs().clone(),
+            exit_outputs(),
+            honest.body.kernels().clone(),
+            Default::default(),
+            Default::default(),
+        ));
+
+        let response = MempoolStorage::insert_unlocked(&storage, newcomer.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        let lock = storage.read().unwrap();
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&newcomer));
+        assert!(!in_pool(&holder));
+        assert!(copies[1..].iter().all(in_pool));
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    /// A capped input filled with padded copies of two variants `h1` and `h2` of a spend (sharing no kernel): each
+    /// variant is stored, replacing one of its own copies. A newcomer partly overlapping a spender, or sharing no
+    /// kernel with any, is refused.
+    #[test]
+    fn spenders_sharing_no_kernel_with_a_newcomer_do_not_block_it_at_the_spend_cap() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let h1 = create_tx(&key_manager);
+        let h2 = with_kernels(&h1, fresh_kernels(1, &key_manager));
+        let half = MAX_SPENDS_PER_OUTPUT / 2;
+        let h1_copies = padded_copies(&h1, &key_manager)[..half].to_vec();
+        let h2_copies = padded_copies(&h2, &key_manager)[..half].to_vec();
+        let new_storage = |spenders: &[Arc<Transaction>]| {
+            let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+            let storage = create_storage(&validator);
+            for tx in spenders {
+                assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+            }
+            assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+            storage
+        };
+        let in_pool_count = |storage: &RwLock<MempoolStorage>, txs: &[Arc<Transaction>]| {
+            let lock = storage.read().unwrap();
+            txs.iter()
+                .filter(|tx| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool)
+                .count()
+        };
+        let is_cap_refusal = |response: &TxStorageResponse| matches!(response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs"));
+
+        // (a) Each variant replaces one of its own copies
+        let storage = new_storage(&[h1_copies.clone(), h2_copies.clone()].concat());
+        let response = MempoolStorage::insert_unlocked(&storage, h1.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        assert_eq!(in_pool_count(&storage, &h1_copies), half - 1);
+        assert_eq!(in_pool_count(&storage, &h2_copies), half);
+        let response = MempoolStorage::insert_unlocked(&storage, h2.clone()).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        assert_eq!(in_pool_count(&storage, &h1_copies), half - 1);
+        assert_eq!(in_pool_count(&storage, &h2_copies), half - 1);
+        assert_eq!(in_pool_count(&storage, &[h1.clone(), h2.clone()]), 2);
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+
+        // (b) `{h1, z}` holds all of one spender's kernels `{h1, z, w}` but only part of the other `h1` copies'
+        let z = fresh_kernels(1, &key_manager);
+        let superset = with_kernels(
+            &h1,
+            [h1.body.kernels().clone(), z.clone(), fresh_kernels(1, &key_manager)].concat(),
+        );
+        let storage = new_storage(&[&h1_copies[1..], &[superset], &h2_copies[..]].concat());
+        let partial = with_kernels(&h1, [h1.body.kernels().clone(), z].concat());
+        let response = MempoolStorage::insert_unlocked(&storage, partial).unwrap();
+        assert!(is_cap_refusal(&response), "{response:?}");
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+
+        // (c) A spend sharing no kernel with any spender
+        let storage = new_storage(&[h1_copies.clone(), h2_copies.clone()].concat());
+        let disjoint = with_kernels(&h1, fresh_kernels(1, &key_manager));
+        let response = MempoolStorage::insert_unlocked(&storage, disjoint).unwrap();
+        assert!(is_cap_refusal(&response), "{response:?}");
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    /// A spender of a capped input submitted again is let past the spend cap and answered as already stored
+    #[test]
+    fn a_pooled_spender_of_a_capped_input_is_answered_as_already_stored() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let copies = padded_copies(&create_tx(&key_manager), &key_manager);
+        for copy in &copies {
+            assert!(storage.write().unwrap().insert(copy.clone(), None).unwrap().is_stored());
+        }
+        let again = copies[0].clone();
+
+        assert_eq!(storage.read().unwrap().pre_check(&again), None);
+        assert_eq!(
+            MempoolStorage::insert_unlocked(&storage, again.clone()).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(
+            storage.write().unwrap().insert(again, None).unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    /// The spender a newcomer replaces at the spend cap is removed before the newcomer is inserted, so a full pool does
+    /// not refuse a newcomer whose priority is below all of its transactions
+    #[test]
+    fn a_spend_cap_replacement_makes_room_in_a_full_pool() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        config.unconfirmed_pool.storage_capacity = MAX_SPENDS_PER_OUTPUT + 2;
+        let storage = RwLock::new(MempoolStorage::new(
+            config,
+            create_consensus_rules(),
+            Box::new(validator.clone()),
+        ));
+        // Each padded copy pays the honest fee plus a whole other transaction's fee for one more kernel, and the others
+        // pay ten times the honest fee per gram, so the honest transaction ranks below every pool transaction
+        let honest = create_tx(&key_manager);
+        let mut padded = Vec::new();
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let tx = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+            padded.push(tx);
+        }
+        let others = (0..2)
+            .map(|_| {
+                let tx = tx!(MicroMinotari(100_000), fee: MicroMinotari(50), inputs: 1, outputs: 1, &key_manager)
+                    .unwrap()
+                    .0;
+                let tx = Arc::new(tx);
+                assert!(storage.write().unwrap().insert(tx.clone(), None).unwrap().is_stored());
+                tx
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 2);
+
+        let response = storage.write().unwrap().insert(honest.clone(), None).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        let lock = storage.read().unwrap();
+        assert_eq!(lock.unconfirmed_pool.len(), MAX_SPENDS_PER_OUTPUT + 2);
+        let in_pool = |tx: &Arc<Transaction>| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool;
+        assert!(in_pool(&honest));
+        assert_eq!(
+            padded.iter().filter(|tx| in_pool(tx)).count(),
+            MAX_SPENDS_PER_OUTPUT - 1
+        );
+        assert!(others.iter().all(in_pool));
+    }
+
+    #[test]
+    fn a_spend_refused_by_the_spend_cap_is_not_validated() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let honest = create_tx(&key_manager);
+        for kernel in fresh_kernels(MAX_SPENDS_PER_OUTPUT, &key_manager) {
+            let padded = with_kernels(&honest, [honest.body.kernels().clone(), vec![kernel]].concat());
+            assert!(storage.write().unwrap().insert(padded, None).unwrap().is_stored());
+        }
+        let (chain_linked_calls, internal_calls) = (validator.chain_linked_calls(), validator.internal_calls());
+        let copy = with_kernels(&honest, fresh_kernels(1, &key_manager));
+
+        for locked in [false, true] {
+            let response = if locked {
+                storage.write().unwrap().insert(copy.clone(), None).unwrap()
+            } else {
+                MempoolStorage::insert_unlocked(&storage, copy.clone()).unwrap()
+            };
+            assert!(
+                matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
+                "{response:?}"
+            );
+        }
+        assert_eq!(validator.chain_linked_calls(), chain_linked_calls);
+        assert_eq!(validator.internal_calls(), internal_calls);
+        assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT);
+    }
+
+    #[test]
+    fn conflicting_spends_with_disjoint_kernels_are_both_stored_under_the_cap() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let first = create_tx(&key_manager);
+        let second = with_kernels(&first, fresh_kernels(1, &key_manager));
+        for tx in [&first, &second] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
         assert_eq!(pool_len(&storage), 2);
     }
 

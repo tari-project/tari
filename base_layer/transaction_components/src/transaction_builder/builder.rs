@@ -1464,6 +1464,17 @@ where KM: TransactionKeyManagerInterface
         // derived from the outputs.
         let spec_outputs = self.build_spec_outputs(total_fee)?;
 
+        // Finalise the recipient outputs before the change memo records their hashes, so the memo names the outputs
+        // that are published.
+        for recipient in &mut self.recipient_outputs {
+            Self::update_encrypted_data_and_metadata_sig(
+                &self.key_manager,
+                &mut recipient.output,
+                total_fee,
+                recipient.recipient_address.as_ref(),
+            )?;
+        }
+
         let mut change_output = match (change_amount, self.change_sender_offset_key.take()) {
             (Some(amount), Some(sender_offset)) => Some(self.build_change(amount, sender_offset)?),
             (None, None) => None,
@@ -1490,14 +1501,7 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager)?.clone());
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &mut self.recipient_outputs {
-            Self::update_encrypted_data_and_metadata_sig(
-                &self.key_manager,
-                &mut recipient.output,
-                total_fee,
-                recipient.recipient_address.as_ref(),
-            )?;
-
+        for recipient in &self.recipient_outputs {
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
@@ -3158,6 +3162,107 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 2);
         assert_validates(&tx);
+    }
+
+    /// Decrypt the published change output's memo the way a wallet restored from seed does, and check that it names
+    /// the recipient outputs that are actually in the body.
+    fn assert_change_memo_names_published_recipients(key_manager: &KeyManager, finalized: &FinalizedTransaction) {
+        let change_commitment = finalized.change.as_ref().expect("a change output").commitment();
+        let outputs = finalized.transaction.body.outputs();
+        let change = outputs.iter().find(|o| &o.commitment == change_commitment).unwrap();
+        let (_, _, memo, _) = key_manager
+            .try_output_key_recovery(
+                &change.commitment,
+                &change.encrypted_data,
+                &change.sender_offset_public_key,
+            )
+            .unwrap()
+            .expect("the wallet recovers its change");
+        let published = outputs
+            .iter()
+            .filter(|o| &o.commitment != change_commitment)
+            .map(|o| o.hash())
+            .collect::<Vec<_>>();
+        assert_eq!(memo.get_sent_hashes(), Some(published.clone()));
+        assert_eq!(finalized.sent_output_hashes, published);
+    }
+
+    #[test]
+    fn the_change_memo_records_a_pre_attached_recipient_as_published() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+        // A memo fee that will not be the final fee, so the builder has to rewrite the output.
+        let mut payment_id = MemoField::new_address_and_data(
+            TariAddress::default(),
+            MicroMinotari(10000),
+            true,
+            TxType::PaymentToOther,
+            Vec::new(),
+        )
+        .unwrap();
+        payment_id.set_fee(MicroMinotari(999999));
+        let mut output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    payment_id,
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+        let address = random_address();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+        let sender_offset = builder
+            .reserve_sender_offset_keys(&[PendingOutput::from_output(&output)
+                .unwrap()
+                .for_recipient(address.clone())])
+            .unwrap()
+            .pop()
+            .unwrap();
+        // A real signature under the reserved key, so only the fee change makes the builder rewrite the output.
+        output.set_sender_offset_public_key(sender_offset.pub_key.clone());
+        output
+            .change_encrypted_data(
+                output.encrypted_data().clone(),
+                &sender_offset.key_id,
+                output.payment_id().clone(),
+                &key_manager,
+            )
+            .unwrap();
+        builder
+            .add_recipient(address, output, sender_offset.key_id, None)
+            .unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
+        assert_change_memo_names_published_recipients(&key_manager, &finalized);
+    }
+
+    #[test]
+    fn the_change_memo_records_a_spec_recipient_as_published() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20)).with_input(input).unwrap();
+        builder
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
+        assert_change_memo_names_published_recipients(&key_manager, &finalized);
     }
 
     #[test]
