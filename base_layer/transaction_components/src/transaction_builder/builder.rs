@@ -615,15 +615,18 @@ where KM: TransactionKeyManagerInterface
                 party_number,
                 public_keys,
                 message,
-            } => TariScript::new(vec![
-                Opcode::CheckMultiSigVerify(
-                    *party_number,
-                    u8::try_from(public_keys.len()).unwrap_or(u8::MAX),
-                    vec![CompressedPublicKey::default(); public_keys.len()],
-                    message.clone(),
-                ),
-                Opcode::PushPubKey(Box::default()),
-            ])?,
+            } => {
+                let key_count = crate::multisig::script::validate_multisig_parameters(*party_number, public_keys)?;
+                TariScript::new(vec![
+                    Opcode::CheckMultiSigVerify(
+                        *party_number,
+                        key_count,
+                        vec![CompressedPublicKey::default(); public_keys.len()],
+                        message.clone(),
+                    ),
+                    Opcode::PushPubKey(Box::default()),
+                ])?
+            },
         };
         recipient_output_features_and_scripts_size(
             self.consensus_constants.transaction_weight_params(),
@@ -1106,6 +1109,7 @@ where KM: TransactionKeyManagerInterface
                 public_keys,
                 message,
             } => {
+                let key_count = crate::multisig::script::validate_multisig_parameters(*party_number, public_keys)?;
                 let ephemeral_pubkeys =
                     derive_multisig_ephemeral_pubkeys(&self.key_manager, public_keys, &sender_offset.key_id)?;
                 let script_pubkey = self
@@ -1114,8 +1118,7 @@ where KM: TransactionKeyManagerInterface
                 Ok(TariScript::new(vec![
                     Opcode::CheckMultiSigVerify(
                         *party_number,
-                        u8::try_from(ephemeral_pubkeys.len())
-                            .map_err(|e| TransactionBuilderError::Other(e.to_string()))?,
+                        key_count,
                         ephemeral_pubkeys,
                         message.clone(),
                     ),

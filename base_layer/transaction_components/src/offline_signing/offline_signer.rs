@@ -205,6 +205,7 @@ pub fn prepare_deposit_multisig_transaction<TKeyManagerInterface: TransactionKey
     if recipient.public_view_key().is_none() {
         return Err(TransactionError::BuilderError("Missing public view key".to_string()).into());
     }
+    crate::multisig::script::validate_multisig_parameters(party_number, &public_keys)?;
     let fee = tx_builder.fee();
     let fee_per_gram = tx_builder.fee_per_gram().unwrap_or_default();
     let outputs = tx_builder

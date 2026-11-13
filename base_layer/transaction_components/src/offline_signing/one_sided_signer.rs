@@ -43,7 +43,11 @@ use crate::{
         TransactionKeyManagerInterface,
         manager::{require_mask_id, truncated_key_id},
     },
-    multisig::script::derive_multisig_ephemeral_pubkeys,
+    multisig::script::{
+        derive_multisig_ephemeral_pubkeys,
+        validate_multisig_bounds,
+        validate_multisig_parameters,
+    },
     offline_signing::models::{
         OneSidedMultisigTransactionInfo,
         OneSidedTransactionInfo,
@@ -80,10 +84,11 @@ pub fn multisig_pending_output(
     party_number: u8,
     key_count: usize,
 ) -> Result<PendingOutput, TransactionBuilderError> {
+    let key_count_u8 = validate_multisig_bounds(party_number, key_count)?;
     let script = TariScript::new(vec![
         Opcode::CheckMultiSigVerify(
             party_number,
-            u8::try_from(key_count).map_err(|e| TransactionBuilderError::Other(e.to_string()))?,
+            key_count_u8,
             vec![CompressedPublicKey::default(); key_count],
             Box::new([0u8; 32]),
         ),
@@ -345,6 +350,7 @@ pub(crate) fn sign_multisig_transaction<KM: TransactionKeyManagerInterface>(
         &info.base.outputs,
         &key_manager.get_spend_key().pub_key,
     )?;
+    validate_multisig_parameters(info.party_number, &info.public_keys)?;
     let constants = consensus_constants.clone();
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.base.fee_per_gram > MicroMinotari::zero() {
@@ -474,12 +480,13 @@ fn build_multisig_output<KM: TransactionKeyManagerInterface>(
     let mut message = Box::new([0u8; 32]);
     rand::rng().fill_bytes(message.as_mut());
 
+    let key_count = validate_multisig_parameters(info.party_number, &info.public_keys)?;
     let ephemeral_pubkeys =
         derive_multisig_ephemeral_pubkeys(key_manager, &info.public_keys, &sender_offset_key.key_id)?;
 
     let mut script_opcodes = vec![Opcode::CheckMultiSigVerify(
         info.party_number,
-        u8::try_from(ephemeral_pubkeys.len()).expect("Is checked"),
+        key_count,
         ephemeral_pubkeys.clone(),
         message,
     )];
