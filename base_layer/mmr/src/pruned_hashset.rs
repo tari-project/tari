@@ -261,6 +261,11 @@ mod test {
             }
         });
         assert!(non_peak.contains("peak_indices"), "{non_peak}");
+        let appended = tampered(|r| {
+            r.peak_indices.push(3);
+            r.peak_hashes.push(vec![0u8; 32]);
+        });
+        assert!(appended.contains("peak_indices"), "{appended}");
     }
 
     #[test]
