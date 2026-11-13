@@ -189,6 +189,10 @@ pub fn validate_individual_output(
     network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     check_permitted_output_types(consensus_constants, output)?;
+    AggregateBody::check_single_output_features(
+        output,
+        consensus_constants.coinbase_output_features_extra_max_length(),
+    )?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
@@ -1342,6 +1346,32 @@ mod test {
                     range_proof_type: RangeProofType::RevealedValue,
                     proof_present: true
                 }
+            ));
+        }
+
+        #[test]
+        fn non_coinbase_output_with_coinbase_extra_is_rejected_by_validate_individual_output() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let features = OutputFeatures {
+                coinbase_extra: vec![1, 2, 3].try_into().unwrap(),
+                ..Default::default()
+            };
+            let (output, _, _) = test_helpers::create_utxo(
+                MicroMinotari(100),
+                &key_manager,
+                &features,
+                &script!(Nop).unwrap(),
+                &Covenant::default(),
+                MicroMinotari::zero(),
+            );
+            let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::TransactionError(
+                    TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra
+                )
             ));
         }
     }

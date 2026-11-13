@@ -378,18 +378,27 @@ impl AggregateBody {
         Ok(())
     }
 
+    pub(crate) fn check_single_output_features(
+        output: &TransactionOutput,
+        max_coinbase_metadata_size: u32,
+    ) -> Result<(), TransactionError> {
+        if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
+            return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
+        }
+
+        if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_metadata_size as usize {
+            return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
+                len: output.features.coinbase_extra.len(),
+                max: max_coinbase_metadata_size,
+            });
+        }
+
+        Ok(())
+    }
+
     pub fn check_output_features(&self, max_coinbase_metadata_size: u32) -> Result<(), TransactionError> {
         for output in self.outputs() {
-            if !output.is_coinbase() && !output.features.coinbase_extra.is_empty() {
-                return Err(TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra);
-            }
-
-            if output.is_coinbase() && output.features.coinbase_extra.len() > max_coinbase_metadata_size as usize {
-                return Err(TransactionError::InvalidOutputFeaturesCoinbaseExtraSize {
-                    len: output.features.coinbase_extra.len(),
-                    max: max_coinbase_metadata_size,
-                });
-            }
+            Self::check_single_output_features(output, max_coinbase_metadata_size)?;
         }
 
         Ok(())
