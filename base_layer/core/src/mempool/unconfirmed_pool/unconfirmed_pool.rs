@@ -202,6 +202,18 @@ pub fn effective_weight(
 
 pub type TransactionKey = usize;
 
+/// What `insert_with_height_validation` did with a transaction
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InsertOutcome {
+    /// The transaction was added to the pool
+    Inserted,
+    /// Every kernel of the transaction is already in the pool; nothing was added
+    AlreadyStored,
+    /// The pool is full and the transaction does not outbid the lowest priority transaction, or making room would
+    /// evict one of its own pool ancestors; nothing was added or removed
+    PoolFull,
+}
+
 /// Configuration for the UnconfirmedPool
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -754,10 +766,7 @@ impl UnconfirmedPool {
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
-    ) -> Result<(), UnconfirmedPoolError> {
-        if self.has_transaction(&tx) {
-            return Ok(());
-        }
+    ) -> Result<InsertOutcome, UnconfirmedPoolError> {
         self.insert_with_height_validation(
             tx,
             dependent_outputs,
@@ -766,25 +775,44 @@ impl UnconfirmedPool {
         )
     }
 
-    /// Insert a new transaction into the UnconfirmedPool. Low priority transactions will be removed to make space for
-    /// higher priority transactions. The lowest priority transactions will be removed when the maximum capacity is
-    /// reached and the new transaction has a higher priority than the currently stored lowest priority transaction.
-    /// `height_validation` is the block the transaction was validated for, if it reads the height. The caller checks
-    /// that `tx` is not already in the pool (see [UnconfirmedPool::has_transaction]).
+    /// Insert a new transaction into the UnconfirmedPool. When the pool is at capacity, the lowest priority transaction
+    /// is evicted with its descendants to make space, if the new transaction's priority is not lower than it and the
+    /// eviction would not remove one of the new transaction's own pool ancestors; otherwise nothing is changed and
+    /// [InsertOutcome::PoolFull] is returned. A transaction already in the pool (see
+    /// [UnconfirmedPool::has_transaction]) is not stored again. `height_validation` is the block the transaction was
+    /// validated for, if it reads the height.
     pub fn insert_with_height_validation(
         &mut self,
         tx: Arc<Transaction>,
         dependent_outputs: Option<Vec<HashOutput>>,
         transaction_weighting: &TransactionWeight,
         height_validation: HeightValidation,
-    ) -> Result<(), UnconfirmedPoolError> {
+    ) -> Result<InsertOutcome, UnconfirmedPoolError> {
+        if self.has_transaction(&tx) {
+            return Ok(InsertOutcome::AlreadyStored);
+        }
         let new_key = self.get_next_key();
         let prioritized_tx = PrioritizedTransaction::new(new_key, transaction_weighting, tx, dependent_outputs)?;
         if self.tx_by_key.len() >= self.config.storage_capacity {
-            if prioritized_tx.priority < *self.lowest_priority()? {
-                return Ok(());
+            let (lowest_priority, lowest_key) = self
+                .tx_by_priority
+                .iter()
+                .next()
+                .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
+            if prioritized_tx.priority < *lowest_priority {
+                return Ok(InsertOutcome::PoolFull);
             }
-            self.remove_lowest_priority_tx()?;
+            let lowest_key = *lowest_key;
+            if !prioritized_tx.dependent_output_hashes.is_empty() &&
+                self.would_orphan(&prioritized_tx.transaction, &self.descendant_closure([lowest_key]))
+            {
+                return Ok(InsertOutcome::PoolFull);
+            }
+            let evicted = self.remove_transactions_and_descendants([lowest_key])?;
+            debug!(
+                target: LOG_TARGET,
+                "Unconfirmed pool full, evicted {evicted} transaction(s) for {prioritized_tx}"
+            );
         }
 
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
@@ -836,7 +864,7 @@ impl UnconfirmedPool {
         );
         self.tx_by_key.insert(new_key, prioritized_tx);
 
-        Ok(())
+        Ok(InsertOutcome::Inserted)
     }
 
     /// The pool transactions holding a validator node registration/exit slot that `tx` also registers or exits. At most
@@ -1121,41 +1149,46 @@ impl UnconfirmedPool {
     }
 
     /// Removes the pool transactions `keys` and every pool transaction that spends one of their outputs, directly or
-    /// through others: none of them can be valid without them. An output that another pool transaction also produces
-    /// is still available, so its spenders are kept. Each is found through the spent-output index and removed once,
-    /// and the index entries they share are pruned once at the end, so this is linear in the index entries touched.
-    /// Returns the number removed.
+    /// through others (see [UnconfirmedPool::descendant_closure]): none of them can be valid without them. Returns the
+    /// number removed.
     pub fn remove_transactions_and_descendants(
         &mut self,
         keys: impl IntoIterator<Item = TransactionKey>,
     ) -> Result<usize, UnconfirmedPoolError> {
-        let mut to_remove = keys.into_iter().collect::<Vec<_>>();
-        let mut removed = Vec::new();
-        // The producers of each output still in the pool. The output index is only pruned at the end, so its entries
-        // still list the producers removed so far.
+        let closure = self.descendant_closure(keys);
+        Ok(self.remove_transactions(closure)?.len())
+    }
+
+    /// The pool transactions `keys` and every pool transaction that spends one of their outputs, directly or through
+    /// others. An output that another pool transaction outside the set also produces is still available, so its
+    /// spenders are left out. Each is found through the spent-output index and visited once, so this is linear in the
+    /// index entries read.
+    fn descendant_closure(&self, keys: impl IntoIterator<Item = TransactionKey>) -> HashSet<TransactionKey> {
+        let mut to_visit = keys.into_iter().collect::<Vec<_>>();
+        let mut closure = HashSet::new();
+        // The producers of each output not in the set
         let mut live_producers = HashMap::<HashOutput, usize>::new();
-        while let Some(key) = to_remove.pop() {
-            let Some(tx) = self.take_transaction(key) else {
+        while let Some(key) = to_visit.pop() {
+            let Some(tx) = self.tx_by_key.get(&key) else {
                 continue;
             };
+            if !closure.insert(key) {
+                continue;
+            }
             for output in tx.transaction.body.outputs() {
                 let hash = output.hash();
                 let live = live_producers
                     .entry(hash)
                     .or_insert_with(|| self.txs_by_output.get(&hash).map_or(0, Vec::len));
                 *live = live.saturating_sub(1);
-                if *live > 0 {
-                    continue;
-                }
-                // Every spender is removed, so the whole entry is taken here rather than pruned
-                if let Some(spenders) = self.txs_by_spent_output.remove(&hash) {
-                    to_remove.extend(spenders);
+                if *live == 0 &&
+                    let Some(spenders) = self.txs_by_spent_output.get(&hash)
+                {
+                    to_visit.extend(spenders);
                 }
             }
-            removed.push(tx);
         }
-        self.prune_indexes(&removed)?;
-        Ok(removed.len())
+        closure
     }
 
     /// Whether `filter` lets the pool transaction `key` into a block template
@@ -2430,20 +2463,6 @@ impl UnconfirmedPool {
         false
     }
 
-    fn lowest_priority(&self) -> Result<&FeePriority, UnconfirmedPoolError> {
-        self.tx_by_priority
-            .keys()
-            .next()
-            .ok_or(UnconfirmedPoolError::StorageOutofSync)
-    }
-
-    fn remove_lowest_priority_tx(&mut self) -> Result<(), UnconfirmedPoolError> {
-        if let Some(tx_key) = self.tx_by_priority.values().next().copied() {
-            self.remove_transaction(tx_key)?;
-        }
-        Ok(())
-    }
-
     /// Remove all current mempool transactions from the UnconfirmedPoolStorage, returning that which have been removed
     pub fn drain_all_mempool_transactions(&mut self) -> Vec<Arc<Transaction>> {
         self.txs_by_signature.clear();
@@ -2685,7 +2704,6 @@ impl UnconfirmedPool {
                 self.txs_by_signature.remove(&sig);
             }
         }
-        // The other indexes tolerate missing entries: the descendant walk takes whole spent-output entries
         prune_entries(&mut self.txs_by_output, outputs, &is_live, &mut visits);
         prune_entries(&mut self.txs_by_spent_output, spent_outputs, &is_live, &mut visits);
         prune_entries(&mut self.txs_by_output_commitment, commitments, &is_live, &mut visits);
@@ -7305,6 +7323,199 @@ mod test {
             pool.drain_all_mempool_transactions();
             assert!(pool.tx_by_kernel_set.is_empty());
             assert_index_consistent(&pool);
+        }
+
+        mod at_capacity {
+            use std::time::{SystemTime, UNIX_EPOCH};
+
+            use super::*;
+
+            fn full_pool(capacity: usize, txs: &[&Arc<Transaction>]) -> UnconfirmedPool {
+                let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                    storage_capacity: capacity,
+                    weight_tx_skip_count: 3,
+                    min_fee: 0,
+                });
+                for tx in txs {
+                    let parents = tx.body.inputs().iter().map(|input| input.output_hash()).collect();
+                    pool.insert((*tx).clone(), Some(parents), &TransactionWeight::latest())
+                        .unwrap();
+                }
+                assert_eq!(pool.len(), capacity);
+                pool
+            }
+
+            /// `child_of` with the given fee
+            fn child_with_fee(base: &Transaction, parent: &Transaction, n: u64, fee: u64) -> Arc<Transaction> {
+                let child = child_of(base, parent, n);
+                let kernels = synthetic_tx(base, n, fee).body.kernels().clone();
+                Arc::new(Transaction::new(
+                    child.body.inputs().clone(),
+                    child.body.outputs().clone(),
+                    kernels,
+                    Default::default(),
+                    Default::default(),
+                ))
+            }
+
+            fn insert(pool: &mut UnconfirmedPool, tx: &Arc<Transaction>) -> InsertOutcome {
+                let parents = tx.body.inputs().iter().map(|input| input.output_hash()).collect();
+                pool.insert(tx.clone(), Some(parents), &TransactionWeight::latest())
+                    .unwrap()
+            }
+
+            /// Every index, to check that a rejected insert changes nothing
+            #[allow(clippy::type_complexity)]
+            fn indexes(
+                pool: &UnconfirmedPool,
+            ) -> (
+                BTreeMap<FeePriority, TransactionKey>,
+                HashMap<HashOutput, Vec<TransactionKey>>,
+                HashMap<HashOutput, Vec<TransactionKey>>,
+                HashMap<PrivateKey, Vec<TransactionKey>>,
+                HashMap<FixedHash, Vec<TransactionKey>>,
+                HashMap<FixedHash, Vec<TransactionKey>>,
+            ) {
+                (
+                    pool.tx_by_priority.clone(),
+                    pool.txs_by_output.clone(),
+                    pool.txs_by_spent_output.clone(),
+                    pool.txs_by_signature.clone(),
+                    pool.txs_by_kernel_excess.clone(),
+                    pool.txs_by_output_commitment.clone(),
+                )
+            }
+
+            fn base() -> Transaction {
+                let key_manager = KeyManager::new_random().unwrap();
+                tx!(MicroMinotari(5_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+                    .unwrap()
+                    .0
+            }
+
+            #[test]
+            fn eviction_removes_the_lowest_priority_transaction_with_its_descendants() {
+                let base = base();
+                let root = synthetic_tx(&base, 0, 1);
+                let child = child_with_fee(&base, &root, 1, 100);
+                let grandchild = child_with_fee(&base, &child, 2, 100);
+                let unrelated = synthetic_tx(&base, 3, 50);
+                let mut pool = full_pool(4, &[&root, &child, &grandchild, &unrelated]);
+
+                let incoming = synthetic_tx(&base, 4, 60);
+                assert_eq!(insert(&mut pool, &incoming), InsertOutcome::Inserted);
+                assert_eq!(pool.len(), 2);
+                assert_eq!(pool.tx_by_priority.len(), 2);
+                for tx in [&root, &child, &grandchild] {
+                    assert!(!pool.has_transaction(tx));
+                }
+                assert!(pool.has_transaction(&unrelated));
+                assert!(pool.has_transaction(&incoming));
+                for tx in [&root, &child] {
+                    let hash = tx.body.outputs()[0].hash();
+                    assert!(!pool.txs_by_output.contains_key(&hash));
+                    assert!(!pool.txs_by_spent_output.contains_key(&hash));
+                }
+                assert!(pool.check_data_consistency());
+            }
+
+            #[test]
+            fn eviction_that_would_remove_the_incoming_parent_is_rejected() {
+                let base = base();
+                let parent = synthetic_tx(&base, 0, 1);
+                let unrelated = synthetic_tx(&base, 1, 50);
+                let mut pool = full_pool(2, &[&parent, &unrelated]);
+                let before = indexes(&pool);
+
+                let child = child_with_fee(&base, &parent, 2, 100);
+                assert_eq!(insert(&mut pool, &child), InsertOutcome::PoolFull);
+                assert!(indexes(&pool) == before);
+                assert!(pool.has_transaction(&parent));
+                assert!(!pool.has_transaction(&child));
+            }
+
+            #[test]
+            fn eviction_that_would_remove_an_ancestor_through_its_descendant_is_rejected() {
+                let base = base();
+                let root = synthetic_tx(&base, 0, 1);
+                let child = child_with_fee(&base, &root, 1, 100);
+                let unrelated = synthetic_tx(&base, 2, 50);
+                let mut pool = full_pool(3, &[&root, &child, &unrelated]);
+                let before = indexes(&pool);
+
+                let grandchild = child_with_fee(&base, &child, 3, 100);
+                assert_eq!(insert(&mut pool, &grandchild), InsertOutcome::PoolFull);
+                assert!(indexes(&pool) == before);
+            }
+
+            #[test]
+            fn eviction_goes_ahead_if_another_producer_keeps_the_parent_output() {
+                let base = base();
+                let parent = synthetic_tx(&base, 0, 1);
+                let other_producer = same_outputs_as(&base, &parent, 1, 50);
+                let unrelated = synthetic_tx(&base, 2, 50);
+                let mut pool = full_pool(3, &[&parent, &other_producer, &unrelated]);
+
+                let child = child_with_fee(&base, &parent, 3, 100);
+                assert_eq!(insert(&mut pool, &child), InsertOutcome::Inserted);
+                assert!(!pool.has_transaction(&parent));
+                for tx in [&other_producer, &unrelated, &child] {
+                    assert!(pool.has_transaction(tx));
+                }
+                assert!(pool.check_data_consistency());
+            }
+
+            #[test]
+            fn insert_outcomes() {
+                let base = base();
+                let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+                    storage_capacity: 2,
+                    weight_tx_skip_count: 3,
+                    min_fee: 0,
+                });
+                let first = synthetic_tx(&base, 0, 10);
+                let second = synthetic_tx(&base, 1, 10);
+                assert_eq!(insert(&mut pool, &first), InsertOutcome::Inserted);
+                assert_eq!(insert(&mut pool, &second), InsertOutcome::Inserted);
+                assert_eq!(insert(&mut pool, &first), InsertOutcome::AlreadyStored);
+
+                let before = indexes(&pool);
+                assert_eq!(insert(&mut pool, &synthetic_tx(&base, 2, 5)), InsertOutcome::PoolFull);
+                assert!(indexes(&pool) == before);
+                assert!(pool.check_data_consistency());
+            }
+
+            #[test]
+            fn an_equal_priority_transaction_evicts_at_capacity() {
+                let base = base();
+                let held = synthetic_tx(&base, 0, 10);
+                let incoming = synthetic_tx(&base, 1, 10);
+                let weight = TransactionWeight::latest();
+                // The held transaction is given the priority the incoming one gets, which depends on the clock second.
+                // Retried in case the second changed in between.
+                let now = || SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                for _ in 0..3 {
+                    let mut pool = full_pool(1, &[&held]);
+                    let start = now();
+                    let priority = PrioritizedTransaction::new(0, &weight, incoming.clone(), None)
+                        .unwrap()
+                        .priority;
+                    let key = key_of(&pool, &held);
+                    pool.tx_by_priority.clear();
+                    pool.tx_by_priority.insert(priority.clone(), key);
+                    pool.tx_by_key.get_mut(&key).unwrap().priority = priority;
+                    let outcome = insert(&mut pool, &incoming);
+                    if now() != start {
+                        continue;
+                    }
+                    assert_eq!(outcome, InsertOutcome::Inserted);
+                    assert!(!pool.has_transaction(&held));
+                    assert!(pool.has_transaction(&incoming));
+                    assert!(pool.check_data_consistency());
+                    return;
+                }
+                panic!("the clock second changed on every attempt");
+            }
         }
     }
 }

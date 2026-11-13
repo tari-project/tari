@@ -375,6 +375,7 @@ impl MempoolInboundHandlers {
 #[cfg(test)]
 mod test {
     use prost::Message;
+    use tari_common_types::types::FixedHash;
     use tari_p2p::tari_message::TariMessageType;
     use tari_transaction_components::{MicroMinotari, key_manager::KeyManager, tx};
     use tokio::sync::mpsc;
@@ -468,6 +469,72 @@ mod test {
         assert!(propagated.try_recv().is_ok());
         assert!(propagated.try_recv().is_ok());
         assert!(propagated.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn full_pool_rejects_and_does_not_relay_a_dropped_tx_and_eviction_removes_descendants() {
+        let mut config = MempoolConfig::default();
+        config.unconfirmed_pool.min_fee = 0;
+        config.unconfirmed_pool.storage_capacity = 2;
+        let mempool = Mempool::new(config, create_consensus_rules(), Box::new(MockValidator::new(true)));
+        let (tx_sender, mut propagated) = mpsc::unbounded_channel();
+        let mut handlers =
+            MempoolInboundHandlers::new(mempool.clone(), OutboundMempoolServiceInterface::new(tx_sender));
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_with_fee = |fee| {
+            tx!(MicroMinotari(100_000), fee: MicroMinotari(fee), inputs: 1, outputs: 1, &key_manager)
+                .expect("Failed to get tx")
+        };
+        let (parent, _, parent_outputs) = tx_with_fee(10);
+        let child = tx_with_fee(30).0;
+        let child = Arc::new(Transaction::new(
+            vec![
+                parent_outputs
+                    .first()
+                    .unwrap()
+                    .to_transaction_input(&key_manager)
+                    .unwrap(),
+            ],
+            child.body.outputs().clone(),
+            child.body.kernels().clone(),
+            child.offset,
+            child.script_offset,
+        ));
+        let [tx_high_1, tx_high_2, tx_low] = [20, 25, 5].map(|fee| Arc::new(tx_with_fee(fee).0));
+        for tx in [Arc::new(parent), child.clone()] {
+            assert_eq!(mempool.insert(tx).await.unwrap(), TxStorageResponse::UnconfirmedPool);
+        }
+
+        // Evicting the parent evicts its child too
+        assert_eq!(
+            mempool.insert(tx_high_1.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 1);
+        assert_eq!(
+            mempool.has_transaction(child).await.unwrap(),
+            TxStorageResponse::NotStored(None)
+        );
+        assert_eq!(
+            mempool.insert(tx_high_2.clone()).await.unwrap(),
+            TxStorageResponse::UnconfirmedPool
+        );
+        let retrieved = mempool.retrieve(u64::MAX, 1, FixedHash::zero()).await.unwrap();
+        assert_eq!(retrieved.len(), 2);
+        assert!(retrieved.contains(&tx_high_1) && retrieved.contains(&tx_high_2));
+
+        // A transaction that does not outbid the full pool is rejected and not relayed
+        assert_eq!(
+            mempool.insert(tx_low.clone()).await.unwrap(),
+            TxStorageResponse::NotStoredFeeTooLow
+        );
+        let body = proto::types::Transaction::try_from(tx_low).unwrap().encode_to_vec();
+        handlers
+            .handle_transaction_message(create_peer_message(TariMessageType::NewTransaction, body))
+            .await
+            .unwrap();
+        assert!(propagated.try_recv().is_err());
+        assert_eq!(mempool.stats().await.unwrap().unconfirmed_txs, 2);
     }
 
     mod peer_bans {

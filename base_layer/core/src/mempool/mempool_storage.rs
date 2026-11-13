@@ -60,6 +60,7 @@ use crate::{
         reorg_pool::ReorgPool,
         unconfirmed_pool::{
             HeightValidation,
+            InsertOutcome,
             MAX_BLOCK_TEMPLATE_BODY_BYTES,
             MAX_SPENDS_PER_OUTPUT,
             RetrieveResults,
@@ -524,15 +525,29 @@ impl MempoolStorage {
         // Evicting first also keeps a full pool from evicting its lowest priority transaction for `tx`. Descendants are
         // kept: their inputs may also be produced by the transaction `tx` is a subset of.
         self.unconfirmed_pool.remove_transactions(victims)?;
-        self.unconfirmed_pool
-            .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?;
-        debug!(
-            target: LOG_TARGET,
-            "Transaction {} inserted in {:.2?}",
-            tx_id,
-            timer.elapsed()
-        );
-        Ok(TxStorageResponse::UnconfirmedPool)
+        match self
+            .unconfirmed_pool
+            .insert_with_height_validation(tx, dependent_outputs, &weight, validation)?
+        {
+            InsertOutcome::Inserted => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction {} inserted in {:.2?}",
+                    tx_id,
+                    timer.elapsed()
+                );
+                Ok(TxStorageResponse::UnconfirmedPool)
+            },
+            InsertOutcome::AlreadyStored => Ok(TxStorageResponse::UnconfirmedPool),
+            InsertOutcome::PoolFull => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Tx: ({tx_id}) not stored: the unconfirmed pool is full and it does not outbid the lowest priority \
+                     transaction"
+                );
+                Ok(TxStorageResponse::NotStoredFeeTooLow)
+            },
+        }
     }
 
     fn get_transaction_weighting(&self) -> TransactionWeight {
