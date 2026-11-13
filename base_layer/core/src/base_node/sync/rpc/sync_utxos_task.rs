@@ -27,6 +27,7 @@ use std::{
 };
 
 use log::*;
+use tari_common_types::types::FixedHash;
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
@@ -39,7 +40,8 @@ use tokio::{sync::mpsc, task};
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
-    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    base_node::sync::rpc::service::is_on_requested_chain,
+    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
     proto,
     proto::base_node::{SyncUtxosRequest, SyncUtxosResponse, sync_utxos_response::Txo},
 };
@@ -170,6 +172,8 @@ where B: BlockchainBackend + 'static
         }
 
         let start_header = current_header.clone();
+        let end_height = end_header.height;
+        let end_hash = end_header.hash();
         // Tracks whether the stream walked all the way to `end_header`. Only on a natural completion
         // do we emit the terminator below; an early break (peer left, send failed) must not, so that
         // a truncated stream is not mistaken for a complete one by the consumer.
@@ -190,10 +194,16 @@ where B: BlockchainBackend + 'static
             }
 
             let outputs_with_statuses = self
-                .db
-                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_header.hash()))
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
+                .check_chain_on_read_err(
+                    self.db
+                        .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_header.hash()))
+                        .await,
+                    current_header.height,
+                    &current_header_hash,
+                    end_height,
+                    &end_hash,
+                )
+                .await?;
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
@@ -237,10 +247,14 @@ where B: BlockchainBackend + 'static
             );
 
             let inputs_in_block = self
-                .db
-                .fetch_inputs_in_block(current_header_hash)
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
+                .check_chain_on_read_err(
+                    self.db.fetch_inputs_in_block(current_header_hash).await,
+                    current_header.height,
+                    &current_header_hash,
+                    end_height,
+                    &end_hash,
+                )
+                .await?;
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
@@ -256,10 +270,16 @@ where B: BlockchainBackend + 'static
                     .map(|input| input.output_hash())
                     .collect::<Vec<_>>();
                 let mined_infos = self
-                    .db
-                    .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
-                    .await
-                    .rpc_status_internal_error(LOG_TARGET)?;
+                    .check_chain_on_read_err(
+                        self.db
+                            .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
+                            .await,
+                        current_header.height,
+                        &current_header_hash,
+                        end_height,
+                        &end_hash,
+                    )
+                    .await?;
                 if tx.is_closed() {
                     debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                     break;
@@ -278,6 +298,13 @@ where B: BlockchainBackend + 'static
                 let input_commitment = match mined_info {
                     Some(o) => o.output.commitment,
                     None => {
+                        self.verify_on_requested_chain(
+                            current_header.height,
+                            &current_header_hash,
+                            end_height,
+                            &end_hash,
+                        )
+                        .await?;
                         return Err(RpcStatus::general(&format!(
                             "Mined info for input '{}' not found",
                             input.output_hash().to_hex()
@@ -296,6 +323,9 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 current_header_hash
             );
+
+            self.verify_on_requested_chain(current_header.height, &current_header_hash, end_height, &end_hash)
+                .await?;
 
             let mut txos = Vec::with_capacity(outputs.len().saturating_add(inputs.len()));
             txos.append(&mut outputs);
@@ -344,12 +374,8 @@ where B: BlockchainBackend + 'static
                     header_chunk.next()
                 },
             };
-            current_header = next_header.ok_or_else(|| {
-                RpcStatus::general(&format!(
-                    "Potential data consistency issue: header {} not found",
-                    next_height
-                ))
-            })?;
+            current_header = next_header
+                .ok_or_else(|| RpcStatus::conflict(&format!("Header #{} is no longer on the chain", next_height)))?;
         }
 
         // Always send a final terminator response tagged with the end header. It carries no TXO, so the
@@ -382,13 +408,111 @@ where B: BlockchainBackend + 'static
 
         Ok(())
     }
+
+    async fn verify_on_requested_chain(
+        &self,
+        current_height: u64,
+        current_header_hash: &FixedHash,
+        end_height: u64,
+        end_hash: &FixedHash,
+    ) -> Result<(), RpcStatus> {
+        let (header_at_height, end_header_now) = self
+            .db
+            .fetch_header_pair(current_height, end_height)
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+        if !is_on_requested_chain(
+            current_header_hash,
+            header_at_height.as_ref(),
+            end_header_now.as_ref(),
+            end_hash,
+        ) {
+            return Err(RpcStatus::conflict(
+                "Reorg detected: the requested end block is no longer on the chain",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn check_chain_on_read_err<T>(
+        &self,
+        res: Result<T, ChainStorageError>,
+        current_height: u64,
+        current_header_hash: &FixedHash,
+        end_height: u64,
+        end_hash: &FixedHash,
+    ) -> Result<T, RpcStatus> {
+        match res {
+            Ok(val) => Ok(val),
+            Err(err) => {
+                self.verify_on_requested_chain(current_height, current_header_hash, end_height, end_hash)
+                    .await?;
+                Err(RpcStatus::log_internal_error(LOG_TARGET)(err))
+            },
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use tari_comms::protocol::rpc::RpcStatusCode;
     use tari_transaction_components::transaction_components::TransactionOutput;
 
     use super::*;
+
+    #[tokio::test]
+    async fn missing_end_block_during_output_read_reports_conflict() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let start = chain.get_block_and_smt_by_name("1").unwrap();
+        let mut disappeared_end = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        disappeared_end.nonce = disappeared_end.nonce.wrapping_add(1);
+
+        let task = SyncUtxosTask::new(chain.db().clone().into(), Arc::new(NodeId::new()));
+        let (mut tx, _rx) = mpsc::channel(100);
+        let err = task
+            .start_streaming(&mut tx, start.header().clone(), disappeared_end)
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::Conflict);
+    }
+
+    #[tokio::test]
+    async fn check_chain_on_read_err_preserves_db_error_when_chain_is_unchanged() {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let start = chain.get_block_and_smt_by_name("1").unwrap();
+        let end = chain.get_block_and_smt_by_name("4").unwrap();
+        let task = SyncUtxosTask::new(chain.db().clone().into(), Arc::new(NodeId::new()));
+
+        let err = task
+            .check_chain_on_read_err::<()>(
+                Err(ChainStorageError::AccessError("simulated storage failure".to_string())),
+                start.header().height,
+                start.hash(),
+                end.header().height,
+                end.hash(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.as_status_code(), RpcStatusCode::InternalServerError);
+
+        let mut reorged_current = *start.hash();
+        reorged_current[0] ^= 0xff;
+        let conflict_err = task
+            .check_chain_on_read_err::<()>(
+                Err(ChainStorageError::ValueNotFound {
+                    entity: "TransactionOutput",
+                    field: "header_hash",
+                    value: reorged_current.to_hex(),
+                }),
+                start.header().height,
+                &reorged_current,
+                end.header().height,
+                end.hash(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(conflict_err.as_status_code(), RpcStatusCode::Conflict);
+    }
 
     #[tokio::test]
     async fn duplicate_output_stream_matches_spend_to_pre_tranche_instance() {
