@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester},
@@ -35,6 +35,7 @@ use tari_comms::{
     test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
 };
 use tari_node_components::blocks::{ChainBlock, ChainHeader};
+use tari_utilities::ByteArray;
 
 use super::synchronizer::{dial_failure_is_peer_caused, rpc_setup_failure_is_peer_caused};
 use crate::{
@@ -45,7 +46,7 @@ use crate::{
         SyncPeer,
         mock_sync_peer::{MockSyncPeer, banned_peers, connect_mock_peer, connect_mock_peer_as},
     },
-    chain_storage::BlockchainDatabase,
+    chain_storage::{BlockchainDatabase, DbTransaction, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
     test_helpers::{
         BlockSpecs,
         blockchain::{TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain},
@@ -412,6 +413,47 @@ async fn a_peer_with_a_stronger_claim_that_stops_below_our_header_tip_is_banned_
         ban_reason.contains("did not supply all the requested blocks"),
         "{ban_reason}"
     );
+}
+
+/// Output state a failed horizon sync left under our headers is reset before block sync from genesis, which then
+/// adds the blocks those outputs are in
+#[tokio::test]
+async fn block_sync_from_genesis_resets_output_state_left_by_horizon_sync() {
+    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
+    let block_a = chain.get("A").unwrap();
+    let mut txn = DbTransaction::new();
+    let mut updates = Vec::new();
+    for output in block_a.block().body.outputs() {
+        txn.insert_utxo(output.clone(), *block_a.hash(), block_a.height(), 0);
+        updates.push(HorizonStateTreeUpdate {
+            key: FixedHash::try_from(output.commitment.as_bytes()).unwrap(),
+            value: Some(output.smt_hash(block_a.height())),
+            replaces_value: false,
+        });
+    }
+    txn.apply_horizon_state_tree_updates(updates);
+    txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+        checkpoint_height: block_a.height(),
+        checkpoint_hash: *block_a.hash(),
+        sync_target_height: block_a.height(),
+        sync_target_hash: *block_a.hash(),
+    });
+    db.write(txn).unwrap();
+    assert!(!db.fetch_outputs_in_block(*block_a.hash()).unwrap().is_empty());
+
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block_a.block().clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block_a)).await;
+
+    sync_blocks(&db, connectivity, BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 1);
+    assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
+    db.verify_horizon_sync_output_root(block_a.header().output_mr).unwrap();
 }
 
 #[test]
