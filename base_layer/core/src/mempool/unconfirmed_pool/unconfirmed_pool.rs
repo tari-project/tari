@@ -131,6 +131,13 @@ pub const MAX_LINKS_PER_CANDIDATE: usize =
 /// this the branch is left out instead.
 pub const MAX_EXTRA_PRODUCERS_PER_LOOKUP: usize = 8;
 
+/// The most pool transactions that may spend one output (see [UnconfirmedPool::conflict_set_victims]). Only one of them
+/// can ever be mined; this bounds the pool capacity that copies of a transaction padded with other kernels can take per
+/// output. It does not bound the walks of the kernel signature index (see [UnconfirmedPool::has_transaction]): a kernel
+/// shared by transactions spending different outputs, or a deep chain of unconfirmed transactions, still lengthens
+/// them. Mempool policy, not a consensus rule.
+pub const MAX_SPENDS_PER_OUTPUT: usize = 8;
+
 /// The outcome of a branch's internal-duplicate check
 enum DuplicateCheck {
     Clean,
@@ -230,6 +237,9 @@ pub struct UnconfirmedPool {
     pub(crate) config: UnconfirmedPoolConfig,
     key_counter: usize,
     tx_by_key: HashMap<TransactionKey, PrioritizedTransaction>,
+    /// Each list is in ascending key order: keys come from [UnconfirmedPool::get_next_key], which only counts up, are
+    /// pushed on insert, and removal keeps the order (see [UnconfirmedPool::prune_indexes]). The spend cap binary
+    /// searches them (see [UnconfirmedPool::conflict_set_victims]).
     txs_by_signature: HashMap<PrivateKey, Vec<TransactionKey>>,
     /// The pool transaction with each kernel set (see [kernel_set]). Insert refuses an exact match, so there is one.
     tx_by_kernel_set: HashMap<Vec<PrivateKey>, TransactionKey>,
@@ -843,6 +853,102 @@ impl UnconfirmedPool {
         holders.sort_unstable();
         holders.dedup();
         holders
+    }
+
+    /// The pool transactions to evict so that `tx` can be stored, or None if it may not be stored: at most
+    /// [MAX_SPENDS_PER_OUTPUT] pool transactions may spend one output. Where that many already spend an output `tx`
+    /// spends, `tx` is stored only if the spenders that share a kernel with it all hold a strict superset of its
+    /// kernels, and there is at least one. Any valid spend of an output carries its owner's kernels, so the owner's
+    /// transaction shares kernels only with copies of it padded with other kernels, of which it is a strict subset, and
+    /// is stored; spenders sharing none of its kernels (another variant the owner signed) neither block it nor are
+    /// replaced by it. A transaction sharing no kernel with any spender (such as an owner's new fee bump) is not
+    /// stored.
+    ///
+    /// It then replaces the sharing spender with the most kernels (the lowest priority of those): a padded copy has
+    /// more kernels than what it pads, so an honest transaction or aggregate is never replaced by a part of itself
+    /// while a copy padding it remains, whatever fee the copy promises, and a smallest one is never replaced. Each
+    /// replacement shrinks the kernels the spenders sharing them have in common, which bounds how often it can happen.
+    /// The outputs `tx` spends are taken in its input order, and a capped output that a spender already chosen for an
+    /// earlier one also spends is passed over, with neither a subset check nor a replacement of its own. The caller
+    /// checks that `tx` is not already in the pool (see [UnconfirmedPool::has_transaction]), and that replacing them
+    /// does not orphan it (see [UnconfirmedPool::would_orphan]).
+    ///
+    /// Each spender is matched against the signature index list of each kernel of `tx` by a binary search, so a
+    /// spender costs a logarithmic number of steps per kernel of `tx`, whatever the size of the spender or the lists.
+    pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
+        let mut signature_lists = None;
+        // The number of kernels of `tx` each spender has, so that one spending many capped inputs is searched once
+        let mut shared_kernels = HashMap::<TransactionKey, usize>::new();
+        let mut victims = Vec::new();
+        let mut chosen = HashSet::new();
+        for input in tx.body.inputs() {
+            let Some(spenders) = self.txs_by_spent_output.get(&input.output_hash()) else {
+                continue;
+            };
+            if spenders.len() < MAX_SPENDS_PER_OUTPUT || spenders.iter().any(|key| chosen.contains(key)) {
+                continue;
+            }
+            // A transaction repeating a kernel signature is a strict subset of nothing
+            let lists = signature_lists
+                .get_or_insert_with(|| self.signature_lists(tx))
+                .as_ref()?;
+            let mut victim: Option<&PrioritizedTransaction> = None;
+            for key in spenders {
+                let spender = self.tx_by_key.get(key)?;
+                let shared = *shared_kernels
+                    .entry(*key)
+                    .or_insert_with(|| lists.iter().filter(|keys| keys.binary_search(key).is_ok()).count());
+                if shared == 0 {
+                    continue;
+                }
+                // Every kernel of `tx` is one of the spender's, and the spender has more
+                if shared < lists.len() || spender.kernel_signatures.len() <= lists.len() {
+                    return None;
+                }
+                let replaces = victim.is_none_or(|victim| {
+                    spender
+                        .kernel_signatures
+                        .len()
+                        .cmp(&victim.kernel_signatures.len())
+                        .then_with(|| victim.priority.cmp(&spender.priority))
+                        .is_gt()
+                });
+                if replaces {
+                    victim = Some(spender);
+                }
+            }
+            let victim = victim?;
+            chosen.insert(victim.key);
+            victims.push(victim.key);
+        }
+        Some(victims)
+    }
+
+    /// True if a pool transaction has exactly the kernels of `tx`
+    pub fn has_kernel_set(&self, tx: &Transaction) -> bool {
+        kernel_set(tx).is_some_and(|set| self.tx_by_kernel_set.contains_key(&set))
+    }
+
+    /// True if `removed` holds every pool producer of an output `tx` spends, so that removing them would leave `tx`
+    /// without its parent. A producer list longer than `removed` is passed over without reading it.
+    pub fn would_orphan(&self, tx: &Transaction, removed: &HashSet<TransactionKey>) -> bool {
+        !removed.is_empty() &&
+            tx.body.inputs().iter().any(|input| {
+                self.txs_by_output.get(&input.output_hash()).is_some_and(|producers| {
+                    producers.len() <= removed.len() && producers.iter().all(|key| removed.contains(key))
+                })
+            })
+    }
+
+    /// The signature index list of each kernel of `tx` (empty for a kernel no pool transaction has), or None if `tx`
+    /// repeats a kernel signature
+    fn signature_lists(&self, tx: &Transaction) -> Option<Vec<&[TransactionKey]>> {
+        Some(
+            kernel_set(tx)?
+                .iter()
+                .map(|sig| self.txs_by_signature.get(sig).map_or(&[][..], Vec::as_slice))
+                .collect(),
+        )
     }
 
     #[cfg(test)]
@@ -2689,6 +2795,7 @@ impl UnconfirmedPool {
             self.txs_by_signature
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
+            self.txs_by_signature.values().all(|tx_keys| tx_keys.is_sorted()) &&
             self.txs_by_output
                 .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
@@ -4638,6 +4745,367 @@ mod test {
             Default::default(),
             Default::default(),
         ))
+    }
+
+    #[tokio::test]
+    async fn a_newcomer_at_the_spend_cap_must_have_a_strict_subset_of_the_kernels_of_every_spender_sharing_one() {
+        use tari_common_types::types::CompressedSignature;
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let kernel = |n: u64| synthetic_tx(&base, n, 10).body.kernels()[0].clone();
+        let spend = |n: u64, kernels| {
+            Arc::new(Transaction::new(
+                base.body.inputs().clone(),
+                synthetic_tx(&base, n, 1).body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let (owner, other) = (kernel(0), kernel(1));
+        // A distinct kernel with the same signature scalar as the owner's (another nonce)
+        let mut owner_again = owner.clone();
+        owner_again.excess_sig = CompressedSignature::new(
+            crate::test_helpers::new_public_key(),
+            owner.excess_sig.get_signature().clone(),
+        );
+        assert_ne!(owner_again, owner);
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        for n in 0..u64::try_from(MAX_SPENDS_PER_OUTPUT).unwrap() {
+            let kernels = vec![owner.clone(), owner_again.clone(), kernel(3 + n)];
+            unconfirmed_pool
+                .insert(spend(10 + n, kernels), None, &tx_weight)
+                .unwrap();
+        }
+        // `other` is in the pool, but in none of the spenders: each has the owner's signature twice, which counts once
+        let other_input = distinct_inputs(&base.body.inputs()[0], 1).pop().unwrap();
+        unconfirmed_pool
+            .insert(
+                Arc::new(Transaction::new(
+                    vec![other_input],
+                    synthetic_tx(&base, 50, 1).body.outputs().clone(),
+                    vec![other.clone(), kernel(3)],
+                    Default::default(),
+                    Default::default(),
+                )),
+                None,
+                &tx_weight,
+            )
+            .unwrap();
+        assert!(
+            unconfirmed_pool
+                .conflict_set_victims(&spend(100, vec![owner.clone(), other]))
+                .is_none()
+        );
+        // The owner's own transaction replaces one spender
+        assert_eq!(
+            unconfirmed_pool
+                .conflict_set_victims(&spend(101, vec![owner.clone()]))
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // A newcomer must be a strict subset of every spender it shares a kernel with, not only of most of them: `{o,
+        // a}` is one of seven spenders `{o, a, x_i}`, and shares `o` with `{o, b}` but is not a subset of it
+        let (o, a, b) = (kernel(0), kernel(1), kernel(2));
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        for n in 0..u64::try_from(MAX_SPENDS_PER_OUTPUT - 1).unwrap() {
+            unconfirmed_pool
+                .insert(spend(10 + n, vec![o.clone(), a.clone(), kernel(3)]), None, &tx_weight)
+                .unwrap();
+        }
+        unconfirmed_pool
+            .insert(spend(20, vec![o.clone(), b]), None, &tx_weight)
+            .unwrap();
+        assert!(unconfirmed_pool.conflict_set_victims(&spend(100, vec![o, a])).is_none());
+    }
+
+    /// Spends of several inputs at the spend cap: `(a)` the same spenders on both, `(b)` different spenders, `(c)` the
+    /// victim chosen for one input also spends the other, whose other spenders partly overlap the newcomer's kernels
+    /// (the second input is passed over, so they are not checked), `(d)` a capped input none of whose spenders
+    /// shares a kernel with the newcomer, and `(e)` a spender of both inputs, checked once, replaced at the second
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn a_newcomer_spending_several_capped_inputs_evicts_the_lowest_spender_of_each() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let inputs = distinct_inputs(&base.body.inputs()[0], 2);
+        let (a, b) = (inputs[0].clone(), inputs[1].clone());
+        let kernel = |fee: u64| synthetic_tx(&base, 0, fee).body.kernels()[0].clone();
+        let owner = kernel(1);
+        let spend = |inputs: Vec<_>, kernels| {
+            Arc::new(Transaction::new(
+                inputs,
+                synthetic_tx(&base, 0, 1).body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        // `count` spenders of `inputs`, each with a kernel paying a fee rising from `first_fee`, and the owner's kernel
+        // if `with_owner`; returns their keys, lowest fee first
+        let fill = |pool: &mut UnconfirmedPool, inputs: Vec<_>, with_owner: bool, count: usize, first_fee: u64| {
+            let mut keys = Vec::new();
+            for fee in (0..count).map(|i| first_fee + 100 * u64::try_from(i).unwrap()) {
+                let kernels = if with_owner {
+                    vec![owner.clone(), kernel(fee)]
+                } else {
+                    vec![kernel(fee)]
+                };
+                let tx = spend(inputs.clone(), kernels);
+                pool.insert(tx.clone(), None, &tx_weight).unwrap();
+                keys.push(*pool.tx_by_key.iter().find(|(_, p)| p.transaction == tx).unwrap().0);
+            }
+            keys
+        };
+        let new_pool = || UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        let spenders =
+            |pool: &UnconfirmedPool, input: &tari_transaction_components::transaction_components::TransactionInput| {
+                pool.txs_by_spent_output[&input.output_hash()].len()
+            };
+        let newcomer = spend(vec![a.clone(), b.clone()], vec![owner.clone()]);
+
+        // (a)
+        let mut pool = new_pool();
+        let keys = fill(
+            &mut pool,
+            vec![a.clone(), b.clone()],
+            true,
+            MAX_SPENDS_PER_OUTPUT,
+            1_000,
+        );
+        let victims = pool.conflict_set_victims(&newcomer).unwrap();
+        assert_eq!(victims, vec![keys[0]]);
+        pool.remove_transactions(victims).unwrap();
+        pool.insert(newcomer.clone(), None, &tx_weight).unwrap();
+        assert_eq!(spenders(&pool, &a), MAX_SPENDS_PER_OUTPUT);
+        assert_eq!(spenders(&pool, &b), MAX_SPENDS_PER_OUTPUT);
+
+        // (a), with the lowest fee inserted last: it is still the one replaced
+        let mut pool = new_pool();
+        let keys = (0..MAX_SPENDS_PER_OUTPUT)
+            .rev()
+            .flat_map(|i| {
+                let fee = 1_000 + 100 * u64::try_from(i).unwrap();
+                fill(&mut pool, vec![a.clone(), b.clone()], true, 1, fee)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(pool.conflict_set_victims(&newcomer).unwrap(), vec![
+            *keys.last().unwrap()
+        ]);
+
+        // (b)
+        let mut pool = new_pool();
+        let a_keys = fill(&mut pool, vec![a.clone()], true, MAX_SPENDS_PER_OUTPUT, 1_000);
+        let b_keys = fill(&mut pool, vec![b.clone()], true, MAX_SPENDS_PER_OUTPUT, 1_000);
+        assert_eq!(pool.conflict_set_victims(&newcomer).unwrap(), vec![
+            a_keys[0], b_keys[0]
+        ]);
+
+        // (c) The newcomer `{owner, z}`; the largest spender of `a`, `{owner, z, w, w2}`, also spends `b`, whose other
+        // spenders `{owner, y_i}` partly overlap the newcomer
+        let mut pool = new_pool();
+        let z = kernel(1);
+        let shared = spend(vec![a.clone(), b.clone()], vec![
+            owner.clone(),
+            z.clone(),
+            kernel(1),
+            kernel(1),
+        ]);
+        pool.insert(shared.clone(), None, &tx_weight).unwrap();
+        for _ in 1..MAX_SPENDS_PER_OUTPUT {
+            let a_spender = spend(vec![a.clone()], vec![owner.clone(), z.clone(), kernel(1)]);
+            pool.insert(a_spender, None, &tx_weight).unwrap();
+            let b_spender = spend(vec![b.clone()], vec![owner.clone(), kernel(1)]);
+            pool.insert(b_spender, None, &tx_weight).unwrap();
+        }
+        let shared_key = *pool.tx_by_key.iter().find(|(_, p)| p.transaction == shared).unwrap().0;
+        let newcomer_with_z = spend(vec![a.clone(), b.clone()], vec![owner.clone(), z]);
+        assert_eq!(pool.conflict_set_victims(&newcomer_with_z).unwrap(), vec![shared_key]);
+
+        // (e) A spender `x` of both inputs, checked at the first (where a larger one is replaced), is the largest at
+        // the second, so it is replaced there
+        let mut pool = new_pool();
+        let key_of = |pool: &UnconfirmedPool, tx: &Arc<Transaction>| {
+            *pool.tx_by_key.iter().find(|(_, p)| &p.transaction == tx).unwrap().0
+        };
+        let largest_of_a = spend(vec![a.clone()], vec![owner.clone(), kernel(1), kernel(1), kernel(1)]);
+        let x = spend(vec![a.clone(), b.clone()], vec![owner.clone(), kernel(1), kernel(1)]);
+        for tx in [&largest_of_a, &x] {
+            pool.insert(tx.clone(), None, &tx_weight).unwrap();
+        }
+        fill(&mut pool, vec![a.clone()], true, MAX_SPENDS_PER_OUTPUT - 2, 1_000);
+        fill(&mut pool, vec![b.clone()], true, MAX_SPENDS_PER_OUTPUT - 1, 1_000);
+        assert_eq!(pool.conflict_set_victims(&newcomer).unwrap(), vec![
+            key_of(&pool, &largest_of_a),
+            key_of(&pool, &x)
+        ]);
+
+        // (d), with the input none of whose spenders shares a kernel with the newcomer spent first or second
+        for no_subset_first in [true, false] {
+            let mut pool = new_pool();
+            fill(&mut pool, vec![a.clone()], true, MAX_SPENDS_PER_OUTPUT, 1_000);
+            fill(&mut pool, vec![b.clone()], false, MAX_SPENDS_PER_OUTPUT, 1_000);
+            let inputs = if no_subset_first {
+                vec![b.clone(), a.clone()]
+            } else {
+                vec![a.clone(), b.clone()]
+            };
+            assert!(
+                pool.conflict_set_victims(&spend(inputs, vec![owner.clone()])).is_none(),
+                "{no_subset_first}"
+            );
+        }
+    }
+
+    /// A capped spender set of an honest aggregate `{t1, t2}` and copies of it padded with a kernel each (promising
+    /// higher fees), and sets whose replaced spender produces an output the newcomer also spends
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn the_spender_replaced_at_the_cap_is_the_largest_unless_that_orphans_the_newcomer() {
+        use tari_transaction_components::transaction_components::TransactionInput;
+        let key_manager = KeyManager::new_random().unwrap();
+        let tx_weight = TransactionWeight::latest();
+        let base = normal_txs(&key_manager, 1, 5).pop().unwrap();
+        let input = base.body.inputs()[0].clone();
+        let kernel = |fee: u64| synthetic_tx(&base, 0, fee).body.kernels()[0].clone();
+        let spend = |inputs: Vec<TransactionInput>, n: u64, kernels| {
+            Arc::new(Transaction::new(
+                inputs,
+                synthetic_tx(&base, n, 1).body.outputs().clone(),
+                kernels,
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        let key_of = |pool: &UnconfirmedPool, tx: &Arc<Transaction>| {
+            *pool.tx_by_key.iter().find(|(_, p)| &p.transaction == tx).unwrap().0
+        };
+
+        let (t1, t2) = (kernel(1), kernel(5_000));
+        let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        let aggregate = spend(vec![input.clone()], 0, vec![t1.clone(), t2.clone()]);
+        pool.insert(aggregate.clone(), None, &tx_weight).unwrap();
+        let mut padded = Vec::new();
+        for i in 1..u64::try_from(MAX_SPENDS_PER_OUTPUT).unwrap() {
+            let tx = spend(vec![input.clone()], i, vec![
+                t1.clone(),
+                t2.clone(),
+                kernel(100_000 * i),
+            ]);
+            pool.insert(tx.clone(), None, &tx_weight).unwrap();
+            padded.push(key_of(&pool, &tx));
+        }
+        let victims = pool
+            .conflict_set_victims(&spend(vec![input.clone()], 100, vec![t1.clone()]))
+            .unwrap();
+        assert_eq!(victims.len(), 1);
+        assert!(padded.contains(&victims[0]));
+
+        let output = |n: u64| synthetic_tx(&base, n, 1).body.outputs()[0].clone();
+        let input_of = |output: &tari_transaction_components::transaction_components::TransactionOutput| {
+            TransactionInput::new_with_output_hash(output.hash(), Default::default(), Default::default())
+        };
+        let tx = |inputs: Vec<TransactionInput>, outputs, kernels| {
+            Arc::new(Transaction::new(
+                inputs,
+                outputs,
+                kernels,
+                Default::default(),
+                Default::default(),
+            ))
+        };
+        // Stores `tx` as the mempool does: None if it is not stored, else the spenders it replaced
+        let admit = |pool: &mut UnconfirmedPool, tx: &Arc<Transaction>| {
+            let victims = pool.conflict_set_victims(tx)?;
+            if pool.would_orphan(tx, &victims.iter().copied().collect()) {
+                return None;
+            }
+            pool.remove_transactions(victims.clone()).unwrap();
+            pool.insert(tx.clone(), None, &tx_weight).unwrap();
+            Some(victims)
+        };
+        let honest = kernel(1);
+
+        // The replaced spender `v` is the only producer of an output `y` the newcomer also spends
+        let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        let y = output(0);
+        let v = tx(vec![input.clone()], vec![y.clone()], vec![
+            honest.clone(),
+            kernel(1),
+            kernel(1),
+        ]);
+        pool.insert(v.clone(), None, &tx_weight).unwrap();
+        for i in 1..u64::try_from(MAX_SPENDS_PER_OUTPUT).unwrap() {
+            pool.insert(
+                spend(vec![input.clone()], i, vec![honest.clone(), kernel(1)]),
+                None,
+                &tx_weight,
+            )
+            .unwrap();
+        }
+        let orphaned = spend(vec![input.clone(), input_of(&y)], 100, vec![honest.clone()]);
+        assert!(admit(&mut pool, &orphaned).is_none());
+        assert_eq!(pool.len(), MAX_SPENDS_PER_OUTPUT);
+        assert!(pool.tx_by_key.values().any(|p| p.transaction == v));
+
+        // Copies `p + h + k_i` of a parent `p` and its child `h` each spend and produce `u`; `h` replaces one, since
+        // the others still produce `u`
+        let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        let (u, h_output, p) = (output(0), output(1), kernel(1));
+        let h = tx(vec![input_of(&u)], vec![h_output.clone()], vec![honest.clone()]);
+        for _ in 0..MAX_SPENDS_PER_OUTPUT {
+            let copy = tx(
+                vec![input.clone(), input_of(&u)],
+                vec![u.clone(), h_output.clone()],
+                vec![p.clone(), honest.clone(), kernel(1)],
+            );
+            pool.insert(copy, None, &tx_weight).unwrap();
+        }
+        assert_eq!(admit(&mut pool, &h).unwrap().len(), 1);
+        assert_eq!(pool.txs_by_output[&u.hash()].len(), MAX_SPENDS_PER_OUTPUT - 1);
+        assert!(pool.check_data_consistency());
+
+        // `h` spends `x` and the outputs `o1` and `o2` of pool parents `p1` and `p2`, and copies `p1 + h + x_i` and
+        // `p2 + h + x_j` fill the spenders of `x`; `h` replaces one, since `p1` and `p2` stay
+        let mut pool = UnconfirmedPool::new(UnconfirmedPoolConfig::default());
+        let chain_inputs = distinct_inputs(&input, 3);
+        let (x, p1_input, p2_input) = (&chain_inputs[0], &chain_inputs[1], &chain_inputs[2]);
+        let (o1, o2, h_output) = (output(0), output(1), output(2));
+        let (k1, k2) = (kernel(1), kernel(1));
+        let p1 = tx(vec![p1_input.clone()], vec![o1.clone()], vec![k1.clone()]);
+        let p2 = tx(vec![p2_input.clone()], vec![o2.clone()], vec![k2.clone()]);
+        let h = tx(
+            vec![x.clone(), input_of(&o1), input_of(&o2)],
+            vec![h_output.clone()],
+            vec![honest.clone()],
+        );
+        for (parent, parent_input, parent_output, parent_kernel) in
+            [(&p1, p1_input, &o1, &k1), (&p2, p2_input, &o2, &k2)]
+        {
+            pool.insert(parent.clone(), None, &tx_weight).unwrap();
+            for _ in 0..MAX_SPENDS_PER_OUTPUT / 2 {
+                let x_i = output(3);
+                let copy = tx(
+                    [vec![parent_input.clone()], h.body.inputs().clone(), vec![input_of(
+                        &x_i,
+                    )]]
+                    .concat(),
+                    vec![parent_output.clone(), h_output.clone()],
+                    vec![parent_kernel.clone(), honest.clone(), kernel(1)],
+                );
+                pool.insert(copy, None, &tx_weight).unwrap();
+            }
+        }
+        assert_eq!(pool.txs_by_spent_output[&x.output_hash()].len(), MAX_SPENDS_PER_OUTPUT);
+        assert_eq!(admit(&mut pool, &h).unwrap().len(), 1);
+        for parent in [&p1, &p2] {
+            assert!(pool.tx_by_key.values().any(|p| &p.transaction == parent));
+        }
+        assert!(pool.check_data_consistency());
     }
 
     #[tokio::test]

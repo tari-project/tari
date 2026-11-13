@@ -436,19 +436,20 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     ) -> Result<(), BlockSyncError> {
         info!(target: LOG_TARGET, "Starting block sync from peer {}", sync_peer.node_id());
 
-        let tip_header = self.db.fetch_last_header().await?;
+        let tip_header = self.db.fetch_last_chain_header().await?;
         let local_metadata = self.db.get_chain_metadata().await?;
 
-        if tip_header.height <= local_metadata.best_block_height() {
+        if tip_header.height() <= local_metadata.best_block_height() {
             debug!(
                 target: LOG_TARGET,
-                "Blocks already synchronized to height {}.", tip_header.height
+                "Blocks already synchronized to height {}.", tip_header.height()
             );
             return Ok(());
         }
 
-        let tip_hash = tip_header.hash();
-        let tip_height = tip_header.height;
+        let tip_hash = *tip_header.hash();
+        let tip_height = tip_header.height();
+        let tip_difficulty = tip_header.accumulated_data().total_accumulated_difficulty;
         let best_height = local_metadata.best_block_height();
         let chain_header = self.db.fetch_chain_header(best_height).await?;
 
@@ -654,12 +655,13 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             metadata_after_sync.accumulated_difficulty(),
         );
 
-        if metadata_after_sync.accumulated_difficulty() < sync_peer.claimed_chain_metadata().accumulated_difficulty() {
-            return Err(BlockSyncError::PeerDidNotSupplyAllClaimedBlocks(format!(
-                "Their claim - height: {}, accumulated difficulty: {}. Our status after block sync - height: {}, \
+        // We asked for blocks up to our header tip, so a stream that ends cleanly below it was cut short by the peer
+        if metadata_after_sync.accumulated_difficulty() < tip_difficulty {
+            return Err(BlockSyncError::PeerDidNotSupplyAllRequestedBlocks(format!(
+                "Requested tip - height: {}, accumulated difficulty: {}. Our status after block sync - height: {}, \
                  accumulated difficulty: {}",
-                sync_peer.claimed_chain_metadata().best_block_height(),
-                sync_peer.claimed_chain_metadata().accumulated_difficulty(),
+                tip_height,
+                tip_difficulty,
                 metadata_after_sync.best_block_height(),
                 metadata_after_sync.accumulated_difficulty(),
             )));

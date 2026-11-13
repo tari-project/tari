@@ -206,9 +206,9 @@ fn merkle_proof_verify_rejects_non_leaf_and_out_of_bounds_positions() {
         Err(MerkleProofError::NonLeafNode)
     );
 
-    // Out-of-bounds leaf index must fail with HashNotFound
+    // Out-of-bounds leaf index must fail with PositionOutOfRange
     assert_eq!(
         forged.verify_leaf::<MmrTestHasherBlake256>(&root, &h0, LeafIndex(2)),
-        Err(MerkleProofError::HashNotFound(3))
+        Err(MerkleProofError::PositionOutOfRange { pos: 3, mmr_size: 3 })
     );
 }
