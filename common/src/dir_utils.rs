@@ -69,11 +69,10 @@ pub(crate) fn default_path_with_home_fn<F: FnOnce() -> Option<PathBuf>>(
         let home_dir = home_fn().unwrap_or_else(|| {
             let fallback = PathBuf::from(".");
             let fallback_abs = absolute_path(&fallback);
-            if !WARNED_NO_HOME_DIR.swap(true, Ordering::Relaxed) {
-                match FALLBACK_HOME_DIR.lock() {
-                    Ok(mut slot) => *slot = Some(fallback_abs),
-                    Err(_) => {},
-                }
+            if !WARNED_NO_HOME_DIR.swap(true, Ordering::Relaxed) &&
+                let Ok(mut slot) = FALLBACK_HOME_DIR.lock()
+            {
+                *slot = Some(fallback_abs);
             }
             fallback
         });
