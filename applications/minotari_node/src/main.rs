@@ -73,6 +73,7 @@ use std::{
     fs::File,
     io::Write,
     panic,
+    path::Path,
     process,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -82,7 +83,14 @@ use clap::Parser;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{ApplicationConfig, cli::Cli, run_base_node_with_cli};
-use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration, print_env_vars};
+use tari_common::{
+    configuration::utils::sanitize_for_display,
+    dir_utils::absolute_path,
+    exit_codes::ExitError,
+    initialize_logging,
+    load_configuration,
+    print_env_vars,
+};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -174,6 +182,52 @@ fn main() {
     }
 }
 
+fn is_home_fallback(base_path: &Path, fallback_dir: &Path) -> bool {
+    absolute_path(base_path) == fallback_dir.join(".tari")
+}
+
+fn display_sanitized_path(path: &Path) -> String {
+    sanitize_for_display(&path.display().to_string())
+}
+
+fn log_startup_paths(cli: &Cli, config: &ApplicationConfig, config_path: &Path) {
+    if let Some(fallback_dir) = tari_common::dir_utils::get_fallback_home_dir() &&
+        is_home_fallback(Path::new(&cli.common.base_path), &fallback_dir)
+    {
+        warn!(
+            target: LOG_TARGET,
+            "Could not determine user home directory; falling back to current working directory: {}",
+            display_sanitized_path(&fallback_dir)
+        );
+    }
+
+    info!(
+        target: LOG_TARGET,
+        "Effective base path: {}",
+        display_sanitized_path(&absolute_path(config.common.base_path()))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective config path: {}",
+        display_sanitized_path(&absolute_path(config_path))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective log config path: {}",
+        display_sanitized_path(&absolute_path(cli.common.log_config_path("base_node")))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective identity file: {}",
+        display_sanitized_path(&absolute_path(&config.base_node.identity_file))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective Tor identity file: {}",
+        display_sanitized_path(&absolute_path(&config.base_node.tor_identity_file))
+    );
+}
+
 fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
 
@@ -197,7 +251,7 @@ fn main_inner() -> Result<(), ExitError> {
     );
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
+    let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
 
     if cli.profile_with_tokio_console {
         console_subscriber::init();
@@ -223,6 +277,8 @@ fn main_inner() -> Result<(), ExitError> {
         e
     })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
+
+    log_startup_paths(&cli, &config, &config_path);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
@@ -266,4 +322,21 @@ fn main_inner() -> Result<(), ExitError> {
     runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::is_home_fallback;
+
+    #[test]
+    fn is_home_fallback_matches_raw_fallback_tari_dir() {
+        let fallback_dir = Path::new("/tmp/cwd_fallback");
+        let raw_default = fallback_dir.join(".tari");
+        assert!(is_home_fallback(&raw_default, fallback_dir));
+
+        let custom_base = Path::new("/tmp/custom_base_dir");
+        assert!(!is_home_fallback(custom_base, fallback_dir));
+    }
 }
