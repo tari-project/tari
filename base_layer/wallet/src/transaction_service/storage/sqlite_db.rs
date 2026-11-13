@@ -349,7 +349,7 @@ impl TransactionServiceSqliteDatabase {
                         ))))
                     },
                     Err(TransactionStorageError::DieselError(DieselError::NotFound)) => Err(
-                        TransactionStorageError::ValueNotFound(DbKey::CancelledPendingOutboundTransaction(k)),
+                        TransactionStorageError::ValueNotFound(DbKey::CancelledPendingInboundTransaction(k)),
                     ),
                     Err(e) => Err(e),
                 })
@@ -2592,52 +2592,76 @@ impl CompletedTransactionSql {
         mined_timestamp: u64,
         conn: &mut SqliteConnection,
     ) -> Result<(), TransactionStorageError> {
-        // First, get the existing transaction
-        let existing_tx = completed_transactions::table
-            .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
-            .first::<CompletedTransactionSql>(conn)?;
-        if is_sticky_cancellation(existing_tx.cancelled) {
-            debug!(
-                target: LOG_TARGET,
-                "update_mined_height: tx_id '{tx_id}' was rejected for an invalid encrypted value, left unchanged"
-            );
-            return Ok(());
-        }
+        conn.transaction::<_, TransactionStorageError, _>(|conn| {
+            // First, get the existing transaction
+            let existing_tx = completed_transactions::table
+                .filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64))
+                .first::<CompletedTransactionSql>(conn)?;
+            if is_sticky_cancellation(existing_tx.cancelled) {
+                debug!(
+                    target: LOG_TARGET,
+                    "update_mined_height: tx_id '{tx_id}' was rejected for an invalid encrypted value, left unchanged"
+                );
+                return Ok(());
+            }
 
-        let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
-            TransactionStorageError::UnexpectedResult(format!(
-                "Could not create timestamp mined_timestamp: {mined_timestamp}"
-            ))
-        })?;
-        trace!(
-            target: LOG_TARGET,
-            "update_mined_height: tx_id '{}', status '{:?}', mined height '{}', \
-            mined timestamp '{}', mined block hash '{}'",
-            tx_id,
-            status,
-            mined_height,
-            timestamp,
-            mined_in_block.to_hex(),
-        );
-        diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)))
+            let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
+                TransactionStorageError::UnexpectedResult(format!(
+                    "Could not create timestamp mined_timestamp: {mined_timestamp}"
+                ))
+            })?;
+            trace!(
+                target: LOG_TARGET,
+                "update_mined_height: tx_id '{}', status '{:?}', mined height '{}', \
+                mined timestamp '{}', mined block hash '{}'",
+                tx_id,
+                status,
+                mined_height,
+                timestamp,
+                mined_in_block.to_hex(),
+            );
+            diesel::update(
+                completed_transactions::table.filter(completed_transactions::tx_id.eq(tx_id.as_u64() as i64)),
+            )
             .set(UpdateCompletedTransactionSql {
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
                 mined_timestamp: Some(timestamp.naive_utc()),
                 // If the tx is mined, then it can't be cancelled
-                cancelled: None,
+                cancelled: Some(None),
                 ..Default::default()
             })
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        let sent = match existing_tx.sent_output_hashes.as_ref() {
-            Some(bytes) => bytes_to_fixedhash_vec(bytes),
-            _ => vec![],
-        };
-        for output in sent {
-            let pay_ref = generate_payment_reference(&mined_in_block, &output);
+            Self::assign_payrefs(tx_id, &mined_in_block, existing_tx.sent_output_hashes.as_deref(), conn)?;
+            Self::assign_payrefs(
+                tx_id,
+                &mined_in_block,
+                existing_tx.received_output_hashes.as_deref(),
+                conn,
+            )?;
+            Self::assign_payrefs(
+                tx_id,
+                &mined_in_block,
+                existing_tx.change_output_hashes.as_deref(),
+                conn,
+            )?;
+
+            Ok(())
+        })
+    }
+
+    fn assign_payrefs(
+        tx_id: TxId,
+        mined_in_block: &BlockHash,
+        serialized_hashes: Option<&[u8]>,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), TransactionStorageError> {
+        let hashes = serialized_hashes.map(bytes_to_fixedhash_vec).unwrap_or_default();
+        for output in hashes {
+            let pay_ref = generate_payment_reference(mined_in_block, &output);
             let pay_ref_sql = PayrefSql {
                 output_hash: output.to_vec(),
                 tx_id: tx_id.as_u64() as i64,
@@ -2652,49 +2676,6 @@ impl CompletedTransactionSql {
                 );
             }
         }
-
-        let received = match existing_tx.received_output_hashes.as_ref() {
-            Some(bytes) => bytes_to_fixedhash_vec(bytes),
-            _ => vec![],
-        };
-        for output in received {
-            let pay_ref = generate_payment_reference(&mined_in_block, &output);
-            let pay_ref_sql = PayrefSql {
-                output_hash: output.to_vec(),
-                tx_id: tx_id.as_u64() as i64,
-                payref: pay_ref.to_vec(),
-            };
-            if !pay_ref_sql.commit_or_update(conn)? {
-                warn!(
-                    target: LOG_TARGET,
-                    "PayRef for output {} is held by another transaction; not assigned to tx_id {}",
-                    output.to_hex(),
-                    tx_id
-                );
-            }
-        }
-
-        let change = match existing_tx.change_output_hashes.as_ref() {
-            Some(bytes) => bytes_to_fixedhash_vec(bytes),
-            _ => vec![],
-        };
-        for output in change {
-            let pay_ref = generate_payment_reference(&mined_in_block, &output);
-            let pay_ref_sql = PayrefSql {
-                output_hash: output.to_vec(),
-                tx_id: tx_id.as_u64() as i64,
-                payref: pay_ref.to_vec(),
-            };
-            if !pay_ref_sql.commit_or_update(conn)? {
-                warn!(
-                    target: LOG_TARGET,
-                    "PayRef for output {} is held by another transaction; not assigned to tx_id {}",
-                    output.to_hex(),
-                    tx_id
-                );
-            }
-        }
-
         Ok(())
     }
 
@@ -2995,6 +2976,8 @@ pub struct UnconfirmedTransactionInfo {
     pub status: LegacyTransactionStatus,
     pub payment_id: MemoField,
     pub burnt_outputs: Vec<FixedHash>,
+    pub lock_height: u64,
+    pub mined_height: Option<u64>,
 }
 
 impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
@@ -3002,6 +2985,10 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
 
     fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
         let transaction: Transaction = bincode_decode(&i.transaction_protocol)?;
+        let lock_height = i
+            .lock_height
+            .map(|h| h as u64)
+            .unwrap_or_else(|| CompletedTransaction::calculate_lock_height(&transaction));
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
             signature: CompressedSignature::new(
@@ -3011,6 +2998,8 @@ impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
             status: LegacyTransactionStatus::try_from(i.status)?,
             payment_id: MemoField::from_bytes(&i.payment_id.unwrap_or_default()),
             burnt_outputs: transaction.body.burnt_outputs_iter().map(|o| o.hash()).collect(),
+            lock_height,
+            mined_height: i.mined_height.map(|h| h as u64),
         })
     }
 }
@@ -3023,6 +3012,8 @@ pub struct UnconfirmedTransactionInfoSql {
     pub transaction_signature_key: Vec<u8>,
     pub payment_id: Option<Vec<u8>>,
     pub transaction_protocol: Vec<u8>,
+    pub lock_height: Option<i64>,
+    pub mined_height: Option<i64>,
 }
 
 impl UnconfirmedTransactionInfoSql {
@@ -3050,6 +3041,8 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::transaction_signature_key,
                 completed_transactions::payment_id,
                 completed_transactions::transaction_protocol,
+                completed_transactions::lock_height,
+                completed_transactions::mined_height,
             ))
             .filter(
                 completed_transactions::status
@@ -3057,8 +3050,10 @@ impl UnconfirmedTransactionInfoSql {
                     .ne(LegacyTransactionStatus::Imported as i32)
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedUnconfirmed as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::OneSidedConfirmedLocked as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseUnconfirmed as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmed as i32))
+                    .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseConfirmedLocked as i32))
                     .and(completed_transactions::status.ne(LegacyTransactionStatus::CoinbaseNotInBlockChain as i32))
                     // Filter out any transaction without a kernel signature
                     .and(completed_transactions::transaction_signature_nonce.ne(vec![0u8; 32]))
@@ -3067,7 +3062,8 @@ impl UnconfirmedTransactionInfoSql {
                     .and(
                         completed_transactions::mined_height
                             .is_null()
-                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32)),
+                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedUnconfirmed as i32))
+                            .or(completed_transactions::status.eq(LegacyTransactionStatus::MinedConfirmedLocked as i32)),
                     ),
             )
             .filter(completed_transactions::cancelled.is_null())
@@ -3248,17 +3244,20 @@ mod test {
         legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
         test_utils::create_consensus_constants,
-        transaction_service::storage::{
-            database::{DbKey, DbValue, TransactionBackend},
-            models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
-            sqlite_db::{
-                CompletedTransactionSql,
-                InboundTransactionSenderInfo,
-                InboundTransactionSql,
-                OutboundTransactionSql,
-                PayrefSql,
-                TransactionServiceSqliteDatabase,
-                UpdateCompletedTransactionSql,
+        transaction_service::{
+            error::TransactionStorageError,
+            storage::{
+                database::{DbKey, DbValue, TransactionBackend, WriteOperation},
+                models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
+                sqlite_db::{
+                    CompletedTransactionSql,
+                    InboundTransactionSenderInfo,
+                    InboundTransactionSql,
+                    OutboundTransactionSql,
+                    PayrefSql,
+                    TransactionServiceSqliteDatabase,
+                    UpdateCompletedTransactionSql,
+                },
             },
         },
     };
@@ -4558,6 +4557,132 @@ mod test {
         corrupt_completed(&connection, 30, TAMPERED_CIPHERTEXT);
         corrupt_completed(&connection, 32, TAMPERED_CIPHERTEXT);
         assert!(db.fetch_unconfirmed_transactions_info().is_err());
+    }
+
+    #[test]
+    fn unconfirmed_transactions_info_includes_mined_confirmed_locked_and_excludes_detected_locked() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        let sign_tx = |tx: &mut CompletedTransaction| {
+            let nonce = PrivateKey::random(&mut rand::rng());
+            tx.transaction_signature = CompressedSignature::new(
+                CompressedPublicKey::from_secret_key(&nonce),
+                PrivateKey::random(&mut rand::rng()),
+            );
+        };
+
+        for (tx_id, status, lock_height) in [
+            (50u64, LegacyTransactionStatus::MinedConfirmedLocked, 120u64),
+            (51, LegacyTransactionStatus::OneSidedConfirmedLocked, 120),
+            (52, LegacyTransactionStatus::CoinbaseConfirmedLocked, 120),
+            (53, LegacyTransactionStatus::MinedConfirmed, 0),
+        ] {
+            let mut tx = mined_tx(tx_id, 100);
+            tx.status = status;
+            tx.lock_height = lock_height;
+            sign_tx(&mut tx);
+            commit_completed(&connection, &cipher, tx);
+        }
+
+        // Also insert detected-locked rows with `mined_height = None` so they are excluded solely by the status
+        // `.ne(...Locked)` predicates rather than by `mined_height.is_null()`.
+        for (tx_id, status) in [
+            (54u64, LegacyTransactionStatus::OneSidedConfirmedLocked),
+            (55, LegacyTransactionStatus::CoinbaseConfirmedLocked),
+        ] {
+            let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
+            tx.status = status;
+            tx.lock_height = 120;
+            sign_tx(&mut tx);
+            commit_completed(&connection, &cipher, tx);
+        }
+
+        // Also verify a lock height >= 2^63 (stored as negative i64 in SQLite) round-trips without clamping to 0.
+        let mut high_lock_tx = mined_tx(56, 100);
+        high_lock_tx.status = LegacyTransactionStatus::MinedConfirmedLocked;
+        high_lock_tx.lock_height = u64::MAX;
+        sign_tx(&mut high_lock_tx);
+        commit_completed(&connection, &cipher, high_lock_tx);
+
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        let info = db.fetch_unconfirmed_transactions_info().unwrap();
+        assert_eq!(info.iter().map(|i| i.tx_id.as_u64()).collect::<Vec<_>>(), vec![50, 56]);
+        assert_eq!(
+            info.first().map(|i| (i.lock_height, i.mined_height)),
+            Some((120, Some(100)))
+        );
+        assert_eq!(
+            info.get(1).map(|i| (i.lock_height, i.mined_height)),
+            Some((u64::MAX, Some(100)))
+        );
+    }
+
+    #[test]
+    fn update_mined_height_clears_non_sticky_cancelled_flag_and_preserves_sticky() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+
+        let mut tx = completed_tx_with_hashes(60, vec![], vec![]);
+        tx.status = LegacyTransactionStatus::Rejected;
+        tx.cancelled = Some(TxCancellationReason::InvalidTransaction);
+        commit_completed(&connection, &cipher, tx);
+
+        let mut sticky_tx = completed_tx_with_hashes(61, vec![], vec![]);
+        sticky_tx.status = LegacyTransactionStatus::Rejected;
+        sticky_tx.cancelled = Some(TxCancellationReason::InvalidEncryptedValue);
+        commit_completed(&connection, &cipher, sticky_tx);
+
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        for tx_id in [60u64, 61] {
+            db.update_mined_height(
+                tx_id.into(),
+                100,
+                FixedHash::zero(),
+                1_700_000_000,
+                true,
+                LegacyTransactionStatus::Broadcast,
+                110,
+            )
+            .unwrap();
+        }
+
+        let Some(DbValue::CompletedTransaction(updated)) =
+            db.fetch(&DbKey::CompletedTransaction(60u64.into())).unwrap()
+        else {
+            panic!("expected completed transaction");
+        };
+        assert_eq!(updated.cancelled, None);
+        assert_eq!(updated.status, LegacyTransactionStatus::MinedConfirmed);
+
+        let Some(DbValue::CompletedTransaction(sticky_after)) =
+            db.fetch(&DbKey::CompletedTransaction(61u64.into())).unwrap()
+        else {
+            panic!("expected sticky completed transaction");
+        };
+        assert_eq!(
+            sticky_after.cancelled,
+            Some(TxCancellationReason::InvalidEncryptedValue)
+        );
+        assert_eq!(sticky_after.status, LegacyTransactionStatus::Rejected);
+    }
+
+    #[test]
+    fn remove_missing_cancelled_pending_inbound_reports_inbound_key() {
+        let temp_dir = tempdir().unwrap();
+        let connection = single_connection_wallet_db(temp_dir.path());
+        let cipher = random_cipher();
+        let db = TransactionServiceSqliteDatabase::new(connection, cipher);
+        let tx_id = TxId::from(999u64);
+        let err = db
+            .write(WriteOperation::Remove(DbKey::CancelledPendingInboundTransaction(tx_id)))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            TransactionStorageError::ValueNotFound(DbKey::CancelledPendingInboundTransaction(id)) if id == tx_id
+        ));
     }
 
     #[ignore]
