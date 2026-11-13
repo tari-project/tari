@@ -160,7 +160,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -171,7 +171,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1568,7 +1568,7 @@ dependencies = [
  "itertools 0.14.0",
  "junit-report",
  "linked-hash-map",
- "pin-project 1.1.13",
+ "pin-project",
  "ref-cast",
  "regex",
  "sealed 0.6.0",
@@ -1799,7 +1799,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccc2776f0c61eca1ca32528f85548abd1a4be8fb53d1b21c013e4f18da1e7090"
 dependencies = [
  "data-encoding",
- "syn 2.0.118",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -2411,7 +2411,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2702,7 +2702,7 @@ dependencies = [
  "futures-sink",
  "futures-task",
  "futures-util",
- "pin-project 1.1.13",
+ "pin-project",
 ]
 
 [[package]]
@@ -4303,7 +4303,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_grpc"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "base64 0.22.1",
  "bincode",
@@ -4335,7 +4335,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_app_utilities"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "clap",
  "dialoguer 0.11.0",
@@ -4360,7 +4360,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_console_wallet"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4417,7 +4417,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_common"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "borsh",
  "bs58",
@@ -4426,7 +4426,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "borsh",
  "ledger-transport",
@@ -4446,7 +4446,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_ledger_wallet_comms_testing"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "blake2 0.10.6",
  "dialoguer 0.11.0",
@@ -4470,7 +4470,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_common"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4496,7 +4496,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_node"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4517,7 +4517,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_mcp_wallet"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4538,7 +4538,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_merge_mining_proxy"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "bincode",
@@ -4585,7 +4585,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_miner"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "base64 0.22.1",
  "borsh",
@@ -4622,7 +4622,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4686,7 +4686,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_grpc_client"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "minotari_app_grpc",
  "tokio",
@@ -4694,7 +4694,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_node_wallet_client"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4712,7 +4712,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_offline_signer"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "argon2 0.6.0",
@@ -4734,7 +4734,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_peer_sync"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "clap",
  "config",
@@ -4758,7 +4758,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_utils"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "bytesize",
@@ -4777,7 +4777,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "argon2 0.6.0",
@@ -4836,7 +4836,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_ffi"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "borsh",
  "cbindgen",
@@ -4876,7 +4876,7 @@ dependencies = [
 
 [[package]]
 name = "minotari_wallet_grpc_client"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "minotari_app_grpc",
  "tari_common",
@@ -5793,31 +5793,11 @@ dependencies = [
 
 [[package]]
 name = "pin-project"
-version = "0.4.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ef0f924a5ee7ea9cbcea77529dba45f8a9ba9f622419fe3386ca581a3ae9d5a"
-dependencies = [
- "pin-project-internal 0.4.30",
-]
-
-[[package]]
-name = "pin-project"
 version = "1.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2466b2336ed02bcdca6b294417127b90ec92038d1d5c4fbeac971a922e0e0924"
 dependencies = [
- "pin-project-internal 1.1.13",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "0.4.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "851c8d0ce9bebe43790dedfc86614c23494ac9f423dd618d3a61fc693eafe61e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
+ "pin-project-internal",
 ]
 
 [[package]]
@@ -6741,15 +6721,15 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.4"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.0",
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6806,7 +6786,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7480,7 +7460,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7809,7 +7789,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "config",
@@ -7835,7 +7815,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_sqlite"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "diesel",
  "diesel_migrations",
@@ -7854,7 +7834,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "argon2 0.6.0",
  "base64 0.22.1",
@@ -7894,7 +7874,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7915,7 +7895,7 @@ dependencies = [
  "multiaddr",
  "nom 7.1.3",
  "once_cell",
- "pin-project 1.1.13",
+ "pin-project",
  "prost 0.13.5",
  "rand 0.10.3",
  "serde",
@@ -7947,12 +7927,11 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "bitflags 2.13.0",
  "blake2 0.10.6",
- "chacha20 0.7.3",
  "chacha20poly1305",
  "chrono",
  "clap",
@@ -7966,7 +7945,7 @@ dependencies = [
  "log",
  "once_cell",
  "petgraph 0.5.1",
- "pin-project 0.4.30",
+ "pin-project",
  "prost 0.13.5",
  "rand 0.10.3",
  "serde",
@@ -7989,7 +7968,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "futures 0.3.32",
  "proc-macro2",
@@ -8005,7 +7984,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8095,11 +8074,11 @@ dependencies = [
 
 [[package]]
 name = "tari_features"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 
 [[package]]
 name = "tari_hashing"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8113,7 +8092,7 @@ dependencies = [
 
 [[package]]
 name = "tari_integration_tests"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8173,7 +8152,7 @@ dependencies = [
 
 [[package]]
 name = "tari_libtor"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "derivative",
  "log",
@@ -8187,7 +8166,7 @@ dependencies = [
 
 [[package]]
 name = "tari_max_size"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "bincode",
  "borsh",
@@ -8212,7 +8191,7 @@ dependencies = [
 
 [[package]]
 name = "tari_metrics"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "futures 0.3.32",
@@ -8227,7 +8206,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "bincode",
  "blake2 0.10.6",
@@ -8244,7 +8223,7 @@ dependencies = [
 
 [[package]]
 name = "tari_node_components"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8264,7 +8243,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "clap",
@@ -8298,7 +8277,7 @@ dependencies = [
 
 [[package]]
 name = "tari_script"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "blake2 0.10.6",
  "borsh",
@@ -8316,7 +8295,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8333,7 +8312,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "futures 0.3.32",
  "tokio",
@@ -8359,7 +8338,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -8372,7 +8351,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "futures 0.3.32",
  "futures-test",
@@ -8384,7 +8363,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_components"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "anyhow",
  "argon2 0.6.0",
@@ -8438,7 +8417,7 @@ dependencies = [
 
 [[package]]
 name = "tari_transaction_key_manager"
-version = "6.3.0-pre.2"
+version = "6.3.0-pre.4"
 dependencies = [
  "async-trait",
  "blake2 0.10.6",
@@ -8497,8 +8476,8 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.3",
  "once_cell",
- "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "rustix 1.1.6",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -8516,8 +8495,8 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
- "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "rustix 1.1.6",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8920,7 +8899,7 @@ dependencies = [
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
- "pin-project 1.1.13",
+ "pin-project",
  "prost 0.13.5",
  "socket2 0.5.10",
  "tokio",
@@ -8949,7 +8928,7 @@ dependencies = [
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
- "pin-project 1.1.13",
+ "pin-project",
  "prost 0.13.5",
  "rustls-native-certs",
  "socket2 0.5.10",
@@ -9011,7 +8990,7 @@ dependencies = [
  "futures-core",
  "futures-util",
  "indexmap 1.9.3",
- "pin-project 1.1.13",
+ "pin-project",
  "pin-project-lite",
  "rand 0.8.6",
  "slab",
@@ -9437,7 +9416,7 @@ dependencies = [
  "mime",
  "mime_guess",
  "percent-encoding",
- "pin-project 1.1.13",
+ "pin-project",
  "scoped-tls",
  "serde",
  "serde_json",
@@ -9618,7 +9597,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -10018,7 +9997,7 @@ dependencies = [
  "log",
  "nohash-hasher",
  "parking_lot 0.12.5",
- "pin-project 1.1.13",
+ "pin-project",
  "rand 0.9.4",
  "static_assertions",
  "web-time",

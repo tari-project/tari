@@ -28,11 +28,13 @@ use std::{
 };
 
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
+use digest::Digest;
 use futures::{StreamExt, pin_mut};
 use log::*;
 use minotari_ledger_wallet_common::common_types::LedgerKeyBranch;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use rand::{Rng, RngExt};
+use sha2::Sha256;
 use tari_common::configuration::Network;
 use tari_common_types::{
     tari_address::{TariAddress, TariAddressFeatures},
@@ -741,6 +743,13 @@ where
             .ok_or_else(|| {
                 OutputManagerError::BaseNodeClientError(format!("No output found for hash {}", output_hash.to_hex()))
             })?;
+        if output.hash() != output_hash {
+            return Err(OutputManagerError::BaseNodeClientError(format!(
+                "Base node returned output {} for requested hash {}",
+                output.hash().to_hex(),
+                output_hash.to_hex()
+            )));
+        }
 
         self.create_claim_sha_atomic_swap_transaction(output, pre_image, fee_per_gram)
             .map(OutputManagerResponse::ClaimHtlcTransaction)
@@ -3238,6 +3247,29 @@ where
         pre_image: CompressedPublicKey,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
+        // Only claim the HTLC shape this wallet sends, locked to this pre-image and claimable by our spend key; the
+        // output comes from the base node and is otherwise untrusted.
+        let lock_hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+        let own_spend_key = self.resources.key_manager.get_spend_key().pub_key;
+        let is_our_htlc = matches!(
+            output.script.as_slice(),
+            [
+                Opcode::HashSha256,
+                Opcode::PushHash(hash),
+                Opcode::Equal,
+                Opcode::IfThen,
+                Opcode::PushPubKey(claim_key),
+                Opcode::Else,
+                Opcode::CheckHeightVerify(_),
+                Opcode::PushPubKey(_),
+                Opcode::EndIf,
+            ] if **hash == lock_hash && **claim_key == own_spend_key
+        );
+        if !is_our_htlc {
+            return Err(OutputManagerError::InvalidArgument(
+                "Output is not an HTLC claimable by this wallet with the given pre-image".to_string(),
+            ));
+        }
         let shared_secret = self.resources.key_manager.get_diffie_hellman_shared_secret(
             &self.resources.key_manager.get_view_key().key_id,
             &output.sender_offset_public_key,
@@ -3296,6 +3328,8 @@ where
             };
             trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", finalized.tx_id);
 
+            // The HTLC output was sent to us by the counterparty and is not in our output DB, so there is nothing to
+            // encumber on the spend side.
             self.resources
                 .db
                 .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
@@ -3314,13 +3348,37 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroMinotari,
     ) -> Result<(TxId, MicroMinotari, MicroMinotari, Transaction), OutputManagerError> {
-        let output = self
+        let db_output = self
             .resources
             .db
-            .get_unspent_output(output_hash, &self.resources.key_manager)?
-            .wallet_output;
+            .get_unspent_output(output_hash, &self.resources.key_manager)?;
 
-        let amount = output.value();
+        let own_spend_key = self.resources.key_manager.get_spend_key().pub_key;
+        let is_our_htlc = matches!(
+            db_output.wallet_output.script().as_slice(),
+            [
+                Opcode::HashSha256,
+                Opcode::PushHash(_),
+                Opcode::Equal,
+                Opcode::IfThen,
+                Opcode::PushPubKey(_),
+                Opcode::Else,
+                Opcode::CheckHeightVerify(_),
+                Opcode::PushPubKey(refund_key),
+                Opcode::EndIf,
+            ] if **refund_key == own_spend_key
+        );
+        if !is_our_htlc {
+            return Err(OutputManagerError::InvalidArgument(
+                "Output is not an HTLC refundable by this wallet".to_string(),
+            ));
+        }
+
+        let amount = db_output.wallet_output.value();
+        // The HTLC script hashes the top stack item before branching; any value that is not the pre-image takes the
+        // refund branch, so push our own spend key as the dummy.
+        let mut input = db_output.wallet_output.clone();
+        input.set_input_data(inputs!(own_spend_key));
 
         // Create builder with no recipients (other than ourselves)
         let mut builder = TransactionBuilder::new(
@@ -3335,9 +3393,10 @@ where
                 MemoField::new_open_from_string("SHA-XTR atomic refund", TxType::HtlcAtomicSwapRefund)
                     .map_err(OutputManagerError::InvalidPaymentIdFormat)?,
             )
+            .with_tx_type(TxType::HtlcAtomicSwapRefund)
             .with_kernel_features(KernelFeatures::empty())
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
-            .with_input(output)?;
+            .with_input(input)?;
         // Everything left after the fee goes to a change output, and its sender offset key comes from the one
         // reservation this transaction makes.
         builder.reserve_sender_offset_keys(&[])?;
@@ -3361,7 +3420,7 @@ where
 
         self.resources
             .db
-            .encumber_outputs(finalized.tx_id, Vec::new(), outputs)?;
+            .encumber_outputs(finalized.tx_id, vec![db_output], outputs)?;
         self.confirm_encumberance(finalized.tx_id, None, Vec::new())?;
         Ok((finalized.tx_id, fee, amount.saturating_sub(fee), finalized.transaction))
     }

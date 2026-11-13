@@ -102,12 +102,24 @@ pub enum TransactionBuilderError {
     RecipientAddressNotDualForDevice { address: String },
     #[error("Only a single burned output is allowed in a transaction")]
     MultipleBurnCommitments,
+    #[error("A burn commitment was set but the kernel features are not a burn")]
+    BurnCommitmentOnNonBurnKernel,
     #[error(
         "The offline signer only signs transactions that carry a change output, but this one would not: the \
          {remainder} left over after the outputs and fee does not exceed the {change_fee} a change output would cost. \
          Prepare the transaction again with a smaller amount."
     )]
     OfflineTransactionRequiresChange {
+        remainder: MicroMinotari,
+        change_fee: MicroMinotari,
+    },
+    /// A transaction with no recipient or custom outputs is only built when it pays its inputs back to a change
+    /// output; without one it would have no outputs at all.
+    #[error(
+        "A transaction with no recipients needs a change output, but the {remainder} left over after the fee does not \
+         exceed the {change_fee} a change output would cost"
+    )]
+    ChangeOnlyRequiresChange {
         remainder: MicroMinotari,
         change_fee: MicroMinotari,
     },

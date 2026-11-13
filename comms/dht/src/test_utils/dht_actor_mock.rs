@@ -115,7 +115,7 @@ impl DhtActorMock {
             SendJoin => {},
             MsgHashCacheInsert { reply_tx, .. } => {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
-                reply_tx.send(u32::try_from(v).unwrap()).unwrap();
+                reply_tx.send((u32::try_from(v).unwrap(), true)).unwrap();
             },
             GetMsgHashHitCount(_, reply_tx) => {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);

@@ -68,6 +68,7 @@ impl ValidatedDhtInboundMessage {
     ) -> DecryptedDhtMessage {
         let dedup_hash = dedup::message_key(
             &self.sig_canonical,
+            self.message.dht_header.message_type,
             self.message.dht_header.flags,
             &self.message.body,
             Some(&message_body),
@@ -78,6 +79,7 @@ impl ValidatedDhtInboundMessage {
     pub fn into_failed(self) -> DecryptedDhtMessage {
         let dedup_hash = dedup::message_key(
             &self.sig_canonical,
+            self.message.dht_header.message_type,
             self.message.dht_header.flags,
             &self.message.body,
             None,
@@ -160,6 +162,10 @@ pub struct DecryptedDhtMessage {
     /// The _connected_ peer which sent or forwarded this message. This may not be the peer
     /// which created this message.
     pub source_peer: Arc<Peer>,
+    /// The key that signed this message, if it is signed. This means "this message was signed by this key", not "this
+    /// key sent it to me now": a signed cleartext message is not bound to a recipient and may be replayed by anyone
+    /// until its sender-set `expires` (3 h for honest senders). Consumers that act towards the origin (dialing,
+    /// replying) must tolerate replay.
     pub authenticated_origin: Option<CommsPublicKey>,
     pub dht_header: DhtMessageHeader,
     pub is_saf_message: bool,

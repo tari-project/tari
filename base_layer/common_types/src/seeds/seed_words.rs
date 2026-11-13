@@ -210,4 +210,16 @@ mod tests {
         // equality fails, in case of same len but distinct words
         assert_ne!(seed_words, other_seed_words);
     }
+
+    #[test]
+    pub fn test_seed_words_from_str_whitespace() {
+        let parsed = SeedWords::from_str("  abandon   ability\nable\t").unwrap();
+        assert_eq!(parsed.len(), 3);
+        assert_eq!(parsed.get_word(0).unwrap(), "abandon");
+        assert_eq!(parsed.get_word(1).unwrap(), "ability");
+        assert_eq!(parsed.get_word(2).unwrap(), "able");
+
+        let empty = SeedWords::from_str("   \n\t ").unwrap();
+        assert!(empty.is_empty());
+    }
 }

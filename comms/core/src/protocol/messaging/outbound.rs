@@ -50,12 +50,12 @@ use super::{
 };
 use crate::{
     RefKind,
-    connection_manager::{NegotiatedSubstream, PeerConnection},
+    connection_manager::{NegotiatedSubstream, PeerConnection, PeerConnectionError},
     connectivity::{ConnectivityError, ConnectivityRequester},
     message::OutboundMessage,
     multiplexing::Substream,
     peer_manager::NodeId,
-    protocol::ProtocolId,
+    protocol::{ProtocolError, ProtocolId},
     stream_id::StreamId,
 };
 
@@ -270,6 +270,20 @@ impl OutboundMessaging {
                         peer_node_id,
                         err.kind(),
                         err
+                    );
+                },
+                Err(
+                    err @ MessagingProtocolError::PeerConnectionError(PeerConnectionError::ProtocolError(
+                        ProtocolError::ProtocolOutboundNegotiationFailed { .. },
+                    )),
+                ) => {
+                    // The peer did not advertise the messaging protocol in its identity exchange and rejected it on
+                    // negotiation: it does not run messaging (e.g. an RPC-only client). Expected, not a local fault.
+                    #[cfg(feature = "metrics")]
+                    metrics::error_count().inc();
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer {} does not support the messaging protocol: {}", peer_node_id, err
                     );
                 },
                 Err(err) => {

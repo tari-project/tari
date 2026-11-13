@@ -177,9 +177,7 @@ impl McpServer for McpServerImpl {
     }
 
     fn is_running(&self) -> bool {
-        // This is a simplified check - in a real implementation,
-        // we'd need to track the actual transport state
-        self.config.should_start_server()
+        self.running.try_read().map(|guard| *guard).unwrap_or(true)
     }
 
     fn config(&self) -> &McpConfig {
