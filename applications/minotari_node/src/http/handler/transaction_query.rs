@@ -81,3 +81,42 @@ impl Display for TransactionQueryQueryParams {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tari_common::configuration::Network;
+    use tari_core::{
+        base_node::{StateMachineHandle, state_machine_service::states::StatusInfo},
+        chain_storage::async_db::AsyncBlockchainDb,
+        mempool::test_utils::mock::create_mempool_service_mock,
+        test_helpers::blockchain::create_new_blockchain_with_network,
+    };
+    use tari_shutdown::Shutdown;
+    use tokio::sync::{broadcast, watch};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn transaction_query_returns_bad_request_on_invalid_signature_bytes() {
+        let shutdown = Shutdown::new();
+        let (mempool, _mempool_state) = create_mempool_service_mock();
+        let db = AsyncBlockchainDb::from(create_new_blockchain_with_network(Network::LocalNet));
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let state_machine = StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal());
+        let query_service = Arc::new(query_service::Service::new(db, state_machine, mempool));
+
+        let params = TransactionQueryQueryParams {
+            excess_sig_nonce: vec![1u8; 3],
+            excess_sig_sig: vec![2u8; 3],
+        };
+        let (status, _) = handle(
+            Extension(query_service),
+            Query(params),
+            Extension(Arc::new(HttpCacheConfig::default())),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+}
