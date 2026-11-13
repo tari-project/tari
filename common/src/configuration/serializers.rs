@@ -96,7 +96,11 @@ pub mod seconds_nonzero {
 
     pub fn serialize<S>(duration: &Duration, s: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        s.serialize_u64(duration.as_secs())
+        let secs = duration.as_secs();
+        if secs == 0 && !duration.is_zero() {
+            return s.serialize_u64(1);
+        }
+        s.serialize_u64(secs)
     }
 }
 
@@ -122,7 +126,7 @@ pub mod optional_seconds_nonzero {
     pub fn serialize<S>(duration: &Option<Duration>, s: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         match duration {
-            Some(d) => s.serialize_u64(d.as_secs()),
+            Some(d) => super::seconds_nonzero::serialize(d, s),
             None => s.serialize_none(),
         }
     }
@@ -145,15 +149,15 @@ where D: serde::Deserializer<'de> {
 mod test {
     use std::time::Duration;
 
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Serialize)]
     struct Test {
         #[serde(with = "super::seconds_nonzero")]
         interval: Duration,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Serialize)]
     struct TestOptional {
         #[serde(default, with = "super::optional_seconds_nonzero")]
         interval: Option<Duration>,
@@ -176,6 +180,13 @@ mod test {
         assert!(toml::from_str::<Test>("interval = 0").is_err());
         let t = toml::from_str::<Test>("interval = 1").unwrap();
         assert_eq!(t.interval, Duration::from_secs(1));
+
+        let sub = Test {
+            interval: Duration::from_millis(500),
+        };
+        let encoded = serde_json::to_string(&sub).unwrap();
+        let decoded: Test = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.interval, Duration::from_secs(1));
     }
 
     #[test]
@@ -185,5 +196,12 @@ mod test {
         assert_eq!(t.interval, Some(Duration::from_secs(1)));
         let t = toml::from_str::<TestOptional>("").unwrap();
         assert_eq!(t.interval, None);
+
+        let sub = TestOptional {
+            interval: Some(Duration::from_millis(250)),
+        };
+        let encoded = serde_json::to_string(&sub).unwrap();
+        let decoded: TestOptional = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.interval, Some(Duration::from_secs(1)));
     }
 }
