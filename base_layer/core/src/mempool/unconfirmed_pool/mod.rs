@@ -31,6 +31,7 @@ pub(crate) use unconfirmed_pool::reads_block_height;
 pub use unconfirmed_pool::{
     HeightValidation,
     MAX_BLOCK_TEMPLATE_BODY_BYTES,
+    MAX_SPENDS_PER_OUTPUT,
     RetrieveResults,
     TemplateFilter,
     TransactionKey,

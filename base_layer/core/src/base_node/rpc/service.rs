@@ -191,6 +191,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStored(_) |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
+            TxStorageResponse::NotStoredMempoolPolicy(_) |
             TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
                 best_block_hash: vec![],
@@ -252,6 +253,11 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             TxStorageResponse::NotStoredTimeLocked => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
+                is_synced,
+            },
+            TxStorageResponse::NotStoredMempoolPolicy(_) => TxSubmissionResponse {
+                accepted: false,
+                rejection_reason: TxSubmissionRejectionReason::MempoolPolicy.into(),
                 is_synced,
             },
             TxStorageResponse::NotStoredConsensus(_) | TxStorageResponse::NotStored(_) => TxSubmissionResponse {

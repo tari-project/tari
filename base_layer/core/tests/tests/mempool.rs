@@ -1791,10 +1791,29 @@ async fn mempool_rejects_kernel_excess_already_in_chain() {
     let tx2 = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
     assert_eq!(tx1.body.kernels()[0].excess, tx2.body.kernels()[0].excess);
     assert_ne!(tx1.body.kernels()[0].excess_sig, tx2.body.kernels()[0].excess_sig);
-    let response = mempool.insert(Arc::new(tx2)).await.unwrap();
-    assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
+    // The mempool refuses a transaction without inputs before validating it; the chain's kernels are checked first
+    let input = tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+        .unwrap()
+        .0
+        .body
+        .inputs()[0]
+        .clone();
+    let with_input = |tx: &Transaction| {
+        Arc::new(Transaction::new(
+            vec![input.clone()],
+            vec![],
+            tx.body.kernels().clone(),
+            tx.offset.clone(),
+            tx.script_offset.clone(),
+        ))
+    };
+    let response = mempool.insert(with_input(&tx2)).await.unwrap();
+    assert!(
+        matches!(&response, TxStorageResponse::NotStored(Some(msg)) if msg.contains("already exists in the chain")),
+        "{response:?}"
+    );
 
-    let response = mempool.insert(Arc::new(tx1)).await.unwrap();
+    let response = mempool.insert(with_input(&tx1)).await.unwrap();
     assert_eq!(response, TxStorageResponse::NotStoredAlreadyMined);
 }
 
@@ -1856,11 +1875,29 @@ async fn block_template_validates_after_rejected_admissions() {
         txn_schema!(from: vec![height_limited_outputs[0].clone()], to: vec![500_000 * uT]),
         &key_manager,
     );
-    let same_excess_tx = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
-    for tx in [coinbase_kernel_tx, height_limited_spend, same_excess_tx] {
+    // With an input, so that it is validated rather than refused for having none
+    let same_excess = create_kernel_only_transaction(&k, 0, KernelFeatures::empty());
+    let same_excess_tx = Transaction::new(
+        tx!(MicroMinotari(100_000), fee: MicroMinotari(5), inputs: 1, outputs: 1, &key_manager)
+            .unwrap()
+            .0
+            .body
+            .inputs()
+            .clone(),
+        vec![],
+        same_excess.body.kernels().clone(),
+        same_excess.offset,
+        same_excess.script_offset,
+    );
+    for tx in [coinbase_kernel_tx, height_limited_spend] {
         let response = mempool.insert(Arc::new(tx)).await.unwrap();
         assert!(matches!(response, TxStorageResponse::NotStored(_)), "{response:?}");
     }
+    let response = mempool.insert(Arc::new(same_excess_tx)).await.unwrap();
+    assert!(
+        matches!(&response, TxStorageResponse::NotStored(Some(msg)) if msg.contains("already exists in the chain")),
+        "{response:?}"
+    );
     let (ordinary_tx, _) = spend_utxos(
         txn_schema!(from: vec![outputs[3].clone()], to: vec![1 * T]),
         &key_manager,
@@ -2709,7 +2746,8 @@ fn signature_heavy_script(num_signatures: usize) -> (TariScript, Vec<StackItem>)
 #[allow(clippy::too_many_lines)]
 async fn template_re_checks_only_selected_height_reading_transactions_once_per_tip() {
     const NUM_OUTPUTS: usize = 20;
-    const NUM_CONFLICTING: usize = 100;
+    // The most pool transactions that may spend one output
+    const NUM_CONFLICTING: usize = 8;
     // 3 + 15 * 33 bytes, within the 512 byte script limit
     const NUM_SIGNATURES: usize = 15;
     let key_manager = KeyManager::new_random().unwrap();
