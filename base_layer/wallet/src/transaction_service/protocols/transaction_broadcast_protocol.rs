@@ -206,26 +206,32 @@ where
             return Ok(false);
         }
 
-        if !response.accepted && response.rejection_reason == TxSubmissionRejectionReason::ValidatorNodeSlotTaken {
-            // Another mempool transaction registers or exits the same validator node. That is not a reason to cancel
-            // this one straight away: it may be accepted once the other is mined or removed, so retry later. The
-            // retries share the submission attempt budget, so a slot that stays taken does not keep the
-            // protocol alive forever.
+        if !response.accepted &&
+            matches!(
+                response.rejection_reason,
+                TxSubmissionRejectionReason::ValidatorNodeSlotTaken | TxSubmissionRejectionReason::MempoolPolicy
+            )
+        {
+            // Another mempool transaction registers or exits the same validator node, or a mempool policy refused this
+            // one (e.g. other mempool transactions already spend its inputs). That is not a reason to cancel it
+            // straight away: it may be accepted once the mempool changes, so retry later. The retries share the
+            // submission attempt budget, so a refusal that persists does not keep the protocol alive forever.
             if self.resubmission_attempts < MAX_MEMPOOL_SUBMISSION_ATTEMPTS - 1 {
                 self.resubmission_attempts = self.resubmission_attempts.saturating_add(1);
                 info!(
                     target: LOG_TARGET,
-                    "Transaction (TxId: {}) not accepted yet: another mempool transaction holds the validator node \
-                     slot, submission will be retried (submission attempt {} of {}).",
+                    "Transaction (TxId: {}) not accepted yet ({}), submission will be retried (submission attempt {} \
+                     of {}).",
                     self.tx_id,
+                    response.rejection_reason,
                     self.resubmission_attempts.saturating_add(1),
                     MAX_MEMPOOL_SUBMISSION_ATTEMPTS
                 );
                 return Ok(false);
             }
             let reason = format!(
-                "another mempool transaction held the validator node slot for all {MAX_MEMPOOL_SUBMISSION_ATTEMPTS} \
-                 submission attempts"
+                "not accepted ({}) on all {MAX_MEMPOOL_SUBMISSION_ATTEMPTS} submission attempts",
+                response.rejection_reason
             );
             error!(
                 target: LOG_TARGET,
@@ -295,7 +301,9 @@ where
                     TxCancellationReason::AlreadyMined,
                 ),
                 // Handled above (retried within the attempt budget, then cancelled)
-                TxSubmissionRejectionReason::ValidatorNodeSlotTaken => return Ok(false),
+                TxSubmissionRejectionReason::ValidatorNodeSlotTaken | TxSubmissionRejectionReason::MempoolPolicy => {
+                    return Ok(false);
+                },
             };
 
             self.cancel_pending_transaction(reason, response.details.clone()).await;

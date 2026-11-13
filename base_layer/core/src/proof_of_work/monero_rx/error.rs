@@ -73,13 +73,12 @@ impl MergeMineError {
             err @ MergeMineError::NonCanonicalCoinbasePrefix(_) |
             err @ MergeMineError::DegenerateLegacyCoinbaseHasher(_) |
             err @ MergeMineError::DifficultyError(_) |
-            err @ MergeMineError::HexError(_) => Some(BanReason {
+            err @ MergeMineError::HexError(_) |
+            err @ MergeMineError::MerkleTreeParamsError(_) => Some(BanReason {
                 reason: err.to_string(),
                 ban_duration: BanPeriod::Long,
             }),
-            MergeMineError::RandomXVMFactoryError(_) |
-            MergeMineError::ZeroAuxChains |
-            MergeMineError::MerkleTreeParamsError(_) => None,
+            MergeMineError::RandomXVMFactoryError(_) | MergeMineError::ZeroAuxChains => None,
         }
     }
 }
@@ -87,5 +86,34 @@ impl MergeMineError {
 impl From<HexError> for MergeMineError {
     fn from(err: HexError) -> Self {
         MergeMineError::HexError(err.to_string())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::{base_node::comms_interface::CommsInterfaceError, validation::ValidationError};
+
+    #[test]
+    fn non_canonical_merkle_tree_params_ban_long_on_every_path() {
+        let err = || {
+            MergeMineError::MerkleTreeParamsError(MerkleTreeParametersError::NonCanonicalEncoding {
+                varint: 0x80,
+                canonical: 0,
+            })
+        };
+        let long = Some(BanPeriod::Long);
+        assert_eq!(err().get_ban_reason().map(|r| r.ban_duration), long);
+        assert_eq!(
+            CommsInterfaceError::from(err())
+                .get_ban_reason()
+                .map(|r| r.ban_duration),
+            long
+        );
+        assert_eq!(
+            ValidationError::from(err()).get_ban_reason().map(|r| r.ban_duration),
+            long
+        );
+        assert!(MergeMineError::ZeroAuxChains.get_ban_reason().is_none());
     }
 }

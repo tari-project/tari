@@ -411,6 +411,52 @@ mod test {
             .unwrap();
     }
 
+    /// The builder accepts a change-only transaction, so the signer itself must refuse a payload that sends nothing
+    /// rather than sign it as a sweep of its inputs into change.
+    #[test]
+    fn offline_sign_refuses_a_payload_without_recipients_or_outputs() {
+        let rules = create_consensus_manager();
+        let alice_key_manager = KeyManager::new_random().unwrap();
+        let alice_view_key_manager = create_view_key_manager(ViewWallet::new(
+            alice_key_manager.get_spend_key().pub_key,
+            alice_key_manager.get_private_view_key(),
+            None,
+        ))
+        .unwrap();
+        let input = create_test_input(MicroMinotari(100_000), 0, &alice_key_manager, vec![], None);
+        let mut tx_builder = TransactionBuilder::new(
+            rules.consensus_constants(0).clone(),
+            alice_view_key_manager.clone(),
+            Network::LocalNet,
+        )
+        .unwrap();
+        tx_builder
+            .with_fee_per_gram(MicroMinotari(20))
+            .with_input(input)
+            .unwrap();
+        let own_address = one_sided_address(&alice_view_key_manager);
+        let init = prepare_one_sided_transaction_for_signing(
+            &alice_view_key_manager,
+            TxId::new_random(),
+            tx_builder,
+            &[],
+            MemoField::new_empty(),
+            own_address,
+        )
+        .unwrap();
+        let err = sign_locked_transaction(
+            &alice_key_manager,
+            rules.consensus_constants(0).clone(),
+            Network::LocalNet,
+            confirmed(PayloadSummary::from_one_sided(init)),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::NoRecipients),
+            "expected NoRecipients, got {err:?}"
+        );
+    }
+
     /// A payment id that fits the recipient's memo but leaves no room for the change memo, which also carries an
     /// address, the amounts and the sent output hash, means no change output can be built. The signer must refuse
     /// it while deciding fee and change, rather than sign the recipient output and fail on the change.
