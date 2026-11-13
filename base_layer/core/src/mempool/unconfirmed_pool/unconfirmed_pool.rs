@@ -138,6 +138,11 @@ pub const MAX_EXTRA_PRODUCERS_PER_LOOKUP: usize = 8;
 /// them. Mempool policy, not a consensus rule.
 pub const MAX_SPENDS_PER_OUTPUT: usize = 8;
 
+/// The most pool transactions the capacity eviction walks to check that it would not remove an ancestor of the incoming
+/// transaction; a rejected transaction can be resubmitted to repeat the walk under the write lock. Far deeper than any
+/// honest chain of unconfirmed spends, and a walk this size costs well under a millisecond.
+const MAX_EVICTION_CHECK_TRANSACTIONS: usize = 2_000;
+
 /// The outcome of a branch's internal-duplicate check
 enum DuplicateCheck {
     Clean,
@@ -803,12 +808,18 @@ impl UnconfirmedPool {
                 return Ok(InsertOutcome::PoolFull);
             }
             let lowest_key = *lowest_key;
-            if !prioritized_tx.dependent_output_hashes.is_empty() &&
-                self.would_orphan(&prioritized_tx.transaction, &self.descendant_closure([lowest_key]))
-            {
-                return Ok(InsertOutcome::PoolFull);
-            }
-            let evicted = self.remove_transactions_and_descendants([lowest_key])?;
+            let evicted = if prioritized_tx.dependent_output_hashes.is_empty() {
+                self.remove_transactions_and_descendants([lowest_key])?
+            } else {
+                // A tree too large to check is rejected: the check would be repeatable, unlike the eviction
+                let closure = self.descendant_closure([lowest_key], MAX_EVICTION_CHECK_TRANSACTIONS);
+                if closure.len() > MAX_EVICTION_CHECK_TRANSACTIONS ||
+                    self.would_orphan(&prioritized_tx.transaction, &closure)
+                {
+                    return Ok(InsertOutcome::PoolFull);
+                }
+                self.remove_transactions(closure)?.len()
+            };
             debug!(
                 target: LOG_TARGET,
                 "Unconfirmed pool full, evicted {evicted} transaction(s) for {prioritized_tx}"
@@ -1155,20 +1166,26 @@ impl UnconfirmedPool {
         &mut self,
         keys: impl IntoIterator<Item = TransactionKey>,
     ) -> Result<usize, UnconfirmedPoolError> {
-        let closure = self.descendant_closure(keys);
+        let closure = self.descendant_closure(keys, usize::MAX);
         Ok(self.remove_transactions(closure)?.len())
     }
 
     /// The pool transactions `keys` and every pool transaction that spends one of their outputs, directly or through
     /// others. An output that another pool transaction outside the set also produces is still available, so its
     /// spenders are left out. Each is found through the spent-output index and visited once, so this is linear in the
-    /// index entries read.
-    fn descendant_closure(&self, keys: impl IntoIterator<Item = TransactionKey>) -> HashSet<TransactionKey> {
+    /// index entries read. The walk stops once the set holds more than `max` transactions.
+    fn descendant_closure(
+        &self,
+        keys: impl IntoIterator<Item = TransactionKey>,
+        max: usize,
+    ) -> HashSet<TransactionKey> {
         let mut to_visit = keys.into_iter().collect::<Vec<_>>();
         let mut closure = HashSet::new();
         // The producers of each output not in the set
         let mut live_producers = HashMap::<HashOutput, usize>::new();
-        while let Some(key) = to_visit.pop() {
+        while closure.len() <= max &&
+            let Some(key) = to_visit.pop()
+        {
             let Some(tx) = self.tx_by_key.get(&key) else {
                 continue;
             };
@@ -7445,6 +7462,26 @@ mod test {
 
                 let grandchild = child_with_fee(&base, &child, 3, 100);
                 assert_eq!(insert(&mut pool, &grandchild), InsertOutcome::PoolFull);
+                assert!(indexes(&pool) == before);
+            }
+
+            #[test]
+            fn eviction_check_over_the_walk_budget_is_rejected() {
+                let base = base();
+                let root = synthetic_tx(&base, 0, 1);
+                let mut chain = vec![root];
+                for n in 1..=u64::try_from(MAX_EVICTION_CHECK_TRANSACTIONS).unwrap() {
+                    chain.push(child_of(&base, chain.last().unwrap(), n));
+                }
+                // Keeps the output the incoming transaction spends alive, so only the budget rejects it
+                let other_producer = same_outputs_as(&base, chain.last().unwrap(), 0, 50);
+                let txs = chain.iter().chain([&other_producer]).collect::<Vec<_>>();
+                let mut pool = full_pool(txs.len(), &txs);
+                let before = indexes(&pool);
+
+                // Spends an output of a descendant of the lowest priority transaction past the walk budget
+                let incoming = child_with_fee(&base, chain.last().unwrap(), 0, 100);
+                assert_eq!(insert(&mut pool, &incoming), InsertOutcome::PoolFull);
                 assert!(indexes(&pool) == before);
             }
 
