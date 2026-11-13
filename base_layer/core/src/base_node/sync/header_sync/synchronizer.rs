@@ -1497,7 +1497,7 @@ pub enum HeaderSyncStatus {
 }
 
 #[cfg(test)]
-mod test {
+pub(super) mod test {
     #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::indexing_slicing)]
     use primitive_types::U512;
@@ -1654,7 +1654,9 @@ mod test {
         connect_to_service(sync_service(peer_db), claimed_height, claimed_difficulty).await
     }
 
-    fn sync_service(peer_db: &BlockchainDatabase<TempDatabase>) -> rpc::BaseNodeSyncRpcService<TempDatabase> {
+    pub(in crate::base_node::sync) fn sync_service(
+        peer_db: &BlockchainDatabase<TempDatabase>,
+    ) -> rpc::BaseNodeSyncRpcService<TempDatabase> {
         let (req_tx, _) = reply_channel::unbounded();
         let (block_tx, _) = reply_channel::unbounded();
         let (block_event_tx, _) = broadcast::channel(1);
@@ -1666,7 +1668,7 @@ mod test {
     }
 
     /// Serves `service` to a client over a mock connection, with the peer claiming the given chain
-    async fn connect_to_service<S: rpc::BaseNodeSyncService>(
+    pub(in crate::base_node::sync) async fn connect_to_service<S: rpc::BaseNodeSyncService>(
         service: S,
         claimed_height: u64,
         claimed_difficulty: U512,

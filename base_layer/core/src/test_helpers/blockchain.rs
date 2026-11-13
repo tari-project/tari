@@ -660,6 +660,10 @@ impl BlockchainBackend for TempDatabase {
         self.db.as_ref().unwrap().verify_horizon_sync_output_root(expected_root)
     }
 
+    fn fetch_horizon_sync_output_leaf_count(&self) -> Result<u64, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_horizon_sync_output_leaf_count()
+    }
+
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         self.db.as_ref().unwrap().get_stats()
     }

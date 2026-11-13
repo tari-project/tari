@@ -283,6 +283,9 @@ pub trait BlockchainBackend: Send + Sync + 'static {
     /// Verify that the JMT output root at the given version matches the expected root.
     fn verify_horizon_sync_output_root(&self, expected_root: HashOutput) -> Result<(), ChainStorageError>;
 
+    /// Fetch the number of leaves in the JMT output tree at the current version (`0` when the tree is empty).
+    fn fetch_horizon_sync_output_leaf_count(&self) -> Result<u64, ChainStorageError>;
+
     /// Returns basic database stats for each internal database, such as number of entries and page sizes. This call may
     /// not apply to every database implementation.
     fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError>;
