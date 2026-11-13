@@ -418,7 +418,9 @@ where KM: TransactionKeyManagerInterface
     /// across several calls is what the design forbids: a later call would see no input script keys left to fold in,
     /// and its reply would be a bare sender offset private key.
     ///
-    /// The change decision and the fee are made here and are binding - `build` emits exactly what this decided.
+    /// The change decision and the fee are made here and are binding - `build` emits exactly what this decided. A
+    /// transaction with no recipients is refused here with [`TransactionBuilderError::ChangeOnlyRequiresChange`] if
+    /// it would carry no change output either.
     // Ristretto point/scalar arithmetic, not integer arithmetic: these operators cannot overflow.
     #[allow(clippy::arithmetic_side_effects)]
     pub fn reserve_sender_offset_keys(
@@ -431,6 +433,7 @@ where KM: TransactionKeyManagerInterface
 
         let fee_and_change = self.decide_fee_and_change(pending_outputs)?;
         // Refuse before `get_script_offset` mints any sender offset key.
+        self.check_change_only_has_change(&fee_and_change, pending_outputs)?;
         if self.change_required {
             self.check_offline_decision(&fee_and_change, pending_outputs)?;
         }
@@ -518,7 +521,7 @@ where KM: TransactionKeyManagerInterface
             });
         }
         if self.prevent_fee_gt_amount {
-            let sent = self.total_output_value(pending)?;
+            let sent = self.fee_guard_amount(pending)?;
             if fee_and_change.fee > sent {
                 return Err(TransactionBuilderError::FeeGreaterThanAmount {
                     fee: fee_and_change.fee,
@@ -590,7 +593,8 @@ where KM: TransactionKeyManagerInterface
         Ok(self)
     }
 
-    /// Enable or disable spending of an amount less than the fee
+    /// Enable or disable spending of an amount less than the fee. A change-only transaction sends nothing, so its
+    /// fee is compared with the total input value instead.
     pub fn with_prevent_fee_gt_amount(&mut self, prevent_fee_gt_amount: bool) -> &mut Self {
         self.prevent_fee_gt_amount = prevent_fee_gt_amount;
         self
@@ -801,13 +805,14 @@ where KM: TransactionKeyManagerInterface
         Ok(())
     }
 
-    fn check_conditions(&self) -> Result<(), TransactionBuilderError> {
+    /// A transaction with no recipient, custom or spec outputs is allowed only as a change-only transaction that
+    /// pays its inputs back to a change output (e.g. claiming or refunding an HTLC). A caller that forgets its
+    /// recipients therefore builds a valid transaction back to itself rather than failing here.
+    fn check_conditions(&self, fee_and_change: &FeeAndChange) -> Result<(), TransactionBuilderError> {
         if self.fee_per_gram.is_none() && self.fee == MicroMinotari::zero() {
             return Err(TransactionBuilderError::FeeNotSet);
         }
-        if self.recipient_outputs.is_empty() && self.custom_outputs.is_empty() && self.recipient_specs.is_empty() {
-            return Err(TransactionBuilderError::NoRecipients);
-        }
+        self.check_change_only_has_change(fee_and_change, &[])?;
         if self.inputs.is_empty() {
             return Err(TransactionBuilderError::NoInputs);
         }
@@ -824,6 +829,37 @@ where KM: TransactionKeyManagerInterface
             return Err(TransactionBuilderError::ExceedsMaxOutputs(MAX_TRANSACTION_OUTPUTS));
         }
         Ok(())
+    }
+
+    fn is_change_only(&self, pending: &[PendingOutput]) -> bool {
+        self.recipient_outputs.is_empty() &&
+            self.custom_outputs.is_empty() &&
+            self.recipient_specs.is_empty() &&
+            pending.is_empty()
+    }
+
+    fn check_change_only_has_change(
+        &self,
+        fee_and_change: &FeeAndChange,
+        pending: &[PendingOutput],
+    ) -> Result<(), TransactionBuilderError> {
+        if self.is_change_only(pending) && fee_and_change.change.is_none() {
+            return Err(TransactionBuilderError::ChangeOnlyRequiresChange {
+                remainder: fee_and_change.remainder,
+                change_fee: fee_and_change.change_fee,
+            });
+        }
+        Ok(())
+    }
+
+    /// What `prevent_fee_gt_amount` compares the fee with: the amount sent, or the total input value for a
+    /// change-only transaction, which sends nothing.
+    fn fee_guard_amount(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
+        if self.is_change_only(pending) {
+            self.get_total_input_value()
+        } else {
+            self.total_output_value(pending)
+        }
     }
 
     fn total_output_value(&self, pending: &[PendingOutput]) -> Result<MicroMinotari, TransactionBuilderError> {
@@ -1378,13 +1414,14 @@ where KM: TransactionKeyManagerInterface
     pub fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         // The reservation is the only place the input script keys are folded into the script offset, so a builder
         // that never reserved would produce a transaction whose script offset does not balance.
+        let fee_and_change = self
+            .fee_and_change
+            .ok_or(TransactionBuilderError::SenderOffsetKeysNotReserved)?;
         let FeeAndChange {
             fee: total_fee,
             change: change_amount,
             ..
-        } = self
-            .fee_and_change
-            .ok_or(TransactionBuilderError::SenderOffsetKeysNotReserved)?;
+        } = fee_and_change;
 
         // Every key the reservation handed back is subtracted from the script offset, so one that never made it
         // onto a published output would leave the offset unbalanced and the transaction unspendable.
@@ -1407,9 +1444,9 @@ where KM: TransactionKeyManagerInterface
         // was declared has to be what actually arrived, not merely the same number of outputs.
         self.check_pending_outputs_match_declaration()?;
 
-        self.check_conditions()?;
+        self.check_conditions(&fee_and_change)?;
 
-        let total_sent = self.total_output_value(&[])?;
+        let total_sent = self.fee_guard_amount(&[])?;
         if total_fee > total_sent {
             warn!(
                 target: LOG_TARGET,
@@ -1426,6 +1463,17 @@ where KM: TransactionKeyManagerInterface
         // Construct the spec outputs first: the change memo names the first recipient, and the transaction id is
         // derived from the outputs.
         let spec_outputs = self.build_spec_outputs(total_fee)?;
+
+        // Finalise the recipient outputs before the change memo records their hashes, so the memo names the outputs
+        // that are published.
+        for recipient in &mut self.recipient_outputs {
+            Self::update_encrypted_data_and_metadata_sig(
+                &self.key_manager,
+                &mut recipient.output,
+                total_fee,
+                recipient.recipient_address.as_ref(),
+            )?;
+        }
 
         let mut change_output = match (change_amount, self.change_sender_offset_key.take()) {
             (Some(amount), Some(sender_offset)) => Some(self.build_change(amount, sender_offset)?),
@@ -1453,14 +1501,7 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_input(input.output.to_transaction_input(&self.key_manager)?.clone());
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &mut self.recipient_outputs {
-            Self::update_encrypted_data_and_metadata_sig(
-                &self.key_manager,
-                &mut recipient.output,
-                total_fee,
-                recipient.recipient_address.as_ref(),
-            )?;
-
+        for recipient in &self.recipient_outputs {
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
@@ -1973,6 +2014,99 @@ mod test {
         let err = builder.build().unwrap_err();
         assert!(
             matches!(err, TransactionBuilderError::FeeGreaterThanAmount { .. }),
+            "got {err:?}"
+        );
+    }
+
+    /// A builder spending a single input of `value`, with no recipients.
+    fn change_only_builder(key_manager: &KeyManager, value: MicroMinotari) -> TransactionBuilder<KeyManager> {
+        let input = create_test_input(value, 0, key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20)).with_input(input).unwrap();
+        builder
+    }
+
+    /// A transaction with no recipients pays its inputs, less the fee, back to a single change output. The fee guard
+    /// is on by default and compares the fee with the input, not with the nothing that is sent.
+    #[test]
+    fn a_change_only_transaction_builds_with_a_single_change_output() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = change_only_builder(&key_manager, MicroMinotari(100_000));
+        let fee = builder.get_fee_estimate_without_change().unwrap() + builder.get_change_output_fee(&[]).unwrap();
+
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        let finalized = builder.build().unwrap();
+
+        let tx = &finalized.transaction;
+        assert_eq!(tx.body.outputs().len(), 1);
+        assert_eq!(tx.body.kernels().first().map(|k| k.fee), Some(fee));
+        assert_eq!(
+            finalized.change.as_ref().map(|o| o.value()),
+            Some(MicroMinotari(100_000) - fee)
+        );
+        assert_validates(tx);
+    }
+
+    /// The offline rule's reservation-time fee guard also compares a change-only transaction's fee with its input.
+    #[test]
+    fn the_fee_guard_does_not_refuse_a_valid_change_only_transaction() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder = change_only_builder(&key_manager, MicroMinotari(100_000));
+        builder.with_prevent_fee_gt_amount(true).with_change_required();
+
+        builder.check_offline_payload(&[]).unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+        assert_validates(&builder.build().unwrap().transaction);
+    }
+
+    /// A change-only transaction whose remainder cannot pay for the change output would have no outputs at all. The
+    /// reservation refuses it before minting any key, and `build` would refuse it again.
+    #[test]
+    fn a_change_only_transaction_without_change_is_refused_before_minting_keys() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let probe = change_only_builder(&key_manager, MicroMinotari(100_000));
+        let fee = probe.get_fee_estimate_without_change().unwrap();
+        let change_fee = probe.get_change_output_fee(&[]).unwrap();
+        let mut builder = change_only_builder(&key_manager, fee + change_fee);
+
+        let err = builder.reserve_sender_offset_keys(&[]).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                TransactionBuilderError::ChangeOnlyRequiresChange { remainder, change_fee: c }
+                    if remainder == change_fee && c == change_fee
+            ),
+            "got {err:?}"
+        );
+        assert_eq!(builder.phase, BuilderPhase::Collecting);
+        assert!(builder.change_sender_offset_key.is_none() && builder.spec_sender_offset_keys.is_empty());
+
+        let no_change = FeeAndChange {
+            fee: fee + change_fee,
+            change: None,
+            remainder: change_fee,
+            change_fee,
+        };
+        let err = builder.check_conditions(&no_change).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::ChangeOnlyRequiresChange { .. }),
+            "got {err:?}"
+        );
+    }
+
+    /// With neither inputs nor recipients the reservation still fails as it always has: there is nothing to pay the
+    /// fee with.
+    #[test]
+    fn no_inputs_and_no_recipients_is_still_refused() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20));
+
+        let err = builder.reserve_sender_offset_keys(&[]).unwrap_err();
+        assert!(
+            matches!(err, TransactionBuilderError::SpendingMoreThanAvailable { .. }),
             "got {err:?}"
         );
     }
@@ -3028,6 +3162,107 @@ mod test {
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.outputs().len(), 2);
         assert_validates(&tx);
+    }
+
+    /// Decrypt the published change output's memo the way a wallet restored from seed does, and check that it names
+    /// the recipient outputs that are actually in the body.
+    fn assert_change_memo_names_published_recipients(key_manager: &KeyManager, finalized: &FinalizedTransaction) {
+        let change_commitment = finalized.change.as_ref().expect("a change output").commitment();
+        let outputs = finalized.transaction.body.outputs();
+        let change = outputs.iter().find(|o| &o.commitment == change_commitment).unwrap();
+        let (_, _, memo, _) = key_manager
+            .try_output_key_recovery(
+                &change.commitment,
+                &change.encrypted_data,
+                &change.sender_offset_public_key,
+            )
+            .unwrap()
+            .expect("the wallet recovers its change");
+        let published = outputs
+            .iter()
+            .filter(|o| &o.commitment != change_commitment)
+            .map(|o| o.hash())
+            .collect::<Vec<_>>();
+        assert_eq!(memo.get_sent_hashes(), Some(published.clone()));
+        assert_eq!(finalized.sent_output_hashes, published);
+    }
+
+    #[test]
+    fn the_change_memo_records_a_pre_attached_recipient_as_published() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let p = TestParams::new(&key_manager);
+        let input = create_test_input(MicroMinotari(50000), 0, &key_manager, vec![], None);
+        // A memo fee that will not be the final fee, so the builder has to rewrite the output.
+        let mut payment_id = MemoField::new_address_and_data(
+            TariAddress::default(),
+            MicroMinotari(10000),
+            true,
+            TxType::PaymentToOther,
+            Vec::new(),
+        )
+        .unwrap();
+        payment_id.set_fee(MicroMinotari(999999));
+        let mut output = p
+            .create_output(
+                UtxoTestParams {
+                    value: MicroMinotari(10000),
+                    payment_id,
+                    ..Default::default()
+                },
+                &key_manager,
+            )
+            .unwrap();
+        let address = random_address();
+
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(5)).with_input(input).unwrap();
+        let sender_offset = builder
+            .reserve_sender_offset_keys(&[PendingOutput::from_output(&output)
+                .unwrap()
+                .for_recipient(address.clone())])
+            .unwrap()
+            .pop()
+            .unwrap();
+        // A real signature under the reserved key, so only the fee change makes the builder rewrite the output.
+        output.set_sender_offset_public_key(sender_offset.pub_key.clone());
+        output
+            .change_encrypted_data(
+                output.encrypted_data().clone(),
+                &sender_offset.key_id,
+                output.payment_id().clone(),
+                &key_manager,
+            )
+            .unwrap();
+        builder
+            .add_recipient(address, output, sender_offset.key_id, None)
+            .unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
+        assert_change_memo_names_published_recipients(&key_manager, &finalized);
+    }
+
+    #[test]
+    fn the_change_memo_records_a_spec_recipient_as_published() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let input = create_test_input(MicroMinotari(25000), 0, &key_manager, vec![], None);
+        let mut builder =
+            TransactionBuilder::new(create_consensus_constants(0), key_manager.clone(), Network::LocalNet).unwrap();
+        builder.with_fee_per_gram(MicroMinotari(20)).with_input(input).unwrap();
+        builder
+            .add_stealth_recipient(
+                random_address(),
+                MicroMinotari(5000),
+                OutputFeatures::default(),
+                MemoField::new_empty(),
+            )
+            .unwrap();
+        builder.reserve_sender_offset_keys(&[]).unwrap();
+
+        let finalized = builder.build().unwrap();
+        assert_validates(&finalized.transaction);
+        assert_change_memo_names_published_recipients(&key_manager, &finalized);
     }
 
     #[test]

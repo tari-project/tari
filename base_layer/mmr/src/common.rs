@@ -51,6 +51,17 @@ pub fn node_index(leaf_index: LeafIndex) -> usize {
         .saturating_sub(leaf_index.0.count_ones() as usize)
 }
 
+/// Like [`node_index`] but returns `None` when the node position does not fit in `usize`.
+pub fn checked_node_index(leaf_index: LeafIndex) -> Option<usize> {
+    if leaf_index.0 == 0 {
+        return Some(0);
+    }
+    leaf_index
+        .0
+        .checked_mul(2)?
+        .checked_sub(leaf_index.0.count_ones() as usize)
+}
+
 /// Returns the leaf index derived from the MMR node index.
 /// Returns None if the node index == usize::MAX
 pub fn leaf_index(node_index: usize) -> Option<usize> {
@@ -242,6 +253,14 @@ pub fn checked_n_leaves(size: usize) -> Option<usize> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn checked_node_index_matches_node_index_and_rejects_overflow() {
+        for i in 0..=10_000 {
+            assert_eq!(checked_node_index(LeafIndex(i)), Some(node_index(LeafIndex(i))));
+        }
+        assert_eq!(checked_node_index(LeafIndex(usize::MAX / 2 + 1)), None);
+    }
 
     #[test]
     fn leaf_to_node_indices() {

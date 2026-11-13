@@ -107,6 +107,9 @@ pub enum TxStorageResponse {
     /// Another pool transaction already registers or exits the same validator node, with an equal or higher fee per
     /// gram. Not a validation failure: the transaction may be stored once the other one is mined or removed.
     NotStoredValidatorNodeSlotTaken,
+    /// Refused by a mempool policy, not a validation failure (e.g. the spend cap): the transaction may be stored later,
+    /// once the pool has changed
+    NotStoredMempoolPolicy(String),
 }
 
 impl TxStorageResponse {
@@ -143,6 +146,7 @@ impl Display for TxStorageResponse {
                                                                    registers or exits this validator node with an \
                                                                    equal or higher fee"
                 .to_string(),
+            TxStorageResponse::NotStoredMempoolPolicy(reason) => format!("Not stored by mempool policy: {reason}"),
         };
         fmt.write_str(&storage)
     }

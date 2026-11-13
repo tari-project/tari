@@ -565,6 +565,8 @@ curl -X POST http://localhost:9000/json_rpc \
 | `TimeLocked` | Transaction is time-locked and not yet valid |
 | `ValidationFailed` | Transaction failed consensus validation |
 | `AlreadyMined` | Transaction has already been mined or spent |
+| `ValidatorNodeSlotTaken` | Another mempool transaction registers or exits the same validator node with an equal or higher fee; retry later |
+| `MempoolPolicy` | Refused by a mempool policy, not a validation failure (e.g. too many mempool transactions already spend one of its inputs); retry later |
 
 **Error Responses:**
 - `400` - Missing `transaction` parameter, invalid JSON, or unknown method
