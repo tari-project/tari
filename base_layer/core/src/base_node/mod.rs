@@ -59,3 +59,9 @@ pub mod proto;
 pub mod rpc;
 
 pub mod tari_pulse_service;
+
+/// The byte budget of one heavy RPC stream (`sync_blocks`, `sync_utxos_by_block`). It counts the responses queued for
+/// the RPC server and the last response the server took, and the next response is produced only while that is below
+/// this. So a stream holds at most this plus two responses: the one being produced, and the one the RPC server is
+/// still writing while it holds the next one prefetched.
+pub(crate) const RPC_STREAM_MAX_BUFFERED_BYTES: usize = 16 * 1024 * 1024;

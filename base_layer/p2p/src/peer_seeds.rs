@@ -35,6 +35,7 @@ use tari_comms::{
     net_address::{MultiaddressesWithStats, PeerAddressSource},
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, UncompressedCommsPublicKey},
+    utils::text::sanitize_for_display,
 };
 use tari_utilities::hex::Hex;
 
@@ -42,6 +43,10 @@ use super::dns::DnsClientError;
 use crate::dns::DnsClient;
 
 const LOG_TARGET: &str = "tari::p2p::dns::client";
+
+/// The longest part of an unparsable seed record that is logged, in bytes. Unless DNSSEC is enabled, which it is not by
+/// default, the record is whatever the name server answered.
+const MAX_LOGGED_SEED_RECORD_BYTES: usize = 512;
 
 #[derive(Clone)]
 pub struct DnsSeedResolver {
@@ -84,10 +89,7 @@ impl DnsSeedResolver {
             .filter_map(|txt| {
                 txt.parse()
                     .inspect_err(|err| {
-                        warn!(
-                            target: LOG_TARGET,
-                            "Failed to parse DNS seed peer string: {txt}. Error: {err}"
-                        );
+                        warn!(target: LOG_TARGET, "{}", unparsable_seed_record_message(&txt, err));
                     })
                     .ok()
             })
@@ -95,6 +97,16 @@ impl DnsSeedResolver {
         trace!(target: LOG_TARGET, "Seed peers: {:?}", peers.iter().map(|p| format!("{}", p)).collect::<Vec<_>>());
         Ok(peers)
     }
+}
+
+/// The log text for a TXT record that is not a seed peer. The parse error is sanitised as well as the record, because
+/// it can quote part of the record (an unknown multiaddr protocol name, for example).
+fn unparsable_seed_record_message(txt: &str, err: &anyhow::Error) -> String {
+    format!(
+        "Failed to parse DNS seed peer string: {}. Error: {}",
+        sanitize_for_display(txt, MAX_LOGGED_SEED_RECORD_BYTES),
+        sanitize_for_display(&err.to_string(), MAX_LOGGED_SEED_RECORD_BYTES)
+    )
 }
 
 /// Parsed information from a DNS seed record
@@ -219,6 +231,69 @@ mod test {
         fn it_errors_invalid_address() {
             let sample = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a::/ip4/invalid/tcp/8000";
             SeedPeer::from_str(sample).unwrap_err();
+        }
+    }
+
+    mod unparsable_seed_record_message {
+        use super::*;
+
+        const KEY: &str = "06e98e9c5eb52bd504836edec1878eccf12eb9f26a5fe5ec0e279423156e657a";
+
+        fn assert_display_safe(message: &str) {
+            for c in ['\u{1b}', '\r', '\n', '\u{0}', '\u{2028}'] {
+                assert!(!message.contains(c), "{c:?} reached the log: {message:?}");
+            }
+        }
+
+        /// A TXT record that is not a seed peer is logged, and it is whatever the name server answered.
+        #[test]
+        fn record_is_sanitised_before_it_is_logged() {
+            let record = "\r\u{1b}[2K\u{1b}[32m12:00 INFO  Seed peers verified\u{1b}[8m\n\u{0}\u{2028}";
+            let err = SeedPeer::from_str(record).unwrap_err();
+
+            let message = unparsable_seed_record_message(record, &err);
+
+            assert_display_safe(&message);
+            assert!(
+                message.contains("[2K[32m12:00 INFO  Seed peers verified[8m"),
+                "{message}"
+            );
+        }
+
+        /// The parse error quotes an unknown multiaddr protocol name, so it carries the record's bytes too.
+        #[test]
+        fn parse_error_is_sanitised_before_it_is_logged() {
+            let record = format!("{KEY}::/\u{1b}[2J\rforged/tcp/18189");
+            let err = SeedPeer::from_str(&record).unwrap_err();
+            assert!(err.to_string().contains('\u{1b}'), "{err}");
+
+            let message = unparsable_seed_record_message(&record, &err);
+
+            assert_display_safe(&message);
+        }
+
+        #[test]
+        fn long_record_is_cut() {
+            let record = "x".repeat(4 * MAX_LOGGED_SEED_RECORD_BYTES);
+            let err = SeedPeer::from_str(&record).unwrap_err();
+
+            let message = unparsable_seed_record_message(&record, &err);
+
+            assert!(message.len() < 2 * MAX_LOGGED_SEED_RECORD_BYTES, "{}", message.len());
+        }
+
+        /// An ordinary bad record reads exactly as before.
+        #[test]
+        fn ordinary_record_is_unchanged() {
+            let record = format!("{KEY}::/ip4/invalid/tcp/8000");
+            let err = SeedPeer::from_str(&record).unwrap_err();
+
+            let message = unparsable_seed_record_message(&record, &err);
+
+            assert_eq!(
+                message,
+                format!("Failed to parse DNS seed peer string: {record}. Error: {err}")
+            );
         }
     }
 

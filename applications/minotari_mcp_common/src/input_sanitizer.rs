@@ -46,7 +46,6 @@ pub struct InputSanitizer {
 impl Default for InputSanitizer {
     fn default() -> Self {
         let mut html_entities = HashMap::new();
-        html_entities.insert("&amp;".to_string(), "&".to_string());
         html_entities.insert("&lt;".to_string(), "<".to_string());
         html_entities.insert("&gt;".to_string(), ">".to_string());
         html_entities.insert("&quot;".to_string(), "\"".to_string());
@@ -81,7 +80,6 @@ impl InputSanitizer {
         let mut html_entities = HashMap::new();
 
         if config.clean_html_entities {
-            html_entities.insert("&amp;".to_string(), "&".to_string());
             html_entities.insert("&lt;".to_string(), "<".to_string());
             html_entities.insert("&gt;".to_string(), ">".to_string());
             html_entities.insert("&quot;".to_string(), "\"".to_string());
@@ -139,6 +137,10 @@ impl InputSanitizer {
         let mut sanitized = s.to_string();
         for (entity, replacement) in &self.allowed_html_entities {
             sanitized = sanitized.replace(entity, replacement);
+        }
+        // Decode &amp; last so double-encoded entities (e.g. &amp;lt;) are not decoded into < or >
+        if !self.allowed_html_entities.is_empty() {
+            sanitized = sanitized.replace("&amp;", "&");
         }
 
         // Remove null bytes and other control characters (except newlines and tabs)
@@ -353,10 +355,10 @@ mod tests {
     fn test_html_entity_sanitization() {
         let sanitizer = InputSanitizer::default();
 
-        let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot;");
+        let input = json!("AT&amp;T &lt;test&gt; &quot;quote&quot; &amp;lt;escaped&amp;gt;");
         let result = sanitizer.sanitize_input(&input).unwrap();
 
-        assert_eq!(result, json!("AT&T <test> \"quote\""));
+        assert_eq!(result, json!("AT&T <test> \"quote\" &lt;escaped&gt;"));
     }
 
     #[test]

@@ -113,6 +113,16 @@ pub enum TransactionBuilderError {
         remainder: MicroMinotari,
         change_fee: MicroMinotari,
     },
+    /// A transaction with no recipient or custom outputs is only built when it pays its inputs back to a change
+    /// output; without one it would have no outputs at all.
+    #[error(
+        "A transaction with no recipients needs a change output, but the {remainder} left over after the fee does not \
+         exceed the {change_fee} a change output would cost"
+    )]
+    ChangeOnlyRequiresChange {
+        remainder: MicroMinotari,
+        change_fee: MicroMinotari,
+    },
     #[error("Offline signing payload field `{field}` carries key id `{key_id}`, which is not allowed there")]
     OfflinePayloadKeyIdNotAllowed { field: String, key_id: String },
     #[error("{0}")]
