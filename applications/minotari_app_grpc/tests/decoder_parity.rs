@@ -31,6 +31,7 @@ use tari_common_types::{
         CompressedPublicKey,
         CompressedSignature,
         FixedHash,
+        MAX_RANGE_PROOF_BYTES,
         PrivateKey,
     },
 };
@@ -1157,10 +1158,11 @@ fn check_block(base: &Block, sample: &Sample) {
         mutation,
     );
 
+    let grpc_proto_result = Block::try_from(grpc_block).ok();
     let mut results = vec![
         ("serde_json", serde_json::from_value::<Block>(json).ok()),
         ("P2P proto", Block::try_from(p2p).ok()),
-        ("gRPC proto", Block::try_from(grpc_block).ok()),
+        ("gRPC proto", grpc_proto_result.clone()),
     ];
     if let Some(encoding) = borsh_encoding {
         results.push(("borsh", borsh::from_slice::<Block>(&encoding).ok()));
@@ -1171,12 +1173,46 @@ fn check_block(base: &Block, sample: &Sample) {
     if let Mutation::Nothing = mutation {
         results.push(("original", Some(block.clone())));
     }
+
     // `PartialEq` of an input only compares the output it spends, so compare the full encodings instead
     let results = results
         .into_iter()
         .map(|(name, block)| (name, block.map(|b| borsh::to_vec(&b).unwrap())))
         .collect::<Vec<_>>();
-    assert_parity(&sample, *accept, &results);
+    assert_decoded_parity(&sample, *accept, mutation, grpc_proto_result.is_none(), results);
+}
+
+fn is_grpc_only_range_proof_reject(mutation: &Mutation) -> bool {
+    matches!(
+        mutation,
+        Mutation::OutputRangeProof(bytes)
+            if !bytes.is_empty() && bytes.len() != MAX_RANGE_PROOF_BYTES && bytes.len() <= MAX_RANGE_PROOF_BYTES
+    )
+}
+
+fn assert_decoded_parity(
+    sample: &str,
+    accept: bool,
+    mutation: &Mutation,
+    grpc_rejected: bool,
+    results: Vec<(&'static str, Option<Vec<u8>>)>,
+) {
+    // Range proofs: gRPC rejects non-empty proofs that are not exactly MAX_RANGE_PROOF_BYTES (577 bytes),
+    // whereas shared decoders maintain historical backwards compatibility by accepting any size <=
+    // MAX_RANGE_PROOF_BYTES.
+    if is_grpc_only_range_proof_reject(mutation) {
+        assert!(
+            grpc_rejected,
+            "{sample}: expected gRPC proto to reject non-canonical range proof"
+        );
+        let shared_results = results
+            .into_iter()
+            .filter(|(name, _)| *name != "gRPC proto")
+            .collect::<Vec<_>>();
+        assert_parity(sample, true, &shared_results);
+        return;
+    }
+    assert_parity(sample, accept, &results);
 }
 
 fn check_transaction(base: &Transaction, sample: &Sample) {
@@ -1212,10 +1248,11 @@ fn check_transaction(base: &Transaction, sample: &Sample) {
         mutation,
     );
 
+    let grpc_proto_result = Transaction::try_from(grpc_transaction).ok();
     let mut results = vec![
         ("serde_json", serde_json::from_value::<Transaction>(json).ok()),
         ("P2P proto", Transaction::try_from(p2p).ok()),
-        ("gRPC proto", Transaction::try_from(grpc_transaction).ok()),
+        ("gRPC proto", grpc_proto_result.clone()),
     ];
     if let Some(encoding) = bincode_encoding {
         results.push(("bincode", bincode::deserialize::<Transaction>(&encoding).ok()));
@@ -1223,12 +1260,13 @@ fn check_transaction(base: &Transaction, sample: &Sample) {
     if let Mutation::Nothing = mutation {
         results.push(("original", Some(transaction.clone())));
     }
+
     // `PartialEq` of an input only compares the output it spends, so compare the full encodings instead
     let results = results
         .into_iter()
         .map(|(name, transaction)| (name, transaction.map(|t| bincode::serialize(&t).unwrap())))
         .collect::<Vec<_>>();
-    assert_parity(&sample, *accept, &results);
+    assert_decoded_parity(&sample, *accept, mutation, grpc_proto_result.is_none(), results);
 }
 
 /// A change to a block or transaction, and whether every decoder must accept it
@@ -1629,11 +1667,12 @@ fn body_samples() -> Vec<Sample> {
         ));
     }
 
-    // Range proof bytes: only the length is checked when decoded
+    // Range proof bytes: only empty (revealed value) or exact 577-byte proofs are accepted
     for (name, bytes, accept) in [
         ("empty", vec![], true),
-        ("1 byte", vec![1], true),
-        ("garbage", vec![0xff; 100], true),
+        ("1 byte", vec![1], false),
+        ("garbage", vec![0xff; 100], false),
+        ("one under the cap", vec![0xff; 576], false),
         ("at the cap", vec![0xff; 577], true),
         ("one over the cap", vec![0xff; 578], false),
     ] {

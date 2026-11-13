@@ -25,7 +25,14 @@ use std::convert::{TryFrom, TryInto};
 use borsh::BorshSerialize;
 use tari_common_types::{
     payment_reference::generate_payment_reference,
-    types::{BlockHash, BulletRangeProof, CompressedCommitment, CompressedPublicKey, RangeProof},
+    types::{
+        BlockHash,
+        BulletRangeProof,
+        CompressedCommitment,
+        CompressedPublicKey,
+        MAX_RANGE_PROOF_BYTES,
+        RangeProof,
+    },
 };
 use tari_script::TariScript;
 use tari_transaction_components::{
@@ -52,6 +59,12 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
                 .map_err(|err| format!("Invalid sender_offset_public_key {err:?}"))?;
 
         let range_proof = if let Some(proof) = output.range_proof {
+            if !proof.proof_bytes.is_empty() && proof.proof_bytes.len() != MAX_RANGE_PROOF_BYTES {
+                return Err(format!(
+                    "Range proof of {} bytes does not match expected size of {MAX_RANGE_PROOF_BYTES} bytes",
+                    proof.proof_bytes.len()
+                ));
+            }
             Some(BulletRangeProof::from_canonical_bytes(&proof.proof_bytes).map_err(|err| err.to_string())?)
         } else {
             None
