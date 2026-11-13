@@ -29,7 +29,7 @@ TARI_TARGET_NETWORK=mainnet cargo build --release --bin minotari_peer_sync
 The base node's default transport needs tor. On unix the `libtor` feature (on by default) means you do not have to
 supply it: when the transport is a tor one and `base_node.use_libtor` is true, the tool starts its own bundled tor
 instance, exactly as the base node does, and points the transport at its control port. Its data directory is
-`<base path>/libtor/peer_sync` (override with `-z/--libtor-data-dir`) — deliberately separate from the base node's, so
+`<base path>/libtor/peer_sync` (override `<base path>` with `-z/--libtor-data-dir`, which uses `<path>/libtor/peer_sync`) — deliberately separate from the base node's, so
 the two instances do not fight over the same directory. The report marks such a run as `tcp_tor (bundled tor)`.
 
 `--libtor` forces it on even when the config sets `use_libtor = false`. `--no-libtor` (or building with
@@ -94,7 +94,7 @@ identity file.
 | `--transport <type>` | from config | `tcp`, `tor`, `tor-tcp`, `tcp-tor` or `socks5` |
 | `--libtor` | off | Start the bundled tor even when `base_node.use_libtor` is false |
 | `--no-libtor` | off | Do not start the bundled tor, use an already-running one |
-| `-z, --libtor-data-dir <path>` | `<base path>/libtor/peer_sync` | Bundled tor's data directory |
+| `-z, --libtor-data-dir <path>` | `<base path>` | Base directory under which the bundled tor's `<path>/libtor/peer_sync` data directory is placed |
 
 ## Reading the report
 
