@@ -30,7 +30,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 lazy_static = "1.5.0"
-libsqlite3-sys = { version = "0.37", features = ["bundled"] }
+libsqlite3-sys = { version = "0.40", features = ["bundled"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
