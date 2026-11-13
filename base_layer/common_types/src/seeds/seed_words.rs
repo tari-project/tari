@@ -222,4 +222,25 @@ mod tests {
         let empty = SeedWords::from_str("   \n\t ").unwrap();
         assert!(empty.is_empty());
     }
+
+    #[test]
+    pub fn test_seed_words_from_str_whitespace_handling() {
+        let empty = SeedWords::from_str("").unwrap();
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        let whitespace_only = SeedWords::from_str("   \t\n  ").unwrap();
+        assert!(whitespace_only.is_empty());
+        assert_eq!(whitespace_only.len(), 0);
+
+        let parsed = SeedWords::from_str("  hi   niao\thola\nbonjour  olá \r\n").unwrap();
+        let expected = SeedWords::new(vec![
+            Hidden::hide("hi".to_string()),
+            Hidden::hide("niao".to_string()),
+            Hidden::hide("hola".to_string()),
+            Hidden::hide("bonjour".to_string()),
+            Hidden::hide("olá".to_string()),
+        ]);
+        assert_eq!(parsed, expected);
+    }
 }
