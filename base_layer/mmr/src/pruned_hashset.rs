@@ -41,7 +41,7 @@ use crate::{ArrayLike, Hash, MerkleMountainRange, common::find_peaks, error::Mer
 /// 1. `base_offset` is a valid MMR size (`find_peaks(base_offset)` is `Some`), including 0.
 /// 2. `peak_indices` equals `find_peaks(base_offset)` exactly, so it is sorted ascending.
 /// 3. `peak_hashes` has one hash per peak index.
-/// 4. `base_offset + hashes.len()` does not overflow `usize`.
+/// 4. `base_offset + hashes.len()` does not overflow `usize` and is a valid MMR size.
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(try_from = "RawPrunedHashSet")]
 pub struct PrunedHashSet {
@@ -99,8 +99,11 @@ impl PrunedHashSet {
                 self.peak_indices.len()
             ));
         }
-        if self.base_offset.checked_add(self.hashes.len()).is_none() {
+        let Some(total) = self.base_offset.checked_add(self.hashes.len()) else {
             return invalid("base_offset + hashes length overflows".to_string());
+        };
+        if find_peaks(total).is_none() {
+            return invalid(format!("base_offset + hashes length {total} is not a valid MMR size"));
         }
         Ok(())
     }
@@ -298,15 +301,33 @@ mod test {
     }
 
     #[test]
+    fn deserialize_rejects_invalid_total_size() {
+        let h = vec![0u8; 32];
+        let raw = Mirror {
+            base_offset: 1,
+            peak_indices: vec![0],
+            peak_hashes: vec![h.clone()],
+            hashes: vec![h],
+        };
+        let err = bincode::deserialize::<PrunedHashSet>(&bincode::serialize(&raw).unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("hashes length"), "{err}");
+    }
+
+    #[test]
     fn deserialize_accepts_every_valid_size() {
         for leaves in 0..=64 {
             let mmr = create_mmr(leaves);
             let bytes = bincode::serialize(&PrunedHashSet::try_from(&mmr).unwrap()).unwrap();
             let decoded: PrunedHashSet = bincode::deserialize(&bytes).unwrap();
-            assert_eq!(
-                TestMmr::new(decoded).get_merkle_root().unwrap(),
-                mmr.get_merkle_root().unwrap()
-            );
+            let mut pruned = TestMmr::new(decoded);
+            assert_eq!(pruned.get_merkle_root().unwrap(), mmr.get_merkle_root().unwrap());
+            // Every state reached by a completed push must stay valid.
+            for i in 0..8u8 {
+                pruned.push(vec![i; 32]).unwrap();
+                pruned.hashes.validate().unwrap();
+            }
         }
     }
 
