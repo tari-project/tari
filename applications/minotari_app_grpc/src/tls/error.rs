@@ -30,4 +30,16 @@ pub enum GrpcTlsError {
     CertGenerationError(#[from] rcgen::Error),
     #[error("Error opening or writing the file: {0}")]
     IoError(#[from] io::Error),
+    #[error("Date computation overflow")]
+    DateOverflow,
+    #[error("Target file `{0}` already exists. Delete existing files, or pass --renew-leaf (minotari_node only).")]
+    FileAlreadyExists(String),
+    #[error("Cannot renew leaf certificate: {0}")]
+    MissingCaFiles(String),
+    #[error("CA key does not match CA certificate public key")]
+    CaKeyMismatch,
+    #[error("Certificate has expired: {0}")]
+    CertExpired(String),
+    #[error("Error parsing certificate: {0}")]
+    CertParseError(String),
 }

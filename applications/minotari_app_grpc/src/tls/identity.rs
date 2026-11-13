@@ -26,14 +26,64 @@ use tonic::transport::Identity;
 
 use crate::tls::error::GrpcTlsError;
 
+#[cfg(unix)]
+pub fn private_key_is_group_or_other_readable(mode: u32) -> bool {
+    mode & 0o044 != 0
+}
+
 pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError> {
     let err = |file| move |e| GrpcTlsError::FileReadError(format!("Could not load the file `{file:?}`: {e}"));
 
     let cert_file = config_dir.join("server.pem");
-    let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file))?;
+    let cert = tokio::fs::read(&cert_file).await.map_err(err(cert_file.clone()))?;
+
+    // Check certificate expiry and warn or error accordingly
+    if let Ok((_, x509_pem)) = x509_parser::pem::parse_x509_pem(&cert) &&
+        let Ok(parsed_cert) = x509_pem.parse_x509()
+    {
+        let not_after = parsed_cert.validity().not_after.timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        let remediation_hint = if config_dir.join("node_ca.key").exists() {
+            "Run `minotari_node create-tls-certs --renew-leaf` to renew it."
+        } else {
+            "Delete the existing certificate files and re-run `create-tls-certs` to regenerate them."
+        };
+        if now >= not_after {
+            return Err(GrpcTlsError::CertExpired(format!(
+                "server.pem has expired. {remediation_hint}"
+            )));
+        }
+        let remaining = not_after.saturating_sub(now);
+        if remaining < 30 * 86_400 {
+            let days_left = remaining / 86_400;
+            log::warn!(
+                "TLS server certificate {:?} will expire in {} days. {}",
+                cert_file,
+                days_left,
+                remediation_hint
+            );
+        }
+    }
 
     let key_file = config_dir.join("server.key");
+    #[cfg(unix)]
+    if let Ok(metadata) = tokio::fs::metadata(&key_file).await {
+        use std::os::unix::fs::PermissionsExt;
+        if private_key_is_group_or_other_readable(metadata.permissions().mode()) {
+            log::warn!("TLS private key {:?} is readable by group or other users", key_file);
+        }
+    }
     let key = tokio::fs::read(&key_file).await.map_err(err(key_file))?;
 
     Ok(Identity::from_pem(cert, key))
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn private_key_permission_predicate() {
+        assert!(!super::private_key_is_group_or_other_readable(0o600));
+        assert!(super::private_key_is_group_or_other_readable(0o644));
+    }
 }
