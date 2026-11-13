@@ -283,13 +283,33 @@ impl WalletGrpcServer {
         }
     }
 
-    fn is_method_enabled(&self, method: WalletGrpcMethod) -> bool {
-        self.allow_methods.contains(&method)
-    }
-
     #[allow(clippy::result_large_err)]
     fn check_method_enabled(&self, method: WalletGrpcMethod) -> Result<(), Status> {
         check_wallet_grpc_method_enabled(&self.allow_methods, method)
+    }
+
+    async fn get_network_status_inner(&self) -> tari_rpc::NetworkStatusResponse {
+        let (status, avg_latency, num_node_connections) =
+            match self.wallet.wallet_connectivity.get_connectivity_status().await {
+                OnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
+                OnlineStatus::Online { latency_ms, .. } => {
+                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
+                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
+                    (ConnectivityStatus::Online(1), latency_ms, 1)
+                },
+                OnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
+                OnlineStatus::Degraded { latency_ms, .. } => {
+                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
+                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
+                    (ConnectivityStatus::Degraded(1), latency_ms, 1)
+                },
+            };
+
+        tari_rpc::NetworkStatusResponse {
+            status: tari_rpc::ConnectivityStatus::from(status) as i32,
+            avg_latency_ms: u32::try_from(avg_latency).unwrap_or(u32::MAX),
+            num_node_connections,
+        }
     }
 
     fn get_consensus_constants(&self) -> Result<&ConsensusConstants, WalletStorageError> {
@@ -2488,30 +2508,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
     }
 
-    async fn get_network_status_inner(&self) -> tari_rpc::NetworkStatusResponse {
-        let (status, avg_latency, num_node_connections) =
-            match self.wallet.wallet_connectivity.get_connectivity_status().await {
-                OnlineStatus::Connecting => (ConnectivityStatus::Initializing, UNKNOWN_LATENCY_MS, 0),
-                OnlineStatus::Online { latency_ms, .. } => {
-                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
-                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
-                    (ConnectivityStatus::Online(1), latency_ms, 1)
-                },
-                OnlineStatus::Offline => (ConnectivityStatus::Offline, u64::MAX, 0),
-                OnlineStatus::Degraded { latency_ms, .. } => {
-                    let mut avg_latencies = self.avg_latencies_ms.lock().await;
-                    let latency_ms = update_and_average_latency(&mut avg_latencies, latency_ms);
-                    (ConnectivityStatus::Degraded(1), latency_ms, 1)
-                },
-            };
-
-        tari_rpc::NetworkStatusResponse {
-            status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: u32::try_from(avg_latency).unwrap_or(u32::MAX),
-            num_node_connections,
-        }
-    }
-
     async fn get_network_status(
         &self,
         _: Request<tari_rpc::Empty>,
@@ -4640,13 +4636,14 @@ fn parse_excluded_commitments(commitments: Vec<Vec<u8>>) -> Result<Vec<Compresse
 mod tests {
     use std::str::FromStr;
 
+    use minotari_wallet::WalletGrpcMethod;
     use tari_common_types::types::{CommitmentFactory, CompressedCommitment};
     use tari_crypto::commitment::HomomorphicCommitmentFactory;
     use tari_transaction_components::rpc::MAX_ALLOWED_QUERY_SIZE;
     use tari_utilities::ByteArray;
-    use tonic::Status;
 
     use super::{
+        check_wallet_grpc_method_enabled,
         found_or_none,
         is_undecodable_row,
         is_undecodable_transaction,
@@ -4655,7 +4652,6 @@ mod tests {
         parse_excluded_commitments,
         with_request_offset,
     };
-    use minotari_wallet::WalletGrpcMethod;
 
     #[test]
     fn only_an_undecodable_row_goes_straight_to_cancel() {
