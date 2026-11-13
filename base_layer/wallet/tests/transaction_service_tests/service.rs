@@ -29,7 +29,7 @@ use chrono::{Days, Utc};
 use digest::consts::U32;
 use minotari_wallet::{
     base_node_service::{BaseNodeServiceInitializer, handle::BaseNodeServiceHandle},
-    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer},
+    connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     output_manager_service::{
         OutputManagerServiceInitializer,
         UtxoSelectionCriteria,
@@ -38,6 +38,8 @@ use minotari_wallet::{
         handle::{OutputManagerEvent, OutputManagerHandle},
         service::OutputManagerService,
         storage::{
+            OutputSource,
+            OutputStatus,
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::KnownOneSidedPaymentScript,
             sqlite_db::{OutputManagerSqliteDatabase, ReceivedOutputInfoForBatch},
@@ -140,6 +142,7 @@ use tari_transaction_components::{
             public_key_to_output_spending_key,
         },
     },
+    validation::transaction::TransactionInternalConsistencyValidator,
 };
 use tari_transaction_key_manager::{
     legacy_key_manager::{
@@ -1490,8 +1493,6 @@ async fn recover_stealth_one_sided_transaction() {
     assert!(recovered_outputs_2.is_empty());
 }
 
-// test is broken
-#[ignore]
 #[tokio::test]
 async fn test_htlc_send_and_claim() {
     let network = Network::LocalNet;
@@ -1520,7 +1521,7 @@ async fn test_htlc_send_and_claim() {
     let shutdown = Shutdown::new();
     let (mut alice_ts, mut alice_oms, _alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
         alice_node_identity,
-        consensus_manager,
+        consensus_manager.clone(),
         factories.clone(),
         alice_connection,
         shutdown.to_signal(),
@@ -1554,10 +1555,12 @@ async fn test_htlc_send_and_claim() {
         .unwrap();
 
     let value = 10000.into();
-    let bob_pubkey = bob_ts_interface.base_node_identity.public_key().clone();
-    let bob_view_key = bob_ts_interface.key_manager_handle.get_view_key();
-    let bob_address =
-        TariAddress::new_dual_address_with_default_features(bob_view_key.pub_key, bob_pubkey.clone(), network).unwrap();
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        bob_ts_interface.key_manager_handle.get_view_key().pub_key,
+        bob_ts_interface.key_manager_handle.get_spend_key().pub_key,
+        network,
+    )
+    .unwrap();
     let (tx_id, pre_image, output) = alice_ts
         .send_sha_atomic_swap_transaction(
             bob_address,
@@ -1598,12 +1601,60 @@ async fn test_htlc_send_and_claim() {
         }
     }
     let hash = output.hash();
-    bob_ts_interface.base_node_rpc_mock_state.set_utxos(vec![output]);
+    let bob_oms = &mut bob_ts_interface.output_manager_service_handle;
+
+    // A base node answering with some other output for the requested hash is refused.
+    let other_output = completed_tx
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .find(|o| o.hash() != hash)
+        .unwrap()
+        .clone();
+    bob_ts_interface
+        .base_node_mock
+        .set_utxos(vec![(hash, other_output)])
+        .await;
+    let err = bob_oms
+        .create_claim_sha_atomic_swap_transaction(hash, pre_image.clone(), 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::BaseNodeClientError(_)), "got {err:?}");
+
+    // The HTLC is refused with a pre-image it is not locked to.
+    bob_ts_interface.base_node_mock.set_utxos(vec![(hash, output)]).await;
+    let wrong_pre_image = CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng()));
+    let err = bob_oms
+        .create_claim_sha_atomic_swap_transaction(hash, wrong_pre_image, 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(
+        bob_oms.get_balance().await.unwrap().pending_incoming_balance,
+        MicroMinotari::zero()
+    );
+
     let (tx_id_htlc, _htlc_fee, htlc_amount, tx) = bob_ts_interface
         .output_manager_service_handle
         .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
         .await
         .unwrap();
+    // The claimed HTLC output was never in Bob's output DB; the claim records only its change.
+    let claim_outputs = bob_ts_interface
+        .output_manager_service_handle
+        .fetch_outputs_by_tx_id(tx_id_htlc)
+        .await
+        .unwrap();
+    let [claim_change] = claim_outputs.as_slice() else {
+        panic!("expected only the claim's change output, got {claim_outputs:?}");
+    };
+    assert_eq!(claim_change.source, OutputSource::AtomicSwap);
+    assert_eq!(claim_change.wallet_output.value(), htlc_amount);
+    // The pre-image unlocks the claim branch at any height.
+    TransactionInternalConsistencyValidator::new(false, consensus_manager, factories)
+        .validate(&tx, None, None, 0)
+        .expect("the claim must validate");
 
     bob_ts_interface
         .transaction_service_handle
@@ -1618,6 +1669,133 @@ async fn test_htlc_send_and_claim() {
             .unwrap()
             .pending_incoming_balance,
         htlc_amount
+    );
+}
+
+#[tokio::test]
+async fn test_htlc_send_and_refund() {
+    let network = Network::LocalNet;
+    let consensus_manager = ConsensusManager::builder(network).build();
+    let factories = CryptoFactories::default();
+    let alice_node_identity = Arc::new(NodeIdentity::random(
+        &mut rand::rng(),
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let shutdown = Shutdown::new();
+    let (mut alice_ts, mut alice_oms, alice_connectivity, key_manager_handle, alice_db) = setup_transaction_service(
+        alice_node_identity,
+        consensus_manager.clone(),
+        factories.clone(),
+        make_wallet_database_memory_connection(),
+        shutdown.to_signal(),
+    )
+    .await;
+
+    let uo1 = make_input(
+        &mut rand::rng(),
+        25000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo1.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo1.output_hash(), true)])
+        .unwrap();
+
+    let bob_address = TariAddress::new_dual_address_with_default_features(
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+        network,
+    )
+    .unwrap();
+    let value = 10000.into();
+    let (_tx_id, pre_image, output) = alice_ts
+        .send_sha_atomic_swap_transaction(
+            bob_address,
+            value,
+            UtxoSelectionCriteria::default(),
+            20.into(),
+            MemoField::new_empty(),
+        )
+        .await
+        .expect("Alice sending HTLC transaction");
+
+    // The HTLC output is mined and unspent, and so spendable by the refund.
+    let hash = output.hash();
+    alice_db.mark_outputs_as_unspent(vec![(hash, true)]).unwrap();
+    let balance_before = alice_oms.get_balance().await.unwrap();
+    assert_eq!(balance_before.available_balance, value);
+
+    // The sender knows the pre-image, but the claim branch is locked to the recipient's spend key.
+    alice_connectivity
+        .obtain_base_node_wallet_rpc_client()
+        .await
+        .set_utxos(vec![(hash, output)])
+        .await;
+    let err = alice_oms
+        .create_claim_sha_atomic_swap_transaction(hash, pre_image, 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(alice_oms.get_balance().await.unwrap(), balance_before);
+
+    let (refund_tx_id, fee, refund_amount, refund_tx) =
+        alice_oms.create_htlc_refund_transaction(hash, 20.into()).await.unwrap();
+    assert_eq!(refund_amount, value - fee);
+    // The send locks the refund branch until 720 blocks past the wallet's last scanned height, which is 0 here.
+    let validator = TransactionInternalConsistencyValidator::new(false, consensus_manager, factories);
+    validator
+        .validate(&refund_tx, None, None, 719)
+        .expect_err("the refund must not validate before the lock height");
+    validator
+        .validate(&refund_tx, None, None, 720)
+        .expect("the refund must validate at the lock height");
+
+    let outputs = alice_oms.fetch_outputs_by_tx_id(refund_tx_id).await.unwrap();
+    let htlc = outputs
+        .iter()
+        .find(|o| o.hash == hash)
+        .expect("HTLC output is spent by the refund");
+    assert_eq!(htlc.status, OutputStatus::EncumberedToBeSpent);
+    let change = outputs.iter().find(|o| o.hash != hash).expect("refund change output");
+    assert_eq!(change.source, OutputSource::HtlcRefund);
+    assert_eq!(change.payment_id.get_type(), TxType::HtlcAtomicSwapRefund);
+    assert_eq!(change.status, OutputStatus::EncumberedToBeReceived);
+    assert_eq!(change.wallet_output.value(), refund_amount);
+
+    let balance_after = alice_oms.get_balance().await.unwrap();
+    assert_eq!(balance_after.available_balance, MicroMinotari::zero());
+    assert_eq!(
+        balance_after.pending_incoming_balance,
+        balance_before.pending_incoming_balance + refund_amount
+    );
+
+    // A normal output is not an HTLC, so it is refused and left unspent.
+    let uo2 = make_input(
+        &mut rand::rng(),
+        5000.into(),
+        &OutputFeatures::default(),
+        key_manager_handle.key_manager(),
+    );
+    alice_oms.add_output(uo2.clone(), None).await.unwrap();
+    alice_db
+        .mark_outputs_as_unspent(vec![(uo2.output_hash(), true)])
+        .unwrap();
+    let balance_before = alice_oms.get_balance().await.unwrap();
+    let err = alice_oms
+        .create_htlc_refund_transaction(uo2.output_hash(), 20.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(err, OutputManagerError::InvalidArgument(_)), "got {err:?}");
+    assert_eq!(alice_oms.get_balance().await.unwrap(), balance_before);
+    assert!(
+        alice_oms
+            .get_unspent_outputs()
+            .await
+            .unwrap()
+            .iter()
+            .any(|o| o.hash == uo2.output_hash())
     );
 }
 

@@ -176,4 +176,39 @@ fn find_leaf_index() {
     assert_eq!(mmr.find_leaf_index(&h3), Ok(Some(LeafIndex(3))));
     assert_eq!(mmr.find_leaf_index(&h4), Ok(Some(LeafIndex(4))));
     assert_eq!(mmr.find_leaf_index(&h5), Ok(None));
+
+    // Also find a leaf whose hash matches an earlier parent node hash
+    let parent_node_2 = mmr.get_node_hash(2).unwrap().unwrap();
+    assert!(mmr.push(parent_node_2.clone()).is_ok());
+    assert_eq!(mmr.find_leaf_index(&parent_node_2), Ok(Some(LeafIndex(5))));
+}
+
+#[test]
+fn merkle_proof_verify_rejects_non_leaf_and_out_of_bounds_positions() {
+    use tari_mmr::{MerkleProof, MerkleProofError};
+
+    let mut mmr = TestMmr::new(Vec::default());
+    let h0 = int_to_hash(0);
+    let h1 = int_to_hash(1);
+    assert!(mmr.push(h0.clone()).is_ok());
+    assert!(mmr.push(h1.clone()).is_ok());
+    let root = mmr.get_merkle_root().unwrap();
+    let parent_2 = mmr.get_node_hash(2).unwrap().unwrap();
+
+    // A proof with empty path and peaks must not verify at non-leaf node index 2
+    let forged = MerkleProof {
+        mmr_size: mmr.len().unwrap(),
+        path: vec![],
+        peaks: vec![],
+    };
+    assert_eq!(
+        forged.verify::<MmrTestHasherBlake256>(&root, &parent_2, 2),
+        Err(MerkleProofError::NonLeafNode)
+    );
+
+    // Out-of-bounds leaf index must fail with PositionOutOfRange
+    assert_eq!(
+        forged.verify_leaf::<MmrTestHasherBlake256>(&root, &h0, LeafIndex(2)),
+        Err(MerkleProofError::PositionOutOfRange { pos: 3, mmr_size: 3 })
+    );
 }
