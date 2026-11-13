@@ -658,7 +658,7 @@ impl LMDBDatabase {
 
     /// Returns if the database is empty.
     pub fn is_empty(&self) -> Result<bool, LMDBError> {
-        self.get_stats().map(|s| s.entries > 0)
+        self.get_stats().map(|s| s.entries == 0)
     }
 
     /// Returns the total number of entries in this database.
@@ -876,5 +876,11 @@ mod test {
             .build()
             .unwrap();
         assert_eq!(store.databases.len(), 2);
+        let db1 = store.get_handle("db1").unwrap();
+        assert!(db1.is_empty().unwrap());
+        db1.insert(&1u64, &42u64).unwrap();
+        assert!(!db1.is_empty().unwrap());
+        db1.remove(&1u64).unwrap();
+        assert!(db1.is_empty().unwrap());
     }
 }

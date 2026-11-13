@@ -193,7 +193,10 @@ impl Controller {
                             target: LOG_TARGET_FILE,
                             "Stopping jobs and Shutting down mining controller"
                         );
-                        miner = None;
+                        if let Some(active_miner) = miner.as_mut() {
+                            active_miner.kill_threads();
+                        }
+                        return Ok(());
                     },
                 };
             }
@@ -397,5 +400,18 @@ mod test {
 
         controller.forget_current_job();
         assert!(controller.should_we_update_job(5, 7, 11, blob).unwrap());
+    }
+
+    #[tokio::test]
+    async fn shutdown_message_exits_controller_run_loop() {
+        let mut controller = Controller::new(1).unwrap();
+        controller
+            .tx
+            .send(types::miner_message::MinerMessage::Shutdown)
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), controller.run())
+            .await
+            .expect("controller.run() should exit on Shutdown")
+            .unwrap();
     }
 }
