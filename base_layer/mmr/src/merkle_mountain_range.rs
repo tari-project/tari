@@ -129,6 +129,8 @@ where
     /// This function will return the single merkle root of the MMR by simply hashing the peaks together.
     ///
     /// Note that this differs from the bagging strategy used in other MMR implementations, and saves you a few hashes
+    ///
+    /// Returns [MerkleMountainRangeError::HashNotFound] if the backend is missing a peak hash.
     pub fn get_merkle_root(&self) -> Result<Hash, MerkleMountainRangeError> {
         if self.is_empty()? {
             return Ok(MerkleMountainRange::<D, B>::null_hash());
@@ -144,14 +146,16 @@ where
                 .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?,
         )
         .ok_or(MerkleMountainRangeError::InvalidMmrSize)?;
-        Ok(peaks
-            .into_iter()
-            .map(|i| self.hashes.get(i).expect("find_peaks returned invalid indexes"))
-            .fold(hasher, |hasher, h| hasher.chain_update(h)))
+        peaks.into_iter().try_fold(hasher, |hasher, i| {
+            let h = self.hashes.get(i).ok_or(MerkleMountainRangeError::HashNotFound(i))?;
+            Ok(hasher.chain_update(h))
+        })
     }
 
     /// Push a new element into the MMR. Computes new related peaks at the same time if applicable.
     /// Returns the new length of the merkle mountain range (the number of all nodes, not just leaf nodes).
+    /// Returns [MerkleMountainRangeError::HashNotFound] if the backend is missing a left sibling peak needed to
+    /// compute the new parent hashes.
     pub fn push(&mut self, hash: Hash) -> Result<usize, MerkleMountainRangeError> {
         if self.is_empty()? {
             return self.push_hash(hash);
@@ -174,7 +178,10 @@ where
                 left_sibling < pos,
                 "left_sibling was greater than the reported number of elements contained in the impl of ArrayLike"
             );
-            let left_hash = self.hashes.get(left_sibling).unwrap();
+            let left_hash = self
+                .hashes
+                .get(left_sibling)
+                .ok_or(MerkleMountainRangeError::HashNotFound(left_sibling))?;
             peak = peak.saturating_mul(2);
             pos = pos.saturating_add(1);
             let new_hash = hash_together::<D>(&left_hash, &last_hash);
