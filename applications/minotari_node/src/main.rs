@@ -73,6 +73,7 @@ use std::{
     fs::File,
     io::Write,
     panic,
+    path::Path,
     process,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -82,7 +83,7 @@ use clap::Parser;
 use log::*;
 use minotari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use minotari_node::{ApplicationConfig, cli::Cli, run_base_node_with_cli};
-use tari_common::{exit_codes::ExitError, initialize_logging, load_configuration, print_env_vars};
+use tari_common::{display_path, exit_codes::ExitError, initialize_logging, load_configuration, print_env_vars};
 use tari_comms::peer_manager::PeerFeatures;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -197,7 +198,7 @@ fn main_inner() -> Result<(), ExitError> {
     );
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
+    let cfg = load_configuration(&config_path, true, cli.non_interactive_mode, &cli, cli.common.network)?;
 
     if cli.profile_with_tokio_console {
         console_subscriber::init();
@@ -213,16 +214,17 @@ fn main_inner() -> Result<(), ExitError> {
         }
     })?;
     #[cfg(not(all(unix, feature = "libtor")))]
-    let config = ApplicationConfig::load_from(&cfg).map_err(|e| {
+    let config = ApplicationConfig::load_from(&cfg).inspect_err(|e| {
         if e.is_unknown_field_error() {
             eprintln!(
                 "⚠️  Configuration error: an environment variable or -p override references an unrecognized config \
                  field.\n    Run with --print-env to inspect active environment variables and -p overrides."
             );
         }
-        e
     })?;
     debug!(target: LOG_TARGET, "Using base node configuration: {config:?}");
+
+    log_effective_paths_and_warnings(&cli, &config, &config_path);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
@@ -266,4 +268,73 @@ fn main_inner() -> Result<(), ExitError> {
     runtime.block_on(run_base_node_with_cli(node_identity, Arc::new(config), cli, shutdown))?;
 
     Ok(())
+}
+
+fn home_fallback_in_use(fallback: Option<&Path>, cli_base_path: &Path) -> bool {
+    match fallback {
+        Some(fallback_dir) => tari_common::dir_utils::absolute_path(cli_base_path) == fallback_dir.join(".tari"),
+        None => false,
+    }
+}
+
+fn log_effective_paths_and_warnings(cli: &Cli, config: &ApplicationConfig, config_path: &Path) {
+    let fallback_dir = tari_common::dir_utils::get_fallback_home_dir();
+    if home_fallback_in_use(fallback_dir.as_deref(), &cli.common.base_path) {
+        if let Some(ref fallback) = fallback_dir {
+            let fallback_shown = display_path(fallback);
+            tari_common::emit_warning(&format!(
+                "Could not determine user home directory; falling back to current working directory: {fallback_shown}"
+            ));
+        }
+    }
+
+    info!(
+        target: LOG_TARGET,
+        "Effective base path: {}",
+        display_path(tari_common::dir_utils::absolute_path(config.common.base_path()))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective config path: {}",
+        display_path(tari_common::dir_utils::absolute_path(config_path))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective log config path: {}",
+        display_path(tari_common::dir_utils::absolute_path(cli.common.log_config_path("base_node")))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective identity file: {}",
+        display_path(tari_common::dir_utils::absolute_path(&config.base_node.identity_file))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective Tor identity file: {}",
+        display_path(tari_common::dir_utils::absolute_path(&config.base_node.tor_identity_file))
+    );
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::Path;
+
+    use super::home_fallback_in_use;
+
+    #[test]
+    fn test_home_fallback_in_use() {
+        let cwd = std::env::current_dir().expect("failed to get current dir");
+
+        // Case 1: Fallback was used (cli_base_path matches fallback_dir.join(".tari"))
+        let fallback_recorded = Some(cwd.as_path());
+        let default_cli_path = Path::new(".tari");
+        assert!(home_fallback_in_use(fallback_recorded, default_cli_path));
+
+        // Case 2: Explicit base path provided (cli_base_path differs from fallback)
+        let explicit_cli_path = Path::new("/custom/base/path");
+        assert!(!home_fallback_in_use(fallback_recorded, explicit_cli_path));
+
+        // Case 3: No fallback recorded (home was successfully resolved)
+        assert!(!home_fallback_in_use(None, default_cli_path));
+    }
 }

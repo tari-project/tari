@@ -35,9 +35,7 @@ pub struct CommonConfig {
 
 impl Default for CommonConfig {
     fn default() -> Self {
-        let base_path = dirs_next::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(PathBuf::from(".tari"));
+        let base_path = crate::dir_utils::default_path("", None);
         Self {
             override_from: None,
             base_path,
