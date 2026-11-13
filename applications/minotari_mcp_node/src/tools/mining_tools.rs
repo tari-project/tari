@@ -38,6 +38,35 @@ use minotari_node_grpc_client::BaseNodeGrpcClient;
 use serde_json::{Value, json};
 use tonic::{Request, transport::Channel};
 
+/// Map an MCP mining algorithm identifier to its protobuf `PowAlgos` enum value.
+/// Consistent with `tari_rpc::pow_algo::PowAlgos` (`0 = Randomxm`, `1 = Sha3x`, `2 = Randomxt`).
+fn parse_pow_algo(algo: u64) -> McpResult<i32> {
+    match algo {
+        0 => Ok(PowAlgos::Randomxm.into()),
+        1 => Ok(PowAlgos::Sha3x.into()),
+        2 => Ok(PowAlgos::Randomxt.into()),
+        _ => Err(McpError::invalid_request(
+            "Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string(),
+        )),
+    }
+}
+
+fn pow_algo_name(algo: i32) -> &'static str {
+    match algo {
+        0 => "RANDOMX_M",
+        1 => "SHA3X",
+        2 => "RANDOMX_T",
+        _ => "UNKNOWN",
+    }
+}
+
+fn estimate_blocks_per_day(hash_rate: u64, target_difficulty: u64) -> u64 {
+    hash_rate
+        .saturating_mul(86_400)
+        .checked_div(target_difficulty)
+        .unwrap_or(0)
+}
+
 /// Tool for getting a new block template (existing implementation, enhanced)
 #[derive(Clone)]
 pub struct GetNewBlockTemplateTool {
@@ -84,21 +113,12 @@ impl McpTool for GetNewBlockTemplateTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let algo = params.get("algo").and_then(|v| v.as_u64()).ok_or_else(|| {
-            McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string())
+            McpError::invalid_request("algo is required (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)".to_string())
         })?;
 
         let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500); // Default max weight for blocks
 
-        let pow_algo_val = match algo {
-            0 => PowAlgos::Randomxm.into(), // RANDOMXM
-            1 => PowAlgos::Sha3x.into(),    // SHA3X
-            2 => PowAlgos::Randomxt.into(), // RANDOMXT
-            _ => {
-                return Err(McpError::invalid_request(
-                    "Invalid algo: must be 0 (RANDOMXM), 1 (SHA3X), or 2 (RANDOMXT)".to_string(),
-                ));
-            },
-        };
+        let pow_algo_val = parse_pow_algo(algo)?;
 
         let request = Request::new(NewBlockTemplateRequest {
             algo: Some(PowAlgo { pow_algo: pow_algo_val }),
@@ -241,7 +261,7 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
             "properties": {
                 "algo": {
                     "type": "number",
-                    "description": "Mining algorithm (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)"
+                    "description": "Mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)"
                 },
                 "max_weight": {
                     "type": "number",
@@ -285,21 +305,12 @@ impl McpTool for GetNewBlockTemplateWithCoinbasesTool {
 
     async fn execute(&self, params: Value) -> McpResult<Value> {
         let algo = params.get("algo").and_then(|v| v.as_u64()).ok_or_else(|| {
-            McpError::invalid_request("algo is required (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)".to_string())
+            McpError::invalid_request("algo is required (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)".to_string())
         })?;
 
         let max_weight = params.get("max_weight").and_then(|v| v.as_u64()).unwrap_or(19500);
 
-        let pow_algo_val = match algo {
-            0 => PowAlgos::Sha3x.into(),    // SHA3X
-            1 => PowAlgos::Randomxm.into(), // RANDOMXM
-            2 => PowAlgos::Randomxt.into(), // RANDOMXT
-            _ => {
-                return Err(McpError::invalid_request(
-                    "Invalid algo: must be 0 (SHA3X), 1 (RANDOMXM), or 2 (RANDOMXT)".to_string(),
-                ));
-            },
-        };
+        let pow_algo_val = parse_pow_algo(algo)?;
 
         // Parse coinbase recipients
         let coinbases: Vec<NewBlockCoinbase> = params
@@ -482,7 +493,7 @@ impl McpTool for MiningAnalysisTool {
             "properties": {
                 "preferred_algo": {
                     "type": "number",
-                    "description": "Preferred mining algorithm (0=SHA3X, 1=RANDOMXM, 2=RANDOMXT)",
+                    "description": "Preferred mining algorithm (0=RANDOMXM, 1=SHA3X, 2=RANDOMXT)",
                     "minimum": 0,
                     "maximum": 2
                 },
@@ -498,19 +509,22 @@ impl McpTool for MiningAnalysisTool {
 
     #[allow(clippy::too_many_lines)]
     async fn execute(&self, params: Value) -> McpResult<Value> {
-        let requested_algo = params.get("preferred_algo").and_then(|v| v.as_u64()).unwrap_or(0); // Default to SHA3X
+        let requested_algo = params.get("preferred_algo").and_then(|v| v.as_u64()).unwrap_or(1); // Default to SHA3X (1)
+        let requested_algo_val = parse_pow_algo(requested_algo)?;
 
         let hash_rate = params.get("hash_rate").and_then(|v| v.as_u64()).unwrap_or(1000000); // Default 1 MH/s
+        if hash_rate == 0 {
+            return Err(McpError::invalid_request(
+                "hash_rate must be greater than 0".to_string(),
+            ));
+        }
 
         // Get current mining data for all algorithms
         let mut algo_analysis = Vec::new();
 
-        for algo in 0..3 {
-            let pow_algo_val = match algo {
-                0 => PowAlgos::Sha3x.into(),    // SHA3X
-                1 => PowAlgos::Randomxm.into(), // RANDOMXM
-                2 => PowAlgos::Randomxt.into(), // RANDOMXT
-                _ => continue,
+        for algo in 0..3u64 {
+            let Ok(pow_algo_val) = parse_pow_algo(algo) else {
+                continue;
             };
 
             match self
@@ -527,12 +541,7 @@ impl McpTool for MiningAnalysisTool {
                     if let (Some(_template), Some(miner_data)) =
                         (response.new_block_template.as_ref(), response.miner_data.as_ref())
                     {
-                        let algo_name = match algo {
-                            0 => "SHA3X",
-                            1 => "MONERO",
-                            2 => "TARI",
-                            _ => "UNKNOWN",
-                        };
+                        let algo_name = pow_algo_name(pow_algo_val);
 
                         // Calculate estimated time to find block
                         let time_to_block = miner_data.target_difficulty.checked_div(hash_rate).unwrap_or(0);
@@ -546,7 +555,7 @@ impl McpTool for MiningAnalysisTool {
                             "total_fees": miner_data.total_fees,
                             "total_reward": total_reward,
                             "estimated_time_to_block_seconds": time_to_block,
-                            "estimated_blocks_per_day": 86400u64.checked_div(time_to_block).unwrap_or(0),
+                            "estimated_blocks_per_day": estimate_blocks_per_day(hash_rate, miner_data.target_difficulty),
                             "profitability_score": if miner_data.target_difficulty > 0 {
                                 (total_reward as f64 / miner_data.target_difficulty as f64 * 1000000.0).round()
                             } else {
@@ -602,12 +611,7 @@ impl McpTool for MiningAnalysisTool {
             "best_algorithm": best_algo,
             "current_preference": {
                 "algo_id": requested_algo,
-                "algo_name": match requested_algo {
-                    0 => "SHA3X",
-                    1 => "MONERO",
-                    2 => "TARI",
-                    _ => "UNKNOWN",
-                }
+                "algo_name": pow_algo_name(requested_algo_val),
             },
             "mining_setup": {
                 "provided_hash_rate": hash_rate,
@@ -620,5 +624,30 @@ impl McpTool for MiningAnalysisTool {
                 .unwrap_or_default()
                 .as_secs(),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pow_algo_mapping_matches_protobuf_enum() {
+        assert_eq!(parse_pow_algo(0).unwrap(), i32::from(PowAlgos::Randomxm));
+        assert_eq!(parse_pow_algo(1).unwrap(), i32::from(PowAlgos::Sha3x));
+        assert_eq!(parse_pow_algo(2).unwrap(), i32::from(PowAlgos::Randomxt));
+        assert!(parse_pow_algo(3).is_err());
+
+        assert_eq!(pow_algo_name(i32::from(PowAlgos::Randomxm)), "RANDOMX_M");
+        assert_eq!(pow_algo_name(i32::from(PowAlgos::Sha3x)), "SHA3X");
+        assert_eq!(pow_algo_name(i32::from(PowAlgos::Randomxt)), "RANDOMX_T");
+    }
+
+    #[test]
+    fn estimate_blocks_per_day_handles_sub_second_and_zero_difficulty() {
+        // When target_difficulty < hash_rate, time_to_block truncates to 0s,
+        // but blocks per day should still be computed from hash_rate * 86400 / difficulty.
+        assert_eq!(estimate_blocks_per_day(1_000_000, 500_000), 172_800);
+        assert_eq!(estimate_blocks_per_day(1_000_000, 0), 0);
     }
 }
