@@ -22,14 +22,14 @@
 
 use std::{
     cmp,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryInto,
     time::{Duration, Instant},
 };
 
 use futures::StreamExt;
 use log::*;
-use tari_comms::{PeerConnection, connectivity::ConnectivityEvent, peer_manager::NodeId};
+use tari_comms::{PeerConnection, connectivity::ConnectivityEvent, peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::hex::Hex;
 use tokio::{sync::broadcast, time};
 
@@ -45,7 +45,7 @@ use crate::{
         state_machine::{DiscoveryPhase, NetworkDiscoveryContext, StateEvent},
     },
     peer_validator::PeerValidator,
-    proto::rpc::GetPeersRequest,
+    proto::rpc::{GetPeersRequest, GetPeersResponse},
     rpc,
     rpc::UnvalidatedPeerInfo,
 };
@@ -235,44 +235,52 @@ impl OnConnect {
 
         let streaming_timeout = discovery_config.bootstrap_rpc_streaming_timeout;
         let mut hostile_claims = HostileClaims::default();
+        #[allow(clippy::mutable_key_type)]
+        let mut peers_received: HashSet<CommsPublicKey> = HashSet::new();
         let mut budget_used_up = false;
         while let Some(resp) = time::timeout(streaming_timeout, peer_stream.next())
             .await
             .map_err(|_| timed_out("get_peer_response", streaming_timeout))?
         {
-            match resp {
-                Ok(resp) => match resp.peer.and_then(|peer| UnvalidatedPeerInfo::try_from(peer).ok()) {
-                    Some(peer) => {
-                        let pub_key = peer.public_key.clone();
-                        match self.validate_and_add_peer(&sync_peer, peer).await {
-                            Ok(Some(true)) => {
-                                debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
-                                *num_added = num_added.saturating_add(1);
-                            },
-                            Ok(Some(false)) => {},
-                            Ok(None) => {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Peer `{sync_peer}` has relayed its share of new peers. Ending the sync"
-                                );
-                                budget_used_up = true;
-                                break;
-                            },
-                            Err(NetworkDiscoveryError::PeerValidationError(e)) => {
-                                debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
-                                hostile_claims.record(&e)?;
-                            },
-                            Err(e) => {
-                                debug!(target: LOG_TARGET, "Failed to add peer `{pub_key}` from `{sync_peer}`: {e}");
-                            },
-                        }
-                    },
-                    None => {
-                        debug!(target: LOG_TARGET, "Invalid response from peer `{sync_peer}`");
-                    },
+            let GetPeersResponse { peer } = resp.map_err(|err| {
+                debug!(target: LOG_TARGET, "Error response from peer `{sync_peer}`: {err}");
+                NetworkDiscoveryError::from_stream_error(err)
+            })?;
+            let peer = peer.ok_or_else(|| {
+                warn!(target: LOG_TARGET, "Peer `{sync_peer}` sent an empty peer message");
+                NetworkDiscoveryError::EmptyPeerMessageReceived
+            })?;
+            // A record that does not convert may come from a newer version, so skip it without counting against the
+            // sync peer
+            let Ok(peer) = UnvalidatedPeerInfo::try_from(peer) else {
+                debug!(target: LOG_TARGET, "Skipping peer from `{sync_peer}` that does not convert");
+                continue;
+            };
+            if !peers_received.insert(peer.public_key.clone()) {
+                warn!(target: LOG_TARGET, "Peer `{sync_peer}` sent duplicate peer in one stream");
+                return Err(NetworkDiscoveryError::DuplicatePeerReceived);
+            }
+            let pub_key = peer.public_key.clone();
+            match self.validate_and_add_peer(&sync_peer, peer).await {
+                Ok(Some(true)) => {
+                    debug!(target: LOG_TARGET, "Added new peer `{pub_key}` from `{sync_peer}`");
+                    *num_added = num_added.saturating_add(1);
                 },
-                Err(err) => {
-                    debug!(target: LOG_TARGET, "Error response from peer `{sync_peer}`: {err}");
+                Ok(Some(false)) => {},
+                Ok(None) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Peer `{sync_peer}` has relayed its share of new peers. Ending the sync"
+                    );
+                    budget_used_up = true;
+                    break;
+                },
+                Err(NetworkDiscoveryError::PeerValidationError(e)) => {
+                    debug!(target: LOG_TARGET, "Failed to validate peer `{pub_key}` from `{sync_peer}`: {e}");
+                    hostile_claims.record(&e)?;
+                },
+                Err(e) => {
+                    debug!(target: LOG_TARGET, "Failed to add peer `{pub_key}` from `{sync_peer}`: {e}");
                 },
             }
         }
