@@ -22,7 +22,7 @@
 
 use std::{pin::Pin, task::Poll};
 
-use futures::{Future, FutureExt, Stream, ready, stream::FusedStream, task::Context};
+use futures::{Future, FutureExt, Stream, future::FusedFuture, ready, stream::FusedStream, task::Context};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tower_service::Service;
@@ -119,10 +119,18 @@ impl<T> Future for TransportResponseFuture<T> {
     type Output = Result<T, TransportChannelError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.rx {
-            Some(ref mut rx) => rx.poll_unpin(cx).map_err(TransportChannelError::from),
-            None => Poll::Ready(Err(TransportChannelError::ChannelClosed)),
-        }
+        let Some(ref mut rx) = self.rx else {
+            return Poll::Ready(Err(TransportChannelError::ChannelClosed));
+        };
+        let res = ready!(rx.poll_unpin(cx)).map_err(TransportChannelError::from);
+        self.rx = None;
+        Poll::Ready(res)
+    }
+}
+
+impl<T> FusedFuture for TransportResponseFuture<T> {
+    fn is_terminated(&self) -> bool {
+        self.rx.is_none()
     }
 }
 
@@ -303,5 +311,16 @@ mod test {
         }));
 
         assert_eq!(result.unwrap(), "PONG");
+    }
+
+    #[test]
+    fn transport_response_future_is_fused_after_completion() {
+        let (tx, rx) = oneshot::channel::<u32>();
+        tx.send(99).unwrap();
+        let mut fut = TransportResponseFuture::new(rx);
+        assert!(!fut.is_terminated());
+        assert_eq!(block_on(&mut fut), Ok(99));
+        assert!(fut.is_terminated());
+        assert_eq!(block_on(&mut fut), Err(TransportChannelError::ChannelClosed));
     }
 }

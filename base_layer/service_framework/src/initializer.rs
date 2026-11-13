@@ -70,7 +70,10 @@ impl<TFunc> ServiceInitializer for InitializerFn<TFunc>
 where TFunc: FnOnce(ServiceInitializerContext) -> Output + Send
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Output {
-        let f = self.0.take().expect("initializer called more than once");
+        let f = self
+            .0
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("initializer called more than once"))?;
         (f)(context)
     }
 }
