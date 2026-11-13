@@ -2157,9 +2157,12 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             TxStorageResponse::NotStoredConsensus(_) |
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
-            TxStorageResponse::NotStoredMempoolPolicy(_) |
             TxStorageResponse::NotStoredTimeLocked => tari_rpc::SubmitTransactionResponse {
                 result: tari_rpc::SubmitTransactionResult::Rejected.into(),
+            },
+            // Not a validation failure: it may be stored once the mempool changes
+            TxStorageResponse::NotStoredMempoolPolicy(_) => tari_rpc::SubmitTransactionResponse {
+                result: tari_rpc::SubmitTransactionResult::NotProcessableAtThisTime.into(),
             },
         };
 
