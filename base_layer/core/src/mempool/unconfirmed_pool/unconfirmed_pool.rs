@@ -1089,7 +1089,9 @@ impl UnconfirmedPool {
 
     /// Check if a transaction is available in the UnconfirmedPool
     pub fn has_tx_with_excess_sig(&self, excess_sig: &CompressedSignature) -> bool {
-        self.txs_by_signature.contains_key(excess_sig.get_signature())
+        self.txs_by_signature
+            .get(excess_sig.get_signature())
+            .is_some_and(|ids| ids.iter().any(|id| self.tx_by_key.contains_key(id)))
     }
 
     /// True if `tx` counts as already in the pool: a pool transaction has exactly its kernel set, or `tx` is a union of
@@ -2071,21 +2073,30 @@ impl UnconfirmedPool {
         let mut remaining = Vec::new();
 
         for sig in excess_sigs {
-            match self.txs_by_signature.get(sig).cloned() {
-                Some(ids) => found.extend(ids),
-                None => remaining.push(sig.clone()),
+            let mut matched = Vec::new();
+            if let Some(ids) = self.txs_by_signature.get(sig) {
+                for id in ids {
+                    if self.tx_by_key.contains_key(id) {
+                        matched.push(*id);
+                    } else {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Unconfirmed pool signature index has dangling transaction id {id}"
+                        );
+                    }
+                }
+            }
+            if matched.is_empty() {
+                remaining.push(sig.clone());
+            } else {
+                found.extend(matched);
             }
         }
 
         let found = found
             .into_iter()
-            .map(|id| {
-                self.tx_by_key
-                    .get(&id)
-                    .map(|tx| tx.transaction.clone())
-                    .ok_or(MempoolError::IndexOutOfSync)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+            .filter_map(|id| self.tx_by_key.get(&id).map(|tx| tx.transaction.clone()))
+            .collect();
 
         Ok((found, remaining))
     }
