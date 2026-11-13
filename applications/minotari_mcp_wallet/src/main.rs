@@ -88,8 +88,9 @@ async fn main() {
     // Load configuration
     let config = match WalletMcpConfig::load(&cli) {
         Ok(config) => config,
-        Err(_) => {
+        Err(e) => {
             // Cannot use eprintln as it interferes with MCP protocol
+            log::error!("Failed to load wallet MCP configuration: {e}");
             process::exit(1);
         },
     };
@@ -98,11 +99,7 @@ async fn main() {
     let server = match WalletMcpServer::new(config, &cli).await {
         Ok(server) => server,
         Err(e) => {
-            log::error!(
-                "Failed to initialize wallet MCP server: {e}. If an orphaned wallet process from a previous run is \
-                 listening on the configured port, it was started with random per-run credentials that cannot be \
-                 matched; please stop that wallet process."
-            );
+            log::error!("Failed to initialize wallet MCP server: {e}");
             process::exit(1);
         },
     };
@@ -113,7 +110,11 @@ async fn main() {
     // Handle Ctrl+C gracefully
     tokio::select! {
         result = server_for_signal.start() => {
-            if result.is_err() {
+            if let Err(e) = result {
+                log::error!("Wallet MCP server exited with error: {e}");
+                drop(
+                    tokio::time::timeout(std::time::Duration::from_secs(5), server_for_signal.stop()).await,
+                );
                 process::exit(1);
             }
         }
