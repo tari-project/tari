@@ -83,6 +83,12 @@ pub async fn handle<T: BlockchainBackend + 'static>(
                     is_synced,
                     details: None,
                 },
+                TxStorageResponse::NotStoredMempoolPolicy(reason) => TxSubmissionResponse {
+                    accepted: false,
+                    rejection_reason: TxSubmissionRejectionReason::MempoolPolicy,
+                    is_synced,
+                    details: Some(reason),
+                },
                 TxStorageResponse::NotStoredConsensus(details) | TxStorageResponse::NotStored(details) => {
                     TxSubmissionResponse {
                         accepted: false,

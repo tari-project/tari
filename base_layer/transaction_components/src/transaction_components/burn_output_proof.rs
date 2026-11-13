@@ -33,6 +33,8 @@ pub enum BurnOutputProofError {
     InvalidOutputField { field: &'static str, details: String },
     #[error("The {mmr} MMR proof is malformed: {details}")]
     MalformedMmrProof { mmr: &'static str, details: String },
+    #[error("The proven output is not a burn output")]
+    NotABurnOutput,
     #[error("The normal output MMR root is not the last leaf of the block output MMR")]
     NormalOutputRootNotLastLeaf,
     #[error("The {mmr} MMR proof does not verify: {source}")]
@@ -109,19 +111,26 @@ impl OutputHashPreimageExt for OutputHashPreimage {
 /// Verification of a [`BurnOutputProof`]
 pub trait BurnOutputProofExt {
     /// Verifies that the output is included in the block whose header has `trusted_block_output_mr` as its
-    /// `block_output_mr`. This only proves inclusion: callers must check the output itself (type, features,
-    /// commitment) and that `trusted_block_output_mr` belongs to the header with `block_hash`/`block_height`.
+    /// `block_output_mr`, and that the output is a burn output. Callers must still check the rest of the output
+    /// (e.g. the sidechain id and commitment), that `trusted_block_output_mr` belongs to the header with
+    /// `block_hash`/`block_height`, and deduplicate claims on the output commitment or output hash, never on proof
+    /// fields.
     ///
     /// Soundness rests on the output hash being domain separated from MMR nodes, so only the hash of an output mined
     /// in that block can be proven. The MMR sizes and intermediate roots are chosen by the prover and not committed
     /// to by the root, so proofs are not unique: the same output can have several valid proofs, and
     /// `normal_output_mr` is not guaranteed to be the block's real normal output MMR root. Key anything that must be
-    /// unique per burn (e.g. claim deduplication) on the output commitment or output hash, never on the proof.
+    /// unique per burn (e.g. claim deduplication) on the output commitment or output hash, never on the proof. Because
+    /// of this malleability a proof can place a coinbase output hash under a forged `normal_output_mr`; coinbases are
+    /// never burn outputs, which is why the output type is checked here.
     fn verify(&self, trusted_block_output_mr: &FixedHash) -> Result<(), BurnOutputProofError>;
 }
 
 impl BurnOutputProofExt for BurnOutputProof {
     fn verify(&self, trusted_block_output_mr: &FixedHash) -> Result<(), BurnOutputProofError> {
+        if !self.output.decode_features()?.output_type.is_burn() {
+            return Err(BurnOutputProofError::NotABurnOutput);
+        }
         let output_hash = self.output.hash()?;
         verify_mmr_proof(
             NORMAL_OUTPUT_MMR,
@@ -192,7 +201,7 @@ fn consensus_decode<T: BorshDeserialize>(field: &'static str, bytes: &[u8]) -> R
 
 #[cfg(test)]
 mod tests {
-    use tari_mmr::{Hash, MerkleMountainRange};
+    use tari_mmr::{Hash, MerkleMountainRange, common::hash_together};
 
     use super::*;
     use crate::{
@@ -241,8 +250,17 @@ mod tests {
     /// Builds block output MMRs the way the base node does, with `num_coinbases` coinbases and the burn at `burn_index`
     /// among `num_normal` normal outputs. Returns the proof and the block output MR.
     fn build_proof(num_coinbases: usize, num_normal: usize, burn_index: usize) -> (BurnOutputProof, FixedHash) {
+        build_proof_of_type(OutputType::Burn, num_coinbases, num_normal, burn_index)
+    }
+
+    fn build_proof_of_type(
+        output_type: OutputType,
+        num_coinbases: usize,
+        num_normal: usize,
+        burn_index: usize,
+    ) -> (BurnOutputProof, FixedHash) {
         let burn = create_output(OutputFeatures {
-            output_type: OutputType::Burn,
+            output_type,
             ..Default::default()
         });
         let mut block_output_mmr = OutputMmr::new(Vec::new());
@@ -349,5 +367,85 @@ mod tests {
         proof.block_output_proof.mmr_size = u64::MAX;
         let err = proof.verify(&block_output_mr).unwrap_err();
         assert!(matches!(err, BurnOutputProofError::MalformedMmrProof { .. }));
+    }
+
+    #[test]
+    fn rejects_non_burn_output_type_even_with_honest_proof() {
+        let (proof, block_output_mr) = build_proof_of_type(OutputType::Standard, 1, 3, 1);
+        let err = proof.verify(&block_output_mr).unwrap_err();
+        assert!(matches!(err, BurnOutputProofError::NotABurnOutput));
+    }
+
+    #[test]
+    fn rejects_coinbase_proven_via_fake_normal_root() {
+        // Block with coinbases c0, c1, c2 and the normal output root n as the last leaf:
+        //        p
+        //    a       b
+        //  c0 c1   c2  n
+        // The block output MR is D(p). A size-1 block proof proves p as the "last leaf", and a size-4 normal proof
+        // with peaks (a, b) bags to D(a || b) = p, so c1 can be proven as if it were in the normal output MMR.
+        let coinbase = create_output(OutputFeatures {
+            output_type: OutputType::Coinbase,
+            ..Default::default()
+        });
+        let (honest, _) = build_proof(0, 1, 0);
+        let c0 = FixedHash::from([0u8; 32]).to_vec();
+        let c1 = coinbase.hash().to_vec();
+        let c2 = FixedHash::from([2u8; 32]).to_vec();
+        let n = honest.normal_output_mr.to_vec();
+        let mut block_output_mmr = OutputMmr::new(Vec::new());
+        for leaf in [&c0, &c1, &c2, &n] {
+            block_output_mmr.push(leaf.clone()).unwrap();
+        }
+        let block_output_mr = block_output_mmr.get_merkle_root().unwrap();
+        let a = hash_together::<InputMmrHasherBlake256>(&c0, &c1);
+        let b = hash_together::<InputMmrHasherBlake256>(&c2, &n);
+        let fake_normal_output_mr = hash_together::<InputMmrHasherBlake256>(&a, &b);
+
+        // Both MMR parts verify on their own, so only the type check can reject the proof
+        let block_proof = MerkleProof {
+            mmr_size: 1,
+            path: vec![],
+            peaks: vec![],
+        };
+        block_proof
+            .verify_leaf::<InputMmrHasherBlake256>(&block_output_mr, &fake_normal_output_mr, LeafIndex(0))
+            .unwrap();
+        let normal_proof = MerkleProof {
+            mmr_size: 4,
+            path: vec![c0],
+            peaks: vec![b],
+        };
+        normal_proof
+            .verify_leaf::<InputMmrHasherBlake256>(&fake_normal_output_mr, &c1, LeafIndex(1))
+            .unwrap();
+
+        let to_fixed = |hashes: Vec<Hash>| -> Vec<tari_sidechain::FixedHash> {
+            hashes
+                .into_iter()
+                .map(|h| tari_sidechain::FixedHash::try_from(h).unwrap())
+                .collect()
+        };
+        let proof = BurnOutputProof {
+            block_hash: FixedHash::zero().into(),
+            block_height: 1,
+            output: OutputHashPreimage::from(&coinbase),
+            normal_output_proof: MmrInclusionProof {
+                leaf_index: 1,
+                mmr_size: 4,
+                path: to_fixed(normal_proof.path),
+                peaks: to_fixed(normal_proof.peaks),
+            },
+            normal_output_mr: tari_sidechain::FixedHash::try_from(fake_normal_output_mr).unwrap(),
+            block_output_proof: MmrInclusionProof {
+                leaf_index: 0,
+                mmr_size: 1,
+                path: vec![],
+                peaks: vec![],
+            },
+        };
+        let block_output_mr = FixedHash::try_from(block_output_mr).unwrap();
+        let err = proof.verify(&block_output_mr).unwrap_err();
+        assert!(matches!(err, BurnOutputProofError::NotABurnOutput));
     }
 }

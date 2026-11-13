@@ -478,6 +478,9 @@ jobs:
             tari-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-stable
       - name: Install cargo-nextest
         run: cargo install cargo-nextest --locked --force
+      - name: build wallet FFI library
+        # tari_integration_tests links the cdylib from target/release/ (see integration_tests/build.rs)
+        run: cargo +${{ env.toolchain }} build --locked --release -p minotari_wallet_ffi
       - name: cargo test compile
         run: cargo +${{ env.toolchain }} test -vv --no-run --locked --all-features --release
       - name: cargo test
