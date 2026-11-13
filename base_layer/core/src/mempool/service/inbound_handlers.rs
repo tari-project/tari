@@ -1001,7 +1001,7 @@ mod test {
                 matches!(
                     response,
                     TxStorageResponse::NotStoredConsensus(_) | TxStorageResponse::NotStored(_)
-                ) && response != TxStorageResponse::NotStored(Some("Transaction has no inputs".to_string())),
+                ),
                 "{response:?}"
             );
 

@@ -352,9 +352,9 @@ impl MempoolStorage {
         debug!(target: LOG_TARGET, "Tx: ({}) has no inputs, rejecting", tx_id(tx));
         #[cfg(feature = "metrics")]
         metrics::policy_refused_transactions("no_inputs").inc();
-        Some(TxStorageResponse::NotStored(Some(
+        Some(TxStorageResponse::NotStoredMempoolPolicy(
             "Transaction has no inputs".to_string(),
-        )))
+        ))
     }
 
     /// Rejects a transaction with two kernels with the same excess (they may differ in their signatures, so they sort
@@ -485,9 +485,9 @@ impl MempoolStorage {
             );
             #[cfg(feature = "metrics")]
             metrics::policy_refused_transactions("would_orphan").inc();
-            return Ok(TxStorageResponse::NotStored(Some(
+            return Ok(TxStorageResponse::NotStoredMempoolPolicy(
                 "The mempool transactions it would replace produce an output it spends".to_string(),
-            )));
+            ));
         }
         for key in holders {
             if let Some(replaced) = self.unconfirmed_pool.remove_transaction(key)? {
@@ -1068,9 +1068,9 @@ fn spend_cap_refusal(tx: &Transaction) -> TxStorageResponse {
     );
     #[cfg(feature = "metrics")]
     metrics::policy_refused_transactions("spend_cap").inc();
-    TxStorageResponse::NotStored(Some(format!(
+    TxStorageResponse::NotStoredMempoolPolicy(format!(
         "{MAX_SPENDS_PER_OUTPUT} mempool transactions already spend one of its inputs"
-    )))
+    ))
 }
 
 /// A transaction that fails internal consistency validation with a failure that does not depend on the chain tip can
@@ -2131,7 +2131,7 @@ mod test {
             assert!(
                 responses[stored..]
                     .iter()
-                    .all(|response| matches!(response, TxStorageResponse::NotStored(Some(_)))),
+                    .all(|response| matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_))),
                 "{honest_first}"
             );
             assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
@@ -2168,7 +2168,7 @@ mod test {
             }
             if capped && mask != 0 {
                 assert!(
-                    matches!(response, TxStorageResponse::NotStored(Some(_))),
+                    matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_)),
                     "{mask}: {response:?}"
                 );
             }
@@ -2198,7 +2198,7 @@ mod test {
                 MempoolStorage::insert_unlocked(&storage, kernel_only.clone()).unwrap()
             };
             assert!(
-                matches!(response, TxStorageResponse::NotStored(Some(_))),
+                matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_)),
                 "{response:?}"
             );
         }
@@ -2251,7 +2251,7 @@ mod test {
             .insert(newcomer(vec![spends_y.clone()]), None)
             .unwrap();
         assert!(
-            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("produce an output it spends")),
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("produce an output it spends")),
             "{response:?}"
         );
         assert_eq!(pool_len(&storage), 1);
@@ -2298,7 +2298,7 @@ mod test {
             .insert(newcomer(vec![input, spends_y]), None)
             .unwrap();
         assert!(
-            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("produce an output it spends")),
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("produce an output it spends")),
             "{response:?}"
         );
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
@@ -2340,7 +2340,7 @@ mod test {
         );
         let response = storage.write().unwrap().insert(newcomer, None).unwrap();
         assert!(
-            matches!(response, TxStorageResponse::NotStored(Some(_))),
+            matches!(response, TxStorageResponse::NotStoredMempoolPolicy(_)),
             "{response:?}"
         );
         assert_eq!(pool_len(&storage), MAX_SPENDS_PER_OUTPUT + 1);
@@ -2367,7 +2367,7 @@ mod test {
 
         let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
         assert!(
-            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
             "{response:?}"
         );
         assert_eq!(validator.chain_linked_calls(), 1);
@@ -2418,7 +2418,7 @@ mod test {
 
         let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
         assert!(
-            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
             "{response:?}"
         );
         // The holder's and the newcomer's validations
@@ -2489,7 +2489,7 @@ mod test {
 
         let response = MempoolStorage::insert_unlocked(&storage, newcomer).unwrap();
         assert!(
-            matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+            matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
             "{response:?}"
         );
         assert_eq!(validator.chain_linked_calls(), chain_linked_calls + 1);
@@ -2624,7 +2624,7 @@ mod test {
                 .filter(|tx| lock.has_transaction(tx).unwrap() == TxStorageResponse::UnconfirmedPool)
                 .count()
         };
-        let is_cap_refusal = |response: &TxStorageResponse| matches!(response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs"));
+        let is_cap_refusal = |response: &TxStorageResponse| matches!(response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs"));
 
         // (a) Each variant replaces one of its own copies
         let storage = new_storage(&[h1_copies.clone(), h2_copies.clone()].concat());
@@ -2751,7 +2751,7 @@ mod test {
                 MempoolStorage::insert_unlocked(&storage, copy.clone()).unwrap()
             };
             assert!(
-                matches!(&response, TxStorageResponse::NotStored(Some(reason)) if reason.contains("already spend one of its inputs")),
+                matches!(&response, TxStorageResponse::NotStoredMempoolPolicy(reason) if reason.contains("already spend one of its inputs")),
                 "{response:?}"
             );
         }

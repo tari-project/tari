@@ -235,6 +235,34 @@ mod tests {
         assert_eq!(mempool_state.get_call_count(), 1);
     }
 
+    /// A mempool policy refusal is reported with its own retryable reason, not as a validation failure
+    #[tokio::test]
+    async fn submit_transaction_reports_a_mempool_policy_refusal() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::NotStoredMempoolPolicy("full".to_string()))
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+
+        let response = match handle(
+            Extension(query_service),
+            Extension(mempool),
+            Json(request(transaction_json(None))),
+        )
+        .await
+        {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
+        };
+        let response: TxSubmissionResponseV1 = serde_json::from_value(response.result).unwrap();
+        assert!(!response.accepted);
+        assert_eq!(
+            response.rejection_reason,
+            tari_transaction_components::rpc::models::TxSubmissionRejectionReason::MempoolPolicy
+        );
+    }
+
     /// Serde carries the version of a compact input but neither protobuf family does, so the P2P round-trip turns a
     /// V1 compact input into V0. The mempool must only ever see the round-tripped transaction, i.e. one a peer could
     /// have sent; this fails if the handler hands it a transaction decoded by serde alone.

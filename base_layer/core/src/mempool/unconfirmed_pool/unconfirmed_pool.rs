@@ -132,8 +132,10 @@ pub const MAX_LINKS_PER_CANDIDATE: usize =
 pub const MAX_EXTRA_PRODUCERS_PER_LOOKUP: usize = 8;
 
 /// The most pool transactions that may spend one output (see [UnconfirmedPool::conflict_set_victims]). Only one of them
-/// can ever be mined; this bounds the pool capacity and lookup work that copies of a transaction padded with other
-/// kernels can take. Mempool policy, not a consensus rule.
+/// can ever be mined; this bounds the pool capacity that copies of a transaction padded with other kernels can take per
+/// output. It does not bound the walks of the kernel signature index (see [UnconfirmedPool::has_transaction]): a kernel
+/// shared by transactions spending different outputs, or a deep chain of unconfirmed transactions, still lengthens
+/// them. Mempool policy, not a consensus rule.
 pub const MAX_SPENDS_PER_OUTPUT: usize = 8;
 
 /// The outcome of a branch's internal-duplicate check
@@ -875,6 +877,8 @@ impl UnconfirmedPool {
     /// spender costs a logarithmic number of steps per kernel of `tx`, whatever the size of the spender or the lists.
     pub fn conflict_set_victims(&self, tx: &Transaction) -> Option<Vec<TransactionKey>> {
         let mut signature_lists = None;
+        // The number of kernels of `tx` each spender has, so that one spending many capped inputs is searched once
+        let mut shared_kernels = HashMap::<TransactionKey, usize>::new();
         let mut victims = Vec::new();
         let mut chosen = HashSet::new();
         for input in tx.body.inputs() {
@@ -891,7 +895,9 @@ impl UnconfirmedPool {
             let mut victim: Option<&PrioritizedTransaction> = None;
             for key in spenders {
                 let spender = self.tx_by_key.get(key)?;
-                let shared = lists.iter().filter(|keys| keys.binary_search(key).is_ok()).count();
+                let shared = *shared_kernels
+                    .entry(*key)
+                    .or_insert_with(|| lists.iter().filter(|keys| keys.binary_search(key).is_ok()).count());
                 if shared == 0 {
                     continue;
                 }
@@ -4818,9 +4824,10 @@ mod test {
 
     /// Spends of several inputs at the spend cap: `(a)` the same spenders on both, `(b)` different spenders, `(c)` the
     /// victim chosen for one input also spends the other, whose other spenders partly overlap the newcomer's kernels
-    /// (the second input is passed over, so they are not checked), and `(d)` a capped input none of whose spenders
-    /// shares a kernel with the newcomer
+    /// (the second input is passed over, so they are not checked), `(d)` a capped input none of whose spenders
+    /// shares a kernel with the newcomer, and `(e)` a spender of both inputs, checked once, replaced at the second
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn a_newcomer_spending_several_capped_inputs_evicts_the_lowest_spender_of_each() {
         let key_manager = KeyManager::new_random().unwrap();
         let tx_weight = TransactionWeight::latest();
@@ -4918,6 +4925,24 @@ mod test {
         let shared_key = *pool.tx_by_key.iter().find(|(_, p)| p.transaction == shared).unwrap().0;
         let newcomer_with_z = spend(vec![a.clone(), b.clone()], vec![owner.clone(), z]);
         assert_eq!(pool.conflict_set_victims(&newcomer_with_z).unwrap(), vec![shared_key]);
+
+        // (e) A spender `x` of both inputs, checked at the first (where a larger one is replaced), is the largest at
+        // the second, so it is replaced there
+        let mut pool = new_pool();
+        let key_of = |pool: &UnconfirmedPool, tx: &Arc<Transaction>| {
+            *pool.tx_by_key.iter().find(|(_, p)| &p.transaction == tx).unwrap().0
+        };
+        let largest_of_a = spend(vec![a.clone()], vec![owner.clone(), kernel(1), kernel(1), kernel(1)]);
+        let x = spend(vec![a.clone(), b.clone()], vec![owner.clone(), kernel(1), kernel(1)]);
+        for tx in [&largest_of_a, &x] {
+            pool.insert(tx.clone(), None, &tx_weight).unwrap();
+        }
+        fill(&mut pool, vec![a.clone()], true, MAX_SPENDS_PER_OUTPUT - 2, 1_000);
+        fill(&mut pool, vec![b.clone()], true, MAX_SPENDS_PER_OUTPUT - 1, 1_000);
+        assert_eq!(pool.conflict_set_victims(&newcomer).unwrap(), vec![
+            key_of(&pool, &largest_of_a),
+            key_of(&pool, &x)
+        ]);
 
         // (d), with the input none of whose spenders shares a kernel with the newcomer spent first or second
         for no_subset_first in [true, false] {
