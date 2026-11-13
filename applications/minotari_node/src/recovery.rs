@@ -22,7 +22,6 @@
 //
 
 use std::{
-    env::temp_dir,
     fs,
     io::{self, Write},
     sync::Arc,
@@ -31,10 +30,7 @@ use std::{
 use anyhow::anyhow;
 use log::*;
 use minotari_app_grpc::tari_rpc::readiness_status::State as ReadinessState;
-use tari_common::{
-    configuration::Network,
-    exit_codes::{ExitCode, ExitError},
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_core::{
     chain_storage::{
         BlockchainBackend,
@@ -44,6 +40,7 @@ use tari_core::{
         async_db::AsyncBlockchainDb,
         create_lmdb_database_with_stats_channel,
         create_recovery_lmdb_database,
+        recovery_lmdb_path,
     },
     consensus::BaseNodeConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
@@ -97,7 +94,9 @@ pub async fn run_recovery(
                 error!(target: LOG_TARGET, "Error opening db: {e}");
                 anyhow!("Could not open DB: {e}")
             })?;
-            let temp_path = temp_dir().join("temp_recovery");
+            // `initiate_recover_db` moved the existing store here. A fixed name under the shared temp directory would
+            // be both the wrong store and one that any other local account can create first.
+            let temp_path = recovery_lmdb_path(&node_config.lmdb_path);
 
             let temp = create_lmdb_database_with_stats_channel(
                 &temp_path,
@@ -132,7 +131,7 @@ pub async fn run_recovery(
         difficulty_calculator,
     )?;
     db.start()?;
-    do_recovery(db.into(), temp_db, &readiness_handler).await?;
+    do_recovery(db.into(), temp_db, rules, &readiness_handler).await?;
 
     info!(
         target: LOG_TARGET,
@@ -148,15 +147,11 @@ pub async fn run_recovery(
 async fn do_recovery<D: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<D>,
     source_backend: D,
+    rules: BaseNodeConsensusManager,
     readiness_status_handler: &ReadinessStatusHandler,
 ) -> Result<(), anyhow::Error> {
-    // We dont care about the values, here, so we just use mock validators, and a mainnet CM.
-    let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
-        .build()
-        .map_err(|e| {
-            error!(target: LOG_TARGET, "Error creating consensus manager: {e}");
-            anyhow!("Error creating consensus manager: {e}")
-        })?;
+    // The target validates every block it adds, so the source is read with mock validators. Its rules must still be
+    // those of the node's network: `start` checks the stored genesis block against them.
     let validators = Validators::new(
         MockValidator::new(true),
         MockValidator::new(true),
@@ -170,10 +165,15 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         DifficultyCalculator::new(rules, Default::default()),
     )?;
     source_database.start()?;
-    let max_height = source_database
+    let source_tip = source_database
         .get_chain_metadata()
-        .map_err(|e| anyhow!("Could not get max chain height: {e}"))?
-        .best_block_height();
+        .map_err(|e| anyhow!("Could not get max chain height: {e}"))?;
+    let max_height = source_tip.best_block_height();
+    // The genesis block is already in the target, so a store with nothing above it has nothing to rebuild
+    if max_height == 0 {
+        info!(target: LOG_TARGET, "Done with recovery, chain height 0");
+        return Ok(());
+    }
     // we start at height 1
     let mut counter = 1;
     print!("Starting recovery at height: ");
@@ -181,8 +181,10 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         print!("{counter}");
         io::stdout().flush().unwrap();
         trace!(target: LOG_TARGET, "Asking for block with height: {counter}");
+        // The target validates every input against the output it spends, so the inputs are read in full. The
+        // source still holds the spent outputs.
         let block = source_database
-            .fetch_block(counter, true)
+            .fetch_block(counter, false)
             .map_err(|e| anyhow!("Could not get block from recovery db: {e}"))?
             .into_block();
         trace!(target: LOG_TARGET, "Adding block: {block}");
@@ -212,5 +214,132 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         print!("\x1B[{}D\x1B[K", counter.to_string().len());
         counter = counter.saturating_add(1);
     }
+    // The caller deletes the source next, so it has to be certain the target now holds the same chain
+    let target_tip = db
+        .get_chain_metadata()
+        .await
+        .map_err(|e| anyhow!("Could not get the rebuilt chain height: {e}"))?;
+    if target_tip.best_block_height() != max_height || target_tip.best_block_hash() != source_tip.best_block_hash() {
+        return Err(anyhow!(
+            "The rebuilt chain ends at height {} ({}), the source at height {max_height} ({}). The source is kept",
+            target_tip.best_block_height(),
+            target_tip.best_block_hash(),
+            source_tip.best_block_hash()
+        ));
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::Path;
+
+    use tari_common::configuration::Network;
+    use tari_core::{
+        block_spec,
+        block_specs,
+        chain_storage::{LMDBDatabase, create_lmdb_database},
+        test_helpers::blockchain::{
+            TempDatabase,
+            TestBlockchain,
+            create_chained_blocks,
+            create_custom_blockchain_at_path,
+            create_store_with_consensus_and_validators,
+        },
+    };
+    use tari_storage::lmdb_store::LMDBConfig;
+    use tari_transaction_components::{
+        consensus::ConsensusConstantsBuilder,
+        tari_amount::T,
+        test_helpers::schema_to_transaction,
+        txn_schema,
+    };
+
+    use super::*;
+    use crate::grpc::readiness_grpc_server::ReadinessGrpcServer;
+
+    fn open_chain(path: &Path, rules: &BaseNodeConsensusManager) -> BlockchainDatabase<LMDBDatabase> {
+        let backend = create_lmdb_database(path, LMDBConfig::default(), rules.clone()).unwrap();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            MockValidator::new(true),
+            MockValidator::new(true),
+        );
+        BlockchainDatabase::start_new(
+            backend,
+            rules.clone(),
+            validators,
+            BlockchainDatabaseConfig::default(),
+            DifficultyCalculator::new(rules.clone(), Default::default()),
+        )
+        .unwrap()
+    }
+
+    /// The store being rebuilt carries the genesis block of the node's network, so it has to be read with that
+    /// network's rules. Esmeralda stands in for every network other than LocalNet.
+    #[tokio::test]
+    async fn rebuild_reads_a_store_of_a_network_other_than_localnet() {
+        let rules = BaseNodeConsensusManager::builder(Network::Esmeralda).build().unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        let target_dir = tempfile::tempdir().unwrap();
+        {
+            let source = open_chain(source_dir.path(), &rules);
+            let genesis = Arc::new(source.fetch_block(0, true).unwrap().try_into_chain_block().unwrap());
+            let (names, blocks) = create_chained_blocks(&source, block_specs!(["A->GB"], ["B->A"], ["C->B"]), genesis);
+            for name in names {
+                let block = blocks.get(&name).unwrap();
+                source.add_block(block.to_arc_block()).unwrap();
+            }
+            assert_eq!(source.get_height().unwrap(), 3);
+        }
+        let source_backend = create_lmdb_database(source_dir.path(), LMDBConfig::default(), rules.clone()).unwrap();
+        let target = open_chain(target_dir.path(), &rules);
+        let (_server, readiness) = ReadinessGrpcServer::new();
+
+        do_recovery(target.clone().into(), source_backend, rules, &readiness)
+            .await
+            .unwrap();
+
+        assert_eq!(target.get_height().unwrap(), 3);
+    }
+
+    /// The target validates each input against the output it spends, so the blocks have to be read from the source
+    /// with their inputs in full. A chain of coinbases alone has no inputs and would not show it.
+    #[tokio::test]
+    async fn rebuild_adds_a_block_that_spends_an_earlier_output() {
+        let rules = BaseNodeConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build()
+            .unwrap();
+        let source_dir = tempfile::tempdir().unwrap();
+        {
+            let source = create_custom_blockchain_at_path(source_dir.path(), rules.clone(), false);
+            let mut source = TestBlockchain::new(source, rules.clone());
+            let (_, coinbase_a) = source.add_next_tip(block_spec!("A")).unwrap();
+            let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![coinbase_a], to: vec![50 * T])], &source.km);
+            let txs = txs.into_iter().map(|tx| Arc::try_unwrap(tx).unwrap()).collect();
+            let (block_b, _) = source.add_next_tip(block_spec!("B", transactions: txs)).unwrap();
+            assert_eq!(block_b.block().body.inputs().len(), 1);
+            assert_eq!(source.db().get_height().unwrap(), 2);
+        }
+        let mut source_backend = TempDatabase::from_path_with_rules(source_dir.path(), rules.clone());
+        source_backend.disable_delete_on_drop();
+        let validators = Validators::new(
+            BlockBodyFullValidator::new(rules.clone(), true),
+            MockValidator::new(true),
+            BlockBodyInternalConsistencyValidator::new(rules.clone(), false, CryptoFactories::default()),
+        );
+        let target = create_store_with_consensus_and_validators(rules.clone(), validators);
+        let (_server, readiness) = ReadinessGrpcServer::new();
+
+        do_recovery(target.clone().into(), source_backend, rules, &readiness)
+            .await
+            .unwrap();
+
+        assert_eq!(target.get_height().unwrap(), 2);
+    }
 }
