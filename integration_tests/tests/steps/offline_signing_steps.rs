@@ -454,3 +454,68 @@ async fn broadcast_signed_transaction(world: &mut TariWorld, wallet_name: String
         }
     );
 }
+
+/// Change the signed transaction file on its way back and assert the wallet refuses it without touching its balance.
+/// `recipient` swaps the recorded recipient for the sender's own address, `change` inflates the change output.
+#[then(
+    expr = "broadcasting the signed transaction via wallet {word} with a tampered {word} fails with an integrity error"
+)]
+async fn broadcast_tampered_signed_transaction_fails(world: &mut TariWorld, wallet_name: String, field: String) {
+    let signed_json = world
+        .offline_signing_signed
+        .as_ref()
+        .expect("No signed transaction found: run the sign step first")
+        .clone();
+    let mut value: serde_json::Value = serde_json::from_str(&signed_json).expect("Failed to parse signed JSON");
+    match field.as_str() {
+        "recipient" => {
+            let sender = value["request"]["info"]["sender_address"].clone();
+            assert_ne!(value["request"]["info"]["recipients"][0]["address"], sender);
+            value["request"]["info"]["recipients"][0]["address"] = sender;
+        },
+        "change" => {
+            let change = value["signed_transaction"]["change_output"]["value"]
+                .as_u64()
+                .expect("signed transaction has a change output");
+            value["signed_transaction"]["change_output"]["value"] = serde_json::json!(change + 1_000_000_000_000);
+        },
+        other => panic!("Unknown field to tamper: {other}"),
+    }
+    let tampered = serde_json::to_string(&value).expect("Failed to re-serialise tampered signed JSON");
+
+    let mut client = create_wallet_client(world, wallet_name.clone()).await.unwrap();
+    let balance_before = client
+        .get_balance(grpc::GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+
+    let response = client
+        .broadcast_signed_one_sided_transaction(grpc::BroadcastSignedOneSidedTransactionRequest { request: tampered })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(
+        !response.is_success,
+        "Wallet {wallet_name} accepted a signed transaction with a tampered {field}"
+    );
+    assert!(
+        response.failure_message.contains("integrity"),
+        "Expected a payload integrity error, got: {}",
+        response.failure_message
+    );
+
+    let balance_after = client
+        .get_balance(grpc::GetBalanceRequest { payment_id: None })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        balance_before, balance_after,
+        "The rejected signed transaction changed the balance of wallet {wallet_name}"
+    );
+    println!(
+        "Wallet {wallet_name} rejected the tampered {field}: {}",
+        response.failure_message
+    );
+}

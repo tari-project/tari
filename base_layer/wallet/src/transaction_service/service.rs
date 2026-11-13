@@ -88,6 +88,7 @@ use tari_transaction_components::{
             sign_locked_deposit_multisig_transaction,
             sign_locked_transaction,
             sign_locked_withdraw_multisig_transaction,
+            verify_signed_one_sided_result,
         },
         one_sided_signer::{multisig_pending_output, withdraw_pending_output},
     },
@@ -4679,6 +4680,9 @@ where
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) -> Result<Vec<TxId>, TransactionServiceError> {
+        // Everything recorded below comes out of this file, so check it was not changed on the way back
+        verify_signed_one_sided_result(&self.resources.transaction_key_manager_service, &request)?;
+
         let old_tx_id = request.request.tx_id;
         let new_tx_id = request.signed_transaction.tx_id;
         for recipient in &request.request.info.recipients {

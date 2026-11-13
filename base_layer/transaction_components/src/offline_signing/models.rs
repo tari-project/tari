@@ -37,7 +37,9 @@ use crate::{
 /// Version 4 had no payload integrity signature.
 /// Version 5 adds `payload_signature` to all `Prepare*` results so the offline
 /// signer can verify the payload was not tampered with in transit.
-const SUPPORTED_VERSION: &str = "5.0.0";
+/// Version 6 adds `payload_signature` to `SignedOneSidedTransactionResult` so the
+/// online wallet can verify the result was not tampered with on the way back.
+const SUPPORTED_VERSION: &str = "6.0.0";
 
 pub fn get_supported_versions() -> Vec<Version> {
     vec![Version::parse(SUPPORTED_VERSION).unwrap()]
@@ -133,6 +135,35 @@ pub fn borsh_canonical_one_sided(
     BorshSerialize::serialize(&u64::from(tx_id), &mut buf)
         .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     BorshSerialize::serialize(info, &mut buf).map_err(|e| TransactionError::SerializationError(e.to_string()))?;
+    Ok(buf)
+}
+
+/// Canonical Borsh bytes for a signed one-sided result, covering the request as the signer verified it (its canonical
+/// bytes and integrity signature) and every field of the signed transaction. The label keeps these bytes apart from a
+/// `Prepare*` payload, which is signed with the same view key.
+pub fn borsh_canonical_signed(
+    version: &Version,
+    request_canonical: &[u8],
+    request_signature: &PayloadIntegritySignature,
+    signed: &SignedTransaction,
+) -> Result<Vec<u8>, TransactionError> {
+    let mut buf = Vec::new();
+    BorshSerialize::serialize(
+        &(
+            "tari.offline_signing.signed_result",
+            version.to_string(),
+            request_canonical,
+            request_signature,
+            &signed.transaction,
+            &signed.sent_hashes,
+            &signed.outputs,
+            &signed.change_hashes,
+            &signed.change_output,
+            u64::from(signed.tx_id),
+        ),
+        &mut buf,
+    )
+    .map_err(|e| TransactionError::SerializationError(e.to_string()))?;
     Ok(buf)
 }
 
@@ -320,6 +351,8 @@ pub struct SignedOneSidedTransactionResult {
     pub version: Version,
     pub request: PrepareOneSidedTransactionForSigningResult,
     pub signed_transaction: SignedTransaction,
+    /// View key signature over [`borsh_canonical_signed`], checked by the online wallet before it uses the result.
+    pub payload_signature: PayloadIntegritySignature,
 }
 
 impl TransactionResult for SignedOneSidedTransactionResult {}
