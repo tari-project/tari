@@ -36,11 +36,12 @@ subtle = "2.5.0"
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["fs"] }
 tonic = { version = "0.13.1", features = ["tls-ring"] }
-x509-parser = { version = "0.18", features = ["verify"] }
+x509-parser = "0.18"
 zeroize = "1"
 
 [dev-dependencies]
 tari_common = { workspace = true }
+x509-parser = { version = "0.18", features = ["verify"] }
 
 bincode = "1.3"
 tempfile = "3"

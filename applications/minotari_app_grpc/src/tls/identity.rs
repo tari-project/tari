@@ -43,18 +43,24 @@ pub async fn read_identity(config_dir: PathBuf) -> Result<Identity, GrpcTlsError
     {
         let not_after = parsed_cert.validity().not_after.timestamp();
         let now = time::OffsetDateTime::now_utc().unix_timestamp();
+        let remediation_hint = if config_dir.join("node_ca.key").exists() {
+            "Run `minotari_node create-tls-certs --renew-leaf` to renew it."
+        } else {
+            "Delete the existing certificate files and re-run `create-tls-certs` to regenerate them."
+        };
         if now >= not_after {
-            return Err(GrpcTlsError::CertExpired(
-                "server.pem has expired. Please run `minotari_node create-tls-certs --renew-leaf` to renew it."
-                    .to_string(),
-            ));
-        } else if not_after - now < 30 * 86_400 {
-            let days_left = (not_after - now) / 86_400;
+            return Err(GrpcTlsError::CertExpired(format!(
+                "server.pem has expired. {remediation_hint}"
+            )));
+        }
+        let remaining = not_after.saturating_sub(now);
+        if remaining < 30 * 86_400 {
+            let days_left = remaining / 86_400;
             log::warn!(
-                "TLS server certificate {:?} will expire in {} days. Run `minotari_node create-tls-certs \
-                 --renew-leaf` to renew it.",
+                "TLS server certificate {:?} will expire in {} days. {}",
                 cert_file,
-                days_left
+                days_left,
+                remediation_hint
             );
         }
     }

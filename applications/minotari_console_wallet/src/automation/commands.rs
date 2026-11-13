@@ -35,6 +35,7 @@ use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use log::*;
 use minotari_app_grpc::tls::certs::{
+    check_target_files_do_not_exist,
     default_sans,
     generate_self_signed_certs,
     print_warning,
@@ -2286,24 +2287,33 @@ pub async fn command_runner(
                 debug!(target: LOG_TARGET, "Registering VN tx_id {tx_id}");
                 tx_ids.push(tx_id);
             },
-            CreateTlsCerts => match generate_self_signed_certs(default_sans()) {
-                Ok((cacert, _ca_key, cert, private_key)) => {
-                    print_warning();
+            CreateTlsCerts => {
+                check_target_files_do_not_exist(&config.config_dir, &[
+                    "wallet_ca.pem",
+                    "wallet_ca.key",
+                    "server.pem",
+                    "server.key",
+                ])?;
+                match generate_self_signed_certs(default_sans()) {
+                    Ok((cacert, ca_key, cert, private_key)) => {
+                        print_warning();
 
-                    write_cert_to_disk(config.config_dir.clone(), "wallet_ca.pem", &cacert)?;
-                    write_cert_to_disk(config.config_dir.clone(), "server.pem", &cert)?;
-                    write_key_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
+                        write_cert_to_disk(config.config_dir.clone(), "wallet_ca.pem", &cacert)?;
+                        write_key_to_disk(config.config_dir.clone(), "wallet_ca.key", &ca_key)?;
+                        write_cert_to_disk(config.config_dir.clone(), "server.pem", &cert)?;
+                        write_key_to_disk(config.config_dir.clone(), "server.key", &private_key)?;
 
-                    println!();
-                    println!("Certificates generated successfully.");
-                    println!(
-                        "To continue configuration move the `wallet_ca.pem` to the client service's \
-                         `application/config/` directory. Restart the base node with the configuration \
-                         grpc_tls_enabled=true"
-                    );
-                    println!();
-                },
-                Err(err) => return Err(err.into()),
+                        println!();
+                        println!("Certificates generated successfully.");
+                        println!(
+                            "To continue configuration copy the `wallet_ca.pem` to the client service's \
+                             `application/config/` directory. Restart the base node with the configuration \
+                             grpc_tls_enabled=true"
+                        );
+                        println!();
+                    },
+                    Err(err) => return Err(err.into()),
+                }
             },
             Sync(args) => {
                 let mut utxo_scanner = wallet.utxo_scanner_service.clone();

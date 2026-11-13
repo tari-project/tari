@@ -152,11 +152,12 @@ pub fn extract_sans_from_cert(pem_str: &str) -> Result<Vec<String>, GrpcTlsError
                 match name {
                     GeneralName::DNSName(dns) => sans.push(dns.to_string()),
                     GeneralName::IPAddress(ip) => {
-                        if ip.len() == 4 {
-                            sans.push(format!("{}.{}.{}.{}", ip[0], ip[1], ip[2], ip[3]));
-                        } else if ip.len() == 16 {
-                            let octets: [u8; 16] = (*ip).try_into().unwrap_or([0; 16]);
+                        if let Ok(octets) = <[u8; 4]>::try_from(*ip) {
+                            sans.push(std::net::Ipv4Addr::from(octets).to_string());
+                        } else if let Ok(octets) = <[u8; 16]>::try_from(*ip) {
                             sans.push(std::net::Ipv6Addr::from(octets).to_string());
+                        } else {
+                            log::warn!("Ignoring IP SAN with unexpected length: {}", ip.len());
                         }
                     },
                     _ => {},
@@ -195,7 +196,17 @@ pub fn generate_leaf_from_ca(
         .ok_or(GrpcTlsError::DateOverflow)?;
     let ca_not_after_ts = x509_ca.validity().not_after.timestamp();
     let ca_not_after = OffsetDateTime::from_unix_timestamp(ca_not_after_ts).map_err(|_| GrpcTlsError::DateOverflow)?;
+    if ca_not_after <= now {
+        return Err(GrpcTlsError::CertExpired(
+            "CA certificate has expired; delete existing certificates and regenerate".to_string(),
+        ));
+    }
     let not_after = std::cmp::min(requested_not_after, ca_not_after);
+    if not_after <= not_before {
+        return Err(GrpcTlsError::CertExpired(
+            "CA certificate validity window has expired; delete existing certificates and regenerate".to_string(),
+        ));
+    }
 
     let mut params = CertificateParams::new(subject_alt_names)?;
     params.not_before = not_before;
@@ -216,8 +227,17 @@ fn validate_sans(sans: &[String]) -> Result<(), rcgen::Error> {
 }
 
 pub fn renew_leaf(dir: PathBuf, mut subject_alt_names: Vec<String>) -> Result<Vec<String>, GrpcTlsError> {
-    let ca_pem = std::fs::read_to_string(dir.join("node_ca.pem"))?;
-    let ca_key_pem = std::fs::read_to_string(dir.join("node_ca.key"))?;
+    let ca_cert_path = dir.join("node_ca.pem");
+    let ca_key_path = dir.join("node_ca.key");
+    if !ca_cert_path.exists() || !ca_key_path.exists() {
+        return Err(GrpcTlsError::MissingCaFiles(
+            "missing `node_ca.pem` or `node_ca.key`. Certificates from older versions cannot be renewed; delete the \
+             existing TLS files and re-run `create-tls-certs`."
+                .to_string(),
+        ));
+    }
+    let ca_pem = std::fs::read_to_string(&ca_cert_path)?;
+    let ca_key_pem = std::fs::read_to_string(&ca_key_path)?;
     if subject_alt_names.is_empty() {
         let existing_server_pem = std::fs::read_to_string(dir.join("server.pem"))?;
         subject_alt_names = extract_sans_from_cert(&existing_server_pem)?;
@@ -363,10 +383,18 @@ mod tests {
         let (_, leaf) = parse_x509_pem(leaf_pem.as_bytes()).unwrap();
         let ca = ca.parse_x509().unwrap();
         let leaf = leaf.parse_x509().unwrap();
-        let ca_duration = ca.validity().not_after.timestamp() - ca.validity().not_before.timestamp();
-        let leaf_duration = leaf.validity().not_after.timestamp() - leaf.validity().not_before.timestamp();
-        assert!((ca_duration - 3651 * 86_400).abs() <= 2);
-        assert!((leaf_duration - 731 * 86_400).abs() <= 2);
+        let ca_duration = ca
+            .validity()
+            .not_after
+            .timestamp()
+            .saturating_sub(ca.validity().not_before.timestamp());
+        let leaf_duration = leaf
+            .validity()
+            .not_after
+            .timestamp()
+            .saturating_sub(leaf.validity().not_before.timestamp());
+        assert!(ca_duration.saturating_sub(3651 * 86_400).abs() <= 2);
+        assert!(leaf_duration.saturating_sub(731 * 86_400).abs() <= 2);
         let ca_exts = ca.extensions().iter().map(|e| e.parsed_extension()).collect::<Vec<_>>();
         let bc = ca_exts
             .iter()
@@ -648,5 +676,52 @@ mod tests {
         }
         let identity = read_identity(dir.path().to_path_buf()).await;
         assert!(identity.is_ok());
+    }
+
+    #[test]
+    fn renewal_with_empty_sans_preserves_existing_dns_and_ip_sans() {
+        let dir = tempfile::tempdir().unwrap();
+        let original_sans = vec![
+            "node.example.com".to_string(),
+            "10.0.0.5".to_string(),
+            "::1".to_string(),
+        ];
+        let (ca_pem, ca_key, leaf_pem, leaf_key) = generate_self_signed_certs(original_sans.clone()).unwrap();
+        write_cert_to_disk(dir.path().to_path_buf(), "node_ca.pem", &ca_pem).unwrap();
+        write_key_to_disk(dir.path().to_path_buf(), "node_ca.key", &ca_key).unwrap();
+        write_cert_to_disk(dir.path().to_path_buf(), "server.pem", &leaf_pem).unwrap();
+        write_key_to_disk(dir.path().to_path_buf(), "server.key", &leaf_key).unwrap();
+
+        let returned_sans = renew_leaf(dir.path().to_path_buf(), vec![]).unwrap();
+        assert_eq!(returned_sans, original_sans);
+
+        let renewed_pem = fs::read_to_string(dir.path().join("server.pem")).unwrap();
+        let extracted_sans = extract_sans_from_cert(&renewed_pem).unwrap();
+        assert_eq!(extracted_sans, original_sans);
+    }
+
+    #[test]
+    fn generate_leaf_from_ca_rejects_mismatched_ca_key() {
+        let (ca_pem, _, _, _) = generate_self_signed_certs(default_sans()).unwrap();
+        let (_, wrong_ca_key, _, _) = generate_self_signed_certs(default_sans()).unwrap();
+        let err = generate_leaf_from_ca(&ca_pem, &wrong_ca_key, default_sans()).unwrap_err();
+        assert!(matches!(err, GrpcTlsError::CaKeyMismatch));
+    }
+
+    #[tokio::test]
+    async fn read_identity_rejects_expired_cert() {
+        use crate::tls::identity::read_identity;
+        let dir = tempfile::tempdir().unwrap();
+        let now = OffsetDateTime::now_utc();
+        let mut params = CertificateParams::new(default_sans()).unwrap();
+        params.not_before = now.checked_sub(Duration::days(10)).unwrap();
+        params.not_after = now.checked_sub(Duration::days(1)).unwrap();
+        let key = KeyPair::generate().unwrap();
+        let cert = params.self_signed(&key).unwrap();
+        write_cert_to_disk(dir.path().to_path_buf(), "server.pem", &cert.pem()).unwrap();
+        write_key_to_disk(dir.path().to_path_buf(), "server.key", &key.serialize_pem()).unwrap();
+
+        let err = read_identity(dir.path().to_path_buf()).await.unwrap_err();
+        assert!(matches!(err, GrpcTlsError::CertExpired(_)));
     }
 }
