@@ -8,7 +8,7 @@ use std::{
     fs::OpenOptions,
     io::{ErrorKind, Write},
     marker::PhantomData,
-    path::Path,
+    path::{Path, PathBuf},
     str::FromStr,
     sync::{
         Mutex,
@@ -66,7 +66,7 @@ pub fn load_configuration<P: AsRef<Path>, TOverride: ConfigOverrideProvider>(
             info!(
                 target: LOG_TARGET,
                 "Created default configuration file at {}",
-                display_path(config_path.as_ref())
+                display_path(crate::dir_utils::absolute_path(config_path.as_ref()))
             );
         }
     } else {

@@ -270,28 +270,71 @@ fn main_inner() -> Result<(), ExitError> {
     Ok(())
 }
 
+fn home_fallback_in_use(fallback: Option<&Path>, cli_base_path: &Path) -> bool {
+    match fallback {
+        Some(fallback_dir) => tari_common::dir_utils::absolute_path(cli_base_path) == fallback_dir.join(".tari"),
+        None => false,
+    }
+}
+
 fn log_effective_paths_and_warnings(cli: &Cli, config: &ApplicationConfig, config_path: &Path) {
-    if let Some(fallback_dir) = tari_common::dir_utils::get_fallback_home_dir() {
-        let effective_base_path = tari_common::dir_utils::absolute_path(config.common.base_path());
-        if effective_base_path == fallback_dir.join(".tari") {
-            let fallback_shown = display_path(&fallback_dir);
+    let fallback_dir = tari_common::dir_utils::get_fallback_home_dir();
+    if home_fallback_in_use(fallback_dir.as_deref(), &cli.common.base_path) {
+        if let Some(ref fallback) = fallback_dir {
+            let fallback_shown = display_path(fallback);
             tari_common::emit_warning(&format!(
                 "Could not determine user home directory; falling back to current working directory: {fallback_shown}"
             ));
         }
     }
 
-    info!(target: LOG_TARGET, "Effective base path: {}", display_path(config.common.base_path()));
-    info!(target: LOG_TARGET, "Effective config path: {}", display_path(config_path));
+    info!(
+        target: LOG_TARGET,
+        "Effective base path: {}",
+        display_path(tari_common::dir_utils::absolute_path(config.common.base_path()))
+    );
+    info!(
+        target: LOG_TARGET,
+        "Effective config path: {}",
+        display_path(tari_common::dir_utils::absolute_path(config_path))
+    );
     info!(
         target: LOG_TARGET,
         "Effective log config path: {}",
-        display_path(cli.common.log_config_path("base_node"))
+        display_path(tari_common::dir_utils::absolute_path(cli.common.log_config_path("base_node")))
     );
-    info!(target: LOG_TARGET, "Effective identity file: {}", display_path(&config.base_node.identity_file));
+    info!(
+        target: LOG_TARGET,
+        "Effective identity file: {}",
+        display_path(tari_common::dir_utils::absolute_path(&config.base_node.identity_file))
+    );
     info!(
         target: LOG_TARGET,
         "Effective Tor identity file: {}",
-        display_path(&config.base_node.tor_identity_file)
+        display_path(tari_common::dir_utils::absolute_path(&config.base_node.tor_identity_file))
     );
+}
+
+#[cfg(test)]
+mod test {
+    use std::path::Path;
+
+    use super::home_fallback_in_use;
+
+    #[test]
+    fn test_home_fallback_in_use() {
+        let cwd = std::env::current_dir().expect("failed to get current dir");
+
+        // Case 1: Fallback was used (cli_base_path matches fallback_dir.join(".tari"))
+        let fallback_recorded = Some(cwd.as_path());
+        let default_cli_path = Path::new(".tari");
+        assert!(home_fallback_in_use(fallback_recorded, default_cli_path));
+
+        // Case 2: Explicit base path provided (cli_base_path differs from fallback)
+        let explicit_cli_path = Path::new("/custom/base/path");
+        assert!(!home_fallback_in_use(fallback_recorded, explicit_cli_path));
+
+        // Case 3: No fallback recorded (home was successfully resolved)
+        assert!(!home_fallback_in_use(None, default_cli_path));
+    }
 }
