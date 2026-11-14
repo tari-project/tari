@@ -42,7 +42,7 @@ use tari_common::{
     },
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::multiaddr::Multiaddr;
+use tari_comms::multiaddr::{Multiaddr, Protocol};
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
     chain_storage::BlockchainDatabaseConfig,
@@ -111,6 +111,9 @@ pub struct BaseNodeConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Allow Basic authentication without TLS on non-loopback addresses (dangerous).
+    #[serde(default)]
+    pub grpc_allow_insecure_auth: bool,
     /// Enable the readiness gRPC server
     pub grpc_readiness_enabled: bool,
     /// Enable mining on the base node, overriding other settings regarding mining
@@ -188,6 +191,71 @@ pub struct BaseNodeConfig {
     pub xmrig_proxy_range_proof_type: RangeProofType,
 }
 
+pub fn validate_grpc_auth_transport(
+    address: &Multiaddr,
+    tls_enabled: bool,
+    authentication: &GrpcAuthentication,
+    allow_insecure_auth: bool,
+) -> Result<(), String> {
+    if tls_enabled || !matches!(authentication, GrpcAuthentication::Basic { .. }) {
+        return Ok(());
+    }
+    let loopback = is_grpc_loopback(address);
+    if loopback || allow_insecure_auth {
+        return Ok(());
+    }
+    Err(
+        "Basic gRPC authentication on a non-loopback address requires one of: enable TLS, bind to loopback \
+         (127.0.0.1, ::1, localhost), or set grpc_allow_insecure_auth=true"
+            .to_string(),
+    )
+}
+
+pub fn is_grpc_loopback(address: &Multiaddr) -> bool {
+    address.iter().next().is_some_and(|protocol| match protocol {
+        Protocol::Ip4(ip) => ip.is_loopback(),
+        Protocol::Ip6(ip) => ip.is_loopback(),
+        Protocol::Dns(name) | Protocol::Dns4(name) | Protocol::Dns6(name) => name.eq_ignore_ascii_case("localhost"),
+        _ => false,
+    })
+}
+
+#[cfg(test)]
+mod grpc_auth_tests {
+    use tari_utilities::SafePassword;
+
+    use super::*;
+
+    fn basic() -> GrpcAuthentication {
+        GrpcAuthentication::Basic {
+            username: "u".into(),
+            password: SafePassword::from("p"),
+        }
+    }
+    fn address(value: &str) -> Multiaddr {
+        value.parse().unwrap()
+    }
+
+    #[test]
+    fn validates_loopback_tls_and_override() {
+        let remote = address("/ip4/10.0.0.1/tcp/18142");
+        let error = validate_grpc_auth_transport(&remote, false, &basic(), false).unwrap_err();
+        assert!(
+            error.contains("enable TLS") &&
+                error.contains("loopback") &&
+                error.contains("grpc_allow_insecure_auth=true")
+        );
+        assert!(validate_grpc_auth_transport(&address("/ip4/127.0.0.1/tcp/18142"), false, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&address("/ip6/::1/tcp/18142"), false, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&address("/dns4/localhost/tcp/18142"), false, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&remote, true, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&remote, false, &basic(), true).is_ok());
+        assert!(!BaseNodeConfig::default().grpc_allow_insecure_auth);
+        let crafted = address("/ip4/10.0.0.1/tcp/18142/ip4/127.0.0.1");
+        assert!(!is_grpc_loopback(&crafted));
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WalletHttpServiceConfig {
     /// Port that the local wallet query service will listen on.
@@ -231,6 +299,7 @@ impl Default for BaseNodeConfig {
             grpc_server_allow_methods: vec![GrpcMethod::GetVersion].into(),
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_allow_insecure_auth: false,
             grpc_readiness_enabled: true,
             mining_enabled: false,
             second_layer_grpc_enabled: false,

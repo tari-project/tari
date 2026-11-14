@@ -330,6 +330,13 @@ async fn connect_sha_p2pool(config: &MinerConfig, non_interactive: bool) -> Resu
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to p2pool node at {p2pool_node_addr}");
+    minotari_app_grpc::tls::validate_client_transport(
+        &p2pool_node_addr,
+        config.base_node_grpc_tls_domain_name.as_deref(),
+        &config.base_node_grpc_authentication,
+        config.base_node_grpc_allow_insecure_auth,
+    )
+    .map_err(MinerError::TlsConnectionError)?;
     let mut endpoint = Endpoint::new(p2pool_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {
@@ -367,6 +374,13 @@ async fn connect_base_node(config: &MinerConfig, non_interactive: bool) -> Resul
     }
 
     info!(target: LOG_TARGET, "👛 Connecting to base node at {base_node_addr}");
+    minotari_app_grpc::tls::validate_client_transport(
+        &base_node_addr,
+        config.base_node_grpc_tls_domain_name.as_deref(),
+        &config.base_node_grpc_authentication,
+        config.base_node_grpc_allow_insecure_auth,
+    )
+    .map_err(MinerError::TlsConnectionError)?;
     let mut endpoint = Endpoint::new(base_node_addr)?;
 
     if let Some(domain_name) = config.base_node_grpc_tls_domain_name.as_ref() {

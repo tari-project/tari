@@ -38,7 +38,7 @@ use tari_common::{
     },
 };
 use tari_common_types::grpc_authentication::GrpcAuthentication;
-use tari_comms::multiaddr::Multiaddr;
+use tari_comms::multiaddr::{Multiaddr, Protocol};
 use tari_p2p::P2pConfig;
 use tari_utilities::SafePassword;
 use url::Url;
@@ -57,6 +57,7 @@ where D: serde::Deserializer<'de> {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct WalletConfig {
     pub override_from: Option<String>,
     /// DEPRECATED: The p2p config settings
@@ -109,6 +110,9 @@ pub struct WalletConfig {
     pub grpc_authentication: GrpcAuthentication,
     /// GRPC tls enabled
     pub grpc_tls_enabled: bool,
+    /// Allow Basic authentication without TLS on non-loopback addresses (dangerous).
+    #[serde(default)]
+    pub grpc_allow_insecure_auth: bool,
     /// A list of base node peers that the wallet should use for service requests and tracking chain state
     pub base_node_service_peers: StringList,
     /// The amount of times wallet recovery will be retried before being abandoned
@@ -145,6 +149,69 @@ pub struct WalletConfig {
     pub grpc_broadcast_confirmation: u64,
 }
 
+pub fn validate_grpc_auth_transport(
+    address: &Multiaddr,
+    tls_enabled: bool,
+    authentication: &GrpcAuthentication,
+    allow_insecure_auth: bool,
+) -> Result<(), String> {
+    if tls_enabled || !matches!(authentication, GrpcAuthentication::Basic { .. }) {
+        return Ok(());
+    }
+    let loopback = is_grpc_loopback(address);
+    if loopback || allow_insecure_auth {
+        return Ok(());
+    }
+    Err(
+        "Basic gRPC authentication on a non-loopback address requires one of: enable TLS, bind to loopback \
+         (127.0.0.1, ::1, localhost), or set grpc_allow_insecure_auth=true"
+            .to_string(),
+    )
+}
+
+pub fn is_grpc_loopback(address: &Multiaddr) -> bool {
+    address.iter().next().is_some_and(|protocol| match protocol {
+        Protocol::Ip4(ip) => ip.is_loopback(),
+        Protocol::Ip6(ip) => ip.is_loopback(),
+        Protocol::Dns(name) | Protocol::Dns4(name) | Protocol::Dns6(name) => name.eq_ignore_ascii_case("localhost"),
+        _ => false,
+    })
+}
+
+#[cfg(test)]
+mod grpc_auth_tests {
+    use tari_utilities::SafePassword;
+
+    use super::*;
+    fn basic() -> GrpcAuthentication {
+        GrpcAuthentication::Basic {
+            username: "u".into(),
+            password: SafePassword::from("p"),
+        }
+    }
+    fn address(value: &str) -> Multiaddr {
+        value.parse().unwrap()
+    }
+    #[test]
+    fn validates_server_transport() {
+        let remote = address("/ip4/10.0.0.1/tcp/18142");
+        let error = validate_grpc_auth_transport(&remote, false, &basic(), false).unwrap_err();
+        assert!(
+            error.contains("enable TLS") &&
+                error.contains("loopback") &&
+                error.contains("grpc_allow_insecure_auth=true")
+        );
+        assert!(validate_grpc_auth_transport(&address("/ip4/127.0.0.1/tcp/18142"), false, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&address("/ip6/::1/tcp/18142"), false, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&address("/dns4/localhost/tcp/18142"), false, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&remote, true, &basic(), false).is_ok());
+        assert!(validate_grpc_auth_transport(&remote, false, &basic(), true).is_ok());
+        assert!(!WalletConfig::default().grpc_allow_insecure_auth);
+        let crafted: Multiaddr = "/ip4/10.0.0.1/tcp/18142/ip4/127.0.0.1".parse().unwrap();
+        assert!(!is_grpc_loopback(&crafted));
+    }
+}
+
 impl Default for WalletConfig {
     fn default() -> Self {
         let port = wallet_http_service_default_port(Network::get_current());
@@ -176,6 +243,7 @@ impl Default for WalletConfig {
             grpc_address: None,
             grpc_authentication: GrpcAuthentication::default(),
             grpc_tls_enabled: false,
+            grpc_allow_insecure_auth: false,
             base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
             fee_per_gram: 5,
