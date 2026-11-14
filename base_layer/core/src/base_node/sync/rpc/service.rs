@@ -32,7 +32,6 @@ use tari_common_types::types::FixedHash;
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
-    utils,
     utils::mpsc::ChannelByteBudget,
 };
 use tari_node_components::blocks::BlockHeader;
@@ -51,14 +50,10 @@ use crate::{
         RPC_STREAM_MAX_BUFFERED_BYTES,
         sync::{
             header_sync::HEADER_SYNC_INITIAL_MAX_HEADERS,
-            rpc::{
-                BaseNodeSyncService,
-                sync_utxos_task::{HEADER_CHUNK_SIZE, SyncUtxosTask},
-            },
+            rpc::{BaseNodeSyncService, sync_utxos_task::SyncUtxosTask},
         },
     },
     chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
-    iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
         FindChainSplitRequest,
@@ -78,8 +73,10 @@ pub struct BaseNodeSyncRpcService<B> {
     active_sessions: Mutex<Vec<Weak<NodeId>>>,
     /// The most blocks queued for the RPC server per `sync_blocks` session
     block_batch_size: usize,
-    /// The most bytes of blocks buffered per `sync_blocks` session (see [RPC_STREAM_MAX_BUFFERED_BYTES])
-    max_buffered_block_bytes: usize,
+    /// The most bytes buffered per sync stream session (see [RPC_STREAM_MAX_BUFFERED_BYTES])
+    max_buffered_bytes: usize,
+    #[cfg(feature = "metrics")]
+    active_sync_peers_metric: tari_metrics::IntGauge,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
@@ -96,14 +93,29 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
             db,
             active_sessions: Mutex::new(Vec::new()),
             block_batch_size: cmp::max(block_batch_size, 1),
-            max_buffered_block_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
+            max_buffered_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
+            #[cfg(feature = "metrics")]
+            active_sync_peers_metric: metrics::active_sync_peers().clone(),
         }
     }
 
     #[cfg(test)]
-    pub(super) fn with_max_buffered_block_bytes(mut self, max_bytes: usize) -> Self {
-        self.max_buffered_block_bytes = max_bytes;
+    pub(super) fn with_max_buffered_bytes(mut self, max_bytes: usize) -> Self {
+        self.max_buffered_bytes = max_bytes;
         self
+    }
+
+    #[cfg(all(test, feature = "metrics"))]
+    pub(super) fn with_active_sync_peers_metric(mut self, metric: tari_metrics::IntGauge) -> Self {
+        self.active_sync_peers_metric = metric;
+        self
+    }
+
+    #[cfg(test)]
+    pub(super) async fn active_session_count(&self) -> usize {
+        let mut lock = self.active_sessions.lock().await;
+        *lock = lock.drain(..).filter(|l| l.strong_count() > 0).collect();
+        lock.len()
     }
 
     #[inline]
@@ -126,8 +138,259 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
         lock.push(Arc::downgrade(&token));
         #[allow(clippy::cast_possible_wrap)]
         #[cfg(feature = "metrics")]
-        metrics::active_sync_peers().set(lock.len() as i64);
+        self.active_sync_peers_metric.set(lock.len() as i64);
         Ok(token)
+    }
+
+    async fn finish_empty_header_chunk(
+        db: &AsyncBlockchainDb<B>,
+        tx: &mpsc::Sender<Result<proto::core::BlockHeader, RpcStatus>>,
+        peer_node_id: &NodeId,
+        expected_prev_height: u64,
+        expected_prev_hash: FixedHash,
+        next_height: u64,
+        initial_max_height: u64,
+    ) {
+        let prev_still_on_chain = match db.fetch_header(expected_prev_height).await {
+            Ok(Some(h)) => h.hash() == expected_prev_hash,
+            Ok(None) => false,
+            Err(err) => {
+                let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
+                return;
+            },
+        };
+        if !prev_still_on_chain {
+            warn!(
+                target: LOG_TARGET,
+                "Header #{expected_prev_height} is no longer on the chain during header sync with peer {peer_node_id}"
+            );
+            let _result = tx
+                .send(Err(RpcStatus::conflict(
+                    "Reorg detected: header chain changed during header sync",
+                )))
+                .await;
+            return;
+        }
+        if next_height <= initial_max_height {
+            warn!(
+                target: LOG_TARGET,
+                "Header #{next_height} is gone during header sync, letting the sync peer {peer_node_id} know."
+            );
+            let _result = tx
+                .send(Err(RpcStatus::conflict(&format!(
+                    "Header #{next_height} is no longer on the chain"
+                ))))
+                .await;
+        }
+    }
+
+    async fn stream_headers(
+        db: AsyncBlockchainDb<B>,
+        tx: mpsc::Sender<Result<proto::core::BlockHeader, RpcStatus>>,
+        peer_node_id: Arc<NodeId>,
+        start_header: BlockHeader,
+        start_height: u64,
+        end_height: u64,
+        initial_max_height: u64,
+        chunk_size: usize,
+        max_buffered_bytes: usize,
+    ) {
+        let mut buffered = ChannelByteBudget::new(max_buffered_bytes);
+        let mut expected_prev_hash = start_header.hash();
+        let mut expected_prev_height = start_header.height;
+        let mut next_height = start_height;
+        let chunk_span = u64::try_from(chunk_size).unwrap_or(u64::MAX).saturating_sub(1);
+
+        while next_height <= end_height {
+            if buffered.wait_for_room(&tx).await.is_err() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Header sync session for peer '{peer_node_id}' terminated early"
+                );
+                break;
+            }
+            let chunk_end = next_height.saturating_add(chunk_span).min(end_height);
+            debug!(target: LOG_TARGET, "Sending headers #{next_height} - #{chunk_end}");
+            let headers = match db.fetch_headers(next_height..=chunk_end).await {
+                Ok(headers) => headers,
+                Err(err) => {
+                    let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
+                    break;
+                },
+            };
+
+            if headers.is_empty() {
+                Self::finish_empty_header_chunk(
+                    &db,
+                    &tx,
+                    &peer_node_id,
+                    expected_prev_height,
+                    expected_prev_hash,
+                    next_height,
+                    initial_max_height,
+                )
+                .await;
+                break;
+            }
+
+            let mut stop_session = false;
+            for header in headers {
+                if header.height != next_height || header.prev_hash != expected_prev_hash {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Header #{next_height} no longer links to previous header #{expected_prev_height} during \
+                         header sync with peer {peer_node_id}"
+                    );
+                    let _result = tx
+                        .send(Err(RpcStatus::conflict(
+                            "Reorg detected: header chain changed during header sync",
+                        )))
+                        .await;
+                    stop_session = true;
+                    break;
+                }
+                let header_hash = header.hash();
+                let header_height = header.height;
+                let proto_header = proto::core::BlockHeader::from(header);
+                let num_bytes = proto_header.encoded_len();
+                if tx.send(Ok(proto_header)).await.is_err() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Header sync session for peer '{peer_node_id}' terminated early"
+                    );
+                    stop_session = true;
+                    break;
+                }
+                buffered.record_sent(num_bytes);
+                expected_prev_hash = header_hash;
+                expected_prev_height = header_height;
+                next_height = match next_height.checked_add(1) {
+                    Some(h) => h,
+                    None => {
+                        stop_session = true;
+                        break;
+                    },
+                };
+                // Once the byte budget is full, drop any remaining prefetched headers so that we wait for the peer and
+                // re-read from the current chain state before sending more.
+                if next_height <= end_height && buffered.buffered_bytes(&tx) >= max_buffered_bytes {
+                    break;
+                }
+            }
+            if stop_session {
+                break;
+            }
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "Header sync round complete for peer `{peer_node_id}`."
+        );
+    }
+
+    async fn stream_kernels(
+        db: AsyncBlockchainDb<B>,
+        tx: mpsc::Sender<Result<proto::types::TransactionKernel, RpcStatus>>,
+        peer_node_id: Arc<NodeId>,
+        start_header: BlockHeader,
+        end_height: u64,
+        end_hash: FixedHash,
+        max_buffered_bytes: usize,
+    ) {
+        let mut buffered = ChannelByteBudget::new(max_buffered_bytes);
+        let mut current_mmr_position = start_header.kernel_mmr_size;
+
+        for height in start_header.height..=end_height {
+            if tx.is_closed() {
+                break;
+            }
+            if buffered.wait_for_room(&tx).await.is_err() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Kernel sync session for peer '{peer_node_id}' terminated early",
+                );
+                break;
+            }
+
+            let expected_hash = (height == start_header.height).then(|| start_header.hash());
+            let (header, kernels) = match db
+                .fetch_kernels_on_requested_chain(height, expected_hash, end_height, end_hash)
+                .await
+            {
+                Ok(Some(res)) => res,
+                Ok(None) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Block #{height} is no longer an ancestor of the requested end block #{end_height} during \
+                         kernel sync, letting the sync peer {peer_node_id} know that the chain has changed."
+                    );
+                    let _result = tx
+                        .send(Err(RpcStatus::conflict(
+                            "Reorg detected: the requested end block is no longer on the chain",
+                        )))
+                        .await;
+                    break;
+                },
+                Err(err) if err.is_value_not_found() || matches!(err, ChainStorageError::InvalidQuery(_)) => {
+                    let _result = tx
+                        .send(Err(RpcStatus::conflict(
+                            "Reorg detected: the requested end block is no longer on the chain",
+                        )))
+                        .await;
+                    break;
+                },
+                Err(err) => {
+                    let _result = tx.send(Err(RpcStatus::log_internal_error(LOG_TARGET)(err))).await;
+                    break;
+                },
+            };
+
+            if kernels.is_empty() {
+                let _result = tx
+                    .send(Err(RpcStatus::general(&format!(
+                        "No kernels in block {}",
+                        header.hash().to_hex()
+                    ))))
+                    .await;
+                break;
+            }
+
+            let num_kernels = u64::try_from(kernels.len()).unwrap_or(u64::MAX);
+            debug!(
+                target: LOG_TARGET,
+                "Streaming kernels {} to {}",
+                current_mmr_position,
+                current_mmr_position.saturating_add(num_kernels)
+            );
+            current_mmr_position = current_mmr_position.saturating_add(num_kernels);
+
+            let mut client_disconnected = false;
+            for kernel in kernels {
+                if buffered.wait_for_room(&tx).await.is_err() {
+                    client_disconnected = true;
+                    break;
+                }
+                let proto_kernel = proto::types::TransactionKernel::from(kernel);
+                let num_bytes = proto_kernel.encoded_len();
+                if tx.send(Ok(proto_kernel)).await.is_err() {
+                    client_disconnected = true;
+                    break;
+                }
+                buffered.record_sent(num_bytes);
+            }
+            if client_disconnected {
+                debug!(
+                    target: LOG_TARGET,
+                    "Kernel sync session for peer '{peer_node_id}' terminated early",
+                );
+                break;
+            }
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "Kernel sync round complete for peer `{peer_node_id}`.",
+        );
     }
 }
 
@@ -147,7 +410,7 @@ pub(crate) fn is_on_requested_chain(
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
     #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
-    #[allow(clippy::blocks_in_conditions)]
+    #[allow(clippy::blocks_in_conditions, clippy::too_many_lines)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -209,7 +472,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(self.block_batch_size);
-        let max_buffered_bytes = self.max_buffered_block_bytes;
+        let max_buffered_bytes = self.max_buffered_bytes;
+        #[cfg(feature = "metrics")]
+        let active_sync_peers_metric = self.active_sync_peers_metric.clone();
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
         task::spawn(
@@ -301,7 +566,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 }
 
                 #[cfg(feature = "metrics")]
-                metrics::active_sync_peers().dec();
+                active_sync_peers_metric.dec();
                 debug!(
                     target: LOG_TARGET,
                     "Block sync round complete for peer `{peer_node_id}`."
@@ -332,15 +597,24 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
 
-        let mut count = message.count;
-        if count == 0 {
+        let (count, initial_max_height) = if message.count == 0 {
             let tip_header = db.fetch_tip_header().await.rpc_status_internal_error(LOG_TARGET)?;
-            count = tip_header.height().saturating_sub(start_header.height);
-        }
+            let tip_height = tip_header.height();
+            (tip_height.saturating_sub(start_header.height), tip_height)
+        } else {
+            let last_header = db.fetch_last_header().await.rpc_status_internal_error(LOG_TARGET)?;
+            (message.count, last_header.height)
+        };
         // if its the start(tip_header == tip), return empty
         if count == 0 {
             return Ok(Streaming::empty());
         }
+
+        let start_height = start_header
+            .height
+            .checked_add(1)
+            .ok_or_else(|| RpcStatus::bad_request("Start header height overflow"))?;
+        let end_height = start_header.height.saturating_add(count);
 
         #[allow(clippy::cast_possible_truncation)]
         let chunk_size = cmp::min(100, count) as usize;
@@ -353,60 +627,28 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             chunk_size
         );
 
-        let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
+        let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(chunk_size);
+        let max_buffered_bytes = self.max_buffered_bytes;
+        #[cfg(feature = "metrics")]
+        let active_sync_peers_metric = self.active_sync_peers_metric.clone();
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
-        let iter = NonOverlappingIntegerPairIter::new(
-            start_header.height.saturating_add(1),
-            start_header.height.saturating_add(count).saturating_add(1),
-            chunk_size,
-        )
-        .map_err(|e| RpcStatus::bad_request(&e))?;
         task::spawn(
             async move {
-                // Move token into this task
-                let peer_node_id = session_token;
-                for (start, end) in iter {
-                    if tx.is_closed() {
-                        break;
-                    }
-                    debug!(target: LOG_TARGET, "Sending headers #{start} - #{end}");
-                    let headers = db
-                        .fetch_headers(start..=end)
-                        .await
-                        .map_err(RpcStatus::log_internal_error(LOG_TARGET));
-
-                    if tx.is_closed() {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Header sync session for peer '{peer_node_id}' terminated early"
-                        );
-                        break;
-                    }
-                    match headers {
-                        Ok(headers) if headers.is_empty() => {
-                            break;
-                        },
-                        Ok(headers) => {
-                            let headers = headers.into_iter().map(proto::core::BlockHeader::from).map(Ok);
-                            // Ensure task stops if the peer prematurely stops their RPC session
-                            if utils::mpsc::send_all(&tx, headers).await.is_err() {
-                                break;
-                            }
-                        },
-                        Err(err) => {
-                            let _result = tx.send(Err(err)).await;
-                            break;
-                        },
-                    }
-                }
-
+                Self::stream_headers(
+                    db,
+                    tx,
+                    session_token,
+                    start_header,
+                    start_height,
+                    end_height,
+                    initial_max_height,
+                    chunk_size,
+                    max_buffered_bytes,
+                )
+                .await;
                 #[cfg(feature = "metrics")]
-                metrics::active_sync_peers().dec();
-                debug!(
-                    target: LOG_TARGET,
-                    "Header sync round complete for peer `{peer_node_id}`."
-                );
+                active_sync_peers_metric.dec();
             }
             .instrument(span),
         );
@@ -512,133 +754,63 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
         let peer_node_id = request.context().peer_node_id().clone();
         let req = request.into_message();
-        let (tx, rx) = mpsc::channel(100);
         let db = self.db();
 
-        let start_header = db
-            .fetch_header_containing_kernel_mmr(req.start)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
-            .into_header();
-        let hash = req
+        let start_header = match db.fetch_header_containing_kernel_mmr(req.start).await {
+            Ok(header) => header.into_header(),
+            Err(err) if err.is_value_not_found() => {
+                return Err(RpcStatus::not_found(&format!(
+                    "Header containing kernel MMR position {} was not found",
+                    req.start
+                )));
+            },
+            Err(err) => return Err(RpcStatus::log_internal_error(LOG_TARGET)(err)),
+        };
+        if req.start >= start_header.kernel_mmr_size {
+            return Err(RpcStatus::not_found(&format!(
+                "Header containing kernel MMR position {} was not found",
+                req.start
+            )));
+        }
+
+        let end_hash: FixedHash = req
             .end_header_hash
             .try_into()
             .map_err(|_| RpcStatus::bad_request(&"Malformed end hash received".to_string()))?;
         let end_header = db
-            .fetch_header_by_block_hash(hash)
+            .fetch_header_by_block_hash(end_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Unknown end header"))?;
 
-        let mut current_height = start_header.height;
         let end_height = end_header.height;
-        let mut current_mmr_position = start_header.kernel_mmr_size;
-        let mut current_header_hash = start_header.hash();
-
-        if current_height > end_height {
+        if start_header.height > end_height {
             return Err(RpcStatus::bad_request("start header height is after end header"));
         }
 
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
-        task::spawn(async move {
-            // Move session token into task
-            let peer_node_id = session_token;
-            let mut header_chunk = Vec::new().into_iter();
-            while current_height <= end_height {
-                if tx.is_closed() {
-                    break;
-                }
-                let res = db
-                    .fetch_kernels_in_block(current_header_hash)
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
-
-                if tx.is_closed() {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Kernel sync session for peer '{peer_node_id}' terminated early",
-                    );
-                    break;
-                }
-
-                match res {
-                    Ok(kernels) if kernels.is_empty() => {
-                        let _result = tx
-                            .send(Err(RpcStatus::general(&format!(
-                                "No kernels in block {}",
-                                current_header_hash.to_hex()
-                            ))))
-                            .await;
-                        break;
-                    },
-                    Ok(kernels) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Streaming kernels {} to {}",
-                            current_mmr_position,
-                            current_mmr_position.saturating_add(kernels.len() as u64)
-                        );
-                        current_mmr_position = current_mmr_position.saturating_add(kernels.len() as u64);
-                        let kernels = kernels.into_iter().map(proto::types::TransactionKernel::from).map(Ok);
-                        // Ensure task stops if the peer prematurely stops their RPC session
-                        if utils::mpsc::send_all(&tx, kernels).await.is_err() {
-                            break;
-                        }
-                    },
-                    Err(err) => {
-                        let _result = tx.send(Err(err)).await;
-                        break;
-                    },
-                }
-
-                current_height = current_height.saturating_add(1);
-
-                if current_height <= end_height {
-                    let res = match header_chunk.next() {
-                        Some(header) => Ok(Some(header)),
-                        None => {
-                            // Prefetch the next chunk of headers. The chunk stops early at the first missing header.
-                            let chunk_end = current_height.saturating_add(HEADER_CHUNK_SIZE - 1).min(end_height);
-                            db.fetch_headers(current_height..=chunk_end)
-                                .await
-                                .map_err(RpcStatus::log_internal_error(LOG_TARGET))
-                                .map(|headers| {
-                                    header_chunk = headers.into_iter();
-                                    header_chunk.next()
-                                })
-                        },
-                    };
-                    match res {
-                        Ok(Some(header)) => {
-                            current_header_hash = header.hash();
-                        },
-                        Ok(None) => {
-                            let _result = tx
-                                .send(Err(RpcStatus::not_found(&format!(
-                                    "Could not find header #{current_height} while streaming UTXOs after position \
-                                     {current_mmr_position}"
-                                ))))
-                                .await;
-                            break;
-                        },
-                        Err(err) => {
-                            error!(target: LOG_TARGET, "DB error while streaming kernels: {err}");
-                            let _result = tx
-                                .send(Err(RpcStatus::general("DB error while streaming kernels")))
-                                .await;
-                            break;
-                        },
-                    }
-                }
+        let (tx, rx) = mpsc::channel(100);
+        let max_buffered_bytes = self.max_buffered_bytes;
+        #[cfg(feature = "metrics")]
+        let active_sync_peers_metric = self.active_sync_peers_metric.clone();
+        let span = span!(Level::TRACE, "sync_rpc::sync_kernels::inner_worker");
+        task::spawn(
+            async move {
+                Self::stream_kernels(
+                    db,
+                    tx,
+                    session_token,
+                    start_header,
+                    end_height,
+                    end_hash,
+                    max_buffered_bytes,
+                )
+                .await;
+                #[cfg(feature = "metrics")]
+                active_sync_peers_metric.dec();
             }
-
-            #[cfg(feature = "metrics")]
-            metrics::active_sync_peers().dec();
-            debug!(
-                target: LOG_TARGET,
-                "Kernel sync round complete for peer `{peer_node_id}`.",
-            );
-        });
+            .instrument(span),
+        );
         Ok(Streaming::new(rx))
     }
 
@@ -646,7 +818,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     #[allow(clippy::blocks_in_conditions)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
         let req = request.message();
-        let peer_node_id = request.context().peer_node_id();
+        let peer_node_id = request.context().peer_node_id().clone();
         debug!(
             target: LOG_TARGET,
             "Received sync_utxos-{} request from header {} to {}",
@@ -655,10 +827,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             req.end_header_hash.to_hex(),
         );
 
-        let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
+        let db = self.db();
+        let (start_header, end_header) = SyncUtxosTask::validate(&db, req).await?;
+        let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(200);
-        let task = SyncUtxosTask::new(self.db(), session_token);
-        task.run(request, tx).await?;
+        let task = SyncUtxosTask::new(db, session_token).with_max_buffered_bytes(self.max_buffered_bytes);
+        #[cfg(feature = "metrics")]
+        let task = task.with_active_sync_peers_metric(self.active_sync_peers_metric.clone());
+        task.run_validated(start_header, end_header, tx);
 
         Ok(Streaming::new(rx))
     }

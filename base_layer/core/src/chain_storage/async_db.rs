@@ -72,7 +72,7 @@ use crate::{
         PendingChainRewind,
         ResetPermission,
         TargetDifficulties,
-        blockchain_database::MmrRoots,
+        blockchain_database::{HorizonSyncBlockTxos, MmrRoots},
         utxo_mined_info::{InputMinedInfo, OutputMinedInfo},
     },
     common::rolling_vec::RollingVec,
@@ -276,6 +276,26 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         )
             -> (Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>),
         "fetch_outputs_in_block_and_header_pair"
+    );
+
+    make_async_fn!(
+        fetch_kernels_on_requested_chain(
+            height: u64,
+            expected_hash: Option<HashOutput>,
+            end_height: u64,
+            end_hash: HashOutput,
+        ) -> Option<(BlockHeader, Vec<TransactionKernel>)>,
+        "fetch_kernels_on_requested_chain"
+    );
+
+    make_async_fn!(
+        fetch_horizon_sync_block_txos(
+            height: u64,
+            expected_hash: Option<HashOutput>,
+            end_height: u64,
+            end_hash: HashOutput,
+        ) -> Option<HorizonSyncBlockTxos>,
+        "fetch_horizon_sync_block_txos"
     );
 
     make_async_fn!(fetch_chain_header(height: u64) -> ChainHeader, "fetch_chain_header");
