@@ -77,6 +77,11 @@ pub enum NodeCommsRequest {
     FetchUnspentUtxosInBlock {
         block_hash: BlockHash,
     },
+    FetchOutputsInBlockAndHeaderPair {
+        block_hash: BlockHash,
+        first_height: u64,
+        second_height: u64,
+    },
     FetchMinedInfoByPayRef(FixedHash),
     FetchMinedInfoByOutputHash(HashOutput),
     FetchOutputMinedInfo(HashOutput),
@@ -154,6 +159,16 @@ impl Display for NodeCommsRequest {
             },
             FetchUnspentUtxosInBlock { block_hash } => {
                 write!(f, "FetchUnspentUtxosInBlock ({block_hash})")
+            },
+            FetchOutputsInBlockAndHeaderPair {
+                block_hash,
+                first_height,
+                second_height,
+            } => {
+                write!(
+                    f,
+                    "FetchOutputsInBlockAndHeaderPair ({block_hash}, {first_height}, {second_height})"
+                )
             },
             FetchMinedInfoByPayRef(payref) => {
                 write!(f, "FetchMinedInfoByPayRef ({payref})")
