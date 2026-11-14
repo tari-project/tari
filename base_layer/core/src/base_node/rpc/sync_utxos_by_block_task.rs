@@ -5,7 +5,7 @@ use std::{convert::TryInto, sync::Arc, time::Instant};
 
 use log::*;
 use prost::Message;
-use tari_common_types::types::FixedHash;
+use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{RpcStatus, RpcStatusResultExt},
@@ -24,6 +24,8 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";
+pub(super) const OUTPUT_REBUILD_CONFLICT_MSG: &str =
+    "Committed output state is unavailable while horizon sync rebuilds outputs";
 
 pub(super) fn fetch_committed_header_by_hash<B: BlockchainBackend>(
     db: &B,
@@ -40,6 +42,29 @@ pub(super) fn fetch_committed_header_by_hash<B: BlockchainBackend>(
         return Ok(None);
     }
     Ok(Some(*header))
+}
+
+/// Returns `true` only when the output tables and output JMT match `metadata`'s committed tip and no horizon-sync
+/// output rebuild checkpoint is active. During horizon sync, `reset_output_state_to_genesis` clears output tables
+/// without lowering `best_block_height`, leaving the output JMT root out of step with `best_block_hash`'s `output_mr`
+/// (or leaving a horizon-sync output checkpoint set) until `finalize_horizon_sync` commits the new tip.
+pub(super) fn committed_outputs_are_consistent<B: BlockchainBackend>(
+    db: &B,
+    metadata: &ChainMetadata,
+) -> Result<bool, ChainStorageError> {
+    if db.fetch_horizon_sync_output_checkpoint()?.is_some() {
+        return Ok(false);
+    }
+    let Some(best_header) =
+        fetch_committed_header_by_hash(db, metadata.best_block_hash(), metadata.best_block_height())?
+    else {
+        return Ok(false);
+    };
+    match db.verify_horizon_sync_output_root(best_header.output_mr) {
+        Ok(()) => Ok(true),
+        Err(ChainStorageError::InvalidOperation(_)) => Ok(false),
+        Err(err) => Err(err),
+    }
 }
 
 pub(super) fn fetch_optional_header<B: BlockchainBackend>(
@@ -82,16 +107,22 @@ where B: BlockchainBackend + 'static
             .map_err(|_| RpcStatus::bad_request("Malformed end header hash received"))?;
 
         let inner = self.db.inner().clone();
-        let (start_header, end_header) = task::spawn_blocking(move || {
+        let validated = task::spawn_blocking(move || {
             let db = inner.db_read_access()?;
-            let tip_height = db.fetch_chain_metadata()?.best_block_height();
+            let metadata = db.fetch_chain_metadata()?;
+            if !committed_outputs_are_consistent(&*db, &metadata)? {
+                return Ok::<_, ChainStorageError>(None);
+            }
+            let tip_height = metadata.best_block_height();
             let start_header = fetch_committed_header_by_hash(&*db, &start_hash, tip_height)?;
             let end_header = fetch_committed_header_by_hash(&*db, &end_hash, tip_height)?;
-            Ok::<_, ChainStorageError>((start_header, end_header))
+            Ok(Some((start_header, end_header)))
         })
         .await
         .map_err(|err| RpcStatus::log_internal_error(LOG_TARGET)(err))?
         .rpc_status_internal_error(LOG_TARGET)?;
+
+        let (start_header, end_header) = validated.ok_or_else(|| RpcStatus::conflict(OUTPUT_REBUILD_CONFLICT_MSG))?;
 
         let start_header = start_header.ok_or_else(|| RpcStatus::not_found("Start header hash was not found"))?;
         let end_header = end_header.ok_or_else(|| RpcStatus::not_found("End header hash was not found"))?;
@@ -148,10 +179,11 @@ where B: BlockchainBackend + 'static
                 .fetch_block_on_requested_chain(height, &start_header, end_header.height, &end_hash)
                 .await
             {
-                Ok(Some(block)) => block,
+                Ok(BlockFetchOutcome::Found(block)) => *block,
+                Ok(BlockFetchOutcome::OutputRebuild) => return Err(output_rebuild_conflict(height)),
                 // Every height was at or below the end block when the stream started, so a missing value means the
                 // chain was rewound
-                Ok(None) => return Err(reorg_conflict(height)),
+                Ok(BlockFetchOutcome::ChainChanged) => return Err(reorg_conflict(height)),
                 Err(err) if err.is_value_not_found() || matches!(err, ChainStorageError::InvalidQuery(_)) => {
                     return Err(reorg_conflict(height));
                 },
@@ -212,24 +244,28 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    /// Returns the header and outputs of the block at `height`, or None if it is no longer an ancestor of the requested
-    /// committed end block. Chain metadata, the headers at `height` and `end_height`, and the outputs are read under
-    /// one read lock, so a mid-stream reorg or chain reset followed by header re-sync is always detected.
+    /// Returns the header and outputs of the block at `height`, or why it cannot be served safely. Chain metadata,
+    /// committed-output consistency, the headers at `height` and `end_height`, and the outputs are read under one read
+    /// lock, so a mid-stream reorg, chain reset, or horizon-sync output rebuild is always detected.
     async fn fetch_block_on_requested_chain(
         &self,
         height: u64,
         start_header: &BlockHeader,
         end_height: u64,
         end_hash: &FixedHash,
-    ) -> Result<Option<(BlockHeader, Vec<TransactionOutput>)>, ChainStorageError> {
+    ) -> Result<BlockFetchOutcome, ChainStorageError> {
         let inner = self.db.inner().clone();
         let start_height = start_header.height;
         let start_hash = start_header.hash();
         let expected_end_hash = *end_hash;
         task::spawn_blocking(move || {
             let db = inner.db_read_access()?;
-            if db.fetch_chain_metadata()?.best_block_height() < end_height {
-                return Ok(None);
+            let metadata = db.fetch_chain_metadata()?;
+            if metadata.best_block_height() < end_height {
+                return Ok(BlockFetchOutcome::ChainChanged);
+            }
+            if !committed_outputs_are_consistent(&*db, &metadata)? {
+                return Ok(BlockFetchOutcome::OutputRebuild);
             }
             let header_at_height = fetch_optional_header(&*db, height)?;
             let end_header = if height == end_height {
@@ -238,7 +274,7 @@ where B: BlockchainBackend + 'static
                 fetch_optional_header(&*db, end_height)?
             };
             let Some(header) = header_at_height else {
-                return Ok(None);
+                return Ok(BlockFetchOutcome::ChainChanged);
             };
             let expected_hash = if height == start_height {
                 start_hash
@@ -247,14 +283,28 @@ where B: BlockchainBackend + 'static
             };
             if is_on_requested_chain(&expected_hash, Some(&header), end_header.as_ref(), &expected_end_hash) {
                 let outputs = db.fetch_outputs_in_block(&expected_hash)?;
-                Ok(Some((header, outputs)))
+                Ok(BlockFetchOutcome::Found(Box::new((header, outputs))))
             } else {
-                Ok(None)
+                Ok(BlockFetchOutcome::ChainChanged)
             }
         })
         .await
         .map_err(|err| ChainStorageError::AccessError(err.to_string()))?
     }
+}
+
+enum BlockFetchOutcome {
+    Found(Box<(BlockHeader, Vec<TransactionOutput>)>),
+    ChainChanged,
+    OutputRebuild,
+}
+
+fn output_rebuild_conflict(height: u64) -> RpcStatus {
+    warn!(
+        target: LOG_TARGET,
+        "Aborting UTXO sync by block at #{height}: committed output state is being rebuilt by horizon sync"
+    );
+    RpcStatus::conflict(OUTPUT_REBUILD_CONFLICT_MSG)
 }
 
 fn reorg_conflict(height: u64) -> RpcStatus {
