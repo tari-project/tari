@@ -18,12 +18,40 @@ use tokio::{sync::mpsc, task};
 
 use crate::{
     base_node::sync::rpc::is_on_requested_chain,
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, ChainStorageError, DbKey, DbValue, async_db::AsyncBlockchainDb, fetch_header},
     proto,
     proto::base_node::{SyncUtxosByBlockRequest, SyncUtxosByBlockResponse},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_by_block_task";
+
+pub(super) fn fetch_committed_header_by_hash<B: BlockchainBackend>(
+    db: &B,
+    hash: &FixedHash,
+    tip_height: u64,
+) -> Result<Option<BlockHeader>, ChainStorageError> {
+    let Some(value) = db.fetch(&DbKey::HeaderHash(*hash))? else {
+        return Ok(None);
+    };
+    let DbValue::HeaderHash(header) = value else {
+        return Err(ChainStorageError::UnexpectedResult("BlockHeader".to_string()));
+    };
+    if header.height > tip_height || header.hash() != *hash {
+        return Ok(None);
+    }
+    Ok(Some(*header))
+}
+
+pub(super) fn fetch_optional_header<B: BlockchainBackend>(
+    db: &B,
+    height: u64,
+) -> Result<Option<BlockHeader>, ChainStorageError> {
+    match fetch_header(db, height) {
+        Ok(header) => Ok(Some(header)),
+        Err(err) if err.is_value_not_found() => Ok(None),
+        Err(err) => Err(err),
+    }
+}
 
 pub(crate) struct SyncUtxosByBlockTask<B> {
     db: AsyncBlockchainDb<B>,
@@ -37,33 +65,36 @@ where B: BlockchainBackend + 'static
         Self { db, max_buffered_bytes }
     }
 
-    /// Returns the start and end headers of a valid request
+    /// Returns the start and end headers of a valid request on the committed chain
     pub(crate) async fn validate(
         &self,
         request: &SyncUtxosByBlockRequest,
     ) -> Result<(BlockHeader, BlockHeader), RpcStatus> {
-        let hash = request
+        let start_hash: FixedHash = request
             .start_header_hash
             .clone()
             .try_into()
             .map_err(|_| RpcStatus::bad_request("Malformed start header hash received"))?;
-        let start_header = self
-            .db
-            .fetch_header_by_block_hash(hash)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found("Start header hash was not found"))?;
-        let hash = request
+        let end_hash: FixedHash = request
             .end_header_hash
             .clone()
             .try_into()
             .map_err(|_| RpcStatus::bad_request("Malformed end header hash received"))?;
-        let end_header = self
-            .db
-            .fetch_header_by_block_hash(hash)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found("End header hash was not found"))?;
+
+        let inner = self.db.inner().clone();
+        let (start_header, end_header) = task::spawn_blocking(move || {
+            let db = inner.db_read_access()?;
+            let tip_height = db.fetch_chain_metadata()?.best_block_height();
+            let start_header = fetch_committed_header_by_hash(&*db, &start_hash, tip_height)?;
+            let end_header = fetch_committed_header_by_hash(&*db, &end_hash, tip_height)?;
+            Ok::<_, ChainStorageError>((start_header, end_header))
+        })
+        .await
+        .map_err(|err| RpcStatus::log_internal_error(LOG_TARGET)(err))?
+        .rpc_status_internal_error(LOG_TARGET)?;
+
+        let start_header = start_header.ok_or_else(|| RpcStatus::not_found("Start header hash was not found"))?;
+        let end_header = end_header.ok_or_else(|| RpcStatus::not_found("End header hash was not found"))?;
 
         if start_header.height > end_header.height {
             return Err(RpcStatus::bad_request(&format!(
@@ -182,8 +213,8 @@ where B: BlockchainBackend + 'static
     }
 
     /// Returns the header and outputs of the block at `height`, or None if it is no longer an ancestor of the requested
-    /// end block. The outputs and the headers at `height` and `end_height` are read under one read lock, so the check
-    /// holds for the chain state the outputs were read from, whatever reorgs happened before.
+    /// committed end block. Chain metadata, the headers at `height` and `end_height`, and the outputs are read under
+    /// one read lock, so a mid-stream reorg or chain reset followed by header re-sync is always detected.
     async fn fetch_block_on_requested_chain(
         &self,
         height: u64,
@@ -191,23 +222,38 @@ where B: BlockchainBackend + 'static
         end_height: u64,
         end_hash: &FixedHash,
     ) -> Result<Option<(BlockHeader, Vec<TransactionOutput>)>, ChainStorageError> {
-        let header = if height == start_header.height {
-            start_header.clone()
-        } else {
-            match self.db.fetch_header(height).await? {
-                Some(header) => header,
-                None => return Ok(None),
+        let inner = self.db.inner().clone();
+        let start_height = start_header.height;
+        let start_hash = start_header.hash();
+        let expected_end_hash = *end_hash;
+        task::spawn_blocking(move || {
+            let db = inner.db_read_access()?;
+            if db.fetch_chain_metadata()?.best_block_height() < end_height {
+                return Ok(None);
             }
-        };
-        let hash = header.hash();
-        let (outputs, header_at_height, end_header) = self
-            .db
-            .fetch_outputs_in_block_and_header_pair(hash, height, end_height)
-            .await?;
-        if !is_on_requested_chain(&hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) {
-            return Ok(None);
-        }
-        Ok(Some((header, outputs)))
+            let header_at_height = fetch_optional_header(&*db, height)?;
+            let end_header = if height == end_height {
+                header_at_height.clone()
+            } else {
+                fetch_optional_header(&*db, end_height)?
+            };
+            let Some(header) = header_at_height else {
+                return Ok(None);
+            };
+            let expected_hash = if height == start_height {
+                start_hash
+            } else {
+                header.hash()
+            };
+            if is_on_requested_chain(&expected_hash, Some(&header), end_header.as_ref(), &expected_end_hash) {
+                let outputs = db.fetch_outputs_in_block(&expected_hash)?;
+                Ok(Some((header, outputs)))
+            } else {
+                Ok(None)
+            }
+        })
+        .await
+        .map_err(|err| ChainStorageError::AccessError(err.to_string()))?
     }
 }
 

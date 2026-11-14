@@ -6,15 +6,23 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use jmt::{JellyfishMerkleTree, KeyHash};
 use log::*;
-use tari_common_types::types::{CompressedSignature, FixedHash};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{CompressedSignature, FixedHash},
+};
 use tari_comms::{
     peer_manager::NodeId,
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
 };
-use tari_transaction_components::transaction_components::Transaction;
-use tari_utilities::hex::Hex;
-use tokio::sync::{Mutex, mpsc};
+use tari_node_components::blocks::BlockHeader;
+use tari_transaction_components::transaction_components::{Transaction, TransactionOutput};
+use tari_utilities::{ByteArray, hex::Hex};
+use tokio::{
+    sync::{Mutex, mpsc},
+    task,
+};
 use url::Url;
 
 use crate::{
@@ -26,11 +34,18 @@ use crate::{
             HeightAtTimeError,
             MAX_ALLOWED_QUERY_SIZE,
             height_at_time,
-            sync_utxos_by_block_task::SyncUtxosByBlockTask,
+            sync_utxos_by_block_task::{SyncUtxosByBlockTask, fetch_committed_header_by_hash, fetch_optional_header},
         },
         state_machine_service::states::StateInfo,
     },
-    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    chain_storage::{
+        BlockchainBackend,
+        ChainStorageError,
+        MinedInfo,
+        OutputMinedInfo,
+        SmtHasher,
+        async_db::AsyncBlockchainDb,
+    },
     mempool::{TxStorageResponse, service::MempoolHandle},
     proto,
     proto::{
@@ -62,6 +77,182 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
+
+async fn with_read_db<B, T, F>(db: &AsyncBlockchainDb<B>, f: F) -> Result<T, RpcStatus>
+where
+    B: BlockchainBackend + 'static,
+    T: Send + 'static,
+    F: FnOnce(&B) -> Result<T, ChainStorageError> + Send + 'static,
+{
+    let inner = db.inner().clone();
+    task::spawn_blocking(move || {
+        let guard = inner.db_read_access()?;
+        f(&*guard)
+    })
+    .await
+    .map_err(|err| RpcStatus::log_internal_error(LOG_TARGET)(err))?
+    .rpc_status_internal_error(LOG_TARGET)
+}
+
+fn fetch_committed_header_at_height<B: BlockchainBackend>(
+    db: &B,
+    height: u64,
+) -> Result<Option<BlockHeader>, ChainStorageError> {
+    let tip_height = db.fetch_chain_metadata()?.best_block_height();
+    if height > tip_height {
+        return Ok(None);
+    }
+    fetch_optional_header(db, height)
+}
+
+fn fetch_committed_kernel_info<B: BlockchainBackend>(
+    db: &B,
+    tip_height: u64,
+    signature: &CompressedSignature,
+) -> Result<Option<(FixedHash, BlockHeader)>, ChainStorageError> {
+    let Some((_, block_hash)) = db.fetch_kernel_by_excess_sig(signature)? else {
+        return Ok(None);
+    };
+    let Some(header) = fetch_committed_header_by_hash(db, &block_hash, tip_height)? else {
+        return Ok(None);
+    };
+    Ok(Some((block_hash, header)))
+}
+
+fn fetch_latest_committed_output<B: BlockchainBackend>(
+    db: &B,
+    hash: &FixedHash,
+    tip_height: u64,
+) -> Result<Option<OutputMinedInfo>, ChainStorageError> {
+    let mut committed = Vec::new();
+    for info in db.fetch_outputs(hash)? {
+        if info.mined_height <= tip_height &&
+            fetch_committed_header_by_hash(db, &info.header_hash, tip_height)?.is_some()
+        {
+            committed.push(info);
+        }
+    }
+    committed.sort_by_key(|o| o.mined_height);
+    Ok(committed.into_iter().next_back())
+}
+
+fn fetch_committed_unspent_outputs<B: BlockchainBackend>(
+    db: &B,
+    hashes: Vec<FixedHash>,
+) -> Result<Vec<TransactionOutput>, ChainStorageError> {
+    let tip_height = db.fetch_chain_metadata()?.best_block_height();
+    let (smt_reader, current_version) = db.create_smt_reader()?;
+    let smt = JellyfishMerkleTree::<_, SmtHasher>::new(&smt_reader);
+    let mut outputs = Vec::with_capacity(hashes.len());
+    for hash in hashes {
+        if let Some(mined_info) = fetch_latest_committed_output(db, &hash, tip_height)? {
+            let key_bytes: [u8; 32] = mined_info
+                .output
+                .commitment
+                .as_bytes()
+                .try_into()
+                .map_err(|_| ChainStorageError::UnexpectedResult("Commitment must be 32 bytes".to_string()))?;
+            let smt_key = KeyHash(key_bytes);
+            if smt
+                .get(smt_key, current_version)
+                .map_err(ChainStorageError::JellyfishMerkleTreeError)?
+                .is_some()
+            {
+                outputs.push(mined_info.output);
+            }
+        }
+    }
+    Ok(outputs)
+}
+
+fn fetch_committed_outputs_mined_info<B: BlockchainBackend>(
+    db: &B,
+    hashes: Vec<FixedHash>,
+) -> Result<(ChainMetadata, Vec<Option<OutputMinedInfo>>), ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let tip_height = metadata.best_block_height();
+    let mut result = Vec::with_capacity(hashes.len());
+    for hash in hashes {
+        result.push(fetch_latest_committed_output(db, &hash, tip_height)?);
+    }
+    Ok((metadata, result))
+}
+
+fn sanitize_committed_mined_info<B: BlockchainBackend>(
+    db: &B,
+    info: MinedInfo,
+    tip_height: u64,
+) -> Result<Option<MinedInfo>, ChainStorageError> {
+    let output = match info.output {
+        Some(o)
+            if o.mined_height <= tip_height &&
+                fetch_committed_header_by_hash(db, &o.header_hash, tip_height)?.is_some() =>
+        {
+            Some(o)
+        },
+        _ => None,
+    };
+    let input = match info.input {
+        Some(i)
+            if i.spent_height <= tip_height &&
+                fetch_committed_header_by_hash(db, &i.header_hash, tip_height)?.is_some() =>
+        {
+            Some(i)
+        },
+        _ => None,
+    };
+    if output.is_some() || input.is_some() {
+        Ok(Some(MinedInfo { input, output }))
+    } else {
+        Ok(None)
+    }
+}
+
+fn query_committed_deleted<B: BlockchainBackend>(
+    db: &B,
+    required_header: Option<FixedHash>,
+    hashes: Vec<FixedHash>,
+) -> Result<Option<(ChainMetadata, Vec<QueryDeletedData>)>, ChainStorageError> {
+    let metadata = db.fetch_chain_metadata()?;
+    let tip_height = metadata.best_block_height();
+    if let Some(hash) = required_header &&
+        fetch_committed_header_by_hash(db, &hash, tip_height)?.is_none()
+    {
+        return Ok(None);
+    }
+    // One read for metadata, header inclusion, and all hashes; each entry's mined and spent halves describe the same
+    // committed lifecycle.
+    let mut return_data = Vec::with_capacity(hashes.len());
+    for hash in hashes {
+        let mut committed_infos = Vec::new();
+        for info in db.fetch_mined_info_by_output_hash(&hash)? {
+            if let Some(clean) = sanitize_committed_mined_info(db, info, tip_height)? {
+                committed_infos.push(clean);
+            }
+        }
+        let latest = MinedInfo::latest(committed_infos);
+        let mut data = match latest.output {
+            None => QueryDeletedData {
+                mined_at_height: 0,
+                block_mined_in: Vec::new(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+            Some(u) => QueryDeletedData {
+                mined_at_height: u.mined_height,
+                block_mined_in: u.header_hash.to_vec(),
+                height_deleted_at: 0,
+                block_deleted_in: Vec::new(),
+            },
+        };
+        if let Some(input) = latest.input {
+            data.height_deleted_at = input.spent_height;
+            data.block_deleted_in = input.header_hash.to_vec();
+        }
+        return_data.push(data);
+    }
+    Ok(Some((metadata, return_data)))
+}
 
 pub struct BaseNodeWalletRpcService<B> {
     db: AsyncBlockchainDb<B>,
@@ -128,61 +319,23 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         self.state_machine.clone()
     }
 
-    async fn fetch_kernel(&self, signature: CompressedSignature) -> Result<TxQueryResponse, RpcStatus> {
-        let db = self.db();
-        let chain_metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
+    fn is_synced(&self) -> bool {
         let state_machine = self.state_machine();
-
-        // Determine if we are synced
         let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
+        match status_watch.borrow().state_info {
             StateInfo::Listening(li) => li.is_synced(),
             _ => false,
-        };
-        match db
-            .fetch_kernel_by_excess_sig(signature.clone())
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
-        {
-            None => (),
-            Some((_, block_hash)) => {
-                match db
-                    .fetch_header_by_block_hash(block_hash)
-                    .await
-                    .rpc_status_internal_error(LOG_TARGET)?
-                {
-                    None => (),
-                    Some(header) => {
-                        let confirmations = chain_metadata.best_block_height().saturating_sub(header.height);
-                        let response = TxQueryResponse {
-                            location: TxLocation::Mined as i32,
-                            best_block_hash: block_hash.to_vec(),
-                            confirmations,
-                            is_synced,
-                            best_block_height: chain_metadata.best_block_height(),
-                            mined_timestamp: header.timestamp.as_u64(),
-                        };
-                        return Ok(response);
-                    },
-                }
-            },
-        };
+        }
+    }
 
-        // If not in a block then check the mempool
+    async fn tx_location_from_mempool(&self, signature: CompressedSignature) -> Result<TxLocation, RpcStatus> {
         let mut mempool = self.mempool();
-        let mempool_response = match mempool
-            .get_tx_state_by_excess_sig(signature.clone())
+        let location = match mempool
+            .get_tx_state_by_excess_sig(signature)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
         {
-            TxStorageResponse::UnconfirmedPool => TxQueryResponse {
-                location: TxLocation::InMempool as i32,
-                best_block_hash: vec![],
-                confirmations: 0,
-                is_synced,
-                best_block_height: chain_metadata.best_block_height(),
-                mined_timestamp: 0,
-            },
+            TxStorageResponse::UnconfirmedPool => TxLocation::InMempool,
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredTimeLocked |
@@ -192,16 +345,46 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStoredFeeTooLow |
             TxStorageResponse::NotStoredValidatorNodeSlotTaken |
             TxStorageResponse::NotStoredMempoolPolicy(_) |
-            TxStorageResponse::NotStoredAlreadyMined => TxQueryResponse {
-                location: TxLocation::NotStored as i32,
-                best_block_hash: vec![],
-                confirmations: 0,
+            TxStorageResponse::NotStoredAlreadyMined => TxLocation::NotStored,
+        };
+        Ok(location)
+    }
+
+    async fn fetch_kernel(
+        &self,
+        signature: CompressedSignature,
+        is_synced: bool,
+    ) -> Result<TxQueryResponse, RpcStatus> {
+        let sig_for_db = signature.clone();
+        let (chain_metadata, mined) = with_read_db(&self.db, move |db| {
+            let metadata = db.fetch_chain_metadata()?;
+            let mined = fetch_committed_kernel_info(db, metadata.best_block_height(), &sig_for_db)?;
+            Ok((metadata, mined))
+        })
+        .await?;
+
+        if let Some((block_hash, header)) = mined {
+            let confirmations = chain_metadata.best_block_height().saturating_sub(header.height);
+            return Ok(TxQueryResponse {
+                location: TxLocation::Mined as i32,
+                best_block_hash: block_hash.to_vec(),
+                confirmations,
                 is_synced,
                 best_block_height: chain_metadata.best_block_height(),
-                mined_timestamp: 0,
-            },
-        };
-        Ok(mempool_response)
+                mined_timestamp: header.timestamp.as_u64(),
+            });
+        }
+
+        // If not in a committed block then check the mempool
+        let location = self.tx_location_from_mempool(signature).await?;
+        Ok(TxQueryResponse {
+            location: location as i32,
+            best_block_hash: vec![],
+            confirmations: 0,
+            is_synced,
+            best_block_height: chain_metadata.best_block_height(),
+            mined_timestamp: 0,
+        })
     }
 }
 
@@ -215,14 +398,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let transaction =
             Transaction::try_from(message).map_err(|_| RpcStatus::bad_request("Transaction was invalid"))?;
         let mut mempool = self.mempool();
-        let state_machine = self.state_machine();
-
-        // Determine if we are synced
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
+        let is_synced = self.is_synced();
 
         let response = match mempool
             .submit_transaction(transaction.clone())
@@ -268,7 +444,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             TxStorageResponse::NotStoredAlreadySpent |
             TxStorageResponse::ReorgPool |
             TxStorageResponse::NotStoredAlreadyMined => {
-                // Is this transaction a double spend or has this transaction been mined?
+                // Is this transaction a double spend or has this transaction been mined on the committed chain?
                 match transaction.first_kernel_excess_sig() {
                     None => TxSubmissionResponse {
                         accepted: false,
@@ -276,24 +452,21 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                         is_synced,
                     },
                     Some(s) => {
-                        // Check to see if the kernel exists in the blockchain db in which case this exact transaction
-                        // already exists in the chain, otherwise it is a double spend
-                        let db = self.db();
-                        match db
-                            .fetch_kernel_by_excess_sig(s.clone())
-                            .await
-                            .rpc_status_internal_error(LOG_TARGET)?
-                        {
-                            None => TxSubmissionResponse {
-                                accepted: false,
-                                rejection_reason: TxSubmissionRejectionReason::DoubleSpend.into(),
-                                is_synced,
-                            },
-                            Some(_) => TxSubmissionResponse {
-                                accepted: false,
-                                rejection_reason: TxSubmissionRejectionReason::AlreadyMined.into(),
-                                is_synced,
-                            },
+                        let sig = s.clone();
+                        let mined = with_read_db(&self.db, move |db| {
+                            let tip_height = db.fetch_chain_metadata()?.best_block_height();
+                            fetch_committed_kernel_info(db, tip_height, &sig)
+                        })
+                        .await?;
+                        let reason = if mined.is_some() {
+                            TxSubmissionRejectionReason::AlreadyMined
+                        } else {
+                            TxSubmissionRejectionReason::DoubleSpend
+                        };
+                        TxSubmissionResponse {
+                            accepted: false,
+                            rejection_reason: reason.into(),
+                            is_synced,
                         }
                     },
                 }
@@ -306,21 +479,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         &self,
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponse>, RpcStatus> {
-        let state_machine = self.state_machine();
-
-        // Determine if we are synced
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match status_watch.borrow().state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
-
+        let is_synced = self.is_synced();
         let message = request.into_message();
         let signature =
             CompressedSignature::try_from(message).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
 
-        let mut response = self.fetch_kernel(signature).await?;
-        response.is_synced = is_synced;
+        let response = self.fetch_kernel(signature, is_synced).await?;
         Ok(Response::new(response))
     }
 
@@ -328,15 +492,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         &self,
         request: Request<SignaturesProto>,
     ) -> Result<Response<TxQueryBatchResponses>, RpcStatus> {
-        let state_machine = self.state_machine();
-
-        // Determine if we are synced
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
-
+        let is_synced = self.is_synced();
         let message = request.into_message();
         if message.sigs.is_empty() {
             return Err(RpcStatus::bad_request("Empty signatures"));
@@ -347,27 +503,52 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             )));
         }
 
-        let mut responses: Vec<TxQueryBatchResponse> = Vec::with_capacity(message.sigs.len());
+        let signatures: Vec<CompressedSignature> = message
+            .sigs
+            .into_iter()
+            .map(CompressedSignature::try_from)
+            .collect::<Result<_, _>>()
+            .map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
 
-        let metadata = self
-            .db
-            .get_chain_metadata()
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
+        let sigs_for_db = signatures.clone();
+        let (metadata, mined_entries) = with_read_db(&self.db, move |db| {
+            let metadata = db.fetch_chain_metadata()?;
+            let tip_height = metadata.best_block_height();
+            let mut entries = Vec::with_capacity(sigs_for_db.len());
+            for sig in &sigs_for_db {
+                entries.push(fetch_committed_kernel_info(db, tip_height, sig)?);
+            }
+            Ok((metadata, entries))
+        })
+        .await?;
 
-        for sig in message.sigs {
-            let signature =
-                CompressedSignature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
-            let response: TxQueryResponse = self.fetch_kernel(signature.clone()).await?;
-            responses.push(TxQueryBatchResponse {
-                signature: Some(SignatureProto::from(&signature)),
-                location: response.location,
-                best_block_hash: response.best_block_hash,
-                confirmations: response.confirmations,
-                best_block_height: response.best_block_height.saturating_sub(response.confirmations),
-                mined_timestamp: response.mined_timestamp,
-            });
+        let mut responses = Vec::with_capacity(signatures.len());
+        for (signature, mined) in signatures.into_iter().zip(mined_entries) {
+            let sig_proto = Some(SignatureProto::from(&signature));
+            let batch_response = match mined {
+                Some((block_hash, header)) => TxQueryBatchResponse {
+                    signature: sig_proto,
+                    location: TxLocation::Mined as i32,
+                    best_block_hash: block_hash.to_vec(),
+                    confirmations: metadata.best_block_height().saturating_sub(header.height),
+                    best_block_height: header.height,
+                    mined_timestamp: header.timestamp.as_u64(),
+                },
+                None => {
+                    let location = self.tx_location_from_mempool(signature).await?;
+                    TxQueryBatchResponse {
+                        signature: sig_proto,
+                        location: location as i32,
+                        best_block_hash: vec![],
+                        confirmations: 0,
+                        best_block_height: metadata.best_block_height(),
+                        mined_timestamp: 0,
+                    }
+                },
+            };
+            responses.push(batch_response);
         }
+
         Ok(Response::new(TxQueryBatchResponses {
             responses,
             is_synced,
@@ -391,33 +572,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             )));
         }
 
-        let state_machine = self.state_machine();
-        // Determine if we are synced
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match (status_watch.borrow()).state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
-
-        let db = self.db();
-        let mut res = Vec::with_capacity(message.output_hashes.len());
+        let is_synced = self.is_synced();
         let hashes: Vec<FixedHash> = message
             .output_hashes
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
-        let utxos = db
-            .fetch_outputs_with_spend_status_at_tip(hashes)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
-            .into_iter()
-            .flatten();
-        for (output, spent) in utxos {
-            if !spent {
-                res.push(output);
-            }
-        }
+            .map_err(|_| RpcStatus::bad_request("Malformed block hash received"))?;
+
+        let res = with_read_db(&self.db, move |db| fetch_committed_unspent_outputs(db, hashes)).await?;
 
         Ok(Response::new(FetchUtxosResponse {
             outputs: res
@@ -440,8 +603,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             )));
         }
 
-        let db = self.db();
-
         debug!(
             target: LOG_TARGET,
             "Querying {} UTXO(s) for mined state",
@@ -452,17 +613,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .into_iter()
             .map(|hash| hash.try_into().map_err(|_| "Malformed pruned hash".to_string()))
             .collect::<Result<_, _>>()
-            .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
+            .map_err(|_| RpcStatus::bad_request("Malformed block hash received"))?;
         trace!(
             target: LOG_TARGET,
             "UTXO hashes queried from wallet: {:?}",
             hashes.iter().map(|h| h.to_hex()).collect::<Vec<String>>()
         );
 
-        let mined_info_resp = db
-            .fetch_outputs_mined_info(hashes)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
+        let (metadata, mined_info_resp) =
+            with_read_db(&self.db, move |db| fetch_committed_outputs_mined_info(db, hashes)).await?;
 
         let num_mined = mined_info_resp.iter().filter(|opt| opt.is_some()).count();
         debug!(
@@ -471,11 +630,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             num_mined,
             mined_info_resp.len().saturating_sub(num_mined)
         );
-        let metadata = self
-            .db
-            .get_chain_metadata()
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(UtxoQueryResponses {
             best_block_height: metadata.best_block_height(),
@@ -488,12 +642,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                         mined_at_height: utxo.mined_height,
                         mined_in_block: utxo.header_hash.to_vec(),
                         output_hash: utxo.output.hash().to_vec(),
-                        output: match utxo.output.try_into() {
-                            Ok(output) => Some(output),
-                            Err(err) => {
-                                return Err(err);
-                            },
-                        },
+                        output: Some(utxo.output.try_into()?),
                         mined_timestamp: utxo.mined_timestamp,
                     })
                 })
@@ -515,62 +664,27 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 "Exceeded maximum allowed query hashes. Max: {MAX_ALLOWED_QUERY_SIZE}"
             )));
         }
-        let chain_include_header = message.chain_must_include_header;
-        if !chain_include_header.is_empty() {
-            let hash = chain_include_header
-                .try_into()
-                .map_err(|_| RpcStatus::bad_request(&"Malformed block hash received".to_string()))?;
-            if self
-                .db
-                .fetch_header_by_block_hash(hash)
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?
-                .is_none()
-            {
-                return Err(RpcStatus::not_found(
-                    "Chain does not include header. It might have been reorged out",
-                ));
-            }
-        }
+        let required_header = if message.chain_must_include_header.is_empty() {
+            None
+        } else {
+            Some(
+                message
+                    .chain_must_include_header
+                    .try_into()
+                    .map_err(|_| RpcStatus::bad_request("Malformed block hash received"))?,
+            )
+        };
         let hashes: Vec<FixedHash> = message
             .hashes
             .into_iter()
-            .map(|hash| hash.try_into())
+            .map(TryInto::try_into)
             .collect::<Result<_, _>>()
-            .map_err(|_| RpcStatus::bad_request(&"Malformed utxo hash received".to_string()))?;
-        let mut return_data = Vec::with_capacity(hashes.len());
-        // One read for all hashes; each entry's mined and spent halves describe the same lifecycle.
-        let infos = self
-            .db
-            .fetch_latest_mined_infos(hashes)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
-        for info in infos {
-            let mut data = match &info.output {
-                None => QueryDeletedData {
-                    mined_at_height: 0,
-                    block_mined_in: Vec::new(),
-                    height_deleted_at: 0,
-                    block_deleted_in: Vec::new(),
-                },
-                Some(u) => QueryDeletedData {
-                    mined_at_height: u.mined_height,
-                    block_mined_in: u.header_hash.to_vec(),
-                    height_deleted_at: 0,
-                    block_deleted_in: Vec::new(),
-                },
-            };
-            if let Some(input) = &info.input {
-                data.height_deleted_at = input.spent_height;
-                data.block_deleted_in = input.header_hash.to_vec();
-            };
-            return_data.push(data);
-        }
-        let metadata = self
-            .db
-            .get_chain_metadata()
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?;
+            .map_err(|_| RpcStatus::bad_request("Malformed utxo hash received"))?;
+
+        let (metadata, return_data) =
+            with_read_db(&self.db, move |db| query_committed_deleted(db, required_header, hashes))
+                .await?
+                .ok_or_else(|| RpcStatus::not_found("Chain does not include header. It might have been reorged out"))?;
 
         Ok(Response::new(QueryDeletedResponse {
             best_block_height: metadata.best_block_height(),
@@ -580,12 +694,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
     }
 
     async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
-        let state_machine = self.state_machine();
-        let status_watch = state_machine.get_status_info_watch();
-        let is_synced = match status_watch.borrow().state_info {
-            StateInfo::Listening(li) => li.is_synced(),
-            _ => false,
-        };
+        let is_synced = self.is_synced();
 
         let metadata = self
             .db
@@ -601,11 +710,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
     async fn get_header(&self, request: Request<u64>) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
         let height = request.into_message();
-        let header = self
-            .db()
-            .fetch_header(height)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
+        let header = with_read_db(&self.db, move |db| fetch_committed_header_at_height(db, height))
+            .await?
             .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
@@ -616,11 +722,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         request: Request<u64>,
     ) -> Result<Response<proto::core::BlockHeader>, RpcStatus> {
         let height = request.into_message();
-        let header = self
-            .db()
-            .fetch_header(height)
-            .await
-            .rpc_status_internal_error(LOG_TARGET)?
+        let header = with_read_db(&self.db, move |db| fetch_committed_header_at_height(db, height))
+            .await?
             .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {height}")))?;
 
         Ok(Response::new(header.into()))
@@ -716,12 +819,18 @@ mod test {
     use super::*;
     use crate::{
         base_node::state_machine_service::states::StatusInfo,
+        chain_storage::{DbTransaction, HorizonStateTreeUpdate},
         mempool::test_utils::{
             covenant_over_token_limit,
             mock::create_mempool_service_mock,
             transaction_proto_with_covenant,
         },
-        test_helpers::blockchain::create_new_blockchain_with_network,
+        test_helpers::blockchain::{
+            create_chained_blocks,
+            create_main_chain,
+            create_new_blockchain,
+            create_new_blockchain_with_network,
+        },
     };
 
     /// The service has no connectivity handle, so it cannot ban: a rejection here is only ever a bad request
@@ -779,6 +888,209 @@ mod test {
         assert!(data.block_deleted_in.is_empty());
     }
 
+    #[tokio::test]
+    async fn get_header_rejects_synced_ahead_headers_until_block_is_committed() {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let b = chain.get("B").unwrap().clone();
+        let (_, future) = create_chained_blocks(&db, block_specs!(["C->GB"]), b);
+        let c = future.get("C").unwrap().clone();
+        db.insert_valid_headers(vec![c.to_chain_header()]).unwrap();
+
+        let (mempool, _) = create_mempool_service_mock();
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let state_machine = StateMachineHandle::new(state_tx, status_rx, Shutdown::new().to_signal());
+        let service = BaseNodeWalletRpcService::new(db.clone().into(), mempool, state_machine, None);
+
+        assert_eq!(
+            service
+                .get_header(Request::new(0.into(), 2))
+                .await
+                .unwrap()
+                .into_message()
+                .height,
+            2
+        );
+        assert_eq!(
+            service
+                .get_header_by_height(Request::new(0.into(), 2))
+                .await
+                .unwrap()
+                .into_message()
+                .height,
+            2
+        );
+        assert_eq!(
+            service
+                .get_header(Request::new(0.into(), 3))
+                .await
+                .unwrap_err()
+                .as_status_code(),
+            RpcStatusCode::NotFound
+        );
+        assert_eq!(
+            service
+                .get_header_by_height(Request::new(0.into(), 3))
+                .await
+                .unwrap_err()
+                .as_status_code(),
+            RpcStatusCode::NotFound
+        );
+
+        db.add_block(c.to_arc_block()).unwrap();
+        assert_eq!(
+            service
+                .get_header(Request::new(0.into(), 3))
+                .await
+                .unwrap()
+                .into_message()
+                .height,
+            3
+        );
+        assert_eq!(
+            service
+                .get_header_by_height(Request::new(0.into(), 3))
+                .await
+                .unwrap()
+                .into_message()
+                .height,
+            3
+        );
+    }
+
+    fn setup_staged_horizon_fixture() -> (
+        BaseNodeWalletRpcService<crate::test_helpers::blockchain::TempDatabase>,
+        Arc<tari_node_components::blocks::ChainBlock>,
+        Arc<tari_node_components::blocks::ChainBlock>,
+        Arc<tari_node_components::blocks::ChainBlock>,
+    ) {
+        let db = create_new_blockchain();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
+        let a = chain.get("A").unwrap().clone();
+        let b = chain.get("B").unwrap().clone();
+        let (_, future) = create_chained_blocks(&db, block_specs!(["C->GB"]), b.clone());
+        let c = future.get("C").unwrap().clone();
+
+        // Simulate synced-ahead header C with staged output, JMT leaf, and kernel while committed tip remains B (#2).
+        db.insert_valid_headers(vec![c.to_chain_header()]).unwrap();
+        let staged_output = c.block().body.outputs().first().unwrap().clone();
+        let staged_kernel = c.block().body.kernels().first().unwrap().clone();
+        let mut txn = DbTransaction::new();
+        txn.insert_utxo(
+            staged_output.clone(),
+            *c.hash(),
+            c.height(),
+            c.header().timestamp.as_u64(),
+        );
+        txn.apply_horizon_state_tree_updates(vec![HorizonStateTreeUpdate {
+            key: FixedHash::try_from(staged_output.commitment.as_bytes()).unwrap(),
+            value: Some(staged_output.smt_hash(c.height())),
+            replaces_value: false,
+        }]);
+        txn.insert_kernel(staged_kernel, *c.hash(), 0);
+        db.write(txn).unwrap();
+
+        let (mempool, _) = create_mempool_service_mock();
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let state_machine = StateMachineHandle::new(state_tx, status_rx, Shutdown::new().to_signal());
+        let service = BaseNodeWalletRpcService::new(db.into(), mempool, state_machine, None);
+        (service, a, b, c)
+    }
+
+    #[tokio::test]
+    async fn wallet_utxo_queries_ignore_uncommitted_horizon_staged_outputs() {
+        let (service, _a, b, c) = setup_staged_horizon_fixture();
+        let committed_output = b.block().body.outputs().first().unwrap().clone();
+        let staged_output = c.block().body.outputs().first().unwrap().clone();
+
+        let utxo_resp = service
+            .utxo_query(Request::new(0.into(), UtxoQueryRequest {
+                output_hashes: vec![committed_output.hash().to_vec(), staged_output.hash().to_vec()],
+            }))
+            .await
+            .unwrap()
+            .into_message();
+        assert_eq!(utxo_resp.best_block_height, 2);
+        assert_eq!(utxo_resp.responses.len(), 1);
+        assert_eq!(
+            utxo_resp.responses.first().unwrap().output_hash,
+            committed_output.hash().to_vec()
+        );
+
+        let matching_resp = service
+            .fetch_matching_utxos(Request::new(0.into(), FetchMatchingUtxos {
+                output_hashes: vec![committed_output.hash().to_vec(), staged_output.hash().to_vec()],
+            }))
+            .await
+            .unwrap()
+            .into_message();
+        assert_eq!(matching_resp.outputs.len(), 1);
+
+        let deleted_err = service
+            .query_deleted(Request::new(0.into(), QueryDeletedRequest {
+                hashes: vec![committed_output.hash().to_vec()],
+                chain_must_include_header: c.hash().to_vec(),
+            }))
+            .await
+            .unwrap_err();
+        assert_eq!(deleted_err.as_status_code(), RpcStatusCode::NotFound);
+
+        let deleted_resp = service
+            .query_deleted(Request::new(0.into(), QueryDeletedRequest {
+                hashes: vec![staged_output.hash().to_vec()],
+                chain_must_include_header: b.hash().to_vec(),
+            }))
+            .await
+            .unwrap()
+            .into_message();
+        assert_eq!(deleted_resp.best_block_height, 2);
+        assert_eq!(deleted_resp.data.first().unwrap().mined_at_height, 0);
+    }
+
+    #[tokio::test]
+    async fn wallet_tx_queries_ignore_uncommitted_horizon_staged_kernels() {
+        let (service, a, b, c) = setup_staged_horizon_fixture();
+        let staged_kernel = c.block().body.kernels().first().unwrap();
+
+        let tx_resp = service
+            .transaction_query(Request::new(0.into(), SignatureProto::from(&staged_kernel.excess_sig)))
+            .await
+            .unwrap()
+            .into_message();
+        assert_eq!(tx_resp.location, TxLocation::NotStored as i32);
+        assert_eq!(tx_resp.best_block_height, 2);
+
+        let kernel_a = a.block().body.kernels().first().unwrap();
+        let kernel_b = b.block().body.kernels().first().unwrap();
+        let batch_resp = service
+            .transaction_batch_query(Request::new(0.into(), SignaturesProto {
+                sigs: vec![
+                    SignatureProto::from(&kernel_a.excess_sig),
+                    SignatureProto::from(&kernel_b.excess_sig),
+                    SignatureProto::from(&staged_kernel.excess_sig),
+                ],
+            }))
+            .await
+            .unwrap()
+            .into_message();
+        assert_eq!(batch_resp.best_block_height, 2);
+        assert_eq!(batch_resp.best_block_hash, b.hash().to_vec());
+        let first = batch_resp.responses.first().unwrap();
+        assert_eq!(first.location, TxLocation::Mined as i32);
+        assert_eq!(first.confirmations, 1);
+        assert_eq!(first.best_block_height, 1);
+        let second = batch_resp.responses.get(1).unwrap();
+        assert_eq!(second.location, TxLocation::Mined as i32);
+        assert_eq!(second.confirmations, 0);
+        assert_eq!(second.best_block_height, 2);
+        let third = batch_resp.responses.get(2).unwrap();
+        assert_eq!(third.location, TxLocation::NotStored as i32);
+        assert_eq!(third.confirmations, 0);
+        assert_eq!(third.best_block_height, 2);
+    }
+
     mod sync_utxos_by_block {
         use std::{collections::HashMap, time::Duration};
 
@@ -792,10 +1104,7 @@ mod test {
         use super::*;
         use crate::{
             chain_storage::BlockchainDatabase,
-            test_helpers::{
-                blockchain::{TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain},
-                create_peer_manager,
-            },
+            test_helpers::{blockchain::TempDatabase, create_peer_manager},
         };
 
         type Responses = mpsc::Receiver<Result<SyncUtxosByBlockResponse, RpcStatus>>;
@@ -899,6 +1208,42 @@ mod test {
                 assert_eq!(response.mined_timestamp, block.header().timestamp.as_u64());
                 assert_eq!(response.outputs.len(), block.block().body.outputs().len());
             }
+        }
+
+        #[tokio::test]
+        async fn it_streams_unspent_utxos_from_genesis_when_pruned() {
+            let (service, db, chain, mock) = setup();
+            let mut txn = DbTransaction::new();
+            txn.set_pruning_horizon(2);
+            db.write(txn).unwrap();
+            db.prune_to_height(3).unwrap();
+            assert_eq!(db.get_chain_metadata().unwrap().pruned_height(), 3);
+
+            let (gb, e) = (chain.get("GB").unwrap(), chain.get("E").unwrap());
+            let mut responses = open_stream(&service, &mock, new_peer(), gb, e).await.unwrap();
+            let responses = drain(&mut responses).await;
+            assert_eq!(responses.len(), 6);
+            assert!(responses.iter().all(Result::is_ok));
+        }
+
+        #[tokio::test]
+        async fn it_rejects_synced_ahead_headers_without_leaking_session() {
+            let (service, db, chain, mock) = setup();
+            let a = chain.get("A").unwrap();
+            let e = chain.get("E").unwrap();
+            let (_, future) = create_chained_blocks(&db, block_specs!(["F->GB"]), e.clone());
+            let f = future.get("F").unwrap();
+            db.insert_valid_headers(vec![f.to_chain_header()]).unwrap();
+
+            let peer = new_peer();
+            let err = open_stream(&service, &mock, peer.clone(), a, f).await.unwrap_err();
+            assert_eq!(err.as_status_code(), RpcStatusCode::NotFound);
+            let err = open_stream(&service, &mock, peer.clone(), f, f).await.unwrap_err();
+            assert_eq!(err.as_status_code(), RpcStatusCode::NotFound);
+
+            // Peer session slot was never consumed by the rejected requests
+            let mut responses = open_stream(&service, &mock, peer, a, e).await.unwrap();
+            assert_eq!(drain(&mut responses).await.len(), 5);
         }
 
         #[tokio::test]
@@ -1021,10 +1366,51 @@ mod test {
             for response in responses {
                 let response = response.unwrap();
                 let name = ["A", "B", "C", "D"]
-                    .get(usize::try_from(response.height - 1).unwrap())
+                    .get(usize::try_from(response.height.saturating_sub(1)).unwrap())
                     .unwrap();
                 assert_eq!(response.header_hash, chain.get(*name).unwrap().hash().to_vec());
             }
+        }
+
+        #[tokio::test]
+        async fn it_sends_conflict_when_blocks_rewind_and_same_headers_resync_mid_stream() {
+            let (service, db, chain, mock) = setup();
+            let service = service.with_max_buffered_bytes(1);
+            let a = chain.get("A").unwrap();
+            let e = chain.get("E").unwrap();
+            let peer = new_peer();
+            let mut responses = open_stream(&service, &mock, peer.clone(), a, e).await.unwrap();
+            wait_for_queued(&responses, 1).await;
+
+            // Rewind committed blocks back to A (#1), then re-insert headers B..E as pending headers without bodies.
+            db.rewind_to_height(1).unwrap();
+            let resynced_headers = ["B", "C", "D", "E"]
+                .iter()
+                .map(|name| chain.get(*name).unwrap().to_chain_header())
+                .collect();
+            db.insert_valid_headers(resynced_headers).unwrap();
+            assert_eq!(db.get_chain_metadata().unwrap().best_block_height(), 1);
+            assert_eq!(db.fetch_header(5).unwrap().unwrap().hash(), *e.hash());
+
+            let mut drained = drain(&mut responses).await;
+            let err = drained.pop().unwrap().unwrap_err();
+            assert_eq!(err.as_status_code(), RpcStatusCode::Conflict);
+            // Only blocks already fetched before the rewind (at most queued #1 and in-flight #2) were sent, all with
+            // real outputs — never empty uncommitted blocks C..E.
+            assert!(!drained.is_empty() && drained.len() <= 2, "{drained:?}");
+            for (expected_height, response) in (1u64..).zip(drained) {
+                let response = response.unwrap();
+                let name = ["A", "B"]
+                    .get(usize::try_from(expected_height.saturating_sub(1)).unwrap())
+                    .unwrap();
+                assert_eq!(response.height, expected_height);
+                assert_eq!(response.header_hash, chain.get(*name).unwrap().hash().to_vec());
+                assert!(!response.outputs.is_empty());
+            }
+
+            // Session is released cleanly after the conflict.
+            let mut next = open_stream_when_released(&service, &mock, &peer, a, a).await;
+            assert_eq!(drain(&mut next).await.len(), 1);
         }
     }
 }
