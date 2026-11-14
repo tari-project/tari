@@ -27,10 +27,13 @@ use std::{
 };
 
 use log::*;
+use prost::Message;
+#[cfg(test)]
+use tari_comms::protocol::rpc::Request;
 use tari_comms::{
     peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
-    utils,
+    protocol::rpc::{RpcStatus, RpcStatusResultExt},
+    utils::mpsc::ChannelByteBudget,
 };
 use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{ByteArray, hex::Hex};
@@ -39,41 +42,48 @@ use tokio::{sync::mpsc, task};
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
-    chain_storage::{BlockchainBackend, async_db::AsyncBlockchainDb},
+    base_node::RPC_STREAM_MAX_BUFFERED_BYTES,
+    chain_storage::{BlockchainBackend, ChainStorageError, HorizonSyncBlockTxos, async_db::AsyncBlockchainDb},
     proto,
     proto::base_node::{SyncUtxosRequest, SyncUtxosResponse, sync_utxos_response::Txo},
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
-/// The number of headers fetched from the database at a time while streaming
-pub(super) const HEADER_CHUNK_SIZE: u64 = 100;
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
     peer_node_id: Arc<NodeId>,
+    max_buffered_bytes: usize,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
     pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<NodeId>) -> Self {
-        Self { db, peer_node_id }
+        Self {
+            db,
+            peer_node_id,
+            max_buffered_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
+        }
     }
 
-    pub(crate) async fn run(
-        self,
-        request: Request<SyncUtxosRequest>,
-        mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
-    ) -> Result<(), RpcStatus> {
-        let msg = request.into_message();
+    pub(crate) fn with_max_buffered_bytes(mut self, max_buffered_bytes: usize) -> Self {
+        self.max_buffered_bytes = max_buffered_bytes;
+        self
+    }
+
+    /// Validates the requested header range before a sync session slot or metric is acquired.
+    pub(crate) async fn validate(
+        db: &AsyncBlockchainDb<B>,
+        msg: &SyncUtxosRequest,
+    ) -> Result<(BlockHeader, BlockHeader), RpcStatus> {
         let start_hash = msg
             .start_header_hash
             .clone()
             .try_into()
             .rpc_status_bad_request("Invalid header hash")?;
 
-        let start_header = self
-            .db
+        let start_header = db
             .fetch_header_by_block_hash(start_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
@@ -85,8 +95,7 @@ where B: BlockchainBackend + 'static
             .try_into()
             .rpc_status_bad_request("Invalid header hash")?;
 
-        let end_header = self
-            .db
+        let end_header = db
             .fetch_header_by_block_hash(end_hash)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
@@ -98,15 +107,37 @@ where B: BlockchainBackend + 'static
             )));
         }
 
+        Ok((start_header, end_header))
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn run(
+        self,
+        request: Request<SyncUtxosRequest>,
+        tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+    ) -> Result<(), RpcStatus> {
+        let (start_header, end_header) = Self::validate(&self.db, request.message()).await?;
+        self.run_validated(start_header, end_header, tx);
+        Ok(())
+    }
+
+    /// Streams TXOs from `start_header` to `end_header` on a background task, holding `self.peer_node_id` until
+    /// completion. `tx` must be the channel's only sender.
+    pub(crate) fn run_validated(
+        self,
+        start_header: BlockHeader,
+        end_header: BlockHeader,
+        tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+    ) {
         task::spawn(async move {
             debug!(
                 target: LOG_TARGET,
                 "Starting UTXO stream for peer '{}'", self.peer_node_id
             );
-            if let Err(err) = self.start_streaming(&mut tx, start_header, end_header).await {
+            if let Err(err) = self.start_streaming(&tx, start_header, end_header).await {
                 debug!(
                     target: LOG_TARGET,
-                    "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
+                    "UTXO stream errored for peer '{}': {err}", self.peer_node_id
                 );
                 let _result = tx.send(Err(err)).await;
             }
@@ -117,22 +148,22 @@ where B: BlockchainBackend + 'static
             #[cfg(feature = "metrics")]
             metrics::active_sync_peers().dec();
         });
-
-        Ok(())
     }
 
     #[allow(clippy::too_many_lines)]
     async fn start_streaming(
         &self,
-        tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
-        mut current_header: BlockHeader,
+        tx: &mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
+        start_header: BlockHeader,
         end_header: BlockHeader,
     ) -> Result<(), RpcStatus> {
+        let end_hash = end_header.hash();
+        let end_height = end_header.height;
         debug!(
             target: LOG_TARGET,
-            "Starting stream task with current_header: {}, end_header: {}",
-            current_header.hash().to_hex(),
-            end_header.hash().to_hex(),
+            "Starting stream task with start_header: {}, end_header: {}",
+            start_header.hash().to_hex(),
+            end_hash.to_hex(),
         );
 
         // If this is a pruned node and outputs have been requested for an initial sync, we need to discover and send
@@ -143,7 +174,7 @@ where B: BlockchainBackend + 'static
             .get_chain_metadata()
             .await
             .rpc_status_internal_error(LOG_TARGET)?;
-        if current_header.height == 1 && metadata.is_pruned_node() {
+        if start_header.height == 1 && metadata.is_pruned_node() {
             let genesis_block = self.db.fetch_genesis_block();
             for output in genesis_block.block().body.outputs() {
                 let output_hash = output.hash();
@@ -161,22 +192,46 @@ where B: BlockchainBackend + 'static
                         "Spent genesis TXO (commitment '{}') to peer",
                         output.commitment.to_hex()
                     );
-                    pruned_genesis_block_outputs.push(Ok(SyncUtxosResponse {
+                    pruned_genesis_block_outputs.push(SyncUtxosResponse {
                         txo: Some(Txo::Commitment(output.commitment.as_bytes().to_vec())),
-                        mined_header: current_header.hash().to_vec(),
-                    }));
+                        mined_header: start_header.hash().to_vec(),
+                    });
                 }
             }
         }
 
-        let start_header = current_header.clone();
-        // Tracks whether the stream walked all the way to `end_header`. Only on a natural completion
-        // do we emit the terminator below; an early break (peer left, send failed) must not, so that
-        // a truncated stream is not mistaken for a complete one by the consumer.
-        let mut reached_end = false;
-        let mut header_chunk = Vec::new().into_iter();
-        loop {
+        let peer_node_id = &self.peer_node_id;
+        let mut budget = ChannelByteBudget::new(self.max_buffered_bytes);
+        for height in start_header.height..=end_height {
             let timer = Instant::now();
+            if tx.is_closed() {
+                debug!(target: LOG_TARGET, "Peer '{peer_node_id}' exited TXO sync session early");
+                return Ok(());
+            }
+            if budget.wait_for_room(tx).await.is_err() {
+                debug!(target: LOG_TARGET, "Peer '{peer_node_id}' exited TXO sync session early");
+                return Ok(());
+            }
+
+            let expected_hash = (height == start_header.height).then(|| start_header.hash());
+            let HorizonSyncBlockTxos {
+                header: current_header,
+                outputs_with_statuses,
+                inputs_in_block,
+                spent_mined_infos,
+            } = match self
+                .db
+                .fetch_horizon_sync_block_txos(height, expected_hash, end_height, end_hash)
+                .await
+            {
+                Ok(Some(block_txos)) => block_txos,
+                Ok(None) => return Err(reorg_conflict(height)),
+                Err(err) if err.is_value_not_found() || matches!(err, ChainStorageError::InvalidQuery(_)) => {
+                    return Err(reorg_conflict(height));
+                },
+                Err(err) => return Err(RpcStatus::log_internal_error(LOG_TARGET)(err)),
+            };
+
             let current_header_hash = current_header.hash();
             debug!(
                 target: LOG_TARGET,
@@ -184,20 +239,6 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 current_header_hash.to_hex()
             );
-            if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                break;
-            }
-
-            let outputs_with_statuses = self
-                .db
-                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_header.hash()))
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
-            if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                break;
-            }
 
             let mut outputs = Vec::with_capacity(outputs_with_statuses.len());
             for (output, spent) in outputs_with_statuses {
@@ -208,16 +249,16 @@ where B: BlockchainBackend + 'static
                     let output_hash = output.hash();
                     let output_commitment = output.commitment.clone();
                     match proto::types::TransactionOutput::try_from(output) {
-                        Ok(tx_ouput) => {
+                        Ok(tx_output) => {
                             trace!(
                                 target: LOG_TARGET,
                                 "Unspent TXO (commitment '{}') to peer",
                                 output_commitment.to_hex()
                             );
-                            outputs.push(Ok(SyncUtxosResponse {
-                                txo: Some(Txo::Output(tx_ouput)),
+                            outputs.push(SyncUtxosResponse {
+                                txo: Some(Txo::Output(tx_output)),
                                 mined_header: current_header_hash.to_vec(),
-                            }));
+                            });
                         },
                         Err(e) => {
                             return Err(RpcStatus::general(&format!(
@@ -231,48 +272,22 @@ where B: BlockchainBackend + 'static
             }
             debug!(
                 target: LOG_TARGET,
-                "Adding {} outputs in response for block #{} '{}'", outputs.len(),
+                "Adding {} outputs in response for block #{} '{}'",
+                outputs.len(),
                 current_header.height,
                 current_header_hash
             );
 
-            let inputs_in_block = self
-                .db
-                .fetch_inputs_in_block(current_header_hash)
-                .await
-                .rpc_status_internal_error(LOG_TARGET)?;
-            if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                break;
-            }
-
-            // Look up all the spent outputs for this block in one call. Each entry is the instance this block's input
-            // spent, which is not necessarily the latest one. Blocks without inputs skip the call.
-            let mined_infos = if inputs_in_block.is_empty() {
-                Vec::new()
-            } else {
-                let input_hashes = inputs_in_block
-                    .iter()
-                    .map(|input| input.output_hash())
-                    .collect::<Vec<_>>();
-                let mined_infos = self
-                    .db
-                    .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
-                    .await
-                    .rpc_status_internal_error(LOG_TARGET)?;
-                if tx.is_closed() {
-                    debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                    break;
-                }
-                mined_infos
-            };
-
             let mut inputs = Vec::with_capacity(inputs_in_block.len());
-            for (input, mined_info) in inputs_in_block.iter().zip(mined_infos) {
+            for (input, mined_info) in inputs_in_block.iter().zip(spent_mined_infos) {
                 if let Some(info) = &mined_info &&
                     info.mined_height >= start_header.height
                 {
-                    trace!(target: LOG_TARGET, "Spent TXO (hash '{}') not sent to peer", input.output_hash().to_hex());
+                    trace!(
+                        target: LOG_TARGET,
+                        "Spent TXO (hash '{}') not sent to peer",
+                        input.output_hash().to_hex()
+                    );
                     continue;
                 }
                 let input_commitment = match mined_info {
@@ -285,14 +300,15 @@ where B: BlockchainBackend + 'static
                     },
                 };
                 trace!(target: LOG_TARGET, "Spent TXO (commitment '{}') to peer", input_commitment.to_hex());
-                inputs.push(Ok(SyncUtxosResponse {
+                inputs.push(SyncUtxosResponse {
                     txo: Some(Txo::Commitment(input_commitment.as_bytes().to_vec())),
                     mined_header: current_header_hash.to_vec(),
-                }));
+                });
             }
             debug!(
                 target: LOG_TARGET,
-                "Adding {} inputs in response for block #{} '{}'", inputs.len(),
+                "Adding {} inputs in response for block #{} '{}'",
+                inputs.len(),
                 current_header.height,
                 current_header_hash
             );
@@ -300,21 +316,29 @@ where B: BlockchainBackend + 'static
             let mut txos = Vec::with_capacity(outputs.len().saturating_add(inputs.len()));
             txos.append(&mut outputs);
             txos.append(&mut inputs);
-            if start_header == current_header {
+            if height == start_header.height {
                 debug!(
                     target: LOG_TARGET,
-                    "Adding {} genesis block pruned inputs in response for block #{} '{}'", pruned_genesis_block_outputs.len(),
+                    "Adding {} genesis block pruned inputs in response for block #{} '{}'",
+                    pruned_genesis_block_outputs.len(),
                     current_header.height,
                     current_header_hash
                 );
                 txos.append(&mut pruned_genesis_block_outputs);
             }
-            let txos = txos.into_iter();
 
-            // Ensure task stops if the peer prematurely stops their RPC session
             let txos_len = txos.len();
-            if utils::mpsc::send_all(tx, txos).await.is_err() {
-                break;
+            for resp in txos {
+                if budget.wait_for_room(tx).await.is_err() {
+                    debug!(target: LOG_TARGET, "Peer '{peer_node_id}' exited TXO sync session early");
+                    return Ok(());
+                }
+                let num_bytes = resp.encoded_len();
+                if tx.send(Ok(resp)).await.is_err() {
+                    debug!(target: LOG_TARGET, "Peer '{peer_node_id}' exited TXO sync session early");
+                    return Ok(());
+                }
+                budget.record_sent(num_bytes);
             }
 
             debug!(
@@ -323,65 +347,48 @@ where B: BlockchainBackend + 'static
                 txos_len,
                 timer.elapsed()
             );
-
-            let next_height = current_header.height.saturating_add(1);
-            if next_height > end_header.height {
-                reached_end = true;
-                break;
-            }
-
-            let next_header = match header_chunk.next() {
-                Some(header) => Some(header),
-                None => {
-                    // Prefetch the next chunk of headers. The chunk stops early at the first missing header.
-                    let chunk_end = next_height.saturating_add(HEADER_CHUNK_SIZE - 1).min(end_header.height);
-                    header_chunk = self
-                        .db
-                        .fetch_headers(next_height..=chunk_end)
-                        .await
-                        .rpc_status_internal_error(LOG_TARGET)?
-                        .into_iter();
-                    header_chunk.next()
-                },
-            };
-            current_header = next_header.ok_or_else(|| {
-                RpcStatus::general(&format!(
-                    "Potential data consistency issue: header {} not found",
-                    next_height
-                ))
-            })?;
         }
 
-        // Always send a final terminator response tagged with the end header. It carries no TXO, so the
-        // consumer can verify the stream reached the requested end even when the final block(s) stream no
-        // outputs (e.g. an empty block, or a coinbase that was later spent and pruned on this node). Without
-        // it, the consumer would infer completeness from the last data-bearing message, which may belong to
-        // an earlier block.
-        if reached_end {
-            let end_header_hash = end_header.hash();
-            if tx
-                .send(Ok(SyncUtxosResponse {
-                    txo: None,
-                    mined_header: end_header_hash.to_vec(),
-                }))
-                .await
-                .is_err()
-            {
-                debug!(
-                    target: LOG_TARGET,
-                    "Peer '{}' exited TXO sync session before terminator could be sent", self.peer_node_id
-                );
-            }
+        // Always send a final terminator response tagged with the end header once the full requested range has been
+        // walked. An early return on error or client disconnect never reaches this point, so a truncated stream is
+        // never mistaken for a complete one by the consumer.
+        if budget.wait_for_room(tx).await.is_err() {
+            debug!(
+                target: LOG_TARGET,
+                "Peer '{peer_node_id}' exited TXO sync session before terminator could be sent"
+            );
+            return Ok(());
         }
+        let terminator = SyncUtxosResponse {
+            txo: None,
+            mined_header: end_hash.to_vec(),
+        };
+        let num_bytes = terminator.encoded_len();
+        if tx.send(Ok(terminator)).await.is_err() {
+            debug!(
+                target: LOG_TARGET,
+                "Peer '{peer_node_id}' exited TXO sync session before terminator could be sent"
+            );
+            return Ok(());
+        }
+        budget.record_sent(num_bytes);
 
         debug!(
             target: LOG_TARGET,
             "TXO sync completed to Header hash = {}",
-            current_header.hash().to_hex()
+            end_hash.to_hex()
         );
 
         Ok(())
     }
+}
+
+fn reorg_conflict(height: u64) -> RpcStatus {
+    warn!(
+        target: LOG_TARGET,
+        "Block #{height} is no longer an ancestor of the requested end block during horizon UTXO sync"
+    );
+    RpcStatus::conflict("Reorg detected: the requested end block is no longer on the chain")
 }
 
 #[cfg(test)]
@@ -399,8 +406,8 @@ mod tests {
         let output = chain.db().fetch_outputs(hash).unwrap().pop().unwrap().output;
         let task = SyncUtxosTask::new(chain.db().clone().into(), Arc::new(NodeId::new()));
         // The tranche includes s1 and m2, but m1 belongs to the previous tranche.
-        let (mut tx, mut rx) = mpsc::channel(100);
-        task.start_streaming(&mut tx, spent.header().clone(), remined.header().clone())
+        let (tx, mut rx) = mpsc::channel(100);
+        task.start_streaming(&tx, spent.header().clone(), remined.header().clone())
             .await
             .unwrap();
         drop(tx);

@@ -208,6 +208,16 @@ pub enum CandidateVmKey {
     UnknownAncestry,
 }
 
+/// Header, outputs (with spend status as of the requested horizon end block), inputs, and pre-spend output metadata
+/// for a single block during horizon UTXO sync, read atomically under one database read lock.
+#[derive(Debug, Clone)]
+pub struct HorizonSyncBlockTxos {
+    pub header: BlockHeader,
+    pub outputs_with_statuses: Vec<(TransactionOutput, bool)>,
+    pub inputs_in_block: Vec<TransactionInput>,
+    pub spent_mined_infos: Vec<Option<OutputMinedInfo>>,
+}
+
 /// A placeholder struct that contains the two validators that the database uses to decide whether or not a block is
 /// eligible to be added to the database. The `block` validator should perform a full consensus check. The `orphan`
 /// validator needs to check that the block is internally consistent, but can't know whether the PoW is sufficient,
@@ -1669,6 +1679,76 @@ where B: BlockchainBackend
         let outputs = db.fetch_outputs_in_block(&header_hash)?;
         let (first, second) = fetch_header_pair(&*db, first_height, second_height)?;
         Ok((outputs, first, second))
+    }
+
+    /// Returns the header and kernels of the block at `height`, or `Ok(None)` if `height` or `end_height` is no longer
+    /// on the requested chain ending at `end_hash` (and matching `expected_hash` when given). Everything is read under
+    /// one read lock so that the kernels come from the same chain state as the header check.
+    pub fn fetch_kernels_on_requested_chain(
+        &self,
+        height: u64,
+        expected_hash: Option<HashOutput>,
+        end_height: u64,
+        end_hash: HashOutput,
+    ) -> Result<Option<(BlockHeader, Vec<TransactionKernel>)>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let (header_at_height, end_header) = fetch_header_pair(&*db, height, end_height)?;
+        if end_header.as_ref().is_none_or(|h| h.hash() != end_hash) {
+            return Ok(None);
+        }
+        let Some(header) = header_at_height else {
+            return Ok(None);
+        };
+        let block_hash = header.hash();
+        if expected_hash.is_some_and(|expected| block_hash != expected) {
+            return Ok(None);
+        }
+        let kernels = db.fetch_kernels_in_block(&block_hash)?;
+        Ok(Some((header, kernels)))
+    }
+
+    /// Returns the header, outputs (with spend status as of `end_hash`), inputs, and spent-output mined info of the
+    /// block at `height`, or `Ok(None)` if `height` or `end_height` is no longer on the requested chain ending at
+    /// `end_hash` (and matching `expected_hash` when given). Everything is read under one read lock so that a
+    /// concurrent reorg cannot split a block's outputs, inputs, and spend state across forks or trigger a spurious
+    /// `ValueNotFound` internal error when `end_hash` has been rewound.
+    pub fn fetch_horizon_sync_block_txos(
+        &self,
+        height: u64,
+        expected_hash: Option<HashOutput>,
+        end_height: u64,
+        end_hash: HashOutput,
+    ) -> Result<Option<HorizonSyncBlockTxos>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        let (header_at_height, end_header) = fetch_header_pair(&*db, height, end_height)?;
+        if end_header.as_ref().is_none_or(|h| h.hash() != end_hash) {
+            return Ok(None);
+        }
+        let Some(header) = header_at_height else {
+            return Ok(None);
+        };
+        let block_hash = header.hash();
+        if expected_hash.is_some_and(|expected| block_hash != expected) {
+            return Ok(None);
+        }
+        let outputs_with_statuses = db.fetch_outputs_in_block_with_spend_state(&block_hash, Some(&end_hash))?;
+        let inputs_in_block = db.fetch_inputs_in_block(&block_hash)?;
+        let mut spent_mined_infos = Vec::with_capacity(inputs_in_block.len());
+        for input in &inputs_in_block {
+            let output_hash = input.output_hash();
+            let instance = db
+                .fetch_mined_info_by_output_hash(&output_hash)?
+                .into_iter()
+                .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == block_hash))
+                .and_then(|info| info.output);
+            spent_mined_infos.push(instance);
+        }
+        Ok(Some(HorizonSyncBlockTxos {
+            header,
+            outputs_with_statuses,
+            inputs_in_block,
+            spent_mined_infos,
+        }))
     }
 
     /// Returns the block header at the given block height.

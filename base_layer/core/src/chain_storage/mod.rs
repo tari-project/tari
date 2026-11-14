@@ -42,6 +42,7 @@ pub use blockchain_database::{
     BlockchainDatabase,
     BlockchainDatabaseConfig,
     CandidateVmKey,
+    HorizonSyncBlockTxos,
     MmrRoots,
     PendingChainRewind,
     ResetPermission,
