@@ -54,6 +54,8 @@ pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
     peer_node_id: Arc<NodeId>,
     max_buffered_bytes: usize,
+    #[cfg(feature = "metrics")]
+    active_sync_peers_metric: tari_metrics::IntGauge,
 }
 
 impl<B> SyncUtxosTask<B>
@@ -64,11 +66,19 @@ where B: BlockchainBackend + 'static
             db,
             peer_node_id,
             max_buffered_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
+            #[cfg(feature = "metrics")]
+            active_sync_peers_metric: metrics::active_sync_peers().clone(),
         }
     }
 
     pub(crate) fn with_max_buffered_bytes(mut self, max_buffered_bytes: usize) -> Self {
         self.max_buffered_bytes = max_buffered_bytes;
+        self
+    }
+
+    #[cfg(feature = "metrics")]
+    pub(crate) fn with_active_sync_peers_metric(mut self, metric: tari_metrics::IntGauge) -> Self {
+        self.active_sync_peers_metric = metric;
         self
     }
 
@@ -146,7 +156,7 @@ where B: BlockchainBackend + 'static
                 "UTXO stream completed for peer '{}'", self.peer_node_id
             );
             #[cfg(feature = "metrics")]
-            metrics::active_sync_peers().dec();
+            self.active_sync_peers_metric.dec();
         });
     }
 

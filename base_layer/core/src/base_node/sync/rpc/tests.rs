@@ -615,12 +615,18 @@ mod sync_utxos {
     #[tokio::test]
     async fn it_does_not_leak_session_or_metrics_on_invalid_requests() {
         let (service, db, rpc_request_mock) = setup();
+        #[cfg(feature = "metrics")]
+        let isolated_metric = tari_metrics::IntGauge::new(
+            "test_sync_utxos_active_peers",
+            "Isolated gauge for invalid-request leak test",
+        )
+        .unwrap();
+        #[cfg(feature = "metrics")]
+        let service = service.with_active_sync_peers_metric(isolated_metric.clone());
+
         let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"]));
         let a = chain.get("A").unwrap();
         let b = chain.get("B").unwrap();
-
-        #[cfg(feature = "metrics")]
-        let baseline_metric = crate::base_node::metrics::active_sync_peers().get();
 
         // Malformed hash, missing start, missing end, and inverted height range must all fail before session creation
         let invalid_requests = [
@@ -646,8 +652,9 @@ mod sync_utxos {
             assert!(service.sync_utxos(req).await.is_err());
         }
 
+        assert_eq!(service.active_session_count().await, 0);
         #[cfg(feature = "metrics")]
-        assert_eq!(crate::base_node::metrics::active_sync_peers().get(), baseline_metric);
+        assert_eq!(isolated_metric.get(), 0);
 
         // The same peer can immediately open a valid session without being rejected for a stale exclusive session
         let valid_msg = SyncUtxosRequest {
@@ -661,6 +668,22 @@ mod sync_utxos {
             .collect::<Vec<_>>()
             .await;
         assert!(responses.last().unwrap().txo.is_none());
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let sessions_cleared = service.active_session_count().await == 0;
+                #[cfg(feature = "metrics")]
+                let metric_cleared = isolated_metric.get() == 0;
+                #[cfg(not(feature = "metrics"))]
+                let metric_cleared = true;
+                if sessions_cleared && metric_cleared {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("Active sync session and isolated gauge should return to 0 after stream completion");
     }
 
     #[tokio::test]

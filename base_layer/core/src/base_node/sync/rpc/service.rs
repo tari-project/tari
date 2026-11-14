@@ -75,6 +75,8 @@ pub struct BaseNodeSyncRpcService<B> {
     block_batch_size: usize,
     /// The most bytes buffered per sync stream session (see [RPC_STREAM_MAX_BUFFERED_BYTES])
     max_buffered_bytes: usize,
+    #[cfg(feature = "metrics")]
+    active_sync_peers_metric: tari_metrics::IntGauge,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
@@ -92,6 +94,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
             active_sessions: Mutex::new(Vec::new()),
             block_batch_size: cmp::max(block_batch_size, 1),
             max_buffered_bytes: RPC_STREAM_MAX_BUFFERED_BYTES,
+            #[cfg(feature = "metrics")]
+            active_sync_peers_metric: metrics::active_sync_peers().clone(),
         }
     }
 
@@ -99,6 +103,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
     pub(super) fn with_max_buffered_bytes(mut self, max_bytes: usize) -> Self {
         self.max_buffered_bytes = max_bytes;
         self
+    }
+
+    #[cfg(all(test, feature = "metrics"))]
+    pub(super) fn with_active_sync_peers_metric(mut self, metric: tari_metrics::IntGauge) -> Self {
+        self.active_sync_peers_metric = metric;
+        self
+    }
+
+    #[cfg(test)]
+    pub(super) async fn active_session_count(&self) -> usize {
+        let mut lock = self.active_sessions.lock().await;
+        *lock = lock.drain(..).filter(|l| l.strong_count() > 0).collect();
+        lock.len()
     }
 
     #[inline]
@@ -121,7 +138,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
         lock.push(Arc::downgrade(&token));
         #[allow(clippy::cast_possible_wrap)]
         #[cfg(feature = "metrics")]
-        metrics::active_sync_peers().set(lock.len() as i64);
+        self.active_sync_peers_metric.set(lock.len() as i64);
         Ok(token)
     }
 
@@ -265,8 +282,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
             }
         }
 
-        #[cfg(feature = "metrics")]
-        metrics::active_sync_peers().dec();
         debug!(
             target: LOG_TARGET,
             "Header sync round complete for peer `{peer_node_id}`."
@@ -372,8 +387,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
             }
         }
 
-        #[cfg(feature = "metrics")]
-        metrics::active_sync_peers().dec();
         debug!(
             target: LOG_TARGET,
             "Kernel sync round complete for peer `{peer_node_id}`.",
@@ -397,7 +410,7 @@ pub(crate) fn is_on_requested_chain(
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
     #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
-    #[allow(clippy::blocks_in_conditions)]
+    #[allow(clippy::blocks_in_conditions, clippy::too_many_lines)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -460,6 +473,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(self.block_batch_size);
         let max_buffered_bytes = self.max_buffered_bytes;
+        #[cfg(feature = "metrics")]
+        let active_sync_peers_metric = self.active_sync_peers_metric.clone();
 
         let span = span!(Level::TRACE, "sync_rpc::block_sync::inner_worker");
         task::spawn(
@@ -551,7 +566,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 }
 
                 #[cfg(feature = "metrics")]
-                metrics::active_sync_peers().dec();
+                active_sync_peers_metric.dec();
                 debug!(
                     target: LOG_TARGET,
                     "Block sync round complete for peer `{peer_node_id}`."
@@ -615,6 +630,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(chunk_size);
         let max_buffered_bytes = self.max_buffered_bytes;
+        #[cfg(feature = "metrics")]
+        let active_sync_peers_metric = self.active_sync_peers_metric.clone();
         let span = span!(Level::TRACE, "sync_rpc::sync_headers::inner_worker");
         task::spawn(
             async move {
@@ -630,6 +647,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     max_buffered_bytes,
                 )
                 .await;
+                #[cfg(feature = "metrics")]
+                active_sync_peers_metric.dec();
             }
             .instrument(span),
         );
@@ -772,6 +791,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(100);
         let max_buffered_bytes = self.max_buffered_bytes;
+        #[cfg(feature = "metrics")]
+        let active_sync_peers_metric = self.active_sync_peers_metric.clone();
         let span = span!(Level::TRACE, "sync_rpc::sync_kernels::inner_worker");
         task::spawn(
             async move {
@@ -785,6 +806,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     max_buffered_bytes,
                 )
                 .await;
+                #[cfg(feature = "metrics")]
+                active_sync_peers_metric.dec();
             }
             .instrument(span),
         );
@@ -808,9 +831,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let (start_header, end_header) = SyncUtxosTask::validate(&db, req).await?;
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         let (tx, rx) = mpsc::channel(200);
-        SyncUtxosTask::new(db, session_token)
-            .with_max_buffered_bytes(self.max_buffered_bytes)
-            .run_validated(start_header, end_header, tx);
+        let task = SyncUtxosTask::new(db, session_token).with_max_buffered_bytes(self.max_buffered_bytes);
+        #[cfg(feature = "metrics")]
+        let task = task.with_active_sync_peers_metric(self.active_sync_peers_metric.clone());
+        task.run_validated(start_header, end_header, tx);
 
         Ok(Streaming::new(rx))
     }
