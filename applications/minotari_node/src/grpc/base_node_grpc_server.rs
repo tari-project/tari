@@ -4319,10 +4319,25 @@ mod test {
         chain
     }
 
+    struct MockPauseHook {
+        pause_at_height: u64,
+        paused_tx: tokio::sync::oneshot::Sender<()>,
+        resume_rx: tokio::sync::oneshot::Receiver<()>,
+    }
+
     #[allow(clippy::type_complexity)]
     fn mock_side_chain_node_service(
         chain: std::sync::Arc<std::sync::Mutex<Vec<MockSideChainBlock>>>,
         fail_at_height: Option<u64>,
+    ) -> (LocalNodeCommsInterface, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        mock_side_chain_node_service_with_pause(chain, fail_at_height, None)
+    }
+
+    #[allow(clippy::type_complexity, clippy::too_many_lines)]
+    fn mock_side_chain_node_service_with_pause(
+        chain: std::sync::Arc<std::sync::Mutex<Vec<MockSideChainBlock>>>,
+        fail_at_height: Option<u64>,
+        mut pause_hook: Option<MockPauseHook>,
     ) -> (LocalNodeCommsInterface, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use futures::StreamExt;
         use tari_core::base_node::comms_interface::{CommsInterfaceError, NodeCommsRequest, NodeCommsResponse};
@@ -4368,6 +4383,10 @@ mod test {
                         first_height,
                         second_height,
                     } => {
+                        if let Some(hook) = pause_hook.take_if(|hook| hook.pause_at_height == first_height) {
+                            let _sent = hook.paused_tx.send(());
+                            let _resumed = hook.resume_rx.await;
+                        }
                         recorded
                             .lock()
                             .unwrap()
@@ -4588,6 +4607,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn side_chain_utxos_aborts_on_mid_stream_reorg() {
         use futures::StreamExt;
 
@@ -4652,6 +4672,74 @@ mod test {
         let err = rx2.next().await.unwrap().unwrap_err();
         assert_eq!(err.code(), tonic::Code::Aborted);
         assert!(rx2.next().await.is_none());
+
+        // Case 3: true between-block reorg — stream emits block #0 from a valid 3-block chain, pauses before fetching
+        // height #1, then heights #1..=#2 are replaced with a valid competing fork carrying sidechain outputs.
+        // Resuming must abort immediately without emitting an empty orphaned block #1 or competing-fork outputs.
+        let initial_blocks = build_mock_chain(3);
+        let b0 = initial_blocks.first().unwrap().clone();
+        let original_b0_hash = b0.header.hash();
+        let original_b1_hash = initial_blocks.get(1).unwrap().header.hash();
+        let fork_sidechain_outputs = initial_blocks.get(1).unwrap().outputs.clone();
+
+        let mut competing_b1_header = BlockHeader::from_previous(&b0.header);
+        competing_b1_header.nonce = 1_001;
+        let mut competing_b2_header = BlockHeader::from_previous(&competing_b1_header);
+        competing_b2_header.nonce = 1_002;
+        assert_eq!(competing_b1_header.prev_hash, original_b0_hash);
+        assert_eq!(competing_b2_header.prev_hash, competing_b1_header.hash());
+        assert_ne!(competing_b1_header.hash(), original_b1_hash);
+
+        let (paused_tx, paused_rx) = tokio::sync::oneshot::channel();
+        let (resume_tx, resume_rx) = tokio::sync::oneshot::channel();
+        let live_chain = std::sync::Arc::new(std::sync::Mutex::new(initial_blocks));
+        let (handler3, calls3) = mock_side_chain_node_service_with_pause(
+            live_chain.clone(),
+            None,
+            Some(MockPauseHook {
+                pause_at_height: 1,
+                paused_tx,
+                resume_rx,
+            }),
+        );
+
+        let mut rx3 = get_side_chain_utxos(
+            handler3,
+            Request::new(tari_rpc::GetSideChainUtxosRequest {
+                start_hash: vec![],
+                count: 3,
+            }),
+            true,
+        )
+        .await
+        .unwrap()
+        .into_inner();
+
+        let streamed_b0 = rx3.next().await.unwrap().unwrap();
+        let streamed_b0_info = streamed_b0.block_info.unwrap();
+        assert_eq!(streamed_b0_info.height, 0);
+        assert_eq!(streamed_b0_info.hash, original_b0_hash.to_vec());
+        assert_eq!(streamed_b0_info.next_block_hash, original_b1_hash.to_vec());
+
+        paused_rx.await.unwrap();
+
+        *live_chain.lock().unwrap() = vec![
+            b0,
+            MockSideChainBlock {
+                header: competing_b1_header,
+                outputs: fork_sidechain_outputs.clone(),
+            },
+            MockSideChainBlock {
+                header: competing_b2_header,
+                outputs: fork_sidechain_outputs,
+            },
+        ];
+        let _resumed = resume_tx.send(());
+
+        let mid_stream_err = rx3.next().await.unwrap().unwrap_err();
+        assert_eq!(mid_stream_err.code(), tonic::Code::Aborted);
+        assert!(rx3.next().await.is_none());
+        assert!(!calls3.lock().unwrap().iter().any(|c| c == "FetchPair(2,3)"));
     }
 
     #[tokio::test]
