@@ -27,7 +27,7 @@ use tari_common_types::{
     epoch::VnEpoch,
     types::{BlockHash, CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput},
 };
-use tari_node_components::blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate};
+use tari_node_components::blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate};
 use tari_service_framework::{Service, reply_channel::SenderService};
 use tari_transaction_components::{
     tari_proof_of_work::PowAlgorithm,
@@ -363,6 +363,32 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionOutputs(outputs) => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Fetches all outputs in `block_hash` together with the main-chain headers at `first_height` and `second_height`
+    /// under a single database read lock.
+    pub async fn fetch_outputs_in_block_and_header_pair(
+        &mut self,
+        block_hash: BlockHash,
+        first_height: u64,
+        second_height: u64,
+    ) -> Result<(Vec<TransactionOutput>, Option<BlockHeader>, Option<BlockHeader>), CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                block_hash,
+                first_height,
+                second_height,
+            })
+            .await??
+        {
+            NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                outputs,
+                first_header,
+                second_header,
+            } => Ok((outputs, *first_header, *second_header)),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

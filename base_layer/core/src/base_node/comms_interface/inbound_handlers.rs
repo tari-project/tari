@@ -731,6 +731,21 @@ where B: BlockchainBackend + 'static
                 let utxos = self.blockchain_db.fetch_outputs_in_block(block_hash).await?;
                 Ok(NodeCommsResponse::TransactionOutputs(utxos))
             },
+            NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                block_hash,
+                first_height,
+                second_height,
+            } => {
+                let (outputs, first_header, second_header) = self
+                    .blockchain_db
+                    .fetch_outputs_in_block_and_header_pair(block_hash, first_height, second_height)
+                    .await?;
+                Ok(NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                    outputs,
+                    first_header: Box::new(first_header),
+                    second_header: Box::new(second_header),
+                })
+            },
             NodeCommsRequest::FetchMinedInfoByPayRef(payref) => {
                 let output_info = self.blockchain_db.fetch_mined_info_by_payref(payref).await?;
                 Ok(NodeCommsResponse::MinedInfo(output_info))
@@ -2826,6 +2841,34 @@ mod test {
                 .unwrap(),
             NodeCommsResponse::InputMinedInfo(None)
         ));
+
+        let b1 = chain.get_block_and_smt_by_name("1").unwrap();
+        let b2 = chain.get_block_and_smt_by_name("2").unwrap();
+        let b1_hash = b1.block().hash();
+        let b2_hash = b2.block().hash();
+        match handlers
+            .handle_request(NodeCommsRequest::FetchOutputsInBlockAndHeaderPair {
+                block_hash: b1_hash,
+                first_height: b1.block().header.height,
+                second_height: b2.block().header.height,
+            })
+            .await
+            .unwrap()
+        {
+            NodeCommsResponse::OutputsInBlockAndHeaderPair {
+                outputs,
+                first_header,
+                second_header,
+            } => {
+                assert_eq!(outputs.len(), b1.block().body.outputs().len());
+                for expected in b1.block().body.outputs() {
+                    assert!(outputs.contains(expected));
+                }
+                assert_eq!(first_header.unwrap().hash(), b1_hash);
+                assert_eq!(second_header.unwrap().hash(), b2_hash);
+            },
+            other => panic!("Unexpected response: {other}"),
+        }
     }
 
     /// A header on `prev` mined with `algo` whose target difficulty is `target`
