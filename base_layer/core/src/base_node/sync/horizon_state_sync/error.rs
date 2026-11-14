@@ -93,6 +93,8 @@ pub enum HorizonSyncError {
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
     #[error("Connectivity error: {0}")]
     ConnectivityError(#[from] ConnectivityError),
+    #[error("Dialing sync peer {peer} timed out after {timeout:.2?}")]
+    DialTimedOut { peer: NodeId, timeout: Duration },
     #[error("Validation error: {0}")]
     ValidationError(#[from] ValidationError),
     #[error("No sync peers")]
@@ -166,6 +168,7 @@ impl HorizonSyncError {
             HorizonSyncError::FailedSyncAllPeers(_) |
             HorizonSyncError::AllSyncPeersExceedLatency |
             HorizonSyncError::ConnectivityError(_) |
+            HorizonSyncError::DialTimedOut { .. } |
             HorizonSyncError::NoMoreSyncPeers(_) |
             HorizonSyncError::PeerNotFound |
             HorizonSyncError::SyncPeerUnavailable(_) |
@@ -328,6 +331,20 @@ mod connect_error_test {
             HorizonSyncError::from(RpcError::ServerClosedRequest)
                 .get_ban_reason()
                 .is_some()
+        );
+
+        // Dial timeouts and pre-negotiation local disconnects skip the peer without banning
+        let dial_timeout = HorizonSyncError::DialTimedOut {
+            peer: NodeId::default(),
+            timeout: Duration::from_secs(5),
+        };
+        assert!(dial_timeout.get_ban_reason().is_none(), "{dial_timeout} was banned");
+        assert!(!dial_timeout.is_local_failure());
+
+        let pre_negotiation_closed = HorizonSyncError::SyncPeerUnavailable(RpcError::ClientClosed);
+        assert!(
+            pre_negotiation_closed.get_ban_reason().is_none(),
+            "{pre_negotiation_closed} was banned"
         );
     }
 }

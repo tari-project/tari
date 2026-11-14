@@ -22,13 +22,13 @@
 
 use std::{
     cmp,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use futures::{StreamExt, stream::BoxStream};
+use futures::{Stream, StreamExt, stream::BoxStream};
 use log::*;
 use prost::Message;
 use tari_common_types::{
@@ -154,6 +154,7 @@ pub struct HorizonStateSynchronization<'a, B> {
     peer_ban_manager: PeerBanManager,
     tranche_size: u64,
     max_items_per_block: u64,
+    max_kernels_per_block: u64,
     server_time_per_kernel: Duration,
     /// Peer wait of the current output attempt, the allowance of the tranches it streamed, and the bytes received
     attempt_waited: Duration,
@@ -164,6 +165,8 @@ pub struct HorizonStateSynchronization<'a, B> {
     /// Set until the first request of an attempt succeeds, if the peer may still hold an earlier session
     session_may_be_busy: bool,
     attempted_peers: Vec<NodeId>,
+    /// Time spent pre-dialling each sync peer in `synchronize()` so `connect_sync_peer` bounds total connect wait
+    predial_time: HashMap<NodeId, Duration>,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
@@ -180,6 +183,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     ) -> Self {
         let peer_ban_manager = PeerBanManager::new(config.clone(), connectivity.clone());
         let max_items_per_block = max_streamed_items_per_block(&rules);
+        let max_kernels_per_block = max_kernels_per_block(&rules);
         Self {
             max_latency: config.initial_max_sync_latency,
             config,
@@ -196,6 +200,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             peer_ban_manager,
             tranche_size: HORIZON_SYNC_TRANCHE_SIZE,
             max_items_per_block,
+            max_kernels_per_block,
             server_time_per_kernel: SERVER_TIME_PER_KERNEL,
             attempt_waited: Duration::ZERO,
             attempt_allowance: Duration::ZERO,
@@ -203,6 +208,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             carried_wait: Duration::ZERO,
             session_may_be_busy: false,
             attempted_peers: Vec::new(),
+            predial_time: HashMap::new(),
         }
     }
 
@@ -238,6 +244,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         // sync; dial Strong if no connection is attached. On exit (success or failure) we
         // downgrade back to Weak so any subsequent stage / future sync cycle can reuse the
         // handle without forcibly pinning it.
+        self.predial_time.clear();
         for peer in self.sync_peers.iter_mut() {
             if let Some(conn) = peer.connection() &&
                 !conn.is_connected()
@@ -247,15 +254,22 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             if peer.ensure_strong_connection() {
                 continue;
             }
-            match self
-                .connectivity
-                .dial_peer(peer.node_id().clone(), RefKind::Strong)
-                .await
-            {
-                Ok(conn) => peer.set_connection(conn),
-                Err(e) => debug!(
+            let dial_started = Instant::now();
+            let dial_result = tokio::time::timeout(
+                self.config.rpc_deadline,
+                self.connectivity.dial_peer(peer.node_id().clone(), RefKind::Strong),
+            )
+            .await;
+            self.predial_time.insert(peer.node_id().clone(), dial_started.elapsed());
+            match dial_result {
+                Ok(Ok(conn)) => peer.set_connection(conn),
+                Ok(Err(e)) => debug!(
                     target: LOG_TARGET,
                     "Failed to dial sync peer {} as strong: {e}", peer.node_id()
+                ),
+                Err(_) => debug!(
+                    target: LOG_TARGET,
+                    "Timed out dialing sync peer {} as strong", peer.node_id()
                 ),
             }
         }
@@ -394,25 +408,39 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let sync_peer = self.sync_peers.get(peer_index).expect("Already checked");
         self.hooks.call_on_starting_hook(sync_peer);
 
+        let mut connect_spent = self.predial_time.remove(node_id).unwrap_or_default();
+        let connect_budget = self.config.rpc_deadline.saturating_mul(2);
+
         // Prefer the connection that travelled with this SyncPeer from header_sync (Strong).
         // We hand the attempt a Weak clone — the SyncPeer's Strong handle keeps the connection
         // pinned.
         let mut conn = match sync_peer.connection() {
             Some(stored) if stored.is_connected() => stored.clone_weak(),
-            _ => self.dial_sync_peer(node_id).await?,
+            _ => {
+                let dial_timeout = connect_budget
+                    .saturating_sub(connect_spent)
+                    .min(self.config.rpc_deadline);
+                let dial_started = Instant::now();
+                let dial_res = tokio::time::timeout(dial_timeout, self.dial_sync_peer(node_id)).await;
+                connect_spent = connect_spent.saturating_add(dial_started.elapsed());
+                dial_res.map_err(|_| HorizonSyncError::DialTimedOut {
+                    peer: node_id.clone(),
+                    timeout: dial_timeout,
+                })??
+            },
         };
         debug!(
             target: LOG_TARGET,
             "Attempting to synchronize horizon state with `{node_id}`"
         );
         // Defensive: the connection may have been torn down by another subsystem between
-        // dial returning and this point (e.g. DhtConnectivity pruning).
+        // dial returning and this point (e.g. DhtConnectivity pruning). Skip without banning.
         if !conn.is_connected() {
             warn!(
                 target: LOG_TARGET,
                 "Sync peer `{node_id}` was disconnected before RPC negotiation could begin"
             );
-            return Err(HorizonSyncError::RpcError(RpcError::ClientClosed));
+            return Err(HorizonSyncError::SyncPeerUnavailable(RpcError::ClientClosed));
         }
 
         let config = RpcClient::builder()
@@ -422,13 +450,27 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             .with_stream_buffer_size(100)
             .with_max_response_size(self.max_streamed_item_size());
 
-        // Bound RPC negotiation so a stuck negotiation cannot wedge the sync loop.
+        // Bound RPC negotiation within the remaining connect budget so a stuck negotiation cannot wedge the sync loop.
+        // Only blame the peer with `ReplyTimeout` (short ban) when it had a full `rpc_deadline` for the handshake; if
+        // slow dials already consumed over half the connect budget, skip the peer without banning on budget expiry.
+        let remaining_budget = connect_budget.saturating_sub(connect_spent);
+        let full_handshake_window = remaining_budget >= self.config.rpc_deadline;
+        let rpc_timeout = remaining_budget.min(self.config.rpc_deadline);
         let mut client = tokio::time::timeout(
-            self.config.rpc_deadline,
+            rpc_timeout,
             conn.connect_rpc_using_builder::<rpc::BaseNodeSyncRpcClient>(config),
         )
         .await
-        .map_err(|_| HorizonSyncError::RpcError(RpcError::ReplyTimeout))?
+        .map_err(|_| {
+            if full_handshake_window {
+                HorizonSyncError::RpcError(RpcError::ReplyTimeout)
+            } else {
+                HorizonSyncError::DialTimedOut {
+                    peer: node_id.clone(),
+                    timeout: connect_budget,
+                }
+            }
+        })?
         .map_err(HorizonSyncError::from_connect_error)?;
 
         let latency = client
@@ -876,25 +918,46 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         );
 
         let mut current_header = self.db().fetch_header_containing_kernel_mmr(local_num_kernels).await?;
+        let mut block_start_mmr_pos = local_num_kernels;
+        self.validate_header_kernel_count(&current_header, block_start_mmr_pos)?;
         let req = SyncKernelsRequest {
             start: local_num_kernels,
             end_header_hash: to_header.hash().to_vec(),
         };
-        // The peer may wait the RPC deadline plus its read time for the kernels, and the data's time at the minimum
-        // throughput, as in output sync. Only time spent waiting on the peer counts.
-        let kernel_allowance =
-            self.config
-                .rpc_deadline
-                .saturating_add(self.server_time_per_kernel.saturating_mul(
-                    u32::try_from(remote_num_kernels.saturating_sub(local_num_kernels)).unwrap_or(u32::MAX),
-                ));
+        // The peer may wait the RPC deadline plus its read time for the kernels, capped to the honest consensus limit
+        // across the block span so an inflated `kernel_mmr_size` cannot grant a multi-day wait allowance.
+        let span_blocks = to_header
+            .height
+            .saturating_sub(current_header.height())
+            .saturating_add(1);
+        let max_span_kernels = span_blocks.saturating_mul(self.max_kernels_per_block);
+        let capped_kernels = remote_num_kernels
+            .saturating_sub(local_num_kernels)
+            .min(max_span_kernels);
+        let kernel_allowance = self.config.rpc_deadline.saturating_add(
+            self.server_time_per_kernel
+                .saturating_mul(u32::try_from(capped_kernels).unwrap_or(u32::MAX)),
+        );
+        let initial_budget = self.peer_wait_budget(kernel_allowance, 0);
         let mut refusals = 0;
         let mut refused_wait = Duration::ZERO;
         let (mut kernel_stream, mut peer_wait) = loop {
             let fetch_started = Instant::now();
-            let mut stream = match source.fetch_kernels(req.clone()).await {
+            let result = tokio::time::timeout(self.config.rpc_deadline, source.fetch_kernels(req.clone()))
+                .await
+                .map_err(|_| {
+                    HorizonSyncError::RpcStatus(RpcStatus::general(&format!(
+                        "Timed out waiting for sync_kernels stream from peer {}",
+                        sync_peer.node_id()
+                    )))
+                })?;
+            let mut stream = match result {
                 Ok(stream) => stream,
                 Err(err) => {
+                    if self.session_may_be_busy && is_existing_session_refusal(&err) {
+                        refused_wait = refused_wait.saturating_add(fetch_started.elapsed());
+                        self.check_peer_wait(sync_peer.node_id(), refused_wait, initial_budget)?;
+                    }
                     self.retry_after_session_refusal(err, &mut refusals).await?;
                     continue;
                 },
@@ -903,15 +966,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 break (stream, refused_wait.saturating_add(fetch_started.elapsed()));
             }
             // A peer refuses a request for a busy session with the first stream item. Waiting for a refusal is still
-            // waiting on the peer.
-            match stream.next().await {
+            // waiting on the peer, and a silent stream must not hang past the peer-wait budget.
+            let waited_so_far = refused_wait.saturating_add(fetch_started.elapsed());
+            let first = Self::next_within_wait_budget(
+                sync_peer.node_id(),
+                &mut stream,
+                waited_so_far,
+                initial_budget,
+                self.config.rpc_deadline,
+            )
+            .await?;
+            match first {
                 Some(Err(err)) if is_existing_session_refusal(&err) => {
                     refused_wait = refused_wait.saturating_add(fetch_started.elapsed());
-                    self.check_peer_wait(
-                        sync_peer.node_id(),
-                        refused_wait,
-                        self.peer_wait_budget(kernel_allowance, 0),
-                    )?;
+                    self.check_peer_wait(sync_peer.node_id(), refused_wait, initial_budget)?;
                     self.retry_after_session_refusal(err, &mut refusals).await?
                 },
                 first => {
@@ -923,6 +991,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         };
         self.session_may_be_busy = false;
+        self.check_peer_wait(sync_peer.node_id(), peer_wait, initial_budget)?;
         let mut bytes_received = 0u64;
 
         debug!(
@@ -938,7 +1007,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let end = remote_num_kernels;
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
-        while let Some(kernel) = kernel_stream.next().await {
+        while let Some(kernel) = Self::next_within_wait_budget(
+            sync_peer.node_id(),
+            &mut kernel_stream,
+            peer_wait,
+            self.peer_wait_budget(kernel_allowance, bytes_received),
+            self.config.rpc_deadline,
+        )
+        .await?
+        {
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let kernel = kernel?;
@@ -1023,7 +1100,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     end.saturating_sub(mmr_position.saturating_add(1))
                 );
                 if mmr_position < end.saturating_sub(1) {
+                    block_start_mmr_pos = mmr_position.saturating_add(1);
                     current_header = db.fetch_chain_header(current_header.height().saturating_add(1)).await?;
+                    self.validate_header_kernel_count(&current_header, block_start_mmr_pos)?;
                 }
             }
             mmr_position = mmr_position.saturating_add(1);
@@ -1099,9 +1178,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 field: "height",
                 value: tranche_start_height.saturating_sub(1).to_string(),
             })?;
+        let num_blocks = tranche_end_header
+            .height
+            .saturating_sub(tranche_start_height)
+            .saturating_add(1);
+        let max_kernels = num_blocks.saturating_mul(self.max_kernels_per_block);
         let kernels = tranche_end_header
             .kernel_mmr_size
-            .saturating_sub(previous.kernel_mmr_size);
+            .saturating_sub(previous.kernel_mmr_size)
+            .min(max_kernels);
         Ok(self.config.rpc_deadline.saturating_add(
             self.server_time_per_kernel
                 .saturating_mul(u32::try_from(kernels).unwrap_or(u32::MAX)),
@@ -1137,6 +1222,56 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             self.attempt_waited,
             self.peer_wait_budget(self.attempt_allowance.saturating_add(precredit), self.attempt_bytes),
         )
+    }
+
+    /// Rejects a synced header whose claimed kernel count exceeds the consensus block-weight ceiling so kernel sync
+    /// never buffers an unbounded number of kernels in memory for a single block.
+    fn validate_header_kernel_count(
+        &self,
+        header: &ChainHeader,
+        block_start_mmr_pos: u64,
+    ) -> Result<(), HorizonSyncError> {
+        if header.height() == 0 {
+            return Ok(());
+        }
+        let claimed = header.header().kernel_mmr_size.saturating_sub(block_start_mmr_pos);
+        if claimed > self.max_kernels_per_block {
+            return Err(HorizonSyncError::IncorrectResponse(format!(
+                "Header #{} claims {claimed} kernels, exceeding maximum {} per block",
+                header.height(),
+                self.max_kernels_per_block,
+            )));
+        }
+        Ok(())
+    }
+
+    /// Awaits the next item from `stream`, failing with `PeerWaitBudgetExceeded` if the stream stays silent past the
+    /// larger of the remaining peer-wait `budget` and `rpc_deadline`.
+    async fn next_within_wait_budget<T, St>(
+        peer: &NodeId,
+        stream: &mut St,
+        waited: Duration,
+        budget: Duration,
+        rpc_deadline: Duration,
+    ) -> Result<Option<T>, HorizonSyncError>
+    where
+        St: Stream<Item = T> + Unpin,
+    {
+        let timeout_dur = budget
+            .saturating_sub(waited)
+            .max(rpc_deadline)
+            .saturating_add(Duration::from_millis(5));
+        let started = Instant::now();
+        tokio::time::timeout(timeout_dur, stream.next()).await.map_err(|_| {
+            let total_waited = waited
+                .saturating_add(started.elapsed())
+                .max(budget.saturating_add(Duration::from_millis(1)));
+            HorizonSyncError::PeerWaitBudgetExceeded {
+                peer: peer.clone(),
+                waited: total_waited,
+                budget,
+            }
+        })
     }
 
     /// Handles a failed first request to a peer that may still hold an earlier session: waits and lets the caller ask
@@ -1442,6 +1577,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let mut stream = match result {
                     Ok(stream) => stream,
                     Err(err) => {
+                        self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                        if self.session_may_be_busy && is_existing_session_refusal(&err) {
+                            self.check_attempt_wait(sync_peer.node_id(), precredit)?;
+                        }
                         self.retry_after_session_refusal(err, &mut refusals).await?;
                         continue;
                     },
@@ -1451,8 +1590,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     break stream;
                 }
                 // A peer refuses a request for a busy session with the first stream item. Waiting for a refusal is
-                // still waiting on the peer.
-                match stream.next().await {
+                // still waiting on the peer, and a silent stream must not hang past the peer-wait budget.
+                let attempt_budget =
+                    self.peer_wait_budget(self.attempt_allowance.saturating_add(precredit), self.attempt_bytes);
+                let waited_so_far = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                let first = match Self::next_within_wait_budget(
+                    sync_peer.node_id(),
+                    &mut stream,
+                    waited_so_far,
+                    attempt_budget,
+                    self.config.rpc_deadline,
+                )
+                .await
+                {
+                    Ok(item) => item,
+                    Err(err) => {
+                        self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
+                        return Err(err);
+                    },
+                };
+                match first {
                     Some(Err(err)) if is_existing_session_refusal(&err) => {
                         self.attempt_waited = self.attempt_waited.saturating_add(fetch_started.elapsed());
                         self.check_attempt_wait(sync_peer.node_id(), precredit)?;
@@ -1518,7 +1675,21 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .ok_or_else(|| HorizonSyncError::IncorrectResponse("Starting header missing".into()))?;
             // Started after the local reads above, so only waiting on the peer is timed
             let mut last_sync_timer = Instant::now();
-            while let Some(response) = output_stream.next().await {
+            while let Some(response) = match Self::next_within_wait_budget(
+                sync_peer.node_id(),
+                &mut output_stream,
+                self.attempt_waited,
+                self.peer_wait_budget(self.attempt_allowance.saturating_add(precredit), self.attempt_bytes),
+                self.config.rpc_deadline,
+            )
+            .await
+            {
+                Ok(item) => item,
+                Err(err) => {
+                    self.attempt_waited = self.attempt_waited.saturating_add(last_sync_timer.elapsed());
+                    return Err(err);
+                },
+            } {
                 let latency = last_sync_timer.elapsed();
                 avg_latency.add_sample(latency);
                 let res: SyncUtxosResponse = response?;
@@ -1888,6 +2059,24 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     fn db(&self) -> &AsyncBlockchainDb<B> {
         &self.db
     }
+}
+
+/// The most kernels a valid block can hold: one unweighed coinbase kernel plus as many weighed kernels as the block's
+/// maximum transaction weight allows.
+fn max_kernels_per_block(rules: &BaseNodeConsensusManager) -> u64 {
+    rules
+        .consensus_constants_vec()
+        .iter()
+        .map(|c| {
+            let max_weight = c.max_block_transaction_weight();
+            let params = c.transaction_weight_params().params();
+            max_weight
+                .checked_div(params.kernel_weight)
+                .unwrap_or(max_weight)
+                .saturating_add(1)
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 /// The most TXO items an honest peer streams for one block: an unspent output or a spend for each output or input
@@ -4404,5 +4593,322 @@ mod tests {
         apply_tranche_output_updates(updates, deletes, Vec::new(), &mut txn);
         txn.commit().await.unwrap();
         assert_only_genesis_row_left(&db, &genesis_output);
+    }
+
+    /// Serves a full `BaseNodeSyncRpcServer` over an in-memory `MockRpcServer` for `peer_db`
+    async fn serve_honest_horizon_peer(
+        peer_db: &BlockchainDatabase<TempDatabase>,
+        claimed_height: u64,
+    ) -> (
+        SyncPeer,
+        tari_comms::protocol::rpc::mock::MockRpcServer<
+            rpc::BaseNodeSyncRpcServer<rpc::BaseNodeSyncRpcService<TempDatabase>>,
+        >,
+        PeerConnection,
+    ) {
+        use tari_comms::{
+            peer_manager::PeerFeatures,
+            protocol::rpc::{NamedProtocolService, mock::MockRpcServer},
+            test_utils::node_identity::build_node_identity,
+        };
+        use tari_service_framework::reply_channel;
+        use tokio::sync::broadcast;
+
+        use crate::base_node::LocalNodeCommsInterface;
+
+        let (req_tx, _) = reply_channel::unbounded();
+        let (block_tx, _) = reply_channel::unbounded();
+        let (block_event_tx, _) = broadcast::channel(1);
+        let service = rpc::BaseNodeSyncRpcService::new(
+            peer_db.clone().into(),
+            LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx),
+            10,
+        );
+        let server_svc = rpc::BaseNodeSyncRpcServer::new(service);
+        let protocol = server_svc.as_protocol_name();
+        let peer_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+        let mut server = MockRpcServer::new(server_svc, peer_identity.clone());
+        server.serve();
+        let conn = server.create_connection(peer_identity.to_peer(), protocol.into()).await;
+        let claim = ChainMetadata::new(claimed_height, FixedHash::zero(), 0, 0, U512::from(1), 0).unwrap();
+        let sync_peer = SyncPeer::from(PeerChainMetadata::new(peer_identity.node_id().clone(), claim, None));
+        (sync_peer, server, conn)
+    }
+
+    /// A hung Strong pre-dial and Weak redial on the first sync peer time out within `rpc_deadline` without banning
+    /// the unreachable peer, allowing horizon sync to advance to the second honest peer and complete
+    #[tokio::test]
+    async fn hung_predial_and_redial_time_out_without_ban_and_advance_to_next_peer() {
+        use crate::base_node::sync::mock_sync_peer::banned_peers;
+
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let hung_peer = test_sync_peer();
+        let hung_id = hung_peer.node_id().clone();
+        let (honest_peer, _server, honest_conn) = serve_honest_horizon_peer(chain.db(), target.height).await;
+        let honest_id = honest_peer.node_id().clone();
+
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        mock_state.set_pending_connection(&hung_id).await;
+        mock_state.add_active_connection(honest_conn).await;
+
+        let mut peers = vec![hung_peer, honest_peer];
+        let prover = CryptoFactories::default().range_proof;
+        let validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> = Arc::new(MockValidator::new(true));
+        let mut config = BlockchainSyncConfig::default();
+        // `tari_comms` RPC encodes request deadlines in whole seconds and requires `>= 1s`
+        config.rpc_deadline = Duration::from_millis(1100);
+        let mut sync = HorizonStateSynchronization::new(
+            config,
+            db.clone().into(),
+            connectivity.clone(),
+            chain.rules().clone(),
+            &mut peers,
+            target.height,
+            prover,
+            validator,
+        );
+
+        tokio::time::timeout(Duration::from_secs(15), sync.synchronize())
+            .await
+            .expect("synchronize must not wedge on hung peer dial")
+            .unwrap();
+
+        assert!(
+            banned_peers(connectivity, &mock_state).await.is_empty(),
+            "unreachable peer whose dial timed out must not be banned"
+        );
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].node_id(), &honest_id);
+        assert_eq!(db.fetch_mmr_size(MmrTree::Kernel).unwrap(), target.kernel_mmr_size);
+        db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    /// A connection closed before RPC negotiation is skipped without a ban, and RPC handshake timeouts only ban when
+    /// the peer had a full `rpc_deadline` window rather than an exhausted connect budget
+    #[tokio::test]
+    async fn connect_sync_peer_skips_closed_or_budget_exhausted_peers_without_ban() {
+        use tari_comms::test_utils::mocks::create_dummy_peer_connection;
+
+        let db = create_new_blockchain();
+        let peer_closed = test_sync_peer();
+        let closed_id = peer_closed.node_id().clone();
+        let (closed_conn, closed_rx) = create_dummy_peer_connection(closed_id.clone());
+        drop(closed_rx);
+        assert!(!closed_conn.is_connected());
+
+        let peer_stalled = test_sync_peer();
+        let stalled_id = peer_stalled.node_id().clone();
+        let (stalled_conn, _stalled_rx_keep_open) = create_dummy_peer_connection(stalled_id.clone());
+
+        let (connectivity, mock) = create_connectivity_mock();
+        let mock_state = mock.spawn();
+        mock_state.add_active_connection(closed_conn).await;
+        mock_state.add_active_connection(stalled_conn).await;
+
+        let mut peers = vec![peer_closed, peer_stalled];
+        let prover = CryptoFactories::default().range_proof;
+        let validator: Arc<dyn FinalHorizonStateValidation<TempDatabase>> = Arc::new(MockValidator::new(true));
+        let mut config = BlockchainSyncConfig::default();
+        config.rpc_deadline = Duration::from_millis(80);
+        let mut sync = HorizonStateSynchronization::new(
+            config,
+            db.into(),
+            connectivity,
+            create_consensus_rules(),
+            &mut peers,
+            0,
+            prover,
+            validator,
+        );
+
+        // 1. Disconnected right before RPC negotiation -> SyncPeerUnavailable (no ban)
+        let err = sync.connect_sync_peer(&closed_id).await.unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::SyncPeerUnavailable(RpcError::ClientClosed)),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_none());
+
+        // 2. Slow pre-dial left less than `rpc_deadline` in `connect_budget` -> DialTimedOut (no ban)
+        sync.predial_time.insert(stalled_id.clone(), Duration::from_millis(120));
+        let err = sync.connect_sync_peer(&stalled_id).await.unwrap_err();
+        assert!(matches!(err, HorizonSyncError::DialTimedOut { .. }), "{err}");
+        assert!(err.get_ban_reason().is_none());
+
+        // 3. Fresh connect budget gives the peer a full `rpc_deadline` -> ReplyTimeout (short ban)
+        let err = sync.connect_sync_peer(&stalled_id).await.unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::RpcError(RpcError::ReplyTimeout)),
+            "{err}"
+        );
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
+    }
+
+    enum StalledSourceMode {
+        HangFetchKernels,
+        SlowRequestLevelRefusal(Duration),
+        SilentStream,
+    }
+
+    struct StalledHorizonSource {
+        mode: StalledSourceMode,
+    }
+
+    impl HorizonSyncSource for StalledHorizonSource {
+        async fn fetch_tranche(
+            &mut self,
+            _request: SyncUtxosRequest,
+        ) -> Result<BoxStream<'static, Result<SyncUtxosResponse, RpcError>>, RpcError> {
+            match self.mode {
+                StalledSourceMode::HangFetchKernels => Ok(futures::stream::pending().boxed()),
+                StalledSourceMode::SlowRequestLevelRefusal(delay) => {
+                    tokio::time::sleep(delay).await;
+                    Err(RpcError::RequestFailed(RpcStatus::forbidden(
+                        "Existing sync session found for this client",
+                    )))
+                },
+                StalledSourceMode::SilentStream => Ok(futures::stream::pending().boxed()),
+            }
+        }
+
+        async fn fetch_kernels(
+            &mut self,
+            _request: SyncKernelsRequest,
+        ) -> Result<BoxStream<'static, Result<proto::types::TransactionKernel, RpcError>>, RpcError> {
+            match self.mode {
+                StalledSourceMode::HangFetchKernels => futures::future::pending().await,
+                StalledSourceMode::SlowRequestLevelRefusal(delay) => {
+                    tokio::time::sleep(delay).await;
+                    Err(RpcError::RequestFailed(RpcStatus::forbidden(
+                        "Existing sync session found for this client",
+                    )))
+                },
+                StalledSourceMode::SilentStream => Ok(futures::stream::pending().boxed()),
+            }
+        }
+
+        fn last_request_latency(&mut self) -> Option<Duration> {
+            None
+        }
+    }
+
+    /// Hung `fetch_kernels`, slow request-level session refusals, and completely silent streams all terminate within
+    /// `rpc_deadline` / `peer_wait_budget` instead of stalling horizon sync indefinitely
+    #[tokio::test]
+    async fn hung_fetch_kernels_and_silent_streams_time_out_within_budget() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.config.rpc_deadline = Duration::from_millis(80);
+        sync.server_time_per_kernel = Duration::ZERO;
+
+        // 1. `fetch_kernels` never resolves -> bounded by `rpc_deadline`
+        let err = tokio::time::timeout(
+            Duration::from_secs(2),
+            sync.synchronize_kernels(
+                test_sync_peer(),
+                &mut StalledHorizonSource {
+                    mode: StalledSourceMode::HangFetchKernels,
+                },
+                &target,
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::RpcStatus(_)), "{err}");
+
+        // 2. Request-level busy-session refusal delayed past budget -> PeerWaitBudgetExceeded
+        sync.session_may_be_busy = true;
+        sync.config.rpc_deadline = Duration::from_millis(120);
+        let err = sync
+            .synchronize_kernels(
+                test_sync_peer(),
+                &mut StalledHorizonSource {
+                    mode: StalledSourceMode::SlowRequestLevelRefusal(Duration::from_millis(90)),
+                },
+                &target,
+            )
+            .await
+            .unwrap_err();
+        // Two 90 ms refusals exceed the 120 ms budget on the second refusal before sleeping again
+        assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+
+        // 3. Silent stream (both busy-session probe and normal streaming) -> PeerWaitBudgetExceeded
+        for busy in [true, false] {
+            sync.session_may_be_busy = busy;
+            sync.config.rpc_deadline = Duration::from_millis(80);
+            let err = tokio::time::timeout(
+                Duration::from_secs(2),
+                sync.synchronize_kernels(
+                    test_sync_peer(),
+                    &mut StalledHorizonSource {
+                        mode: StalledSourceMode::SilentStream,
+                    },
+                    &target,
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+            assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+
+            sync.session_may_be_busy = busy;
+            let err = tokio::time::timeout(
+                Duration::from_secs(2),
+                sync.sync_outputs_and_finalize(
+                    test_sync_peer(),
+                    &mut StalledHorizonSource {
+                        mode: StalledSourceMode::SilentStream,
+                    },
+                    &target,
+                ),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+            assert!(matches!(err, HorizonSyncError::PeerWaitBudgetExceeded { .. }), "{err}");
+        }
+    }
+
+    /// A header claiming more kernels than consensus block weight permits cannot inflate wait allowances and is
+    /// rejected immediately during kernel sync without buffering kernels for that block
+    #[tokio::test]
+    #[allow(clippy::arithmetic_side_effects)]
+    async fn inflated_header_kernel_mmr_size_is_rejected_and_allowance_is_capped() {
+        let rules = create_consensus_rules();
+        let constants = rules.consensus_constants(0);
+        let max_weight = constants.max_block_transaction_weight();
+        let kernel_weight = constants.transaction_weight_params().params().kernel_weight;
+        assert!(max_kernels_per_block(&rules) > max_weight / kernel_weight);
+
+        let (chain, _) = duplicate_output_sync_setup();
+        let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
+        let inflated = u64::MAX / 2;
+        let db = headers_only_db_with_kernel_mmr_size(&chain, &["A", "1", "2", "3", "4"], "2", inflated);
+        let mut inflated_target = target.clone();
+        inflated_target.kernel_mmr_size = inflated + 10;
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+
+        let allowance = sync.tranche_allowance(1, &inflated_target).await.unwrap();
+        let max_expected = sync.config.rpc_deadline +
+            sync.server_time_per_kernel * u32::try_from(5 * sync.max_kernels_per_block).unwrap();
+        assert_eq!(allowance, max_expected);
+
+        let err = sync
+            .synchronize_kernels(test_sync_peer(), &mut DbTrancheSource::honest(chain.db()), &target)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, HorizonSyncError::IncorrectResponse(_)), "{err}");
+        assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Long);
+        assert_eq!(
+            db.fetch_mmr_size(MmrTree::Kernel).unwrap(),
+            kernel_mmr_size_of(&chain, "1"),
+            "valid blocks A and 1 committed, inflated block 2 rejected before buffering any kernels"
+        );
     }
 }
