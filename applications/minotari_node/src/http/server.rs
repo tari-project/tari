@@ -117,10 +117,11 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
             )
             // A large transaction with 2_316 inputs, 154 outputs and byte size 2_109_809 translated to 4_853_330 JSON
             // object bytes, ~ 2.3 times larger. So we set the limit here to 2.5 times 4 MB.
-            .layer(RequestBodyLimitLayer::new(25 * 4 * 1024 * 1024 / 10))
+            .layer(RequestBodyLimitLayer::new(handler::json_rpc::MAX_JSON_RPC_BODY_BYTES))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()))
+            .layer(Extension(handler::json_rpc::JsonRpcLimiter::default()))
             .layer(Extension(Arc::new(self.cache_cfg.clone())));
         let listen_ip = self.listen_ip;
         let address = SocketAddr::new(listen_ip, port);
