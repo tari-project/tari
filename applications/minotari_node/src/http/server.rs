@@ -6,12 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use axum::{
-    Extension,
-    Router,
-    extract::DefaultBodyLimit,
-    routing::{get, post},
-};
+use axum::{Extension, Router, extract::DefaultBodyLimit, routing::get};
 use log::{error, info};
 use tari_core::{
     base_node::rpc::BaseNodeWalletQueryService,
@@ -103,10 +98,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 "/get_utxos_by_block",
                 get(handler::get_utxos_by_block::handle::<B>).layer(DefaultBodyLimit::disable()),
             )
-            .route(
-                "/json_rpc",
-                post(handler::json_rpc::handle::<B>).layer(DefaultBodyLimit::disable()),
-            )
+            .route("/json_rpc", handler::json_rpc::route::<B>())
             .route(
                 "/generate_burn_output_proof",
                 get(handler::generate_burn_output_proof::handle::<B>),
