@@ -160,7 +160,7 @@ where
             );
         }
         self.db
-            .set_outputs_to_be_revalidated()
+            .reset_outputs_for_base_node_change()
             .for_protocol(self.operation_id)?;
         self.db
             .set_last_validation_base_node_peer(base_node_peer)

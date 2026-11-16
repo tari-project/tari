@@ -66,7 +66,7 @@ use crate::{
             models::{DbWalletOutput, KnownOneSidedPaymentScript},
         },
     },
-    schema::{client_key_values, known_one_sided_payment_scripts, outputs, scanned_blocks},
+    schema::{known_one_sided_payment_scripts, outputs, scanned_blocks, wallet_settings},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
 };
 
@@ -75,7 +75,7 @@ mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 /// Maximum number of ids bound into a single `UPDATE ... WHERE id IN (...)` by `mark_outputs_invalid`
 const MARK_INVALID_CHUNK_SIZE: usize = 500;
-/// Key in `client_key_values` holding the base node peer the confirmed output state was last validated against.
+/// Key in `wallet_settings` holding the base node peer the confirmed output state was last validated against.
 const LAST_VALIDATION_BASE_NODE_PEER_KEY: &str = "oms_last_validation_base_node_peer";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
@@ -847,13 +847,49 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
+    fn reset_outputs_for_base_node_change(&self) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let reset_statuses = vec![
+            OutputStatus::Unspent as i32,
+            OutputStatus::Spent as i32,
+            OutputStatus::UnspentMinedUnconfirmed as i32,
+            OutputStatus::SpentMinedUnconfirmed as i32,
+            OutputStatus::Invalid as i32,
+        ];
+        let result = diesel::update(outputs::table.filter(outputs::status.eq_any(reset_statuses)))
+            .set((
+                outputs::mined_height.eq::<Option<i64>>(None),
+                outputs::mined_in_block.eq::<Option<Vec<u8>>>(None),
+                outputs::status.eq(OutputStatus::Invalid as i32),
+                outputs::mined_timestamp.eq::<Option<NaiveDateTime>>(None),
+                outputs::marked_deleted_at_height.eq::<Option<i64>>(None),
+                outputs::marked_deleted_in_block.eq::<Option<Vec<u8>>>(None),
+            ))
+            .execute(&mut conn)?;
+
+        trace!(target: LOG_TARGET, "rows updated for base node change: {result:?}");
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - reset_outputs_for_base_node_change: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+
+        Ok(())
+    }
+
     fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, OutputManagerStorageError> {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let peer: Option<String> = client_key_values::table
-            .filter(client_key_values::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY))
-            .select(client_key_values::value)
+        let peer: Option<String> = wallet_settings::table
+            .filter(wallet_settings::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY))
+            .select(wallet_settings::value)
             .first(&mut conn)
             .optional()?;
         if start.elapsed().as_millis() > 0 {
@@ -872,10 +908,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let start = Instant::now();
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        diesel::replace_into(client_key_values::table)
+        diesel::replace_into(wallet_settings::table)
             .values((
-                client_key_values::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY),
-                client_key_values::value.eq(peer),
+                wallet_settings::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY),
+                wallet_settings::value.eq(peer),
             ))
             .execute(&mut conn)?;
         if start.elapsed().as_millis() > 0 {

@@ -574,6 +574,10 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    pub fn reset_outputs_for_base_node_change(&self) -> Result<(), OutputManagerStorageError> {
+        self.db.reset_outputs_for_base_node_change()
+    }
+
     pub fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, OutputManagerStorageError> {
         self.db.get_last_validation_base_node_peer()
     }

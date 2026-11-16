@@ -176,7 +176,7 @@ where
             );
         }
         self.db
-            .mark_all_non_coinbases_transactions_as_unvalidated()
+            .reset_transactions_for_base_node_change()
             .for_protocol(self.operation_id)?;
         self.db
             .set_last_validation_base_node_peer(base_node_peer)

@@ -443,6 +443,45 @@ pub async fn test_last_validation_base_node_peer_roundtrip() {
 }
 
 #[tokio::test]
+pub async fn test_reset_outputs_for_base_node_change_preserves_encumbered() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection));
+    let key_manager = create_new_random_key_manager().await.unwrap();
+
+    let uo1 = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(1000),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let kmo1 = DbWalletOutput::from_wallet_output(uo1, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(kmo1.clone(), &key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(kmo1.hash, true)]).unwrap();
+
+    let uo2 = make_input(
+        &mut rand::rng(),
+        MicroMinotari::from(2000),
+        &OutputFeatures::default(),
+        key_manager.key_manager(),
+    );
+    let kmo2 = DbWalletOutput::from_wallet_output(uo2, None, OutputSource::Standard, None, None);
+    db.add_unspent_output(kmo2.clone(), &key_manager).unwrap();
+    db.mark_outputs_as_unspent(vec![(kmo2.hash, true)]).unwrap();
+
+    // Encumber the second output for a pending transaction
+    db.encumber_outputs(1u64.into(), vec![kmo2.clone()], vec![]).unwrap();
+
+    // Reset for base node change
+    db.reset_outputs_for_base_node_change().unwrap();
+
+    // The unspent output was reset to Invalid
+    let invalid = db.get_invalid_outputs(&key_manager).unwrap();
+    assert!(invalid.iter().any(|o| o.commitment == kmo1.commitment));
+    // The encumbered output was preserved and NOT reset to Invalid
+    assert!(!invalid.iter().any(|o| o.commitment == kmo2.commitment));
+}
+
+#[tokio::test]
 pub async fn test_count_outputs_in_ranges() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);

@@ -110,6 +110,9 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         commitments: Vec<CompressedCommitment>,
     ) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
+    /// Reset confirmed/mined outputs to Invalid for re-querying when the base node changes,
+    /// while preserving pending reservations (EncumberedToBeSpent, ShortTermEncumberedToBeSpent).
+    fn reset_outputs_for_base_node_change(&self) -> Result<(), OutputManagerStorageError>;
     /// The base node peer (address) that the stored confirmed output state was last validated against, if any.
     fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, OutputManagerStorageError>;
     /// Record the base node peer (address) that the stored confirmed output state was last validated against.

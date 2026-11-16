@@ -206,6 +206,9 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
     fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError>;
+    /// Reset mined status for re-querying when the base node changes,
+    /// without resurrecting cancelled transactions.
+    fn reset_transactions_for_base_node_change(&self) -> Result<(), TransactionStorageError>;
     /// The base node peer (address) that the stored confirmed transaction state was last validated against, if any.
     fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, TransactionStorageError>;
     /// Record the base node peer (address) that the stored confirmed transaction state was last validated against.
@@ -433,6 +436,10 @@ where T: TransactionBackend + 'static
 
     pub fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError> {
         self.db.get_last_scanned_height()
+    }
+
+    pub fn reset_transactions_for_base_node_change(&self) -> Result<(), TransactionStorageError> {
+        self.db.reset_transactions_for_base_node_change()
     }
 
     pub fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, TransactionStorageError> {

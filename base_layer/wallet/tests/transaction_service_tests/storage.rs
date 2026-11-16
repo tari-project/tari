@@ -466,6 +466,72 @@ async fn test_last_validation_base_node_peer_roundtrip() {
 }
 
 #[tokio::test]
+async fn test_reset_transactions_for_base_node_change_preserves_cancellations() {
+    let db_name = format!("{}.sqlite3", random::string(8));
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{db_folder}/{db_name}");
+    let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+    let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
+
+    for (tx_id, mined_height) in [(1u64, 20u64), (2, 10)] {
+        let tx = CompletedTransaction::new(
+            TxId::from(tx_id),
+            TariAddress::default(),
+            TariAddress::default(),
+            MicroMinotari::from(100000),
+            MicroMinotari::from(0),
+            Transaction::new(
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                PrivateKey::random(&mut rand::rng()),
+                PrivateKey::random(&mut rand::rng()),
+            ),
+            LegacyTransactionStatus::MinedConfirmed,
+            Utc::now(),
+            TransactionDirection::Inbound,
+            None,
+            None,
+            MemoField::new_open_from_string("message", TxType::PaymentToOther).unwrap(),
+            0,
+        )
+        .unwrap();
+        db.insert_completed_transaction(TxId::from(tx_id), tx).unwrap();
+        db.set_transaction_mined_height(
+            TxId::from(tx_id),
+            mined_height,
+            FixedHash::zero(),
+            0,
+            true,
+            LegacyTransactionStatus::MinedConfirmed,
+            100,
+        )
+        .unwrap();
+    }
+
+    db.reject_completed_transaction(1u64.into(), TxCancellationReason::UserCancelled, None)
+        .unwrap();
+
+    db.reset_transactions_for_base_node_change().unwrap();
+
+    // Verify cancelled transaction remains cancelled and not resurrected
+    let tx1 = db.get_cancelled_completed_transaction(1u64.into()).unwrap();
+    assert_eq!(tx1.cancelled, Some(TxCancellationReason::UserCancelled));
+
+    // Verify uncancelled transaction has mined_height reset for revalidation
+    let tx2 = db.get_completed_transaction(2u64.into()).unwrap();
+    assert!(tx2.mined_height.is_none());
+    assert!(tx2.mined_in_block.is_none());
+    assert!(tx2.cancelled.is_none());
+}
+
+#[tokio::test]
 async fn import_tx_and_read_it_from_db() {
     let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();
