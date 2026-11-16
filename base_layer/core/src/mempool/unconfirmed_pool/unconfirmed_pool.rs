@@ -806,26 +806,37 @@ impl UnconfirmedPool {
                 .next()
                 .ok_or(UnconfirmedPoolError::StorageOutofSync)?;
             if prioritized_tx.priority < *lowest_priority {
+                debug!(
+                    target: LOG_TARGET,
+                    "Unconfirmed pool full, {prioritized_tx} has a lower priority than the lowest priority transaction"
+                );
                 return Ok(InsertOutcome::PoolFull);
             }
             let lowest_key = *lowest_key;
             // Only a descendant of the evicted transaction can be removed with it, so the eviction can only orphan
-            // `tx` if it is one of its ancestors. A walk over its budget is rejected: unlike the eviction, which
-            // removes what it walks, a rejection can be repeated.
-            let lowest_is_ancestor = if prioritized_tx.dependent_output_hashes.is_empty() {
-                Some(false)
+            // `tx` if it is one of its ancestors. Unless the ancestor walk shows it is not, the bounded descendant walk
+            // decides. A walk over its budget is rejected: unlike the eviction, which removes what it walks, a
+            // rejection can be repeated.
+            let not_ancestor = prioritized_tx.dependent_output_hashes.is_empty() ||
+                self.has_pool_ancestor(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK) == Some(false);
+            let evicted = if not_ancestor {
+                self.remove_transactions_and_descendants([lowest_key])?
             } else {
-                self.has_pool_ancestor(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK)
-            };
-            let evicted = match lowest_is_ancestor {
-                None => return Ok(InsertOutcome::PoolFull),
-                Some(false) => self.remove_transactions_and_descendants([lowest_key])?,
-                Some(true) => match self.descendant_closure([lowest_key], MAX_EVICTION_CHECK_WORK) {
-                    Some(closure) if !self.would_orphan(&prioritized_tx.transaction, &closure) => {
-                        self.remove_transactions(closure)?.len()
-                    },
-                    _ => return Ok(InsertOutcome::PoolFull),
-                },
+                let Some(closure) = self.descendant_closure([lowest_key], MAX_EVICTION_CHECK_WORK) else {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Unconfirmed pool full, the eviction check for {prioritized_tx} is over its work budget"
+                    );
+                    return Ok(InsertOutcome::PoolFull);
+                };
+                if self.would_orphan(&prioritized_tx.transaction, &closure) {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Unconfirmed pool full, the eviction would remove a pool ancestor of {prioritized_tx}"
+                    );
+                    return Ok(InsertOutcome::PoolFull);
+                }
+                self.remove_transactions(closure)?.len()
             };
             debug!(
                 target: LOG_TARGET,
@@ -7586,20 +7597,46 @@ mod test {
             }
 
             #[test]
-            fn an_ancestor_walk_over_the_work_budget_is_rejected() {
+            fn ancestor_and_descendant_walks_over_the_work_budget_are_rejected() {
                 let base = base();
                 let lowest = synthetic_tx(&base, 0, 1);
+                let children = fanout(&base, &lowest, MAX_EVICTION_CHECK_WORK);
                 let mut chain = vec![synthetic_tx(&base, 1, 50)];
                 for n in 0..MAX_EVICTION_CHECK_WORK / 2 {
                     chain.push(child_of(&base, chain.last().unwrap(), u64::try_from(n).unwrap()));
                 }
-                let txs = [&lowest].into_iter().chain(&chain).collect::<Vec<_>>();
+                let txs = [&lowest].into_iter().chain(&children).chain(&chain).collect::<Vec<_>>();
                 let mut pool = full_pool(txs.len(), &txs);
                 let before = indexes(&pool);
 
                 let incoming = child_with_fee(&base, chain.last().unwrap(), 0, 100);
                 assert_eq!(insert(&mut pool, &incoming), InsertOutcome::PoolFull);
                 assert!(indexes(&pool) == before);
+            }
+
+            #[test]
+            fn an_ancestor_walk_over_the_work_budget_falls_back_to_the_descendant_walk() {
+                let base = base();
+                let lowest = synthetic_tx(&base, 0, 1);
+                let parent = synthetic_tx(&base, 1, 50);
+                // A padded copy of the parent: the same outputs, with inputs that put the ancestor walk over budget
+                let padded = Arc::new(Transaction::new(
+                    distinct_inputs(&base.body.inputs()[0], MAX_EVICTION_CHECK_WORK + 1),
+                    parent.body.outputs().clone(),
+                    synthetic_tx(&base, 2, 100_000).body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ));
+                let mut pool = full_pool(3, &[&lowest, &parent, &padded]);
+                assert_eq!(pool.tx_by_priority.values().next(), Some(&key_of(&pool, &lowest)));
+
+                let child = child_with_fee(&base, &parent, 3, 100);
+                assert_eq!(insert(&mut pool, &child), InsertOutcome::Inserted);
+                assert!(!pool.has_transaction(&lowest));
+                for tx in [&parent, &padded, &child] {
+                    assert!(pool.has_transaction(tx));
+                }
+                assert!(pool.check_data_consistency());
             }
 
             #[test]

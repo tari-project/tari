@@ -542,9 +542,10 @@ impl MempoolStorage {
             InsertOutcome::PoolFull => {
                 debug!(
                     target: LOG_TARGET,
-                    "Tx: ({tx_id}) not stored: the unconfirmed pool is full and it does not outbid the lowest priority \
-                     transaction"
+                    "Tx: ({tx_id}) not stored: the unconfirmed pool is full and cannot store it"
                 );
+                #[cfg(feature = "metrics")]
+                metrics::policy_refused_transactions("pool_full").inc();
                 Ok(TxStorageResponse::NotStoredFeeTooLow)
             },
         }
