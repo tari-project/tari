@@ -2227,7 +2227,41 @@ where
 
         // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
 
-        let tip_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+        const TIP_INFO_TIMEOUT: Duration = Duration::from_secs(5);
+        let last_scanned_height = self.resources.db.get_last_scanned_height()?.unwrap_or(0);
+        let mut shutdown = self.resources.shutdown_signal.clone();
+        let connectivity = &self.resources.connectivity;
+        let fetch_tip = async {
+            connectivity
+                .obtain_base_node_wallet_rpc_client()
+                .await
+                .get_tip_info()
+                .await
+        };
+        let node_tip_height = tokio::select! {
+            biased;
+            _ = shutdown.wait() => return Err(TransactionServiceError::Shutdown),
+            res = tokio::time::timeout(TIP_INFO_TIMEOUT, fetch_tip) => match res {
+                Ok(Ok(tip_info)) => tip_info.metadata.map_or(0, |metadata| metadata.best_block_height()),
+                Ok(Err(err)) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Could not fetch base node tip info when building HTLC refund lock height; falling back to \
+                         last scanned height {last_scanned_height}: {err}"
+                    );
+                    0
+                },
+                Err(_) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Timed out fetching base node tip info when building HTLC refund lock height; falling back to \
+                         last scanned height {last_scanned_height}"
+                    );
+                    0
+                },
+            },
+        };
+        let tip_height = last_scanned_height.max(node_tip_height);
 
         const BLOCKS_PER_DAY: u64 = 24 * 30;
         let height = tip_height.saturating_add(BLOCKS_PER_DAY);

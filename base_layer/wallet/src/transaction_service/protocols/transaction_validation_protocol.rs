@@ -470,7 +470,9 @@ where
             .set_transaction_as_unmined(tx_id)
             .for_protocol(self.operation_id)?;
 
-        self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
+        if status != LegacyTransactionStatus::Rejected {
+            self.publish_event(TransactionEvent::TransactionBroadcast(tx_id));
+        }
         Ok(())
     }
 }
