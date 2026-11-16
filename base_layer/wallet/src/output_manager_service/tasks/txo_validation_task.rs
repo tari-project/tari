@@ -294,11 +294,6 @@ where
         wallet_client: &TWalletConnectivity::BaseNodeClient,
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
-        let last_scanned_height = self
-            .db
-            .get_last_scanned_height()
-            .for_protocol(self.operation_id)?
-            .unwrap_or(0);
         let mined_outputs = self
             .db
             .fetch_mined_unspent_outputs(&self.key_manager)
@@ -347,7 +342,7 @@ where
                 ));
             }
 
-            let tip_height = response.best_block_height.max(last_scanned_height);
+            let tip_height = response.best_block_height;
             let mut unmined_and_invalid = Vec::with_capacity(batch.len());
             let mut unspent = Vec::with_capacity(batch.len());
             for (output, data) in batch.iter().zip(response.utxos.iter()) {
