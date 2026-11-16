@@ -599,10 +599,21 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
 
-        outputs
+        Ok(outputs
             .into_iter()
-            .map(|o| o.to_db_wallet_output(key_manager))
-            .collect::<Result<Vec<_>, _>>()
+            .filter_map(|o| {
+                let (id, commitment) = (o.id, o.commitment.to_hex());
+                o.to_db_wallet_output(key_manager)
+                    .inspect_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Skipping unconfirmed output id={id} commitment {commitment} that cannot be decoded ({})",
+                            error_kind(e)
+                        );
+                    })
+                    .ok()
+            })
+            .collect())
     }
 
     fn write<KM: LegacyTransactionKeyManagerInterface>(

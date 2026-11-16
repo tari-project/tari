@@ -47,6 +47,7 @@ use crate::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbWalletOutput,
             sqlite_db::{ReceivedOutputInfoForBatch, SpentOutputInfoForBatch},
+            OutputStatus,
         },
     },
 };
@@ -346,6 +347,7 @@ where
                 ));
             }
 
+            let tip_height = response.best_block_height.max(last_scanned_height);
             let mut unmined_and_invalid = Vec::with_capacity(batch.len());
             let mut unspent = Vec::with_capacity(batch.len());
             for (output, data) in batch.iter().zip(response.utxos.iter()) {
@@ -367,7 +369,7 @@ where
                         spent.push(SpentOutputInfoForBatch {
                             commitment: output.commitment.clone(),
                             confirmed: spent_height.saturating_add(self.config.num_confirmations_required) <=
-                                last_scanned_height,
+                                tip_height,
                             mark_deleted_at_height: *spent_height,
                             mark_deleted_in_block: spent_hash.clone().try_into().map_err(|_| {
                                 OutputManagerProtocolError::new(
@@ -377,13 +379,19 @@ where
                             })?,
                         });
                     } else {
-                        // only update to unspent if the output is currently marked as spent in our db, and never if
-                        // its commitment mask does not verify (the only move into a spendable status in this pass)
-                        if output.marked_deleted_at_height.is_some() {
+                        // only update to unspent if the output is currently marked as spent in our db, or was left
+                        // unconfirmed by update_unconfirmed_outputs to await this spent check
+                        if output.marked_deleted_at_height.is_some() ||
+                            output.status == OutputStatus::UnspentMinedUnconfirmed
+                        {
                             if blocks_revival(&self.key_manager, output, "TXO revalidation of spent outputs") {
                                 not_revivable = not_revivable.saturating_add(1);
                             } else {
-                                unspent.push((output.hash, true));
+                                let confirmed = output.mined_height.map_or(false, |h| {
+                                    (h as u64).saturating_add(self.config.num_confirmations_required) <=
+                                        tip_height
+                                });
+                                unspent.push((output.hash, confirmed));
                             }
                         }
                     }
@@ -484,8 +492,7 @@ where
                     commitment: mined_info.output.commitment.clone(),
                     mined_height: mined_info.mined_at_height,
                     mined_in_block: mined_info.mined_block_hash,
-                    confirmed: tip_height.saturating_sub(mined_info.mined_at_height) >=
-                        self.config.num_confirmations_required,
+                    confirmed: false,
                     mined_timestamp: mined_info.mined_timestamp,
                 });
             }
