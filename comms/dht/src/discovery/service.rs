@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, convert::TryFrom, sync::Arc, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    sync::Arc,
+};
 
 use log::*;
 use rand::Rng;
@@ -34,6 +38,7 @@ use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{
     sync::{mpsc, oneshot},
     task,
+    time::{self, Duration, Instant, MissedTickBehavior},
 };
 
 use crate::{
@@ -49,6 +54,9 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
+const MAX_INFLIGHT_DISCOVERIES: usize = 1_024;
+const MIN_CLEANUP_INTERVAL: Duration = Duration::from_millis(50);
+const MAX_CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 struct DiscoveryRequestState {
     reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
@@ -63,6 +71,10 @@ impl DiscoveryRequestState {
             reply_tx,
             start_ts: Instant::now(),
         }
+    }
+
+    fn is_expired(&self, timeout: Duration) -> bool {
+        self.start_ts.elapsed() > timeout
     }
 }
 
@@ -108,6 +120,14 @@ impl DhtDiscoveryService {
 
     pub async fn run(mut self) {
         debug!(target: LOG_TARGET, "Dht discovery service started");
+        let cleanup_period = self
+            .config
+            .discovery_request_timeout
+            .clamp(MIN_CLEANUP_INTERVAL, MAX_CLEANUP_INTERVAL);
+        let first_tick = Instant::now().checked_add(cleanup_period).unwrap_or_else(Instant::now);
+        let mut cleanup_interval = time::interval_at(first_tick, cleanup_period);
+        cleanup_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
         loop {
             tokio::select! {
                 biased;
@@ -120,6 +140,10 @@ impl DhtDiscoveryService {
                 Some(request) = self.request_rx.recv() => {
                     trace!(target: LOG_TARGET, "Received request '{request}'");
                     self.handle_request(request).await;
+                },
+
+                _ = cleanup_interval.tick(), if !self.inflight_discoveries.is_empty() => {
+                    self.prune_stale_discoveries();
                 },
             }
         }
@@ -147,26 +171,84 @@ impl DhtDiscoveryService {
         }
     }
 
+    fn prune_stale_discoveries(&mut self) {
+        if self.inflight_discoveries.is_empty() {
+            return;
+        }
+
+        let timeout = self.config.discovery_request_timeout;
+        if self
+            .inflight_discoveries
+            .values()
+            .all(|state| !state.is_expired(timeout) && !state.reply_tx.is_closed())
+        {
+            return;
+        }
+
+        let live_peers: HashSet<Vec<u8>> = self
+            .inflight_discoveries
+            .values()
+            .filter(|state| !state.is_expired(timeout) && !state.reply_tx.is_closed())
+            .map(|state| state.public_key.to_vec())
+            .collect();
+
+        self.inflight_discoveries.retain(|_, state| {
+            !state.is_expired(timeout) &&
+                (!state.reply_tx.is_closed() || live_peers.contains(state.public_key.as_bytes()))
+        });
+    }
+
+    fn has_live_request_for(&self, public_key: &CommsPublicKey) -> bool {
+        let timeout = self.config.discovery_request_timeout;
+        self.inflight_discoveries.values().any(|state| {
+            state.public_key.as_ref() == public_key && !state.is_expired(timeout) && !state.reply_tx.is_closed()
+        })
+    }
+
+    fn next_unique_nonce(&self) -> u64 {
+        let mut rng = rand::rng();
+        loop {
+            let nonce = rng.next_u64();
+            if !self.inflight_discoveries.contains_key(&nonce) {
+                return nonce;
+            }
+        }
+    }
+
+    fn evict_oldest_inflight_discovery(&mut self) {
+        if let Some(oldest_nonce) = self
+            .inflight_discoveries
+            .iter()
+            .min_by_key(|(nonce, state)| (state.start_ts, **nonce))
+            .map(|(&nonce, _)| nonce)
+        {
+            self.inflight_discoveries.remove(&oldest_nonce);
+            self.prune_stale_discoveries();
+            warn!(
+                target: LOG_TARGET,
+                "Inflight discovery table reached capacity ({MAX_INFLIGHT_DISCOVERIES}); evicted oldest nonce \
+                 {oldest_nonce}"
+            );
+        }
+    }
+
     fn collect_all_discovery_requests(&mut self, public_key: &CommsPublicKey) -> Vec<DiscoveryRequestState> {
+        let timeout = self.config.discovery_request_timeout;
         let mut requests = Vec::new();
-        let mut remaining_requests = HashMap::new();
+        let mut remaining_requests = HashMap::with_capacity(self.inflight_discoveries.len());
         for (nonce, request) in self.inflight_discoveries.drain() {
-            // Exclude canceled requests
-            if request.reply_tx.is_closed() {
+            if request.public_key.as_ref() == public_key {
+                if !request.reply_tx.is_closed() && !request.is_expired(timeout) {
+                    requests.push(request);
+                }
                 continue;
             }
 
-            // Requests for this public key are collected
-            if &*request.public_key == public_key {
-                requests.push(request);
-                continue;
-            }
-
-            // Everything else is put back in inflight_discoveries
             remaining_requests.insert(nonce, request);
         }
 
         self.inflight_discoveries = remaining_requests;
+        self.prune_stale_discoveries();
         requests
     }
 
@@ -174,85 +256,93 @@ impl DhtDiscoveryService {
         &mut self,
         discovery_msg: Box<DiscoveryResponseMessage>,
     ) -> Result<(), DhtDiscoveryError> {
-        match self.inflight_discoveries.remove(&discovery_msg.nonce) {
-            Some(request) => {
-                let DiscoveryRequestState {
-                    public_key,
-                    reply_tx,
-                    start_ts,
-                } = request;
+        self.prune_stale_discoveries();
 
-                // Make sure that the response is for the expected public key. The DHT handler only passes on a
-                // response whose signer, source and claimed key are the same, so the responder is to blame.
-                if discovery_msg.public_key.as_bytes() != public_key.as_bytes() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Received a discovery response from '{}' that does not match the expected public key \
-                         '{public_key:#.5}'",
-                        discovery_msg.public_key.to_hex()
-                    );
-                    if let Ok(responder) = CommsPublicKey::from_canonical_bytes(&discovery_msg.public_key) {
-                        self.dht
-                            .ban_peer(
-                                responder,
-                                OffenceSeverity::Medium,
-                                "Sent a discovery response for a public key that was not requested",
-                            )
-                            .await;
-                    }
+        let Some(expected_public_key) = self
+            .inflight_discoveries
+            .get(&discovery_msg.nonce)
+            .map(|request| (*request.public_key).clone())
+        else {
+            debug!(
+                target: LOG_TARGET,
+                "Received a discovery response from peer '{}' that this node did not expect. It may have been \
+                 cancelled or expired earlier.",
+                discovery_msg.public_key.to_hex()
+            );
+            return Ok(());
+        };
 
-                    return Ok(());
-                }
-                trace!(
-                    target: LOG_TARGET,
-                    "Received discovery response message from {public_key}"
+        // Make sure that the response is for the expected public key before removing the pending request so an
+        // unsolicited or mismatched responder cannot cancel a legitimate in-flight discovery. The DHT handler only
+        // passes on a response whose signer, source and claimed key are the same, so the responder is to blame.
+        if discovery_msg.public_key.as_bytes() != expected_public_key.as_bytes() {
+            warn!(
+                target: LOG_TARGET,
+                "Received a discovery response from '{}' that does not match the expected public key \
+                 '{expected_public_key:#.5}'",
+                discovery_msg.public_key.to_hex()
+            );
+            if let Ok(responder) = CommsPublicKey::from_canonical_bytes(&discovery_msg.public_key) {
+                self.dht
+                    .ban_peer(
+                        responder,
+                        OffenceSeverity::Medium,
+                        "Sent a discovery response for a public key that was not requested",
+                    )
+                    .await;
+            }
 
-                );
+            return Ok(());
+        }
 
-                let result = self.validate_then_add_peer(discovery_msg).await;
+        let Some(DiscoveryRequestState {
+            public_key,
+            reply_tx,
+            start_ts,
+        }) = self.inflight_discoveries.remove(&discovery_msg.nonce)
+        else {
+            return Ok(());
+        };
 
-                // Resolve any other pending discover requests if the peer was found
-                match &result {
-                    Ok(peer) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Received discovery response from peer {}. Discovery completed in {}s",
-                            peer.node_id,
-                            start_ts.elapsed().as_secs_f32()
-                        );
+        trace!(
+            target: LOG_TARGET,
+            "Received discovery response message from {public_key}"
+        );
 
-                        for request in self.collect_all_discovery_requests(&public_key) {
-                            let _result = request.reply_tx.send(Ok(peer.clone()));
-                        }
+        let result = self.validate_then_add_peer(discovery_msg).await;
 
-                        debug!(
-                            target: LOG_TARGET,
-                            "Discovery request for Node Id {} completed successfully",
-                            peer.node_id.to_hex(),
-                        );
-                    },
-                    Err(err) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Failed to validate and add peer from discovery response from peer. {:?} Discovery \
-                             completed in {}s",
-                            err,
-                            start_ts.elapsed().as_secs_f32()
-                        );
-                    },
-                }
-
-                let _result = reply_tx.send(result);
-            },
-            None => {
+        // Resolve any other pending discover requests if the peer was found
+        match &result {
+            Ok(peer) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Received a discovery response from peer '{}' that this node did not expect. It may have been \
-                     cancelled earlier.",
-                    discovery_msg.public_key.to_hex()
+                    "Received discovery response from peer {}. Discovery completed in {}s",
+                    peer.node_id,
+                    start_ts.elapsed().as_secs_f32()
+                );
+
+                for request in self.collect_all_discovery_requests(&public_key) {
+                    let _result = request.reply_tx.send(Ok(peer.clone()));
+                }
+
+                debug!(
+                    target: LOG_TARGET,
+                    "Discovery request for Node Id {} completed successfully",
+                    peer.node_id.to_hex(),
+                );
+            },
+            Err(err) => {
+                self.prune_stale_discoveries();
+                debug!(
+                    target: LOG_TARGET,
+                    "Failed to validate and add peer from discovery response from peer. {:?} Discovery completed in {}s",
+                    err,
+                    start_ts.elapsed().as_secs_f32()
                 );
             },
         }
+
+        let _result = reply_tx.send(result);
 
         Ok(())
     }
@@ -297,12 +387,12 @@ impl DhtDiscoveryService {
         destination: NodeDestination,
         reply_tx: oneshot::Sender<Result<Peer, DhtDiscoveryError>>,
     ) -> Result<(), DhtDiscoveryError> {
-        let nonce = rand::rng().next_u64();
         if *dest_pubkey == *self.node_identity.public_key() {
             let _result = reply_tx.send(Err(DhtDiscoveryError::CannotDiscoverThisNode));
             return Ok(());
         }
 
+        let nonce = self.next_unique_nonce();
         if let Err(err) = self.send_discover(nonce, destination, dest_pubkey.clone()).await {
             let _result = reply_tx.send(Err(err));
             return Ok(());
@@ -310,18 +400,28 @@ impl DhtDiscoveryService {
 
         let inflight_count = self.inflight_discoveries.len();
 
-        // Take this opportunity to clear cancelled discovery requests (e.g if the caller has timed out the request)
-        self.inflight_discoveries = self
-            .inflight_discoveries
-            .drain()
-            .filter(|(_, state)| !state.reply_tx.is_closed())
-            .collect();
+        // Take this opportunity to clear expired and orphaned cancelled discovery requests
+        self.prune_stale_discoveries();
 
         trace!(
             target: LOG_TARGET,
             "{} inflight request(s) cleared",
             inflight_count.saturating_sub(self.inflight_discoveries.len())
         );
+
+        if reply_tx.is_closed() &&
+            (!self.has_live_request_for(&dest_pubkey) || self.inflight_discoveries.len() >= MAX_INFLIGHT_DISCOVERIES)
+        {
+            trace!(
+                target: LOG_TARGET,
+                "Skipping inflight registration for cancelled discovery request to '{dest_pubkey}'"
+            );
+            return Ok(());
+        }
+
+        if self.inflight_discoveries.len() >= MAX_INFLIGHT_DISCOVERIES {
+            self.evict_oldest_inflight_discovery();
+        }
 
         // Add the new inflight request.
         self.inflight_discoveries
@@ -381,8 +481,6 @@ impl DhtDiscoveryService {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
-
     use tari_shutdown::Shutdown;
 
     use super::*;
@@ -434,7 +532,7 @@ mod test {
     }
 
     /// A response that matches a pending request's nonce but carries another key bans the responder, not the peer
-    /// that was asked for.
+    /// that was asked for, and preserves the pending discovery so the real peer can still resolve it.
     #[tokio::test]
     async fn a_mismatched_response_bans_the_responder() {
         let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
@@ -442,7 +540,7 @@ mod test {
         let (dht_tx, mut dht_rx) = mpsc::unbounded_channel();
         let shutdown = Shutdown::new();
         let mut service = DhtDiscoveryService::new(
-            Default::default(),
+            Arc::new(DhtConfig::default_local_test()),
             make_node_identity(),
             build_peer_manager(),
             DhtRequester::new(dht_tx),
@@ -453,7 +551,7 @@ mod test {
 
         let requested = make_node_identity();
         let responder = make_node_identity();
-        let (reply_tx, _reply_rx) = oneshot::channel();
+        let (reply_tx, mut reply_rx) = oneshot::channel();
         service.inflight_discoveries.insert(
             123,
             DiscoveryRequestState::new(Box::new(requested.public_key().clone()), reply_tx),
@@ -470,15 +568,20 @@ mod test {
             request => panic!("unexpected request {request}"),
         }
         assert!(dht_rx.try_recv().is_err());
+        assert_eq!(service.inflight_discoveries.contains_key(&123), true);
+        assert!(matches!(reply_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+
+        service
+            .handle_discovery_response(discovery_response_from(&requested, 123))
+            .await
+            .unwrap();
+        assert_eq!(reply_rx.await.unwrap().unwrap().public_key, *requested.public_key());
+        assert_eq!(service.inflight_discoveries.is_empty(), true);
     }
 
-    fn service_with_two_requests_for(
-        peer: &NodeIdentity,
-    ) -> (
-        DhtDiscoveryService,
-        oneshot::Receiver<Result<Peer, DhtDiscoveryError>>,
-        oneshot::Receiver<Result<Peer, DhtDiscoveryError>>,
-    ) {
+    type DiscoveryReplyRx = oneshot::Receiver<Result<Peer, DhtDiscoveryError>>;
+
+    fn service_with_two_requests_for(peer: &NodeIdentity) -> (DhtDiscoveryService, DiscoveryReplyRx, DiscoveryReplyRx) {
         let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
         let (_sender, receiver) = mpsc::channel(10);
         let (dht, _mock) = create_dht_actor_mock();
@@ -538,5 +641,229 @@ mod test {
 
         assert_eq!(first_rx.await.unwrap().unwrap().public_key, *peer.public_key());
         assert_eq!(second_rx.await.unwrap().unwrap().public_key, *peer.public_key());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn expired_discovery_response_is_ignored_without_updating_peer_manager() {
+        let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let peer_manager = build_peer_manager();
+        let mut config = DhtConfig::default_local_test();
+        config.discovery_request_timeout = Duration::from_secs(5);
+
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(config),
+            make_node_identity(),
+            peer_manager.clone(),
+            dht,
+            outbound_requester,
+            receiver,
+            Shutdown::new().to_signal(),
+        );
+
+        let peer = make_node_identity();
+        let (reply_tx, reply_rx) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            42,
+            DiscoveryRequestState::new(Box::new(peer.public_key().clone()), reply_tx),
+        );
+
+        time::advance(Duration::from_millis(5_001)).await;
+
+        service
+            .handle_discovery_response(discovery_response_from(&peer, 42))
+            .await
+            .unwrap();
+
+        assert!(reply_rx.await.is_err());
+        assert_eq!(service.inflight_discoveries.is_empty(), true);
+        assert_eq!(peer_manager.exists(peer.public_key()).await.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn cancelled_sole_discovery_is_pruned_and_late_response_does_not_add_peer() {
+        let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let peer_manager = build_peer_manager();
+
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(DhtConfig::default_local_test()),
+            make_node_identity(),
+            peer_manager.clone(),
+            dht,
+            outbound_requester,
+            receiver,
+            Shutdown::new().to_signal(),
+        );
+
+        let peer = make_node_identity();
+        let (reply_tx, reply_rx) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            77,
+            DiscoveryRequestState::new(Box::new(peer.public_key().clone()), reply_tx),
+        );
+        drop(reply_rx);
+
+        service
+            .handle_discovery_response(discovery_response_from(&peer, 77))
+            .await
+            .unwrap();
+
+        assert_eq!(service.inflight_discoveries.is_empty(), true);
+        assert_eq!(peer_manager.exists(peer.public_key()).await.unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn initiate_discovery_skips_registration_when_sole_requester_already_cancelled() {
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        let oms_mock_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
+
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(DhtConfig::default_local_test()),
+            make_node_identity(),
+            build_peer_manager(),
+            dht,
+            outbound_requester,
+            receiver,
+            Shutdown::new().to_signal(),
+        );
+
+        let peer = make_node_identity();
+        let (reply_tx, reply_rx) = oneshot::channel();
+        drop(reply_rx);
+
+        let dest_pk = Box::new(peer.public_key().clone());
+        service
+            .initiate_peer_discovery(dest_pk.clone(), NodeDestination::PublicKey(dest_pk), reply_tx)
+            .await
+            .unwrap();
+
+        oms_mock_state.wait_call_count(1, Duration::from_secs(5)).await.unwrap();
+        assert_eq!(service.inflight_discoveries.is_empty(), true);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_run_loop_prunes_expired_inflight_discoveries() {
+        let (outbound_requester, _outbound_mock) = create_outbound_service_mock();
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let shutdown = Shutdown::new();
+        let mut config = DhtConfig::default_local_test();
+        config.discovery_request_timeout = Duration::from_secs(2);
+
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(config),
+            make_node_identity(),
+            build_peer_manager(),
+            dht,
+            outbound_requester,
+            receiver,
+            shutdown.to_signal(),
+        );
+
+        let peer = make_node_identity();
+        let (reply_tx, mut reply_rx) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            99,
+            DiscoveryRequestState::new(Box::new(peer.public_key().clone()), reply_tx),
+        );
+
+        let mut run_handle = task::spawn(service.run());
+        task::yield_now().await;
+        assert!(matches!(reply_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+
+        time::advance(Duration::from_secs(5)).await;
+        task::yield_now().await;
+
+        assert!(reply_rx.await.is_err());
+
+        shutdown.trigger();
+        (&mut run_handle).await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn inflight_discoveries_evicts_oldest_when_at_capacity() {
+        let (outbound_requester, outbound_mock) = create_outbound_service_mock();
+        task::spawn(outbound_mock.run());
+
+        let (_sender, receiver) = mpsc::channel(10);
+        let (dht, _mock) = create_dht_actor_mock();
+        let mut service = DhtDiscoveryService::new(
+            Arc::new(DhtConfig::default_local_test()),
+            make_node_identity(),
+            build_peer_manager(),
+            dht,
+            outbound_requester,
+            receiver,
+            Shutdown::new().to_signal(),
+        );
+
+        let oldest_peer = make_node_identity();
+        let (oldest_tx, oldest_rx) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            1,
+            DiscoveryRequestState::new(Box::new(oldest_peer.public_key().clone()), oldest_tx),
+        );
+
+        time::advance(Duration::from_millis(10)).await;
+
+        let filler_peer = make_node_identity();
+        let mut live_receivers = Vec::with_capacity(MAX_INFLIGHT_DISCOVERIES);
+        for i in 2..=MAX_INFLIGHT_DISCOVERIES {
+            let (tx, rx) = oneshot::channel();
+            service.inflight_discoveries.insert(
+                u64::try_from(i).unwrap(),
+                DiscoveryRequestState::new(Box::new(filler_peer.public_key().clone()), tx),
+            );
+            live_receivers.push(rx);
+        }
+        assert_eq!(service.inflight_discoveries.len(), MAX_INFLIGHT_DISCOVERIES);
+
+        time::advance(Duration::from_millis(10)).await;
+
+        let newest_peer = make_node_identity();
+        let newest_pk = Box::new(newest_peer.public_key().clone());
+        let (newest_tx, mut newest_rx) = oneshot::channel();
+        service
+            .initiate_peer_discovery(newest_pk.clone(), NodeDestination::PublicKey(newest_pk), newest_tx)
+            .await
+            .unwrap();
+
+        assert_eq!(service.inflight_discoveries.len(), MAX_INFLIGHT_DISCOVERIES);
+        assert_eq!(service.inflight_discoveries.contains_key(&1), false);
+        assert!(oldest_rx.await.is_err());
+        assert!(matches!(newest_rx.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+        drop(live_receivers);
+    }
+
+    #[tokio::test]
+    async fn resolving_one_peer_preserves_other_peer_cancelled_sibling() {
+        let peer_a = make_node_identity();
+        let peer_b = make_node_identity();
+        let (mut service, peer_b_cancelled_rx, peer_b_live_rx) = service_with_two_requests_for(&peer_b);
+        drop(peer_b_cancelled_rx);
+
+        let (peer_a_tx, peer_a_rx) = oneshot::channel();
+        service.inflight_discoveries.insert(
+            10,
+            DiscoveryRequestState::new(Box::new(peer_a.public_key().clone()), peer_a_tx),
+        );
+
+        service
+            .handle_discovery_response(discovery_response_from(&peer_a, 10))
+            .await
+            .unwrap();
+        assert_eq!(peer_a_rx.await.unwrap().unwrap().public_key, *peer_a.public_key());
+
+        service
+            .handle_discovery_response(discovery_response_from(&peer_b, 1))
+            .await
+            .unwrap();
+        assert_eq!(peer_b_live_rx.await.unwrap().unwrap().public_key, *peer_b.public_key());
     }
 }
