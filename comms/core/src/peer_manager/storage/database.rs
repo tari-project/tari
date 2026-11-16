@@ -513,6 +513,14 @@ impl PeerDatabaseSql {
 
     /// Add a new peer or update an existing peer with its associated multi-addresses
     pub fn add_or_update_peer(&self, peer: Peer) -> Result<PeerId, StorageError> {
+        if peer.node_id == self.this_peer_identity.node_id || peer.public_key == self.this_peer_identity.public_key {
+            trace!(
+                target: LOG_TARGET,
+                "Ignoring attempt to store own node identity '{}' in peer database",
+                peer.node_id
+            );
+            return Ok(PeerId::default());
+        }
         let mut conn = self.connection.get_pooled_connection()?;
         conn.immediate_transaction::<_, StorageError, _>(|conn| {
             let node_id = peer.node_id.clone();
@@ -4580,5 +4588,23 @@ mod tests {
             )
             .unwrap();
         assert_eq!(candidates.len(), 22);
+    }
+
+    #[test]
+    fn add_or_update_peer_ignores_this_peer_identity() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let this_peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+        let peers_db = PeerDatabaseSql::new(db_connection, &this_peer).unwrap();
+
+        let id = peers_db.add_or_update_peer(this_peer.clone()).unwrap();
+        assert_eq!(id, 0);
+        assert_eq!(peers_db.size(), 0);
+        assert!(
+            peers_db
+                .peer_exists_by_public_key(&this_peer.public_key)
+                .unwrap()
+                .is_none()
+        );
+        assert!(peers_db.peer_exists_by_node_id(&this_peer.node_id).unwrap().is_none());
     }
 }

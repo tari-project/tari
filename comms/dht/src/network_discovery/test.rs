@@ -1648,4 +1648,62 @@ mod rebootstrap {
         assert!(on_connect.is_recently_synced(&other, now + ttl));
         assert_eq!(on_connect.prev_synced.len(), 1);
     }
+
+    #[tokio::test]
+    async fn on_connect_sync_ignores_relayed_own_node_identity() {
+        let (mut context, _mock, mut events) = context(None);
+        let own_identity = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/23.23.23.23/tcp/18189".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        let third_party_identity = Arc::new(NodeIdentity::random(
+            &mut rand::rng(),
+            "/ip4/23.23.23.24/tcp/18189".parse().unwrap(),
+            PeerFeatures::COMMUNICATION_NODE,
+        ));
+        context.node_identity = own_identity.clone();
+        context.peer_manager = crate::test_utils::build_peer_manager_with_node_identity(&own_identity);
+        context.config = Arc::new(DhtConfig::default());
+
+        let relayed_own_peer_info: PeerInfo =
+            UnvalidatedPeerInfo::from_peer_limited_claims(own_identity.to_peer(), 5, 5).into();
+        let third_party_peer_info: PeerInfo =
+            UnvalidatedPeerInfo::from_peer_limited_claims(third_party_identity.to_peer(), 5, 5).into();
+        let (_server, conn) = peers_server(vec![relayed_own_peer_info, third_party_peer_info], false).await;
+        let mut on_connect = OnConnect::new(context.clone());
+
+        on_connect.sync_from(conn).await;
+
+        assert!(!context.peer_manager.exists(own_identity.public_key()).await.unwrap());
+        assert!(
+            context
+                .peer_manager
+                .exists(third_party_identity.public_key())
+                .await
+                .unwrap()
+        );
+        assert_eq!(context.peer_manager.count().await, 1);
+
+        let random_selected = context.peer_manager.random_peers(2, &[], None, false).await.unwrap();
+        assert!(!random_selected.iter().any(|p| &p.node_id == own_identity.node_id()));
+
+        let dial_candidates = context
+            .peer_manager
+            .get_available_dial_candidates(
+                &[],
+                Some(10),
+                false,
+                false,
+                &std::collections::HashMap::new(),
+                chrono::Utc::now().naive_utc(),
+            )
+            .await
+            .unwrap();
+        assert!(!dial_candidates.iter().any(|p| &p.node_id == own_identity.node_id()));
+
+        let event = events.try_recv().unwrap();
+        unpack_enum!(DhtEvent::NetworkDiscoveryPeersAdded(info) = &*event);
+        assert_eq!(info.num_new_peers, 1);
+    }
 }
