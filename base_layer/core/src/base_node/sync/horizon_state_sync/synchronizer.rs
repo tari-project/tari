@@ -599,6 +599,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         // A failure honest peers can cause is not banned, unless the peer first kept us waiting for over 90% of its
         // budget
+        // Decided on the error itself: a slow peer's data error does not keep the outputs
+        let keep_synced_outputs = err.keeps_synced_outputs();
         let budget = self.peer_wait_budget(self.attempt_allowance, self.attempt_bytes);
         if start_height == 1 &&
             err.is_unblamed_peer_failure() &&
@@ -611,7 +613,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         }
         // Undo everything above the checkpoint if the outputs up to it are kept, otherwise everything
         let clean_up = match self.db.fetch_horizon_sync_output_checkpoint().await? {
-            Some(checkpoint) if err.keeps_synced_outputs() => {
+            Some(checkpoint) if keep_synced_outputs => {
                 self.clean_up_stale_synced_outputs(checkpoint.checkpoint_height.saturating_add(1))
                     .await
             },
@@ -3046,9 +3048,9 @@ mod tests {
     }
 
     /// Syncs from height 1 where tranche 3 first resends the coinbase tranche 2 already sent, after the peer kept us
-    /// waiting for `percent` of the budget at that point
+    /// waiting for `percent` of the budget at that point. Returns the error and the syncing node.
     #[allow(clippy::arithmetic_side_effects)]
-    async fn stored_output_resent_after_waiting(percent: u32) -> HorizonSyncError {
+    async fn stored_output_resent_after_waiting(percent: u32) -> (HorizonSyncError, BlockchainDatabase<TempDatabase>) {
         let (chain, db) = duplicate_output_sync_setup();
         let target = chain.get_block_and_smt_by_name("4").unwrap().header().clone();
         let coinbase = block_one_coinbase(&chain);
@@ -3081,23 +3083,34 @@ mod tests {
                 Ok(())
             }),
         );
-        sync.sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut source, &target)
             .await
-            .unwrap_err()
+            .unwrap_err();
+        (err, db)
     }
 
     /// Any failure an honest peer can cause is short banned on an attempt from height 1 if the peer first used over
     /// 90% of its budget
     #[tokio::test]
     async fn slow_stored_output_resend_is_short_banned() {
-        let err = stored_output_resent_after_waiting(95).await;
+        let (err, _) = stored_output_resent_after_waiting(95).await;
         assert!(matches!(err, HorizonSyncError::SlowPeerFailure(_)), "{err}");
         assert_eq!(err.get_ban_reason().unwrap().ban_duration, BanPeriod::Short);
     }
 
+    /// A slow peer's resend of a stored output discards the earlier tranches, as the resend alone would
+    #[tokio::test]
+    async fn slow_stored_output_resend_resets_output_state() {
+        let (err, db) = stored_output_resent_after_waiting(95).await;
+        assert!(matches!(err, HorizonSyncError::SlowPeerFailure(_)), "{err}");
+        assert_eq!(checkpoint_height(&db), None);
+        assert!(db.output_state_is_genesis().unwrap());
+    }
+
     #[tokio::test]
     async fn moderately_slow_stored_output_resend_is_not_banned() {
-        let err = stored_output_resent_after_waiting(80).await;
+        let (err, _) = stored_output_resent_after_waiting(80).await;
         assert!(matches!(err, HorizonSyncError::OutputAlreadyStored(_)), "{err}");
         assert!(err.get_ban_reason().is_none());
     }
