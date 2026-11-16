@@ -93,6 +93,8 @@ const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 /// leave it untouched. It was rejected because one of its outputs does not open to its encrypted value, which no
 /// chain event can change.
 const STICKY_CANCELLATION: i32 = TxCancellationReason::InvalidEncryptedValue as i32;
+/// Key in `client_key_values` holding the base node peer the confirmed transaction state was last validated against.
+const LAST_VALIDATION_BASE_NODE_PEER_KEY: &str = "tms_last_validation_base_node_peer";
 
 /// `true` for a completed transaction row that must not be un-cancelled (see [`STICKY_CANCELLATION`]).
 fn is_sticky_cancellation(cancelled: Option<i32>) -> bool {
@@ -1197,6 +1199,49 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
 
         Ok(result)
+    }
+
+    fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let peer: Option<String> = schema::client_key_values::table
+            .filter(schema::client_key_values::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY))
+            .select(schema::client_key_values::value)
+            .first(&mut conn)
+            .optional()?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_last_validation_base_node_peer: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(peer)
+    }
+
+    fn set_last_validation_base_node_peer(&self, peer: &str) -> Result<(), TransactionStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        diesel::replace_into(schema::client_key_values::table)
+            .values((
+                schema::client_key_values::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY),
+                schema::client_key_values::value.eq(peer),
+            ))
+            .execute(&mut conn)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_last_validation_base_node_peer: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(())
     }
 
     // Exclude coinbases as they are validated from the OMS service, and we use these fields to know which tx to

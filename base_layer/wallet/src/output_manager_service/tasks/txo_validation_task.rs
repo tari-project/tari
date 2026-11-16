@@ -121,6 +121,8 @@ where
             "Starting TXO validation protocol with peer {} (Id: {})", base_node_peer, self.operation_id,
         );
 
+        self.revalidate_if_base_node_changed(&base_node_peer)?;
+
         let last_mined_header = self.check_for_reorgs(&mut base_node_client).await?;
 
         self.update_unconfirmed_outputs(&mut base_node_client).await?;
@@ -135,6 +137,35 @@ where
             "Finished TXO validation protocol from base node {} (Id: {})", base_node_peer, self.operation_id,
         );
         Ok(self.operation_id)
+    }
+
+    /// Confirmed state (mined/spent) learned from one base node must not outlive that node unchecked: when this round
+    /// runs against a different peer than the one the stored state came from, reset every output so the passes below
+    /// re-query all of them once — the same work `revalidate-all-outputs` does by hand. Normal rounds against the same
+    /// peer do nothing extra.
+    fn revalidate_if_base_node_changed(&self, base_node_peer: &str) -> Result<(), OutputManagerProtocolError> {
+        let stored_peer = self
+            .db
+            .get_last_validation_base_node_peer()
+            .for_protocol(self.operation_id)?;
+        if stored_peer.as_deref() == Some(base_node_peer) {
+            return Ok(());
+        }
+        if let Some(previous_peer) = &stored_peer {
+            warn!(
+                target: LOG_TARGET,
+                "Base node changed from '{previous_peer}' to '{base_node_peer}'; revalidating all outputs once \
+                 against the new base node (Operation ID: {})",
+                self.operation_id
+            );
+        }
+        self.db
+            .set_outputs_to_be_revalidated()
+            .for_protocol(self.operation_id)?;
+        self.db
+            .set_last_validation_base_node_peer(base_node_peer)
+            .for_protocol(self.operation_id)?;
+        Ok(())
     }
 
     async fn update_invalid_outputs(

@@ -206,6 +206,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
     ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 
     fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError>;
+    /// The base node peer (address) that the stored confirmed transaction state was last validated against, if any.
+    fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, TransactionStorageError>;
+    /// Record the base node peer (address) that the stored confirmed transaction state was last validated against.
+    fn set_last_validation_base_node_peer(&self, peer: &str) -> Result<(), TransactionStorageError>;
     fn insert_burn_proof(
         &self,
         output_hash: FixedHash,
@@ -429,6 +433,14 @@ where T: TransactionBackend + 'static
 
     pub fn get_last_scanned_height(&self) -> Result<Option<u64>, TransactionStorageError> {
         self.db.get_last_scanned_height()
+    }
+
+    pub fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, TransactionStorageError> {
+        self.db.get_last_validation_base_node_peer()
+    }
+
+    pub fn set_last_validation_base_node_peer(&self, peer: &str) -> Result<(), TransactionStorageError> {
+        self.db.set_last_validation_base_node_peer(peer)
     }
 
     pub fn get_pending_outbound_transaction(

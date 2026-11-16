@@ -66,7 +66,7 @@ use crate::{
             models::{DbWalletOutput, KnownOneSidedPaymentScript},
         },
     },
-    schema::{known_one_sided_payment_scripts, outputs, scanned_blocks},
+    schema::{client_key_values, known_one_sided_payment_scripts, outputs, scanned_blocks},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
 };
 
@@ -75,6 +75,8 @@ mod output_sql;
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 /// Maximum number of ids bound into a single `UPDATE ... WHERE id IN (...)` by `mark_outputs_invalid`
 const MARK_INVALID_CHUNK_SIZE: usize = 500;
+/// Key in `client_key_values` holding the base node peer the confirmed output state was last validated against.
+const LAST_VALIDATION_BASE_NODE_PEER_KEY: &str = "oms_last_validation_base_node_peer";
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -842,6 +844,49 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             );
         }
 
+        Ok(())
+    }
+
+    fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        let peer: Option<String> = client_key_values::table
+            .filter(client_key_values::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY))
+            .select(client_key_values::value)
+            .first(&mut conn)
+            .optional()?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - get_last_validation_base_node_peer: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
+        Ok(peer)
+    }
+
+    fn set_last_validation_base_node_peer(&self, peer: &str) -> Result<(), OutputManagerStorageError> {
+        let start = Instant::now();
+        let mut conn = self.database_connection.get_pooled_connection()?;
+        let acquire_lock = start.elapsed();
+        diesel::replace_into(client_key_values::table)
+            .values((
+                client_key_values::key.eq(LAST_VALIDATION_BASE_NODE_PEER_KEY),
+                client_key_values::value.eq(peer),
+            ))
+            .execute(&mut conn)?;
+        if start.elapsed().as_millis() > 0 {
+            trace!(
+                target: LOG_TARGET,
+                "sqlite profile - set_last_validation_base_node_peer: lock {} + db_op {} = {} ms",
+                acquire_lock.as_millis(),
+                start.elapsed().saturating_sub(acquire_lock).as_millis(),
+                start.elapsed().as_millis()
+            );
+        }
         Ok(())
     }
 

@@ -424,6 +424,25 @@ pub async fn test_output_manager_sqlite_db() {
 }
 
 #[tokio::test]
+pub async fn test_last_validation_base_node_peer_roundtrip() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection));
+
+    assert_eq!(db.get_last_validation_base_node_peer().unwrap(), None);
+    db.set_last_validation_base_node_peer("http://node-a:18103").unwrap();
+    assert_eq!(
+        db.get_last_validation_base_node_peer().unwrap().as_deref(),
+        Some("http://node-a:18103")
+    );
+    // A changed base node overwrites the stored peer
+    db.set_last_validation_base_node_peer("http://node-b:18103").unwrap();
+    assert_eq!(
+        db.get_last_validation_base_node_peer().unwrap().as_deref(),
+        Some("http://node-b:18103")
+    );
+}
+
+#[tokio::test]
 pub async fn test_count_outputs_in_ranges() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection);

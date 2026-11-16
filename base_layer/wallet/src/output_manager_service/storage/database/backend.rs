@@ -110,6 +110,10 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         commitments: Vec<CompressedCommitment>,
     ) -> Result<(), OutputManagerStorageError>;
     fn set_outputs_to_be_revalidated(&self) -> Result<(), OutputManagerStorageError>;
+    /// The base node peer (address) that the stored confirmed output state was last validated against, if any.
+    fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, OutputManagerStorageError>;
+    /// Record the base node peer (address) that the stored confirmed output state was last validated against.
+    fn set_last_validation_base_node_peer(&self, peer: &str) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' spent status
     fn mark_outputs_as_spent(&self, updates: Vec<SpentOutputInfoForBatch>) -> Result<(), OutputManagerStorageError>;
     /// Perform a batch update of the outputs' unspent status

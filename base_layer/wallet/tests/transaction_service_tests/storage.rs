@@ -438,6 +438,34 @@ pub async fn test_transaction_service_sqlite_db() {
 }
 
 #[tokio::test]
+async fn test_last_validation_base_node_peer_roundtrip() {
+    let db_name = format!("{}.sqlite3", random::string(8));
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{db_folder}/{db_name}");
+    let connection = run_migration_and_create_sqlite_connection(db_path, 16).unwrap();
+
+    let mut key = [0u8; size_of::<Key>()];
+    rand::rng().fill_bytes(&mut key);
+    let key_ga = Key::from_slice(&key);
+    let cipher = XChaCha20Poly1305::new(key_ga);
+    let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(connection, cipher));
+
+    assert_eq!(db.get_last_validation_base_node_peer().unwrap(), None);
+    db.set_last_validation_base_node_peer("http://node-a:18103").unwrap();
+    assert_eq!(
+        db.get_last_validation_base_node_peer().unwrap().as_deref(),
+        Some("http://node-a:18103")
+    );
+    // A changed base node overwrites the stored peer
+    db.set_last_validation_base_node_peer("http://node-b:18103").unwrap();
+    assert_eq!(
+        db.get_last_validation_base_node_peer().unwrap().as_deref(),
+        Some("http://node-b:18103")
+    );
+}
+
+#[tokio::test]
 async fn import_tx_and_read_it_from_db() {
     let db_name = format!("{}.sqlite3", random::string(8));
     let db_tempdir = tempdir().unwrap();

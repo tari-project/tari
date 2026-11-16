@@ -112,6 +112,9 @@ where
         }
         let base_node_wallet_client = self.connectivity.obtain_base_node_wallet_rpc_client().await;
 
+        let base_node_peer = base_node_wallet_client.get_address().await;
+        self.revalidate_if_base_node_changed(&base_node_peer).await?;
+
         self.check_for_reorgs(&base_node_wallet_client).await?;
         debug!(
             target: LOG_TARGET,
@@ -147,6 +150,38 @@ where
         }
         self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
         Ok(self.operation_id)
+    }
+
+    /// Confirmed state (mined locations) learned from one base node must not outlive that node unchecked: when this
+    /// round runs against a different peer than the one the stored state came from, reset every non-coinbase
+    /// transaction so `check_unconfirmed` re-queries all of them once — the same work `revalidate-all-transactions`
+    /// does by hand. Normal rounds against the same peer do nothing extra.
+    async fn revalidate_if_base_node_changed(
+        &self,
+        base_node_peer: &str,
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
+        let stored_peer = self
+            .db
+            .get_last_validation_base_node_peer()
+            .for_protocol(self.operation_id)?;
+        if stored_peer.as_deref() == Some(base_node_peer) {
+            return Ok(());
+        }
+        if let Some(previous_peer) = &stored_peer {
+            warn!(
+                target: LOG_TARGET,
+                "Base node changed from '{previous_peer}' to '{base_node_peer}'; revalidating all transactions once \
+                 against the new base node (Operation ID: {})",
+                self.operation_id
+            );
+        }
+        self.db
+            .mark_all_non_coinbases_transactions_as_unvalidated()
+            .for_protocol(self.operation_id)?;
+        self.db
+            .set_last_validation_base_node_peer(base_node_peer)
+            .for_protocol(self.operation_id)?;
+        Ok(())
     }
 
     async fn check_unconfirmed(

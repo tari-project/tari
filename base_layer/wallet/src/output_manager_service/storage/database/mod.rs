@@ -574,6 +574,14 @@ where T: OutputManagerBackend + 'static
         Ok(())
     }
 
+    pub fn get_last_validation_base_node_peer(&self) -> Result<Option<String>, OutputManagerStorageError> {
+        self.db.get_last_validation_base_node_peer()
+    }
+
+    pub fn set_last_validation_base_node_peer(&self, peer: &str) -> Result<(), OutputManagerStorageError> {
+        self.db.set_last_validation_base_node_peer(peer)
+    }
+
     pub fn update_last_validation_timestamps(
         &self,
         commitments: Vec<CompressedCommitment>,
