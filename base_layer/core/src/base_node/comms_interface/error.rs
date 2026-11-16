@@ -77,6 +77,8 @@ pub enum CommsInterfaceError {
     InvalidFullBlock { hash: FixedHash, details: String },
     #[error("Block {hash} is already known to be bad: {reason}")]
     KnownBadBlock { hash: String, reason: String },
+    #[error("Block {hash} has a timestamp beyond the future time limit on our clock")]
+    BlockBeyondFutureTimeLimit { hash: FixedHash },
     #[error("Block {hash} does not build on our tip and spends outputs we do not have: {details}")]
     UnknownSpentOutputs {
         hash: FixedHash,
@@ -136,6 +138,9 @@ impl CommsInterfaceError {
             CommsInterfaceError::BlockError(_) |
             // A relayed hash we hold as bad: the peer did not send us invalid data, and may not have been able to tell
             CommsInterfaceError::KnownBadBlock { .. } |
+            // The limit is measured from our own clock, so a peer whose clock is ahead of ours relays the block in
+            // good faith. The block is still refused.
+            CommsInterfaceError::BlockBeyondFutureTimeLimit { .. } |
             // A block on a chain we do not hold completely: honest peers relay such blocks across forks, so it says
             // nothing about the peer
             CommsInterfaceError::UnknownSpentOutputs {

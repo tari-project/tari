@@ -197,6 +197,20 @@ fn orphan_block_to_serve(block: Block, max_frame_length: usize) -> Block {
     }
 }
 
+/// The error that a block refused by chain storage is reported with.
+///
+/// The future time limit is measured from our own clock, and chain storage does not hold that verdict against the
+/// block (`classify_header_failure`). It is not held against the peer that relayed the block either: a peer whose
+/// clock is ahead of ours has accepted the block and passes it on in good faith. The block is refused all the same.
+fn refused_block_error(error: ChainStorageError, block_hash: BlockHash) -> CommsInterfaceError {
+    match error {
+        ChainStorageError::ValidationError {
+            source: ValidationError::BlockHeaderError(BlockHeaderValidationError::InvalidTimestampFutureTimeLimit),
+        } => CommsInterfaceError::BlockBeyondFutureTimeLimit { hash: block_hash },
+        error => error.into(),
+    }
+}
+
 /// Log the blocks that failed while `block` was added that its sender is not to blame for, and return the one that
 /// dropped `block` itself, if any (it is the one its sender is to blame for, if there is one). A held block that failed
 /// on its own account says nothing about who sent `block`, so it is only logged. It is already dropped, and recorded as
@@ -1484,7 +1498,7 @@ where B: BlockchainBackend + 'static
                 ChainStorageError::HeldBlockInvalid { .. }),
             ) => {
                 self.report_invalid_block(block, source_peer, &e);
-                Err(e.into())
+                Err(refused_block_error(e, block_hash))
             },
 
             Err(e @ ChainStorageError::AddBlockOperationLocked) => {
@@ -2797,6 +2811,89 @@ mod test {
         ));
         // No event, so the mempool is left untouched (no eviction and re-validation)
         assert!(block_events.try_recv().is_err());
+    }
+
+    /// A relayed block whose timestamp is beyond the future time limit on our clock is refused, and neither the block
+    /// nor the peer that relayed it is held to it: the same block is within the limit on a clock that is ahead of ours
+    #[tokio::test]
+    async fn a_relayed_block_beyond_the_future_time_limit_is_refused_without_a_ban() {
+        use tari_comms::test_utils::mocks::create_connectivity_mock;
+        use tari_service_framework::reply_channel;
+        use tokio::sync::{broadcast, mpsc};
+
+        use crate::{
+            base_node::comms_interface::OutboundNodeCommsInterface,
+            chain_storage::Validators,
+            mempool::MempoolConfig,
+            proof_of_work::randomx_factory::RandomXFactory,
+            test_helpers::{
+                BlockSpec,
+                blockchain::{create_chained_blocks, create_store_with_consensus_and_validators},
+                create_consensus_rules,
+            },
+            validation::{DifficultyCalculator, header::HeaderFullValidator, mocks::MockValidator},
+        };
+
+        // The real header validator, so that the future time limit is checked
+        let rules = create_consensus_rules();
+        let validators = Validators::new(
+            MockValidator::new(true),
+            HeaderFullValidator::new(
+                rules.clone(),
+                DifficultyCalculator::new(rules.clone(), Default::default()),
+            ),
+            MockValidator::new(true),
+        );
+        let db = create_store_with_consensus_and_validators(rules.clone(), validators);
+        let genesis = db
+            .fetch_block(0, true)
+            .unwrap()
+            .try_into_chain_block()
+            .map(Arc::new)
+            .unwrap();
+        // A hundred years after the genesis block
+        let far_future: u64 = 100 * 365 * 24 * 60 * 60;
+        let (_, blocks) = create_chained_blocks(
+            &db,
+            vec![
+                BlockSpec::builder()
+                    .with_name("1->GB")
+                    .with_block_time(far_future)
+                    .finish(),
+            ],
+            genesis,
+        );
+        let block = blocks.get("1").unwrap().block().clone();
+        let block_hash = block.hash();
+
+        let mempool = Mempool::new(
+            MempoolConfig::default(),
+            rules.clone(),
+            Box::new(MockValidator::new(true)),
+        );
+        let (block_event_sender, _block_events) = broadcast::channel(50);
+        let (request_sender, _) = reply_channel::unbounded();
+        let (block_sender, _) = mpsc::unbounded_channel();
+        let (connectivity, _) = create_connectivity_mock();
+        let mut handlers = InboundNodeCommsHandlers::new(
+            block_event_sender,
+            db.clone().into(),
+            mempool,
+            rules,
+            OutboundNodeCommsInterface::new(request_sender, block_sender),
+            connectivity,
+            RandomXFactory::new(1),
+        );
+
+        let err = handlers.handle_block(block, Some(NodeId::default())).await.unwrap_err();
+        assert!(
+            matches!(err, CommsInterfaceError::BlockBeyondFutureTimeLimit { hash } if hash == block_hash),
+            "{err:?}"
+        );
+        assert!(err.get_ban_reason().is_none(), "{err:?}");
+        // Refused, and not recorded as bad: it can be added once its timestamp is within the limit
+        assert_eq!(db.get_height().unwrap(), 0);
+        assert!(!db.bad_block_exists(block_hash).unwrap().0);
     }
 
     #[tokio::test]
