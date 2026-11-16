@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod client;
+pub(super) use client::read_cookie_file_hex;
 pub use client::{Authentication, TorControlPortClient};
 
 mod error;

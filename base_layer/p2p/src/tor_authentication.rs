@@ -20,12 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, fmt, fmt::Formatter, fs, io::Error, str::FromStr};
+use std::{
+    convert::TryFrom,
+    fmt,
+    fmt::Formatter,
+    fs,
+    io::{Error, ErrorKind},
+    path::PathBuf,
+    str::FromStr,
+};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use tari_comms::tor;
-use tari_utilities::hex::Hex;
 
 const DEFAULT_TOR_COOKIE_PATH: &str = "/run/tor/control.authcookie";
 
@@ -41,7 +48,7 @@ pub enum TorControlAuthentication {
     Auto,
     None,
     Password(String),
-    /// Cookie authentication. The contents of the cookie file encoded as hex
+    /// Cookie authentication using either hex-encoded cookie bytes or a cookie file path
     Cookie(TorCookie),
 }
 
@@ -58,8 +65,14 @@ impl TorControlAuthentication {
             TorControlAuthentication::Cookie(cookie) => match cookie {
                 TorCookie::Hex(hex) => Ok(tor::Authentication::Cookie(hex)),
                 TorCookie::FilePath(path) => {
-                    let data = fs::read(path)?.to_hex();
-                    Ok(tor::Authentication::Cookie(data))
+                    let data = fs::read(&path)?;
+                    if data.is_empty() {
+                        return Err(Error::new(
+                            ErrorKind::UnexpectedEof,
+                            "tor control auth cookie file is empty",
+                        ));
+                    }
+                    Ok(tor::Authentication::CookieFile(PathBuf::from(path)))
                 },
             },
         }
@@ -184,5 +197,41 @@ mod tests {
         TorControlAuthentication::from_str("").unwrap_err();
         TorControlAuthentication::from_str("not_valid").unwrap_err();
         TorControlAuthentication::from_str("cookie abcd").unwrap_err();
+    }
+
+    #[test]
+    fn make_tor_auth_cookie_file_preserves_path_and_validates_readability() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cookie_path = temp_dir.path().join("control_auth_cookie");
+        fs::write(&cookie_path, [0xaa; 32]).unwrap();
+
+        let parsed = TorControlAuthentication::from_str(&format!("cookie=@{}", cookie_path.display())).unwrap();
+        let tor_auth = parsed.make_tor_auth().unwrap();
+        assert_eq!(tor_auth, tor::Authentication::CookieFile(cookie_path.clone()));
+
+        let hex_auth = TorControlAuthentication::from_str("cookie=8b6f")
+            .unwrap()
+            .make_tor_auth()
+            .unwrap();
+        assert_eq!(hex_auth, tor::Authentication::Cookie("8b6f".to_string()));
+
+        // Empty cookie file fails fast at initialization.
+        fs::write(&cookie_path, []).unwrap();
+        let empty_err = TorControlAuthentication::Cookie(TorCookie::FilePath(cookie_path.to_string_lossy().into()))
+            .make_tor_auth()
+            .unwrap_err();
+        assert_eq!(empty_err.kind(), ErrorKind::UnexpectedEof);
+
+        // Missing cookie file fails fast and maps to ExitCode::TorAuthUnreadableCookie via TorTransportConfig.
+        let missing_path = temp_dir.path().join("missing_cookie");
+        let cfg = crate::transport::TorTransportConfig {
+            control_auth: TorControlAuthentication::Cookie(TorCookie::FilePath(missing_path.to_string_lossy().into())),
+            ..Default::default()
+        };
+        let init_err = cfg.to_control_auth().unwrap_err();
+        assert!(matches!(
+            init_err.to_exit_error().exit_code,
+            tari_common::exit_codes::ExitCode::TorAuthUnreadableCookie
+        ));
     }
 }
