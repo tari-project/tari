@@ -173,6 +173,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(reset_output_state_to_genesis() -> (), "reset_output_state_to_genesis");
 
+    make_async_fn!(delete_block_data_above_block_tip() -> (), "delete_block_data_above_block_tip");
+
     make_async_fn!(
         verify_horizon_sync_output_root(expected_root: HashOutput) -> (),
         "verify_horizon_sync_output_root"

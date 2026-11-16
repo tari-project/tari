@@ -125,15 +125,19 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
     }
 
     pub async fn synchronize(&mut self) -> Result<(), BlockSyncError> {
-        // A failed horizon sync can leave output state that the blocks from genesis would be added on top of
-        if self.db.get_chain_metadata().await?.best_block_height() == 0 && !self.db.output_state_is_genesis().await? {
-            warn!(target: LOG_TARGET, "Resetting output state left by horizon sync before syncing blocks from genesis");
-            self.db
-                .write_transaction()
-                .clear_horizon_sync_output_checkpoint()
-                .commit()
-                .await?;
-            self.db.reset_output_state_to_genesis().await?;
+        // A failed horizon sync can leave output state, and kernels with their block data, that the blocks from
+        // genesis would be added on top of
+        if self.db.get_chain_metadata().await?.best_block_height() == 0 {
+            if !self.db.output_state_is_genesis().await? {
+                warn!(target: LOG_TARGET, "Resetting output state left by horizon sync before syncing blocks from genesis");
+                self.db
+                    .write_transaction()
+                    .clear_horizon_sync_output_checkpoint()
+                    .commit()
+                    .await?;
+                self.db.reset_output_state_to_genesis().await?;
+            }
+            self.db.delete_block_data_above_block_tip().await?;
         }
 
         // Sync peers typically arrive here with a connection attached by header_sync (which

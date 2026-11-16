@@ -46,6 +46,7 @@ use crate::{
         SyncPeer,
         mock_sync_peer::{MockSyncPeer, banned_peers, connect_mock_peer, connect_mock_peer_as},
     },
+    blocks::UpdateBlockAccumulatedData,
     chain_storage::{BlockchainDatabase, DbTransaction, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
     test_helpers::{
         BlockSpecs,
@@ -415,45 +416,61 @@ async fn a_peer_with_a_stronger_claim_that_stops_below_our_header_tip_is_banned_
     );
 }
 
-/// Output state a failed horizon sync left under our headers is reset before block sync from genesis, which then
-/// adds the blocks those outputs are in
-#[tokio::test]
-async fn block_sync_from_genesis_resets_output_state_left_by_horizon_sync() {
-    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
-    let block_a = chain.get("A").unwrap();
+/// Stores `block`'s kernels, block data and outputs under its header, as a horizon sync that failed after its kernel
+/// sync and an output tranche leaves them
+fn store_horizon_sync_leftovers(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) {
     let mut txn = DbTransaction::new();
+    let kernels = block.block().body.kernels();
+    let first_position = block
+        .header()
+        .kernel_mmr_size
+        .saturating_sub(u64::try_from(kernels.len()).unwrap());
+    for (position, kernel) in (first_position..).zip(kernels) {
+        txn.insert_kernel(kernel.clone(), *block.hash(), position);
+    }
+    txn.update_block_accumulated_data(*block.hash(), UpdateBlockAccumulatedData::default());
     let mut updates = Vec::new();
-    for output in block_a.block().body.outputs() {
-        txn.insert_utxo(output.clone(), *block_a.hash(), block_a.height(), 0);
+    for output in block.block().body.outputs() {
+        txn.insert_utxo(output.clone(), *block.hash(), block.height(), 0);
         updates.push(HorizonStateTreeUpdate {
             key: FixedHash::try_from(output.commitment.as_bytes()).unwrap(),
-            value: Some(output.smt_hash(block_a.height())),
+            value: Some(output.smt_hash(block.height())),
             replaces_value: false,
         });
     }
     txn.apply_horizon_state_tree_updates(updates);
+    db.write(txn).unwrap();
+}
+
+/// What a failed horizon sync left under our headers is removed before block sync from genesis, which then adds the
+/// blocks it was left under
+#[tokio::test]
+async fn block_sync_from_genesis_removes_what_a_failed_horizon_sync_left() {
+    let (db, block_a, block_b) = two_headers_ahead_of_blocks();
+    store_horizon_sync_leftovers(&db, &block_a);
+    store_horizon_sync_leftovers(&db, &block_b);
+    let mut txn = DbTransaction::new();
     txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
         checkpoint_height: block_a.height(),
         checkpoint_hash: *block_a.hash(),
-        sync_target_height: block_a.height(),
-        sync_target_hash: *block_a.hash(),
+        sync_target_height: block_b.height(),
+        sync_target_hash: *block_b.hash(),
     });
     db.write(txn).unwrap();
-    assert!(!db.fetch_outputs_in_block(*block_a.hash()).unwrap().is_empty());
 
     let (connectivity, connectivity_mock) = create_connectivity_mock();
     let connectivity_mock = connectivity_mock.spawn();
     let mut serving = MockSyncPeer::new(&db, None);
-    serving.blocks_to_serve = vec![block_a.block().clone()];
-    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block_a)).await;
+    serving.blocks_to_serve = vec![block_a.block().clone(), block_b.block().clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(&block_b)).await;
 
     sync_blocks(&db, connectivity, BlockchainSyncConfig::default(), vec![peer])
         .await
         .unwrap();
 
-    assert_eq!(db.get_height().unwrap(), 1);
+    assert_eq!(db.get_height().unwrap(), 2);
     assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
-    db.verify_horizon_sync_output_root(block_a.header().output_mr).unwrap();
+    db.verify_horizon_sync_output_root(block_b.header().output_mr).unwrap();
 }
 
 #[test]

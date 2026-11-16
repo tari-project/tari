@@ -2441,6 +2441,7 @@ mod rewind_headers_above_the_block_tip {
     use super::*;
     use crate::{
         block_specs,
+        blocks::UpdateBlockAccumulatedData,
         chain_storage::{DbTransaction, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
         test_helpers::blockchain::create_main_chain,
     };
@@ -2561,5 +2562,43 @@ mod rewind_headers_above_the_block_tip {
         }
         db.verify_horizon_sync_output_root(blocks[0].header().output_mr)
             .unwrap();
+    }
+
+    #[test]
+    fn deleting_block_data_above_the_block_tip_keeps_the_headers() {
+        let (db, blocks) = headers_with_synced_outputs(&[]);
+        // Kernel sync stores each block's kernels with its block data
+        let mut txn = DbTransaction::new();
+        for block in &blocks[..3] {
+            let kernels = block.block().body.kernels();
+            let first_position = block
+                .header()
+                .kernel_mmr_size
+                .saturating_sub(u64::try_from(kernels.len()).unwrap());
+            for (position, kernel) in (first_position..).zip(kernels) {
+                txn.insert_kernel(kernel.clone(), *block.hash(), position);
+            }
+            txn.update_block_accumulated_data(*block.hash(), UpdateBlockAccumulatedData::default());
+        }
+        db.write(txn).unwrap();
+
+        db.delete_block_data_above_block_tip().unwrap();
+
+        assert_eq!(db.fetch_last_header().unwrap().height, 5);
+        for block in &blocks {
+            assert!(db.fetch_kernels_in_block(*block.hash()).unwrap().is_empty());
+            assert!(db.fetch_block_accumulated_data_by_height(block.height()).is_err());
+        }
+        // The first block can be added on the genesis block
+        let block = blocks[0].clone();
+        let mut txn = DbTransaction::new();
+        txn.insert_tip_block_body(block.clone()).set_best_block(
+            block.height(),
+            *block.hash(),
+            block.accumulated_data().total_accumulated_difficulty,
+            block.header().prev_hash,
+            block.header().timestamp.as_u64(),
+        );
+        db.write(txn).unwrap();
     }
 }

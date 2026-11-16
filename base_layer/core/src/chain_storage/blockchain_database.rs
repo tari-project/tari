@@ -171,7 +171,8 @@ const STRICT_REBUILD_THROTTLE_MS: u64 = 10;
 /// How many times the consistency check re-checks a height whose corruption does not hold under the rewind's write
 /// lock before it gives up on that height.
 const MAX_CONSISTENCY_RECHECKS: u32 = 3;
-/// About how many headers, outputs and kernels one write of a header rewind removes. Horizon sync commits batches of
+/// About how many headers, outputs and kernels one write of a header rewind, or of removing block data above the block
+/// tip, removes. Horizon sync commits batches of
 /// this many outputs, so a write this size is known to fit. Tests use a small size to rewind in several writes.
 const HEADER_REWIND_WRITE_SIZE: usize = if cfg!(test) { 4 } else { 10_000 };
 /// Configuration for the BlockchainDatabase.
@@ -2524,6 +2525,37 @@ where B: BlockchainBackend
         db.verify_horizon_sync_output_root(expected_root)
     }
 
+    /// Removes the kernels, inputs and block accumulated data that kernel sync stored for blocks above the block tip,
+    /// keeping their headers, so that the blocks can be added on the tip. Works from the top down in writes of about
+    /// `HEADER_REWIND_WRITE_SIZE` rows.
+    pub fn delete_block_data_above_block_tip(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+        // Kernel sync stores block data from the block after the tip up, and this removes it top down, so any left
+        // includes the block after the tip
+        if db
+            .fetch_block_accumulated_data_by_height(best_block_height.saturating_add(1))?
+            .is_none()
+        {
+            return Ok(());
+        }
+        let last_header_height = db.fetch_last_header()?.height;
+        let mut txn = DbTransaction::new();
+        let mut write_size = 0usize;
+        for height in (best_block_height.saturating_add(1)..=last_header_height).rev() {
+            let header = fetch_header(&*db, height)?;
+            write_size = write_size.saturating_add(queue_block_data_removal(&*db, &mut txn, &header)?);
+            if write_size >= HEADER_REWIND_WRITE_SIZE {
+                db.write(mem::take(&mut txn))?;
+                write_size = 0;
+            }
+        }
+        if !txn.operations().is_empty() {
+            db.write(txn)?;
+        }
+        Ok(())
+    }
+
     /// Whether the output tables and the output tree hold exactly what inserting the genesis block leaves
     pub fn output_state_is_genesis(&self) -> Result<bool, ChainStorageError> {
         let db = self.db_read_access()?;
@@ -3832,16 +3864,10 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
         if !outputs.is_empty() {
             txn.prune_synced_outputs(header_hash, &outputs);
         }
-        write_size = write_size.saturating_add(outputs.len()).saturating_add(1);
-        if db.fetch_block_accumulated_data_by_height(height)?.is_some() {
-            txn.delete_block_accumulated_data(height);
-            txn.delete_all_kernerls_in_block(header_hash);
-            txn.delete_all_inputs_in_block(header_hash);
-            let kernels = header
-                .kernel_mmr_size
-                .saturating_sub(fetch_header(db, height.saturating_sub(1))?.kernel_mmr_size);
-            write_size = write_size.saturating_add(usize::try_from(kernels).unwrap_or(usize::MAX));
-        }
+        write_size = write_size
+            .saturating_add(outputs.len())
+            .saturating_add(1)
+            .saturating_add(queue_block_data_removal(db, &mut txn, &header)?);
         txn.delete_header(height);
         // Each write removes whole heights from the top, so an interrupted rewind leaves a shorter consistent chain
         if write_size >= HEADER_REWIND_WRITE_SIZE {
@@ -3916,6 +3942,26 @@ fn rewind_or_reset_to_height<T: BlockchainBackend>(
     }
 
     Ok((removed_blocks, false))
+}
+
+/// Queues the removal of the kernels, inputs and block accumulated data stored for the block of `header` without its
+/// body, as kernel sync leaves them above the block tip. Returns about how many rows that removes.
+fn queue_block_data_removal<T: BlockchainBackend>(
+    db: &T,
+    txn: &mut DbTransaction,
+    header: &BlockHeader,
+) -> Result<usize, ChainStorageError> {
+    if db.fetch_block_accumulated_data_by_height(header.height)?.is_none() {
+        return Ok(0);
+    }
+    let header_hash = header.hash();
+    txn.delete_block_accumulated_data(header.height);
+    txn.delete_all_kernerls_in_block(header_hash);
+    txn.delete_all_inputs_in_block(header_hash);
+    let kernels = header
+        .kernel_mmr_size
+        .saturating_sub(fetch_header(db, header.height.saturating_sub(1))?.kernel_mmr_size);
+    Ok(usize::try_from(kernels).unwrap_or(usize::MAX).saturating_add(1))
 }
 
 /// Whether rewinding to `target_height` reaches below a pruned node's pruned height, which resets the chain to the
