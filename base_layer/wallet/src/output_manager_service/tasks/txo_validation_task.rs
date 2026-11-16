@@ -148,20 +148,19 @@ where
             .db
             .get_last_validation_base_node_peer()
             .for_protocol(self.operation_id)?;
-        if stored_peer.as_deref() == Some(base_node_peer) {
-            return Ok(());
+        if let Some(previous_peer) = stored_peer {
+            if previous_peer != base_node_peer {
+                warn!(
+                    target: LOG_TARGET,
+                    "Base node changed from '{previous_peer}' to '{base_node_peer}'; revalidating all outputs once \
+                     against the new base node (Operation ID: {})",
+                    self.operation_id
+                );
+                self.db
+                    .reset_outputs_for_base_node_change()
+                    .for_protocol(self.operation_id)?;
+            }
         }
-        if let Some(previous_peer) = &stored_peer {
-            warn!(
-                target: LOG_TARGET,
-                "Base node changed from '{previous_peer}' to '{base_node_peer}'; revalidating all outputs once \
-                 against the new base node (Operation ID: {})",
-                self.operation_id
-            );
-        }
-        self.db
-            .reset_outputs_for_base_node_change()
-            .for_protocol(self.operation_id)?;
         self.db
             .set_last_validation_base_node_peer(base_node_peer)
             .for_protocol(self.operation_id)?;
