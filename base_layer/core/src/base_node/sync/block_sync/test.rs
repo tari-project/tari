@@ -473,6 +473,35 @@ async fn block_sync_from_genesis_removes_what_a_failed_horizon_sync_left() {
     db.verify_horizon_sync_output_root(block_b.header().output_mr).unwrap();
 }
 
+/// A checkpoint whose tranches stored no outputs is cleared before block sync from genesis too
+#[tokio::test]
+async fn block_sync_from_genesis_clears_a_checkpoint_left_with_genesis_output_state() {
+    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
+    let block_a = chain.get("A").unwrap();
+    let mut txn = DbTransaction::new();
+    txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+        checkpoint_height: block_a.height(),
+        checkpoint_hash: *block_a.hash(),
+        sync_target_height: block_a.height(),
+        sync_target_hash: *block_a.hash(),
+    });
+    db.write(txn).unwrap();
+    assert!(db.output_state_is_genesis().unwrap());
+
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block_a.block().clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block_a)).await;
+
+    sync_blocks(&db, connectivity, BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 1);
+    assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
+}
+
 #[test]
 fn only_failures_the_peer_caused_are_recorded() {
     let busy = [

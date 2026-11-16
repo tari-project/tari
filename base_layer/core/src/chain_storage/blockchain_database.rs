@@ -2527,33 +2527,41 @@ where B: BlockchainBackend
 
     /// Removes the kernels, inputs and block accumulated data that kernel sync stored for blocks above the block tip,
     /// keeping their headers, so that the blocks can be added on the tip. Works from the top down in writes of about
-    /// `HEADER_REWIND_WRITE_SIZE` rows.
+    /// `HEADER_REWIND_WRITE_SIZE` rows, taking the write lock for each write only.
     pub fn delete_block_data_above_block_tip(&self) -> Result<(), ChainStorageError> {
-        let mut db = self.db_write_access()?;
-        let best_block_height = db.fetch_chain_metadata()?.best_block_height();
-        // Kernel sync stores block data from the block after the tip up, and this removes it top down, so any left
-        // includes the block after the tip
-        if db
-            .fetch_block_accumulated_data_by_height(best_block_height.saturating_add(1))?
-            .is_none()
-        {
-            return Ok(());
-        }
-        let last_header_height = db.fetch_last_header()?.height;
-        let mut txn = DbTransaction::new();
-        let mut write_size = 0usize;
-        for height in (best_block_height.saturating_add(1)..=last_header_height).rev() {
-            let header = fetch_header(&*db, height)?;
-            write_size = write_size.saturating_add(queue_block_data_removal(&*db, &mut txn, &header)?);
-            if write_size >= HEADER_REWIND_WRITE_SIZE {
-                db.write(mem::take(&mut txn))?;
-                write_size = 0;
+        let mut next_height = u64::MAX;
+        loop {
+            let mut db = self.db_write_access()?;
+            let best_block_height = db.fetch_chain_metadata()?.best_block_height();
+            // Kernel sync stores block data from the block after the tip up, and this removes it top down, so any left
+            // includes the block after the tip
+            if db
+                .fetch_block_accumulated_data_by_height(best_block_height.saturating_add(1))?
+                .is_none()
+            {
+                return Ok(());
             }
+            // The chain may have changed since the last write, so start again from the top if there is nothing left
+            // below where it stopped
+            let last_header_height = db.fetch_last_header()?.height;
+            let mut height = cmp::min(next_height, last_header_height);
+            if height <= best_block_height {
+                height = last_header_height;
+            }
+            let mut txn = DbTransaction::new();
+            let mut write_size = 0usize;
+            while height > best_block_height && write_size < HEADER_REWIND_WRITE_SIZE {
+                let header = fetch_header(&*db, height)?;
+                write_size = write_size
+                    .saturating_add(1)
+                    .saturating_add(queue_block_data_removal(&*db, &mut txn, &header)?);
+                height = height.saturating_sub(1);
+            }
+            if !txn.operations().is_empty() {
+                db.write(txn)?;
+            }
+            next_height = height;
         }
-        if !txn.operations().is_empty() {
-            db.write(txn)?;
-        }
-        Ok(())
     }
 
     /// Whether the output tables and the output tree hold exactly what inserting the genesis block leaves
