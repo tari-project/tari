@@ -2548,6 +2548,16 @@ where B: BlockchainBackend
             if height <= best_block_height {
                 height = last_header_height;
             }
+            // Block data above the tip with no header above it is never removed, so this would not get anywhere
+            if height <= best_block_height {
+                return Err(ChainStorageError::DataInconsistencyDetected {
+                    function: "delete_block_data_above_block_tip",
+                    details: format!(
+                        "Block data is stored at height {} above the block tip, which has no header",
+                        best_block_height.saturating_add(1)
+                    ),
+                });
+            }
             let mut txn = DbTransaction::new();
             let mut write_size = 0usize;
             while height > best_block_height && write_size < HEADER_REWIND_WRITE_SIZE {

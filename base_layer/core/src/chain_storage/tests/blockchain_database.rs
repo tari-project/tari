@@ -2601,4 +2601,24 @@ mod rewind_headers_above_the_block_tip {
         );
         db.write(txn).unwrap();
     }
+
+    #[test]
+    fn block_data_above_the_block_tip_without_a_header_is_an_error() {
+        let (db, blocks) = headers_with_synced_outputs(&[]);
+        let mut txn = DbTransaction::new();
+        txn.update_block_accumulated_data(*blocks[0].hash(), UpdateBlockAccumulatedData::default());
+        db.write(txn).unwrap();
+        let mut txn = DbTransaction::new();
+        for height in (2..=5).rev() {
+            txn.delete_header(height);
+        }
+        db.write(txn).unwrap();
+        // Only a damaged database loses the header of block data it holds
+        db.db_read_access().unwrap().delete_header_row_for_test(1);
+
+        assert!(matches!(
+            db.delete_block_data_above_block_tip(),
+            Err(ChainStorageError::DataInconsistencyDetected { .. })
+        ));
+    }
 }
