@@ -820,12 +820,11 @@ impl UnconfirmedPool {
             }
             let lowest_key = *lowest_key;
             // Only a descendant of the evicted transaction can be removed with it, so the eviction can only orphan
-            // `tx` if it is one of its ancestors. Unless the safe producer check or the ancestor walk shows it cannot,
-            // the bounded descendant walk decides. A walk over its budget is rejected: unlike the eviction, which
+            // `tx` if it is one of its ancestors. Unless the safe producer check shows it cannot, the bounded
+            // descendant walk decides. A walk over its budget is rejected: unlike the eviction, which
             // removes what it walks, a rejection can be repeated.
             let not_ancestor = prioritized_tx.dependent_output_hashes.is_empty() ||
-                self.has_safe_producers(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK) == Some(true) ||
-                self.has_pool_ancestor(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK) == Some(false);
+                self.has_safe_producers(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK) == Some(true);
             let evicted = if not_ancestor {
                 self.remove_transactions_and_descendants([lowest_key])?
             } else {
@@ -1313,45 +1312,6 @@ impl UnconfirmedPool {
             } else {
                 parent.next_producer = parent.next_producer.saturating_add(1);
             }
-        }
-    }
-
-    /// Whether the pool transaction `ancestor` produces an output `tx` spends, directly or through other pool
-    /// transactions. None if the inputs read and producers queued exceed `max_work`.
-    fn has_pool_ancestor(
-        &self,
-        tx: &PrioritizedTransaction,
-        ancestor: TransactionKey,
-        max_work: usize,
-    ) -> Option<bool> {
-        let mut to_visit = Vec::new();
-        let mut visited = HashSet::new();
-        let mut inputs = &tx.input_hashes;
-        let mut work = 0usize;
-        loop {
-            charge(&mut work, inputs.len(), max_work)?;
-            for hash in inputs {
-                if let Some(producers) = self.txs_by_output.get(hash) {
-                    charge(&mut work, producers.len(), max_work)?;
-                    to_visit.extend(producers);
-                }
-            }
-            let mut next = None;
-            while let Some(key) = to_visit.pop() {
-                if key == ancestor {
-                    return Some(true);
-                }
-                if visited.insert(key) &&
-                    let Some(parent) = self.tx_by_key.get(&key)
-                {
-                    next = Some(&parent.input_hashes);
-                    break;
-                }
-            }
-            let Some(next) = next else {
-                return Some(false);
-            };
-            inputs = next;
         }
     }
 
@@ -7714,7 +7674,7 @@ mod test {
             }
 
             #[test]
-            fn ancestor_and_descendant_walks_over_the_work_budget_are_rejected() {
+            fn a_safe_check_and_descendant_walk_over_the_work_budget_are_rejected() {
                 let base = base();
                 let lowest = synthetic_tx(&base, 0, 1);
                 let children = fanout(&base, &lowest, MAX_EVICTION_CHECK_WORK);
@@ -7729,13 +7689,14 @@ mod test {
             }
 
             #[test]
-            fn an_ancestor_walk_over_the_work_budget_falls_back_to_the_descendant_walk() {
+            fn a_safe_check_over_the_work_budget_falls_back_to_the_descendant_walk() {
                 let base = base();
                 let lowest = synthetic_tx(&base, 0, 1);
                 // The parent descends from the lowest priority transaction, so it is not a safe producer
                 let anchor = child_of(&base, &lowest, 1);
                 let parent = child_with_fee(&base, &anchor, 2, 50);
-                // A padded copy of the parent: the same outputs, with inputs that put both upward walks over budget
+                // A padded copy of the parent: the same outputs, with inputs that put the safe producer check over
+                // budget
                 let padded = Arc::new(Transaction::new(
                     distinct_inputs(&base.body.inputs()[0], MAX_EVICTION_CHECK_WORK + 1),
                     parent.body.outputs().clone(),
@@ -7809,7 +7770,8 @@ mod test {
                     Default::default(),
                 ));
                 let parent = child_with_fee(&base, &grandparent, 2, 50);
-                // The parent padded with a spend of the tip of a long chain, so the ancestor walk is over budget
+                // The parent padded with a spend of the tip of a long chain, which only a recursive safe check sees
+                // past
                 let attacker = long_chain(&base, 3);
                 let mut inputs = parent.body.inputs().clone();
                 inputs.extend(
