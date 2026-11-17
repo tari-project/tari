@@ -725,7 +725,7 @@ async fn validate_tip(
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use std::any::Any;
 
     use minotari_app_grpc::tari_rpc::{
