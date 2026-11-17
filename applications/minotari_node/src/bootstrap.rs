@@ -112,13 +112,24 @@ where B: BlockchainBackend + 'static
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = base_node_config.mempool.service.clone();
 
+        // Shared configs often list every node, this one included, which must not be stored as its own peer
+        let is_not_self = |peer: &Peer| {
+            let is_self = peer.public_key == *self.node_identity.public_key();
+            if is_self {
+                debug!(target: LOG_TARGET, "Ignoring this node [{peer}] in its configured sync/monitored peers");
+            }
+            !is_self
+        };
         let force_sync_peers = base_node_config
             .force_sync_peers
             .iter()
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+            .into_iter()
+            .filter(is_not_self)
+            .collect::<Vec<_>>();
         let force_sync_node_ids: Vec<NodeId> = force_sync_peers.clone().into_iter().map(|p| p.node_id).collect();
 
         let monitored_peers = base_node_config
@@ -127,7 +138,10 @@ where B: BlockchainBackend + 'static
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?
+            .into_iter()
+            .filter(is_not_self)
+            .collect::<Vec<_>>();
         let mut monitored_node_ids: Vec<NodeId> = monitored_peers.clone().into_iter().map(|p| p.node_id).collect();
         let mut total_monitored_ids = force_sync_node_ids.clone();
         total_monitored_ids.append(&mut monitored_node_ids);
