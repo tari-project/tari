@@ -731,7 +731,8 @@ mod test {
         let mut not_active_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
         let address = not_active_peer.addresses.best().unwrap();
         let mut address = MultiaddrWithStats::new(address.address().clone(), PeerAddressSource::Config);
-        address.mark_last_attempted(DateTime::from_timestamp(above_the_threshold, 0).PrimitiveDateTime::new(unwrap().date(), unwrap().time()));
+        let dt = OffsetDateTime::from_unix_timestamp(above_the_threshold).unwrap_or(OffsetDateTime::UNIX_EPOCH);
+        address.mark_last_attempted(PrimitiveDateTime::new(dt.date(), dt.time()));
         not_active_peer
             .addresses
             .merge(&MultiaddressesWithStats::from(vec![address]));

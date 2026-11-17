@@ -44,6 +44,7 @@ use crate::{
 pub struct IdentitySignature {
     version: u8,
     signature: CompressedSignature,
+    #[serde(with = "time::serde::rfc3339")]
     updated_at: OffsetDateTime,
 }
 

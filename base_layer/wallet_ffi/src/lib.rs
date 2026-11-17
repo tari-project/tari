@@ -342,7 +342,7 @@ impl From<DbWalletOutput> for TariUtxo {
             lock_height: x.wallet_output.features().maturity,
             mined_timestamp: x
                 .mined_timestamp
-                .map(|ts| ts.unix_timestamp_nanos() / 1_000_000 as u64)
+                .map(|ts| ts.(unix_timestamp_nanos() / 1_000_000) as u64)
                 .unwrap_or_default(),
             status: x.status.as_u8(),
             coinbase_extra: CString::new(x.wallet_output.features().coinbase_extra.to_hex())

@@ -519,7 +519,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let outputs = OutputSql::index_invalid(
-            &DateTime::<Utc>::from_timestamp(timestamp, 0).PrimitiveDateTime::new(unwrap().date(), unwrap().time()),
+            &{
+            let dt = OffsetDateTime::from_unix_timestamp(timestamp).unwrap_or(OffsetDateTime::UNIX_EPOCH);
+            PrimitiveDateTime::new(dt.date(), dt.time())
+        },
             &mut conn,
         )?;
 
@@ -1146,8 +1149,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             )
             .set((
                 outputs::status.eq(OutputStatus::CancelledInbound as i32),
-                outputs::last_validation_timestamp
-                    .eq(DateTime::from_timestamp(OffsetDateTime::now_utc().unix_timestamp(), 0).PrimitiveDateTime::new(unwrap().date(), unwrap().time())),
+                outputs::last_validation_timestamp.eq({
+                    let now = OffsetDateTime::now_utc();
+                    PrimitiveDateTime::new(now.date(), now.time())
+                }),
             ))
             .execute(conn)?;
 
@@ -1311,7 +1316,10 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         UpdateOutput {
                             status: Some(OutputStatus::CancelledInbound),
                             last_validation_timestamp: Some(Some(
-                                DateTime::from_timestamp(OffsetDateTime::now_utc().unix_timestamp(), 0).PrimitiveDateTime::new(unwrap().date(), unwrap().time()),
+                                {
+                                    let now = OffsetDateTime::now_utc();
+                                    PrimitiveDateTime::new(now.date(), now.time())
+                                },
                             )),
                             ..Default::default()
                         },

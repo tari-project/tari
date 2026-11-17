@@ -272,7 +272,7 @@ impl BlockHeader {
     }
 
     pub fn to_datetime(&self) -> OffsetDateTime {
-        DateTime::<Utc>::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
+        OffsetDateTime::from_unix_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX))
             .unwrap_or(OffsetDateTime::MAX)
     }
 

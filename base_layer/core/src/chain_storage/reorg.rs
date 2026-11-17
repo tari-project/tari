@@ -35,6 +35,7 @@ pub struct Reorg {
     pub prev_hash: HashOutput,
     pub num_blocks_added: u64,
     pub num_blocks_removed: u64,
+    #[serde(with = "time::serde::rfc3339")]
     pub local_time: OffsetDateTime,
 }
 
