@@ -1308,6 +1308,8 @@ fn validation_error_to_response(error: ValidationError) -> TxStorageResponse {
 /// Candidates with fewer kernels are taken first, so an aggregate padded with outputs of its own is used only for
 /// kernels nothing smaller covers; ties go to the unconfirmed pool, then to the lexicographically smallest sorted
 /// kernel signatures. Greedy, not an exact cover: a signature it misses only costs a peer fetch or the full block.
+/// Anyone who gets an aggregate of a pooled transaction and one of their own mined can trigger that full-block
+/// fallback on purpose, for the fee of mining it.
 pub fn select_disjoint_kernel_cover(
     unconfirmed: Vec<Arc<Transaction>>,
     reorg: Vec<Arc<Transaction>>,
@@ -1319,15 +1321,18 @@ pub fn select_disjoint_kernel_cover(
         .map(|tx| (tx, false))
         .chain(reorg.into_iter().map(|tx| (tx, true)))
         .filter_map(|(tx, from_reorg_pool)| {
-            let mut sigs = tx
-                .body
-                .kernels()
+            let kernels = tx.body.kernels();
+            if kernels.is_empty() ||
+                !kernels
+                    .iter()
+                    .all(|kernel| requested_set.contains(kernel.excess_sig.get_signature()))
+            {
+                return None;
+            }
+            let mut sigs = kernels
                 .iter()
                 .map(|kernel| kernel.excess_sig.get_signature().clone())
                 .collect::<Vec<_>>();
-            if sigs.is_empty() || !sigs.iter().all(|sig| requested_set.contains(sig)) {
-                return None;
-            }
             sigs.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
             Some((tx, from_reorg_pool, sigs))
         })
