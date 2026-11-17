@@ -105,6 +105,24 @@ It complements [SECURITY.md](../SECURITY.md), which describes how to report an i
 - **Where:** `applications/minotari_app_grpc`, `applications/minotari_node`, `applications/minotari_console_wallet`.
 - **Recorded:** 2026-11-17.
 
+### A-HTTP-01: The base node wallet query HTTP service is a public, unauthenticated service
+
+- **Assumption:** The base node's wallet query HTTP service exists so that wallets can query a base node over the
+  network. It is meant to be reachable by anyone, so it has no authentication and listens on all interfaces
+  (`0.0.0.0`) unless `listen_ip` is set under `[base_node.http_wallet_query_service]`. Whether the port is reachable
+  from outside the host is the operator's decision, made through `listen_ip`, firewall and router configuration.
+- **What that means:** Anyone who can reach the port can read what the service returns (tip and header data, UTXO
+  mined and spent status, transaction status, mempool fee statistics, burn output proofs) and can submit
+  transactions through `/json_rpc`. All of this is public chain data or something any peer can already do over the
+  peer-to-peer RPC interface, so unauthenticated access is not a privilege boundary. A node that is only reachable
+  over Tor does not expose this port. The default `external_address` (`http://127.0.0.1:<port>`) is only the URL
+  advertised to peers; it does not limit the bind address.
+- **Not covered:** A caller must not be able to crash the node, exhaust its memory, CPU or disk, get a transaction
+  into the mempool without full validation, or read anything that is not public chain or mempool data. Request
+  bodies, query parameters and response sizes must stay bounded.
+- **Where:** `applications/minotari_node` (`http`, `bootstrap.rs`, `config.rs`).
+- **Recorded:** 2026-11-17, issue #7998.
+
 ## Withdrawn entries
 
 None.
