@@ -136,9 +136,11 @@ mod tests {
             "eu.stratum.tari.co.uk"
         );
         assert_eq!(extract_tls_host("localhost:3333").unwrap(), "localhost");
+        assert_eq!(extract_tls_host("127.0.0.1:3333").unwrap(), "127.0.0.1");
         assert_eq!(extract_tls_host("[::1]:3333").unwrap(), "::1");
         assert!(extract_tls_host("pool.tari.com").is_err());
         assert!(extract_tls_host(":3333").is_err());
         assert!(extract_tls_host("pool.tari.com:").is_err());
+        assert!(extract_tls_host("[]:3333").is_err());
     }
 }

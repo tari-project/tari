@@ -668,10 +668,10 @@ async fn mining_cycle(
     Ok(block_submitted)
 }
 
-pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
-    let elapsed_secs = report.elapsed.as_secs_f64();
+fn calculate_hashrate(hashes: u64, elapsed: std::time::Duration) -> (f64, &'static str) {
+    let elapsed_secs = elapsed.as_secs_f64();
     let mut hashrate = if elapsed_secs > 0.0 {
-        report.hashes as f64 / elapsed_secs
+        hashes as f64 / elapsed_secs
     } else {
         0.0
     };
@@ -682,6 +682,11 @@ pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
         hashrate /= 1_000.0;
         "KH/s"
     };
+    (hashrate, display_string)
+}
+
+pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
+    let (hashrate, display_string) = calculate_hashrate(report.hashes, report.elapsed);
     info!(
         target: LOG_TARGET,
         "⛏ Miner {:0>2} reported {:.2}{} with total {:.2}{} over {} threads. Height: {}. Target: {})",
@@ -696,16 +701,11 @@ pub async fn display_report(report: &MiningReport, num_mining_threads: usize) {
     );
 }
 
-/// If config
-async fn validate_tip(
-    node_conn: &mut BaseNodeGrpcClient,
+fn check_tip_info(
+    tip: &minotari_app_grpc::tari_rpc::TipInfoResponse,
     height: u64,
     mine_until_height: Option<u64>,
 ) -> Result<(), MinerError> {
-    let tip = node_conn
-        .get_tip_info(minotari_app_grpc::tari_rpc::Empty {})
-        .await?
-        .into_inner();
     if !tip.initial_sync_achieved {
         return Err(MinerError::NodeNotReady);
     }
@@ -721,9 +721,24 @@ async fn validate_tip(
     Ok(())
 }
 
+/// If config
+async fn validate_tip(
+    node_conn: &mut BaseNodeGrpcClient,
+    height: u64,
+    mine_until_height: Option<u64>,
+) -> Result<(), MinerError> {
+    let tip = node_conn
+        .get_tip_info(minotari_app_grpc::tari_rpc::Empty {})
+        .await?
+        .into_inner();
+    check_tip_info(&tip, height, mine_until_height)
+}
+
 #[cfg(test)]
 mod test {
-    use std::any::Any;
+    use std::{any::Any, time::Duration};
+
+    use minotari_app_grpc::tari_rpc::{MetaData, TipInfoResponse};
 
     use super::*;
 
@@ -739,5 +754,71 @@ mod test {
     fn panic_message_falls_back_for_other_payloads() {
         let payload: Box<dyn Any + Send> = Box::new(42u32);
         assert_eq!(panic_message(payload.as_ref()), "panicked");
+    }
+
+    #[test]
+    fn calculate_hashrate_uses_fractional_seconds_and_handles_zero_duration() {
+        let (rate, unit) = calculate_hashrate(1_000, Duration::ZERO);
+        assert_eq!(rate, 0.0);
+        assert_eq!(unit, "KH/s");
+
+        let (rate, unit) = calculate_hashrate(500, Duration::from_millis(500));
+        assert!((rate - 1.0).abs() < 1e-9);
+        assert_eq!(unit, "KH/s");
+
+        let (rate, unit) = calculate_hashrate(2_500_000, Duration::from_millis(500));
+        assert!((rate - 5.0).abs() < 1e-9);
+        assert_eq!(unit, "MH/s");
+    }
+
+    #[test]
+    fn check_tip_info_returns_node_not_ready_when_metadata_missing_or_unsynced() {
+        let missing_metadata = TipInfoResponse {
+            metadata: None,
+            initial_sync_achieved: true,
+            base_node_state: 0,
+            failed_checkpoints: false,
+        };
+        assert!(matches!(
+            check_tip_info(&missing_metadata, 10, None),
+            Err(MinerError::NodeNotReady)
+        ));
+
+        let unsynced = TipInfoResponse {
+            metadata: Some(MetaData {
+                best_block_height: 5,
+                ..Default::default()
+            }),
+            initial_sync_achieved: false,
+            base_node_state: 0,
+            failed_checkpoints: false,
+        };
+        assert!(matches!(
+            check_tip_info(&unsynced, 10, None),
+            Err(MinerError::NodeNotReady)
+        ));
+    }
+
+    #[test]
+    fn check_tip_info_enforces_mine_until_height_and_lost_block() {
+        let synced = TipInfoResponse {
+            metadata: Some(MetaData {
+                best_block_height: 10,
+                ..Default::default()
+            }),
+            initial_sync_achieved: true,
+            base_node_state: 0,
+            failed_checkpoints: false,
+        };
+
+        assert!(matches!(
+            check_tip_info(&synced, 11, Some(10)),
+            Err(MinerError::MineUntilHeightReached(10))
+        ));
+        assert!(matches!(
+            check_tip_info(&synced, 10, None),
+            Err(MinerError::MinerLostBlock(10))
+        ));
+        assert!(check_tip_info(&synced, 11, Some(12)).is_ok());
     }
 }
