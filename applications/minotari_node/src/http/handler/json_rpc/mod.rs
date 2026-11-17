@@ -137,15 +137,17 @@ mod tests {
     use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
     use tari_core::{
         base_node::{StateMachineHandle, state_machine_service::states::StatusInfo},
+        block_specs,
         chain_storage::async_db::AsyncBlockchainDb,
         mempool::{TxStorageResponse, test_utils::mock::create_mempool_service_mock},
-        test_helpers::blockchain::{TempDatabase, create_new_blockchain_with_network},
+        test_helpers::blockchain::{TempDatabase, create_main_chain, create_new_blockchain_with_network},
     };
     use tari_script::ExecutionStack;
     use tari_shutdown::Shutdown;
     use tari_transaction_components::transaction_components::{
         TransactionInput,
         TransactionInputVersion,
+        TransactionKernel,
         TransactionOutput,
         encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     };
@@ -166,7 +168,7 @@ mod tests {
         let tx = Transaction::new(
             vec![],
             vec![TransactionOutput::default()],
-            vec![],
+            vec![TransactionKernel::default()],
             PrivateKey::default(),
             PrivateKey::default(),
         );
@@ -235,6 +237,34 @@ mod tests {
         assert_eq!(mempool_state.get_call_count(), 1);
     }
 
+    /// A mempool policy refusal is reported with its own retryable reason, not as a validation failure
+    #[tokio::test]
+    async fn submit_transaction_reports_a_mempool_policy_refusal() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::NotStoredMempoolPolicy("full".to_string()))
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+
+        let response = match handle(
+            Extension(query_service),
+            Extension(mempool),
+            Json(request(transaction_json(None))),
+        )
+        .await
+        {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
+        };
+        let response: TxSubmissionResponseV1 = serde_json::from_value(response.result).unwrap();
+        assert!(!response.accepted);
+        assert_eq!(
+            response.rejection_reason,
+            tari_transaction_components::rpc::models::TxSubmissionRejectionReason::MempoolPolicy
+        );
+    }
+
     /// Serde carries the version of a compact input but neither protobuf family does, so the P2P round-trip turns a
     /// V1 compact input into V0. The mempool must only ever see the round-tripped transaction, i.e. one a peer could
     /// have sent; this fails if the handler hands it a transaction decoded by serde alone.
@@ -273,5 +303,61 @@ mod tests {
         let submitted = mempool_state.submitted_transactions().await;
         assert_eq!(submitted.len(), 1);
         assert_eq!(submitted[0].body.inputs()[0].version, TransactionInputVersion::V0);
+    }
+
+    #[tokio::test]
+    async fn submit_transaction_distinguishes_double_spend_from_already_mined() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::NotStoredAlreadySpent)
+            .await;
+
+        let raw_db = create_new_blockchain_with_network(Network::LocalNet);
+        let (_names, chain) = create_main_chain(&raw_db, block_specs!(["A->GB"]));
+        let mined_kernel = chain["A"]
+            .block()
+            .body
+            .kernels()
+            .first()
+            .expect("mined block contains a coinbase kernel")
+            .clone();
+        let db = AsyncBlockchainDb::from(raw_db);
+        let (state_tx, _state_rx) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo::new());
+        let state_machine = StateMachineHandle::new(state_tx, status_rx, shutdown.to_signal());
+        let query_service = Arc::new(query_service::Service::new(db, state_machine, mempool.clone()));
+
+        // 1. Kernel not in chain DB -> DoubleSpend
+        let response = match handle(
+            Extension(query_service.clone()),
+            Extension(mempool.clone()),
+            Json(request(transaction_json(None))),
+        )
+        .await
+        {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
+        };
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert_eq!(response.result["accepted"], false);
+        assert_eq!(response.result["rejection_reason"], "DoubleSpend");
+
+        // 2. Kernel present in chain DB -> AlreadyMined
+        let mined_tx = Transaction::new(
+            vec![],
+            vec![TransactionOutput::default()],
+            vec![mined_kernel],
+            PrivateKey::default(),
+            PrivateKey::default(),
+        );
+        let mined_json = serde_json::to_value(&mined_tx).unwrap();
+        let response = match handle(Extension(query_service), Extension(mempool), Json(request(mined_json))).await {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
+        };
+        assert!(response.error.is_none(), "{:?}", response.error);
+        assert_eq!(response.result["accepted"], false);
+        assert_eq!(response.result["rejection_reason"], "AlreadyMined");
     }
 }

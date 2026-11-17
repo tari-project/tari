@@ -26,7 +26,7 @@ use tari_common_types::types::FixedHashSizeError;
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
+    protocol::rpc::{RpcError, RpcStatus, RpcStatusCode},
 };
 use tari_crypto::errors::RangeProofError;
 use tari_mmr::error::MerkleMountainRangeError;
@@ -236,6 +236,24 @@ impl HorizonSyncError {
         matches!(self, HorizonSyncError::LocalOutputStateInconsistent(_))
     }
 
+    /// Whether a failed output sync attempt keeps the outputs committed up to its checkpoint. Those outputs are only
+    /// verified once the whole set is synced, so they are kept only when the attempt timed out or lost its peer.
+    pub fn keeps_synced_outputs(&self) -> bool {
+        match self {
+            HorizonSyncError::IncompleteOutputStream(_) |
+            HorizonSyncError::IncompleteKernelStream(_) |
+            HorizonSyncError::SlowPeerFailure(_) |
+            HorizonSyncError::PeerWaitBudgetExceeded { .. } |
+            HorizonSyncError::MaxLatencyExceeded { .. } |
+            HorizonSyncError::RpcError(_) |
+            HorizonSyncError::SyncPeerUnavailable(_) |
+            HorizonSyncError::ConnectivityError(_) => true,
+            HorizonSyncError::RpcStatus(status) => status.as_status_code() == RpcStatusCode::Timeout,
+            // Any other error, including one added later, discards the outputs and restarts from height 1
+            _ => false,
+        }
+    }
+
     /// Whether an honest peer can cause this error when output sync resumed from a checkpoint, because the outputs
     /// an earlier attempt committed may not match the peer's view of the chain. A duplicate key comes from an output
     /// that state already holds, in the output tables or in the output tree.
@@ -285,6 +303,20 @@ mod connect_error_test {
             HorizonSyncError::OutputAlreadyStored(String::new()),
         ] {
             assert!(!err.is_local_failure(), "{err}");
+        }
+    }
+
+    /// Of the RPC statuses, only a timeout keeps the outputs synced up to the checkpoint
+    #[test]
+    fn only_a_timed_out_status_keeps_synced_outputs() {
+        assert!(HorizonSyncError::RpcStatus(RpcStatus::timed_out("slow")).keeps_synced_outputs());
+        for status in [
+            RpcStatus::conflict("conflict"),
+            RpcStatus::bad_request("bad"),
+            RpcStatus::not_found("missing"),
+            RpcStatus::general("general"),
+        ] {
+            assert!(!HorizonSyncError::RpcStatus(status).keeps_synced_outputs());
         }
     }
 

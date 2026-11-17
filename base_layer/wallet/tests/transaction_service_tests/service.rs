@@ -59,7 +59,7 @@ use minotari_wallet::{
         service::TransactionService,
         storage::{
             database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-            models::{CompletedTransaction, WalletTransaction},
+            models::{CompletedTransaction, TxCancellationReason, WalletTransaction},
             sqlite_db::TransactionServiceSqliteDatabase,
         },
     },
@@ -122,7 +122,7 @@ use tari_transaction_components::{
         prepare_withdraw_multisig_transaction,
         present_payload_summary,
     },
-    rpc::models::TipInfoResponse,
+    rpc::models::{TipInfoResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
     tari_amount::*,
     transaction_builder::{TransactionBuilder, TransactionBuilderError},
     transaction_components::{
@@ -2341,6 +2341,107 @@ async fn transaction_service_tx_broadcast() {
     //     alice_output_value - amount_sent1 - tx1_fee
     // );
     // assert_eq!(balance.available_balance, alice_output_value);
+}
+
+/// A submission the base node refuses by mempool policy is retried, and only cancelled once the wallet's submission
+/// attempt budget (5) is spent
+#[tokio::test]
+async fn a_mempool_policy_refusal_is_retried_until_the_submission_budget_is_spent() {
+    let factories = CryptoFactories::default();
+    let connection = make_wallet_database_memory_connection();
+    let config = TransactionServiceConfig {
+        broadcast_monitoring_timeout: Duration::from_millis(10),
+        ..Default::default()
+    };
+    let mut alice_ts_interface = setup_transaction_service_no_comms(factories.clone(), connection, Some(config)).await;
+    alice_ts_interface
+        .base_node_mock
+        .set_submit_transaction_response(TxSubmissionResponse {
+            accepted: false,
+            rejection_reason: TxSubmissionRejectionReason::MempoolPolicy,
+            is_synced: true,
+            details: None,
+        })
+        .await;
+
+    let kernel = KernelBuilder::new()
+        .with_excess(&CompressedCommitment::from_commitment(factories.commitment.zero()))
+        .with_signature(CompressedSignature::default())
+        .build()
+        .unwrap();
+    let tx = Transaction::new(
+        vec![],
+        vec![],
+        vec![kernel],
+        PrivateKey::random(&mut rand::rng()),
+        PrivateKey::random(&mut rand::rng()),
+    );
+    let address = || {
+        TariAddress::new_dual_address_with_default_features(
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            CompressedPublicKey::from_secret_key(&PrivateKey::random(&mut rand::rng())),
+            Network::LocalNet,
+        )
+        .unwrap()
+    };
+    let tx_id = TxId::from(1u64);
+    let completed_tx = CompletedTransaction {
+        tx_id,
+        source_address: address(),
+        destination_address: address(),
+        amount: 5000 * uT,
+        fee: MicroMinotari::from(20),
+        transaction: tx.clone(),
+        status: LegacyTransactionStatus::Completed,
+        timestamp: Utc::now(),
+        cancelled: None,
+        direction: TransactionDirection::Outbound,
+        send_count: 0,
+        last_send_timestamp: None,
+        transaction_signature: tx.first_kernel_excess_sig().unwrap().clone(),
+        mined_height: None,
+        mined_in_block: None,
+        mined_timestamp: None,
+        payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
+        change_output_hashes: vec![],
+        received_output_hashes: vec![],
+        sent_output_hashes: vec![],
+        lock_height: 0,
+        rejection_reason: None,
+        source_address_claimed: false,
+    };
+    alice_ts_interface
+        .ts_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            tx_id,
+            Box::new(completed_tx),
+        )))
+        .unwrap();
+
+    let mut event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
+    alice_ts_interface
+        .transaction_service_handle
+        .restart_broadcast_protocols()
+        .await
+        .unwrap();
+
+    let delay = sleep(Duration::from_secs(60));
+    tokio::pin!(delay);
+    let reason = loop {
+        tokio::select! {
+            event = event_stream.recv() => {
+                if let TransactionEvent::TransactionCancelled(id, reason, _) = (*event.unwrap()).clone() &&
+                    id == tx_id
+                {
+                    break reason;
+                }
+            },
+            () = &mut delay => panic!("the transaction was not cancelled"),
+        }
+    };
+    assert_eq!(reason, TxCancellationReason::InvalidTransaction);
+    // Cancelled on the last of the budget's submissions, not before
+    assert_eq!(alice_ts_interface.base_node_mock.submit_transaction_calls().await, 5);
 }
 
 #[tokio::test]

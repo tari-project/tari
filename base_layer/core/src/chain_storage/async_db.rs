@@ -169,6 +169,12 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
 
     make_async_fn!(fetch_horizon_sync_output_checkpoint() -> Option<HorizonSyncOutputCheckpoint>, "fetch_horizon_sync_output_checkpoint");
 
+    make_async_fn!(output_state_is_genesis() -> bool, "output_state_is_genesis");
+
+    make_async_fn!(reset_output_state_to_genesis() -> (), "reset_output_state_to_genesis");
+
+    make_async_fn!(delete_block_data_above_block_tip() -> (), "delete_block_data_above_block_tip");
+
     make_async_fn!(
         verify_horizon_sync_output_root(expected_root: HashOutput) -> (),
         "verify_horizon_sync_output_root"
@@ -667,11 +673,6 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub(crate) fn clear_horizon_sync_output_state(&mut self) -> &mut Self {
-        self.transaction.clear_horizon_sync_output_state();
-        self
-    }
-
     pub(crate) fn prune_output_copy(
         &mut self,
         header_hash: HashOutput,
@@ -684,8 +685,8 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub(crate) fn delete_utxo_commitment_index_entry(&mut self, commitment: CompressedCommitment) -> &mut Self {
-        self.transaction.delete_utxo_commitment_index_entry(commitment);
+    pub(crate) fn prune_synced_outputs(&mut self, header_hash: HashOutput, outputs: &[TransactionOutput]) -> &mut Self {
+        self.transaction.prune_synced_outputs(header_hash, outputs);
         self
     }
 

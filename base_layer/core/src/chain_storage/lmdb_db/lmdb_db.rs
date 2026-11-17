@@ -3397,6 +3397,14 @@ impl LMDBDatabase {
         txn.commit().unwrap();
     }
 
+    /// Deletes the header row at `height` and nothing that belongs to it, as a damaged database would.
+    #[cfg(test)]
+    pub(crate) fn delete_header_row_for_test(&self, height: u64) {
+        let txn = self.create_write_txn();
+        lmdb_delete(&txn, &self.headers_db, &height, "headers_db").unwrap();
+        txn.commit().unwrap();
+    }
+
     /// Overwrites the accumulated data row of a stored header with bytes that do not decode.
     #[cfg(test)]
     pub(crate) fn write_undecodable_header_accumulated_data_for_test(&self, header: &BlockHeader) {

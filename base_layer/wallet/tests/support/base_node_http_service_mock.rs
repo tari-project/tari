@@ -69,6 +69,9 @@ struct State {
     spent_utxos: HashMap<Vec<u8>, (u64, Vec<u8>)>,
     /// Outputs `fetch_utxo` returns, keyed by output hash
     utxos: HashMap<Vec<u8>, TransactionOutput>,
+    /// The answer to `submit_transaction`; accepted if not set
+    submit_transaction_response: Option<TxSubmissionResponse>,
+    submit_transaction_calls: usize,
 }
 
 impl State {
@@ -162,6 +165,14 @@ impl HttpBaseNodeMock {
         self.state.write().await.on_mined_info_query = Some(hook);
     }
 
+    pub async fn set_submit_transaction_response(&self, response: TxSubmissionResponse) {
+        self.state.write().await.submit_transaction_response = Some(response);
+    }
+
+    pub async fn submit_transaction_calls(&self) -> usize {
+        self.state.read().await.submit_transaction_calls
+    }
+
     pub async fn set_last_request_latency(&self, last_request_latency: Duration) -> Result<(), Error> {
         let mut state = self.state.write().await;
         state.set_last_request_latency(last_request_latency);
@@ -246,12 +257,17 @@ impl BaseNodeWalletClient for HttpBaseNodeMock {
     }
 
     async fn submit_transaction(&self, _transaction: Transaction) -> Result<TxSubmissionResponse, Error> {
-        Ok(TxSubmissionResponse {
-            accepted: true,
-            rejection_reason: models::TxSubmissionRejectionReason::None,
-            is_synced: true,
-            details: None,
-        })
+        let mut state = self.state.write().await;
+        state.submit_transaction_calls = state.submit_transaction_calls.saturating_add(1);
+        Ok(state
+            .submit_transaction_response
+            .clone()
+            .unwrap_or(TxSubmissionResponse {
+                accepted: true,
+                rejection_reason: models::TxSubmissionRejectionReason::None,
+                is_synced: true,
+                details: None,
+            }))
     }
 
     async fn transaction_query(
