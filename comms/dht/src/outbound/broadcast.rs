@@ -27,7 +27,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use futures::{
     future,
     future::BoxFuture,
@@ -228,7 +228,7 @@ pub struct BroadcastLayer {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
-    message_validity_window: chrono::Duration,
+    message_validity_window: Duration,
     protocol_version: DhtProtocolVersion,
     forward_budget: Arc<ForwardBudget>,
 }
@@ -244,7 +244,7 @@ impl BroadcastLayer {
             dht_requester,
             dht_discovery_requester,
             node_identity,
-            message_validity_window: chrono::Duration::from_std(MESSAGE_VALIDITY_WINDOW)
+            message_validity_window: Duration::try_from(MESSAGE_VALIDITY_WINDOW)
                 .expect("message_validity_window is too large"),
             protocol_version: config.protocol_version,
             forward_budget: Arc::new(ForwardBudget::new(config)),
@@ -276,7 +276,7 @@ pub struct BroadcastMiddleware<S> {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     node_identity: Arc<NodeIdentity>,
-    message_validity_window: chrono::Duration,
+    message_validity_window: Duration,
     protocol_version: DhtProtocolVersion,
     forward_budget: Arc<ForwardBudget>,
 }
@@ -287,7 +287,7 @@ impl<S> BroadcastMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
-        message_validity_window: chrono::Duration,
+        message_validity_window: Duration,
         protocol_version: DhtProtocolVersion,
         forward_budget: Arc<ForwardBudget>,
     ) -> Self {
@@ -339,7 +339,7 @@ struct BroadcastTask<S> {
     dht_requester: DhtRequester,
     dht_discovery_requester: DhtDiscoveryRequester,
     request: Option<DhtOutboundRequest>,
-    message_validity_window: chrono::Duration,
+    message_validity_window: Duration,
     protocol_version: DhtProtocolVersion,
     forward_budget: Arc<ForwardBudget>,
 }
@@ -354,7 +354,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         dht_requester: DhtRequester,
         dht_discovery_requester: DhtDiscoveryRequester,
         request: DhtOutboundRequest,
-        message_validity_window: chrono::Duration,
+        message_validity_window: Duration,
         protocol_version: DhtProtocolVersion,
         forward_budget: Arc<ForwardBudget>,
     ) -> Self {
@@ -481,9 +481,9 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     }
                 }
 
-                let expires = Utc::now()
-                    .checked_add_signed(self.message_validity_window)
-                    .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
+                let expires = OffsetDateTime::now_utc()
+                    .checked_add(self.message_validity_window)
+                    .unwrap_or(OffsetDateTime::MAX);
 
                 match self
                     .generate_send_messages(
@@ -580,7 +580,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         force_origin: bool,
         is_broadcast: bool,
         body: BytesMut,
-        expires: Option<DateTime<Utc>>,
+        expires: Option<OffsetDateTime>,
         tag: Option<MessageTag>,
     ) -> Result<(Vec<DhtOutboundMessage>, Vec<MessageSendState>), DhtOutboundError> {
         let dht_flags = encryption.flags() | extra_flags;
@@ -832,7 +832,7 @@ mod test {
             node_identity,
             dht_requester,
             dht_discover_requester,
-            chrono::Duration::seconds(10800),
+            Duration::seconds(10800),
             DhtProtocolVersion::latest(),
             Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
@@ -961,7 +961,7 @@ mod test {
             node_identity.clone(),
             dht_requester,
             dht_discover_requester,
-            chrono::Duration::seconds(10800),
+            Duration::seconds(10800),
             DhtProtocolVersion::latest(),
             Arc::new(ForwardBudget::new(&config)),
         );
@@ -1035,7 +1035,7 @@ mod test {
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
-            chrono::Duration::seconds(10800),
+            Duration::seconds(10800),
             DhtProtocolVersion::latest(),
             Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );
@@ -1084,7 +1084,7 @@ mod test {
             Arc::new(node_identity),
             dht_requester,
             dht_discover_requester,
-            chrono::Duration::seconds(10800),
+            Duration::seconds(10800),
             DhtProtocolVersion::latest(),
             Arc::new(ForwardBudget::new(&DhtConfig::default())),
         );

@@ -32,7 +32,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use tokio::time;
 use tonic::{
@@ -71,7 +71,7 @@ impl std::fmt::Display for HealthStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResult {
     pub status: HealthStatus,
-    pub last_check: DateTime<Utc>,
+    pub last_check: OffsetDateTime,
     pub response_time: Duration,
     pub failure_count: u32,
     pub consecutive_failures: u32,
@@ -84,7 +84,7 @@ impl HealthResult {
     pub fn healthy(service_name: String, response_time: Duration) -> Self {
         Self {
             status: HealthStatus::Serving,
-            last_check: Utc::now(),
+            last_check: OffsetDateTime::now_utc(),
             response_time,
             failure_count: 0,
             consecutive_failures: 0,
@@ -97,7 +97,7 @@ impl HealthResult {
     pub fn unhealthy(service_name: String, error: String, response_time: Duration) -> Self {
         Self {
             status: HealthStatus::NotServing,
-            last_check: Utc::now(),
+            last_check: OffsetDateTime::now_utc(),
             response_time,
             failure_count: 1,
             consecutive_failures: 1,
@@ -109,7 +109,7 @@ impl HealthResult {
     /// Update this result with a successful check
     pub fn update_success(&mut self, response_time: Duration) {
         self.status = HealthStatus::Serving;
-        self.last_check = Utc::now();
+        self.last_check = OffsetDateTime::now_utc();
         self.response_time = response_time;
         self.consecutive_failures = 0;
         self.last_error = None;
@@ -118,7 +118,7 @@ impl HealthResult {
     /// Update this result with a failed check
     pub fn update_failure(&mut self, error: String, response_time: Duration) {
         self.status = HealthStatus::NotServing;
-        self.last_check = Utc::now();
+        self.last_check = OffsetDateTime::now_utc();
         self.response_time = response_time;
         self.failure_count = self.failure_count.saturating_add(1);
         self.consecutive_failures = self.consecutive_failures.saturating_add(1);
@@ -223,7 +223,7 @@ impl GrpcHealthChecker {
             let mut status = self.health_status.write().unwrap();
             status.insert(service_name.clone(), HealthResult {
                 status: HealthStatus::Unknown,
-                last_check: Utc::now(),
+                last_check: OffsetDateTime::now_utc(),
                 response_time: Duration::from_secs(0),
                 failure_count: 0,
                 consecutive_failures: 0,

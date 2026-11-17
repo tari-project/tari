@@ -809,7 +809,7 @@ fn publish_compaction_progress(
         0.0
     };
     stats.last_updated = Instant::now();
-    stats.timestamp = chrono::Utc::now().timestamp_millis() as u64;
+    stats.timestamp = OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000 as u64;
     if let Err(e) = sender.send(stats) {
         warn!(
             target: LOG_TARGET,
@@ -1211,7 +1211,7 @@ impl LMDBDatabase {
                     self.insert_bad_block_and_cleanup(&write_txn, hash, *height, reason.to_string())?;
                 },
                 InsertReorg { reorg } => {
-                    lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.timestamp(), &reorg, None)?;
+                    lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.unix_timestamp(), &reorg, None)?;
                 },
                 ClearAllReorgs => {
                     lmdb_clear(&write_txn, &self.reorgs)?;

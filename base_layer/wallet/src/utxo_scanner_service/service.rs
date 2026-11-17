@@ -22,7 +22,7 @@
 
 use std::fmt::Display;
 
-use chrono::NaiveDateTime;
+use time::PrimitiveDateTime;
 use log::*;
 use tari_common_types::{tari_address::TariAddress, types::HashOutput};
 use tari_shutdown::ShutdownSignal;
@@ -197,7 +197,7 @@ where THttpClientFactory: HttpClientFactory + Clone + Send + Sync + 'static
 pub struct ScannedBlock {
     pub header_hash: HashOutput,
     pub height: u64,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: PrimitiveDateTime,
 }
 
 impl Display for ScannedBlock {

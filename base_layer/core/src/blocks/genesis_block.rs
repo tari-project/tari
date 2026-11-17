@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use chrono::{DateTime, FixedOffset};
+use time::OffsetDateTime;
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
@@ -110,7 +110,7 @@ pub fn get_stagenet_genesis_block() -> ChainBlock {
 
 fn get_stagenet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = OffsetDateTime::parse("11 Mar 2024 08:00:00 +0200", &Rfc2822).expect("parse may not fail");
     let not_before_proof = b"i am the stagenet genesis block, watch out, here i come \
         \
         The New York Times , 2000/01/01 \
@@ -164,7 +164,7 @@ pub fn get_nextnet_genesis_block() -> ChainBlock {
 
 fn get_nextnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("09 May 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = OffsetDateTime::parse("09 May 2025 08:00:00 +0200", &Rfc2822).expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"nextnet has a blast, its prowess echoed in every gust \
         \
@@ -218,7 +218,7 @@ pub fn get_mainnet_genesis_block() -> ChainBlock {
 fn get_mainnet_genesis_block_raw() -> Block {
     let mut gen_block_payload = include_bytes!("gen_block/Tari.Manifesto").to_vec();
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("06 May 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = OffsetDateTime::parse("06 May 2025 08:00:00 +0200", &Rfc2822).expect("parse may not fail");
 
     let soons_secrets = vec![
         "e777pxxdrk32oj5t2g5hokt5n2slbiwxgcmmdhvgzrvvvdvlqnuyijbd.fvboe",
@@ -277,7 +277,7 @@ pub fn get_igor_genesis_block() -> ChainBlock {
 
 fn get_igor_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("11 Mar 2024 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = OffsetDateTime::parse("11 Mar 2024 08:00:00 +0200", &Rfc2822).expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof = b"but igor is the best, it is whispered in the wind \
         \
@@ -332,7 +332,7 @@ pub fn get_esmeralda_genesis_block() -> ChainBlock {
 
 fn get_esmeralda_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("09 May 2025 08:00:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = OffsetDateTime::parse("09 May 2025 08:00:00 +0200", &Rfc2822).expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -367,7 +367,7 @@ pub fn get_localnet_genesis_block() -> ChainBlock {
 
 fn get_localnet_genesis_block_raw() -> Block {
     // Set genesis timestamp
-    let genesis_timestamp = DateTime::parse_from_rfc2822("20 Feb 2024 08:01:00 +0200").expect("parse may not fail");
+    let genesis_timestamp = OffsetDateTime::parse("20 Feb 2024 08:01:00 +0200", &Rfc2822).expect("parse may not fail");
     // Let us add a "not before" proof to the genesis block
     let not_before_proof =
         b"as I sip my drink, thoughts of esmeralda consume my mind, like a refreshing nourishing draught \
@@ -393,7 +393,7 @@ fn get_localnet_genesis_block_raw() -> Block {
     )
 }
 
-fn get_raw_block(genesis_timestamp: &DateTime<FixedOffset>, not_before_proof: &PowData) -> Block {
+fn get_raw_block(genesis_timestamp: &OffsetDateTime, not_before_proof: &PowData) -> Block {
     // Note: Use 'print_new_genesis_block_values' in core/tests/helpers/block_builders.rs to generate the required
     // fields below
 

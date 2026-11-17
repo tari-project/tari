@@ -342,7 +342,7 @@ impl From<DbWalletOutput> for TariUtxo {
             lock_height: x.wallet_output.features().maturity,
             mined_timestamp: x
                 .mined_timestamp
-                .map(|ts| ts.timestamp_millis() as u64)
+                .map(|ts| ts.unix_timestamp_nanos() / 1_000_000 as u64)
                 .unwrap_or_default(),
             status: x.status.as_u8(),
             coinbase_extra: CString::new(x.wallet_output.features().coinbase_extra.to_hex())
@@ -9859,7 +9859,7 @@ mod test {
     use std::{ffi::c_void, str::from_utf8, sync::Mutex};
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-    use chrono::Utc;
+    use time::OffsetDateTime;
     use minotari_wallet::{
         legacy_transaction_protocol::{ReceiverTransactionProtocol, SenderTransactionProtocol},
         storage::{
@@ -10204,7 +10204,7 @@ mod test {
                 PrivateKey::default(),
             ),
             LegacyTransactionStatus::Rejected,
-            chrono::Utc::now(),
+            OffsetDateTime::now_utc(),
             TransactionDirection::Inbound,
             None,
             None,
@@ -11444,7 +11444,7 @@ mod test {
             fee: MicroMinotari::from(1),
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
             status,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled,
             direction,
             send_count: 0,
@@ -11471,7 +11471,7 @@ mod test {
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_empty(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled,
             direct_send_success: false,
             send_count: 0,
@@ -11489,7 +11489,7 @@ mod test {
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_empty(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled,
             direct_send_success: false,
             send_count: 0,

@@ -36,5 +36,5 @@ clap = { version = "4", features = ["derive", "env"] }
 log = { workspace = true }
 async-trait = "0.1"
 tonic = { version = "0.13.1", default-features = false, features = ["codegen", "transport", "tls-ring"] }
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 hex = "0.4"

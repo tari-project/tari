@@ -24,7 +24,7 @@ use std::{cmp, convert::TryFrom, io::Write};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Utc;
+use time::OffsetDateTime;
 use clap::Parser;
 use tari_core::{chain_storage::ChainStorageError, proof_of_work::lwma_diff::LinearWeightedMovingAverage};
 use tari_transaction_components::tari_proof_of_work::PowAlgorithm;
@@ -170,7 +170,7 @@ impl CommandContext {
                 solve_time,
                 normalized_solve_time,
                 pow_algo,
-                chrono::DateTime::<Utc>::from_timestamp(header.header().timestamp.as_u64() as i64, 0)
+                OffsetDateTime::from_unix_timestamp(header.header().timestamp.as_u64() as i64, 0)
                     .unwrap_or_default(),
                 target_diff
                     .get(pow_algo)

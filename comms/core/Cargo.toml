@@ -22,17 +22,14 @@ async-trait = "0.1.36"
 bitflags = { version = "2.4", features = ["serde"] }
 blake2 = "0.10"
 bytes = { version = "1", features = ["serde"] }
-chrono = { version = "0.4", default-features = false, features = [
-    "serde",
-    "clock",
-] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 cidr = "0.1.0"
 data-encoding = "2.2.0"
 derivative = "2.2.0"
 diesel = { version = "2.4.0", features = [
     "sqlite",
     "serde_json",
-    "chrono",
+    "time",
     "numeric",
 ] }
 diesel_migrations = "2.4"

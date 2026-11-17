@@ -137,7 +137,7 @@ async fn prompt(node: &CommsNode, dht: &Dht) -> anyhow::Result<()> {
             },
         };
         send_states.push(states);
-        println!("#{} queued for sending at {}", i, chrono::Local::now().to_rfc2822());
+        println!("#{} queued for sending at {}", i, OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&Rfc2822).unwrap());
     }
 
     for states in send_states {
@@ -162,7 +162,7 @@ impl PropagationMessage {
         Self {
             id,
             payload: vec![1u8; data_size],
-            ts: chrono::Utc::now().to_rfc2822(),
+            ts: OffsetDateTime::now_utc().format(&Rfc2822).unwrap(),
         }
     }
 }
@@ -183,8 +183,8 @@ fn spawn_received_message_logger(_node: &CommsNode, mut msg_in: mpsc::Receiver<D
                 )
                 .unwrap()
                 .unwrap();
-            let dt = chrono::DateTime::parse_from_rfc2822(&msg.ts).unwrap();
-            let since = chrono::Utc::now().signed_duration_since(dt);
+            let dt = OffsetDateTime::parse_from_rfc2822(&msg.ts).unwrap();
+            let since = OffsetDateTime::now_utc().saturating_sub(dt);
             tps.push_front(Instant::now());
             println!(
                 "#{} ({} bytes) received {:.2?} after the message was queued. Total received: {}, last msg: {}s",

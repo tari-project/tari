@@ -31,7 +31,7 @@ use std::{
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Local;
+use time::OffsetDateTime;
 use clap::Parser;
 use minotari_app_utilities::utilities::UniPublicKey;
 use tari_common_types::types::CompressedPublicKey;
@@ -125,7 +125,7 @@ impl HandleCommand<ArgsTestPeerLiveness> for CommandContext {
                 _ = rx.changed() => {
                     let test_duration = start.elapsed();
                     let responsive = *rx.borrow();
-                    let date_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                    let date_time = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap().to_string();
 
                     print_results_to_console(&date_time, responsive, &public_key_clone, &node_id_clone, &address_clone, test_duration);
 

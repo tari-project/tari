@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use tari_comms::types::CommsPublicKey;
 
 /// What to do with a valid Join
@@ -42,7 +42,7 @@ pub(super) enum JoinAdmission {
 struct Propagated {
     at: Instant,
     seq: u64,
-    claim_updated_at: DateTime<Utc>,
+    claim_updated_at: OffsetDateTime,
 }
 
 /// The Join origins this node re-propagated, when, and the claim each carried. An origin is relayed at most once per
@@ -66,8 +66,8 @@ impl JoinCooldown {
     pub fn admit(
         &mut self,
         origin: &CommsPublicKey,
-        incoming: Option<DateTime<Utc>>,
-        stored: Option<DateTime<Utc>>,
+        incoming: Option<OffsetDateTime>,
+        stored: Option<OffsetDateTime>,
         now: Instant,
         interval: Duration,
         capacity: usize,
@@ -108,7 +108,7 @@ mod test {
 
     const INTERVAL: Duration = Duration::from_secs(600);
 
-    fn secs(n: i64) -> Option<DateTime<Utc>> {
+    fn secs(n: i64) -> Option<OffsetDateTime> {
         DateTime::from_timestamp(n, 0)
     }
 

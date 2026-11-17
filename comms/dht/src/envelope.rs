@@ -27,7 +27,7 @@ use std::{
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use tari_comms::{NodeIdentity, message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::{ByteArray, ByteArrayError, epoch_time::EpochTime};
@@ -37,8 +37,8 @@ use thiserror::Error;
 pub use crate::proto::envelope::{DhtEnvelope, DhtHeader, DhtMessageType, dht_header::Destination};
 use crate::version::DhtProtocolVersion;
 
-/// Utility function that converts a `chrono::DateTime` to a `EpochTime`
-pub(crate) fn datetime_to_epochtime(datetime: DateTime<Utc>) -> EpochTime {
+/// Utility function that converts a `OffsetDateTime` to a `EpochTime`
+pub(crate) fn datetime_to_epochtime(datetime: OffsetDateTime) -> EpochTime {
     #[allow(clippy::cast_sign_loss)]
     EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
 }

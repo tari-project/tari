@@ -25,8 +25,8 @@ pub struct DbBurnProof {
     /// Proves the burn output against the `block_output_mr` of the block it was mined in. Set once the burn is
     /// confirmed.
     pub burn_output_proof: Option<BurnOutputProof>,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: chrono::NaiveDateTime,
+    pub created_at: PrimitiveDateTime,
+    pub updated_at: PrimitiveDateTime,
     pub encrypted_data: Option<EncryptedData>,
     pub value: Option<MicroMinotari>,
     /// The L1 block height the burn was mined in, if known (populated with the burn output proof).
@@ -90,8 +90,8 @@ pub(crate) struct BurntProofSql {
     pub burn_proof: Vec<u8>,
     pub kernel: Vec<u8>,
     pub burn_output_proof: Option<Vec<u8>>,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: chrono::NaiveDateTime,
+    pub created_at: PrimitiveDateTime,
+    pub updated_at: PrimitiveDateTime,
     pub encrypted_data: Option<Vec<u8>>,
     pub value: Option<i64>,
     // These fields are here to match the schema. They are not

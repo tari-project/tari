@@ -35,7 +35,7 @@ console-subscriber = "0.4"
 # Uncomment for normal use (non tokio-console tracing)
 tokio = { workspace = true, features = ["signal"] }
 anyhow = { workspace = true }
-chrono = { version = "0.4", default-features = false }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 clap = { version = "4", features = ["derive", "env"] }
 config = "0.14.0"
 crossterm = { version = "0.28" }

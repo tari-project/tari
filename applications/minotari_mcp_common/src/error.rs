@@ -156,7 +156,7 @@ impl McpError {
         // Create detailed error data
         let mut data = json!({
             "error_type": self.error_type_name(),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "timestamp": OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
         });
 
         // Add context-specific data

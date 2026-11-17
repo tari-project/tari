@@ -524,7 +524,7 @@ async fn undialled_candidates(
 /// dialled / banned or deleted / never reached, and the three add up to the peer's population by definition.
 ///
 /// Deriving "banned or deleted" here rather than accumulating it as the rounds go is what makes it truthful.
-/// [`Peer::is_banned`] is wall-clock bound (`peer.rs:287` filters `banned_until` against `Utc::now()`), and the DHT's
+/// [`Peer::is_banned`] is wall-clock bound (`peer.rs:287` filters `banned_until` against `OffsetDateTime::now_utc()`), and the DHT's
 /// short ban is ten minutes, so a peer banned in an early round can legitimately be dialled in a later one. A running
 /// tally would have counted such a peer in both buckets at once.
 async fn summarize_peer_db(
@@ -1209,7 +1209,7 @@ impl ClaimAge {
         let Some(claimed_at) = peer.addresses.newest_claim_updated_at() else {
             return ClaimAge::Unknown;
         };
-        let age_days = now.saturating_sub(claimed_at.timestamp()).max(0) / 86_400;
+        let age_days = now.saturating_sub(claimed_at.unix_timestamp()).max(0) / 86_400;
         match age_days {
             0..=6 => ClaimAge::Days7,
             7..=13 => ClaimAge::Days14,
@@ -1339,7 +1339,7 @@ impl Report {
     /// the population they came from without any arithmetic at print time.
     ///
     /// `was_dialled` is tested before the ban, deliberately. [`Peer::is_banned`] is wall-clock bound - it filters
-    /// `banned_until` against `Utc::now()` - and the DHT's short ban is ten minutes, so a peer banned in an early
+    /// `banned_until` against `OffsetDateTime::now_utc()` - and the DHT's short ban is ten minutes, so a peer banned in an early
     /// round can be dialled perfectly legitimately in a later one. Reading the ban first would count that peer as
     /// both dialled and skipped, inflating the "banned or deleted" figure this section is meant to be trusted on.
     fn count_peer(&mut self, peer: &Peer, was_dialled: bool, was_connected: bool) {

@@ -22,7 +22,7 @@
 
 use std::convert::TryFrom;
 
-use chrono::{NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl, SqliteConnection};
 use tari_common_types::types::FixedHash;
 use tari_utilities::ByteArray;
@@ -46,7 +46,7 @@ pub struct ScannedBlockSql {
     height: i64,
     num_outputs: Option<i64>,
     amount: Option<i64>,
-    timestamp: NaiveDateTime,
+    timestamp: PrimitiveDateTime,
 }
 
 impl ScannedBlockSql {
@@ -71,7 +71,7 @@ impl ScannedBlockSql {
             height,
             amount: None,
             num_outputs: None,
-            timestamp: Utc::now().naive_utc(),
+            timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
         }
     }
 

@@ -27,7 +27,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::Local;
+use time::OffsetDateTime;
 use cucumber::{then, when};
 use tari_integration_tests::TariWorld;
 
@@ -69,7 +69,7 @@ async fn receive_an_error(world: &mut TariWorld, error: String) {
 pub fn cucumber_steps_log<S: AsRef<str>>(log_message: S) {
     let log_file = PathBuf::from("./log/steps.log");
     let mut file = OpenOptions::new().create(true).append(true).open(log_file).unwrap();
-    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let timestamp = OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap().to_string();
     writeln!(file, "[{}] {}", timestamp, log_message.as_ref()).unwrap();
 }
 

@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use blake2::Blake2b;
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use digest::consts::U64;
 use prost::Message;
 use serde::{Deserialize, Serialize};
@@ -44,14 +44,14 @@ use crate::{
 pub struct IdentitySignature {
     version: u8,
     signature: CompressedSignature,
-    updated_at: DateTime<Utc>,
+    updated_at: OffsetDateTime,
 }
 
 impl IdentitySignature {
     /// The latest version of the Identity Signature.
     pub const LATEST_VERSION: u8 = 0;
 
-    pub fn new(version: u8, signature: CompressedSignature, updated_at: DateTime<Utc>) -> Self {
+    pub fn new(version: u8, signature: CompressedSignature, updated_at: OffsetDateTime) -> Self {
         Self {
             version,
             signature,
@@ -63,7 +63,7 @@ impl IdentitySignature {
         secret_key: &CommsSecretKey,
         features: PeerFeatures,
         addresses: I,
-        updated_at: DateTime<Utc>,
+        updated_at: OffsetDateTime,
     ) -> Self {
         let public_key = CommsPublicKey::from_secret_key(secret_key);
         let (secret_nonce, public_nonce) = CommsPublicKey::random_keypair(&mut rand::rng());
@@ -91,7 +91,7 @@ impl IdentitySignature {
         &self.signature
     }
 
-    pub fn updated_at(&self) -> DateTime<Utc> {
+    pub fn updated_at(&self) -> OffsetDateTime {
         self.updated_at
     }
 
@@ -109,7 +109,7 @@ impl IdentitySignature {
         addresses: I,
     ) -> Result<(), PeerManagerError> {
         // A negative timestamp is considered invalid
-        if self.updated_at.timestamp() < 0 {
+        if self.updated_at.unix_timestamp() < 0 {
             return Err(PeerManagerError::InvalidIdentitySignature);
         }
         let challenge = Self::construct_challenge(
@@ -133,9 +133,9 @@ impl IdentitySignature {
         }
         // Do not accept timestamp more than 1 day in the future. Checked after the signature so that only the key
         // owner can produce this error.
-        let max_updated_at = Utc::now()
-            .checked_add_signed(chrono::Duration::days(1))
-            .unwrap_or(chrono::DateTime::<Utc>::MAX_UTC);
+        let max_updated_at = OffsetDateTime::now_utc()
+            .checked_add(Duration::days(1))
+            .unwrap_or(OffsetDateTime::MAX);
         if self.updated_at > max_updated_at {
             return Err(PeerManagerError::IdentitySignatureFromFuture);
         }
@@ -148,7 +148,7 @@ impl IdentitySignature {
         version: u8,
         features: PeerFeatures,
         addresses: I,
-        updated_at: DateTime<Utc>,
+        updated_at: OffsetDateTime,
     ) -> DomainSeparatedHasher<Blake2b<U64>, CommsCorePeerManagerDomain> {
         let addresses = addresses.into_iter().collect::<Vec<_>>();
 
@@ -157,7 +157,7 @@ impl IdentitySignature {
             .chain(public_key.as_bytes())
             .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())
-            .chain(u64::try_from(updated_at.timestamp()).unwrap().to_le_bytes())
+            .chain(u64::try_from(updated_at.unix_timestamp()).unwrap().to_le_bytes())
             .chain(features.bits().to_le_bytes());
         addresses
             .into_iter()
@@ -202,7 +202,7 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
             version: u32::from(identity_sig.version),
             signature: identity_sig.signature.get_signature().to_vec(),
             public_nonce: identity_sig.signature.get_compressed_public_nonce().to_vec(),
-            updated_at: identity_sig.updated_at.timestamp(),
+            updated_at: identity_sig.updated_at.unix_timestamp(),
         }
     }
 }
@@ -223,7 +223,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now() + chrono::Duration::days(2);
+            let updated_at = OffsetDateTime::now_utc() + Duration::days(2);
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
             assert!(matches!(
@@ -243,7 +243,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now();
+            let updated_at = OffsetDateTime::now_utc();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
             identity
@@ -256,7 +256,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now();
+            let updated_at = OffsetDateTime::now_utc();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
 
@@ -275,7 +275,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut rand::rng());
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now();
+            let updated_at = OffsetDateTime::now_utc();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
 
@@ -299,7 +299,7 @@ mod test {
             assert_eq!(public_key.as_bytes(), &[0u8; 32]);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
             let identity =
-                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], Utc::now());
+                IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], OffsetDateTime::now_utc());
 
             assert!(matches!(
                 identity.verify(&public_key, PeerFeatures::COMMUNICATION_NODE, [&address]),

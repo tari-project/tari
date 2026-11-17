@@ -15,7 +15,7 @@ use std::{
 
 use anyhow::anyhow;
 use bytes::Bytes;
-use chrono::Utc;
+use time::OffsetDateTime;
 use rand::Rng;
 use tari_common_sqlite::{
     DbProfile,
@@ -277,7 +277,7 @@ async fn start_ping_ponger(
             Some("START") => {
                 println!("\n-----------------------------------");
                 let id = rand::rng().next_u64();
-                inflight_pings.insert(id, Utc::now().naive_utc());
+                inflight_pings.insert(id, PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()));
                 let msg = make_msg(&dest_node_id, &format!("PING {id}"));
                 outbound_tx.send(msg)?;
             },
@@ -302,7 +302,7 @@ async fn start_ping_ponger(
 
                 println!("-----------------------------------");
                 let new_id = rand::rng().next_u64();
-                inflight_pings.insert(new_id, Utc::now().naive_utc());
+                inflight_pings.insert(new_id, PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()));
                 let msg = make_msg(&dest_node_id, &format!("PING {new_id}"));
                 outbound_tx.send(msg)?;
             },

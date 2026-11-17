@@ -22,7 +22,7 @@
 
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Utc;
+use time::OffsetDateTime;
 use clap::Parser;
 use tari_comms::peer_manager::PeerFeatures;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
@@ -75,7 +75,7 @@ impl CommandContext {
                 if let Some(dt) = peer.banned_until() {
                     s.push(format!(
                         "BANNED({}, {})",
-                        dt.signed_duration_since(Utc::now().naive_utc())
+                        dt.saturating_sub(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))
                             .to_std()
                             .map(format_duration_basic)
                             .unwrap_or_else(|_| "∞".to_string()),
@@ -91,9 +91,9 @@ impl CommandContext {
                 }
 
                 if let Some(last_seen) = peer.addresses.last_seen() {
-                    let duration = Utc::now()
+                    let duration = OffsetDateTime::now_utc()
                         .naive_utc()
-                        .signed_duration_since(last_seen)
+                        .saturating_sub(last_seen)
                         .to_std()
                         .map(format_duration_basic)
                         .unwrap_or_else(|_| "?".into());

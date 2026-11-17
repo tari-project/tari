@@ -106,8 +106,16 @@ fn format_system_time(time: SystemTime) -> String {
     let datetime = time.duration_since(UNIX_EPOCH).unwrap();
     let seconds = datetime.as_secs();
     let nanos = datetime.subsec_nanos();
-    let naive = chrono::DateTime::from_timestamp(seconds.try_into().unwrap(), nanos).unwrap();
-    naive.format("%Y-%m-%d %H:%M:%S").to_string()
+    let naive = time::OffsetDateTime::from_unix_timestamp_nanos(
+        i128::from(seconds) * 1_000_000_000 + i128::from(nanos),
+    )
+    .unwrap();
+    naive
+        .format(&time::macros::format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second]"
+        ))
+        .unwrap()
+        .to_string()
 }
 
 /// Application entry point

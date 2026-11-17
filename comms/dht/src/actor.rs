@@ -34,7 +34,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
@@ -347,7 +347,7 @@ impl DhtActor {
     async fn run(mut self) -> Result<(), DhtActorError> {
         let db = self.database.clone();
         let offline_ts =
-            task::spawn_blocking(move || db.get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp))
+            task::spawn_blocking(move || db.get_metadata_value::<OffsetDateTime>(DhtMetadataKey::OfflineTimestamp))
                 .await
                 .ok()
                 .and_then(|result| result.ok())
@@ -402,7 +402,7 @@ impl DhtActor {
 
     async fn mark_shutdown_time(&self) {
         let db = self.database.clone();
-        let result = task::spawn_blocking(move || db.set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now()))
+        let result = task::spawn_blocking(move || db.set_metadata_value(DhtMetadataKey::OfflineTimestamp, &OffsetDateTime::now_utc()))
             .await
             .map_err(StorageError::from);
         if let Err(err) = result.and_then(|r| r) {
@@ -1402,33 +1402,33 @@ mod test {
 
         assert!(
             requester
-                .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
+                .get_metadata::<OffsetDateTime>(DhtMetadataKey::OfflineTimestamp)
                 .await
                 .unwrap()
                 .is_none()
         );
-        let ts = Utc::now();
+        let ts = OffsetDateTime::now_utc();
         requester
             .set_metadata(DhtMetadataKey::OfflineTimestamp, ts)
             .await
             .unwrap();
 
         let got_ts = requester
-            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
+            .get_metadata::<OffsetDateTime>(DhtMetadataKey::OfflineTimestamp)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(got_ts, ts);
 
         // Check upsert
-        let ts = Utc::now().checked_add_signed(chrono::Duration::seconds(123)).unwrap();
+        let ts = OffsetDateTime::now_utc().checked_add(Duration::seconds(123)).unwrap();
         requester
             .set_metadata(DhtMetadataKey::OfflineTimestamp, ts)
             .await
             .unwrap();
 
         let got_ts = requester
-            .get_metadata::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
+            .get_metadata::<OffsetDateTime>(DhtMetadataKey::OfflineTimestamp)
             .await
             .unwrap()
             .unwrap();

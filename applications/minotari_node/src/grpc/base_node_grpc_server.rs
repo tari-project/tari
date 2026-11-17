@@ -28,7 +28,7 @@ use std::{
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use chrono::Utc;
+use time::OffsetDateTime;
 use either::Either;
 use futures::{SinkExt, channel::mpsc};
 use log::*;
@@ -890,7 +890,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             liveness_results: liveness,
             readiness_status: Some(ReadinessStatus {
                 status: Some(ReadinessStatusEnum::State(ReadinessState::Ready.into())),
-                timestamp: Utc::now().timestamp_millis() as u64,
+                timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000 as u64,
             }),
         };
         trace!(target: LOG_TARGET, "Sending GetNetworkState response to client");

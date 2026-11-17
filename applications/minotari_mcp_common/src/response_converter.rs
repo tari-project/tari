@@ -169,7 +169,7 @@ impl ResponseConverter for GenericJsonConverter {
             "method": method_name,
             "converted": true,
             "note": "Generic converter placeholder - would implement actual protobuf-to-JSON conversion",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "timestamp": OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
         }))
     }
 
@@ -230,7 +230,7 @@ impl ResponseConverter for NodeResponseConverter {
                     "best_block_hash": "0x1234567890abcdef",
                     "accumulated_difficulty": "0xfedcba0987654321",
                     "pruned_height": 12340,
-                    "timestamp": chrono::Utc::now().timestamp(),
+                    "timestamp": OffsetDateTime::now_utc().unix_timestamp(),
                     "converted_by": "NodeResponseConverter"
                 }))
             },

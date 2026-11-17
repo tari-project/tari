@@ -23,7 +23,7 @@
 use std::convert::TryFrom;
 
 use chacha20poly1305::XChaCha20Poly1305;
-use chrono::{NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::prelude::*;
 use tari_common_sqlite::util::diesel_ext::ExpectedRowsExtension;
 use tari_common_types::encryption::{decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce};
@@ -42,7 +42,7 @@ pub struct KeyManagerStateSql {
     pub id: i32,
     pub branch_seed: String,
     pub primary_key_index: Vec<u8>,
-    pub timestamp: NaiveDateTime,
+    pub timestamp: PrimitiveDateTime,
 }
 
 /// Struct used to create a new Key manager in the database
@@ -51,7 +51,7 @@ pub struct KeyManagerStateSql {
 pub struct NewKeyManagerStateSql {
     branch_seed: String,
     primary_key_index: Vec<u8>,
-    timestamp: NaiveDateTime,
+    timestamp: PrimitiveDateTime,
 }
 
 impl From<KeyManagerState> for NewKeyManagerStateSql {
@@ -59,7 +59,7 @@ impl From<KeyManagerState> for NewKeyManagerStateSql {
         Self {
             branch_seed: km.branch_seed,
             primary_key_index: km.primary_key_index.to_le_bytes().to_vec(),
-            timestamp: Utc::now().naive_utc(),
+            timestamp: PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()),
         }
     }
 }

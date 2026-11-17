@@ -17,7 +17,7 @@ thiserror = { workspace = true }
 log = { workspace = true }
 async-trait = "0.1"
 uuid = { version = "1.0", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 hex = "0.4"
 regex = "1.10"
 unicode-normalization = "0.1"

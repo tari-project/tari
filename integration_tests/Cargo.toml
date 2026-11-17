@@ -42,7 +42,6 @@ minotari_wallet_grpc_client = { path = "../clients/rust/wallet_grpc_client" }
 
 anyhow = { workspace = true }
 async-trait = "0.1.50"
-chrono = { version = "0.4", default-features = false }
 cucumber = { version = "0.23", features = [
     "default",
     "libtest",
@@ -57,7 +56,7 @@ rand = { workspace = true }
 reqwest = "0.12"
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-time = "0.3.47"
+time = { version = "0.3.47", features = ["serde", "macros", "parsing", "formatting"] }
 tokio = { workspace = true, features = [
     "macros",
     "time",

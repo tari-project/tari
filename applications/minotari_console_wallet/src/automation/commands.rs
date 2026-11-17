@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use log::*;
@@ -404,7 +404,7 @@ pub async fn make_it_rain(
     duration: Duration,
     start_amount: MicroMinotari,
     increase_amount: MicroMinotari,
-    start_time: DateTime<Utc>,
+    start_time: OffsetDateTime,
     destination: TariAddress,
     transaction_type: MakeItRainTransactionType,
     payment_id: MemoField,
@@ -419,14 +419,14 @@ pub async fn make_it_rain(
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         let delay_ms = if start_time > now {
             println!(
                 "`make-it-rain` scheduled to start at {}: payment_id \"{}\"",
                 start_time,
                 payment_id.payment_id_as_string()
             );
-            start_time.signed_duration_since(now).num_milliseconds() as u64
+            start_time.saturating_sub(now).num_milliseconds() as u64
         } else {
             0
         };
@@ -438,7 +438,7 @@ pub async fn make_it_rain(
         sleep(Duration::from_millis(delay_ms)).await;
 
         let num_txs = (transactions_per_second * duration.as_secs() as f64) as usize;
-        let started_at = Utc::now();
+        let started_at = OffsetDateTime::now_utc();
 
         struct TransactionSendStats {
             i: usize,
@@ -470,7 +470,7 @@ pub async fn make_it_rain(
                 let amount = start_amount.saturating_add(increase_amount.saturating_mul(MicroMinotari::from(i as u64)));
 
                 // Manage transaction submission rate
-                let actual_ms = Utc::now().signed_duration_since(started_at).num_milliseconds();
+                let actual_ms = OffsetDateTime::now_utc().saturating_sub(started_at).num_milliseconds();
                 let target_ms = (i as f64 * (1000.0 / transactions_per_second)) as i64;
                 trace!(
                     target: LOG_TARGET,
@@ -562,7 +562,7 @@ pub async fn make_it_rain(
             num_txs,
             transaction_type,
             payment_id_clone.payment_id_as_string(),
-            Utc::now(),
+            OffsetDateTime::now_utc(),
         );
     });
 

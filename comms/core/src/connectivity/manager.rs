@@ -2483,9 +2483,9 @@ mod peer_garbage_collection_tests {
             for address in peer.addresses.clone().into_vec() {
                 peer.addresses.reset_stats_to_default(&address);
             }
-            peer.added_at = chrono::Utc::now()
+            peer.added_at = OffsetDateTime::now_utc()
                 .naive_utc()
-                .checked_sub_signed(chrono::TimeDelta::hours(10 - i))
+                .checked_sub(Duration::hours(10 - i))
                 .unwrap();
             node_ids.push(peer.node_id.clone());
             peer_manager.add_or_update_peer(peer).await.unwrap();

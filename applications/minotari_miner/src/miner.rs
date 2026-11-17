@@ -27,7 +27,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use crossbeam::channel::{Select, Sender, TrySendError, bounded};
 use futures::Stream;
 use log::*;
@@ -294,7 +294,7 @@ pub fn mining_task(
                 return;
             }
             if !(share_mode) {
-                hasher.set_forward_timestamp(Utc::now().timestamp() as u64);
+                hasher.set_forward_timestamp(OffsetDateTime::now_utc().unix_timestamp() as u64);
             }
         }
         hasher.inc_nonce();

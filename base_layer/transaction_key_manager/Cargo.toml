@@ -22,12 +22,12 @@ minotari_ledger_wallet_common = { workspace = true }
 async-trait = { version = "0.1.50" }
 blake2 = "0.10"
 chacha20poly1305 = "0.10.1"
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 derivative = "2.2.0"
 diesel = { version = "2.4.0", features = [
     "sqlite",
     "serde_json",
-    "chrono",
+    "time",
     "64-column-tables",
 ] }
 diesel_migrations = { version = "2.4" }
@@ -44,7 +44,7 @@ tari_crypto = { workspace = true, features = ["borsh"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-chrono = { version = "0.4", default-features = false, features = ["serde"] }
+time = { version = "0.3", default-features = false, features = ["std", "serde", "macros", "parsing", "formatting"] }
 
 tempfile = "3.1.0"
 [lib]

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{sync::Arc, time::Duration};
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::types::FixedHash;
@@ -155,7 +155,7 @@ where TWalletConnectivity: WalletConnectivityInterface
             self.update_state(BaseNodeState {
                 chain_metadata: Some(chain_metadata),
                 is_synced: Some(is_synced),
-                updated: Some(Utc::now()),
+                updated: Some(OffsetDateTime::now_utc()),
                 latency: Some(latency),
             })
             .await;

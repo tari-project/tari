@@ -31,7 +31,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::NaiveDateTime;
+use time::PrimitiveDateTime;
 use log::*;
 use multiaddr::Multiaddr;
 
@@ -181,7 +181,7 @@ impl PeerManager {
     pub async fn garbage_collect(
         &self,
         connected: Vec<NodeId>,
-        seen_since: NaiveDateTime,
+        seen_since: PrimitiveDateTime,
     ) -> Result<GarbageCollectionStats, PeerManagerError> {
         let max_peer_rows = self.config.max_peer_rows;
         let stats = self
@@ -329,7 +329,7 @@ impl PeerManager {
         exclude_failed: bool,
         randomize: bool,
         netgroups_taken: &HashMap<String, usize>,
-        seen_since: NaiveDateTime,
+        seen_since: PrimitiveDateTime,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         let exclude_node_ids = exclude_node_ids.to_vec();
         let netgroups_taken = netgroups_taken.clone();
@@ -944,7 +944,7 @@ pub fn create_peer_address_source_with_claim(
     addresses: Vec<Multiaddr>,
     peer_features: PeerFeatures,
 ) -> PeerAddressSource {
-    use chrono::Utc;
+    use time::OffsetDateTime;
     use tari_crypto::keys::SecretKey;
 
     use crate::{
@@ -955,7 +955,7 @@ pub fn create_peer_address_source_with_claim(
     fn create_identity_signature(addresses: &[Multiaddr], peer_features: PeerFeatures) -> IdentitySignature {
         let secret = CommsSecretKey::random(&mut rand::rng());
         let public_key = CommsPublicKey::from_secret_key(&secret);
-        let updated_at = Utc::now();
+        let updated_at = OffsetDateTime::now_utc();
         let identity = IdentitySignature::sign_new(&secret, peer_features, addresses, updated_at);
         identity
             .verify(&public_key, peer_features, addresses)
@@ -975,7 +975,7 @@ pub fn create_peer_address_source_with_claim(
 #[cfg(test)]
 mod test {
     #![allow(clippy::indexing_slicing)]
-    use chrono::{DateTime, Utc};
+    use time::OffsetDateTime;
     use tari_common_sqlite::{
         DbProfile,
         connection::{DbConnection, DbConnectionUrl},
@@ -1514,9 +1514,9 @@ mod test {
     async fn validate_claim_bump_by_newer(
         peer_manager: &PeerManager,
         update_peer: &Peer,
-        previous_claim_time: Option<DateTime<Utc>>,
+        previous_claim_time: Option<OffsetDateTime>,
         expected_count: usize,
-    ) -> DateTime<Utc> {
+    ) -> OffsetDateTime {
         let peer_from_db = peer_manager
             .find_by_node_id(&update_peer.node_id)
             .await

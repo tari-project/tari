@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use log::*;
 use tari_common_types::{
     burn_proof::PartialBurnClaimProof,
@@ -837,7 +837,7 @@ where T: TransactionBackend + 'static
         destination_address: TariAddress,
         status: LegacyTransactionStatus,
         current_height: Option<u64>,
-        mined_timestamp: Option<DateTime<Utc>>,
+        mined_timestamp: Option<OffsetDateTime>,
         scanned_output: TransactionOutput,
         payment_id: MemoField,
         direction: TransactionDirection,
@@ -869,7 +869,7 @@ where T: TransactionBackend + 'static
                 PrivateKey::default(),
             ),
             status,
-            mined_timestamp.unwrap_or(Utc::now()),
+            mined_timestamp.unwrap_or(OffsetDateTime::now_utc()),
             direction,
             current_height,
             mined_timestamp,

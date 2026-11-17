@@ -22,7 +22,7 @@
 
 use std::{cmp::min, collections::HashMap, time::Duration};
 
-use chrono::NaiveDateTime;
+use time::PrimitiveDateTime;
 use log::*;
 use multiaddr::Multiaddr;
 
@@ -249,7 +249,7 @@ impl PeerStorageSql {
         randomize: bool,
         max_per_netgroup: usize,
         netgroups_taken: &HashMap<String, usize>,
-        seen_since: NaiveDateTime,
+        seen_since: PrimitiveDateTime,
     ) -> Result<Vec<Peer>, PeerManagerError> {
         Ok(self.peer_db.get_available_dial_candidates(
             exclude_node_ids,
@@ -323,7 +323,7 @@ impl PeerStorageSql {
         &self,
         max_peer_rows: usize,
         connected: &[NodeId],
-        seen_since: NaiveDateTime,
+        seen_since: PrimitiveDateTime,
     ) -> Result<GarbageCollectionStats, PeerManagerError> {
         Ok(self.peer_db.garbage_collect(max_peer_rows, connected, seen_since)?)
     }
@@ -371,7 +371,7 @@ mod test {
     #![allow(clippy::indexing_slicing)]
     use std::{borrow::BorrowMut, iter::repeat_with};
 
-    use chrono::{DateTime, Utc};
+    use time::OffsetDateTime;
     use multiaddr::Multiaddr;
     use rand::RngExt;
     use tari_common_sqlite::connection::DbConnection;
@@ -723,7 +723,7 @@ mod test {
 
         // Threshold duration + a minute
         #[allow(clippy::cast_possible_wrap)] // Won't wrap around, numbers are static
-        let above_the_threshold = Utc::now().timestamp() - (STALE_PEER_THRESHOLD_DURATION.as_secs() + 60) as i64;
+        let above_the_threshold = OffsetDateTime::now_utc().unix_timestamp() - (STALE_PEER_THRESHOLD_DURATION.as_secs() + 60) as i64;
 
         let never_seen_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
         let banned_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, true);
@@ -731,7 +731,7 @@ mod test {
         let mut not_active_peer = create_test_peer(PeerFeatures::COMMUNICATION_NODE, false);
         let address = not_active_peer.addresses.best().unwrap();
         let mut address = MultiaddrWithStats::new(address.address().clone(), PeerAddressSource::Config);
-        address.mark_last_attempted(DateTime::from_timestamp(above_the_threshold, 0).unwrap().naive_utc());
+        address.mark_last_attempted(DateTime::from_timestamp(above_the_threshold, 0).PrimitiveDateTime::new(unwrap().date(), unwrap().time()));
         not_active_peer
             .addresses
             .merge(&MultiaddressesWithStats::from(vec![address]));
@@ -857,7 +857,7 @@ mod test {
                     false,
                     0,
                     &HashMap::new(),
-                    NaiveDateTime::MIN
+                    PrimitiveDateTime::MIN
                 )
                 .unwrap()
                 .is_empty()

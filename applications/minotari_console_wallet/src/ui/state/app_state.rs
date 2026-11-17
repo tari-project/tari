@@ -28,7 +28,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, Local, NaiveDateTime};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use log::*;
 use minotari_wallet::{
     WalletConfig,
@@ -759,7 +759,7 @@ impl AppStateInner {
     }
 
     pub fn add_notification(&mut self, notification: String) {
-        self.data.notifications.push((Local::now(), notification));
+        self.data.notifications.push((OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()), notification));
         self.data.new_notification_count = self.data.new_notification_count.saturating_add(1);
 
         const MAX_NOTIFICATIONS: usize = 100;
@@ -792,8 +792,8 @@ pub struct CompletedTransactionInfo {
     pub excess_signature: String,
     pub maturity: u64,
     pub status: LegacyTransactionStatus,
-    pub timestamp: NaiveDateTime,
-    pub mined_timestamp: Option<NaiveDateTime>,
+    pub timestamp: PrimitiveDateTime,
+    pub mined_timestamp: Option<PrimitiveDateTime>,
     pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub mined_height: Option<u64>,

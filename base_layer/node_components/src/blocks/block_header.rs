@@ -45,7 +45,7 @@ use std::{
 
 use blake2::Blake2b;
 use borsh::{BorshDeserialize, BorshSerialize};
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use digest::consts::U32;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, FixedHash, PrivateKey};
@@ -271,9 +271,9 @@ impl BlockHeader {
         self.timestamp
     }
 
-    pub fn to_chrono_datetime(&self) -> DateTime<Utc> {
+    pub fn to_datetime(&self) -> OffsetDateTime {
         DateTime::<Utc>::from_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX), 0)
-            .unwrap_or(DateTime::<Utc>::MAX_UTC)
+            .unwrap_or(OffsetDateTime::MAX)
     }
 
     #[inline]
@@ -368,7 +368,7 @@ impl Display for BlockHeader {
             self.version,
             self.height,
             self.prev_hash,
-            self.to_chrono_datetime().to_rfc2822()
+            self.to_datetime().format(&Rfc2822).unwrap()
         )?;
         writeln!(
             fmt,
@@ -389,7 +389,7 @@ impl Display for BlockHeader {
 
 #[cfg(test)]
 mod test {
-    use chrono::NaiveDate;
+    use time::Date;
 
     use super::*;
 
@@ -397,13 +397,7 @@ mod test {
         let mut header = BlockHeader::new(2);
 
         #[allow(clippy::cast_sign_loss)]
-        let epoch_secs = DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDate::from_ymd_opt(2000, 1, 1)
-                .unwrap()
-                .and_hms_opt(1, 1, 1)
-                .unwrap(),
-            Utc,
-        )
+        let epoch_secs = Date::from_calendar_date(2000, Month::try_from(1).unwrap(), 1).unwrap().with_hms(1, 1, 1).unwrap().assume_utc()
         .timestamp() as u64;
         header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
         header.pow.pow_algo = PowAlgorithm::Sha3x;

@@ -25,7 +25,7 @@ use std::{
     ops::{Add, RangeInclusive},
 };
 
-use chrono::{DateTime, Duration, Utc};
+use time::{Duration, OffsetDateTime};
 use serde::{Deserialize, Serialize};
 use tari_common::configuration::Network;
 use tari_common_types::epoch::VnEpoch;
@@ -656,7 +656,7 @@ impl ConsensusConstants {
     #[allow(clippy::cast_possible_wrap)]
     pub fn ftl(&self) -> EpochTime {
         // Timestamp never negative
-        (Utc::now()
+        (OffsetDateTime::now_utc()
             .add(Duration::seconds(self.future_time_limit as i64))
             .timestamp() as u64)
             .into()
@@ -667,8 +667,8 @@ impl ConsensusConstants {
     /// This function returns the FTL as a UTC datetime
     // converting u64 to i64 is okay as the future time limit is the hundreds so way below u32 even
     #[allow(clippy::cast_possible_wrap)]
-    pub fn ftl_as_time(&self) -> DateTime<Utc> {
-        Utc::now().add(Duration::seconds(self.future_time_limit as i64))
+    pub fn ftl_as_time(&self) -> OffsetDateTime {
+        OffsetDateTime::now_utc().add(Duration::seconds(self.future_time_limit as i64))
     }
 
     /// Monero Coinbases are unlimited in size, but we limited the extra field to only a certain bytes.

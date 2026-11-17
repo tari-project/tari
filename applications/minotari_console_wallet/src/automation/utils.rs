@@ -27,7 +27,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::automation::{
@@ -140,7 +140,7 @@ fn append_to_json_file<P: AsRef<Path>, T: Serialize>(file: P, data: T) -> Result
 
 /// Create a unique session-based output directory
 pub(crate) fn create_pre_mine_output_dir(alias: Option<&str>) -> Result<(String, PathBuf), CommandError> {
-    let date_time = Utc::now();
+    let date_time = OffsetDateTime::now_utc();
     let mut session_id = format!("{}", date_time.format("%Y%m%d%H%M%S"));
     if let Some(alias) = alias {
         session_id.push('_');

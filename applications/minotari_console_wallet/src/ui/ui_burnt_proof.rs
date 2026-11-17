@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::NaiveDateTime;
+use time::PrimitiveDateTime;
 use serde::Serialize;
 use tari_common_types::burn_proof::PartialBurnClaimProof;
 use tari_sidechain::BurnOutputProof;
@@ -30,7 +30,7 @@ pub struct UiBurnProof {
     pub id: i32,
     pub proof: PartialBurnClaimProof,
     pub burn_output_proof: Option<BurnOutputProof>,
-    pub burned_at: NaiveDateTime,
+    pub burned_at: PrimitiveDateTime,
 }
 
 impl UiBurnProof {

@@ -147,8 +147,8 @@ impl McpTool for GetTransactionInfoTool {
                         "amount_tari": (tx.amount as f64 / 1_000_000.0),
                         "fee_tari": (tx.fee as f64 / 1_000_000.0),
                         "timestamp_readable": if tx.timestamp > 0 {
-                            chrono::DateTime::from_timestamp(tx.timestamp as i64, 0)
-                                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+                            OffsetDateTime::from_unix_timestamp(tx.timestamp as i64)
+                                .map(|dt| dt.format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second] UTC")).unwrap().to_string())
                                 .unwrap_or_else(|| "Invalid timestamp".to_string())
                         } else {
                             "No timestamp".to_string()
@@ -323,15 +323,15 @@ impl McpTool for GetCompletedTransactionsTool {
                         "amount_tari": (transaction.amount as f64 / 1_000_000.0),
                         "fee_tari": (transaction.fee as f64 / 1_000_000.0),
                         "date": if transaction.timestamp > 0 {
-                            chrono::DateTime::from_timestamp(transaction.timestamp as i64, 0)
-                                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                            OffsetDateTime::from_unix_timestamp(transaction.timestamp as i64)
+                                .map(|dt| dt.format(&format_description!("[year]-[month]-[day]")).unwrap().to_string())
                                 .unwrap_or_else(|| "Invalid date".to_string())
                         } else {
                             "No date".to_string()
                         },
                         "time": if transaction.timestamp > 0 {
-                            chrono::DateTime::from_timestamp(transaction.timestamp as i64, 0)
-                                .map(|dt| dt.format("%H:%M:%S").to_string())
+                            OffsetDateTime::from_unix_timestamp(transaction.timestamp as i64)
+                                .map(|dt| dt.format(&format_description!("[hour]:[minute]:[second]")).unwrap().to_string())
                                 .unwrap_or_else(|| "Invalid time".to_string())
                         } else {
                             "No time".to_string()

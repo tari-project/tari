@@ -27,7 +27,7 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use clap::{Args, Parser, Subcommand};
 use minotari_app_utilities::{common_cli_args::CommonCliArgs, utilities::UniPublicKey};
 use tari_common::configuration::{ConfigOverrideProvider, Network};
@@ -456,7 +456,7 @@ pub struct MakeItRainArgs {
     #[clap(long, default_value_t=tari_amount::T)]
     pub increase_amount: MicroMinotari,
     #[clap(long, value_parser = parse_start_time)]
-    pub start_time: Option<DateTime<Utc>>,
+    pub start_time: Option<OffsetDateTime>,
     #[clap(long, alias = "stealth-one-sided")]
     pub one_sided: bool,
     #[clap(short, long, default_value = "Make it rain")]
@@ -480,8 +480,8 @@ impl Display for MakeItRainTransactionType {
     }
 }
 
-fn parse_start_time(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
-    let mut start_time = Utc::now();
+fn parse_start_time(arg: &str) -> Result<OffsetDateTime, time::error::Parse> {
+    let mut start_time = OffsetDateTime::now_utc();
     if !arg.is_empty() && arg.to_uppercase() != "NOW" {
         start_time = arg.parse()?;
     }
@@ -529,24 +529,33 @@ pub struct ExportViewKeyAndSpendKeyArgs {
     pub output_file: Option<PathBuf>,
 }
 
-fn parse_utc_datetime(arg: &str) -> Result<DateTime<Utc>, chrono::ParseError> {
+fn parse_utc_datetime(arg: &str) -> Result<OffsetDateTime, time::error::Parse> {
+    use time::{
+        Date, PrimitiveDateTime, UtcOffset,
+        format_description::well_known::Rfc3339,
+        macros::format_description,
+    };
     if arg.to_uppercase() == "NOW" {
-        return Ok(Utc::now());
+        return Ok(OffsetDateTime::now_utc());
     }
     // Try RFC3339 first, then a few common formats
-    if let Ok(dt) = DateTime::parse_from_rfc3339(arg) {
-        return Ok(dt.with_timezone(&Utc));
+    if let Ok(dt) = OffsetDateTime::parse(arg, &Rfc3339) {
+        return Ok(dt.to_offset(UtcOffset::UTC));
     }
-    for fmt in &["%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"] {
-        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(arg, fmt) {
-            return Ok(dt.and_utc());
+    for fmt in &[
+        format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]"),
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"),
+        format_description!("[year]-[month]-[day]"),
+    ] {
+        if let Ok(dt) = PrimitiveDateTime::parse(arg, fmt) {
+            return Ok(dt.assume_utc());
         }
-        if let Ok(d) = chrono::NaiveDate::parse_from_str(arg, fmt) {
-            return Ok(d.and_hms_opt(0, 0, 0).expect("valid hms").and_utc());
+        if let Ok(d) = Date::parse(arg, fmt) {
+            return Ok(d.with_hms(0, 0, 0).expect("valid hms").assume_utc());
         }
     }
     // Trigger a parse error by parsing with rfc3339 to return the right error type
-    DateTime::parse_from_rfc3339(arg).map(|dt| dt.with_timezone(&Utc))
+    OffsetDateTime::parse(arg, &Rfc3339).map(|dt| dt.to_offset(UtcOffset::UTC))
 }
 
 #[derive(Debug, Args, Clone)]
@@ -556,10 +565,10 @@ pub struct ExportAuditArgs {
     pub output_file: PathBuf,
     /// Optional start date/time filter (RFC3339, e.g. "2021-01-01T00:00:00Z" or "2021-01-01")
     #[clap(long, value_parser = parse_utc_datetime)]
-    pub start_date: Option<DateTime<Utc>>,
+    pub start_date: Option<OffsetDateTime>,
     /// Optional end date/time filter (RFC3339, e.g. "2021-12-31T23:59:59Z" or "2021-12-31")
     #[clap(long, value_parser = parse_utc_datetime)]
-    pub end_date: Option<DateTime<Utc>>,
+    pub end_date: Option<OffsetDateTime>,
     /// Conversion rate from XTM to the selected fiat currency (e.g. 3130.0)
     #[clap(long)]
     pub conversion_rate: Option<f64>,

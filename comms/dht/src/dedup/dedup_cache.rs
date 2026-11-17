@@ -29,7 +29,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{DateTime, NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl, SqliteConnection, dsl, sql_types};
 use log::*;
 use tari_common_sqlite::{connection::DbConnection, error::StorageError};
@@ -49,8 +49,8 @@ struct DedupCacheEntry {
     body_hash: String,
     sender_public_ke: String,
     number_of_hit: i32,
-    stored_at: NaiveDateTime,
-    last_hit_at: NaiveDateTime,
+    stored_at: PrimitiveDateTime,
+    last_hit_at: PrimitiveDateTime,
 }
 
 /// The fewest new entries between two growth-triggered trims.
@@ -133,7 +133,7 @@ impl DedupCacheDatabase {
         expires: Option<EpochTime>,
         is_signed: bool,
     ) -> Result<(u32, bool), StorageError> {
-        let keep_until = self.keep_until(Utc::now().naive_utc(), expires, is_signed);
+        let keep_until = self.keep_until(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()), expires, is_signed);
         let (hit_count, from_first_sender) =
             self.insert_body_hash_or_update_stats(&to_hex(msg_hash), &public_key.to_hex(), keep_until, is_signed)?;
 
@@ -157,7 +157,7 @@ impl DedupCacheDatabase {
     /// How long to keep an entry hit at `now`: until the message expires plus clock slack, but no less than the
     /// minimum and no more than the maximum entry age. An unsigned message's expiry is not authenticated, so it gets
     /// the minimum.
-    fn keep_until(&self, now: NaiveDateTime, expires: Option<EpochTime>, is_signed: bool) -> NaiveDateTime {
+    fn keep_until(&self, now: PrimitiveDateTime, expires: Option<EpochTime>, is_signed: bool) -> PrimitiveDateTime {
         let earliest = add_duration(now, self.min_entry_age);
         let latest = add_duration(now, MAX_ENTRY_AGE);
         let expires = expires
@@ -200,7 +200,7 @@ impl DedupCacheDatabase {
         let mut num_removed = 0usize;
         loop {
             while self.trim_requested.swap(false, Ordering::SeqCst) {
-                match self.trim_entries_at(Utc::now().naive_utc()) {
+                match self.trim_entries_at(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time())) {
                     Ok(n) => num_removed = num_removed.saturating_add(n),
                     Err(err) => {
                         self.is_trimming.store(false, Ordering::SeqCst);
@@ -216,7 +216,7 @@ impl DedupCacheDatabase {
         }
     }
 
-    fn trim_entries_at(&self, now: NaiveDateTime) -> Result<usize, StorageError> {
+    fn trim_entries_at(&self, now: PrimitiveDateTime) -> Result<usize, StorageError> {
         let capacity = i64::try_from(self.capacity).unwrap_or(i64::MAX);
         let ceiling = i64::try_from(self.capacity.saturating_mul(CEILING_CAPACITY_MULTIPLE)).unwrap_or(i64::MAX);
         let msg_count = {
@@ -297,7 +297,7 @@ impl DedupCacheDatabase {
         &self,
         body_hash: &str,
         public_key: &str,
-        keep_until: NaiveDateTime,
+        keep_until: PrimitiveDateTime,
         is_signed: bool,
     ) -> Result<(u32, bool), StorageError> {
         #[derive(QueryableByName)]
@@ -314,7 +314,7 @@ impl DedupCacheDatabase {
         let rows = diesel::sql_query(UPSERT_HIT_SQL)
             .bind::<sql_types::Text, _>(body_hash)
             .bind::<sql_types::Text, _>(public_key)
-            .bind::<sql_types::Timestamp, _>(Utc::now().naive_utc())
+            .bind::<sql_types::Timestamp, _>(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))
             .bind::<sql_types::Timestamp, _>(keep_until)
             .bind::<sql_types::Bool, _>(is_signed)
             .load::<Hits>(&mut conn)?;
@@ -332,11 +332,11 @@ impl DedupCacheDatabase {
     }
 }
 
-fn add_duration(time: NaiveDateTime, duration: Duration) -> NaiveDateTime {
-    chrono::Duration::from_std(duration)
+fn add_duration(time: PrimitiveDateTime, duration: Duration) -> PrimitiveDateTime {
+    Duration::try_from(duration)
         .ok()
-        .and_then(|d| time.checked_add_signed(d))
-        .unwrap_or(NaiveDateTime::MAX)
+        .and_then(|d| time.checked_add(d))
+        .unwrap_or(PrimitiveDateTime::MAX)
 }
 
 #[cfg(test)]
@@ -377,7 +377,7 @@ mod test {
 
     /// Inserts without the growth trim.
     fn insert_raw(cache: &DedupCacheDatabase, i: usize, is_signed: bool) {
-        let keep_until = cache.keep_until(Utc::now().naive_utc(), None, is_signed);
+        let keep_until = cache.keep_until(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()), None, is_signed);
         cache
             .insert_body_hash_or_update_stats(
                 &to_hex(&i.to_le_bytes()),
@@ -391,9 +391,9 @@ mod test {
     /// Makes entry `i` look last hit `num_entries - i` seconds ago, so lower `i` is less recently hit.
     fn order_entries(cache: &DedupCacheDatabase, num_entries: usize) {
         let mut conn = cache.connection.get_pooled_connection().unwrap();
-        let now = Utc::now().naive_utc();
+        let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
         for i in 0..num_entries {
-            let ago = chrono::Duration::seconds(i64::try_from(num_entries - i).unwrap());
+            let ago = Duration::seconds(i64::try_from(num_entries - i).unwrap());
             diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(to_hex(&i.to_le_bytes()))))
                 .set(dedup_cache::last_hit_at.eq(now - ago))
                 .execute(&mut conn)
@@ -405,7 +405,7 @@ mod test {
         cache.get_hit_count(&i.to_le_bytes()).unwrap() > 0
     }
 
-    fn keep_until_of(cache: &DedupCacheDatabase, i: usize) -> NaiveDateTime {
+    fn keep_until_of(cache: &DedupCacheDatabase, i: usize) -> PrimitiveDateTime {
         let mut conn = cache.connection.get_pooled_connection().unwrap();
         dedup_cache::table
             .select(dedup_cache::keep_until)
@@ -414,8 +414,8 @@ mod test {
             .unwrap()
     }
 
-    fn after(duration: Duration) -> NaiveDateTime {
-        add_duration(Utc::now().naive_utc(), duration)
+    fn after(duration: Duration) -> PrimitiveDateTime {
+        add_duration(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()), duration)
     }
 
     fn expires_in(duration: Duration) -> Option<EpochTime> {
@@ -616,7 +616,7 @@ mod test {
         let cache = new_cache(10);
         let mut conn = cache.connection.get_pooled_connection().unwrap();
         let expired_plan = diesel::sql_query(format!("EXPLAIN QUERY PLAN {DELETE_EXPIRED_SQL}"))
-            .bind::<sql_types::Timestamp, _>(Utc::now().naive_utc())
+            .bind::<sql_types::Timestamp, _>(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))
             .bind::<sql_types::BigInt, _>(1)
             .load::<QueryPlanRow>(&mut conn)
             .unwrap();

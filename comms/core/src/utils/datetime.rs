@@ -22,13 +22,13 @@
 
 use std::time::Duration;
 
-use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, Utc};
+use time::Date, OffsetDateTime, PrimitiveDateTime;
 
-pub fn safe_future_datetime_from_duration(duration: Duration) -> DateTime<Utc> {
-    let old_duration = chrono::Duration::from_std(duration).unwrap_or(chrono::Duration::MAX);
-    Utc::now()
-        .checked_add_signed(old_duration)
-        .unwrap_or(DateTime::<Utc>::MAX_UTC)
+pub fn safe_future_datetime_from_duration(duration: Duration) -> OffsetDateTime {
+    let old_duration = Duration::try_from(duration).unwrap_or(Duration::MAX);
+    OffsetDateTime::now_utc()
+        .checked_add(old_duration)
+        .unwrap_or(OffsetDateTime::MAX)
 }
 
 pub fn format_duration(duration: Duration) -> String {
@@ -46,29 +46,30 @@ pub fn format_duration(duration: Duration) -> String {
     }
 }
 
-pub fn format_local_datetime(datetime: &NaiveDateTime) -> String {
-    let local_datetime = DateTime::<Local>::from_naive_utc_and_offset(*datetime, Local::now().offset().to_owned());
-    local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+pub fn format_local_datetime(datetime: &PrimitiveDateTime) -> String {
+    let local_datetime = *datetime.assume_utc().to_offset(OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned());
+    local_datetime.format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap().to_string()
 }
 
 /// The latest time stored in a database: 9999-12-31 23:59:59.
 ///
 /// Databases such as SQLite store times as text and compare them as text. A later time has a five or more digit year
-/// written with a leading `+` (e.g. `+262142-12-31 ...` for [`DateTime::<Utc>::MAX_UTC`]), which sorts before every
+/// written with a leading `+` (e.g. `+262142-12-31 ...` for [`OffsetDateTime::MAX`]), which sorts before every
 /// four-digit year, so a ban "forever" would read as long expired. Store-bound times are clamped to this.
-pub fn max_stored_datetime() -> NaiveDateTime {
-    NaiveDate::from_ymd_opt(9999, 12, 31)
-        .and_then(|date| date.and_hms_opt(23, 59, 59))
+pub fn max_stored_datetime() -> PrimitiveDateTime {
+    Date::from_calendar_date(9999, Month::December, 31)
+        .ok()
+        .and_then(|date| date.with_hms(23, 59, 59).ok())
         .expect("9999-12-31 23:59:59 is a valid date and time")
 }
 
 /// `datetime`, or [`max_stored_datetime`] if it is later.
-pub fn clamp_to_max_stored_datetime(datetime: NaiveDateTime) -> NaiveDateTime {
+pub fn clamp_to_max_stored_datetime(datetime: PrimitiveDateTime) -> PrimitiveDateTime {
     datetime.min(max_stored_datetime())
 }
 
-/// True for the "forever" time: [`DateTime::<Utc>::MAX_UTC`], or the [`max_stored_datetime`] it is stored as.
-pub fn is_max_datetime(datetime: &NaiveDateTime) -> bool {
+/// True for the "forever" time: [`OffsetDateTime::MAX`], or the [`max_stored_datetime`] it is stored as.
+pub fn is_max_datetime(datetime: &PrimitiveDateTime) -> bool {
     *datetime >= max_stored_datetime()
 }
 
@@ -87,7 +88,7 @@ mod test {
         // A four-digit year: sorts after every current time as text, too
         assert_eq!(stored.to_string(), "9999-12-31 23:59:59");
 
-        let soon = Utc::now().naive_utc();
+        let soon = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
         assert_eq!(clamp_to_max_stored_datetime(soon), soon);
         assert!(!is_max_datetime(&soon));
     }

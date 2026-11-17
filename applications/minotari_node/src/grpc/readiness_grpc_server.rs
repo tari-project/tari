@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use chrono::Utc;
+use time::OffsetDateTime;
 use futures::channel::mpsc;
 use minotari_app_grpc::tari_rpc::{
     self,
@@ -39,7 +39,7 @@ pub struct ReadinessGrpcServer {
 fn default_readiness_status() -> ReadinessStatus {
     ReadinessStatus {
         status: Some(ReadinessStatusEnum::State(State::NotReady.into())),
-        timestamp: Utc::now().timestamp_millis() as u64,
+        timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000 as u64,
     }
 }
 
@@ -57,7 +57,7 @@ impl ReadinessStatusHandler {
     pub fn send_readiness_status(&self, status_state: State) {
         let status = ReadinessStatus {
             status: Some(ReadinessStatusEnum::State(status_state.into())),
-            timestamp: Utc::now().timestamp_millis() as u64,
+            timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000 as u64,
         };
         let _unused = self.readiness_tx.send(status);
     }

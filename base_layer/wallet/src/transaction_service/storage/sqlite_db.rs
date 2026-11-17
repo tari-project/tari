@@ -26,7 +26,7 @@ use std::{
 };
 
 use chacha20poly1305::XChaCha20Poly1305;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::{prelude::*, result::Error as DieselError};
 use log::*;
 use tari_common_sqlite::{
@@ -1776,11 +1776,11 @@ struct InboundTransactionSql {
     source_address: Vec<u8>,
     amount: i64,
     receiver_protocol: Vec<u8>,
-    timestamp: NaiveDateTime,
+    timestamp: PrimitiveDateTime,
     cancelled: i32,
     direct_send_success: i32,
     send_count: i32,
-    last_send_timestamp: Option<NaiveDateTime>,
+    last_send_timestamp: Option<PrimitiveDateTime>,
     payment_id: Option<Vec<u8>>,
     received_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
@@ -1883,7 +1883,7 @@ impl InboundTransactionSql {
                     return Err(TransactionStorageError::DieselError(DieselError::NotFound));
                 },
             ),
-            last_send_timestamp: Some(Some(Utc::now().naive_utc())),
+            last_send_timestamp: Some(Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
         })
         .execute(conn)
         .num_rows_affected_or_not_found(1)?;
@@ -2024,11 +2024,11 @@ impl InboundTransaction {
             receiver_protocol: bincode::deserialize(&i.receiver_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: LegacyTransactionStatus::Pending,
-            timestamp: i.timestamp.and_utc(),
+            timestamp: i.timestamp.assume_utc(),
             cancelled: i.cancelled != 0,
             direct_send_success: i.direct_send_success != 0,
             send_count: i.send_count as u32,
-            last_send_timestamp: i.last_send_timestamp.map(|t| t.and_utc()),
+            last_send_timestamp: i.last_send_timestamp.map(|t| t.assume_utc()),
             payment_id: MemoField::from_bytes(&i.payment_id.unwrap_or_default()),
             received_output_hashes: bytes_to_fixedhash_vec(&i.received_output_hashes.unwrap_or_default()),
         })
@@ -2042,7 +2042,7 @@ pub struct UpdateInboundTransactionSql {
     direct_send_success: Option<i32>,
     receiver_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
-    last_send_timestamp: Option<Option<NaiveDateTime>>,
+    last_send_timestamp: Option<Option<PrimitiveDateTime>>,
 }
 
 /// A structure to represent a Sql compatible version of the OutboundTransaction struct
@@ -2054,11 +2054,11 @@ struct OutboundTransactionSql {
     amount: i64,
     fee: i64,
     sender_protocol: Vec<u8>,
-    timestamp: NaiveDateTime,
+    timestamp: PrimitiveDateTime,
     cancelled: i32,
     direct_send_success: i32,
     send_count: i32,
-    last_send_timestamp: Option<NaiveDateTime>,
+    last_send_timestamp: Option<PrimitiveDateTime>,
     payment_id: Option<Vec<u8>>,
     sent_output_hashes: Option<Vec<u8>>,
     user_payment_id: Option<Vec<u8>>,
@@ -2156,7 +2156,7 @@ impl OutboundTransactionSql {
                         return Err(TransactionStorageError::DieselError(DieselError::NotFound));
                     },
                 ),
-                last_send_timestamp: Some(Some(Utc::now().naive_utc())),
+                last_send_timestamp: Some(Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
             })
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
@@ -2289,11 +2289,11 @@ impl OutboundTransaction {
             sender_protocol: bincode::deserialize(&o.sender_protocol)
                 .map_err(|e| TransactionStorageError::BincodeDeserialize(e.to_string()))?,
             status: LegacyTransactionStatus::Pending,
-            timestamp: o.timestamp.and_utc(),
+            timestamp: o.timestamp.assume_utc(),
             cancelled: o.cancelled != 0,
             direct_send_success: o.direct_send_success != 0,
             send_count: o.send_count as u32,
-            last_send_timestamp: o.last_send_timestamp.map(|t| t.and_utc()),
+            last_send_timestamp: o.last_send_timestamp.map(|t| t.assume_utc()),
             payment_id: MemoField::from_bytes(&o.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&o.sent_output_hashes.unwrap_or_default()),
         };
@@ -2312,7 +2312,7 @@ pub struct UpdateOutboundTransactionSql {
     direct_send_success: Option<i32>,
     sender_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
-    last_send_timestamp: Option<Option<NaiveDateTime>>,
+    last_send_timestamp: Option<Option<PrimitiveDateTime>>,
 }
 
 /// A structure to represent a Sql compatible version of the CompletedTransaction struct
@@ -2326,15 +2326,15 @@ pub struct CompletedTransactionSql {
     fee: i64,
     transaction_protocol: Vec<u8>,
     status: i32,
-    timestamp: NaiveDateTime,
+    timestamp: PrimitiveDateTime,
     cancelled: Option<i32>,
     direction: Option<i32>,
     send_count: i32,
-    last_send_timestamp: Option<NaiveDateTime>,
+    last_send_timestamp: Option<PrimitiveDateTime>,
     confirmations: Option<i64>,
     mined_height: Option<i64>,
     mined_in_block: Option<Vec<u8>>,
-    mined_timestamp: Option<NaiveDateTime>,
+    mined_timestamp: Option<PrimitiveDateTime>,
     transaction_signature_nonce: Vec<u8>,
     transaction_signature_key: Vec<u8>,
     payment_id: Option<Vec<u8>>,
@@ -2551,7 +2551,7 @@ impl CompletedTransactionSql {
                         return Err(TransactionStorageError::DieselError(DieselError::NotFound));
                     },
                 ),
-                last_send_timestamp: Some(Some(Utc::now().naive_utc())),
+                last_send_timestamp: Some(Some(PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()))),
                 ..Default::default()
             })
             .execute(conn)
@@ -2919,17 +2919,17 @@ impl CompletedTransaction {
             fee: MicroMinotari::from(c.fee as u64),
             transaction,
             status: LegacyTransactionStatus::try_from(c.status)?,
-            timestamp: c.timestamp.and_utc(),
+            timestamp: c.timestamp.assume_utc(),
             cancelled: c
                 .cancelled
                 .map(|v| TxCancellationReason::try_from(v as u32).unwrap_or(TxCancellationReason::Unknown)),
             direction: TransactionDirection::try_from(c.direction.unwrap_or(2i32))?,
             send_count: c.send_count as u32,
-            last_send_timestamp: c.last_send_timestamp.map(|t| t.and_utc()),
+            last_send_timestamp: c.last_send_timestamp.map(|t| t.assume_utc()),
             transaction_signature,
             mined_height: c.mined_height.map(|ic| ic as u64),
             mined_in_block,
-            mined_timestamp: c.mined_timestamp.map(|t| t.and_utc()),
+            mined_timestamp: c.mined_timestamp.map(|t| t.assume_utc()),
             payment_id: MemoField::from_bytes(&c.payment_id.unwrap_or_default()),
             sent_output_hashes: bytes_to_fixedhash_vec(&c.sent_output_hashes.unwrap_or_default()),
             received_output_hashes: bytes_to_fixedhash_vec(&c.received_output_hashes.unwrap_or_default()),
@@ -2950,16 +2950,16 @@ impl CompletedTransaction {
 #[diesel(table_name = completed_transactions)]
 pub struct UpdateCompletedTransactionSql {
     status: Option<i32>,
-    timestamp: Option<NaiveDateTime>,
+    timestamp: Option<PrimitiveDateTime>,
     cancelled: Option<Option<i32>>,
     direction: Option<i32>,
     transaction_protocol: Option<Vec<u8>>,
     send_count: Option<i32>,
-    last_send_timestamp: Option<Option<NaiveDateTime>>,
+    last_send_timestamp: Option<Option<PrimitiveDateTime>>,
     confirmations: Option<Option<i64>>,
     mined_height: Option<Option<i64>>,
     mined_in_block: Option<Option<Vec<u8>>>,
-    mined_timestamp: Option<NaiveDateTime>,
+    mined_timestamp: Option<PrimitiveDateTime>,
     transaction_signature_nonce: Option<Vec<u8>>,
     transaction_signature_key: Option<Vec<u8>>,
     sent_output_hashes: Option<Option<Vec<u8>>>,
@@ -3153,7 +3153,7 @@ pub struct PayrefHistorySql {
     pub output_hash: Vec<u8>,
     pub payref: Vec<u8>,
     pub tx_id: i64,
-    pub superseded_at: NaiveDateTime,
+    pub superseded_at: PrimitiveDateTime,
 }
 
 #[derive(Clone, Debug, Insertable)]
@@ -3199,8 +3199,8 @@ impl PayrefHistorySql {
     }
 }
 
-fn now() -> NaiveDateTime {
-    Utc::now().naive_utc()
+fn now() -> PrimitiveDateTime {
+    PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time())
 }
 
 #[cfg(test)]
@@ -3208,7 +3208,7 @@ mod test {
     use std::mem::size_of;
 
     use chacha20poly1305::{Key, KeyInit, XChaCha20Poly1305};
-    use chrono::Utc;
+    use time::OffsetDateTime;
     use diesel::{Connection, RunQueryDsl, SqliteConnection, sql_query};
     use diesel_migrations::{EmbeddedMigrations, MigrationHarness};
     use rand::Rng;
@@ -3327,7 +3327,7 @@ mod test {
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -3348,7 +3348,7 @@ mod test {
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: LegacyTransactionStatus::Pending,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-                timestamp: Utc::now(),
+                timestamp: OffsetDateTime::now_utc(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -3417,7 +3417,7 @@ mod test {
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -3431,7 +3431,7 @@ mod test {
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -3494,7 +3494,7 @@ mod test {
             fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: LegacyTransactionStatus::MinedUnconfirmed,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -3534,7 +3534,7 @@ mod test {
             fee: MicroMinotari::from(100),
             transaction: tx.clone(),
             status: LegacyTransactionStatus::Broadcast,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -3720,7 +3720,7 @@ mod test {
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -3750,7 +3750,7 @@ mod test {
             sender_protocol: SenderTransactionProtocol::new_placeholder(),
             status: LegacyTransactionStatus::Pending,
             payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: false,
             direct_send_success: false,
             send_count: 0,
@@ -3793,7 +3793,7 @@ mod test {
                 PrivateKey::random(&mut rand::rng()),
             ),
             status: LegacyTransactionStatus::MinedUnconfirmed,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: None,
             direction: TransactionDirection::Unknown,
             send_count: 0,
@@ -3844,7 +3844,7 @@ mod test {
             fee: MicroMinotari::from(1),
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
             status: LegacyTransactionStatus::Completed,
-            timestamp: Utc::now(),
+            timestamp: OffsetDateTime::now_utc(),
             cancelled: None,
             direction: TransactionDirection::Inbound,
             send_count: 0,
@@ -4072,7 +4072,7 @@ mod test {
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
                 status: LegacyTransactionStatus::Pending,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-                timestamp: Utc::now(),
+                timestamp: OffsetDateTime::now_utc(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -4097,7 +4097,7 @@ mod test {
                 sender_protocol: SenderTransactionProtocol::new_placeholder(),
                 status: LegacyTransactionStatus::Pending,
                 payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-                timestamp: Utc::now(),
+                timestamp: OffsetDateTime::now_utc(),
                 cancelled: false,
                 direct_send_success: false,
                 send_count: 0,
@@ -4134,7 +4134,7 @@ mod test {
                     PrivateKey::random(&mut rand::rng()),
                 ),
                 status: LegacyTransactionStatus::MinedUnconfirmed,
-                timestamp: Utc::now(),
+                timestamp: OffsetDateTime::now_utc(),
                 cancelled: None,
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
@@ -4251,7 +4251,7 @@ mod test {
                     sender_protocol: SenderTransactionProtocol::new_placeholder(),
                     status: LegacyTransactionStatus::Pending,
                     payment_id: MemoField::new_open_from_string("Yo!", TxType::PaymentToOther).unwrap(),
-                    timestamp: Utc::now(),
+                    timestamp: OffsetDateTime::now_utc(),
                     cancelled: false,
                     direct_send_success: false,
                     send_count: 0,
@@ -4272,7 +4272,7 @@ mod test {
         // Completed: 3 is good, 4 and 5 are bad; newest first by timestamp
         for (tx_id, age) in [(3u64, 0i64), (4, 1), (5, 2)] {
             let mut tx = completed_tx_with_hashes(tx_id, vec![], vec![]);
-            tx.timestamp = Utc::now() - chrono::TimeDelta::seconds(age);
+            tx.timestamp = OffsetDateTime::now_utc() - Duration::seconds(age);
             commit_completed(&connection, &cipher, tx);
         }
         corrupt_completed(&connection, 4, BAD_SOURCE_ADDRESS);
@@ -4789,7 +4789,7 @@ mod test {
                     PrivateKey::random(&mut rand::rng()),
                 ),
                 status,
-                timestamp: Utc::now(),
+                timestamp: OffsetDateTime::now_utc(),
                 cancelled,
                 direction: TransactionDirection::Unknown,
                 send_count: 0,
