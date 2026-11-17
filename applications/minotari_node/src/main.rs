@@ -279,13 +279,13 @@ fn home_fallback_in_use(fallback: Option<&Path>, cli_base_path: &Path) -> bool {
 
 fn log_effective_paths_and_warnings(cli: &Cli, config: &ApplicationConfig, config_path: &Path) {
     let fallback_dir = tari_common::dir_utils::get_fallback_home_dir();
-    if home_fallback_in_use(fallback_dir.as_deref(), &cli.common.base_path) {
-        if let Some(ref fallback) = fallback_dir {
-            let fallback_shown = display_path(fallback);
-            tari_common::emit_warning(&format!(
-                "Could not determine user home directory; falling back to current working directory: {fallback_shown}"
-            ));
-        }
+    if let Some(fallback) = fallback_dir.as_deref() &&
+        home_fallback_in_use(Some(fallback), Path::new(&cli.common.base_path))
+    {
+        let fallback_shown = display_path(fallback);
+        tari_common::emit_warning(&format!(
+            "Could not determine user home directory; falling back to current working directory: {fallback_shown}"
+        ));
     }
 
     info!(
