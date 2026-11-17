@@ -133,6 +133,8 @@ pub fn run_wallet_with_cli(
         consts::APP_VERSION
     );
 
+    warn_about_secrets_on_command_line(&cli);
+
     // Whether the passphrase was supplied up front, i.e. without the wallet having to prompt for it
     let password_supplied = password_supplied(config, &cli);
 
@@ -274,6 +276,38 @@ pub fn run_wallet_with_cli(
     result
 }
 
+/// Command-line arguments are visible to every local user (e.g. `ps ax`), so warn when a secret was supplied that way
+/// instead of through its environment variable.
+fn warn_about_secrets_on_command_line(cli: &Cli) {
+    for (flag, env) in secrets_on_command_line(cli, |name| std::env::var_os(name).is_some()) {
+        let msg = format!(
+            "WARNING: {flag} was supplied on the command line, where it is visible to every user on this system (e.g. \
+             `ps ax`). Use the {env} environment variable instead."
+        );
+        warn!(target: LOG_TARGET, "{msg}");
+        eprintln!("{msg}");
+    }
+}
+
+/// The secret-carrying flags that were supplied on the command line rather than through their environment variable,
+/// as `(flag, environment variable)` pairs.
+fn secrets_on_command_line<F: Fn(&str) -> bool>(cli: &Cli, env_is_set: F) -> Vec<(&'static str, &'static str)> {
+    [
+        (cli.password.is_some(), "--password", "MINOTARI_WALLET_PASSWORD"),
+        (cli.seed_words.is_some(), "--seed-words", "MINOTARI_WALLET_SEED_WORDS"),
+        (
+            cli.view_private_key.is_some(),
+            "--view-private-key",
+            "MINOTARI_WALLET_VIEW_PRIVATE_KEY",
+        ),
+    ]
+    .into_iter()
+    // If the environment variable is not set, the value can only have come from the command line
+    .filter(|(supplied, _, env)| *supplied && !env_is_set(env))
+    .map(|(_, flag, env)| (flag, env))
+    .collect()
+}
+
 /// Returns `true` if the wallet passphrase was supplied on the command line or in the config file, meaning the wallet
 /// will not have to prompt the user for it.
 fn password_supplied(config: &ApplicationConfig, cli: &Cli) -> bool {
@@ -294,5 +328,55 @@ fn get_recovery_seed(
         Ok(Some(seed))
     } else {
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use clap::Parser;
+
+    use super::*;
+
+    const SEED_WORDS: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+                              abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+                              abandon art";
+
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("minotari_console_wallet").chain(args.iter().copied())).unwrap()
+    }
+
+    #[test]
+    fn it_reports_secrets_supplied_on_the_command_line() {
+        let cli = parse(&[
+            "--password",
+            "pw",
+            "--seed-words",
+            SEED_WORDS,
+            "--view-private-key",
+            "00",
+            "--spend-key",
+            "00",
+        ]);
+        assert_eq!(secrets_on_command_line(&cli, |_| false), vec![
+            ("--password", "MINOTARI_WALLET_PASSWORD"),
+            ("--seed-words", "MINOTARI_WALLET_SEED_WORDS"),
+            ("--view-private-key", "MINOTARI_WALLET_VIEW_PRIVATE_KEY"),
+        ]);
+    }
+
+    #[test]
+    fn it_does_not_report_secrets_supplied_through_the_environment() {
+        let cli = parse(&["--seed-words", SEED_WORDS, "--view-private-key", "00"]);
+        assert!(secrets_on_command_line(&cli, |_| true).is_empty());
+        assert_eq!(
+            secrets_on_command_line(&cli, |env| env == "MINOTARI_WALLET_SEED_WORDS"),
+            vec![("--view-private-key", "MINOTARI_WALLET_VIEW_PRIVATE_KEY")]
+        );
+    }
+
+    #[test]
+    fn it_reports_nothing_when_no_secret_is_supplied() {
+        let cli = parse(&["--spend-key", "00"]);
+        assert!(secrets_on_command_line(&cli, |_| false).is_empty());
     }
 }
