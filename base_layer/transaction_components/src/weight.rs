@@ -97,12 +97,9 @@ impl TransactionWeight {
         let rounded_up_features_and_scripts_bytes_size =
             self.calculate_normalised_total_features_and_scripts_size(body)?;
         let output_count = body.outputs().len().saturating_sub(body.get_coinbase_outputs().len());
-        let kernel_count = if body.get_coinbase_outputs().is_empty() {
-            // we dont count coinbase kernels, and there is only ever an allowed max of 1 coinbase kernel
-            body.kernels().len()
-        } else {
-            body.kernels().len().saturating_sub(1)
-        };
+        // Coinbase kernels are not counted towards the weight.
+        let coinbase_kernel_count = body.kernels().iter().filter(|k| k.is_coinbase()).count();
+        let kernel_count = body.kernels().len().saturating_sub(coinbase_kernel_count);
         Ok(self.calculate(
             kernel_count,
             body.inputs().len(),
@@ -162,6 +159,17 @@ impl From<WeightParams> for TransactionWeight {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::{
+        key_manager::KeyManager,
+        test_helpers::{self, TestParams},
+        transaction_components::{
+            KernelFeatures,
+            OutputFeatures,
+            RangeProofType,
+            TransactionKernel,
+            TransactionOutput,
+        },
+    };
 
     #[test]
     fn round_up_features_and_scripts_size() {
@@ -187,5 +195,86 @@ mod test {
         let weighting = TransactionWeight::latest();
         let body = AggregateBody::empty();
         assert_eq!(weighting.calculate_body(&body).unwrap(), 0);
+    }
+
+    fn coinbase_output() -> TransactionOutput {
+        TransactionOutput {
+            features: OutputFeatures::create_coinbase(0, None, RangeProofType::RevealedValue),
+            ..Default::default()
+        }
+    }
+
+    fn kernel(features: KernelFeatures) -> TransactionKernel {
+        test_helpers::create_test_kernel(0.into(), 0, features)
+    }
+
+    #[test]
+    fn coinbase_output_without_coinbase_kernel_counts_every_kernel() {
+        let weighting = TransactionWeight::latest();
+        let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output()], vec![kernel(KernelFeatures::empty())]);
+        assert_eq!(
+            weighting.calculate_body(&body).unwrap(),
+            weighting.params().kernel_weight
+        );
+    }
+
+    #[test]
+    fn coinbase_kernel_is_left_out() {
+        let weighting = TransactionWeight::latest();
+        let kernels = vec![kernel(KernelFeatures::COINBASE_KERNEL), kernel(KernelFeatures::empty())];
+        let body = AggregateBody::new_unsorted(vec![], vec![coinbase_output()], kernels.clone());
+        assert_eq!(
+            weighting.calculate_body(&body).unwrap(),
+            weighting.params().kernel_weight
+        );
+
+        let body = AggregateBody::new_unsorted(vec![], vec![], kernels);
+        assert_eq!(
+            weighting.calculate_body(&body).unwrap(),
+            weighting.params().kernel_weight
+        );
+    }
+
+    #[test]
+    fn every_normal_kernel_is_counted() {
+        let weighting = TransactionWeight::latest();
+        let kernels = (0..3).map(|_| kernel(KernelFeatures::empty())).collect();
+        let body = AggregateBody::new_unsorted(vec![], vec![], kernels);
+        assert_eq!(
+            weighting.calculate_body(&body).unwrap(),
+            3 * weighting.params().kernel_weight
+        );
+    }
+
+    #[test]
+    fn block_body_weight_matches_one_coinbase_kernel_discount() {
+        let weighting = TransactionWeight::latest();
+        let params = weighting.params();
+        let key_manager = KeyManager::new_random().unwrap();
+        let coinbase = test_helpers::create_coinbase_wallet_output(
+            &TestParams::new(&key_manager),
+            1,
+            None,
+            RangeProofType::RevealedValue,
+            &key_manager,
+        );
+        let coinbase_kernel = test_helpers::create_coinbase_kernel(coinbase.commitment_mask_key_id(), &key_manager);
+        let (tx, _, _) =
+            test_helpers::create_tx(50000000.into(), 3.into(), 0, 2, 0, 2, Default::default(), &key_manager).unwrap();
+        let mut body = tx.body;
+        body.add_output(coinbase.to_transaction_output().unwrap());
+        body.add_kernel(coinbase_kernel);
+
+        let non_coinbase_outputs = body.outputs().iter().filter(|o| !o.is_coinbase()).collect::<Vec<_>>();
+        let features_and_scripts = non_coinbase_outputs
+            .iter()
+            .map(|o| weighting.round_up_features_and_scripts_size(o.get_features_and_scripts_size().unwrap()) as u64)
+            .sum::<u64>() /
+            params.features_and_scripts_bytes_per_gram;
+        let expected = (body.kernels().len() as u64 - 1) * params.kernel_weight +
+            body.inputs().len() as u64 * params.input_weight +
+            non_coinbase_outputs.len() as u64 * params.output_weight +
+            features_and_scripts;
+        assert_eq!(weighting.calculate_body(&body).unwrap(), expected);
     }
 }
