@@ -1305,8 +1305,9 @@ fn validation_error_to_response(error: ValidationError) -> TxStorageResponse {
 
 /// Selects from the `unconfirmed` and `reorg` pool candidates the transactions whose kernels are all in `requested`
 /// and pairwise disjoint, and returns them with the requested signatures they do not cover, in request order.
-/// Candidates with more kernels are taken first; ties go to the unconfirmed pool, then to the lexicographically
-/// smallest sorted kernel signatures. Greedy, not an exact cover: a signature it misses only costs a peer fetch.
+/// Candidates with fewer kernels are taken first, so an aggregate padded with outputs of its own is used only for
+/// kernels nothing smaller covers; ties go to the unconfirmed pool, then to the lexicographically smallest sorted
+/// kernel signatures. Greedy, not an exact cover: a signature it misses only costs a peer fetch or the full block.
 pub fn select_disjoint_kernel_cover(
     unconfirmed: Vec<Arc<Transaction>>,
     reorg: Vec<Arc<Transaction>>,
@@ -1332,9 +1333,9 @@ pub fn select_disjoint_kernel_cover(
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|(_, a_reorg, a_sigs), (_, b_reorg, b_sigs)| {
-        b_sigs
+        a_sigs
             .len()
-            .cmp(&a_sigs.len())
+            .cmp(&b_sigs.len())
             .then(a_reorg.cmp(b_reorg))
             .then_with(|| {
                 a_sigs
@@ -2960,31 +2961,52 @@ mod test {
         kernel.excess_sig.get_signature().clone()
     }
 
-    /// `A`, kernels `x1`, `x2`, `x3` that are in no transaction of their own, and the aggregates `T1 = A + x1`,
-    /// `T2 = A + x2`
+    /// `A`, `B`, kernels `x1`, `x2`, `x3` that are in no transaction of their own, the aggregates `T1 = A + x1`,
+    /// `T2 = A + x2`, and `padded`: `A + B` with an extra output and no extra kernel
     struct Aggregates {
         a: Arc<Transaction>,
+        b: Arc<Transaction>,
         t1: Arc<Transaction>,
         t2: Arc<Transaction>,
+        padded: Arc<Transaction>,
         x: Vec<TransactionKernel>,
     }
 
     impl Aggregates {
         fn new(key_manager: &KeyManager) -> Self {
             let a = create_tx(key_manager);
+            let b = create_tx(key_manager);
             let x = fresh_kernels(3, key_manager);
+            let padded = Arc::new(Transaction::new(
+                [a.body.inputs().clone(), b.body.inputs().clone()].concat(),
+                [
+                    a.body.outputs().clone(),
+                    b.body.outputs().clone(),
+                    create_tx(key_manager).body.outputs().clone(),
+                ]
+                .concat(),
+                [a.body.kernels().clone(), b.body.kernels().clone()].concat(),
+                a.offset.clone(),
+                a.script_offset.clone(),
+            ));
             let aggregate =
                 |kernel: &TransactionKernel| with_kernels(&a, vec![a.body.kernels()[0].clone(), kernel.clone()]);
             Self {
                 t1: aggregate(&x[0]),
                 t2: aggregate(&x[1]),
                 a,
+                b,
+                padded,
                 x,
             }
         }
 
         fn a_sig(&self) -> PrivateKey {
             sig(&self.a.body.kernels()[0])
+        }
+
+        fn b_sig(&self) -> PrivateKey {
+            sig(&self.b.body.kernels()[0])
         }
 
         fn x_sig(&self, i: usize) -> PrivateKey {
@@ -3002,7 +3024,13 @@ mod test {
         assert_eq!(cover, vec![txs.a.clone()]);
         assert!(uncovered.is_empty());
 
+        // Fewest kernels first: an aggregate is not used for kernels a smaller transaction covers
         let (cover, uncovered) = select_disjoint_kernel_cover(pool(), vec![], &[txs.a_sig(), txs.x_sig(0)]);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert_eq!(uncovered, vec![txs.x_sig(0)]);
+
+        let (cover, uncovered) =
+            select_disjoint_kernel_cover(vec![txs.t1.clone()], vec![], &[txs.a_sig(), txs.x_sig(0)]);
         assert_eq!(cover, vec![txs.t1.clone()]);
         assert!(uncovered.is_empty());
 
@@ -3085,8 +3113,48 @@ mod test {
         let (found, not_found) = storage
             .retrieve_by_excess_sigs(&[txs.a_sig(), txs.x_sig(0), txs.x_sig(2)])
             .unwrap();
-        assert_eq!(found, vec![txs.t1.clone()]);
-        assert_eq!(not_found, vec![txs.x_sig(2)]);
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert_eq!(not_found, vec![txs.x_sig(0), txs.x_sig(2)]);
+    }
+
+    #[test]
+    fn the_kernel_cover_prefers_the_transactions_of_a_padded_aggregate() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.a_sig(), txs.b_sig()];
+        for pool in [vec![txs.padded.clone(), txs.a.clone(), txs.b.clone()], vec![
+            txs.a.clone(),
+            txs.b.clone(),
+            txs.padded.clone(),
+        ]] {
+            let (cover, uncovered) = select_disjoint_kernel_cover(pool, vec![], &requested);
+            assert_eq!(cover.len(), 2);
+            assert!(cover.contains(&txs.a) && cover.contains(&txs.b));
+            assert!(uncovered.is_empty());
+        }
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_does_not_return_a_padded_aggregate_of_pooled_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        // The padded aggregate arrives first: once A and B are pooled, their union counts as already stored
+        for tx in [&txs.padded, &txs.a, &txs.b] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+        assert_eq!(pool_len(&storage), 3);
+
+        let (found, not_found) = storage
+            .read()
+            .unwrap()
+            .retrieve_by_excess_sigs(&[txs.a_sig(), txs.b_sig()])
+            .unwrap();
+        assert_eq!(found.len(), 2);
+        assert!(found.contains(&txs.a) && found.contains(&txs.b));
+        assert!(not_found.is_empty());
     }
 
     #[test]

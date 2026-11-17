@@ -1813,16 +1813,18 @@ async fn an_unresolvable_spend_on_a_held_fork_is_banned_only_if_the_whole_fork_w
     assert!(err.get_ban_reason().is_none());
 }
 
-/// A chain with three outputs to spend at its tip `tip`, the transaction `A`, the aggregates `T1 = A + X1` and
-/// `T2 = A + X2` (`X1` and `X2` spending the same output), and blocks on `tip` mining `A` and `T1`
+/// A chain with three outputs to spend at its tip `tip`, the transactions `A` and `B`, the aggregates `T1 = A + X1`
+/// and `T2 = A + X2` (`X1` and `X2` spending the same output), and blocks on `tip` mining `A`, `T1`, and `A` and `B`
 struct OverlappingAggregates {
     store: BlockchainDatabase<TempDatabase>,
     rules: BaseNodeConsensusManager,
     a: Transaction,
+    b: Transaction,
     t1: Transaction,
     t2: Transaction,
     block_a: Block,
     block_t1: Block,
+    block_ab: Block,
 }
 
 impl OverlappingAggregates {
@@ -1852,6 +1854,7 @@ impl OverlappingAggregates {
             (*txs[0]).clone()
         };
         let a = spend(&split_outputs[0], 100_000);
+        let b = spend(&split_outputs[2], 100_000);
         let aggregate = |x: Transaction| {
             let mut tx = a.clone() + x;
             tx.body.sort();
@@ -1861,14 +1864,17 @@ impl OverlappingAggregates {
         let t2 = aggregate(spend(&split_outputs[1], 101_000));
         let block_a = prepare_block(&store, &tip, vec![a.clone()], &rules, &key_manager);
         let block_t1 = prepare_block(&store, &tip, vec![t1.clone()], &rules, &key_manager);
+        let block_ab = prepare_block(&store, &tip, vec![a.clone(), b.clone()], &rules, &key_manager);
         Self {
             store,
             rules,
             a,
+            b,
             t1,
             t2,
             block_a,
             block_t1,
+            block_ab,
         }
     }
 
@@ -1943,19 +1949,24 @@ async fn overlapping_kernel_aggregates_do_not_force_full_block_fallback_in_recon
     let (pooled, block_a) = (vec![txs.a.clone(), txs.t1.clone(), txs.t2.clone()], txs.block_a.clone());
     assert_eq!(txs.full_block_requests(pooled, vec![], block_a).await, 0);
 
+    // Accepted cost of taking the fewest kernels first: for a block that mined the aggregate T1 while A is pooled, A
+    // is taken, X1 stays missing and the full block is fetched
     let txs = OverlappingAggregates::new();
     let (pooled, block_t1) = (
         vec![txs.a.clone(), txs.t1.clone(), txs.t2.clone()],
         txs.block_t1.clone(),
     );
-    assert_eq!(txs.full_block_requests(pooled, vec![], block_t1).await, 0);
+    assert_eq!(txs.full_block_requests(pooled, vec![], block_t1).await, 1);
 }
 
-/// A peer that answers a request for the block's missing transactions with overlapping ones does not force a
-/// full-block fetch: only a disjoint set of them goes into the rebuilt block.
+/// A peer that answers a request for the block's missing transactions with overlapping ones (and one holding a kernel
+/// we did not ask for) does not force a full-block fetch: only a disjoint set of them goes into the rebuilt block.
 #[tokio::test]
 async fn overlapping_transactions_from_a_peer_are_not_all_put_in_the_rebuilt_block() {
     let txs = OverlappingAggregates::new();
-    let (peer_txs, block_t1) = (vec![txs.a.clone(), txs.t1.clone()], txs.block_t1.clone());
-    assert_eq!(txs.full_block_requests(vec![], peer_txs, block_t1).await, 0);
+    let mut a_and_b = txs.a.clone() + txs.b.clone();
+    a_and_b.body.sort();
+    let peer_txs = vec![txs.a.clone(), txs.t1.clone(), txs.b.clone(), a_and_b];
+    let block_ab = txs.block_ab.clone();
+    assert_eq!(txs.full_block_requests(vec![], peer_txs, block_ab).await, 0);
 }
