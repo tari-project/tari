@@ -374,6 +374,12 @@ fn height_check_work(body: &AggregateBody) -> u64 {
     work
 }
 
+/// Adds `n` to the `work` of a bounded walk, or None if that takes it over `max_work`
+fn charge(work: &mut usize, n: usize, max_work: usize) -> Option<()> {
+    *work = work.saturating_add(n);
+    (*work <= max_work).then_some(())
+}
+
 /// Removes the keys that are not `is_live` from each `touched` entry of `index`, and the entries left empty, adding the
 /// keys visited to `visits`. Retaining keeps each entry's order.
 fn prune_entries<K: Eq + Hash>(
@@ -814,10 +820,11 @@ impl UnconfirmedPool {
             }
             let lowest_key = *lowest_key;
             // Only a descendant of the evicted transaction can be removed with it, so the eviction can only orphan
-            // `tx` if it is one of its ancestors. Unless the ancestor walk shows it is not, the bounded descendant walk
-            // decides. A walk over its budget is rejected: unlike the eviction, which removes what it walks, a
-            // rejection can be repeated.
+            // `tx` if it is one of its ancestors. Unless the root producer check or the ancestor walk shows it cannot,
+            // the bounded descendant walk decides. A walk over its budget is rejected: unlike the eviction, which
+            // removes what it walks, a rejection can be repeated.
             let not_ancestor = prioritized_tx.dependent_output_hashes.is_empty() ||
+                self.has_root_producers(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK) == Some(true) ||
                 self.has_pool_ancestor(&prioritized_tx, lowest_key, MAX_EVICTION_CHECK_WORK) == Some(false);
             let evicted = if not_ancestor {
                 self.remove_transactions_and_descendants([lowest_key])?
@@ -1210,7 +1217,7 @@ impl UnconfirmedPool {
             if !closure.insert(key) {
                 continue;
             }
-            work = work.saturating_add(tx.output_hashes.len());
+            charge(&mut work, tx.output_hashes.len(), max_work)?;
             for hash in &tx.output_hashes {
                 let live = live_producers
                     .entry(*hash)
@@ -1219,15 +1226,49 @@ impl UnconfirmedPool {
                 if *live == 0 &&
                     let Some(spenders) = self.txs_by_spent_output.get(hash)
                 {
-                    work = work.saturating_add(spenders.len());
+                    charge(&mut work, spenders.len(), max_work)?;
                     to_visit.extend(spenders);
                 }
             }
-            if work > max_work {
-                return None;
-            }
         }
         Some(closure)
+    }
+
+    /// True if every input of `tx` that a pool transaction produces has a producer other than `lowest` that spends no
+    /// pool output. Such a producer is not in the eviction closure of `lowest` (every other member spends an output
+    /// whose producers are all in it), so the eviction cannot orphan `tx`. Producers are tried fewest inputs first: a
+    /// padded copy of a transaction carries more inputs than it. None if the index entries read exceed `max_work`.
+    fn has_root_producers(&self, tx: &PrioritizedTransaction, lowest: TransactionKey, max_work: usize) -> Option<bool> {
+        let mut work = 0usize;
+        charge(&mut work, tx.input_hashes.len(), max_work)?;
+        for hash in &tx.input_hashes {
+            let Some(producers) = self.txs_by_output.get(hash) else {
+                continue;
+            };
+            charge(&mut work, producers.len(), max_work)?;
+            let mut candidates = producers
+                .iter()
+                .filter(|key| **key != lowest)
+                .filter_map(|key| self.tx_by_key.get(key))
+                .collect::<Vec<_>>();
+            candidates.sort_by_key(|producer| producer.input_hashes.len());
+            let mut found = false;
+            for producer in candidates {
+                charge(&mut work, producer.input_hashes.len(), max_work)?;
+                if !producer
+                    .input_hashes
+                    .iter()
+                    .any(|input| self.txs_by_output.contains_key(input))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return Some(false);
+            }
+        }
+        Some(true)
     }
 
     /// Whether the pool transaction `ancestor` produces an output `tx` spends, directly or through other pool
@@ -1243,15 +1284,12 @@ impl UnconfirmedPool {
         let mut inputs = &tx.input_hashes;
         let mut work = 0usize;
         loop {
-            work = work.saturating_add(inputs.len());
+            charge(&mut work, inputs.len(), max_work)?;
             for hash in inputs {
                 if let Some(producers) = self.txs_by_output.get(hash) {
-                    work = work.saturating_add(producers.len());
+                    charge(&mut work, producers.len(), max_work)?;
                     to_visit.extend(producers);
                 }
-            }
-            if work > max_work {
-                return None;
             }
             let mut next = None;
             while let Some(key) = to_visit.pop() {
@@ -7529,6 +7567,24 @@ mod test {
                 assert!(indexes(&pool) == before);
             }
 
+            /// A transaction producing the outputs of `tx` and spending an output of the pool transaction `anchor`, so
+            /// that it keeps them alive without being a root producer
+            fn anchored_copy_of(
+                base: &Transaction,
+                tx: &Transaction,
+                anchor: &Transaction,
+                n: u64,
+            ) -> Arc<Transaction> {
+                let spend = child_with_fee(base, anchor, n, 50);
+                Arc::new(Transaction::new(
+                    spend.body.inputs().clone(),
+                    tx.body.outputs().clone(),
+                    spend.body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ))
+            }
+
             /// `n` children of `root`, so that walking down from `root` is over the work budget
             fn fanout(base: &Transaction, root: &Transaction, n: usize) -> Vec<Arc<Transaction>> {
                 (1..=u64::try_from(n).unwrap())
@@ -7542,8 +7598,9 @@ mod test {
                 let root = synthetic_tx(&base, 0, 1);
                 let children = fanout(&base, &root, MAX_EVICTION_CHECK_WORK);
                 // Keeps the output the incoming transaction spends alive, so only the budget rejects it
-                let other_producer = same_outputs_as(&base, &children[0], 0, 50);
-                let txs = [&root, &other_producer]
+                let anchor = synthetic_tx(&base, 1, 50);
+                let other_producer = anchored_copy_of(&base, &children[0], &anchor, 2);
+                let txs = [&root, &anchor, &other_producer]
                     .into_iter()
                     .chain(&children)
                     .collect::<Vec<_>>();
@@ -7587,8 +7644,9 @@ mod test {
                 ));
                 let child = child_of(&base, &lowest, 1);
                 // Keeps the output the incoming transaction spends alive, so only the budget rejects it
-                let other_producer = same_outputs_as(&base, &child, 2, 50);
-                let mut pool = full_pool(3, &[&lowest, &child, &other_producer]);
+                let anchor = synthetic_tx(&base, 2, 50);
+                let other_producer = anchored_copy_of(&base, &child, &anchor, 4);
+                let mut pool = full_pool(4, &[&lowest, &child, &anchor, &other_producer]);
                 let before = indexes(&pool);
 
                 let incoming = child_with_fee(&base, &child, 3, 100);
@@ -7636,6 +7694,44 @@ mod test {
                 for tx in [&parent, &padded, &child] {
                     assert!(pool.has_transaction(tx));
                 }
+                assert!(pool.check_data_consistency());
+            }
+
+            #[test]
+            fn a_padded_copy_linked_to_an_over_budget_lowest_tree_does_not_block_an_honest_child() {
+                let base = base();
+                let lowest = synthetic_tx(&base, 0, 1);
+                let children = fanout(&base, &lowest, MAX_EVICTION_CHECK_WORK);
+                let chain_input = base.body.inputs()[0].clone();
+                let honest = synthetic_tx(&base, 1, 50);
+                let parent = Arc::new(Transaction::new(
+                    vec![chain_input.clone()],
+                    honest.body.outputs().clone(),
+                    honest.body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ));
+                // The parent padded with a spend of an output of the lowest priority transaction
+                let lowest_spend = child_of(&base, &lowest, 2).body.inputs()[0].clone();
+                let padded = Arc::new(Transaction::new(
+                    vec![chain_input, lowest_spend],
+                    parent.body.outputs().clone(),
+                    synthetic_tx(&base, 3, 100_000).body.kernels().clone(),
+                    Default::default(),
+                    Default::default(),
+                ));
+                let txs = [&lowest, &parent, &padded]
+                    .into_iter()
+                    .chain(&children)
+                    .collect::<Vec<_>>();
+                let mut pool = full_pool(txs.len(), &txs);
+                assert_eq!(pool.tx_by_priority.values().next(), Some(&key_of(&pool, &lowest)));
+
+                let child = child_with_fee(&base, &parent, 4, 100);
+                assert_eq!(insert(&mut pool, &child), InsertOutcome::Inserted);
+                assert_eq!(pool.len(), 2);
+                assert!(pool.has_transaction(&parent));
+                assert!(pool.has_transaction(&child));
                 assert!(pool.check_data_consistency());
             }
 
