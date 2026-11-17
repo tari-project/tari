@@ -65,7 +65,7 @@ nom = "7.1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
 strum = { version = "0.22", features = ["derive"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }

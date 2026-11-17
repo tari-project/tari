@@ -20,11 +20,29 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    error::Error,
+    fmt,
+    mem,
+    net::SocketAddr,
+    sync::{Arc, Mutex, PoisonError},
+    time::{Duration, Instant},
+};
 
-use axum::{Extension, Json, http::StatusCode};
+use axum::{
+    Extension,
+    Json,
+    body::{Body, HttpBody},
+    extract::ConnectInfo,
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Response},
+};
+use http_body_util::{BodyExt, LengthLimitError, Limited};
 use log::{debug, warn};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de};
+use serde_json::value::RawValue;
+use tari_comms::{decode_budget::check_decode_budget, message::MessageExt, utils::text::sanitize_for_display};
 use tari_core::{
     base_node::rpc::query_service,
     chain_storage::BlockchainBackend,
@@ -32,6 +50,11 @@ use tari_core::{
     proto,
 };
 use tari_transaction_components::{rpc::models::TxSubmissionResponseV1, transaction_components::Transaction};
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore},
+    task,
+    time::timeout,
+};
 
 use crate::http::handler::ErrorResponse;
 
@@ -39,87 +62,336 @@ pub mod submit_transaction;
 
 const LOG_TARGET: &str = "c::base_node::rpc::http::handler::json_rpc";
 
-pub async fn handle<B: BlockchainBackend + 'static>(
-    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
-    Extension(mempool_service): Extension<MempoolHandle>,
-    Json(mut request): Json<JsonRpcRequest>,
-) -> Result<Json<JsonRpcResponse>, (StatusCode, Json<ErrorResponse>)> {
-    debug!(target: LOG_TARGET, "Received JSON-RPC request: {request:?}");
+/// A large transaction with 2_316 inputs, 154 outputs and byte size 2_109_809 translated to 4_853_330 JSON object
+/// bytes, ~ 2.3 times larger. So the body limit is 2.5 times 4 MB.
+pub const MAX_JSON_RPC_BODY_BYTES: usize = 25 * 4 * 1024 * 1024 / 10;
+/// The body bytes all in-flight requests may hold together. It is charged per chunk as the chunk arrives, so a stalled
+/// upload holds only what it has sent.
+const JSON_RPC_BODY_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+/// How long a chunk waits for body budget, and a received body for a decode slot, before the request gets a 503
+const JSON_RPC_ADMISSION_WAIT: Duration = Duration::from_secs(5);
+const MAX_CONCURRENT_JSON_RPC_DECODES: usize = 2;
+/// A body that sends nothing for this long gets a 408. There is no overall deadline, so that a large transaction
+/// uploaded slowly (e.g. over Tor) still gets through.
+const JSON_RPC_BODY_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+const REJECTION_WARN_INTERVAL: Duration = Duration::from_secs(60);
+const MAX_JSONRPC_BYTES: usize = 16;
+const MAX_ID_BYTES: usize = 256;
+const MAX_METHOD_BYTES: usize = 128;
 
-    match request.method.as_str() {
-        "submit_transaction" => {
-            // Take the parameter out of the request rather than cloning it; nothing reads it afterwards
-            let tx = request
-                .params
-                .get_mut("transaction")
-                .map(serde_json::Value::take)
-                .ok_or_else(|| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(ErrorResponse::new("Missing transaction parameter".to_string())),
-                    )
-                })?;
-            let transaction = decode_transaction(tx)?;
-            // Version defaults to 1 for backward compatibility with older wallets.
-            // V2 adds the optional `details` field in the response.
-            let version: u64 = request.params.get("version").and_then(|v| v.as_u64()).unwrap_or(1);
-            match submit_transaction::handle(query_service.clone(), &mut (mempool_service.clone()), transaction).await {
-                Ok(response) => {
-                    let result = if version >= 2 {
-                        serde_json::to_value(response).unwrap_or_else(|e| {
-                            warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
-                            serde_json::Value::Null
-                        })
-                    } else {
-                        serde_json::to_value(TxSubmissionResponseV1::from(response)).unwrap_or_else(|e| {
-                            warn!(target: LOG_TARGET, "Failed to serialize V1 response: {e}");
-                            serde_json::Value::Null
-                        })
-                    };
-                    Ok(Json(JsonRpcResponse {
-                        result,
-                        error: None,
-                        id: request.id,
-                    }))
-                },
-                Err(e) => {
-                    debug!(target: LOG_TARGET, "Error submitting transaction: {e}");
+type Rejection = (StatusCode, Json<ErrorResponse>);
 
-                    Ok(Json(JsonRpcResponse {
-                        result: serde_json::Value::Null,
-                        error: Some(e.to_string()),
-                        id: request.id,
-                    }))
-                },
-            }
-        },
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Method not found".to_string())),
-        )),
+fn reject(status: StatusCode, error: impl Into<String>) -> Rejection {
+    (status, Json(ErrorResponse::new(error.into())))
+}
+
+fn busy() -> Rejection {
+    reject(StatusCode::SERVICE_UNAVAILABLE, "The node is busy, try again later")
+}
+
+/// Admission state shared by every `/json_rpc` request
+pub struct JsonRpcLimits {
+    body_budget: Arc<Semaphore>,
+    decodes: Arc<Semaphore>,
+    admission_wait: Duration,
+    idle_timeout: Duration,
+    /// Per status: when a rejection was last logged, and how many were not logged since
+    rejection_warnings: Mutex<HashMap<StatusCode, (Option<Instant>, u64)>>,
+}
+
+impl Default for JsonRpcLimits {
+    fn default() -> Self {
+        Self::new(
+            JSON_RPC_BODY_BUDGET_BYTES,
+            JSON_RPC_ADMISSION_WAIT,
+            JSON_RPC_BODY_IDLE_TIMEOUT,
+        )
     }
 }
 
-/// Decodes the `transaction` parameter of a `submit_transaction` request.
-///
-/// The JSON value is decoded and then round-tripped through the P2P protobuf conversion (`Transaction` <->
-/// `tari_core::proto::types::Transaction`), i.e. the conversion that transactions received from peers are decoded
-/// with. The P2P conversion is the canonical decode-time validator for every submission entry point (the gRPC
-/// `submit_transaction` handler applies the same round-trip after its own, more lenient, gRPC conversion), so this
-/// entry point cannot hand the mempool a transaction that a peer could not have sent.
-fn decode_transaction(value: serde_json::Value) -> Result<Transaction, (StatusCode, Json<ErrorResponse>)> {
-    let bad_request = |e: String| (StatusCode::BAD_REQUEST, Json(ErrorResponse::new(e)));
-    let transaction = serde_json::from_value::<Transaction>(value).map_err(|e| bad_request(e.to_string()))?;
-    let proto = proto::types::Transaction::try_from(transaction).map_err(bad_request)?;
-    Transaction::try_from(proto).map_err(|e| bad_request(e.to_string()))
+impl JsonRpcLimits {
+    fn new(body_budget_bytes: usize, admission_wait: Duration, idle_timeout: Duration) -> Self {
+        Self {
+            body_budget: Arc::new(Semaphore::new(body_budget_bytes)),
+            decodes: Arc::new(Semaphore::new(MAX_CONCURRENT_JSON_RPC_DECODES)),
+            admission_wait,
+            idle_timeout,
+            rejection_warnings: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn warn_rejection(&self, peer: SocketAddr, status: StatusCode) {
+        let now = Instant::now();
+        let mut warnings = self.rejection_warnings.lock().unwrap_or_else(PoisonError::into_inner);
+        let (last_warning, suppressed) = warnings.entry(status).or_default();
+        if last_warning.is_some_and(|last| now.saturating_duration_since(last) < REJECTION_WARN_INTERVAL) {
+            *suppressed = suppressed.saturating_add(1);
+            return;
+        }
+        *last_warning = Some(now);
+        let suppressed = mem::take(suppressed);
+        warn!(
+            target: LOG_TARGET,
+            "Rejected a JSON-RPC request from {peer} with {status} ({suppressed} similar rejections not logged)"
+        );
+    }
 }
 
-#[derive(Deserialize, Debug, Serialize)]
-pub struct JsonRpcRequest {
-    pub jsonrpc: String,
-    pub id: String,
-    pub method: String,
-    pub params: serde_json::Value,
+pub async fn handle<B: BlockchainBackend + 'static>(
+    Extension(query_service): Extension<Arc<query_service::Service<B>>>,
+    Extension(mempool_service): Extension<MempoolHandle>,
+    Extension(limits): Extension<Arc<JsonRpcLimits>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    match handle_request(query_service, mempool_service, &limits, &headers, body).await {
+        Ok(response) => response.into_response(),
+        Err((status, error)) => {
+            if matches!(
+                status,
+                StatusCode::PAYLOAD_TOO_LARGE |
+                    StatusCode::REQUEST_TIMEOUT |
+                    StatusCode::UNSUPPORTED_MEDIA_TYPE |
+                    StatusCode::SERVICE_UNAVAILABLE
+            ) {
+                limits.warn_rejection(peer, status);
+            }
+            if status == StatusCode::SERVICE_UNAVAILABLE {
+                let retry_after = JSON_RPC_ADMISSION_WAIT.as_secs().to_string();
+                return (status, [(header::RETRY_AFTER, retry_after)], error).into_response();
+            }
+            (status, error).into_response()
+        },
+    }
+}
+
+async fn handle_request<B: BlockchainBackend + 'static>(
+    query_service: Arc<query_service::Service<B>>,
+    mut mempool_service: MempoolHandle,
+    limits: &JsonRpcLimits,
+    headers: &HeaderMap,
+    body: Body,
+) -> Result<Json<JsonRpcResponse>, Rejection> {
+    if !is_json_content_type(headers) {
+        return Err(reject(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Expected request with `Content-Type: application/json`",
+        ));
+    }
+    let (body, budget) = read_body(limits, body).await?;
+    let decode_permit = timeout(limits.admission_wait, limits.decodes.clone().acquire_owned())
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .ok_or_else(busy)?;
+    // The blocking task owns the body and the permits, so a client that disconnects mid-decode frees them only once
+    // the decode is done
+    let (id, version, transaction) = task::spawn_blocking(move || {
+        let decoded = decode_request(&body);
+        drop((body, budget, decode_permit));
+        decoded
+    })
+    .await
+    .map_err(|e| {
+        warn!(target: LOG_TARGET, "JSON-RPC decode task failed: {e}");
+        reject(StatusCode::INTERNAL_SERVER_ERROR, "Internal error decoding the request")
+    })??;
+
+    // Nothing is held here: the mempool limits its own concurrent submissions
+    match submit_transaction::handle(query_service, &mut mempool_service, transaction).await {
+        Ok(response) => {
+            // Version defaults to 1 for backward compatibility with older wallets.
+            // V2 adds the optional `details` field in the response.
+            let result = if version >= 2 {
+                serde_json::to_value(response).unwrap_or_else(|e| {
+                    warn!(target: LOG_TARGET, "Failed to serialize response: {e}");
+                    serde_json::Value::Null
+                })
+            } else {
+                serde_json::to_value(TxSubmissionResponseV1::from(response)).unwrap_or_else(|e| {
+                    warn!(target: LOG_TARGET, "Failed to serialize V1 response: {e}");
+                    serde_json::Value::Null
+                })
+            };
+            Ok(Json(JsonRpcResponse {
+                result,
+                error: None,
+                id,
+            }))
+        },
+        Err(e) => {
+            debug!(target: LOG_TARGET, "Error submitting transaction: {e}");
+
+            Ok(Json(JsonRpcResponse {
+                result: serde_json::Value::Null,
+                error: Some(e.to_string()),
+                id,
+            }))
+        },
+    }
+}
+
+/// `application/json` or `application/<anything>+json`, as axum's `Json` extractor accepts
+fn is_json_content_type(headers: &HeaderMap) -> bool {
+    let Some(content_type) = headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let essence = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    essence == "application/json" || (essence.starts_with("application/") && essence.ends_with("+json"))
+}
+
+/// Reads the body, charging every chunk to the shared body budget before keeping it. Returns the body and the budget
+/// it holds.
+async fn read_body(limits: &JsonRpcLimits, body: Body) -> Result<(Vec<u8>, OwnedSemaphorePermit), Rejection> {
+    let too_large = || {
+        reject(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("JSON-RPC request body exceeds the maximum of {MAX_JSON_RPC_BODY_BYTES} bytes"),
+        )
+    };
+    // The size hint's lower bound is the Content-Length
+    if body.size_hint().lower() > MAX_JSON_RPC_BODY_BYTES as u64 {
+        return Err(too_large());
+    }
+    let mut body = Limited::new(body, MAX_JSON_RPC_BODY_BYTES);
+    let mut bytes = Vec::new();
+    let mut charged = limits
+        .body_budget
+        .clone()
+        .try_acquire_many_owned(0)
+        .map_err(|_| busy())?;
+    loop {
+        let frame = match timeout(limits.idle_timeout, body.frame()).await {
+            Err(_) => {
+                return Err(reject(
+                    StatusCode::REQUEST_TIMEOUT,
+                    "Timed out waiting for the JSON-RPC request body",
+                ));
+            },
+            Ok(None) => return Ok((bytes, charged)),
+            Ok(Some(Err(e))) => {
+                let mut sources = std::iter::successors(Some(&*e as &(dyn Error + 'static)), |&e| e.source());
+                if sources.any(|e| e.is::<LengthLimitError>()) {
+                    return Err(too_large());
+                }
+                return Err(reject(
+                    StatusCode::BAD_REQUEST,
+                    format!("Failed to read the JSON-RPC request body: {e}"),
+                ));
+            },
+            Ok(Some(Ok(frame))) => frame,
+        };
+        let Ok(data) = frame.into_data() else {
+            continue;
+        };
+        let len = u32::try_from(data.len()).map_err(|_| too_large())?;
+        let permit = timeout(
+            limits.admission_wait,
+            limits.body_budget.clone().acquire_many_owned(len),
+        )
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .ok_or_else(busy)?;
+        charged.merge(permit);
+        // shortcut: the budget counts body bytes, not the Vec's capacity, which growth can double; charge capacity if
+        // the budget is ever sized close to available memory
+        bytes.extend_from_slice(&data);
+    }
+}
+
+/// Parses the envelope and, only for `submit_transaction`, its params
+fn decode_request(body: &[u8]) -> Result<(String, u64, Transaction), Rejection> {
+    let request =
+        serde_json::from_slice::<JsonRpcRequest>(body).map_err(|e| reject(StatusCode::BAD_REQUEST, e.to_string()))?;
+    debug!(
+        target: LOG_TARGET,
+        "Received JSON-RPC request: method={}, id={}",
+        sanitize_for_display(&request.method, MAX_METHOD_BYTES),
+        sanitize_for_display(&request.id, MAX_ID_BYTES),
+    );
+    if request.method != "submit_transaction" {
+        return Err(reject(StatusCode::BAD_REQUEST, "Method not found"));
+    }
+    let (transaction, version) = decode_transaction(request.params.as_deref())?;
+    Ok((request.id, version, transaction))
+}
+
+/// Decodes the params of a `submit_transaction` request: the transaction and the response version.
+///
+/// The transaction is decoded and then round-tripped through the P2P protobuf conversion (`Transaction` <->
+/// `tari_core::proto::types::Transaction`), i.e. the conversion that transactions received from peers are decoded
+/// with, under the same decode budget. The P2P conversion is the canonical decode-time validator for every submission
+/// entry point (the gRPC `submit_transaction` handler applies the same round-trip after its own, more lenient, gRPC
+/// conversion), so this entry point cannot hand the mempool a transaction that a peer could not have sent.
+fn decode_transaction(params: Option<&RawValue>) -> Result<(Transaction, u64), Rejection> {
+    let bad_request = |e: String| reject(StatusCode::BAD_REQUEST, e);
+    let missing = || bad_request("Missing transaction parameter".to_string());
+    let params = serde_json::from_str::<SubmitTransactionParams>(params.ok_or_else(missing)?.get())
+        .map_err(|e| bad_request(e.to_string()))?;
+    // Older wallets send no version, and the old decoder read anything but an unsigned integer as 1
+    let version = params
+        .version
+        .and_then(|v| serde_json::from_str::<u64>(v.get()).ok())
+        .unwrap_or(1);
+    let transaction = params.transaction.ok_or_else(missing)?;
+    let proto = proto::types::Transaction::try_from(transaction).map_err(bad_request)?;
+    check_decode_budget::<proto::types::Transaction>(&proto.to_encoded_bytes(), proto::BODY_MAX_DECODE_ITEMS).map_err(
+        |e| {
+            bad_request(format!(
+                "Transaction exceeds the P2P decode budget ({} embedded items, at most {} allowed)",
+                e.items, e.max
+            ))
+        },
+    )?;
+    let transaction = Transaction::try_from(proto).map_err(|e| bad_request(e.to_string()))?;
+    Ok((transaction, version))
+}
+
+/// The JSON-RPC envelope. `params` is kept as raw text, so no JSON tree is built for it.
+#[derive(Deserialize)]
+struct JsonRpcRequest {
+    #[serde(rename = "jsonrpc", deserialize_with = "bounded_string::<MAX_JSONRPC_BYTES, _>")]
+    _jsonrpc: String,
+    #[serde(deserialize_with = "bounded_string::<MAX_ID_BYTES, _>")]
+    id: String,
+    #[serde(deserialize_with = "bounded_string::<MAX_METHOD_BYTES, _>")]
+    method: String,
+    params: Option<Box<RawValue>>,
+}
+
+#[derive(Deserialize)]
+struct SubmitTransactionParams {
+    transaction: Option<Transaction>,
+    version: Option<Box<RawValue>>,
+}
+
+/// A string of at most `MAX_BYTES` bytes, checked before it is copied
+fn bounded_string<'de, const MAX_BYTES: usize, D: de::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    struct Bounded<const MAX_BYTES: usize>;
+
+    impl<const MAX_BYTES: usize> de::Visitor<'_> for Bounded<MAX_BYTES> {
+        type Value = String;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "a string of at most {MAX_BYTES} bytes")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<String, E> {
+            if v.len() > MAX_BYTES {
+                return Err(E::invalid_length(v.len(), &self));
+            }
+            Ok(v.to_owned())
+        }
+    }
+
+    deserializer.deserialize_str(Bounded::<MAX_BYTES>)
 }
 
 #[derive(Serialize, Debug)]
@@ -133,6 +405,7 @@ pub struct JsonRpcResponse {
 #[cfg(test)]
 mod tests {
     #![allow(clippy::indexing_slicing)]
+    use axum::http::HeaderValue;
     use tari_common::configuration::Network;
     use tari_common_types::types::{ComAndPubSignature, FixedHash, PrivateKey};
     use tari_core::{
@@ -152,7 +425,12 @@ mod tests {
         encrypted_data::STATIC_ENCRYPTED_DATA_SIZE_TOTAL,
     };
     use tari_utilities::hex::to_hex;
-    use tokio::sync::{broadcast, watch};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        sync::{broadcast, watch},
+        time::sleep,
+    };
 
     use super::*;
 
@@ -179,12 +457,37 @@ mod tests {
         json
     }
 
-    fn request(transaction: serde_json::Value) -> JsonRpcRequest {
-        JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: "1".to_string(),
-            method: "submit_transaction".to_string(),
-            params: serde_json::json!({ "transaction": transaction }),
+    fn request(transaction: serde_json::Value) -> String {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "submit_transaction",
+            "params": { "transaction": transaction },
+        })
+        .to_string()
+    }
+
+    fn json_headers() -> HeaderMap {
+        HeaderMap::from_iter([(header::CONTENT_TYPE, HeaderValue::from_static("application/json"))])
+    }
+
+    async fn call(
+        query_service: Arc<query_service::Service<TempDatabase>>,
+        mempool: MempoolHandle,
+        body: impl Into<Body>,
+    ) -> Result<Json<JsonRpcResponse>, Rejection> {
+        let limits = JsonRpcLimits::default();
+        handle_request(query_service, mempool, &limits, &json_headers(), body.into()).await
+    }
+
+    async fn submit(
+        query_service: Arc<query_service::Service<TempDatabase>>,
+        mempool: MempoolHandle,
+        body: impl Into<Body>,
+    ) -> JsonRpcResponse {
+        match call(query_service, mempool, body).await {
+            Ok(Json(response)) => response,
+            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
         }
     }
 
@@ -205,9 +508,7 @@ mod tests {
             2 * (STATIC_ENCRYPTED_DATA_SIZE_TOTAL - 1)
         );
 
-        let (status, Json(err)) = handle(Extension(query_service), Extension(mempool), Json(request(tx)))
-            .await
-            .unwrap_err();
+        let (status, Json(err)) = call(query_service, mempool, request(tx)).await.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let err = serde_json::to_string(&err).unwrap();
         assert!(err.contains("at least"), "{}", err);
@@ -223,16 +524,7 @@ mod tests {
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
 
-        let response = match handle(
-            Extension(query_service),
-            Extension(mempool),
-            Json(request(transaction_json(None))),
-        )
-        .await
-        {
-            Ok(Json(response)) => response,
-            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
-        };
+        let response = submit(query_service, mempool, request(transaction_json(None))).await;
         assert!(response.error.is_none(), "{:?}", response.error);
         assert_eq!(mempool_state.get_call_count(), 1);
     }
@@ -247,16 +539,7 @@ mod tests {
             .await;
         let query_service = make_query_service(&shutdown, mempool.clone());
 
-        let response = match handle(
-            Extension(query_service),
-            Extension(mempool),
-            Json(request(transaction_json(None))),
-        )
-        .await
-        {
-            Ok(Json(response)) => response,
-            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
-        };
+        let response = submit(query_service, mempool, request(transaction_json(None))).await;
         let response: TxSubmissionResponseV1 = serde_json::from_value(response.result).unwrap();
         assert!(!response.accepted);
         assert_eq!(
@@ -295,10 +578,7 @@ mod tests {
         let serde_only = serde_json::from_value::<Transaction>(json.clone()).unwrap();
         assert_eq!(serde_only.body.inputs()[0].version, TransactionInputVersion::V1);
 
-        let response = match handle(Extension(query_service), Extension(mempool), Json(request(json))).await {
-            Ok(Json(response)) => response,
-            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
-        };
+        let response = submit(query_service, mempool, request(json)).await;
         assert!(response.error.is_none(), "{:?}", response.error);
         let submitted = mempool_state.submitted_transactions().await;
         assert_eq!(submitted.len(), 1);
@@ -329,16 +609,7 @@ mod tests {
         let query_service = Arc::new(query_service::Service::new(db, state_machine, mempool.clone()));
 
         // 1. Kernel not in chain DB -> DoubleSpend
-        let response = match handle(
-            Extension(query_service.clone()),
-            Extension(mempool.clone()),
-            Json(request(transaction_json(None))),
-        )
-        .await
-        {
-            Ok(Json(response)) => response,
-            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
-        };
+        let response = submit(query_service.clone(), mempool.clone(), request(transaction_json(None))).await;
         assert!(response.error.is_none(), "{:?}", response.error);
         assert_eq!(response.result["accepted"], false);
         assert_eq!(response.result["rejection_reason"], "DoubleSpend");
@@ -352,12 +623,333 @@ mod tests {
             PrivateKey::default(),
         );
         let mined_json = serde_json::to_value(&mined_tx).unwrap();
-        let response = match handle(Extension(query_service), Extension(mempool), Json(request(mined_json))).await {
-            Ok(Json(response)) => response,
-            Err((status, Json(err))) => panic!("{status}: {}", serde_json::to_string(&err).unwrap()),
-        };
+        let response = submit(query_service, mempool, request(mined_json)).await;
         assert!(response.error.is_none(), "{:?}", response.error);
         assert_eq!(response.result["accepted"], false);
         assert_eq!(response.result["rejection_reason"], "AlreadyMined");
+    }
+
+    /// Counts the heap the current thread holds while tracking is on
+    mod heap {
+        use std::{
+            alloc::{GlobalAlloc, Layout, System},
+            cell::Cell,
+        };
+
+        thread_local! {
+            static TRACKING: Cell<bool> = const { Cell::new(false) };
+            static LIVE: Cell<usize> = const { Cell::new(0) };
+            static PEAK: Cell<usize> = const { Cell::new(0) };
+        }
+
+        fn record(update: impl FnOnce(usize) -> usize) {
+            let _ignore = TRACKING.try_with(|tracking| {
+                if tracking.get() {
+                    let live = LIVE.with(|live| {
+                        live.set(update(live.get()));
+                        live.get()
+                    });
+                    PEAK.with(|peak| peak.set(peak.get().max(live)));
+                }
+            });
+        }
+
+        struct CountingAllocator;
+
+        unsafe impl GlobalAlloc for CountingAllocator {
+            unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+                let ptr = unsafe { System.alloc(layout) };
+                if !ptr.is_null() {
+                    record(|live| live.saturating_add(layout.size()));
+                }
+                ptr
+            }
+
+            unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+                unsafe { System.dealloc(ptr, layout) };
+                record(|live| live.saturating_sub(layout.size()));
+            }
+
+            unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+                let new_ptr = unsafe { System.realloc(ptr, layout, new_size) };
+                if !new_ptr.is_null() {
+                    record(|live| live.saturating_sub(layout.size()).saturating_add(new_size));
+                }
+                new_ptr
+            }
+        }
+
+        #[global_allocator]
+        static ALLOCATOR: CountingAllocator = CountingAllocator;
+
+        /// Runs `f` and returns the most heap it allocated at any one time on this thread
+        pub fn peak_during<R>(f: impl FnOnce() -> R) -> (R, usize) {
+            LIVE.with(|live| live.set(0));
+            PEAK.with(|peak| peak.set(0));
+            TRACKING.with(|tracking| tracking.set(true));
+            let result = f();
+            TRACKING.with(|tracking| tracking.set(false));
+            (result, PEAK.with(Cell::get))
+        }
+    }
+
+    /// An unknown method is rejected without decoding `params` into a JSON tree, which would cost tens of times the
+    /// body size
+    #[test]
+    fn unknown_method_does_not_decode_params() {
+        let params = format!("[{}[]]", "[[]],".repeat(2_000_000));
+        let body = format!(r#"{{"jsonrpc":"2.0","id":"1","method":"unknown","params":{params}}}"#);
+        assert!(body.len() > 9_000_000 && body.len() <= MAX_JSON_RPC_BODY_BYTES);
+
+        let (result, peak) = heap::peak_during(|| decode_request(body.as_bytes()).map(|_| ()));
+        let (status, Json(err)) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(serde_json::to_string(&err).unwrap().contains("Method not found"));
+        // The raw `params` text is copied once
+        assert!(
+            peak < body.len().saturating_mul(2),
+            "peak {peak} for a {} byte body",
+            body.len()
+        );
+    }
+
+    #[test]
+    fn oversized_envelope_strings_are_rejected() {
+        let long = |n: usize| "x".repeat(n);
+        for (jsonrpc, id, method) in [
+            (
+                long(MAX_JSONRPC_BYTES + 1),
+                "1".to_string(),
+                "submit_transaction".to_string(),
+            ),
+            (
+                "2.0".to_string(),
+                long(MAX_ID_BYTES + 1),
+                "submit_transaction".to_string(),
+            ),
+            ("2.0".to_string(), "1".to_string(), long(MAX_METHOD_BYTES + 1)),
+        ] {
+            let body = serde_json::json!({ "jsonrpc": jsonrpc, "id": id, "method": method }).to_string();
+            let (status, Json(err)) = decode_request(body.as_bytes()).unwrap_err();
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(serde_json::to_string(&err).unwrap().contains("at most"));
+        }
+    }
+
+    /// Request shapes wallets send today keep working; only an integer version of 2 or more gets the V2 response
+    #[tokio::test]
+    async fn submit_transaction_accepts_existing_request_shapes() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        // The V2 response carries the policy reason in `details`, the V1 response does not
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::NotStoredMempoolPolicy("full".to_string()))
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let tx = transaction_json(None);
+        let is_v2 = |response: &JsonRpcResponse| response.result.get("details").is_some();
+
+        // The request `clients/rust/base_node_wallet_client` sends
+        let client_request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": "1",
+            "method": "submit_transaction",
+            "params": { "transaction": tx, "version": 2 },
+        });
+        let response = submit(query_service.clone(), mempool.clone(), client_request.to_string()).await;
+        assert!(is_v2(&response), "{:?}", response.result);
+
+        for version in [
+            serde_json::json!("2"),
+            serde_json::json!(2.0),
+            serde_json::json!(-1),
+            serde_json::Value::Null,
+        ] {
+            let body = serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "submit_transaction",
+                "params": { "transaction": tx, "version": version },
+            });
+            let response = submit(query_service.clone(), mempool.clone(), body.to_string()).await;
+            assert!(!is_v2(&response), "version {version}: {:?}", response.result);
+        }
+        let response = submit(query_service.clone(), mempool.clone(), request(tx.clone())).await;
+        assert!(!is_v2(&response), "{:?}", response.result);
+
+        let reordered = format!(
+            r#"{{"params":{{"version":2,"transaction":{tx}}},"method":"submit_transaction","id":"7","jsonrpc":"2.0"}}"#
+        );
+        let response = submit(query_service, mempool, reordered).await;
+        assert!(is_v2(&response), "{:?}", response.result);
+        assert_eq!(response.id, "7");
+        assert_eq!(mempool_state.get_call_count(), 7);
+    }
+
+    #[tokio::test]
+    async fn submit_transaction_rejects_a_missing_transaction_wrong_content_type_and_oversized_body() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        let query_service = make_query_service(&shutdown, mempool.clone());
+
+        for body in [
+            r#"{"jsonrpc":"2.0","id":"1","method":"submit_transaction"}"#,
+            r#"{"jsonrpc":"2.0","id":"1","method":"submit_transaction","params":null}"#,
+            r#"{"jsonrpc":"2.0","id":"1","method":"submit_transaction","params":{}}"#,
+            r#"{"jsonrpc":"2.0","id":"1","method":"submit_transaction","params":{"transaction":null,"version":2}}"#,
+        ] {
+            let (status, Json(err)) = call(query_service.clone(), mempool.clone(), body).await.unwrap_err();
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+            assert_eq!(
+                serde_json::to_value(&err).unwrap(),
+                serde_json::json!({ "error": "Missing transaction parameter" })
+            );
+        }
+
+        let limits = JsonRpcLimits::default();
+        for headers in [
+            HeaderMap::new(),
+            HeaderMap::from_iter([(header::CONTENT_TYPE, HeaderValue::from_static("text/plain"))]),
+        ] {
+            let body = Body::from(request(transaction_json(None)));
+            let (status, _) = handle_request(query_service.clone(), mempool.clone(), &limits, &headers, body)
+                .await
+                .unwrap_err();
+            assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        }
+
+        let oversized = vec![b' '; MAX_JSON_RPC_BODY_BYTES + 1];
+        let (status, _) = call(query_service, mempool, oversized).await.unwrap_err();
+        assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(mempool_state.get_call_count(), 0);
+    }
+
+    async fn serve(
+        query_service: Arc<query_service::Service<TempDatabase>>,
+        mempool: MempoolHandle,
+        limits: Arc<JsonRpcLimits>,
+    ) -> SocketAddr {
+        let router = axum::Router::new()
+            .route("/json_rpc", axum::routing::post(handle::<TempDatabase>))
+            .layer(Extension(query_service))
+            .layer(Extension(mempool))
+            .layer(Extension(limits));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(
+            async move { axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>()).await },
+        );
+        address
+    }
+
+    /// Sends the headers of a `/json_rpc` request with the given `Content-Length`, followed by `body`
+    async fn post(address: SocketAddr, content_length: usize, body: &[u8]) -> TcpStream {
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        let headers = format!(
+            "POST /json_rpc HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nConnection: \
+             close\r\nContent-Length: {content_length}\r\n\r\n"
+        );
+        stream.write_all(headers.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+        stream
+    }
+
+    /// Reads the response up to the server closing the connection
+    async fn read_response(stream: &mut TcpStream) -> String {
+        let mut response = Vec::new();
+        let _ignore = timeout(Duration::from_secs(10), stream.read_to_end(&mut response)).await;
+        String::from_utf8_lossy(&response).into_owned()
+    }
+
+    async fn wait_for_budget(limits: &JsonRpcLimits, available: usize) {
+        timeout(Duration::from_secs(10), async {
+            while limits.body_budget.available_permits() != available {
+                sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("body budget never reached {available}"));
+    }
+
+    /// Stalled uploads hold only the bytes they sent and no slot, so a submission still gets through
+    #[tokio::test]
+    async fn stalled_uploads_do_not_starve_a_submission() {
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits::new(
+            JSON_RPC_BODY_BUDGET_BYTES,
+            JSON_RPC_ADMISSION_WAIT,
+            Duration::from_millis(500),
+        ));
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        let mut stalled = Vec::new();
+        for _ in 0..16 {
+            stalled.push(post(address, 1_000_000, br#"{"jsonrpc":"2.0","#).await);
+        }
+        let body = request(transaction_json(None));
+        let mut submission = post(address, body.len(), body.as_bytes()).await;
+        let response = read_response(&mut submission).await;
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        assert!(response.contains(r#""error":null"#), "{response}");
+        assert_eq!(mempool_state.get_call_count(), 1);
+
+        for mut stream in stalled {
+            let response = read_response(&mut stream).await;
+            assert!(response.starts_with("HTTP/1.1 408"), "{response}");
+        }
+        wait_for_budget(&limits, JSON_RPC_BODY_BUDGET_BYTES).await;
+    }
+
+    /// Body bytes beyond the budget wait and then get a 503; the budget comes back on a timeout, a disconnect and after
+    /// the decode
+    #[tokio::test]
+    async fn body_budget_is_charged_per_chunk_and_returned() {
+        const BUDGET: usize = 64 * 1024;
+        let shutdown = Shutdown::new();
+        let (mempool, mempool_state) = create_mempool_service_mock();
+        mempool_state
+            .set_submit_transaction_response(TxStorageResponse::UnconfirmedPool)
+            .await;
+        let query_service = make_query_service(&shutdown, mempool.clone());
+        let limits = Arc::new(JsonRpcLimits::new(
+            BUDGET,
+            Duration::from_millis(200),
+            Duration::from_secs(2),
+        ));
+        let address = serve(query_service, mempool, limits.clone()).await;
+
+        // One stalled upload holds the whole budget
+        let mut holder = post(address, 2 * BUDGET, &[b' '; BUDGET]).await;
+        wait_for_budget(&limits, 0).await;
+        let mut waiting = post(address, 100, b" ").await;
+        let response = read_response(&mut waiting).await;
+        assert!(response.starts_with("HTTP/1.1 503"), "{response}");
+        assert!(response.to_ascii_lowercase().contains("retry-after: 5"), "{response}");
+
+        // Returned when the stalled upload times out
+        let response = read_response(&mut holder).await;
+        assert!(response.starts_with("HTTP/1.1 408"), "{response}");
+        wait_for_budget(&limits, BUDGET).await;
+
+        // Returned when the client disconnects
+        let partial = post(address, 2 * BUDGET, &[b' '; 1000]).await;
+        wait_for_budget(&limits, BUDGET - 1000).await;
+        drop(partial);
+        wait_for_budget(&limits, BUDGET).await;
+
+        // Returned after the decode, with the decode slot
+        let body = request(transaction_json(None));
+        assert!(body.len() < BUDGET);
+        let mut submission = post(address, body.len(), body.as_bytes()).await;
+        let response = read_response(&mut submission).await;
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        wait_for_budget(&limits, BUDGET).await;
+        assert_eq!(limits.decodes.available_permits(), MAX_CONCURRENT_JSON_RPC_DECODES);
+        assert_eq!(mempool_state.get_call_count(), 1);
     }
 }

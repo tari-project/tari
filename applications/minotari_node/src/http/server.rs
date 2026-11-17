@@ -115,12 +115,11 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
                 "/get_mempool_fee_per_gram_stats",
                 get(handler::get_mempool_fee_per_gram_stats::handle::<B>),
             )
-            // A large transaction with 2_316 inputs, 154 outputs and byte size 2_109_809 translated to 4_853_330 JSON
-            // object bytes, ~ 2.3 times larger. So we set the limit here to 2.5 times 4 MB.
-            .layer(RequestBodyLimitLayer::new(25 * 4 * 1024 * 1024 / 10))
+            .layer(RequestBodyLimitLayer::new(handler::json_rpc::MAX_JSON_RPC_BODY_BYTES))
             .merge(SwaggerUi::new("/swagger-ui").url("/openapi.json", ApiDoc::openapi()))
             .layer(Extension(self.query_service.clone()))
             .layer(Extension(self.mempool_handle.clone()))
+            .layer(Extension(Arc::new(handler::json_rpc::JsonRpcLimits::default())))
             .layer(Extension(Arc::new(self.cache_cfg.clone())));
         let listen_ip = self.listen_ip;
         let address = SocketAddr::new(listen_ip, port);
@@ -130,7 +129,7 @@ impl<S: BaseNodeWalletQueryService> Server<S> {
         // spawn server
         tokio::spawn(async move {
             info!(target: LOG_TARGET, "Wallet query HTTP server listening at {listen_ip}:{port}");
-            if let Err(error) = axum::serve(listener, router)
+            if let Err(error) = axum::serve(listener, router.into_make_service_with_connect_info::<SocketAddr>())
                 .with_graceful_shutdown(shutdown_signal)
                 .await
             {
