@@ -15,4 +15,13 @@ ignore = [
     # test harness. Last reviewed 2026-10-27; remove once `pgp` and `k256` move off `elliptic-curve` 0.13.
     "RUSTSEC-2026-0387",
 
+    # RUSTSEC-2026-0542 (humantime unmaintained; all versions affected, so no fix release exists). humantime 2.3.0 is
+    # a transitive-only dependency with no direct use in this workspace: it is pulled in by log4rs's
+    # `config_parsing` feature (parsing human-readable durations in log4rs config files), by console-subscriber
+    # (tokio-console profiling behind `--profile-with-tokio-console`), and by the dev-only `cucumber` integration
+    # test harness. It only parses/formats `std::time::Duration` strings and handles no secrets or untrusted input
+    # beyond local config files. Last reviewed 2026-11-17; re-review by 2027-05-17 or when log4rs, console-subscriber
+    # and cucumber all drop humantime.
+    "RUSTSEC-2026-0542",
+
 ]
