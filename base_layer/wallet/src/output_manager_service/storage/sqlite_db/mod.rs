@@ -185,8 +185,10 @@ impl OutputManagerSqliteDatabase {
                             OutputStatus::UnspentMinedUnconfirmed as i32
                         },
                         // Quoted timestamp, or an unquoted SQL NULL (a quoted 'NULL' would be stored as text)
-                        DateTime::from_timestamp(update.mined_timestamp as i64, 0)
-                            .map_or_else(|| "NULL".to_string(), |val| format!("'{}'", val.naive_utc())),
+                        OffsetDateTime::from_unix_timestamp(update.mined_timestamp as i64)
+                            .map_or_else(|_| "NULL".to_string(), |val| {
+                                format!("'{}'", PrimitiveDateTime::new(val.date(), val.time()))
+                            }),
                     )
                 })
                 .collect::<Vec<String>>()

@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use time::OffsetDateTime;
+use time::{OffsetDateTime, format_description::well_known::Rfc2822};
 use tari_common::configuration::Network;
 use tari_common_types::types::{FixedHash, PrivateKey};
 use tari_crypto::tari_utilities::hex::*;
@@ -398,7 +398,7 @@ fn get_raw_block(genesis_timestamp: &OffsetDateTime, not_before_proof: &PowData)
     // fields below
 
     #[allow(clippy::cast_sign_loss)]
-    let timestamp = genesis_timestamp.timestamp() as u64;
+    let timestamp = genesis_timestamp.unix_timestamp() as u64;
     Block {
         header: BlockHeader {
             version: 0,

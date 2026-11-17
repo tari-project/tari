@@ -22,6 +22,8 @@
 
 use std::time::Duration;
 
+use time::{OffsetDateTime, PrimitiveDateTime};
+
 use super::connection_stats::PeerConnectionStats;
 
 /// Connectivity actor configuration
@@ -94,7 +96,7 @@ impl ConnectivityConfig {
     /// [`Self::expire_peer_last_seen_duration`].
     pub(crate) fn seen_since(&self) -> PrimitiveDateTime {
         let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
-        Duration::try_from(self.expire_peer_last_seen_duration)
+        time::Duration::try_from(self.expire_peer_last_seen_duration)
             .ok()
             .and_then(|expiry| now.checked_sub(expiry))
             .unwrap_or(PrimitiveDateTime::MIN)

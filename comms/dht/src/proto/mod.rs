@@ -176,8 +176,8 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
             .map_err(|e| anyhow!("Invalid public nonce: {e}"))?;
         let signature =
             CommsSecretKey::from_canonical_bytes(&value.signature).map_err(|e| anyhow!("Invalid signature: {e}"))?;
-        let updated_at = DateTime::<Utc>::from_timestamp(value.updated_at, 0)
-            .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
+        let updated_at = OffsetDateTime::from_unix_timestamp(value.updated_at)
+            .map_err(|_| anyhow::anyhow!("updated_at overflowed"))?;
 
         Ok(Self::new(
             version,

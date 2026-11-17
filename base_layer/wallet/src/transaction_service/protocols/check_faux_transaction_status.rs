@@ -192,7 +192,7 @@ pub async fn check_detected_transactions<
                 mined_height,
                 mined_in_block,
                 tx.mined_timestamp
-                    .map_or(0, |mined_timestamp| mined_timestamp.timestamp() as u64),
+                    .map_or(0, |mined_timestamp| mined_timestamp.unix_timestamp() as u64),
                 must_be_confirmed,
                 tx.status,
                 tip_height,

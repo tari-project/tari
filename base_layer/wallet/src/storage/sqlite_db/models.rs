@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use chacha20poly1305::XChaCha20Poly1305;
+use time::PrimitiveDateTime;
 use tari_common_types::{
     burn_proof::PartialBurnClaimProof,
     encryption::{Encryptable, decrypt_bytes_integral_nonce, encrypt_bytes_integral_nonce},

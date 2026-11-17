@@ -108,7 +108,7 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, retry_limit: usize) -> Resul
                     .unwrap_or(100);
                 let msg = format!(
                     "{}: Recovery process {}% complete (Block {} of {}).",
-                    OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()),
+                    OffsetDateTime::now_utc(),
                     percentage_progress,
                     current_height,
                     tip_height

@@ -170,8 +170,8 @@ impl CommandContext {
                 solve_time,
                 normalized_solve_time,
                 pow_algo,
-                OffsetDateTime::from_unix_timestamp(header.header().timestamp.as_u64() as i64, 0)
-                    .unwrap_or_default(),
+                OffsetDateTime::from_unix_timestamp(header.header().timestamp.as_u64() as i64)
+                    .unwrap_or(OffsetDateTime::UNIX_EPOCH),
                 target_diff
                     .get(pow_algo)
                     .map_err(ChainStorageError::UnexpectedResult)?

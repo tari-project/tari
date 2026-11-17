@@ -1970,11 +1970,11 @@ impl InboundTransactionSql {
             source_address: i.source_address.to_vec(),
             amount: u64::from(i.amount) as i64,
             receiver_protocol: receiver_protocol_bytes.to_vec(),
-            timestamp: i.timestamp.naive_utc(),
+            timestamp: PrimitiveDateTime::new(i.timestamp.date(), i.timestamp.time()),
             cancelled: i32::from(i.cancelled),
             direct_send_success: i32::from(i.direct_send_success),
             send_count: i.send_count as i32,
-            last_send_timestamp: i.last_send_timestamp.map(|t| t.naive_utc()),
+            last_send_timestamp: i.last_send_timestamp.map(|t| PrimitiveDateTime::new(t.date(), t.time())),
             payment_id: Some(i.payment_id.to_bytes()),
             user_payment_id,
             received_output_hashes: Some(fixedhash_vec_to_bytes(&i.received_output_hashes)),
@@ -2233,11 +2233,11 @@ impl OutboundTransactionSql {
             amount: u64::from(o.amount) as i64,
             fee: u64::from(o.fee) as i64,
             sender_protocol: sender_protocol_bytes.to_vec(),
-            timestamp: o.timestamp.naive_utc(),
+            timestamp: PrimitiveDateTime::new(o.timestamp.date(), o.timestamp.time()),
             cancelled: i32::from(o.cancelled),
             direct_send_success: i32::from(o.direct_send_success),
             send_count: o.send_count as i32,
-            last_send_timestamp: o.last_send_timestamp.map(|t| t.naive_utc()),
+            last_send_timestamp: o.last_send_timestamp.map(|t| PrimitiveDateTime::new(t.date(), t.time())),
             payment_id: Some(o.payment_id.to_bytes()),
             user_payment_id,
             sent_output_hashes: Some(fixedhash_vec_to_bytes(&o.sent_output_hashes)),
@@ -2605,7 +2605,7 @@ impl CompletedTransactionSql {
                 return Ok(());
             }
 
-            let timestamp = DateTime::<Utc>::from_timestamp(mined_timestamp as i64, 0).ok_or_else(|| {
+            let timestamp = OffsetDateTime::from_unix_timestamp(mined_timestamp as i64).map_err(|_| {
                 TransactionStorageError::UnexpectedResult(format!(
                     "Could not create timestamp mined_timestamp: {mined_timestamp}"
                 ))
@@ -2627,7 +2627,7 @@ impl CompletedTransactionSql {
                 status: Some(status as i32),
                 mined_height: Some(Some(mined_height as i64)),
                 mined_in_block: Some(Some(mined_in_block.to_vec())),
-                mined_timestamp: Some(timestamp.naive_utc()),
+                mined_timestamp: Some(PrimitiveDateTime::new(timestamp.date(), timestamp.time())),
                 // If the tx is mined, then it can't be cancelled
                 cancelled: Some(None),
                 ..Default::default()
@@ -2776,15 +2776,15 @@ impl CompletedTransactionSql {
             fee: u64::from(c.fee) as i64,
             transaction_protocol: transaction_bytes.to_vec(),
             status: c.status as i32,
-            timestamp: c.timestamp.naive_utc(),
+            timestamp: PrimitiveDateTime::new(c.timestamp.date(), c.timestamp.time()),
             cancelled: c.cancelled.map(|v| v as i32),
             direction: Some(c.direction as i32),
             send_count: c.send_count as i32,
-            last_send_timestamp: c.last_send_timestamp.map(|t| t.naive_utc()),
+            last_send_timestamp: c.last_send_timestamp.map(|t| PrimitiveDateTime::new(t.date(), t.time())),
             confirmations: None, // To be removed in future
             mined_height: c.mined_height.map(|ic| ic as i64),
             mined_in_block: c.mined_in_block.map(|v| v.to_vec()),
-            mined_timestamp: c.mined_timestamp.map(|t| t.naive_utc()),
+            mined_timestamp: c.mined_timestamp.map(|t| PrimitiveDateTime::new(t.date(), t.time())),
             transaction_signature_nonce: c.transaction_signature.get_compressed_public_nonce().to_vec(),
             transaction_signature_key: c.transaction_signature.get_signature().to_vec(),
             payment_id: Some(c.payment_id.to_bytes()),

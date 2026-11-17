@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
 };
 
-use time::{Duration, OffsetDateTime};
+use time::{Duration, OffsetDateTime, PrimitiveDateTime};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
@@ -153,8 +153,8 @@ where
                                 OutputManagerProtocolError::new(self.operation_id, OutputManagerError::InvalidConfig)
                             })?,
                     ))
-                    .unwrap_or(OffsetDateTime::MIN)
-                    .timestamp(),
+                    .unwrap_or_else(|| PrimitiveDateTime::MIN.assume_utc())
+                    .unix_timestamp(),
                 &self.key_manager,
             )
             .for_protocol(self.operation_id)?;

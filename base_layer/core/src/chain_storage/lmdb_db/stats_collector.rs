@@ -123,7 +123,7 @@ impl Default for DatabaseStats {
             migration_stats: MigrationStats::default(),
             last_updated: Instant::now(),
             metadata: HashMap::new(),
-            timestamp: OffsetDateTime::now_utc().(unix_timestamp_nanos() / 1_000_000) as u64,
+            timestamp: (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64,
         }
     }
 }
@@ -144,7 +144,7 @@ impl DatabaseStats {
             },
             last_updated: Instant::now(),
             metadata: HashMap::new(),
-            timestamp: OffsetDateTime::now_utc().(unix_timestamp_nanos() / 1_000_000) as u64,
+            timestamp: (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64,
         }
     }
 
@@ -170,13 +170,13 @@ impl DatabaseStats {
 
     pub fn set_migration_total_height(&mut self, total_height: u64) {
         self.migration_stats.total_height = total_height;
-        self.timestamp = OffsetDateTime::now_utc().(unix_timestamp_nanos() / 1_000_000) as u64;
+        self.timestamp = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64;
     }
 
     /// Update progress with new current height
     pub fn update_migration_progress(&mut self, current_height: u64) {
         self.migration_stats.current_height = current_height;
-        self.timestamp = OffsetDateTime::now_utc().(unix_timestamp_nanos() / 1_000_000) as u64;
+        self.timestamp = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64;
 
         // Update progress percentage
         self.migration_stats.progress_percentage = if self.migration_stats.total_height > 0 {
@@ -208,7 +208,7 @@ impl LMDBStatsCollector {
     }
 
     fn get_current_timestamp(&self) -> u64 {
-        OffsetDateTime::now_utc().(unix_timestamp_nanos() / 1_000_000) as u64
+        (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64
     }
 
     fn update_db_stats(&self, stats: DatabaseStats) {

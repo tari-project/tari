@@ -157,6 +157,7 @@ use tari_utilities::{
     ByteArray,
     hex::{Hex, to_hex},
 };
+use time::OffsetDateTime;
 use tokio::sync::watch;
 
 use super::{
@@ -809,7 +810,7 @@ fn publish_compaction_progress(
         0.0
     };
     stats.last_updated = Instant::now();
-    stats.timestamp = OffsetDateTime::now_utc().(unix_timestamp_nanos() / 1_000_000) as u64;
+    stats.timestamp = (OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000) as u64;
     if let Err(e) = sender.send(stats) {
         warn!(
             target: LOG_TARGET,

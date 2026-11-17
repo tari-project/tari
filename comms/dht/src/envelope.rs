@@ -40,7 +40,7 @@ use crate::version::DhtProtocolVersion;
 /// Utility function that converts a `OffsetDateTime` to a `EpochTime`
 pub(crate) fn datetime_to_epochtime(datetime: OffsetDateTime) -> EpochTime {
     #[allow(clippy::cast_sign_loss)]
-    EpochTime::from_secs_since_epoch(datetime.timestamp() as u64)
+    EpochTime::from_secs_since_epoch(datetime.unix_timestamp() as u64)
 }
 
 /// Message errors that should be verified by every node

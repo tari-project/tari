@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use blake2::Blake2b;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime, PrimitiveDateTime};
 use digest::consts::U64;
 use prost::Message;
 use serde::{Deserialize, Serialize};
@@ -136,7 +136,7 @@ impl IdentitySignature {
         // owner can produce this error.
         let max_updated_at = OffsetDateTime::now_utc()
             .checked_add(Duration::days(1))
-            .unwrap_or(OffsetDateTime::MAX);
+            .unwrap_or_else(|| PrimitiveDateTime::MAX.assume_utc());
         if self.updated_at > max_updated_at {
             return Err(PeerManagerError::IdentitySignatureFromFuture);
         }
@@ -187,7 +187,7 @@ impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
         let signature = CommsSecretKey::from_canonical_bytes(&value.signature)
             .map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
         let updated_at =
-            DateTime::<Utc>::from_timestamp(value.updated_at, 0).ok_or(PeerManagerError::InvalidIdentitySignature)?;
+            OffsetDateTime::from_unix_timestamp(value.updated_at).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
 
         Ok(Self {
             version,

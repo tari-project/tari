@@ -80,7 +80,7 @@ pub mod test {
 
         #[allow(clippy::cast_sign_loss)]
         let epoch_secs = Date::from_calendar_date(2000, Month::try_from(1).unwrap(), 1).unwrap().with_hms(1, 1, 1).unwrap().assume_utc()
-        .timestamp() as u64;
+        .unix_timestamp() as u64;
         header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
         header.pow.pow_algo = PowAlgorithm::Sha3x;
         header

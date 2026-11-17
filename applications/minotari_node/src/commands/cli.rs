@@ -22,7 +22,7 @@
 
 use std::io::stdout;
 
-use time::{Datelike, OffsetDateTime};
+use ::time::OffsetDateTime;
 use crossterm::{execute, terminal::SetTitle};
 
 /// returns the top or bottom box line of the specified length

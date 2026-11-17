@@ -23,7 +23,7 @@
 use std::{cmp::min, collections::HashMap, str::FromStr, time::Duration};
 
 use bytes::Bytes;
-use time::{Duration, PrimitiveDateTime};
+use time::{OffsetDateTime, PrimitiveDateTime};
 use diesel::{
     self,
     ExpressionMethods,
@@ -75,7 +75,7 @@ const LOG_TARGET: &str = "comms::peer_manager::storage::db";
 /// How recently a peer must have been seen to still count as "known good" when selecting random
 /// peers. Peers are gossiped far faster than they are re-verified, so without a recency bound the
 /// candidate set is dominated by peers that were reachable once and have long since gone.
-const KNOWN_GOOD_LAST_SEEN_WINDOW: TimeDelta = TimeDelta::hours(1);
+const KNOWN_GOOD_LAST_SEEN_WINDOW: time::Duration = time::Duration::hours(1);
 
 /// `db_metadata` key holding the [`ADDRESS_CLASSIFIER_VERSION`] this database was last classified
 /// with.
@@ -97,7 +97,7 @@ const GARBAGE_COLLECTION_BATCH_SIZE: usize = 500;
 /// How many garbage collection candidates one plain read fetches, to be deleted in batches.
 const GARBAGE_COLLECTION_READ_SIZE: i64 = 5000;
 /// How long a soft-deleted peer is kept before garbage collection removes it for good.
-const SOFT_DELETED_PEER_RETENTION: TimeDelta = TimeDelta::hours(24);
+const SOFT_DELETED_PEER_RETENTION: time::Duration = time::Duration::hours(24);
 
 /// What one run of [`PeerDatabaseSql::garbage_collect`] removed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1728,9 +1728,9 @@ impl PeerDatabaseSql {
                 threshold,
                 Duration::from_secs(i64::MAX.unsigned_abs().saturating_sub(1)),
             );
-            let stale_threshold = OffsetDateTime::now_utc()
-                .naive_utc()
-                .checked_sub(Duration::try_from(threshold).unwrap_or(TimeDelta::MAX))
+            let now = OffsetDateTime::now_utc();
+            let stale_threshold = PrimitiveDateTime::new(now.date(), now.time())
+                .checked_sub(time::Duration::try_from(threshold).unwrap_or(time::Duration::MAX))
                 .unwrap_or(PrimitiveDateTime::MIN);
             query = query.filter(
                 multi_addresses::last_seen
@@ -1866,8 +1866,8 @@ impl PeerDatabaseSql {
                 // network it costs a slow rendezvous that fails, crowding out a live peer. Callers
                 // that cannot fill `n` from this set fall back to a relaxed query, so narrowing it
                 // costs nothing when few recent peers are known.
-                let cutoff = OffsetDateTime::now_utc()
-                    .naive_utc()
+                let now = OffsetDateTime::now_utc();
+                let cutoff = PrimitiveDateTime::new(now.date(), now.time())
                     .checked_sub(KNOWN_GOOD_LAST_SEEN_WINDOW)
                     .unwrap_or(PrimitiveDateTime::MIN);
                 query = query.filter(multi_addresses::last_seen.gt(cutoff));
@@ -2254,7 +2254,6 @@ mod tests {
     #![allow(clippy::indexing_slicing)]
     use std::{collections::HashMap, time::Duration};
 
-    use time::Duration;
     use diesel::{self, ExpressionMethods, QueryDsl, RunQueryDsl};
     use tari_common_sqlite::connection::DbConnection;
     use tari_utilities::{ByteArray, hex::Hex};
@@ -2742,7 +2741,7 @@ mod tests {
 
         // Test 'set_last_seen'
         let last_seen = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()) -
-            Duration::try_from(Duration::from_secs(120)).unwrap_or(TimeDelta::MAX);
+            time::Duration::try_from(Duration::from_secs(120)).unwrap_or(time::Duration::MAX);
         for address in node_peers[8].addresses.addresses() {
             peers_db
                 .set_last_seen(&node_peers[8].node_id, last_seen, address.address())

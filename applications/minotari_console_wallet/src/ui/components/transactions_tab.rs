@@ -4,7 +4,7 @@
 #![allow(clippy::indexing_slicing)]
 use std::collections::HashMap;
 
-use time::OffsetDateTime;
+use ::time::{OffsetDateTime, macros::format_description};
 use log::*;
 use minotari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tari_common_types::{
@@ -152,7 +152,7 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        mined_timestamp.assume_utc().to_offset(OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned())
+                        mined_timestamp.assume_utc()
                             .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()
                     ),
                 },
@@ -324,7 +324,7 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        mined_timestamp.assume_utc().to_offset(OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned())
+                        mined_timestamp.assume_utc()
                             .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()
                     ),
                 },
@@ -525,7 +525,7 @@ impl TransactionsTab {
                     None => String::new(),
                     Some(mined_timestamp) => format!(
                         "{}",
-                        mined_timestamp.assume_utc().to_offset(OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned())
+                        mined_timestamp.assume_utc()
                             .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()
                     ),
                 },
@@ -533,7 +533,7 @@ impl TransactionsTab {
             );
 
             let imported_time =
-                tx.timestamp.assume_utc().to_offset(OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned());
+                tx.timestamp.assume_utc();
             let imported_timestamp = Span::styled(
                 format!("{}", imported_time.format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap()),
                 Style::default().fg(Color::White),

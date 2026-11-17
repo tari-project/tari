@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use time::OffsetDateTime;
+use time::{OffsetDateTime, macros::format_description};
 use dialoguer::Input as InputPrompt;
 use digest::Digest;
 use log::*;
@@ -426,7 +426,7 @@ pub async fn make_it_rain(
                 start_time,
                 payment_id.payment_id_as_string()
             );
-            start_time.saturating_sub(now).num_milliseconds() as u64
+            (start_time - now).whole_milliseconds().max(0) as u64
         } else {
             0
         };
@@ -470,7 +470,7 @@ pub async fn make_it_rain(
                 let amount = start_amount.saturating_add(increase_amount.saturating_mul(MicroMinotari::from(i as u64)));
 
                 // Manage transaction submission rate
-                let actual_ms = OffsetDateTime::now_utc().saturating_sub(started_at).num_milliseconds();
+                let actual_ms = (OffsetDateTime::now_utc() - started_at).whole_milliseconds().max(0) as i64;
                 let target_ms = (i as f64 * (1000.0 / transactions_per_second)) as i64;
                 trace!(
                     target: LOG_TARGET,
@@ -2009,7 +2009,7 @@ pub async fn command_runner(
                     args.duration,
                     args.start_amount,
                     args.increase_amount,
-                    args.start_time.unwrap_or_else(Utc::now),
+                    args.start_time.unwrap_or_else(OffsetDateTime::now_utc),
                     args.destination,
                     transaction_type,
                     memo,
@@ -4023,7 +4023,7 @@ fn write_audit_to_csv_file(
 
         // DateTime: prefer mined timestamp, fall back to creation timestamp
         let datetime = tx.mined_timestamp.unwrap_or(tx.timestamp);
-        let datetime_str = datetime.format("%-m/%-d/%y %-H:%M").to_string();
+        let datetime_str = datetime.format(&format_description!("[month]/[day]/[year repr:last_two] [hour]:[minute]")).unwrap();
 
         // Amount in base units (MicroMinotari) → display as Minotari
         let amount_minotari = tx.amount.as_u64() as f64 / 1_000_000.0;

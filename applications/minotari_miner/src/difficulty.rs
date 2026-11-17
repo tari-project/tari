@@ -108,7 +108,7 @@ pub mod test {
     pub fn get_header() -> (grpc_header, BlockHeader) {
         let mut header = BlockHeader::new(0);
         header.timestamp = (Date::from_calendar_date(2000, Month::try_from(1).unwrap(), 1).unwrap().with_hms(1, 1, 1).unwrap().assume_utc()
-        .timestamp() as u64)
+        .unix_timestamp() as u64)
             .into();
         header.pow.pow_algo = tari_transaction_components::tari_proof_of_work::PowAlgorithm::Sha3x;
         (header.clone().into(), header)

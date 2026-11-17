@@ -22,13 +22,13 @@
 
 use std::time::Duration;
 
-use time::Date, OffsetDateTime, PrimitiveDateTime;
+use time::{Date, Month, OffsetDateTime, PrimitiveDateTime, macros::format_description};
 
 pub fn safe_future_datetime_from_duration(duration: Duration) -> OffsetDateTime {
-    let old_duration = Duration::try_from(duration).unwrap_or(Duration::MAX);
+    let old_duration = time::Duration::try_from(duration).unwrap_or(time::Duration::MAX);
     OffsetDateTime::now_utc()
         .checked_add(old_duration)
-        .unwrap_or(OffsetDateTime::MAX)
+        .unwrap_or_else(|| PrimitiveDateTime::MAX.assume_utc())
 }
 
 pub fn format_duration(duration: Duration) -> String {
@@ -47,8 +47,10 @@ pub fn format_duration(duration: Duration) -> String {
 }
 
 pub fn format_local_datetime(datetime: &PrimitiveDateTime) -> String {
-    let local_datetime = *datetime.assume_utc().to_offset(OffsetDateTime::now_local().unwrap_or_else(|_| OffsetDateTime::now_utc()).offset().to_owned());
-    local_datetime.format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]")).unwrap().to_string()
+    datetime
+        .format(&format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"))
+        .unwrap()
+        .to_string()
 }
 
 /// The latest time stored in a database: 9999-12-31 23:59:59.
@@ -79,7 +81,8 @@ mod test {
 
     #[test]
     fn far_future_times_are_clamped_for_storage() {
-        let forever = safe_future_datetime_from_duration(Duration::from_secs(u64::MAX)).naive_utc();
+        let forever_dt = safe_future_datetime_from_duration(Duration::from_secs(u64::MAX));
+        let forever = PrimitiveDateTime::new(forever_dt.date(), forever_dt.time());
         assert!(forever > max_stored_datetime());
         let stored = clamp_to_max_stored_datetime(forever);
         assert_eq!(stored, max_stored_datetime());

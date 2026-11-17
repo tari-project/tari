@@ -273,7 +273,7 @@ impl BlockHeader {
 
     pub fn to_datetime(&self) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp(i64::try_from(self.timestamp.as_u64()).unwrap_or(i64::MAX))
-            .unwrap_or(OffsetDateTime::MAX)
+            .unwrap_or_else(|_| time::PrimitiveDateTime::MAX.assume_utc())
     }
 
     #[inline]
@@ -368,7 +368,7 @@ impl Display for BlockHeader {
             self.version,
             self.height,
             self.prev_hash,
-            self.to_datetime().format(&Rfc2822).unwrap()
+            self.to_datetime().format(&time::format_description::well_known::Rfc2822).unwrap()
         )?;
         writeln!(
             fmt,
@@ -398,7 +398,7 @@ mod test {
 
         #[allow(clippy::cast_sign_loss)]
         let epoch_secs = Date::from_calendar_date(2000, Month::try_from(1).unwrap(), 1).unwrap().with_hms(1, 1, 1).unwrap().assume_utc()
-        .timestamp() as u64;
+        .unix_timestamp() as u64;
         header.timestamp = EpochTime::from_secs_since_epoch(epoch_secs);
         header.pow.pow_algo = PowAlgorithm::Sha3x;
         header

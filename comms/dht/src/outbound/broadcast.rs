@@ -482,8 +482,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 }
 
                 let expires = OffsetDateTime::now_utc()
-                    .checked_add(self.message_validity_window)
-                    .unwrap_or(OffsetDateTime::MAX);
+                    .checked_add(time::Duration::try_from(self.message_validity_window).unwrap_or(time::Duration::MAX))
+                    .unwrap_or_else(|| time::PrimitiveDateTime::MAX.assume_utc());
 
                 match self
                     .generate_send_messages(

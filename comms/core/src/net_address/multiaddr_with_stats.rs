@@ -436,8 +436,10 @@ impl MultiaddrWithStats {
         //   - less than 1s, add '100' points
         let last_seen_seconds: i32 = self
             .last_seen
-            .map(|x| PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()).saturating_sub(x))
-            .map(|x| x.num_seconds())
+            .map(|x| {
+                let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+                (now - x).whole_seconds()
+            })
             .unwrap_or(i64::MAX / 2)
             .try_into()
             .unwrap_or(i32::MAX);

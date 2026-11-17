@@ -483,7 +483,7 @@ impl Display for MakeItRainTransactionType {
 fn parse_start_time(arg: &str) -> Result<OffsetDateTime, time::error::Parse> {
     let mut start_time = OffsetDateTime::now_utc();
     if !arg.is_empty() && arg.to_uppercase() != "NOW" {
-        start_time = arg.parse()?;
+        start_time = OffsetDateTime::parse(arg, &time::format_description::well_known::Rfc3339)?;
     }
     Ok(start_time)
 }

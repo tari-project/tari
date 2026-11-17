@@ -22,7 +22,7 @@
 
 use std::fmt::Display;
 
-use time::OffsetDateTime;
+use time::{OffsetDateTime, format_description::well_known::Rfc2822};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 use tari_transaction_components::transaction_components::{TransactionInput, TransactionOutput};
@@ -72,8 +72,8 @@ impl MinedInfo {
 impl Display for MinedInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(output) = &self.output {
-            let time = DateTime::<Utc>::from_timestamp(i64::try_from(output.mined_timestamp).unwrap_or(i64::MAX), 0)
-                .unwrap_or(OffsetDateTime::MAX);
+            let time = OffsetDateTime::from_unix_timestamp(i64::try_from(output.mined_timestamp).unwrap_or(i64::MAX))
+                .unwrap_or_else(|_| time::PrimitiveDateTime::MAX.assume_utc());
             writeln!(
                 f,
                 "Output mined at height {} in block {} at timestamp {}",
@@ -85,8 +85,8 @@ impl Display for MinedInfo {
             writeln!(f, "Output not mined ")?;
         }
         if let Some(input) = &self.input {
-            let time = DateTime::<Utc>::from_timestamp(i64::try_from(input.spent_timestamp).unwrap_or(i64::MAX), 0)
-                .unwrap_or(OffsetDateTime::MAX);
+            let time = OffsetDateTime::from_unix_timestamp(i64::try_from(input.spent_timestamp).unwrap_or(i64::MAX))
+                .unwrap_or_else(|_| time::PrimitiveDateTime::MAX.assume_utc());
             writeln!(
                 f,
                 "Output spent at height {} in block {} at timestamp {}",

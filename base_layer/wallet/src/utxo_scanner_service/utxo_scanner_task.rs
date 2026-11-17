@@ -28,7 +28,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, PrimitiveDateTime};
 use log::*;
 use minotari_node_wallet_client::BaseNodeWalletClient;
 use tari_common_types::{
@@ -539,8 +539,8 @@ where
                     blocks_scanned = blocks_scanned.saturating_add(1);
                     let current_height = response.height;
                     let current_header_hash = response.header_hash;
-                    let mined_timestamp = DateTime::<Utc>::from_timestamp(response.mined_timestamp as i64, 0)
-                        .unwrap_or(OffsetDateTime::MIN);
+                    let mined_timestamp = OffsetDateTime::from_unix_timestamp(response.mined_timestamp as i64)
+                        .unwrap_or_else(|_| PrimitiveDateTime::MIN.assume_utc());
                     let outputs = response.outputs;
                     total_scanned = total_scanned.saturating_add(outputs.len());
 

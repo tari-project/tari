@@ -658,7 +658,7 @@ impl ConsensusConstants {
         // Timestamp never negative
         (OffsetDateTime::now_utc()
             .add(Duration::seconds(self.future_time_limit as i64))
-            .timestamp() as u64)
+            .unix_timestamp() as u64)
             .into()
     }
 

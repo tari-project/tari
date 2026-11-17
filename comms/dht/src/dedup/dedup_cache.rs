@@ -163,9 +163,9 @@ impl DedupCacheDatabase {
         let expires = expires
             .filter(|_| is_signed)
             .and_then(|e| i64::try_from(e.as_u64()).ok())
-            .and_then(|secs| DateTime::from_timestamp(secs, 0));
+            .and_then(|secs| OffsetDateTime::from_unix_timestamp(secs).ok());
         match expires {
-            Some(expires) => add_duration(expires.naive_utc(), CLOCK_SLACK).min(latest).max(earliest),
+            Some(expires) => add_duration(PrimitiveDateTime::new(expires.date(), expires.time()), CLOCK_SLACK).min(latest).max(earliest),
             None => earliest,
         }
     }
@@ -333,7 +333,7 @@ impl DedupCacheDatabase {
 }
 
 fn add_duration(time: PrimitiveDateTime, duration: Duration) -> PrimitiveDateTime {
-    Duration::try_from(duration)
+    time::Duration::try_from(duration)
         .ok()
         .and_then(|d| time.checked_add(d))
         .unwrap_or(PrimitiveDateTime::MAX)

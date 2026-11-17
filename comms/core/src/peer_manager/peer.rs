@@ -232,8 +232,11 @@ impl Peer {
     pub fn offline_since(&self) -> Option<Duration> {
         let offline_at = self.addresses.offline_at();
         offline_at
-            .map(|offline_at| PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()).saturating_sub(offline_at))
-            .map(|since| Duration::from_secs(u64::try_from(since.num_seconds()).unwrap_or(0)))
+            .map(|offline_at| {
+                let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+                now - offline_at
+            })
+            .map(|since| Duration::from_secs(u64::try_from(since.whole_seconds()).unwrap_or(0)))
     }
 
     pub(super) fn set_id(&mut self, id: PeerId) {
@@ -257,8 +260,8 @@ impl Peer {
 
     /// Provides that length of time since the last successful interaction with the peer
     pub fn last_seen_since(&self) -> Option<Duration> {
-        self.last_seen()
-            .and_then(|dt| PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time()).saturating_sub(dt).to_std().ok())
+        let now = PrimitiveDateTime::new(OffsetDateTime::now_utc().date(), OffsetDateTime::now_utc().time());
+        self.last_seen().and_then(|dt| Duration::try_from(now - dt).ok())
     }
 
     /// Returns the ban status of the peer
@@ -274,7 +277,7 @@ impl Peer {
     /// Bans the peer for a specified duration
     pub fn ban_for(&mut self, duration: Duration, reason: String) {
         let dt = safe_future_datetime_from_duration(duration);
-        self.banned_until = Some(dt.naive_utc());
+        self.banned_until = Some(PrimitiveDateTime::new(dt.date(), dt.time()));
         self.banned_reason = reason;
     }
 
