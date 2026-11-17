@@ -807,6 +807,8 @@ mod test {
                 .0;
             // Reuses a kernel excess that is already in the chain
             let mut excess_in_chain = mined_kernel;
+            // The mined kernel is the coinbase kernel, which the pre-checks would reject (and ban) first
+            excess_in_chain.features = KernelFeatures::empty();
             excess_in_chain.excess_sig = create_signature(
                 PrivateKey::random(&mut rand::rng()),
                 0.into(),
