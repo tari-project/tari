@@ -2629,6 +2629,11 @@ where B: BlockchainBackend
             })
     }
 
+    pub fn fetch_horizon_sync_output_leaf_count(&self) -> Result<u64, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_horizon_sync_output_leaf_count()
+    }
+
     pub fn get_stats(&self) -> Result<DbBasicStats, ChainStorageError> {
         let lock = self.db_read_access()?;
         lock.get_stats()
