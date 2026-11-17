@@ -981,8 +981,9 @@ where B: BlockchainBackend + 'static
     /// validators, which run against the block's real, linked height.
     ///
     /// Being stricter here does reject announcements, and bans for them: `verify_header_at_rules_height` returns
-    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, and on
-    /// the depth 0 `aux_chain_merkle_proof` rule - and both of those are a long ban. The rules the max picks are
+    /// `Err` when the announcement does not satisfy the selected rules - on the `pow_data` wire format, on the
+    /// depth 0 `aux_chain_merkle_proof` rule, and on strict merge mining parameter decoding - and all three of
+    /// those are a long ban. The rules the max picks are
     /// only ever the *newer* ones, so the announcements this costs are exactly those written under the pre-fork
     /// rules and announced to a node whose own chain has already passed the fork. A block like that cannot
     /// become our tip by being announced anyway; if it is genuinely part of a better chain, that chain arrives

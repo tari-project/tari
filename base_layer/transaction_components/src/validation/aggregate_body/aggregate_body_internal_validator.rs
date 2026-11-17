@@ -189,6 +189,10 @@ pub fn validate_individual_output(
     network: Network,
 ) -> Result<(), AggregatedBodyValidationError> {
     check_permitted_output_types(consensus_constants, output)?;
+    AggregateBody::check_output_coinbase_extra(
+        output,
+        consensus_constants.coinbase_output_features_extra_max_length(),
+    )?;
     check_script_size(output, consensus_constants.max_script_byte_size())?;
     check_encrypted_data_byte_size(output, consensus_constants.max_extra_encrypted_data_byte_size())?;
     check_covenant_length(&output.covenant, consensus_constants.max_covenant_length())?;
@@ -1342,6 +1346,73 @@ mod test {
                     range_proof_type: RangeProofType::RevealedValue,
                     proof_present: true
                 }
+            ));
+        }
+    }
+
+    mod coinbase_extra {
+        use super::*;
+        use crate::transaction_components::{CoinBaseExtra, RangeProofType};
+
+        fn extra(len: usize) -> CoinBaseExtra {
+            CoinBaseExtra::try_from(vec![1u8; len]).unwrap()
+        }
+
+        fn coinbase(key_manager: &KeyManager, extra_len: usize) -> TransactionOutput {
+            test_helpers::create_coinbase_wallet_output(
+                &test_helpers::TestParams::new(key_manager),
+                1,
+                Some(extra(extra_len)),
+                RangeProofType::RevealedValue,
+                key_manager,
+            )
+            .to_transaction_output()
+            .unwrap()
+        }
+
+        #[test]
+        fn non_coinbase_output_with_coinbase_extra_is_rejected() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let (output, _, _) = test_helpers::create_utxo(
+                MicroMinotari(100),
+                &key_manager,
+                &OutputFeatures {
+                    coinbase_extra: extra(1),
+                    ..Default::default()
+                },
+                &script!(Nop).unwrap(),
+                &Covenant::default(),
+                MicroMinotari::zero(),
+            );
+            output.verify_metadata_signature().unwrap();
+            let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::TransactionError(
+                    TransactionError::NonCoinbaseHasOutputFeaturesCoinbaseExtra
+                )
+            ));
+        }
+
+        #[test]
+        fn coinbase_output_coinbase_extra_is_capped_at_max() {
+            let key_manager = KeyManager::new_random().unwrap();
+            let consensus_manager = test_helpers::create_consensus_manager();
+            let constants = consensus_manager.consensus_constants(0);
+            let max = constants.coinbase_output_features_extra_max_length();
+
+            validate_individual_output(&coinbase(&key_manager, max as usize), constants, Network::LocalNet).unwrap();
+
+            let output = coinbase(&key_manager, max as usize + 1);
+            output.verify_metadata_signature().unwrap();
+            let err = validate_individual_output(&output, constants, Network::LocalNet).unwrap_err();
+            assert!(matches!(
+                err,
+                AggregatedBodyValidationError::TransactionError(
+                    TransactionError::InvalidOutputFeaturesCoinbaseExtraSize { len, max: m }
+                ) if len == max as usize + 1 && m == max
             ));
         }
     }
