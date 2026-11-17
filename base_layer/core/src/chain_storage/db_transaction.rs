@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, CompressedCommitment, FixedHash, HashOutput};
 use tari_node_components::blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader};
 use tari_transaction_components::transaction_components::{OutputType, TransactionKernel, TransactionOutput};
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 use crate::{
     blocks::UpdateBlockAccumulatedData,
@@ -365,6 +365,28 @@ impl DbTransaction {
             output_type,
         });
         self
+    }
+
+    /// Prunes the copies of `outputs` that horizon sync stored under `header_hash`, and their output tree leaves
+    pub(crate) fn prune_synced_outputs(&mut self, header_hash: HashOutput, outputs: &[TransactionOutput]) -> &mut Self {
+        let mut updates = Vec::with_capacity(outputs.len());
+        for output in outputs {
+            self.prune_output_copy(
+                header_hash,
+                output.hash(),
+                output.commitment.clone(),
+                output.features.output_type,
+            );
+            if !output.is_burned() {
+                let key_bytes: [u8; 32] = output.commitment.as_bytes().try_into().expect("Malformed commitment");
+                updates.push(HorizonStateTreeUpdate {
+                    key: FixedHash::from(key_bytes),
+                    value: None,
+                    replaces_value: false,
+                });
+            }
+        }
+        self.apply_horizon_state_tree_updates(updates)
     }
 
     /// Removes an output's commitment index entry and leaves its row, as spending it does. Only for horizon sync,
