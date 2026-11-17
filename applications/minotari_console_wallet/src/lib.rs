@@ -35,6 +35,8 @@ mod ui;
 mod utils;
 mod wallet_modes;
 
+use std::ffi::OsString;
+
 pub use cli::{
     Cli,
     CliCommands,
@@ -277,21 +279,29 @@ pub fn run_wallet_with_cli(
 }
 
 /// Command-line arguments are visible to every local user (e.g. `ps ax`), so warn when a secret was supplied that way
-/// instead of through its environment variable.
+/// instead of through its environment variable. The warning is recorded as a security warning, so it is shown again
+/// before the full-screen UI hides the terminal.
 fn warn_about_secrets_on_command_line(cli: &Cli) {
-    for (flag, env) in secrets_on_command_line(cli, |name| std::env::var_os(name).is_some()) {
-        let msg = format!(
-            "WARNING: {flag} was supplied on the command line, where it is visible to every user on this system (e.g. \
-             `ps ax`). Use the {env} environment variable instead."
-        );
-        warn!(target: LOG_TARGET, "{msg}");
-        eprintln!("{msg}");
+    for (flag, env) in secrets_on_command_line(cli, std::env::args_os()) {
+        tari_common::configuration::utils::emit_security_warning(&format!(
+            "{flag} was supplied on the command line, where it is visible to every user on this system (e.g. `ps \
+             ax`). Use the {env} environment variable instead."
+        ));
     }
 }
 
-/// The secret-carrying flags that were supplied on the command line rather than through their environment variable,
-/// as `(flag, environment variable)` pairs.
-fn secrets_on_command_line<F: Fn(&str) -> bool>(cli: &Cli, env_is_set: F) -> Vec<(&'static str, &'static str)> {
+/// The secret-carrying flags that were supplied and appear in the process arguments `args`, as `(flag, environment
+/// variable)` pairs. The arguments are checked directly, because when both are given the command line wins over the
+/// environment variable, and the secret is visible either way.
+fn secrets_on_command_line<I: IntoIterator<Item = OsString>>(cli: &Cli, args: I) -> Vec<(&'static str, &'static str)> {
+    let args: Vec<OsString> = args.into_iter().collect();
+    let on_command_line = |flag: &str| {
+        args.iter()
+            .filter_map(|arg| arg.to_str())
+            // Stop at `--`; anything after it is not an option
+            .take_while(|arg| *arg != "--")
+            .any(|arg| arg == flag || arg.strip_prefix(flag).is_some_and(|rest| rest.starts_with('=')))
+    };
     [
         (cli.password.is_some(), "--password", "MINOTARI_WALLET_PASSWORD"),
         (cli.seed_words.is_some(), "--seed-words", "MINOTARI_WALLET_SEED_WORDS"),
@@ -302,8 +312,7 @@ fn secrets_on_command_line<F: Fn(&str) -> bool>(cli: &Cli, env_is_set: F) -> Vec
         ),
     ]
     .into_iter()
-    // If the environment variable is not set, the value can only have come from the command line
-    .filter(|(supplied, _, env)| *supplied && !env_is_set(env))
+    .filter(|(supplied, flag, _)| *supplied && on_command_line(flag))
     .map(|(_, flag, env)| (flag, env))
     .collect()
 }
@@ -341,23 +350,29 @@ mod test {
                               abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
                               abandon art";
 
-    fn parse(args: &[&str]) -> Cli {
-        Cli::try_parse_from(std::iter::once("minotari_console_wallet").chain(args.iter().copied())).unwrap()
+    fn args(args: &[&str]) -> Vec<OsString> {
+        std::iter::once("minotari_console_wallet")
+            .chain(args.iter().copied())
+            .map(OsString::from)
+            .collect()
+    }
+
+    fn parse(a: &[&str]) -> Cli {
+        Cli::try_parse_from(args(a)).unwrap()
     }
 
     #[test]
     fn it_reports_secrets_supplied_on_the_command_line() {
-        let cli = parse(&[
+        let a = [
             "--password",
             "pw",
             "--seed-words",
             SEED_WORDS,
-            "--view-private-key",
-            "00",
+            "--view-private-key=00",
             "--spend-key",
             "00",
-        ]);
-        assert_eq!(secrets_on_command_line(&cli, |_| false), vec![
+        ];
+        assert_eq!(secrets_on_command_line(&parse(&a), args(&a)), vec![
             ("--password", "MINOTARI_WALLET_PASSWORD"),
             ("--seed-words", "MINOTARI_WALLET_SEED_WORDS"),
             ("--view-private-key", "MINOTARI_WALLET_VIEW_PRIVATE_KEY"),
@@ -366,17 +381,33 @@ mod test {
 
     #[test]
     fn it_does_not_report_secrets_supplied_through_the_environment() {
+        // Simulates the values arriving from the environment variables: set on the parsed `Cli` but absent from the
+        // process arguments
         let cli = parse(&["--seed-words", SEED_WORDS, "--view-private-key", "00"]);
-        assert!(secrets_on_command_line(&cli, |_| true).is_empty());
-        assert_eq!(
-            secrets_on_command_line(&cli, |env| env == "MINOTARI_WALLET_SEED_WORDS"),
-            vec![("--view-private-key", "MINOTARI_WALLET_VIEW_PRIVATE_KEY")]
-        );
+        assert!(secrets_on_command_line(&cli, args(&["--spend-key", "00"])).is_empty());
+    }
+
+    #[test]
+    fn it_reports_a_secret_on_the_command_line_even_when_its_environment_variable_is_also_set() {
+        // Both sources set: clap takes the command-line value, which is visible in the process list
+        let a = ["--seed-words", SEED_WORDS];
+        assert_eq!(secrets_on_command_line(&parse(&a), args(&a)), vec![(
+            "--seed-words",
+            "MINOTARI_WALLET_SEED_WORDS"
+        )]);
+    }
+
+    #[test]
+    fn it_only_matches_the_exact_flag() {
+        let a = ["--password", "pw"];
+        let cli = parse(&a);
+        assert!(secrets_on_command_line(&cli, args(&["--passwordx", "pw"])).is_empty());
+        assert!(secrets_on_command_line(&cli, args(&["--", "--password"])).is_empty());
     }
 
     #[test]
     fn it_reports_nothing_when_no_secret_is_supplied() {
-        let cli = parse(&["--spend-key", "00"]);
-        assert!(secrets_on_command_line(&cli, |_| false).is_empty());
+        let a = ["--spend-key", "00"];
+        assert!(secrets_on_command_line(&parse(&a), args(&a)).is_empty());
     }
 }
