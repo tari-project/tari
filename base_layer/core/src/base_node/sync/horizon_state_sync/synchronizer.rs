@@ -1595,6 +1595,15 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             Err(ChainStorageError::InvalidOperation(e)) => return Err(HorizonSyncError::FinalOutputRootMismatch(e)),
             Err(e) => return Err(e.into()),
         }
+        // Full block validation requires this equality, so finalising a header without it would fork from full nodes
+        let leaf_count = db.fetch_output_smt_leaf_count().await?;
+        if leaf_count != to_header.output_smt_size {
+            return Err(HorizonSyncError::FinalOutputCountMismatch {
+                header_size: to_header.output_smt_size,
+                leaf_count,
+                height: to_header.height,
+            });
+        }
 
         // Mark output sync as complete
         db.write_transaction()
@@ -2309,6 +2318,8 @@ mod tests {
         refusal_delay: Duration,
         /// A tranche request that is never answered
         stalled_request: Option<usize>,
+        /// The local hash of a tampered header and the hash of the honest header it replaces, which is served instead
+        tampered_header: Option<(Vec<u8>, Vec<u8>)>,
     }
 
     impl DbTrancheSource {
@@ -2324,6 +2335,7 @@ mod tests {
                 refused_kernel_requests: 0,
                 refusal_delay: Duration::ZERO,
                 stalled_request: None,
+                tampered_header: None,
             }
         }
 
@@ -2348,8 +2360,15 @@ mod tests {
     impl HorizonSyncSource for DbTrancheSource {
         async fn fetch_tranche(
             &mut self,
-            request: SyncUtxosRequest,
+            mut request: SyncUtxosRequest,
         ) -> Result<BoxStream<'static, Result<SyncUtxosResponse, RpcError>>, RpcError> {
+            if let Some((local, served)) = &self.tampered_header {
+                for hash in [&mut request.start_header_hash, &mut request.end_header_hash] {
+                    if hash == local {
+                        hash.clone_from(served);
+                    }
+                }
+            }
             let (tx, mut rx) = tokio::sync::mpsc::channel(1000);
             SyncUtxosTask::new(self.db.clone().into(), Arc::new(NodeId::new()))
                 .run(Request::new(0.into(), request), tx)
@@ -2357,7 +2376,13 @@ mod tests {
                 .unwrap();
             let mut items = Vec::new();
             while let Some(item) = rx.recv().await {
-                items.push(item.unwrap());
+                let mut item = item.unwrap();
+                if let Some((local, served)) = &self.tampered_header &&
+                    item.mined_header == *served
+                {
+                    item.mined_header.clone_from(local);
+                }
+                items.push(item);
             }
             self.requests = self.requests.saturating_add(1);
             if self.stalled_request == Some(self.requests) {
@@ -3905,6 +3930,130 @@ mod tests {
             .unwrap();
         assert_eq!(honest.requests, 5);
         db.verify_horizon_sync_output_root(target.output_mr).unwrap();
+    }
+
+    /// The receiving node of `duplicate_output_sync_setup` with the `output_smt_size` of target header "4" changed by
+    /// `edit`, as if header sync had stored it unvalidated. The sync peer still serves the honest chain.
+    fn tampered_output_count_setup(
+        edit: impl FnOnce(u64) -> u64,
+    ) -> (TestBlockchain, BlockchainDatabase<TempDatabase>, BlockHeader) {
+        let (chain, ..) = crate::validation::block_body::test::duplicate_output_chain();
+        let db = headers_only_db(&chain, &["A", "1", "2", "3"]);
+        let honest = chain.get_block_and_smt_by_name("4").unwrap().to_chain_header();
+        let mut target = honest.header().clone();
+        target.output_smt_size = edit(target.output_smt_size);
+        let mut accumulated_data = honest.accumulated_data().clone();
+        accumulated_data.hash = target.hash();
+        let mut txn = DbTransaction::new();
+        txn.insert_chain_header(ChainHeader::try_construct(target.clone(), accumulated_data).unwrap());
+        db.write(txn).unwrap();
+        (chain, db, target)
+    }
+
+    /// An honest source that serves the honest header "4" for the tampered `target`
+    fn honest_source_for(chain: &TestBlockchain, target: &BlockHeader) -> DbTrancheSource {
+        let mut source = DbTrancheSource::honest(chain.db());
+        let honest = chain.get_block_and_smt_by_name("4").unwrap().header().hash();
+        source.tampered_header = Some((target.hash().to_vec(), honest.to_vec()));
+        source
+    }
+
+    /// Asserts a sync to a tampered target fails the count check without a ban, and leaves no synced outputs
+    async fn assert_output_count_mismatch_not_finalized(edit: impl FnOnce(u64) -> u64) {
+        let (chain, db, target) = tampered_output_count_setup(edit);
+        let best_block = *db.get_chain_metadata().unwrap().best_block_hash();
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+
+        let mut honest = honest_source_for(&chain, &target);
+        let err = sync
+            .sync_outputs_and_finalize(test_sync_peer(), &mut honest, &target)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::FinalOutputCountMismatch { .. }),
+            "{err}"
+        );
+        assert!(err.get_ban_reason().is_none());
+        assert_eq!(honest.requests, 5);
+        assert_eq!(*db.get_chain_metadata().unwrap().best_block_hash(), best_block);
+        assert_eq!(checkpoint_height(&db), None);
+        for name in ["A", "1", "2", "3"] {
+            let block_hash = chain.get_block_and_smt_by_name(name).unwrap().header().hash();
+            assert!(db.fetch_outputs_in_block(block_hash).unwrap().is_empty());
+        }
+        assert!(db.fetch_outputs_in_block(target.hash()).unwrap().is_empty());
+        assert_eq!(db.fetch_output_smt_leaf_count().unwrap(), 0);
+    }
+
+    /// A target header claiming more outputs than the synced output tree holds is not finalized
+    #[tokio::test]
+    async fn inflated_target_output_count_is_not_finalized() {
+        assert_output_count_mismatch_not_finalized(|size| size + 1).await;
+    }
+
+    /// A target header claiming fewer outputs than the synced output tree holds passes every tranche bound and is
+    /// still not finalized
+    #[tokio::test]
+    async fn deflated_target_output_count_is_not_finalized() {
+        assert_output_count_mismatch_not_finalized(|size| size - 1).await;
+    }
+
+    /// The output tree of a LocalNet genesis block has no root node, which counts as zero leaves
+    #[tokio::test]
+    async fn empty_output_tree_matches_a_zero_output_count() {
+        let (chain, db) = duplicate_output_sync_setup();
+        let genesis = db.fetch_chain_header(0).unwrap().header().clone();
+        assert_eq!(genesis.output_smt_size, 0);
+        assert_eq!(db.fetch_output_smt_leaf_count().unwrap(), 0);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, genesis.height);
+
+        let mut honest = DbTrancheSource::honest(chain.db());
+        sync.synchronize_outputs(test_sync_peer(), &mut honest, &genesis, 1)
+            .await
+            .unwrap();
+        assert_eq!(honest.requests, 0);
+    }
+
+    /// Output sync with a checkpoint already at the target runs no tranche but still checks the output count
+    #[tokio::test]
+    async fn checkpoint_at_target_still_checks_the_output_count() {
+        let (chain, db, target) = tampered_output_count_setup(|size| size + 1);
+        let mut peers = Vec::new();
+        let mut sync = build_synchronizer(db.clone(), &mut peers, target.height);
+        sync.tranche_size = 0;
+        let err = sync
+            .synchronize_outputs(test_sync_peer(), &mut honest_source_for(&chain, &target), &target, 1)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::FinalOutputCountMismatch { .. }),
+            "{err}"
+        );
+        assert_eq!(db.fetch_output_smt_leaf_count().unwrap(), target.output_smt_size - 1);
+        let mut txn = DbTransaction::new();
+        txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+            checkpoint_height: target.height,
+            checkpoint_hash: target.hash(),
+            sync_target_height: target.height,
+            sync_target_hash: target.hash(),
+        });
+        db.write(txn).unwrap();
+
+        let start = sync.calculate_output_sync_start(&target).await.unwrap();
+        assert_eq!(start, target.height + 1);
+        let mut honest = honest_source_for(&chain, &target);
+        let err = sync
+            .synchronize_outputs(test_sync_peer(), &mut honest, &target, start)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, HorizonSyncError::FinalOutputCountMismatch { .. }),
+            "{err}"
+        );
+        assert_eq!(honest.requests, 0);
     }
 
     /// A chain whose genesis block has a spendable output, which block "1" spends
