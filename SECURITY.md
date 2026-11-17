@@ -44,6 +44,14 @@ Vulnerabilities discovered or suspected in systems not owned by Tari Labs should
 vendor, or applicable authority. We emphasize that researchers should not engage in Denial of Service, active exploits
 against networks, or any physical or electronic attempts against property and/or data centers.
 
+### Design Assumptions
+
+The trust assumptions the code is built on are recorded in
+[docs/SECURITY_ASSUMPTIONS.md](./docs/SECURITY_ASSUMPTIONS.md), for example that a wallet trusts the base node it
+connects to for chain data. Please read it before submitting a report. Behaviour that only follows from a listed
+assumption is by design and does not qualify, unless it falls under that entry's "Not covered" line or the report
+shows that the assumption itself is wrong.
+
 ## Disclosure
 
 Please report any **non-sensitive** issue **unrelated to security** as a Github issue in the relevant repository.
