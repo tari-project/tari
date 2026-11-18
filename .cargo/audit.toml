@@ -15,12 +15,4 @@ ignore = [
     # test harness. Last reviewed 2026-10-27; remove once `pgp` and `k256` move off `elliptic-curve` 0.13.
     "RUSTSEC-2026-0387",
 
-    # RUSTSEC-2026-0459 (bundled SQLite < 3.54.0 can return uninitialized page-cache memory when a database is
-    # opened together with a crafted `-wal` file of a different page size). The fix ships only in `libsqlite3-sys`
-    # 0.39, and `diesel` (2.3.14, the latest release) still requires `libsqlite3-sys` < 0.39. The attack is local and
-    # needs the process to open a database and WAL file written by a less trusted party: Tari opens only its own
-    # databases in its data directory, and `minotari_utils dbstats` opens a path the operator passes. Last reviewed
-    # 2026-11-09; remove once `diesel` allows `libsqlite3-sys` 0.39 and the workspace moves to it.
-    "RUSTSEC-2026-0459",
-
 ]

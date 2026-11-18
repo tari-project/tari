@@ -32,12 +32,13 @@ use tari_common_types::types::BlockHash;
 use tari_comms::{
     RefKind,
     connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
+    peer_manager::{NodeId, Peer},
     protocol::messaging::SendFailReason,
+    types::CommsPublicKey,
 };
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
+    envelope::{DhtMessageHeader, NodeDestination},
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
 use tari_node_components::blocks::{Block, NewBlock};
@@ -305,17 +306,19 @@ where B: BlockchainBackend + 'static
         &mut self,
         domain_msg: DomainMessage<Result<proto::BaseNodeServiceRequest, prost::DecodeError>>,
     ) {
-        // Our requests are never signed, so a request signed by some other identity than the peer sending it was
-        // relayed on someone else's behalf. Answering it would reflect the reply through us; drop it instead, before it
-        // takes one of the sender's slots (it is not necessarily the sending peer's fault, so no ban).
-        if let Some(origin) = &domain_msg.authenticated_origin &&
-            *origin != domain_msg.source_peer.public_key
-        {
+        // Our requests are sent in clear text and never on someone else's behalf, so an encrypted request, or one
+        // signed by some other identity than the peer sending it, was relayed. Answering it would reflect the reply
+        // through us; drop it instead, before it takes one of the sender's slots (it is not necessarily the sending
+        // peer's fault, so no ban).
+        if is_relayed_or_encrypted(
+            &domain_msg.dht_header,
+            domain_msg.authenticated_origin.as_ref(),
+            &domain_msg.source_peer,
+        ) {
             debug!(
                 target: LOG_TARGET,
-                "Dropping base node request from peer '{}' signed by another identity ({})",
+                "Dropping base node request from peer '{}' that was encrypted or signed by another identity",
                 domain_msg.source_peer.node_id.short_str(),
-                origin
             );
             return;
         }
@@ -363,6 +366,18 @@ where B: BlockchainBackend + 'static
         &self,
         domain_msg: DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>>,
     ) {
+        if is_relayed_or_encrypted(
+            &domain_msg.dht_header,
+            domain_msg.authenticated_origin.as_ref(),
+            &domain_msg.source_peer,
+        ) {
+            debug!(
+                target: LOG_TARGET,
+                "Dropping base node response from peer '{}' that was encrypted or signed by another identity",
+                domain_msg.source_peer.node_id.short_str(),
+            );
+            return;
+        }
         let waiting_requests = self.waiting_requests.clone();
         let mut connectivity_requester = self.connectivity.clone();
 
@@ -407,9 +422,22 @@ where B: BlockchainBackend + 'static
     /// ([MAX_CONCURRENT_BLOCK_DECODES]).
     ///
     /// At most [MAX_PENDING_INBOUND_BLOCKS_PER_PEER] messages per peer (and [MAX_PENDING_INBOUND_BLOCKS_TOTAL] overall)
-    /// are handled at once; beyond that, the message is dropped. Returns `true` if a task was spawned to handle the
-    /// message.
+    /// are handled at once; beyond that, the message is dropped. A message that was encrypted or signed by another
+    /// identity than the peer that sent it is dropped without a ban (see [is_relayed_or_encrypted]). Returns `true` if
+    /// a task was spawned to handle the message.
     fn spawn_handle_incoming_block(&mut self, new_block: Arc<PeerMessage>) -> bool {
+        if is_relayed_or_encrypted(
+            &new_block.dht_header,
+            new_block.authenticated_origin.as_ref(),
+            &new_block.source_peer,
+        ) {
+            debug!(
+                target: LOG_TARGET,
+                "Dropping propagated block from peer '{}' that was encrypted or signed by another identity",
+                new_block.source_peer.node_id.short_str(),
+            );
+            return false;
+        }
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -543,7 +571,8 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     // it would make us dial that identity (and run DHT discovery for it) to deliver a large reply. Our own requests
     // are sent directly to the peer we ask (see `handle_outbound_request`) and are not signed, so a legitimate
     // request's origin is its source peer anyway.
-    // Relayed requests (signed by another identity) were already dropped by `spawn_handle_incoming_request`.
+    // Encrypted or relayed requests (signed by another identity) were already dropped by
+    // `spawn_handle_incoming_request`.
     let reply_node_id = domain_request_msg.source_peer.node_id.clone();
     let reply_public_key = domain_request_msg.source_peer.public_key.clone();
     let inner_msg = domain_request_msg.into_inner();
@@ -653,6 +682,17 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     };
 
     Ok(())
+}
+
+/// True if the message was encrypted, or signed by an identity other than the peer that delivered it. Honest nodes
+/// send base node requests, responses and blocks in clear text and only on their own behalf, so such a message was
+/// relayed on someone else's behalf. The delivering peer is not necessarily to blame: drop it, never ban.
+fn is_relayed_or_encrypted(
+    dht_header: &DhtMessageHeader,
+    authenticated_origin: Option<&CommsPublicKey>,
+    source_peer: &Peer,
+) -> bool {
+    dht_header.flags.is_encrypted() || authenticated_origin.is_some_and(|origin| *origin != source_peer.public_key)
 }
 
 async fn handle_incoming_response(
@@ -1467,5 +1507,199 @@ mod test {
         assert_eq!(mempool.available_reconciliation_permits(), reconciliation_permits);
         assert!(!task.is_finished());
         task.abort();
+    }
+
+    /// A bootstrapped service (so it handles blocks) whose connectivity mock records bans, and its outbound mock's
+    /// state
+    fn service_recording_bans() -> (
+        BaseNodeService<TempDatabase>,
+        BlockchainDatabase<TempDatabase>,
+        ConnectivityRequester,
+        tari_comms::test_utils::mocks::ConnectivityManagerMockState,
+        tari_comms_dht::outbound::mock::OutboundServiceMockState,
+    ) {
+        use tokio::sync::watch;
+
+        use crate::base_node::state_machine_service::states::StatusInfo;
+
+        let (inbound_nch, db, _mempool, _requests) = create_handlers();
+        let (outbound_requester, outbound_mock) = tari_comms_dht::outbound::mock::create_outbound_service_mock();
+        let outbound_state = outbound_mock.get_state();
+        task::spawn(outbound_mock.run());
+        let (connectivity, connectivity_mock) = create_connectivity_mock();
+        let connectivity_state = connectivity_mock.spawn();
+        let (state_change_tx, _) = broadcast::channel(10);
+        let (_status_tx, status_rx) = watch::channel(StatusInfo {
+            bootstrapped: true,
+            ..StatusInfo::new()
+        });
+        let state_machine_handle =
+            StateMachineHandle::new(state_change_tx, status_rx, tari_shutdown::Shutdown::new().to_signal());
+        let service = BaseNodeService::new(
+            outbound_requester,
+            inbound_nch,
+            Duration::from_secs(60),
+            state_machine_handle,
+            connectivity.clone(),
+            BaseNodeStateMachineConfig::default(),
+        );
+        (service, db, connectivity, connectivity_state, outbound_state)
+    }
+
+    /// The peers banned once `expected` bans arrived, or after a short wait if that many never do
+    async fn banned_peers(
+        connectivity: &mut ConnectivityRequester,
+        state: &tari_comms::test_utils::mocks::ConnectivityManagerMockState,
+        expected: usize,
+    ) -> Vec<NodeId> {
+        let mut banned = vec![];
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            // The mock handles requests in order, so once this is answered every earlier ban is recorded
+            connectivity.get_connectivity_status().await.unwrap();
+            banned.extend(state.take_banned_peers().await.into_iter().map(|(node_id, ..)| node_id));
+            if banned.len() >= expected {
+                break;
+            }
+        }
+        banned
+    }
+
+    /// A `BaseNodeResponse` with no response in it
+    fn malformed_response(
+        source_peer: tari_comms::peer_manager::Peer,
+        flags: tari_comms_dht::envelope::DhtMessageFlags,
+        origin: Option<tari_comms::types::CommsPublicKey>,
+    ) -> DomainMessage<Result<proto::BaseNodeServiceResponse, prost::DecodeError>> {
+        let mut dht_header = create_peer_message(TariMessageType::BaseNodeResponse, vec![])
+            .dht_header
+            .clone();
+        dht_header.flags = flags;
+        DomainMessage {
+            source_peer,
+            dht_header,
+            authenticated_origin: origin,
+            inner: Ok(proto::BaseNodeServiceResponse {
+                request_key: 123,
+                response: None,
+                is_synced: true,
+            }),
+        }
+    }
+
+    /// A `NewBlock` message whose body cannot be decoded
+    fn malformed_block(
+        source_peer: tari_comms::peer_manager::Peer,
+        flags: tari_comms_dht::envelope::DhtMessageFlags,
+        origin: Option<tari_comms::types::CommsPublicKey>,
+    ) -> Arc<PeerMessage> {
+        let mut msg = Arc::try_unwrap(create_peer_message(TariMessageType::NewBlock, vec![0xff; 64])).unwrap();
+        msg.source_peer = source_peer;
+        msg.dht_header.flags = flags;
+        msg.authenticated_origin = origin;
+        Arc::new(msg)
+    }
+
+    /// Encrypted, or signed by another identity than the sending peer: each was relayed on someone else's behalf
+    fn relayed_cases(
+        source: &tari_comms::peer_manager::Peer,
+    ) -> Vec<(
+        tari_comms_dht::envelope::DhtMessageFlags,
+        Option<tari_comms::types::CommsPublicKey>,
+    )> {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::envelope::DhtMessageFlags;
+
+        let other = build_node_identity(PeerFeatures::COMMUNICATION_NODE)
+            .public_key()
+            .clone();
+        vec![
+            (DhtMessageFlags::ENCRYPTED, Some(other.clone())),
+            (DhtMessageFlags::ENCRYPTED, None),
+            (DhtMessageFlags::ENCRYPTED, Some(source.public_key.clone())),
+            (DhtMessageFlags::NONE, Some(other)),
+        ]
+    }
+
+    /// A malformed response that was relayed is dropped, and the peer that relayed it is not banned
+    #[tokio::test]
+    async fn a_relayed_malformed_response_is_dropped_without_a_ban() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+
+        let (service, _db, mut connectivity, connectivity_state, _outbound) = service_recording_bans();
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        for (flags, origin) in relayed_cases(&source_peer) {
+            service.spawn_handle_incoming_response(malformed_response(source_peer.clone(), flags, origin.clone()));
+            let banned = banned_peers(&mut connectivity, &connectivity_state, 0).await;
+            assert!(banned.is_empty(), "{flags:?} {origin:?}");
+        }
+    }
+
+    /// A malformed block that was relayed is dropped before it takes a pending slot or a decode permit, and the peer
+    /// that relayed it is not banned
+    #[tokio::test]
+    async fn a_relayed_malformed_block_is_dropped_without_a_ban_or_budget() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+
+        let (mut service, _db, mut connectivity, connectivity_state, _outbound) = service_recording_bans();
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        for (flags, origin) in relayed_cases(&source_peer) {
+            let spawned =
+                service.spawn_handle_incoming_block(malformed_block(source_peer.clone(), flags, origin.clone()));
+            assert!(!spawned, "{flags:?} {origin:?}");
+            assert_eq!(service.pending_inbound_blocks.pending_for(&source_peer.node_id), 0);
+            assert_eq!(
+                service.block_decode_permits.available_permits(),
+                MAX_CONCURRENT_BLOCK_DECODES
+            );
+            let banned = banned_peers(&mut connectivity, &connectivity_state, 0).await;
+            assert!(banned.is_empty(), "{flags:?} {origin:?}");
+        }
+    }
+
+    /// An encrypted request is dropped unanswered, before it takes one of the sender's slots
+    #[tokio::test]
+    async fn an_encrypted_request_is_dropped() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::envelope::DhtMessageFlags;
+
+        let (mut service, db, mut connectivity, connectivity_state, outbound_state) = service_recording_bans();
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        for origin in [None, Some(source_peer.public_key.clone())] {
+            let mut domain_msg = block_request(&db, source_peer.clone(), origin);
+            domain_msg.dht_header.flags = DhtMessageFlags::ENCRYPTED;
+            service.spawn_handle_incoming_request(domain_msg);
+            assert_eq!(service.inflight_inbound_requests.pending_for(&source_peer.node_id), 0);
+        }
+        assert!(banned_peers(&mut connectivity, &connectivity_state, 0).await.is_empty());
+        assert_eq!(outbound_state.call_count().await, 0);
+    }
+
+    /// A malformed response or block in clear text, unsigned or signed by the peer that sent it, still bans that peer
+    #[tokio::test]
+    async fn a_malformed_clear_text_response_or_block_bans_its_sender() {
+        use tari_comms::{peer_manager::PeerFeatures, test_utils::node_identity::build_node_identity};
+        use tari_comms_dht::envelope::DhtMessageFlags;
+
+        let (mut service, _db, mut connectivity, connectivity_state, _outbound) = service_recording_bans();
+        let source_peer = build_node_identity(PeerFeatures::COMMUNICATION_NODE).to_peer();
+        for origin in [None, Some(source_peer.public_key.clone())] {
+            service.spawn_handle_incoming_response(malformed_response(
+                source_peer.clone(),
+                DhtMessageFlags::NONE,
+                origin.clone(),
+            ));
+            let banned = banned_peers(&mut connectivity, &connectivity_state, 1).await;
+            assert_eq!(banned, vec![source_peer.node_id.clone()], "response {origin:?}");
+
+            let spawned = service.spawn_handle_incoming_block(malformed_block(
+                source_peer.clone(),
+                DhtMessageFlags::NONE,
+                origin.clone(),
+            ));
+            assert!(spawned);
+            let banned = banned_peers(&mut connectivity, &connectivity_state, 1).await;
+            assert_eq!(banned, vec![source_peer.node_id.clone()], "block {origin:?}");
+        }
     }
 }

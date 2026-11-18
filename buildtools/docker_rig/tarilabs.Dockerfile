@@ -146,17 +146,8 @@ ENV TARI_NETWORK=${TARI_NETWORK}
 ENV TARI_TARGET_NETWORK=${TARI_TARGET_NETWORK}
 
 RUN mkdir -p "/var/tari/${APP_NAME}" && \
-    chown -R tari:tari "/var/tari/${APP_NAME}"
-
-# Setup blockchain path for minotari_node only
-RUN if [ "${APP_NAME}" = "node" ] ; then \
-      echo "minotari_node bits" && \
-      mkdir /blockchain && \
-      chown -R tari:tari /blockchain && \
-      chmod -R 0700 /blockchain ; \
-    else \
-      echo "Not minotari_node" ; \
-    fi
+    chown -R tari:tari "/var/tari/${APP_NAME}" && \
+    chmod 0700 "/var/tari/${APP_NAME}"
 
 USER tari
 

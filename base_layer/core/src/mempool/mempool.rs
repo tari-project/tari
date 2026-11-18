@@ -206,9 +206,10 @@ impl Mempool {
 
     /// Insert an unconfirmed transaction into the Mempool.
     ///
-    /// The near-free checks (fee, weight, already in the pool) are done first, under a brief read lock. The transaction
-    /// is then validated without holding the mempool write lock (see [`MempoolStorage::insert_unlocked`]), with at
-    /// most a bounded number of transactions being validated at once.
+    /// The cheap checks (already in the pool, inputs, fee, weight, body size, kernel excesses and the spend cap) are
+    /// done first, under a brief read lock. The transaction is then validated without holding the mempool write lock
+    /// (see [`MempoolStorage::insert_unlocked`]), with at most a bounded number of transactions being validated at
+    /// once.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
         let (response, _) = self.insert_with_ban_reason(tx, None).await?;
         Ok(response)
@@ -233,11 +234,11 @@ impl Mempool {
         permit: Option<ValidationPermit>,
     ) -> Result<(TxStorageResponse, Option<BanReason>), MempoolError> {
         let tx_clone = tx.clone();
-        if let Some(response) = self
+        if let Some(rejection) = self
             .with_read_access(move |storage| Ok(storage.pre_check(&tx_clone)))
             .await?
         {
-            return Ok((response, None));
+            return Ok(rejection);
         }
         let permit = match permit {
             Some(permit) => permit,

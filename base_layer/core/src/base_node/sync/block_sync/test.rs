@@ -26,7 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{chain_metadata::ChainMetadata, types::FixedHash};
 use tari_comms::{
     connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester},
@@ -35,6 +35,7 @@ use tari_comms::{
     test_utils::{mocks::create_connectivity_mock, node_identity::build_node_identity},
 };
 use tari_node_components::blocks::{ChainBlock, ChainHeader};
+use tari_utilities::ByteArray;
 
 use super::synchronizer::{dial_failure_is_peer_caused, rpc_setup_failure_is_peer_caused};
 use crate::{
@@ -45,10 +46,11 @@ use crate::{
         SyncPeer,
         mock_sync_peer::{MockSyncPeer, banned_peers, connect_mock_peer, connect_mock_peer_as},
     },
-    chain_storage::BlockchainDatabase,
+    blocks::UpdateBlockAccumulatedData,
+    chain_storage::{BlockchainDatabase, DbTransaction, HorizonStateTreeUpdate, HorizonSyncOutputCheckpoint},
     test_helpers::{
         BlockSpecs,
-        blockchain::{TempDatabase, create_chained_blocks, create_new_blockchain},
+        blockchain::{TempDatabase, create_chained_blocks, create_main_chain, create_new_blockchain},
     },
     validation::mocks::MockValidator,
 };
@@ -313,6 +315,191 @@ async fn not_found_from_a_peer_whose_claim_is_below_our_header_tip_is_not_record
     assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
     assert!(attempts_without_block.is_empty(), "{attempts_without_block:?}");
     assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+}
+
+/// Builds blocks A and B as another node's main chain, and adds only their headers to a new database, so that our
+/// header tip is two blocks ahead of our blocks. B is built once A is that node's tip: the test helpers only get a
+/// block's MMR roots right when its parent is the tip.
+fn two_headers_ahead_of_blocks() -> (BlockchainDatabase<TempDatabase>, Arc<ChainBlock>, Arc<ChainBlock>) {
+    let other_node = create_new_blockchain();
+    let (_, chain) = create_main_chain(&other_node, block_specs!(["A->GB"]));
+    let block_a = chain.get("A").unwrap().clone();
+    // "GB" names the root of the chain being built, here A
+    let (_, chain) = create_chained_blocks(&other_node, block_specs!(["B->GB"]), block_a.clone());
+    let block_b = chain.get("B").unwrap().clone();
+    let db = create_new_blockchain();
+    let headers = [&block_a, &block_b]
+        .into_iter()
+        .map(|block| ChainHeader::try_construct(block.header().clone(), block.accumulated_data().clone()).unwrap())
+        .collect();
+    db.insert_valid_headers(headers).unwrap();
+    (db, block_a, block_b)
+}
+
+#[tokio::test]
+async fn an_honest_peer_with_a_stronger_claim_than_our_header_tip_that_supplies_all_requested_blocks_is_not_banned() {
+    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"], ["B->A"]), "A");
+    let block_a = chain.get("A").unwrap();
+    let block_b = chain.get("B").unwrap();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block_a.block().clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block_b)).await;
+
+    sync_blocks(&db, connectivity.clone(), BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 1);
+    assert!(banned_peers(connectivity, &connectivity_mock).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_peer_that_stops_before_our_header_tip_does_not_complete_block_sync_early() {
+    let (db, block_a, _) = two_headers_ahead_of_blocks();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut partial = MockSyncPeer::new(&db, None);
+    partial.blocks_to_serve = vec![block_a.block().clone()];
+    let (partial_peer, _partial_server) = connect_mock_peer(&connectivity_mock, partial, claim_for(&block_a)).await;
+
+    let err = sync_blocks(&db, connectivity.clone(), BlockchainSyncConfig::default(), vec![
+        partial_peer.clone(),
+    ])
+    .await
+    .unwrap_err();
+
+    assert!(matches!(err, BlockSyncError::NoMoreSyncPeers(_)), "{err}");
+    assert_eq!(db.get_height().unwrap(), 1);
+    let banned = banned_peers(connectivity, &connectivity_mock).await;
+    let [(banned_peer, _, _)] = banned.as_slice() else {
+        panic!("expected one ban, got {banned:?}");
+    };
+    assert_eq!(banned_peer, partial_peer.node_id());
+}
+
+#[tokio::test]
+async fn a_peer_with_a_stronger_claim_that_stops_below_our_header_tip_is_banned_and_the_next_peer_completes() {
+    let (db, block_a, block_b) = two_headers_ahead_of_blocks();
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut partial = MockSyncPeer::new(&db, None);
+    partial.blocks_to_serve = vec![block_a.block().clone()];
+    let b_difficulty = block_b.accumulated_data().total_accumulated_difficulty;
+    let beyond_b = ChainMetadata::new(3, [9u8; 32].into(), 0, 0, b_difficulty + 1, 0).unwrap();
+    let (partial_peer, _partial_server) = connect_mock_peer(&connectivity_mock, partial, beyond_b).await;
+    // The mock serves its blocks whatever the requested start, so this peer only has what is left after A
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block_b.block().clone()];
+    let (serving_peer, _serving_server) = connect_mock_peer(&connectivity_mock, serving, claim_for(&block_b)).await;
+    let config = BlockchainSyncConfig::default();
+    let short_ban_period = config.short_ban_period;
+
+    sync_blocks(&db, connectivity.clone(), config, vec![
+        partial_peer.clone(),
+        serving_peer,
+    ])
+    .await
+    .unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 2);
+    let banned = banned_peers(connectivity, &connectivity_mock).await;
+    let [(banned_peer, ban_duration, ban_reason)] = banned.as_slice() else {
+        panic!("expected one ban, got {banned:?}");
+    };
+    assert_eq!(banned_peer, partial_peer.node_id());
+    assert_eq!(*ban_duration, short_ban_period);
+    assert!(
+        ban_reason.contains("did not supply all the requested blocks"),
+        "{ban_reason}"
+    );
+}
+
+/// Stores `block`'s kernels, block data and outputs under its header, as a horizon sync that failed after its kernel
+/// sync and an output tranche leaves them
+fn store_horizon_sync_leftovers(db: &BlockchainDatabase<TempDatabase>, block: &ChainBlock) {
+    let mut txn = DbTransaction::new();
+    let kernels = block.block().body.kernels();
+    let first_position = block
+        .header()
+        .kernel_mmr_size
+        .saturating_sub(u64::try_from(kernels.len()).unwrap());
+    for (position, kernel) in (first_position..).zip(kernels) {
+        txn.insert_kernel(kernel.clone(), *block.hash(), position);
+    }
+    txn.update_block_accumulated_data(*block.hash(), UpdateBlockAccumulatedData::default());
+    let mut updates = Vec::new();
+    for output in block.block().body.outputs() {
+        txn.insert_utxo(output.clone(), *block.hash(), block.height(), 0);
+        updates.push(HorizonStateTreeUpdate {
+            key: FixedHash::try_from(output.commitment.as_bytes()).unwrap(),
+            value: Some(output.smt_hash(block.height())),
+            replaces_value: false,
+        });
+    }
+    txn.apply_horizon_state_tree_updates(updates);
+    db.write(txn).unwrap();
+}
+
+/// What a failed horizon sync left under our headers is removed before block sync from genesis, which then adds the
+/// blocks it was left under
+#[tokio::test]
+async fn block_sync_from_genesis_removes_what_a_failed_horizon_sync_left() {
+    let (db, block_a, block_b) = two_headers_ahead_of_blocks();
+    store_horizon_sync_leftovers(&db, &block_a);
+    store_horizon_sync_leftovers(&db, &block_b);
+    let mut txn = DbTransaction::new();
+    txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+        checkpoint_height: block_a.height(),
+        checkpoint_hash: *block_a.hash(),
+        sync_target_height: block_b.height(),
+        sync_target_hash: *block_b.hash(),
+    });
+    db.write(txn).unwrap();
+
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block_a.block().clone(), block_b.block().clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(&block_b)).await;
+
+    sync_blocks(&db, connectivity, BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 2);
+    assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
+    db.verify_horizon_sync_output_root(block_b.header().output_mr).unwrap();
+}
+
+/// A checkpoint whose tranches stored no outputs is cleared before block sync from genesis too
+#[tokio::test]
+async fn block_sync_from_genesis_clears_a_checkpoint_left_with_genesis_output_state() {
+    let (db, chain) = headers_ahead_of_blocks(block_specs!(["A->GB"]), "A");
+    let block_a = chain.get("A").unwrap();
+    let mut txn = DbTransaction::new();
+    txn.set_horizon_sync_output_checkpoint(HorizonSyncOutputCheckpoint {
+        checkpoint_height: block_a.height(),
+        checkpoint_hash: *block_a.hash(),
+        sync_target_height: block_a.height(),
+        sync_target_hash: *block_a.hash(),
+    });
+    db.write(txn).unwrap();
+    assert!(db.output_state_is_genesis().unwrap());
+
+    let (connectivity, connectivity_mock) = create_connectivity_mock();
+    let connectivity_mock = connectivity_mock.spawn();
+    let mut serving = MockSyncPeer::new(&db, None);
+    serving.blocks_to_serve = vec![block_a.block().clone()];
+    let (peer, _server) = connect_mock_peer(&connectivity_mock, serving, claim_for(block_a)).await;
+
+    sync_blocks(&db, connectivity, BlockchainSyncConfig::default(), vec![peer])
+        .await
+        .unwrap();
+
+    assert_eq!(db.get_height().unwrap(), 1);
+    assert!(db.fetch_horizon_sync_output_checkpoint().unwrap().is_none());
 }
 
 #[test]

@@ -116,8 +116,8 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 5
     pub rebootstrap_connected_peers: usize,
     /// The most new peer records one directly connected peer may have stored within `source_budget_window` through
-    /// Join gossip, and separately through OnConnect peer sync. New records past this are dropped (and OnConnect stops
-    /// syncing). Also the most peers stored from one source in a rebootstrap. At least 1.
+    /// Join and Discovery gossip, and separately through OnConnect peer sync. New records past this are dropped (and
+    /// OnConnect stops syncing). Also the most peers stored from one source in a rebootstrap. At least 1.
     /// Default: 50
     pub max_stored_per_source: usize,
     /// The sliding window over which `max_stored_per_source` applies. At least 1 minute.

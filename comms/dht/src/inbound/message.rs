@@ -68,6 +68,7 @@ impl ValidatedDhtInboundMessage {
     ) -> DecryptedDhtMessage {
         let dedup_hash = dedup::message_key(
             &self.sig_canonical,
+            self.message.dht_header.message_type,
             self.message.dht_header.flags,
             &self.message.body,
             Some(&message_body),
@@ -78,6 +79,7 @@ impl ValidatedDhtInboundMessage {
     pub fn into_failed(self) -> DecryptedDhtMessage {
         let dedup_hash = dedup::message_key(
             &self.sig_canonical,
+            self.message.dht_header.message_type,
             self.message.dht_header.flags,
             &self.message.body,
             None,

@@ -255,13 +255,19 @@ pub struct RecipientSignedMessage {
 }
 
 /// Fails with [`TransactionBuilderError::OfflineTransactionRequiresChange`] if the transaction would carry no change
-/// output; see [`SignedTransaction`] for why.
+/// output; see [`SignedTransaction`] for why. Fails with [`TransactionBuilderError::NoRecipients`] if the payload has
+/// neither recipients nor outputs.
 pub(crate) fn build_and_sign_transaction<KM: TransactionKeyManagerInterface>(
     key_manager: &KM,
     consensus_constants: ConsensusConstants,
     network: Network,
     info: OneSidedTransactionInfo,
 ) -> Result<SignedTransaction, TransactionBuilderError> {
+    // The builder accepts a change-only transaction, but a payload that sends nothing would be signed as a sweep of
+    // its inputs into change.
+    if info.recipients.is_empty() && info.outputs.is_empty() {
+        return Err(TransactionBuilderError::NoRecipients);
+    }
     check_payload_key_ids(&info.inputs, &info.outputs, &key_manager.get_spend_key().pub_key)?;
     let mut tx_builder = TransactionBuilder::new(consensus_constants, key_manager.clone(), network)?;
     if info.fee_per_gram > MicroMinotari::zero() {

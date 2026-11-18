@@ -41,6 +41,8 @@ pub enum PeerManagerError {
     DataInconsistency(String),
     #[error("The peer has been banned")]
     BannedPeer,
+    #[error("Refusing to store this node's own identity as a peer")]
+    OwnIdentity,
     #[error("A problem has been encountered with the sql database: {0}")]
     StorageError(String),
     #[error("An error occurred while migrating the database: {0}")]
