@@ -45,7 +45,7 @@ use tari_transaction_components::{
     },
     weight::TransactionWeight,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{ByteArray, hex::Hex};
 
 #[cfg(feature = "metrics")]
 use crate::mempool::metrics;
@@ -848,19 +848,26 @@ impl MempoolStorage {
             .map_err(|e| MempoolError::InternalError(e.to_string()))
     }
 
+    /// Returns pool transactions whose kernels are all in `excess_sigs` and pairwise disjoint (see
+    /// [select_disjoint_kernel_cover]), so they can be put in one block together, and the signatures they do not cover
+    /// in request order.
     pub fn retrieve_by_excess_sigs(
         &self,
         excess_sigs: &[PrivateKey],
     ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
-        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
-
-        match self.reorg_pool.retrieve_by_excess_sigs(&remaining) {
-            Ok((found_published_transactions, remaining)) => Ok((
-                found_txns.into_iter().chain(found_published_transactions).collect(),
-                remaining,
-            )),
-            Err(e) => Err(e),
+        let (unconfirmed, _) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs)?;
+        let (reorg, _) = self.reorg_pool.retrieve_by_excess_sigs(excess_sigs)?;
+        let num_candidates = unconfirmed.len().saturating_add(reorg.len());
+        let (cover, uncovered) = select_disjoint_kernel_cover(unconfirmed, reorg, excess_sigs);
+        let num_dropped = num_candidates.saturating_sub(cover.len());
+        if num_dropped > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Dropped {num_dropped} of {num_candidates} pool transaction(s) matching the requested excess signatures \
+                 as unrequested or overlapping",
+            );
         }
+        Ok((cover, uncovered))
     }
 
     /// Returns the subset of provided output hashes that exist in the mempool's unconfirmed pool.
@@ -1294,6 +1301,69 @@ fn validation_error_to_response(error: ValidationError) -> TxStorageResponse {
             TxStorageResponse::NotStored(Some(e.to_string()))
         },
     }
+}
+
+/// Selects from the `unconfirmed` and `reorg` pool candidates the transactions whose kernels are all in `requested`
+/// and pairwise disjoint, and returns them with the requested signatures they do not cover, in request order.
+/// Candidates with fewer kernels are taken first, so an aggregate padded with outputs of its own is used only for
+/// kernels nothing smaller covers; ties go to the unconfirmed pool, then to the lexicographically smallest sorted
+/// kernel signatures. Greedy, not an exact cover: a signature it misses only costs a peer fetch or the full block.
+/// Anyone who gets an aggregate of a pooled transaction and one of their own mined can trigger that full-block
+/// fallback on purpose, for the fee of mining it.
+pub fn select_disjoint_kernel_cover(
+    unconfirmed: Vec<Arc<Transaction>>,
+    reorg: Vec<Arc<Transaction>>,
+    requested: &[PrivateKey],
+) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+    let requested_set = requested.iter().collect::<HashSet<_>>();
+    let mut candidates = unconfirmed
+        .into_iter()
+        .map(|tx| (tx, false))
+        .chain(reorg.into_iter().map(|tx| (tx, true)))
+        .filter_map(|(tx, from_reorg_pool)| {
+            let kernels = tx.body.kernels();
+            if kernels.is_empty() ||
+                !kernels
+                    .iter()
+                    .all(|kernel| requested_set.contains(kernel.excess_sig.get_signature()))
+            {
+                return None;
+            }
+            let mut sigs = kernels
+                .iter()
+                .map(|kernel| kernel.excess_sig.get_signature().clone())
+                .collect::<Vec<_>>();
+            sigs.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
+            Some((tx, from_reorg_pool, sigs))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|(_, a_reorg, a_sigs), (_, b_reorg, b_sigs)| {
+        a_sigs
+            .len()
+            .cmp(&b_sigs.len())
+            .then(a_reorg.cmp(b_reorg))
+            .then_with(|| {
+                a_sigs
+                    .iter()
+                    .map(ByteArray::as_bytes)
+                    .cmp(b_sigs.iter().map(ByteArray::as_bytes))
+            })
+    });
+
+    let mut covered = HashSet::new();
+    let mut cover = Vec::new();
+    for (tx, _, sigs) in candidates {
+        if !sigs.iter().any(|sig| covered.contains(sig)) {
+            covered.extend(sigs);
+            cover.push(tx);
+        }
+    }
+    let uncovered = requested
+        .iter()
+        .filter(|sig| !covered.contains(*sig))
+        .cloned()
+        .collect();
+    (cover, uncovered)
 }
 
 #[cfg(test)]
@@ -2890,5 +2960,221 @@ mod test {
 
         assert_eq!(pool_len(&storage), 0);
         assert!(storage.read().unwrap().unconfirmed_pool.check_data_consistency());
+    }
+
+    fn sig(kernel: &TransactionKernel) -> PrivateKey {
+        kernel.excess_sig.get_signature().clone()
+    }
+
+    /// `A`, `B`, kernels `x1`, `x2`, `x3` that are in no transaction of their own, the aggregates `T1 = A + x1`,
+    /// `T2 = A + x2`, and `padded`: `A + B` with an extra output and no extra kernel
+    struct Aggregates {
+        a: Arc<Transaction>,
+        b: Arc<Transaction>,
+        t1: Arc<Transaction>,
+        t2: Arc<Transaction>,
+        padded: Arc<Transaction>,
+        x: Vec<TransactionKernel>,
+    }
+
+    impl Aggregates {
+        fn new(key_manager: &KeyManager) -> Self {
+            let a = create_tx(key_manager);
+            let b = create_tx(key_manager);
+            let x = fresh_kernels(3, key_manager);
+            let padded = Arc::new(Transaction::new(
+                [a.body.inputs().clone(), b.body.inputs().clone()].concat(),
+                [
+                    a.body.outputs().clone(),
+                    b.body.outputs().clone(),
+                    create_tx(key_manager).body.outputs().clone(),
+                ]
+                .concat(),
+                [a.body.kernels().clone(), b.body.kernels().clone()].concat(),
+                a.offset.clone(),
+                a.script_offset.clone(),
+            ));
+            let aggregate =
+                |kernel: &TransactionKernel| with_kernels(&a, vec![a.body.kernels()[0].clone(), kernel.clone()]);
+            Self {
+                t1: aggregate(&x[0]),
+                t2: aggregate(&x[1]),
+                a,
+                b,
+                padded,
+                x,
+            }
+        }
+
+        fn a_sig(&self) -> PrivateKey {
+            sig(&self.a.body.kernels()[0])
+        }
+
+        fn b_sig(&self) -> PrivateKey {
+            sig(&self.b.body.kernels()[0])
+        }
+
+        fn x_sig(&self, i: usize) -> PrivateKey {
+            sig(&self.x[i])
+        }
+    }
+
+    #[test]
+    fn the_kernel_cover_takes_only_requested_and_disjoint_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let pool = || vec![txs.a.clone(), txs.t1.clone(), txs.t2.clone()];
+
+        let (cover, uncovered) = select_disjoint_kernel_cover(pool(), vec![], &[txs.a_sig()]);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert!(uncovered.is_empty());
+
+        // Fewest kernels first: an aggregate is not used for kernels a smaller transaction covers
+        let (cover, uncovered) = select_disjoint_kernel_cover(pool(), vec![], &[txs.a_sig(), txs.x_sig(0)]);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert_eq!(uncovered, vec![txs.x_sig(0)]);
+
+        let (cover, uncovered) =
+            select_disjoint_kernel_cover(vec![txs.t1.clone()], vec![], &[txs.a_sig(), txs.x_sig(0)]);
+        assert_eq!(cover, vec![txs.t1.clone()]);
+        assert!(uncovered.is_empty());
+
+        // An aggregate holding an unrequested kernel never covers a requested one
+        let (cover, uncovered) = select_disjoint_kernel_cover(vec![txs.t1.clone()], vec![], &[txs.a_sig()]);
+        assert!(cover.is_empty());
+        assert_eq!(uncovered, vec![txs.a_sig()]);
+
+        let no_kernels = with_kernels(&txs.a, vec![]);
+        let (cover, uncovered) = select_disjoint_kernel_cover(vec![no_kernels], vec![], &[txs.a_sig()]);
+        assert!(cover.is_empty());
+        assert_eq!(uncovered, vec![txs.a_sig()]);
+    }
+
+    #[test]
+    fn the_kernel_cover_breaks_ties_deterministically() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.a_sig(), txs.x_sig(0), txs.x_sig(1)];
+
+        // Equal kernel counts: the unconfirmed pool wins over the reorg pool
+        for (unconfirmed, reorg) in [(&txs.t1, &txs.t2), (&txs.t2, &txs.t1)] {
+            let (cover, uncovered) =
+                select_disjoint_kernel_cover(vec![unconfirmed.clone()], vec![reorg.clone()], &requested);
+            assert_eq!(cover, vec![unconfirmed.clone()]);
+            assert_eq!(uncovered.len(), 1);
+        }
+
+        // Same pool: the smallest sorted kernel signatures win, whatever the input order
+        let sorted_sigs = |tx: &Transaction| {
+            let mut sigs = tx
+                .body
+                .kernels()
+                .iter()
+                .map(|k| sig(k).as_bytes().to_vec())
+                .collect::<Vec<_>>();
+            sigs.sort();
+            sigs
+        };
+        let smallest = if sorted_sigs(&txs.t1) < sorted_sigs(&txs.t2) {
+            &txs.t1
+        } else {
+            &txs.t2
+        };
+        for pool in [vec![txs.t1.clone(), txs.t2.clone()], vec![
+            txs.t2.clone(),
+            txs.t1.clone(),
+        ]] {
+            let (cover, _) = select_disjoint_kernel_cover(pool, vec![], &requested);
+            assert_eq!(cover, vec![smallest.clone()]);
+        }
+    }
+
+    #[test]
+    fn the_kernel_cover_returns_uncovered_signatures_in_request_order() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.x_sig(2), txs.a_sig(), txs.x_sig(1), txs.x_sig(0)];
+        let (cover, uncovered) = select_disjoint_kernel_cover(vec![txs.a.clone()], vec![], &requested);
+        assert_eq!(cover, vec![txs.a.clone()]);
+        assert_eq!(uncovered, vec![txs.x_sig(2), txs.x_sig(1), txs.x_sig(0)]);
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_returns_a_disjoint_cover_of_requested_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        for tx in [&txs.a, &txs.t1, &txs.t2] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+        let storage = storage.read().unwrap();
+
+        let (found, not_found) = storage.retrieve_by_excess_sigs(&[txs.a_sig()]).unwrap();
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert!(not_found.is_empty());
+
+        let (found, not_found) = storage
+            .retrieve_by_excess_sigs(&[txs.a_sig(), txs.x_sig(0), txs.x_sig(2)])
+            .unwrap();
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert_eq!(not_found, vec![txs.x_sig(0), txs.x_sig(2)]);
+    }
+
+    #[test]
+    fn the_kernel_cover_prefers_the_transactions_of_a_padded_aggregate() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let requested = [txs.a_sig(), txs.b_sig()];
+        for pool in [vec![txs.padded.clone(), txs.a.clone(), txs.b.clone()], vec![
+            txs.a.clone(),
+            txs.b.clone(),
+            txs.padded.clone(),
+        ]] {
+            let (cover, uncovered) = select_disjoint_kernel_cover(pool, vec![], &requested);
+            assert_eq!(cover.len(), 2);
+            assert!(cover.contains(&txs.a) && cover.contains(&txs.b));
+            assert!(uncovered.is_empty());
+        }
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_does_not_return_a_padded_aggregate_of_pooled_transactions() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        // The padded aggregate arrives first: once A and B are pooled, their union counts as already stored
+        for tx in [&txs.padded, &txs.a, &txs.b] {
+            let response = storage.write().unwrap().insert(tx.clone(), None).unwrap();
+            assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        }
+        assert_eq!(pool_len(&storage), 3);
+
+        let (found, not_found) = storage
+            .read()
+            .unwrap()
+            .retrieve_by_excess_sigs(&[txs.a_sig(), txs.b_sig()])
+            .unwrap();
+        assert_eq!(found.len(), 2);
+        assert!(found.contains(&txs.a) && found.contains(&txs.b));
+        assert!(not_found.is_empty());
+    }
+
+    #[test]
+    fn retrieve_by_excess_sigs_covers_from_the_reorg_pool_what_unconfirmed_aggregates_cannot() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let txs = Aggregates::new(&key_manager);
+        let validator = ScriptedValidator::new(vec![], vec![FixedHash::zero()]);
+        let storage = create_storage(&validator);
+        let mut storage = storage.write().unwrap();
+        let response = storage.insert(txs.t1.clone(), None).unwrap();
+        assert_eq!(response, TxStorageResponse::UnconfirmedPool);
+        storage.reorg_pool.insert_all(1, vec![txs.a.clone()]);
+
+        let (found, not_found) = storage.retrieve_by_excess_sigs(&[txs.a_sig()]).unwrap();
+        assert_eq!(found, vec![txs.a.clone()]);
+        assert!(not_found.is_empty());
     }
 }

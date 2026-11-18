@@ -2525,6 +2525,11 @@ where B: BlockchainBackend
         db.verify_horizon_sync_output_root(expected_root)
     }
 
+    pub fn fetch_output_smt_leaf_count(&self) -> Result<u64, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_output_smt_leaf_count()
+    }
+
     /// Removes the kernels, inputs and block accumulated data that kernel sync stored for blocks above the block tip,
     /// keeping their headers, so that the blocks can be added on the tip. Works from the top down in writes of about
     /// `HEADER_REWIND_WRITE_SIZE` rows, taking the write lock for each write only.

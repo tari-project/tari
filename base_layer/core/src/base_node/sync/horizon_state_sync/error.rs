@@ -50,6 +50,15 @@ pub enum HorizonSyncError {
     UnknownSpentOutput(String),
     #[error("Synced outputs do not match the output root of the sync target: {0}")]
     FinalOutputRootMismatch(String),
+    #[error(
+        "Target header at height {height} has output_smt_size {header_size}, but the synced output tree has \
+         {leaf_count} leaves"
+    )]
+    FinalOutputCountMismatch {
+        header_size: u64,
+        leaf_count: u64,
+        height: u64,
+    },
     #[error("Peer kept sync waiting for most of its budget, then failed it: {0}")]
     SlowPeerFailure(String),
     #[error("Output stream ended before the tranche terminator: {0}")]
@@ -175,6 +184,8 @@ impl HorizonSyncError {
             HorizonSyncError::OutputAlreadyStored(_) |
             // An honest pruned peer cannot serve the target state if it has pruned past the target
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            // The leaves are fixed by the matched root, so only the header-sync peer's header can be wrong
+            HorizonSyncError::FinalOutputCountMismatch { .. } |
             HorizonSyncError::JoinError(_) |
             HorizonSyncError::MrHashError(_) => None,
 
@@ -217,6 +228,7 @@ impl HorizonSyncError {
     pub fn is_unblamed_peer_failure(&self) -> bool {
         match self {
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch { .. } |
             HorizonSyncError::OutputAlreadyStored(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::KeyExists { .. }) => true,
             HorizonSyncError::ChainStorageError(ChainStorageError::JellyfishMerkleTreeError(e)) => matches!(
@@ -258,6 +270,7 @@ impl HorizonSyncError {
             HorizonSyncError::UnknownSpentOutput(_) |
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput) |
             HorizonSyncError::FinalOutputRootMismatch(_) |
+            HorizonSyncError::FinalOutputCountMismatch { .. } |
             HorizonSyncError::OutputAlreadyStored(_) |
             // A resumed attempt only earns the budget of the tranches it streams
             HorizonSyncError::PeerWaitBudgetExceeded { .. } |
@@ -294,6 +307,11 @@ mod connect_error_test {
             }),
             HorizonSyncError::ChainStorageError(ChainStorageError::UnspendableInput),
             HorizonSyncError::FinalOutputRootMismatch(String::new()),
+            HorizonSyncError::FinalOutputCountMismatch {
+                header_size: 0,
+                leaf_count: 0,
+                height: 0,
+            },
             HorizonSyncError::OutputAlreadyStored(String::new()),
         ] {
             assert!(!err.is_local_failure(), "{err}");
