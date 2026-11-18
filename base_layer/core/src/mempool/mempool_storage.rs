@@ -945,44 +945,56 @@ impl MempoolStorage {
     }
 }
 
-/// Orders a batch so that a transaction spending an output of another one in the batch comes after it, and keeps the
-/// given order otherwise (Kahn's algorithm with a FIFO queue)
+/// Orders a batch so that a transaction spending an output produced in the batch comes after a producer of it, and
+/// keeps the given order otherwise (Kahn's algorithm with a FIFO queue). The pool may hold several producers of an
+/// output (e.g. a transaction and an aggregate of it), and a spender only needs one of them, as for
+/// `UnconfirmedPool::would_orphan`.
+// shortcut: a spender is placed after the first producer placed, which may still be rejected on insert while a later
+// one would be stored; retry orphans if that drops valid transactions.
 fn topo_order(txs: Vec<Arc<Transaction>>) -> Vec<Arc<Transaction>> {
-    let producers: HashMap<HashOutput, usize> = txs
-        .iter()
-        .enumerate()
-        .flat_map(|(i, tx)| tx.body.outputs().iter().map(move |output| (output.hash(), i)))
-        .collect();
-    let mut parent_counts = vec![0usize; txs.len()];
-    let mut children = vec![Vec::new(); txs.len()];
+    let mut producers = HashMap::<HashOutput, Vec<usize>>::new();
+    for (i, tx) in txs.iter().enumerate() {
+        for output in tx.body.outputs() {
+            producers.entry(output.hash()).or_default().push(i);
+        }
+    }
+    // The outputs each transaction waits for, and the transactions waiting for each output
+    let mut waiting_for = vec![0usize; txs.len()];
+    let mut waiters = HashMap::<HashOutput, Vec<usize>>::new();
     for (i, tx) in txs.iter().enumerate() {
         for input in tx.body.inputs() {
-            if let Some(&parent) = producers.get(&input.output_hash()) &&
-                parent != i &&
-                let (Some(count), Some(siblings)) = (parent_counts.get_mut(i), children.get_mut(parent))
+            let hash = input.output_hash();
+            if producers.get(&hash).is_some_and(|p| !p.contains(&i)) &&
+                let Some(count) = waiting_for.get_mut(i)
             {
                 *count = count.saturating_add(1);
-                siblings.push(i);
+                waiters.entry(hash).or_default().push(i);
             }
         }
     }
     let mut ready = (0..txs.len())
-        .filter(|i| parent_counts.get(*i) == Some(&0))
+        .filter(|i| waiting_for.get(*i) == Some(&0))
         .collect::<VecDeque<_>>();
     let mut txs = txs.into_iter().map(Some).collect::<Vec<_>>();
     let mut ordered = Vec::with_capacity(txs.len());
     while let Some(i) = ready.pop_front() {
-        ordered.extend(txs.get_mut(i).and_then(Option::take));
-        for &child in children.get(i).into_iter().flatten() {
-            if let Some(count) = parent_counts.get_mut(child) {
-                *count = count.saturating_sub(1);
-                if *count == 0 {
-                    ready.push_back(child);
+        let Some(tx) = txs.get_mut(i).and_then(Option::take) else {
+            continue;
+        };
+        // The first producer placed releases an output's waiters
+        for output in tx.body.outputs() {
+            for waiter in waiters.remove(&output.hash()).into_iter().flatten() {
+                if let Some(count) = waiting_for.get_mut(waiter) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        ready.push_back(waiter);
+                    }
                 }
             }
         }
+        ordered.push(tx);
     }
-    // Hash commitments rule out a cycle, but anything left unordered is still re-inserted
+    // Anything left waiting (a cycle) is still re-inserted, in the given order
     ordered.extend(txs.into_iter().flatten());
     ordered
 }
@@ -1609,6 +1621,28 @@ mod test {
         let x = create_tx(&key_manager);
         let ordered = topo_order(vec![c.clone(), x.clone(), b.clone(), a.clone()]);
         assert_eq!(ordered, vec![x, a, b, c]);
+    }
+
+    /// `agg` aggregates `t1` with a spend of an output of `c`, and `c` spends an output that both `t1` and `agg`
+    /// produce, so `c` must follow `t1` (and `agg` follow `c`) whichever producer comes last
+    #[test]
+    fn topo_order_places_a_spender_after_any_one_producer_of_its_input() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (t1, t1_outputs) = create_tx_with_outputs(&key_manager);
+        let (c, c_outputs) = create_tx_with_outputs(&key_manager);
+        let c = spending(&c, &t1_outputs[0], &key_manager);
+        let agg = Arc::new(Transaction::new(
+            vec![
+                t1.body.inputs()[0].clone(),
+                c_outputs[0].to_transaction_input(&key_manager).unwrap(),
+            ],
+            t1.body.outputs().clone(),
+            t1.body.kernels().clone(),
+            t1.offset.clone(),
+            t1.script_offset.clone(),
+        ));
+        let ordered = topo_order(vec![t1.clone(), agg.clone(), c.clone()]);
+        assert_eq!(ordered, vec![t1, c, agg]);
     }
 
     #[test]
