@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -573,16 +573,28 @@ impl MempoolStorage {
         Ok(())
     }
 
-    // Insert a set of new transactions into the UTxPool.
+    // Insert a set of new transactions into the UTxPool, parents in the batch before their children.
     fn insert_txs(&mut self, txs: Vec<Arc<Transaction>>) -> Result<(), UnconfirmedPoolError> {
         // Fetching the tip reads the database, which is not worth doing under the write lock for nothing
         if txs.is_empty() {
             return Ok(());
         }
         let tip = self.chain_tip();
-        for tx in txs {
-            self.insert(tx, tip.as_ref())?;
+        let total = txs.len();
+        let (mut stored, mut orphans, mut spent) = (0usize, 0usize, 0usize);
+        for tx in topo_order(txs) {
+            match self.insert(tx, tip.as_ref())? {
+                TxStorageResponse::UnconfirmedPool => stored = stored.saturating_add(1),
+                TxStorageResponse::NotStoredOrphan => orphans = orphans.saturating_add(1),
+                TxStorageResponse::NotStoredAlreadySpent => spent = spent.saturating_add(1),
+                _ => {},
+            }
         }
+        debug!(
+            target: LOG_TARGET,
+            "Re-inserted {total} transaction(s): {stored} stored, {orphans} orphaned, {spent} already spent, {} other",
+            total.saturating_sub(stored).saturating_sub(orphans).saturating_sub(spent)
+        );
         Ok(())
     }
 
@@ -817,14 +829,11 @@ impl MempoolStorage {
     pub fn process_sync(&mut self) -> Result<(), MempoolError> {
         self.chain_generation = self.chain_generation.wrapping_add(1);
         debug!(target: LOG_TARGET, "Mempool processing sync finished");
-        // lets remove and revalidate all transactions from the mempool. All we know is that the state has changed, but
-        // we dont have the data to know what.
-        let txs = self.unconfirmed_pool.drain_all_mempool_transactions();
-        // lets add them all back into the mempool
-        self.insert_txs(txs)
-            .map_err(|e| MempoolError::InternalError(e.to_string()))?;
-        // let retrieve all re-org pool transactions as well as make sure they are mined as well
-        let txs = self.reorg_pool.clear_and_retrieve_all();
+        // lets remove and revalidate all transactions from the mempool and the reorg pool. All we know is that the
+        // state has changed, but we dont have the data to know what. One batch, so that a child is re-inserted after
+        // its parent from either pool.
+        let mut txs = self.reorg_pool.clear_and_retrieve_all();
+        txs.extend(self.unconfirmed_pool.drain_all_mempool_transactions());
         self.insert_txs(txs)
             .map_err(|e| MempoolError::InternalError(e.to_string()))?;
         Ok(())
@@ -934,6 +943,48 @@ impl MempoolStorage {
         let stats = self.unconfirmed_pool.get_fee_per_gram_stats(count, target_weight)?;
         Ok(stats)
     }
+}
+
+/// Orders a batch so that a transaction spending an output of another one in the batch comes after it, and keeps the
+/// given order otherwise (Kahn's algorithm with a FIFO queue)
+fn topo_order(txs: Vec<Arc<Transaction>>) -> Vec<Arc<Transaction>> {
+    let producers: HashMap<HashOutput, usize> = txs
+        .iter()
+        .enumerate()
+        .flat_map(|(i, tx)| tx.body.outputs().iter().map(move |output| (output.hash(), i)))
+        .collect();
+    let mut parent_counts = vec![0usize; txs.len()];
+    let mut children = vec![Vec::new(); txs.len()];
+    for (i, tx) in txs.iter().enumerate() {
+        for input in tx.body.inputs() {
+            if let Some(&parent) = producers.get(&input.output_hash()) &&
+                parent != i &&
+                let (Some(count), Some(siblings)) = (parent_counts.get_mut(i), children.get_mut(parent))
+            {
+                *count = count.saturating_add(1);
+                siblings.push(i);
+            }
+        }
+    }
+    let mut ready = (0..txs.len())
+        .filter(|i| parent_counts.get(*i) == Some(&0))
+        .collect::<VecDeque<_>>();
+    let mut txs = txs.into_iter().map(Some).collect::<Vec<_>>();
+    let mut ordered = Vec::with_capacity(txs.len());
+    while let Some(i) = ready.pop_front() {
+        ordered.extend(txs.get_mut(i).and_then(Option::take));
+        for &child in children.get(i).into_iter().flatten() {
+            if let Some(count) = parent_counts.get_mut(child) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    ready.push_back(child);
+                }
+            }
+        }
+    }
+    // Hash commitments rule out a cycle, but anything left unordered is still re-inserted
+    ordered.extend(txs.into_iter().flatten());
+    ordered
 }
 
 /// Fee per gram x1000, computed as for the stored pool priority (`FeePriority`)
@@ -1546,6 +1597,18 @@ mod test {
 
     fn pool_len(storage: &RwLock<MempoolStorage>) -> usize {
         storage.read().unwrap().unconfirmed_pool.len()
+    }
+
+    #[test]
+    fn topo_order_puts_parents_first_and_keeps_the_given_order_otherwise() {
+        let key_manager = KeyManager::new_random().unwrap();
+        let (a, a_outputs) = create_tx_with_outputs(&key_manager);
+        let (b, b_outputs) = create_tx_with_outputs(&key_manager);
+        let b = spending(&b, &a_outputs[0], &key_manager);
+        let c = spending(&create_tx(&key_manager), &b_outputs[0], &key_manager);
+        let x = create_tx(&key_manager);
+        let ordered = topo_order(vec![c.clone(), x.clone(), b.clone(), a.clone()]);
+        assert_eq!(ordered, vec![x, a, b, c]);
     }
 
     #[test]
