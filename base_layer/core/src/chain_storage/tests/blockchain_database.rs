@@ -2622,3 +2622,58 @@ mod rewind_headers_above_the_block_tip {
         ));
     }
 }
+
+mod read_on_requested_chain {
+    use super::*;
+    use crate::{
+        block_specs,
+        test_helpers::blockchain::{create_chained_blocks, create_main_chain},
+    };
+
+    /// A block's data is returned only if, under the same read lock, the block and the requested end block are on the
+    /// chain
+    #[test]
+    fn it_returns_block_data_only_on_the_requested_chain() {
+        let db = setup();
+        let (_, chain) = create_main_chain(&db, block_specs!(["A->GB"], ["B->A"], ["C->B"]));
+        let (_, fork) = create_chained_blocks(
+            &db,
+            block_specs!(["B2->GB"], ["C2->B2"]),
+            chain.get("A").unwrap().clone(),
+        );
+        let b = chain.get("B").unwrap();
+        let c = chain.get("C").unwrap();
+        let b2 = fork.get("B2").unwrap();
+        let c2 = fork.get("C2").unwrap();
+
+        let kernels = db.fetch_kernels_in_block_on_chain(2, *b.hash(), 3, *c.hash()).unwrap();
+        assert_eq!(kernels.as_ref(), Some(b.block().body.kernels()));
+        let (outputs, inputs, spent) = db
+            .fetch_txos_in_block_on_chain(2, *b.hash(), 3, *c.hash())
+            .unwrap()
+            .unwrap();
+        let outputs = outputs.into_iter().map(|(output, _)| output).collect::<Vec<_>>();
+        assert_eq!(&outputs, b.block().body.outputs());
+        assert_eq!(&inputs, b.block().body.inputs());
+        assert_eq!(spent.len(), inputs.len());
+
+        // The block is not on the chain (its data reads as empty), the end block is not on the chain, or the end height
+        // is above the tip
+        for (hash, end_height, end_hash) in [
+            (b2.hash(), 3, c.hash()),
+            (b.hash(), 3, c2.hash()),
+            (b.hash(), 4, c.hash()),
+        ] {
+            assert_eq!(
+                db.fetch_kernels_in_block_on_chain(2, *hash, end_height, *end_hash)
+                    .unwrap(),
+                None
+            );
+            assert!(
+                db.fetch_txos_in_block_on_chain(2, *hash, end_height, *end_hash)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+}

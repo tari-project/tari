@@ -35,7 +35,6 @@ use tari_comms::{
     utils,
     utils::mpsc::ChannelByteBudget,
 };
-use tari_node_components::blocks::BlockHeader;
 use tari_utilities::hex::Hex;
 use tokio::{
     sync::{Mutex, mpsc},
@@ -57,7 +56,7 @@ use crate::{
             },
         },
     },
-    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb},
+    chain_storage::{BlockchainBackend, ChainStorageError, async_db::AsyncBlockchainDb, is_on_requested_chain},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -129,19 +128,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
         metrics::active_sync_peers().set(lock.len() as i64);
         Ok(token)
     }
-}
-
-/// Returns true if the chain whose headers at the fetched block's height and at the end height are `header_at_height`
-/// and `end_header` has the fetched block at its height and the requested end block at the end height. Both headers
-/// must come from the same chain state; the fetched block is then an ancestor of the requested end block.
-pub(crate) fn is_on_requested_chain(
-    block_hash: &FixedHash,
-    header_at_height: Option<&BlockHeader>,
-    end_header: Option<&BlockHeader>,
-    end_hash: &FixedHash,
-) -> bool {
-    header_at_height.is_some_and(|header| header.hash() == *block_hash) &&
-        end_header.is_some_and(|header| header.hash() == *end_hash)
 }
 
 pub(super) const REORG_DETECTED: &str = "Reorg detected: the requested end block is no longer on the chain";
@@ -585,24 +571,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 if tx.is_closed() {
                     break;
                 }
+                // A rewound block has no kernels, so the kernels are read together with the chain check
                 let res = db
-                    .fetch_kernels_in_block(current_header_hash)
+                    .fetch_kernels_in_block_on_chain(current_height, current_header_hash, end_height, end_hash)
                     .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))
+                    .and_then(|kernels| kernels.ok_or_else(|| RpcStatus::conflict(REORG_DETECTED)));
 
                 if tx.is_closed() {
                     debug!(
                         target: LOG_TARGET,
                         "Kernel sync session for peer '{peer_node_id}' terminated early",
                     );
-                    break;
-                }
-
-                // A rewound block has no kernels, so the chain is checked before an empty or failed read is reported
-                if let Err(status) =
-                    ensure_on_requested_chain(&db, current_height, &current_header_hash, end_height, &end_hash).await
-                {
-                    let _result = tx.send(Err(status)).await;
                     break;
                 }
 

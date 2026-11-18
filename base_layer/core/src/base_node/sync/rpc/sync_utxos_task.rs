@@ -36,7 +36,7 @@ use tari_node_components::blocks::BlockHeader;
 use tari_utilities::{ByteArray, hex::Hex};
 use tokio::{sync::mpsc, task};
 
-use super::service::{check_chain_on_err, ensure_on_requested_chain};
+use super::service::{REORG_DETECTED, check_chain_on_err};
 #[cfg(feature = "metrics")]
 use crate::base_node::metrics;
 use crate::{
@@ -193,20 +193,13 @@ where B: BlockchainBackend + 'static
             }
 
             let height = current_header.height;
-            let outputs_with_statuses = self
+            // Read together with the chain check, so that a block that was rewound (it reads as empty) is never served
+            let (outputs_with_statuses, inputs_in_block, mined_infos) = self
                 .db
-                .fetch_outputs_in_block_with_spend_state(current_header_hash, Some(end_hash))
+                .fetch_txos_in_block_on_chain(height, current_header_hash, end_height, end_hash)
                 .await
-                .rpc_status_internal_error(LOG_TARGET);
-            let outputs_with_statuses = check_chain_on_err(
-                &self.db,
-                outputs_with_statuses,
-                height,
-                &current_header_hash,
-                end_height,
-                &end_hash,
-            )
-            .await?;
+                .rpc_status_internal_error(LOG_TARGET)?
+                .ok_or_else(|| RpcStatus::conflict(REORG_DETECTED))?;
             if tx.is_closed() {
                 debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
                 break;
@@ -248,55 +241,6 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 current_header_hash
             );
-
-            let inputs_in_block = self
-                .db
-                .fetch_inputs_in_block(current_header_hash)
-                .await
-                .rpc_status_internal_error(LOG_TARGET);
-            let inputs_in_block = check_chain_on_err(
-                &self.db,
-                inputs_in_block,
-                height,
-                &current_header_hash,
-                end_height,
-                &end_hash,
-            )
-            .await?;
-            if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                break;
-            }
-
-            // Look up all the spent outputs for this block in one call. Each entry is the instance this block's input
-            // spent, which is not necessarily the latest one. Blocks without inputs skip the call.
-            let mined_infos = if inputs_in_block.is_empty() {
-                Vec::new()
-            } else {
-                let input_hashes = inputs_in_block
-                    .iter()
-                    .map(|input| input.output_hash())
-                    .collect::<Vec<_>>();
-                let mined_infos = self
-                    .db
-                    .fetch_outputs_spent_in_block(input_hashes, current_header_hash)
-                    .await
-                    .rpc_status_internal_error(LOG_TARGET);
-                let mined_infos = check_chain_on_err(
-                    &self.db,
-                    mined_infos,
-                    height,
-                    &current_header_hash,
-                    end_height,
-                    &end_hash,
-                )
-                .await?;
-                if tx.is_closed() {
-                    debug!(target: LOG_TARGET, "Peer '{}' exited TXO sync session early", self.peer_node_id);
-                    break;
-                }
-                mined_infos
-            };
 
             let mut inputs = Vec::with_capacity(inputs_in_block.len());
             for (input, mined_info) in inputs_in_block.iter().zip(mined_infos) {
@@ -343,10 +287,6 @@ where B: BlockchainBackend + 'static
                 txos.append(&mut pruned_genesis_block_outputs);
             }
             let txos = txos.into_iter();
-
-            // Every block, including the last, is checked after its reads, so the terminator only follows data that
-            // was on the requested chain when it was sent
-            ensure_on_requested_chain(&self.db, height, &current_header_hash, end_height, &end_hash).await?;
 
             // Ensure task stops if the peer prematurely stops their RPC session
             let txos_len = txos.len();

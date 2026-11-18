@@ -1574,24 +1574,47 @@ where B: BlockchainBackend
         Ok(result)
     }
 
-    /// For each output hash, the stored instance that an input in block `header_hash` spent.
-    pub fn fetch_outputs_spent_in_block(
+    /// The TXOs of block `hash` at `height`: its outputs with their spend state at `end_hash`, its inputs, and for
+    /// each input the stored instance it spent. Returns `None` if the block or the end header `end_hash` at
+    /// `end_height` is not on the chain (see [`read_on_requested_chain`]).
+    pub fn fetch_txos_in_block_on_chain(
         &self,
-        hashes: Vec<HashOutput>,
-        header_hash: HashOutput,
-    ) -> Result<Vec<Option<OutputMinedInfo>>, ChainStorageError> {
+        height: u64,
+        hash: HashOutput,
+        end_height: u64,
+        end_hash: HashOutput,
+    ) -> Result<Option<BlockTxos>, ChainStorageError> {
         let db = self.db_read_access()?;
+        read_on_requested_chain(&*db, height, &hash, end_height, &end_hash, |db| {
+            let outputs = db.fetch_outputs_in_block_with_spend_state(&hash, Some(&end_hash))?;
+            let inputs = db.fetch_inputs_in_block(&hash)?;
+            let mut spent = Vec::with_capacity(inputs.len());
+            for input in &inputs {
+                // The instance this block's input spent, which is not necessarily the latest one
+                let instance = db
+                    .fetch_mined_info_by_output_hash(&input.output_hash())?
+                    .into_iter()
+                    .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == hash))
+                    .and_then(|info| info.output);
+                spent.push(instance);
+            }
+            Ok((outputs, inputs, spent))
+        })
+    }
 
-        let mut result = Vec::with_capacity(hashes.len());
-        for hash in hashes {
-            let instance = db
-                .fetch_mined_info_by_output_hash(&hash)?
-                .into_iter()
-                .find(|info| info.input.as_ref().is_some_and(|i| i.header_hash == header_hash))
-                .and_then(|info| info.output);
-            result.push(instance);
-        }
-        Ok(result)
+    /// The kernels of block `hash` at `height`, or `None` if the block or the end header `end_hash` at `end_height` is
+    /// not on the chain (see [`read_on_requested_chain`]).
+    pub fn fetch_kernels_in_block_on_chain(
+        &self,
+        height: u64,
+        hash: HashOutput,
+        end_height: u64,
+        end_hash: HashOutput,
+    ) -> Result<Option<Vec<TransactionKernel>>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        read_on_requested_chain(&*db, height, &hash, end_height, &end_hash, |db| {
+            db.fetch_kernels_in_block(&hash)
+        })
     }
 
     pub fn fetch_kernel_by_excess_sig(
@@ -2800,6 +2823,13 @@ where B: BlockchainBackend
 
 type OutputMmr = MerkleMountainRange<InputMmrHasherBlake256, Vec<Hash>>;
 
+/// A block's outputs with their spend state, its inputs, and for each input the stored instance it spent
+pub type BlockTxos = (
+    Vec<(TransactionOutput, bool)>,
+    Vec<TransactionInput>,
+    Vec<Option<OutputMinedInfo>>,
+);
+
 fn mmr_inclusion_proof(mmr: &OutputMmr, leaf_index: usize) -> Result<MmrInclusionProof, ChainStorageError> {
     let proof = MerkleProof::for_leaf_node(mmr, LeafIndex(leaf_index))?;
     let to_fixed_hashes = |hashes: Vec<Hash>| -> Result<Vec<tari_sidechain::FixedHash>, _> {
@@ -3114,6 +3144,39 @@ fn fetch_header_pair<T: BlockchainBackend>(
     }
     let [first, second] = headers;
     Ok((first, second))
+}
+
+/// Returns true if the chain whose headers at the fetched block's height and at the end height are `header_at_height`
+/// and `end_header` has the fetched block at its height and the requested end block at the end height. Both headers
+/// must come from the same chain state; the fetched block is then an ancestor of the requested end block.
+pub fn is_on_requested_chain(
+    block_hash: &FixedHash,
+    header_at_height: Option<&BlockHeader>,
+    end_header: Option<&BlockHeader>,
+    end_hash: &FixedHash,
+) -> bool {
+    header_at_height.is_some_and(|header| header.hash() == *block_hash) &&
+        end_header.is_some_and(|header| header.hash() == *end_hash)
+}
+
+/// Runs `read` for block `hash` and checks under the same read lock, so that no write can commit in between, that the
+/// block is at `height` and the end header `end_hash` is at `end_height`. Returns `None` if not: a block that is no
+/// longer on the chain reads as empty or fails, and its data must not be served. A failed read on the chain keeps its
+/// error.
+fn read_on_requested_chain<T: BlockchainBackend, R>(
+    db: &T,
+    height: u64,
+    hash: &FixedHash,
+    end_height: u64,
+    end_hash: &FixedHash,
+    read: impl FnOnce(&T) -> Result<R, ChainStorageError>,
+) -> Result<Option<R>, ChainStorageError> {
+    let res = read(db);
+    let (header_at_height, end_header) = fetch_header_pair(db, height, end_height)?;
+    if !is_on_requested_chain(hash, header_at_height.as_ref(), end_header.as_ref(), end_hash) {
+        return Ok(None);
+    }
+    res.map(Some)
 }
 
 pub fn fetch_headers<T: BlockchainBackend>(

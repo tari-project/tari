@@ -44,7 +44,7 @@ use tokio::sync::{broadcast, mpsc};
 use super::{
     BaseNodeSyncRpcService,
     SyncUtxosTask,
-    service::{REORG_DETECTED, check_chain_on_err, is_on_requested_chain},
+    service::{REORG_DETECTED, check_chain_on_err},
 };
 use crate::{
     base_node::{
@@ -53,7 +53,7 @@ use crate::{
         comms_interface::BlockEvent,
         sync::BlockchainSyncConfig,
     },
-    chain_storage::BlockchainDatabase,
+    chain_storage::{BlockchainDatabase, is_on_requested_chain},
     consensus::BaseNodeConsensusManager,
     proto,
     proto::base_node::{SyncBlocksRequest, SyncKernelsRequest, SyncUtxosRequest, sync_utxos_response::Txo},
