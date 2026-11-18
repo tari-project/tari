@@ -795,6 +795,8 @@ mod test {
             let (keystore, _) = init_keystore("policy");
             let input = keystore.with_file_name("payload.json");
             let output = keystore.with_file_name("signed.json");
+            // The binary refuses networks other than the one it was built for
+            let network = Network::get_current().to_string();
             let sign = |payload: &PrepareOneSidedTransactionForSigningResult, extra: &[&str]| {
                 fs::write(&input, payload.to_json().unwrap()).unwrap();
                 let mut args = vec![
@@ -806,7 +808,7 @@ mod test {
                     "--passphrase",
                     "p",
                     "-n",
-                    "localnet",
+                    &network,
                 ];
                 args.extend_from_slice(extra);
                 let (result, out) = run_with_output(&keystore, &args);
